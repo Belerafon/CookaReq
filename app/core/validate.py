@@ -1,0 +1,29 @@
+from __future__ import annotations
+"""Additional business rules for requirements."""
+
+from typing import Iterable
+
+from .schema import validate as validate_schema
+
+
+class ValidationError(Exception):
+    """Raised when business rules are violated."""
+
+
+def validate(data: dict, existing_ids: Iterable[str] = ()) -> None:
+    """Validate *data* using schema and business rules.
+
+    Parameters
+    ----------
+    data:
+        Requirement data as dictionary.
+    existing_ids:
+        Iterable of identifiers already present in the store.
+    """
+    validate_schema(data)
+    if data["id"] in set(existing_ids):
+        raise ValidationError(f"duplicate id: {data['id']}")
+    if data.get("verification") in {"test", "demonstration"} and not data.get("acceptance"):
+        raise ValidationError(
+            "acceptance is required for verification=test or demonstration"
+        )

@@ -1,0 +1,12 @@
+[project]
+name = "cookareq"
+version = "0.1.0"
+dependencies = [
+    "wxPython",
+    "pytest",
+    "jsonschema",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

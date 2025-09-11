@@ -44,7 +44,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         self.SetSizer(sizer)
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
-        self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
         self.search.Bind(wx.EVT_TEXT, self._on_search)
 
     # ColumnSorterMixin requirement
@@ -73,6 +72,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         for idx, field in enumerate(self.columns, start=1):
             self.list.InsertColumn(idx, field)
         ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
+        try:  # remove mixin's default binding and use our own
+            self.list.Unbind(wx.EVT_LIST_COL_CLICK)
+        except Exception:  # pragma: no cover - Unbind may not exist
+            pass
+        self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
 
     def load_column_widths(self, config: wx.Config) -> None:
         """Restore column widths from config with sane bounds."""

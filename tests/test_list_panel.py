@@ -9,6 +9,8 @@ def _build_wx_stub():
             self._parent = parent
         def GetParent(self):
             return self._parent
+        def Bind(self, event, handler):
+            pass
 
     class Panel(Window):
         def __init__(self, parent=None):
@@ -54,6 +56,7 @@ def _build_wx_stub():
         EXPAND=0,
         ALL=0,
         LC_REPORT=0,
+        EVT_LIST_ITEM_RIGHT_CLICK=types.SimpleNamespace(),
     )
 
 

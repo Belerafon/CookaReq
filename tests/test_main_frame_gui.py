@@ -186,3 +186,87 @@ def test_main_frame_select_opens_editor(monkeypatch, tmp_path):
 
     frame.Destroy()
     app.Destroy()
+
+
+def _sample_requirement():
+    return {
+        "id": "REQ-1",
+        "title": "Title",
+        "statement": "Statement",
+        "type": "requirement",
+        "status": "draft",
+        "owner": "user",
+        "priority": "medium",
+        "source": "spec",
+        "verification": "analysis",
+        "revision": 1,
+    }
+
+
+def _prepare_frame(monkeypatch, tmp_path):
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+
+    class DummyDirDialog:
+        def __init__(self, parent, message):
+            pass
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def GetPath(self):
+            return str(tmp_path)
+
+        def Destroy(self):
+            pass
+
+    monkeypatch.setattr(wx, "DirDialog", DummyDirDialog)
+
+    import app.ui.list_panel as list_panel
+    import app.ui.main_frame as main_frame
+    importlib.reload(list_panel)
+    importlib.reload(main_frame)
+
+    frame = main_frame.MainFrame(None)
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, wx.ID_OPEN)
+    frame.ProcessEvent(evt)
+
+    return wx, app, frame
+
+
+def test_main_frame_clone_requirement_clears_id(monkeypatch, tmp_path):
+    from app.core.store import save
+
+    data = _sample_requirement()
+    save(tmp_path, data)
+
+    wx, app, frame = _prepare_frame(monkeypatch, tmp_path)
+
+    frame.on_clone_requirement(0)
+
+    assert frame.editor.IsShown()
+    assert frame.editor.fields["id"].GetValue() == ""
+    assert frame.editor.fields["title"].GetValue() == data["title"]
+
+    frame.Destroy()
+    app.Destroy()
+
+
+def test_main_frame_delete_requirement_removes_file(monkeypatch, tmp_path):
+    from app.core.store import save
+
+    data = _sample_requirement()
+    path = save(tmp_path, data)
+
+    wx, app, frame = _prepare_frame(monkeypatch, tmp_path)
+
+    assert path.exists()
+    assert frame.panel.list.GetItemCount() == 1
+
+    frame.on_delete_requirement(0)
+
+    assert frame.panel.list.GetItemCount() == 0
+    assert not path.exists()
+
+    frame.Destroy()
+    app.Destroy()

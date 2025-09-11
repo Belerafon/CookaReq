@@ -41,6 +41,7 @@ def sample() -> dict:
 def test_save_and_load_roundtrip(tmp_path: Path):
     data = sample()
     path = save(tmp_path, data)
+    assert path.name == f"{data['id']}.json"
     assert path.name == filename_for(data["id"])
     loaded, mtime = load(path)
     assert loaded == data
@@ -88,3 +89,7 @@ def test_save_accepts_dataclass(tmp_path: Path):
     loaded, _ = load(path)
     assert loaded["id"] == req.id
     assert loaded["title"] == req.title
+
+
+def test_filename_for_sanitizes():
+    assert filename_for("REQ/1:*?") == "REQ_1___.json"

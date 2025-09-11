@@ -242,13 +242,13 @@ def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path):
 
     wx, app, frame = _prepare_frame(monkeypatch, tmp_path)
 
-    frame.on_clone_requirement(frame.requirements[0]["id"])
+    frame.on_clone_requirement(frame.model.get_all()[0]["id"])
 
     assert frame.editor.IsShown()
     new_id = frame.editor.fields["id"].GetValue()
     assert new_id and new_id != str(data["id"])
     assert frame.editor.fields["title"].GetValue().startswith("(Копия)")
-    assert len(frame.requirements) == 2
+    assert len(frame.model.get_all()) == 2
 
     frame.Destroy()
     app.Destroy()
@@ -262,8 +262,8 @@ def test_main_frame_new_requirement_button(monkeypatch, tmp_path):
     frame.ProcessEvent(evt)
 
     assert frame.editor.IsShown()
-    assert frame.requirements
-    assert frame.editor.fields["id"].GetValue() == str(frame.requirements[0]["id"])
+    assert frame.model.get_all()
+    assert frame.editor.fields["id"].GetValue() == str(frame.model.get_all()[0]["id"])
 
     frame.Destroy()
     app.Destroy()
@@ -280,7 +280,7 @@ def test_main_frame_delete_requirement_removes_file(monkeypatch, tmp_path):
     assert path.exists()
     assert frame.panel.list.GetItemCount() == 1
 
-    frame.on_delete_requirement(frame.requirements[0]["id"])
+    frame.on_delete_requirement(frame.model.get_all()[0]["id"])
 
     assert frame.panel.list.GetItemCount() == 0
     assert not path.exists()

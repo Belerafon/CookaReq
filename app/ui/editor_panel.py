@@ -121,10 +121,7 @@ class EditorPanel(wx.Panel):
             ("conditions", True),
             ("trace_up", True),
             ("trace_down", True),
-            ("version", False),
-            ("modified_at", False),
-            ("owner", False),
-            ("source", False),
+            ("source", True),
         ]:
             label = wx.StaticText(self, label=labels[name])
             help_btn = make_help_button(help_texts[name])
@@ -135,17 +132,29 @@ class EditorPanel(wx.Panel):
 
             style = wx.TE_MULTILINE if multiline else 0
             ctrl = wx.TextCtrl(self, style=style)
+            if name == "source":
+                ctrl.SetMinSize((-1, 60))
+            self.fields[name] = ctrl
+            proportion = 1 if multiline and name != "source" else 0
+            sizer.Add(ctrl, proportion, wx.EXPAND | wx.ALL, 5)
+
+        def add_text_field(name: str) -> None:
+            container = wx.BoxSizer(wx.VERTICAL)
+            label = wx.StaticText(self, label=labels[name])
+            help_btn = make_help_button(help_texts[name])
+            row = wx.BoxSizer(wx.HORIZONTAL)
+            row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+            row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+            container.Add(row, 0, wx.ALL, 5)
+            ctrl = wx.TextCtrl(self)
             if name == "modified_at":
                 ctrl.SetEditable(False)
             self.fields[name] = ctrl
-            sizer.Add(ctrl, 1 if multiline else 0, wx.EXPAND | wx.ALL, 5)
+            container.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
+            grid.Add(container, 1, wx.EXPAND)
 
-        for name, mapping in [
-            ("type", locale.TYPE),
-            ("status", locale.STATUS),
-            ("priority", locale.PRIORITY),
-            ("verification", locale.VERIFICATION),
-        ]:
+        def add_enum_field(name: str, mapping: dict[str, str]) -> None:
+            container = wx.BoxSizer(wx.VERTICAL)
             label = wx.StaticText(self, label=labels[name])
             choice = wx.Choice(self, choices=list(mapping.values()))
             help_btn = make_help_button(help_texts[name])
@@ -154,7 +163,29 @@ class EditorPanel(wx.Panel):
             row.Add(choice, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
             self.enums[name] = choice
-            sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
+            container.Add(row, 0, wx.EXPAND | wx.ALL, 5)
+            grid.Add(container, 1, wx.EXPAND)
+
+        grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
+        grid.AddGrowableCol(0, 1)
+        grid.AddGrowableCol(1, 1)
+
+        items = [
+            ("type", "enum", locale.TYPE),
+            ("status", "enum", locale.STATUS),
+            ("priority", "enum", locale.PRIORITY),
+            ("verification", "enum", locale.VERIFICATION),
+            ("modified_at", "text", None),
+            ("owner", "text", None),
+            ("version", "text", None),
+        ]
+        for name, kind, mapping in items:
+            if kind == "enum":
+                add_enum_field(name, mapping)
+            else:
+                add_text_field(name)
+
+        sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
 
         self.save_btn = wx.Button(self, label="Сохранить")
         self.save_btn.Bind(wx.EVT_BUTTON, self._on_save_button)

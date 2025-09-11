@@ -34,11 +34,11 @@ def test_list_panel_context_menu_calls_handlers():
     frame = wx.Frame(None)
     called: dict[str, int] = {}
 
-    def on_clone(idx: int) -> None:
-        called["clone"] = idx
+    def on_clone(req_id: int) -> None:
+        called["clone"] = req_id
 
-    def on_delete(idx: int) -> None:
-        called["delete"] = idx
+    def on_delete(req_id: int) -> None:
+        called["delete"] = req_id
 
     panel = list_panel.ListPanel(frame, on_clone=on_clone, on_delete=on_delete)
     panel.set_requirements([{ "id": 1, "title": "T" }])
@@ -53,7 +53,7 @@ def test_list_panel_context_menu_calls_handlers():
     panel.ProcessEvent(evt)
     menu.Destroy()
 
-    assert called == {"clone": 0, "delete": 0}
+    assert called == {"clone": 1, "delete": 1}
 
     frame.Destroy()
     app.Destroy()

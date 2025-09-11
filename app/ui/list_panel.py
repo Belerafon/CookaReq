@@ -127,7 +127,7 @@ class ListPanel(wx.Panel):
         self.set_requirements(self._requirements)
 
     def set_requirements(self, requirements: list) -> None:
-        """Populate list control with requirement data."""
+        """Populate list control with requirement data and store IDs."""
         self._all_requirements = requirements
         self._apply_filters()
 
@@ -159,6 +159,11 @@ class ListPanel(wx.Panel):
         for req in self._requirements:
             title = req.get("title") if isinstance(req, dict) else getattr(req, "title", "")
             index = self.list.InsertItem(self.list.GetItemCount(), title)
+            req_id = req.get("id") if isinstance(req, dict) else getattr(req, "id", 0)
+            try:
+                self.list.SetItemData(index, int(req_id))
+            except Exception:
+                self.list.SetItemData(index, 0)
             for col, field in enumerate(self.columns, start=1):
                 if isinstance(req, dict):
                     value = req.get(field, "")
@@ -219,15 +224,16 @@ class ListPanel(wx.Panel):
         menu = wx.Menu()
         clone_item = menu.Append(wx.ID_ANY, "Клонировать")
         delete_item = menu.Append(wx.ID_ANY, "Удалить")
+        req_id = self.list.GetItemData(index)
         field = self._field_from_column(column)
         edit_item = None
         if field and field != "title":
             edit_item = menu.Append(wx.ID_ANY, f"Изменить {field}")
             self.Bind(wx.EVT_MENU, lambda evt, c=column: self._on_edit_field(c), edit_item)
         if self._on_clone:
-            self.Bind(wx.EVT_MENU, lambda evt: self._on_clone(index), clone_item)
+            self.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_clone(i), clone_item)
         if self._on_delete:
-            self.Bind(wx.EVT_MENU, lambda evt: self._on_delete(index), delete_item)
+            self.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_delete(i), delete_item)
         return menu, clone_item, delete_item, edit_item
 
     def _get_selected_indices(self) -> List[int]:

@@ -34,19 +34,27 @@ def _build_wx_stub():
         def __init__(self, parent=None, style=0):
             super().__init__(parent)
             self._items = []
+            self._data = []
         def InsertColumn(self, col, heading):
             pass
         def ClearAll(self):
             self._items.clear()
+            self._data.clear()
         def DeleteAllItems(self):
             self._items.clear()
+            self._data.clear()
         def GetItemCount(self):
             return len(self._items)
         def InsertItem(self, index, text):
             self._items.insert(index, text)
+            self._data.insert(index, 0)
             return index
         def SetItem(self, index, col, text):
             pass
+        def SetItemData(self, index, data):
+            self._data[index] = data
+        def GetItemData(self, index):
+            return self._data[index]
 
     class BoxSizer:
         def __init__(self, orient):

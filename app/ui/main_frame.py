@@ -155,11 +155,13 @@ class MainFrame(wx.Frame):
         self._recent_menu_item.Enable(bool(self.recent_dirs))
 
     def on_requirement_selected(self, event: wx.ListEvent) -> None:
-        idx = event.GetIndex()
-        if 0 <= idx < len(self.requirements):
-            self.editor.load(self.requirements[idx])
-            self.editor.Show()
-            self.splitter.UpdateSize()
+        req_id = event.GetData()
+        for req in self.requirements:
+            if req.get("id") == req_id:
+                self.editor.load(req)
+                self.editor.Show()
+                self.splitter.UpdateSize()
+                break
 
     def _on_editor_save(self) -> None:
         if not self.current_dir:
@@ -256,10 +258,10 @@ class MainFrame(wx.Frame):
         self.editor.Show()
         self.splitter.UpdateSize()
 
-    def on_clone_requirement(self, index: int) -> None:
-        if not (0 <= index < len(self.requirements)):
+    def on_clone_requirement(self, req_id: int) -> None:
+        source = next((r for r in self.requirements if r.get("id") == req_id), None)
+        if not source:
             return
-        source = self.requirements[index]
         new_id = self._generate_new_id()
         data = dict(source)
         data["id"] = new_id
@@ -272,10 +274,13 @@ class MainFrame(wx.Frame):
         self.editor.Show()
         self.splitter.UpdateSize()
 
-    def on_delete_requirement(self, index: int) -> None:
-        if not self.current_dir or not (0 <= index < len(self.requirements)):
+    def on_delete_requirement(self, req_id: int) -> None:
+        if not self.current_dir:
             return
-        req = self.requirements.pop(index)
+        idx = next((i for i, r in enumerate(self.requirements) if r.get("id") == req_id), None)
+        if idx is None:
+            return
+        req = self.requirements.pop(idx)
         try:
             (self.current_dir / store.filename_for(req["id"])).unlink()
         except Exception:

@@ -35,16 +35,22 @@ def _build_wx_stub():
             super().__init__(parent)
             self._items = []
             self._data = []
+            self._cols = []
         def InsertColumn(self, col, heading):
-            pass
+            if col >= len(self._cols):
+                self._cols.extend([None] * (col - len(self._cols) + 1))
+            self._cols[col] = heading
         def ClearAll(self):
             self._items.clear()
             self._data.clear()
+            self._cols.clear()
         def DeleteAllItems(self):
             self._items.clear()
             self._data.clear()
         def GetItemCount(self):
             return len(self._items)
+        def GetColumnCount(self):
+            return len(self._cols)
         def InsertItem(self, index, text):
             self._items.insert(index, text)
             self._data.insert(index, 0)
@@ -70,7 +76,7 @@ def _build_wx_stub():
         def WriteInt(self, key, value):
             pass
 
-    return types.SimpleNamespace(
+    wx_mod = types.SimpleNamespace(
         Panel=Panel,
         SearchCtrl=SearchCtrl,
         ListCtrl=ListCtrl,
@@ -85,18 +91,28 @@ def _build_wx_stub():
         EVT_TEXT=types.SimpleNamespace(),
         Config=Config,
     )
+    class ColumnSorterMixin:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    mixins_mod = types.SimpleNamespace(ColumnSorterMixin=ColumnSorterMixin)
+    return wx_mod, mixins_mod
 
 
 def test_list_panel_has_search_and_list(monkeypatch):
-    wx_stub = _build_wx_stub()
+    wx_stub, mixins = _build_wx_stub()
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
     ListPanel = list_panel_module.ListPanel
+    RequirementModel = model_module.RequirementModel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame)
+    panel = ListPanel(frame, model=RequirementModel())
 
     assert isinstance(panel.search, wx_stub.SearchCtrl)
     assert isinstance(panel.list, wx_stub.ListCtrl)
@@ -109,15 +125,17 @@ def test_list_panel_has_search_and_list(monkeypatch):
 
 
 def test_column_click_sorts(monkeypatch):
-    wx_stub = _build_wx_stub()
+    wx_stub, mixins = _build_wx_stub()
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
     ListPanel = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame)
+    panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["id"])
     panel.set_requirements([
         {"id": 2, "title": "B"},
@@ -125,52 +143,56 @@ def test_column_click_sorts(monkeypatch):
     ])
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 0))
-    assert [r["id"] for r in panel._requirements] == [1, 2]
+    assert [r["id"] for r in panel.model.get_visible()] == [1, 2]
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 1))
-    assert [r["id"] for r in panel._requirements] == [1, 2]
+    assert [r["id"] for r in panel.model.get_visible()] == [1, 2]
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 1))
-    assert [r["id"] for r in panel._requirements] == [2, 1]
+    assert [r["id"] for r in panel.model.get_visible()] == [2, 1]
 
 
 def test_search_and_label_filters(monkeypatch):
-    wx_stub = _build_wx_stub()
+    wx_stub, mixins = _build_wx_stub()
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
     ListPanel = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame)
+    panel = ListPanel(frame, model=RequirementModel())
     panel.set_requirements([
         {"id": 1, "title": "Login", "labels": ["ui"]},
         {"id": 2, "title": "Export", "labels": ["report"]},
     ])
 
     panel.set_label_filter(["ui"])
-    assert [r["id"] for r in panel._requirements] == [1]
+    assert [r["id"] for r in panel.model.get_visible()] == [1]
 
     panel.set_label_filter([])
     panel.set_search_query("Export", fields=["title"])
-    assert [r["id"] for r in panel._requirements] == [2]
+    assert [r["id"] for r in panel.model.get_visible()] == [2]
 
     panel.set_label_filter(["ui"])
     panel.set_search_query("Export", fields=["title"])
-    assert panel._requirements == []
+    assert panel.model.get_visible() == []
 
 
 def test_bulk_edit_updates_requirements(monkeypatch):
-    wx_stub = _build_wx_stub()
+    wx_stub, mixins = _build_wx_stub()
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
     ListPanel = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame)
+    panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["version"])
     reqs = [
         {"id": 1, "title": "A", "version": "1"},
@@ -184,16 +206,18 @@ def test_bulk_edit_updates_requirements(monkeypatch):
 
 
 def test_sort_method_and_callback(monkeypatch):
-    wx_stub = _build_wx_stub()
+    wx_stub, mixins = _build_wx_stub()
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
     ListPanel = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
     calls = []
-    panel = ListPanel(frame, on_sort_changed=lambda c, a: calls.append((c, a)))
+    panel = ListPanel(frame, model=RequirementModel(), on_sort_changed=lambda c, a: calls.append((c, a)))
     panel.set_columns(["id"])
     panel.set_requirements([
         {"id": 2, "title": "B"},
@@ -201,9 +225,9 @@ def test_sort_method_and_callback(monkeypatch):
     ])
 
     panel.sort(1, True)
-    assert [r["id"] for r in panel._requirements] == [1, 2]
+    assert [r["id"] for r in panel.model.get_visible()] == [1, 2]
     assert calls[-1] == (1, True)
 
     panel.sort(1, False)
-    assert [r["id"] for r in panel._requirements] == [2, 1]
+    assert [r["id"] for r in panel.model.get_visible()] == [2, 1]
     assert calls[-1] == (1, False)

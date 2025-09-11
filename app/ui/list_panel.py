@@ -1,17 +1,18 @@
 """Panel displaying requirements list and simple filters."""
 
 import wx
+from wx.lib.mixins.listctrl import ColumnSorterMixin
 
 from typing import Callable, List, Sequence, TYPE_CHECKING
 
-from app.core import search as core_search
 from app.core.model import Priority, RequirementType, Status, Verification
+from .requirement_model import RequirementModel
 
 if TYPE_CHECKING:  # pragma: no cover
     from wx import ListEvent
 
 
-class ListPanel(wx.Panel):
+class ListPanel(wx.Panel, ColumnSorterMixin):
     """Panel with a search box and list of requirement fields."""
 
     MIN_COL_WIDTH = 50
@@ -21,20 +22,18 @@ class ListPanel(wx.Panel):
         self,
         parent: wx.Window,
         *,
+        model: RequirementModel,
         on_clone: Callable[[int], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
         on_sort_changed: Callable[[int, bool], None] | None = None,
     ):
-        super().__init__(parent)
+        wx.Panel.__init__(self, parent)
+        self.model = model
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.search = wx.SearchCtrl(self)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
+        ColumnSorterMixin.__init__(self, 1)
         self.columns: List[str] = []
-        self._requirements: List = []
-        self._all_requirements: List = []
-        self._labels: List[str] = []
-        self._query: str = ""
-        self._fields: Sequence[str] | None = None
         self._on_clone = on_clone
         self._on_delete = on_delete
         self._on_sort_changed = on_sort_changed
@@ -47,6 +46,13 @@ class ListPanel(wx.Panel):
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
         self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
         self.search.Bind(wx.EVT_TEXT, self._on_search)
+
+    # ColumnSorterMixin requirement
+    def GetListCtrl(self):  # pragma: no cover - simple forwarding
+        return self.list
+
+    def GetSortImages(self):  # pragma: no cover - default arrows
+        return (-1, -1)
 
     def set_handlers(
         self,
@@ -66,6 +72,7 @@ class ListPanel(wx.Panel):
         self.list.InsertColumn(0, "Title")
         for idx, field in enumerate(self.columns, start=1):
             self.list.InsertColumn(idx, field)
+        ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
 
     def load_column_widths(self, config: wx.Config) -> None:
         """Restore column widths from config with sane bounds."""
@@ -124,52 +131,47 @@ class ListPanel(wx.Panel):
         self.columns = fields
         self._setup_columns()
         # repopulate with existing requirements after changing columns
-        self.set_requirements(self._requirements)
+        self._refresh()
 
     def set_requirements(self, requirements: list) -> None:
-        """Populate list control with requirement data and store IDs."""
-        self._all_requirements = requirements
-        self._apply_filters()
+        """Populate list control with requirement data via model."""
+        self.model.set_requirements(requirements)
+        self._refresh()
 
     # filtering -------------------------------------------------------
     def set_label_filter(self, labels: List[str]) -> None:
         """Filter by requirement labels."""
-        self._labels = labels
-        self._apply_filters()
+        self.model.set_label_filter(labels)
+        self._refresh()
 
     def set_search_query(self, query: str, fields: Sequence[str] | None = None) -> None:
         """Apply text search across ``fields``."""
-        self._query = query
-        self._fields = fields
-        self._apply_filters()
+        self.model.set_search_query(query, fields)
+        self._refresh()
 
     def _on_search(self, event):  # pragma: no cover - simple event binding
         self.set_search_query(self.search.GetValue())
         event.Skip()
 
-    def _apply_filters(self) -> None:
-        """Apply current search and label filters to the requirement list."""
-        self._requirements = core_search.search(
-            self._all_requirements,
-            labels=self._labels,
-            query=self._query,
-            fields=self._fields,
-        )
+    def _refresh(self) -> None:
+        """Reload list control from the model."""
+        items = self.model.get_visible()
         self.list.DeleteAllItems()
-        for req in self._requirements:
-            title = req.get("title") if isinstance(req, dict) else getattr(req, "title", "")
+        for req in items:
+            title = req.get("title", "")
             index = self.list.InsertItem(self.list.GetItemCount(), title)
-            req_id = req.get("id") if isinstance(req, dict) else getattr(req, "id", 0)
+            req_id = req.get("id", 0)
             try:
                 self.list.SetItemData(index, int(req_id))
             except Exception:
                 self.list.SetItemData(index, 0)
             for col, field in enumerate(self.columns, start=1):
-                if isinstance(req, dict):
-                    value = req.get(field, "")
-                else:
-                    value = getattr(req, field, "")
+                value = req.get(field, "")
                 self.list.SetItem(index, col, str(value))
+
+    def refresh(self) -> None:
+        """Public wrapper to reload list control."""
+        self._refresh()
 
     def _on_col_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event
         col = event.GetColumn()
@@ -184,22 +186,8 @@ class ListPanel(wx.Panel):
         self._sort_column = column
         self._sort_ascending = ascending
         field = "title" if column == 0 else self.columns[column - 1]
-
-        def get_value(req):
-            value = req.get(field, "") if isinstance(req, dict) else getattr(req, field, "")
-            if field == "id":
-                try:
-                    return int(value)
-                except Exception:
-                    return 0
-            return value
-
-        sorted_reqs = sorted(
-            self._requirements,
-            key=get_value,
-            reverse=not self._sort_ascending,
-        )
-        self.set_requirements(sorted_reqs)
+        self.model.sort(field, ascending)
+        self._refresh()
         if self._on_sort_changed:
             self._on_sort_changed(self._sort_column, self._sort_ascending)
 
@@ -276,11 +264,10 @@ class ListPanel(wx.Panel):
         if value is None:
             return
         for idx in self._get_selected_indices():
-            if idx >= len(self._requirements):
+            items = self.model.get_visible()
+            if idx >= len(items):
                 continue
-            req = self._requirements[idx]
-            if isinstance(req, dict):
-                req[field] = value
-            else:
-                setattr(req, field, value)
+            req = items[idx]
+            req[field] = value
+            self.model.update(req)
             self.list.SetItem(idx, column, str(value))

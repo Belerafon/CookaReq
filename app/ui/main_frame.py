@@ -10,6 +10,7 @@ from app.core.model import Requirement
 from .list_panel import ListPanel
 from .editor_panel import EditorPanel
 from .settings_dialog import SettingsDialog
+from .requirement_model import RequirementModel
 
 
 class MainFrame(wx.Frame):
@@ -27,11 +28,13 @@ class MainFrame(wx.Frame):
         self.sort_column = self.config.ReadInt("sort_column", -1)
         self.sort_ascending = self.config.ReadBool("sort_ascending", True)
         super().__init__(parent=parent, title=self._base_title)
+        self.model = RequirementModel()
         self._create_menu()
         self._create_toolbar()
         self.splitter = wx.SplitterWindow(self)
         self.panel = ListPanel(
             self.splitter,
+            model=self.model,
             on_clone=self.on_clone_requirement,
             on_delete=self.on_delete_requirement,
             on_sort_changed=self._on_sort_changed,
@@ -44,7 +47,6 @@ class MainFrame(wx.Frame):
         sizer.Add(self.splitter, 1, wx.EXPAND)
         self.SetSizer(sizer)
         self._load_layout()
-        self.requirements: list[dict] = []
         self.current_dir: Path | None = None
         self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
         self.Bind(wx.EVT_CLOSE, self._on_close)
@@ -114,14 +116,14 @@ class MainFrame(wx.Frame):
         self._add_recent_dir(path)
         self.SetTitle(f"{self._base_title} - {path}")
         self.current_dir = path
-        self.requirements = []
+        items: list[dict] = []
         for fp in self.current_dir.glob("*.json"):
             try:
                 data, _ = store.load(fp)
-                self.requirements.append(data)
+                items.append(data)
             except Exception:
                 continue
-        self.panel.set_requirements(self.requirements)
+        self.panel.set_requirements(items)
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
         self.editor.Hide()
@@ -156,25 +158,19 @@ class MainFrame(wx.Frame):
 
     def on_requirement_selected(self, event: wx.ListEvent) -> None:
         req_id = event.GetData()
-        for req in self.requirements:
-            if req.get("id") == req_id:
-                self.editor.load(req)
-                self.editor.Show()
-                self.splitter.UpdateSize()
-                break
+        req = self.model.get_by_id(req_id)
+        if req:
+            self.editor.load(req)
+            self.editor.Show()
+            self.splitter.UpdateSize()
 
     def _on_editor_save(self) -> None:
         if not self.current_dir:
             return
         path = self.editor.save(self.current_dir)
         data = self.editor.get_data()
-        for i, req in enumerate(self.requirements):
-            if req.get("id") == data.get("id"):
-                self.requirements[i] = data
-                break
-        else:
-            self.requirements.append(data)
-        self.panel.set_requirements(self.requirements)
+        self.model.update(data)
+        self.panel.refresh()
 
     def on_toggle_column(self, event: wx.CommandEvent) -> None:
         field = self._column_items.get(event.GetId())
@@ -245,7 +241,7 @@ class MainFrame(wx.Frame):
 
     # context menu actions -------------------------------------------
     def _generate_new_id(self) -> int:
-        existing = {req["id"] for req in self.requirements}
+        existing = {req["id"] for req in self.model.get_all()}
         return max(existing, default=0) + 1
 
     def on_new_requirement(self, event: wx.Event) -> None:
@@ -253,13 +249,13 @@ class MainFrame(wx.Frame):
         self.editor.new_requirement()
         self.editor.fields["id"].SetValue(str(new_id))
         data = self.editor.get_data()
-        self.requirements.append(data)
-        self.panel.set_requirements(self.requirements)
+        self.model.add(data)
+        self.panel.refresh()
         self.editor.Show()
         self.splitter.UpdateSize()
 
     def on_clone_requirement(self, req_id: int) -> None:
-        source = next((r for r in self.requirements if r.get("id") == req_id), None)
+        source = self.model.get_by_id(req_id)
         if not source:
             return
         new_id = self._generate_new_id()
@@ -268,8 +264,8 @@ class MainFrame(wx.Frame):
         data["title"] = f"(Копия) {source.get('title', '')}".strip()
         data["modified_at"] = ""
         data["revision"] = 1
-        self.requirements.append(data)
-        self.panel.set_requirements(self.requirements)
+        self.model.add(data)
+        self.panel.refresh()
         self.editor.load(data, path=None, mtime=None)
         self.editor.Show()
         self.splitter.UpdateSize()
@@ -277,14 +273,14 @@ class MainFrame(wx.Frame):
     def on_delete_requirement(self, req_id: int) -> None:
         if not self.current_dir:
             return
-        idx = next((i for i, r in enumerate(self.requirements) if r.get("id") == req_id), None)
-        if idx is None:
+        req = self.model.get_by_id(req_id)
+        if not req:
             return
-        req = self.requirements.pop(idx)
+        self.model.delete(req_id)
         try:
             (self.current_dir / store.filename_for(req["id"])).unlink()
         except Exception:
             pass
-        self.panel.set_requirements(self.requirements)
+        self.panel.refresh()
         self.editor.Hide()
         self.splitter.UpdateSize()

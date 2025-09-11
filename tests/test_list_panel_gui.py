@@ -8,7 +8,8 @@ def test_list_panel_real_widgets():
     import app.ui.list_panel as list_panel
     importlib.reload(list_panel)
     frame = wx.Frame(None)
-    panel = list_panel.ListPanel(frame)
+    from app.ui.requirement_model import RequirementModel
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
 
     frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
     frame.GetSizer().Add(panel, 1, wx.EXPAND)
@@ -40,7 +41,8 @@ def test_list_panel_context_menu_calls_handlers():
     def on_delete(req_id: int) -> None:
         called["delete"] = req_id
 
-    panel = list_panel.ListPanel(frame, on_clone=on_clone, on_delete=on_delete)
+    from app.ui.requirement_model import RequirementModel
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), on_clone=on_clone, on_delete=on_delete)
     panel.set_requirements([{ "id": 1, "title": "T" }])
 
     menu, clone_item, delete_item, _ = panel._create_context_menu(0, 0)
@@ -65,7 +67,8 @@ def test_bulk_edit_updates_selected_items(monkeypatch):
     import app.ui.list_panel as list_panel
     importlib.reload(list_panel)
     frame = wx.Frame(None)
-    panel = list_panel.ListPanel(frame)
+    from app.ui.requirement_model import RequirementModel
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
     panel.set_columns(["version", "type"])
     reqs = [
         {"id": 1, "title": "A", "version": "1", "type": "requirement"},

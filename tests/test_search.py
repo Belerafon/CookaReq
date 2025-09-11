@@ -56,12 +56,27 @@ def test_filter_by_labels():
     assert [r.id for r in filter_by_labels(reqs, ["ui", "auth"])] == ["REQ-1"]
 
 
+def test_filter_by_labels_empty_returns_all():
+    reqs = sample_requirements()
+    assert filter_by_labels(reqs, []) == reqs
+
+
 def test_search_text():
     reqs = sample_requirements()
     found = search_text(reqs, "login", ["title", "notes"])
     assert [r.id for r in found] == ["REQ-1"]
     found = search_text(reqs, "EXPORT", ["title"])
     assert [r.id for r in found] == ["REQ-3"]
+
+
+def test_search_text_empty_query_returns_all():
+    reqs = sample_requirements()
+    assert search_text(reqs, "", ["title"]) == reqs
+
+
+def test_search_text_no_valid_fields_returns_all():
+    reqs = sample_requirements()
+    assert search_text(reqs, "login", ["unknown"]) == reqs
 
 
 def test_combined_search():

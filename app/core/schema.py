@@ -33,6 +33,11 @@ SCHEMA: dict[str, Any] = {
         "source": {"type": "string"},
         "verification": {"enum": [e.value for e in Verification]},
         "acceptance": {"type": "string"},
+        "conditions": {"type": "string"},
+        "trace_up": {"type": "string"},
+        "trace_down": {"type": "string"},
+        "version": {"type": "string"},
+        "modified_at": {"type": "string"},
         "units": {
             "type": "object",
             "properties": {

@@ -58,6 +58,11 @@ class Requirement:
     source: str
     verification: Verification
     acceptance: Optional[str] = None
+    conditions: str = ""
+    trace_up: str = ""
+    trace_down: str = ""
+    version: str = ""
+    modified_at: str = ""
     units: Optional[Units] = None
     labels: List[str] = field(default_factory=list)
     attachments: List[Attachment] = field(default_factory=list)

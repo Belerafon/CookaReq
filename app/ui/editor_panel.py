@@ -7,6 +7,7 @@ from typing import Any
 import wx
 
 from app.core import store
+from . import locale
 
 
 class EditorPanel(wx.Panel):
@@ -15,6 +16,7 @@ class EditorPanel(wx.Panel):
     def __init__(self, parent: wx.Window):
         super().__init__(parent)
         self.fields: dict[str, wx.TextCtrl] = {}
+        self.enums: dict[str, wx.Choice] = {}
         sizer = wx.BoxSizer(wx.VERTICAL)
         for name, multiline in [
             ("id", False),
@@ -28,14 +30,20 @@ class EditorPanel(wx.Panel):
             ctrl = wx.TextCtrl(self, style=style)
             self.fields[name] = ctrl
             sizer.Add(ctrl, 1 if multiline else 0, wx.EXPAND | wx.ALL, 5)
+
+        for name, mapping in [
+            ("type", locale.TYPE),
+            ("status", locale.STATUS),
+            ("priority", locale.PRIORITY),
+            ("verification", locale.VERIFICATION),
+        ]:
+            choice = wx.Choice(self, choices=list(mapping.values()))
+            self.enums[name] = choice
+            sizer.Add(choice, 0, wx.EXPAND | wx.ALL, 5)
         self.SetSizer(sizer)
 
         self.attachments: list[dict[str, str]] = []
         self.extra: dict[str, Any] = {
-            "type": "requirement",
-            "status": "draft",
-            "priority": "medium",
-            "verification": "analysis",
             "labels": [],
             "revision": 1,
             "approved_at": None,
@@ -48,6 +56,8 @@ class EditorPanel(wx.Panel):
     def new_requirement(self) -> None:
         for ctrl in self.fields.values():
             ctrl.SetValue("")
+        for choice in self.enums.values():
+            choice.SetSelection(0)
         self.attachments = []
         self.current_path = None
         self.mtime = None
@@ -62,6 +72,10 @@ class EditorPanel(wx.Panel):
         for name, ctrl in self.fields.items():
             ctrl.SetValue(str(data.get(name, "")))
         self.attachments = list(data.get("attachments", []))
+        for name, choice in self.enums.items():
+            mapping = getattr(locale, name.upper())
+            code = data.get(name, next(iter(mapping)))
+            choice.SetStringSelection(locale.code_to_ru(name, code))
         for key in self.extra:
             if key in data:
                 self.extra[key] = data[key]
@@ -79,12 +93,14 @@ class EditorPanel(wx.Panel):
             "id": self.fields["id"].GetValue(),
             "title": self.fields["title"].GetValue(),
             "statement": self.fields["statement"].GetValue(),
-            "type": self.extra.get("type", "requirement"),
-            "status": self.extra.get("status", "draft"),
+            "type": locale.ru_to_code("type", self.enums["type"].GetStringSelection()),
+            "status": locale.ru_to_code("status", self.enums["status"].GetStringSelection()),
             "owner": self.fields["owner"].GetValue(),
-            "priority": self.extra.get("priority", "medium"),
+            "priority": locale.ru_to_code("priority", self.enums["priority"].GetStringSelection()),
             "source": self.fields["source"].GetValue(),
-            "verification": self.extra.get("verification", "analysis"),
+            "verification": locale.ru_to_code(
+                "verification", self.enums["verification"].GetStringSelection()
+            ),
             "acceptance": self.fields["acceptance"].GetValue() or None,
             "units": None,
             "labels": self.extra.get("labels", []),

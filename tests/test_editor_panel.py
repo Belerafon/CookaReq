@@ -1,5 +1,6 @@
 import pytest
 
+
 def _make_panel():
     wx = pytest.importorskip("wx")
     _app = wx.App()
@@ -65,3 +66,43 @@ def test_editor_clone(tmp_path):
     data, _ = store.load(new_path)
     assert data["id"] == "REQ-2"
     assert data["title"] == orig_data["title"]
+
+
+def test_enum_localization_roundtrip():
+    wx = pytest.importorskip("wx")
+    from app.ui import locale
+
+    panel = _make_panel()
+    panel.new_requirement()
+    data = panel.get_data()
+    assert data["type"] == "requirement"
+    assert data["status"] == "draft"
+    assert data["priority"] == "medium"
+    assert data["verification"] == "analysis"
+
+    panel.load(
+        {
+            "id": "REQ-1",
+            "title": "T",
+            "statement": "S",
+            "type": "constraint",
+            "status": "approved",
+            "priority": "high",
+            "verification": "test",
+        }
+    )
+    assert panel.enums["type"].GetStringSelection() == locale.TYPE["constraint"]
+    assert panel.enums["status"].GetStringSelection() == locale.STATUS["approved"]
+    assert panel.enums["priority"].GetStringSelection() == locale.PRIORITY["high"]
+    assert panel.enums["verification"].GetStringSelection() == locale.VERIFICATION["test"]
+
+    panel.enums["type"].SetStringSelection(locale.TYPE["interface"])
+    panel.enums["status"].SetStringSelection(locale.STATUS["baselined"])
+    panel.enums["priority"].SetStringSelection(locale.PRIORITY["low"])
+    panel.enums["verification"].SetStringSelection(locale.VERIFICATION["demonstration"])
+    data = panel.get_data()
+    assert data["type"] == "interface"
+    assert data["status"] == "baselined"
+    assert data["priority"] == "low"
+    assert data["verification"] == "demonstration"
+

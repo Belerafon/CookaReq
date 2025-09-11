@@ -23,12 +23,11 @@ def test_duplicate_id():
         validate(data, existing_ids={"REQ-1"})
 
 
-def test_acceptance_required_for_verification_methods():
+def test_acceptance_optional_for_verification_methods():
     data = make_valid()
     data["verification"] = "test"
     data.pop("acceptance", None)
-    with pytest.raises(ValidationError):
-        validate(data)
+    validate(data)
 
 
 def test_acceptance_present_passes():

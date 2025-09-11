@@ -33,6 +33,19 @@ def cmd_add(args: argparse.Namespace) -> None:
     print(path)
 
 
+def cmd_edit(args: argparse.Namespace) -> None:
+    """Edit existing requirement using data from JSON file."""
+    with open(args.file, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    fname = store.filename_for(data["id"])
+    target = Path(args.directory) / fname
+    mtime = None
+    if target.exists():
+        _, mtime = store.load(target)
+    path = store.save(args.directory, data, mtime=mtime)
+    print(path)
+
+
 def cmd_show(args: argparse.Namespace) -> None:
     """Show detailed JSON for requirement with *id*."""
     fname = store.filename_for(args.id)
@@ -56,6 +69,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("directory", help="requirements directory")
     p_add.add_argument("file", help="JSON file with requirement")
     p_add.set_defaults(func=cmd_add)
+
+    p_edit = sub.add_parser("edit", help="edit requirement from JSON file")
+    p_edit.add_argument("directory", help="requirements directory")
+    p_edit.add_argument("file", help="JSON file with updated requirement")
+    p_edit.set_defaults(func=cmd_edit)
 
     p_show = sub.add_parser("show", help="show requirement details")
     p_show.add_argument("directory", help="requirements directory")

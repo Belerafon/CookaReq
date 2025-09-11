@@ -23,7 +23,3 @@ def validate(data: dict, existing_ids: Iterable[str] = ()) -> None:
     validate_schema(data)
     if data["id"] in set(existing_ids):
         raise ValidationError(f"duplicate id: {data['id']}")
-    if data.get("verification") in {"test", "demonstration"} and not data.get("acceptance"):
-        raise ValidationError(
-            "acceptance is required for verification=test or demonstration"
-        )

@@ -1,0 +1,15 @@
+{
+  "id": "CR-005",
+  "labels": [
+    "search"
+  ],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "statement": "Система должна обеспечивать фильтрацию и полнотекстовый поиск требований по меткам и полям.",
+  "status": "approved",
+  "title": "Поиск требований",
+  "type": "requirement",
+  "verification": "analysis"
+}

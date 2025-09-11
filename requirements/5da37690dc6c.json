@@ -1,0 +1,15 @@
+{
+  "id": "CR-003",
+  "labels": [
+    "cli"
+  ],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "statement": "Система должна предоставлять CLI для перечисления, добавления, правки и отображения требований, хранящихся в каталоге.",
+  "status": "approved",
+  "title": "Командный интерфейс",
+  "type": "requirement",
+  "verification": "test"
+}

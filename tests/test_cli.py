@@ -37,3 +37,19 @@ def test_cli_show(tmp_path, capsys):
     captured = capsys.readouterr().out
     loaded = json.loads(captured)
     assert loaded["id"] == "REQ-1"
+
+
+def test_cli_edit(tmp_path, capsys):
+    data = sample()
+    save(tmp_path, data)
+    updated = data | {"title": "New title"}
+    src = tmp_path / "src"
+    src.mkdir()
+    file = src / "upd.json"
+    file.write_text(json.dumps(updated))
+    main(["edit", str(tmp_path), str(file)])
+    capsys.readouterr()
+    main(["show", str(tmp_path), "REQ-1"])
+    captured = capsys.readouterr().out
+    loaded = json.loads(captured)
+    assert loaded["title"] == "New title"

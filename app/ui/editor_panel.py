@@ -22,7 +22,7 @@ class EditorPanel(wx.Panel):
         self._on_save_callback = on_save
 
         labels = {
-            "id": "Идентификатор требования (например, REQ-001)",
+            "id": "Идентификатор требования (число)",
             "title": "Краткое название требования",
             "statement": "Полный текст требования",
             "acceptance": "Критерии приемки требования",
@@ -41,12 +41,9 @@ class EditorPanel(wx.Panel):
 
         help_texts = {
             "id": (
-                "Поле 'Идентификатор требования' должно содержать уникальный код, "
-                "например REQ-001. Этот код используется для однозначной ссылки на "
-                "требование в документации, обсуждениях и тестах. Желательно "
-                "придерживаться единого формата PREFIX-номер. Заполнение этого поля "
-                "помогает быстро находить требование и избегать путаницы. Примеры: "
-                "REQ-001, INT-5, UI_LOGIN_01."
+                "Поле 'Идентификатор требования' должно содержать уникальное целое "
+                "число без префиксов. Этот номер используется для ссылок на "
+                "требование в документации и тестах."
             ),
             "title": (
                 "Введите краткое название, которое описывает суть требования. Оно "
@@ -239,15 +236,15 @@ class EditorPanel(wx.Panel):
         self.current_path = Path(path) if path else None
         self.mtime = mtime
 
-    def clone(self, new_id: str) -> None:
-        self.fields["id"].SetValue(new_id)
+    def clone(self, new_id: int) -> None:
+        self.fields["id"].SetValue(str(new_id))
         self.current_path = None
         self.mtime = None
 
     # data helpers -----------------------------------------------------
     def get_data(self) -> dict[str, Any]:
         data = {
-            "id": self.fields["id"].GetValue(),
+            "id": int(self.fields["id"].GetValue()),
             "title": self.fields["title"].GetValue(),
             "statement": self.fields["statement"].GetValue(),
             "type": locale.ru_to_code("type", self.enums["type"].GetStringSelection()),

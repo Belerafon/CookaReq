@@ -5,7 +5,7 @@ from app.core.schema import validate
 
 def make_valid() -> dict:
     return {
-        "id": "REQ-1",
+        "id": 1,
         "title": "Title",
         "statement": "Statement",
         "type": "requirement",

@@ -173,7 +173,13 @@ class ListPanel(wx.Panel):
             self._sort_ascending = True
         field = "title" if col == 0 else self.columns[col - 1]
         def get_value(req):
-            return req.get(field, "") if isinstance(req, dict) else getattr(req, field, "")
+            value = req.get(field, "") if isinstance(req, dict) else getattr(req, field, "")
+            if field == "id":
+                try:
+                    return int(value)
+                except Exception:
+                    return 0
+            return value
         sorted_reqs = sorted(
             self._requirements,
             key=get_value,

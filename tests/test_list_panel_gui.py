@@ -41,7 +41,7 @@ def test_list_panel_context_menu_calls_handlers():
         called["delete"] = idx
 
     panel = list_panel.ListPanel(frame, on_clone=on_clone, on_delete=on_delete)
-    panel.set_requirements([{"id": "1", "title": "T"}])
+    panel.set_requirements([{ "id": 1, "title": "T" }])
 
     menu, clone_item, delete_item, _ = panel._create_context_menu(0, 0)
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, clone_item.GetId())
@@ -68,8 +68,8 @@ def test_bulk_edit_updates_selected_items(monkeypatch):
     panel = list_panel.ListPanel(frame)
     panel.set_columns(["version", "type"])
     reqs = [
-        {"id": "1", "title": "A", "version": "1", "type": "requirement"},
-        {"id": "2", "title": "B", "version": "1", "type": "requirement"},
+        {"id": 1, "title": "A", "version": "1", "type": "requirement"},
+        {"id": 2, "title": "B", "version": "1", "type": "requirement"},
     ]
     panel.set_requirements(reqs)
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)

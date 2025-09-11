@@ -112,18 +112,18 @@ def test_column_click_sorts(monkeypatch):
     panel = ListPanel(frame)
     panel.set_columns(["id"])
     panel.set_requirements([
-        {"id": "2", "title": "B"},
-        {"id": "1", "title": "A"},
+        {"id": 2, "title": "B"},
+        {"id": 1, "title": "A"},
     ])
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 0))
-    assert [r["id"] for r in panel._requirements] == ["1", "2"]
+    assert [r["id"] for r in panel._requirements] == [1, 2]
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 1))
-    assert [r["id"] for r in panel._requirements] == ["1", "2"]
+    assert [r["id"] for r in panel._requirements] == [1, 2]
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 1))
-    assert [r["id"] for r in panel._requirements] == ["2", "1"]
+    assert [r["id"] for r in panel._requirements] == [2, 1]
 
 
 def test_search_and_label_filters(monkeypatch):
@@ -137,16 +137,16 @@ def test_search_and_label_filters(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = ListPanel(frame)
     panel.set_requirements([
-        {"id": "1", "title": "Login", "labels": ["ui"]},
-        {"id": "2", "title": "Export", "labels": ["report"]},
+        {"id": 1, "title": "Login", "labels": ["ui"]},
+        {"id": 2, "title": "Export", "labels": ["report"]},
     ])
 
     panel.set_label_filter(["ui"])
-    assert [r["id"] for r in panel._requirements] == ["1"]
+    assert [r["id"] for r in panel._requirements] == [1]
 
     panel.set_label_filter([])
     panel.set_search_query("Export", fields=["title"])
-    assert [r["id"] for r in panel._requirements] == ["2"]
+    assert [r["id"] for r in panel._requirements] == [2]
 
     panel.set_label_filter(["ui"])
     panel.set_search_query("Export", fields=["title"])
@@ -165,8 +165,8 @@ def test_bulk_edit_updates_requirements(monkeypatch):
     panel = ListPanel(frame)
     panel.set_columns(["version"])
     reqs = [
-        {"id": "1", "title": "A", "version": "1"},
-        {"id": "2", "title": "B", "version": "1"},
+        {"id": 1, "title": "A", "version": "1"},
+        {"id": 2, "title": "B", "version": "1"},
     ]
     panel.set_requirements(reqs)
     monkeypatch.setattr(panel, "_get_selected_indices", lambda: [0, 1])

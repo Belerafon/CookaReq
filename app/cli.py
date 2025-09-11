@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_show = sub.add_parser("show", help="show requirement details")
     p_show.add_argument("directory", help="requirements directory")
-    p_show.add_argument("id", help="requirement id")
+    p_show.add_argument("id", type=int, help="requirement id")
     p_show.set_defaults(func=cmd_show)
 
     return parser

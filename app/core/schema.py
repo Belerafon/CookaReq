@@ -23,7 +23,7 @@ SCHEMA: dict[str, Any] = {
         "revision",
     ],
     "properties": {
-        "id": {"type": "string"},
+        "id": {"type": "integer"},
         "title": {"type": "string"},
         "statement": {"type": "string"},
         "type": {"enum": [e.value for e in RequirementType]},

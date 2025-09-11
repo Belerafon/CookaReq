@@ -9,7 +9,7 @@ from app.core.model import (
 
 def test_requirement_defaults():
     req = Requirement(
-        id="REQ-1",
+        id=1,
         title="Title",
         statement="Statement",
         type=RequirementType.REQUIREMENT,

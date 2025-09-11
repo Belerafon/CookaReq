@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 import json
-import re
 from pathlib import Path
 
 from .validate import validate
@@ -13,16 +12,9 @@ class ConflictError(Exception):
     """Raised when a file was modified on disk since loading."""
 
 
-_INVALID_CHARS = r"[\\/:*?\"<>|]"
-
-
-def filename_for(req_id: str) -> str:
-    """Return filename based on *req_id* with ``.json`` extension.
-
-    Any characters illegal for filenames are replaced with ``_``.
-    """
-    safe_id = re.sub(_INVALID_CHARS, "_", req_id)
-    return f"{safe_id}.json"
+def filename_for(req_id: int) -> str:
+    """Return filename for numeric *req_id* with ``.json`` extension."""
+    return f"{req_id}.json"
 
 
 def load(path: str | Path) -> tuple[dict, float]:
@@ -34,8 +26,8 @@ def load(path: str | Path) -> tuple[dict, float]:
     return data, mtime
 
 
-def _existing_ids(directory: Path, exclude: Path) -> set[str]:
-    ids: set[str] = set()
+def _existing_ids(directory: Path, exclude: Path) -> set[int]:
+    ids: set[int] = set()
     for fp in directory.glob("*.json"):
         if fp == exclude:
             continue

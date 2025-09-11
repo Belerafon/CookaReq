@@ -25,7 +25,7 @@ from app.core.store import (
 
 def sample() -> dict:
     return {
-        "id": "REQ-1",
+        "id": 1,
         "title": "Title",
         "statement": "Statement",
         "type": "requirement",
@@ -61,19 +61,19 @@ def test_conflict_detection(tmp_path: Path):
 
 def test_existing_ids_skips_invalid_and_excluded(tmp_path: Path):
     valid = tmp_path / "valid.json"
-    valid.write_text(json.dumps({"id": "REQ-1"}))
+    valid.write_text(json.dumps({"id": 1}))
     exclude = tmp_path / "exclude.json"
-    exclude.write_text(json.dumps({"id": "REQ-2"}))
+    exclude.write_text(json.dumps({"id": 2}))
     bad = tmp_path / "bad.json"
     bad.write_text("{invalid json")
 
     ids = _existing_ids(tmp_path, exclude)
-    assert ids == {"REQ-1"}
+    assert ids == {1}
 
 
 def test_save_accepts_dataclass(tmp_path: Path):
     req = Requirement(
-        id="REQ-10",
+        id=10,
         title="Dataclass", 
         statement="Save dataclass",
         type=RequirementType.REQUIREMENT,
@@ -92,4 +92,4 @@ def test_save_accepts_dataclass(tmp_path: Path):
 
 
 def test_filename_for_sanitizes():
-    assert filename_for("REQ/1:*?") == "REQ_1___.json"
+    assert filename_for(1) == "1.json"

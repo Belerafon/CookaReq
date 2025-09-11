@@ -11,7 +11,7 @@ from app.core.search import filter_by_labels, search, search_text
 def sample_requirements():
     return [
         Requirement(
-            id="REQ-1",
+            id=1,
             title="Login form",
             statement="System shows login form",
             type=RequirementType.REQUIREMENT,
@@ -24,7 +24,7 @@ def sample_requirements():
             notes="Requires username",
         ),
         Requirement(
-            id="REQ-2",
+            id=2,
             title="Store data",
             statement="System stores data in DB",
             type=RequirementType.REQUIREMENT,
@@ -36,7 +36,7 @@ def sample_requirements():
             labels=["backend"],
         ),
         Requirement(
-            id="REQ-3",
+            id=3,
             title="Export report",
             statement="User can export report",
             type=RequirementType.REQUIREMENT,
@@ -52,8 +52,8 @@ def sample_requirements():
 
 def test_filter_by_labels():
     reqs = sample_requirements()
-    assert {r.id for r in filter_by_labels(reqs, ["ui"])} == {"REQ-1", "REQ-3"}
-    assert [r.id for r in filter_by_labels(reqs, ["ui", "auth"])] == ["REQ-1"]
+    assert {r.id for r in filter_by_labels(reqs, ["ui"])} == {1, 3}
+    assert [r.id for r in filter_by_labels(reqs, ["ui", "auth"])] == [1]
 
 
 def test_filter_by_labels_empty_returns_all():
@@ -64,9 +64,9 @@ def test_filter_by_labels_empty_returns_all():
 def test_search_text():
     reqs = sample_requirements()
     found = search_text(reqs, "login", ["title", "notes"])
-    assert [r.id for r in found] == ["REQ-1"]
+    assert [r.id for r in found] == [1]
     found = search_text(reqs, "EXPORT", ["title"])
-    assert [r.id for r in found] == ["REQ-3"]
+    assert [r.id for r in found] == [3]
 
 
 def test_search_text_empty_query_returns_all():
@@ -82,13 +82,13 @@ def test_search_text_no_valid_fields_returns_all():
 def test_combined_search():
     reqs = sample_requirements()
     found = search(reqs, labels=["ui"], query="export", fields=["title"])
-    assert [r.id for r in found] == ["REQ-3"]
+    assert [r.id for r in found] == [3]
 
 
 def test_accepts_plain_dicts():
     reqs = [
-        {"id": "1", "title": "Login", "labels": ["ui"]},
-        {"id": "2", "title": "Export", "labels": ["report"]},
+        {"id": 1, "title": "Login", "labels": ["ui"]},
+        {"id": 2, "title": "Export", "labels": ["report"]},
     ]
     found = search(reqs, labels=["ui"], query="login", fields=["title"])
-    assert [r["id"] for r in found] == ["1"]
+    assert [r["id"] for r in found] == [1]

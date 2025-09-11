@@ -10,7 +10,7 @@ class ValidationError(Exception):
     """Raised when business rules are violated."""
 
 
-def validate(data: dict, existing_ids: Iterable[str] = ()) -> None:
+def validate(data: dict, existing_ids: Iterable[int] = ()) -> None:
     """Validate *data* using schema and business rules.
 
     Parameters

@@ -12,7 +12,7 @@ def _make_panel():
 def test_editor_new_requirement_resets(tmp_path):
     panel = _make_panel()
     data = {
-        "id": "REQ-1",
+        "id": 1,
         "title": "T",
         "statement": "S",
         "attachments": [{"path": "a.txt", "note": "n"}],
@@ -50,7 +50,7 @@ def test_editor_add_attachment_included():
 def test_editor_load_populates_fields(tmp_path):
     panel = _make_panel()
     data = {
-        "id": "REQ-1",
+        "id": 1,
         "title": "Title",
         "statement": "Statement",
         "acceptance": "Accept",
@@ -94,9 +94,9 @@ def test_editor_load_populates_fields(tmp_path):
 
 def test_editor_clone_resets_path_and_mtime(tmp_path):
     panel = _make_panel()
-    panel.load({"id": "OLD"}, path=tmp_path / "old.json", mtime=1.0)
-    panel.clone("NEW")
-    assert panel.fields["id"].GetValue() == "NEW"
+    panel.load({"id": 1}, path=tmp_path / "old.json", mtime=1.0)
+    panel.clone(2)
+    assert panel.fields["id"].GetValue() == "2"
     assert panel.current_path is None
     assert panel.mtime is None
 
@@ -106,7 +106,7 @@ def test_editor_save_and_delete_roundtrip(tmp_path):
 
     panel = _make_panel()
     panel.new_requirement()
-    panel.fields["id"].SetValue("REQ-2")
+    panel.fields["id"].SetValue("2")
     panel.fields["title"].SetValue("Title")
     saved_path = panel.save(tmp_path)
 
@@ -115,7 +115,7 @@ def test_editor_save_and_delete_roundtrip(tmp_path):
     assert panel.mtime == saved_path.stat().st_mtime
     with saved_path.open() as fh:
         saved = json.load(fh)
-    assert saved["id"] == "REQ-2"
+    assert saved["id"] == 2
     assert saved["title"] == "Title"
 
     panel.delete()

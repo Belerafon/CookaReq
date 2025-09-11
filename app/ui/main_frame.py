@@ -1,6 +1,5 @@
 """Main application window."""
 
-import re
 import wx
 from pathlib import Path
 from dataclasses import fields
@@ -162,38 +161,14 @@ class MainFrame(wx.Frame):
         event.Skip()
 
     # context menu actions -------------------------------------------
-    def _generate_new_id(self, base: str | None = None) -> str:
+    def _generate_new_id(self) -> int:
         existing = {req["id"] for req in self.requirements}
-        if base:
-            match = re.match(r"^(.*?)(\d+)$", base)
-            if match:
-                prefix, num = match.groups()
-                width = len(num)
-                n = int(num)
-                while True:
-                    n += 1
-                    candidate = f"{prefix}{n:0{width}d}"
-                    if candidate not in existing:
-                        return candidate
-            base_candidate = f"{base}_copy"
-            candidate = base_candidate
-            counter = 1
-            while candidate in existing:
-                candidate = f"{base_candidate}{counter}"
-                counter += 1
-            return candidate
-        prefix = "REQ-"
-        n = 1
-        candidate = f"{prefix}{n:03d}"
-        while candidate in existing:
-            n += 1
-            candidate = f"{prefix}{n:03d}"
-        return candidate
+        return max(existing, default=0) + 1
 
     def on_new_requirement(self, event: wx.Event) -> None:
         new_id = self._generate_new_id()
         self.editor.new_requirement()
-        self.editor.fields["id"].SetValue(new_id)
+        self.editor.fields["id"].SetValue(str(new_id))
         data = self.editor.get_data()
         self.requirements.append(data)
         self.panel.set_requirements(self.requirements)
@@ -204,7 +179,7 @@ class MainFrame(wx.Frame):
         if not (0 <= index < len(self.requirements)):
             return
         source = self.requirements[index]
-        new_id = self._generate_new_id(source.get("id", ""))
+        new_id = self._generate_new_id()
         data = dict(source)
         data["id"] = new_id
         data["title"] = f"(Копия) {source.get('title', '')}".strip()

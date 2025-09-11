@@ -48,7 +48,7 @@ class Attachment:
 
 @dataclass
 class Requirement:
-    id: str
+    id: int
     title: str
     statement: str
     type: RequirementType

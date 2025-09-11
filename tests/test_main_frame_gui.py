@@ -84,7 +84,7 @@ def test_main_frame_loads_requirements(monkeypatch, tmp_path):
     from app.core.store import save
 
     data = {
-        "id": "REQ-1",
+        "id": 1,
         "title": "Title",
         "statement": "Statement",
         "type": "requirement",
@@ -137,7 +137,7 @@ def test_main_frame_select_opens_editor(monkeypatch, tmp_path):
     import importlib
 
     data = {
-        "id": "REQ-1",
+        "id": 1,
         "title": "Title",
         "statement": "Statement",
         "type": "requirement",
@@ -182,7 +182,7 @@ def test_main_frame_select_opens_editor(monkeypatch, tmp_path):
     app.Yield()
 
     assert frame.editor.IsShown()
-    assert frame.editor.fields["id"].GetValue() == data["id"]
+    assert frame.editor.fields["id"].GetValue() == str(data["id"])
 
     frame.Destroy()
     app.Destroy()
@@ -190,7 +190,7 @@ def test_main_frame_select_opens_editor(monkeypatch, tmp_path):
 
 def _sample_requirement():
     return {
-        "id": "REQ-1",
+        "id": 1,
         "title": "Title",
         "statement": "Statement",
         "type": "requirement",
@@ -246,7 +246,7 @@ def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path):
 
     assert frame.editor.IsShown()
     new_id = frame.editor.fields["id"].GetValue()
-    assert new_id and new_id != data["id"]
+    assert new_id and new_id != str(data["id"])
     assert frame.editor.fields["title"].GetValue().startswith("(Копия)")
     assert len(frame.requirements) == 2
 
@@ -263,7 +263,7 @@ def test_main_frame_new_requirement_button(monkeypatch, tmp_path):
 
     assert frame.editor.IsShown()
     assert frame.requirements
-    assert frame.editor.fields["id"].GetValue() == frame.requirements[0]["id"]
+    assert frame.editor.fields["id"].GetValue() == str(frame.requirements[0]["id"])
 
     frame.Destroy()
     app.Destroy()

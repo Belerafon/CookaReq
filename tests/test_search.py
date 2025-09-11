@@ -83,3 +83,12 @@ def test_combined_search():
     reqs = sample_requirements()
     found = search(reqs, labels=["ui"], query="export", fields=["title"])
     assert [r.id for r in found] == ["REQ-3"]
+
+
+def test_accepts_plain_dicts():
+    reqs = [
+        {"id": "1", "title": "Login", "labels": ["ui"]},
+        {"id": "2", "title": "Export", "labels": ["report"]},
+    ]
+    found = search(reqs, labels=["ui"], query="login", fields=["title"])
+    assert [r["id"] for r in found] == ["1"]

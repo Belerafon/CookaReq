@@ -151,3 +151,25 @@ def test_search_and_label_filters(monkeypatch):
     panel.set_label_filter(["ui"])
     panel.set_search_query("Export", fields=["title"])
     assert panel._requirements == []
+
+
+def test_bulk_edit_updates_requirements(monkeypatch):
+    wx_stub = _build_wx_stub()
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame)
+    panel.set_columns(["version"])
+    reqs = [
+        {"id": "1", "title": "A", "version": "1"},
+        {"id": "2", "title": "B", "version": "1"},
+    ]
+    panel.set_requirements(reqs)
+    monkeypatch.setattr(panel, "_get_selected_indices", lambda: [0, 1])
+    monkeypatch.setattr(panel, "_prompt_value", lambda field: "2")
+    panel._on_edit_field(1)
+    assert [r["version"] for r in reqs] == ["2", "2"]

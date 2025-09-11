@@ -11,6 +11,9 @@ if TYPE_CHECKING:  # pragma: no cover
 class ListPanel(wx.Panel):
     """Panel with a search box and list of requirement fields."""
 
+    MIN_COL_WIDTH = 50
+    MAX_COL_WIDTH = 1000
+
     def __init__(
         self,
         parent: wx.Window,
@@ -50,6 +53,23 @@ class ListPanel(wx.Panel):
         self.list.InsertColumn(0, "Title")
         for idx, field in enumerate(self.columns, start=1):
             self.list.InsertColumn(idx, field)
+
+    def load_column_widths(self, config: wx.Config) -> None:
+        """Restore column widths from config with sane bounds."""
+        count = self.list.GetColumnCount()
+        for i in range(count):
+            width = config.ReadInt(f"col_width_{i}", -1)
+            if width != -1:
+                width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
+                self.list.SetColumnWidth(i, width)
+
+    def save_column_widths(self, config: wx.Config) -> None:
+        """Persist current column widths to config."""
+        count = self.list.GetColumnCount()
+        for i in range(count):
+            width = self.list.GetColumnWidth(i)
+            width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
+            config.WriteInt(f"col_width_{i}", width)
 
     def set_columns(self, fields: List[str]) -> None:
         """Set additional columns (beyond Title) to display."""

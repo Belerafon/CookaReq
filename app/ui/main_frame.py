@@ -36,11 +36,11 @@ class MainFrame(wx.Frame):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.splitter, 1, wx.EXPAND)
         self.SetSizer(sizer)
-        self.SetSize((800, 600))
-        self.Centre()
+        self._load_layout()
         self.requirements: list[dict] = []
         self.current_dir: Path | None = None
         self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
+        self.Bind(wx.EVT_CLOSE, self._on_close)
 
     def _create_menu(self) -> None:
         menu_bar = wx.MenuBar()
@@ -115,6 +115,7 @@ class MainFrame(wx.Frame):
         else:
             self.selected_fields.append(field)
         self.panel.set_columns(self.selected_fields)
+        self.panel.load_column_widths(self.config)
         self._save_columns()
 
     def _load_columns(self) -> list[str]:
@@ -124,6 +125,41 @@ class MainFrame(wx.Frame):
     def _save_columns(self) -> None:
         self.config.Write("list_columns", ",".join(self.selected_fields))
         self.config.Flush()
+
+    def _load_layout(self) -> None:
+        """Restore window geometry, splitter, and column widths."""
+        w = self.config.ReadInt("win_w", 800)
+        h = self.config.ReadInt("win_h", 600)
+        w = max(400, min(w, 3000))
+        h = max(300, min(h, 2000))
+        self.SetSize((w, h))
+        x = self.config.ReadInt("win_x", -1)
+        y = self.config.ReadInt("win_y", -1)
+        if x != -1 and y != -1:
+            self.SetPosition((x, y))
+        else:
+            self.Centre()
+        sash = self.config.ReadInt("sash_pos", 300)
+        client_w = self.GetClientSize().width
+        sash = max(100, min(sash, max(client_w - 100, 100)))
+        self.splitter.SetSashPosition(sash)
+        self.panel.load_column_widths(self.config)
+
+    def _save_layout(self) -> None:
+        """Persist window geometry, splitter, and column widths."""
+        w, h = self.GetSize()
+        x, y = self.GetPosition()
+        self.config.WriteInt("win_w", w)
+        self.config.WriteInt("win_h", h)
+        self.config.WriteInt("win_x", x)
+        self.config.WriteInt("win_y", y)
+        self.config.WriteInt("sash_pos", self.splitter.GetSashPosition())
+        self.panel.save_column_widths(self.config)
+        self.config.Flush()
+
+    def _on_close(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+        self._save_layout()
+        event.Skip()
 
     # context menu actions -------------------------------------------
     def _generate_new_id(self, base: str | None = None) -> str:

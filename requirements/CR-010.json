@@ -1,0 +1,16 @@
+{
+  "id": "CR-010",
+  "labels": [
+    "storage",
+    "conflict"
+  ],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "statement": "При сохранении изменённого требования приложение должно обнаруживать изменения файла на диске и предотвращать перезапись.",
+  "status": "approved",
+  "title": "Защита от конфликтов",
+  "type": "requirement",
+  "verification": "analysis"
+}

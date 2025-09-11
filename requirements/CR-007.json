@@ -1,15 +1,15 @@
 {
   "id": "CR-007",
   "labels": [
-    "editor"
+    "cli"
   ],
   "owner": "Team",
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна предоставлять графический редактор требований с формами для всех полей и возможностью сохранения.",
+  "statement": "Командный интерфейс должен позволять перечислять, просматривать, добавлять и изменять требования.",
   "status": "approved",
-  "title": "Редактор требований",
+  "title": "CLI управление требованиями",
   "type": "requirement",
   "verification": "analysis"
 }

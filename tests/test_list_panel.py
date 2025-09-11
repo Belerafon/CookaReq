@@ -46,12 +46,20 @@ def _build_wx_stub():
         def GetChildren(self):
             return [types.SimpleNamespace(GetWindow=lambda w=child: w) for child in self._children]
 
+    class Config:
+        def ReadInt(self, key, default):
+            return default
+
+        def WriteInt(self, key, value):
+            pass
+
     return types.SimpleNamespace(
         Panel=Panel,
         SearchCtrl=SearchCtrl,
         ListCtrl=ListCtrl,
         BoxSizer=BoxSizer,
         Window=Window,
+        Config=Config,
         VERTICAL=0,
         EXPAND=0,
         ALL=0,

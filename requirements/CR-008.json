@@ -4,12 +4,12 @@
     "build"
   ],
   "owner": "Team",
-  "priority": "low",
+  "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна включать скрипт сборки PyInstaller для создания одно-папочного дистрибутива.",
+  "statement": "Проект должен собираться в исполняемый пакет при помощи PyInstaller в режиме one-folder.",
   "status": "approved",
-  "title": "Сборка через PyInstaller",
+  "title": "Сборка PyInstaller",
   "type": "requirement",
   "verification": "analysis"
 }

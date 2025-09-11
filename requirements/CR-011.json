@@ -1,0 +1,15 @@
+{
+  "id": "CR-011",
+  "labels": [
+    "storage"
+  ],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "statement": "Имена файлов требований должны очищаться от недопустимых символов перед сохранением.",
+  "status": "approved",
+  "title": "Санация имени файла",
+  "type": "requirement",
+  "verification": "analysis"
+}

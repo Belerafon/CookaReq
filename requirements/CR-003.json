@@ -1,15 +1,15 @@
 {
   "id": "CR-003",
   "labels": [
-    "cli"
+    "search"
   ],
   "owner": "Team",
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна предоставлять CLI для перечисления, добавления, правки и отображения требований, хранящихся в каталоге.",
+  "statement": "Система должна предоставлять фильтрацию по меткам и полнотекстовый поиск по полям требований.",
   "status": "approved",
-  "title": "Командный интерфейс",
+  "title": "Фильтрация и поиск",
   "type": "requirement",
-  "verification": "test"
+  "verification": "analysis"
 }

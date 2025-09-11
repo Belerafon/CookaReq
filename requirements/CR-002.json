@@ -1,15 +1,15 @@
 {
   "id": "CR-002",
   "labels": [
-    "model"
+    "storage"
   ],
   "owner": "Team",
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна представлять каждое требование как dataclass с типизированными полями для статуса, приоритета и способа верификации.",
+  "statement": "Приложение должно загружать и сохранять требования в выбранной пользователем папке.",
   "status": "approved",
-  "title": "Структурированная модель данных",
+  "title": "Загрузка и сохранение требований",
   "type": "requirement",
   "verification": "analysis"
 }

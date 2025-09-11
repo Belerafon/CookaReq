@@ -1,15 +1,16 @@
 {
   "id": "CR-006",
   "labels": [
-    "i18n"
+    "ui",
+    "localization"
   ],
   "owner": "Team",
-  "priority": "low",
+  "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна отображать элементы интерфейса на русском языке с использованием словаря локализации.",
+  "statement": "Интерфейс должен использовать словарь локализации для отображения текстов на русском языке.",
   "status": "approved",
   "title": "Локализация интерфейса",
   "type": "requirement",
-  "verification": "inspection"
+  "verification": "analysis"
 }

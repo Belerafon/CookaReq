@@ -1,0 +1,15 @@
+{
+  "id": "CR-009",
+  "labels": [
+    "validation"
+  ],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "statement": "Перед сохранением система должна проверять требования на соответствие JSON Schema и уникальность идентификаторов.",
+  "status": "approved",
+  "title": "Валидация данных требований",
+  "type": "requirement",
+  "verification": "analysis"
+}

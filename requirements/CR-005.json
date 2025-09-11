@@ -1,15 +1,16 @@
 {
   "id": "CR-005",
   "labels": [
-    "search"
+    "ui",
+    "editor"
   ],
   "owner": "Team",
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна обеспечивать фильтрацию и полнотекстовый поиск требований по меткам и полям.",
+  "statement": "Редактор требований должен позволять создавать и изменять требования с проверкой обязательных полей.",
   "status": "approved",
-  "title": "Поиск требований",
+  "title": "Редактор требований",
   "type": "requirement",
   "verification": "analysis"
 }

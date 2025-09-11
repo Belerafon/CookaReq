@@ -1,0 +1,16 @@
+{
+  "id": "CR-013",
+  "labels": [
+    "util",
+    "hashing"
+  ],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "statement": "Утилита должна преобразовывать идентификатор требования в короткий SHA-256 хеш заданной длины.",
+  "status": "approved",
+  "title": "Хеширование идентификаторов",
+  "type": "requirement",
+  "verification": "analysis"
+}

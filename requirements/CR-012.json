@@ -1,0 +1,16 @@
+{
+  "id": "CR-012",
+  "labels": [
+    "util",
+    "paths"
+  ],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "statement": "Утилита должна возвращать путь, относительный к базовой папке, и выдавать ошибку, если путь находится вне её.",
+  "status": "approved",
+  "title": "Относительные пути",
+  "type": "requirement",
+  "verification": "analysis"
+}

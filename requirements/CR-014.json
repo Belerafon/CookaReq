@@ -1,0 +1,16 @@
+{
+  "id": "CR-014",
+  "labels": [
+    "ui",
+    "list"
+  ],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "statement": "Панель списка должна предоставлять контекстное меню для клонирования и удаления выбранного требования.",
+  "status": "approved",
+  "title": "Контекстное меню списка",
+  "type": "requirement",
+  "verification": "analysis"
+}

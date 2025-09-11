@@ -2,23 +2,47 @@
 
 import wx
 
-from typing import List
+from typing import Callable, List, TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover
+    from wx import ListEvent
 
 
 class ListPanel(wx.Panel):
     """Panel with a search box and list of requirement fields."""
 
-    def __init__(self, parent: wx.Window):
+    def __init__(
+        self,
+        parent: wx.Window,
+        *,
+        on_clone: Callable[[int], None] | None = None,
+        on_delete: Callable[[int], None] | None = None,
+    ):
         super().__init__(parent)
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.search = wx.SearchCtrl(self)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
         self.columns: List[str] = []
         self._requirements: List = []
+        self._on_clone = on_clone
+        self._on_delete = on_delete
         self._setup_columns()
         sizer.Add(self.search, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         self.SetSizer(sizer)
+        self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
+
+    def set_handlers(
+        self,
+        *,
+        on_clone: Callable[[int], None] | None = None,
+        on_delete: Callable[[int], None] | None = None,
+    ) -> None:
+        """Set callbacks for context menu actions."""
+        if on_clone is not None:
+            self._on_clone = on_clone
+        if on_delete is not None:
+            self._on_delete = on_delete
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""
@@ -47,3 +71,19 @@ class ListPanel(wx.Panel):
                 else:
                     value = getattr(req, field, "")
                 self.list.SetItem(index, col, str(value))
+
+    # context menu ----------------------------------------------------
+    def _on_right_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event
+        menu, _, _ = self._create_context_menu(event.GetIndex())
+        self.PopupMenu(menu)
+        menu.Destroy()
+
+    def _create_context_menu(self, index: int):
+        menu = wx.Menu()
+        clone_item = menu.Append(wx.ID_ANY, "Клонировать")
+        delete_item = menu.Append(wx.ID_ANY, "Удалить")
+        if self._on_clone:
+            self.Bind(wx.EVT_MENU, lambda evt: self._on_clone(index), clone_item)
+        if self._on_delete:
+            self.Bind(wx.EVT_MENU, lambda evt: self._on_delete(index), delete_item)
+        return menu, clone_item, delete_item

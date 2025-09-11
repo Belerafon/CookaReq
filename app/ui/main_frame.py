@@ -23,7 +23,11 @@ class MainFrame(wx.Frame):
         self._create_menu()
         self._create_toolbar()
         self.splitter = wx.SplitterWindow(self)
-        self.panel = ListPanel(self.splitter)
+        self.panel = ListPanel(
+            self.splitter,
+            on_clone=self.on_clone_requirement,
+            on_delete=self.on_delete_requirement,
+        )
         self.panel.set_columns(self.selected_fields)
         self.editor = EditorPanel(self.splitter, on_save=self._on_editor_save)
         self.splitter.SplitVertically(self.panel, self.editor, 300)
@@ -117,3 +121,27 @@ class MainFrame(wx.Frame):
     def _save_columns(self) -> None:
         self.config.Write("list_columns", ",".join(self.selected_fields))
         self.config.Flush()
+
+    # context menu actions -------------------------------------------
+    def on_clone_requirement(self, index: int) -> None:
+        if not (0 <= index < len(self.requirements)):
+            return
+        data = dict(self.requirements[index])
+        data["id"] = ""
+        data["modified_at"] = ""
+        data["revision"] = 1
+        self.editor.load(data, path=None, mtime=None)
+        self.editor.Show()
+        self.splitter.UpdateSize()
+
+    def on_delete_requirement(self, index: int) -> None:
+        if not self.current_dir or not (0 <= index < len(self.requirements)):
+            return
+        req = self.requirements.pop(index)
+        try:
+            (self.current_dir / store.filename_for(req["id"])).unlink()
+        except Exception:
+            pass
+        self.panel.set_requirements(self.requirements)
+        self.editor.Hide()
+        self.splitter.UpdateSize()

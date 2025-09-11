@@ -20,6 +20,8 @@ class MainFrame(wx.Frame):
         self.config = wx.Config(appName="CookaReq")
         self.available_fields = [f.name for f in fields(Requirement) if f.name != "title"]
         self.selected_fields = self._load_columns()
+        self.recent_dirs = self._load_recent_dirs()
+        self._recent_items: Dict[int, Path] = {}
         super().__init__(parent=parent, title=self._base_title)
         self._create_menu()
         self._create_toolbar()
@@ -46,9 +48,12 @@ class MainFrame(wx.Frame):
         menu_bar = wx.MenuBar()
         file_menu = wx.Menu()
         open_item = file_menu.Append(wx.ID_OPEN, "&Open Folder\tCtrl+O")
+        self._recent_menu = wx.Menu()
+        self._recent_menu_item = file_menu.AppendSubMenu(self._recent_menu, "Open &Recent")
         exit_item = file_menu.Append(wx.ID_EXIT, "E&xit")
         self.Bind(wx.EVT_MENU, self.on_open_folder, open_item)
         self.Bind(wx.EVT_MENU, lambda evt: self.Close(), exit_item)
+        self._rebuild_recent_menu()
         menu_bar.Append(file_menu, "&File")
 
         view_menu = wx.Menu()
@@ -72,19 +77,55 @@ class MainFrame(wx.Frame):
     def on_open_folder(self, event: wx.Event) -> None:
         dlg = wx.DirDialog(self, "Select requirements folder")
         if dlg.ShowModal() == wx.ID_OK:
-            path = dlg.GetPath()
-            self.SetTitle(f"{self._base_title} - {path}")
-            self.current_dir = Path(path)
-            self.requirements = []
-            for fp in self.current_dir.glob("*.json"):
-                try:
-                    data, _ = store.load(fp)
-                    self.requirements.append(data)
-                except Exception:
-                    continue
-            self.panel.set_requirements(self.requirements)
-            self.editor.Hide()
+            self._load_directory(Path(dlg.GetPath()))
         dlg.Destroy()
+
+    def on_open_recent(self, event: wx.CommandEvent) -> None:
+        path = self._recent_items.get(event.GetId())
+        if path:
+            self._load_directory(path)
+
+    def _load_directory(self, path: Path) -> None:
+        """Load requirements from ``path`` and update recent list."""
+        self._add_recent_dir(path)
+        self.SetTitle(f"{self._base_title} - {path}")
+        self.current_dir = path
+        self.requirements = []
+        for fp in self.current_dir.glob("*.json"):
+            try:
+                data, _ = store.load(fp)
+                self.requirements.append(data)
+            except Exception:
+                continue
+        self.panel.set_requirements(self.requirements)
+        self.editor.Hide()
+
+    # recent directories -------------------------------------------------
+    def _load_recent_dirs(self) -> list[str]:
+        value = self.config.Read("recent_dirs", "")
+        return [p for p in value.split("|") if p]
+
+    def _save_recent_dirs(self) -> None:
+        self.config.Write("recent_dirs", "|".join(self.recent_dirs))
+        self.config.Flush()
+
+    def _add_recent_dir(self, path: Path) -> None:
+        p = str(path)
+        if p in self.recent_dirs:
+            self.recent_dirs.remove(p)
+        self.recent_dirs.insert(0, p)
+        del self.recent_dirs[5:]
+        self._save_recent_dirs()
+        self._rebuild_recent_menu()
+
+    def _rebuild_recent_menu(self) -> None:
+        self._recent_menu.Clear()
+        self._recent_items.clear()
+        for p in self.recent_dirs:
+            item = self._recent_menu.Append(wx.ID_ANY, p)
+            self.Bind(wx.EVT_MENU, self.on_open_recent, item)
+            self._recent_items[item.GetId()] = Path(p)
+        self._recent_menu_item.Enable(bool(self.recent_dirs))
 
     def on_requirement_selected(self, event: wx.ListEvent) -> None:
         idx = event.GetIndex()

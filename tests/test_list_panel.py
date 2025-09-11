@@ -27,9 +27,13 @@ def _build_wx_stub():
             super().__init__(parent)
         def InsertColumn(self, col, heading):
             pass
+        def ClearAll(self):
+            pass
         def DeleteAllItems(self):
             pass
         def InsertItem(self, index, text):
+            pass
+        def SetItem(self, index, col, text):
             pass
 
     class BoxSizer:

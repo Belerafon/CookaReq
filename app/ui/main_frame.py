@@ -2,7 +2,11 @@
 
 import wx
 from pathlib import Path
+from dataclasses import fields
+from typing import Dict
+
 from app.core import store
+from app.core.model import Requirement
 from .list_panel import ListPanel
 from .editor_panel import EditorPanel
 
@@ -12,11 +16,15 @@ class MainFrame(wx.Frame):
 
     def __init__(self, parent: wx.Window | None):
         self._base_title = "CookaReq"
+        self.config = wx.Config(appName="CookaReq")
+        self.available_fields = [f.name for f in fields(Requirement) if f.name != "title"]
+        self.selected_fields = self._load_columns()
         super().__init__(parent=parent, title=self._base_title)
         self._create_menu()
         self._create_toolbar()
         self.splitter = wx.SplitterWindow(self)
         self.panel = ListPanel(self.splitter)
+        self.panel.set_columns(self.selected_fields)
         self.editor = EditorPanel(self.splitter)
         self.splitter.SplitVertically(self.panel, self.editor, 300)
         self.editor.Hide()
@@ -36,6 +44,15 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.on_open_folder, open_item)
         self.Bind(wx.EVT_MENU, lambda evt: self.Close(), exit_item)
         menu_bar.Append(file_menu, "&File")
+
+        view_menu = wx.Menu()
+        self._column_items: Dict[int, str] = {}
+        for field in self.available_fields:
+            item = view_menu.AppendCheckItem(wx.ID_ANY, field)
+            item.Check(field in self.selected_fields)
+            self.Bind(wx.EVT_MENU, self.on_toggle_column, item)
+            self._column_items[item.GetId()] = field
+        menu_bar.Append(view_menu, "&View")
         self.SetMenuBar(menu_bar)
 
     def _create_toolbar(self) -> None:
@@ -66,3 +83,22 @@ class MainFrame(wx.Frame):
             self.editor.load(self.requirements[idx])
             self.editor.Show()
             self.splitter.UpdateSize()
+
+    def on_toggle_column(self, event: wx.CommandEvent) -> None:
+        field = self._column_items.get(event.GetId())
+        if not field:
+            return
+        if field in self.selected_fields:
+            self.selected_fields.remove(field)
+        else:
+            self.selected_fields.append(field)
+        self.panel.set_columns(self.selected_fields)
+        self._save_columns()
+
+    def _load_columns(self) -> list[str]:
+        value = self.config.Read("list_columns", "")
+        return [f for f in value.split(",") if f]
+
+    def _save_columns(self) -> None:
+        self.config.Write("list_columns", ",".join(self.selected_fields))
+        self.config.Flush()

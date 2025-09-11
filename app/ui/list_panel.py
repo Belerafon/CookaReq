@@ -29,11 +29,14 @@ class ListPanel(wx.Panel):
         self._requirements: List = []
         self._on_clone = on_clone
         self._on_delete = on_delete
+        self._sort_column = -1
+        self._sort_ascending = True
         self._setup_columns()
         sizer.Add(self.search, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         self.SetSizer(sizer)
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
+        self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
 
     def set_handlers(
         self,
@@ -91,6 +94,23 @@ class ListPanel(wx.Panel):
                 else:
                     value = getattr(req, field, "")
                 self.list.SetItem(index, col, str(value))
+
+    def _on_col_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event
+        col = event.GetColumn()
+        if col == self._sort_column:
+            self._sort_ascending = not self._sort_ascending
+        else:
+            self._sort_column = col
+            self._sort_ascending = True
+        field = "title" if col == 0 else self.columns[col - 1]
+        def get_value(req):
+            return req.get(field, "") if isinstance(req, dict) else getattr(req, field, "")
+        sorted_reqs = sorted(
+            self._requirements,
+            key=get_value,
+            reverse=not self._sort_ascending,
+        )
+        self.set_requirements(sorted_reqs)
 
     # context menu ----------------------------------------------------
     def _on_right_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event

@@ -1,0 +1,124 @@
+import pytest
+
+
+def _make_panel():
+    wx = pytest.importorskip("wx")
+    _app = wx.App()
+    frame = wx.Frame(None)
+    from app.ui.editor_panel import EditorPanel
+    return EditorPanel(frame)
+
+
+def test_editor_new_requirement_resets(tmp_path):
+    panel = _make_panel()
+    data = {
+        "id": "REQ-1",
+        "title": "T",
+        "statement": "S",
+        "attachments": [{"path": "a.txt", "note": "n"}],
+        "labels": ["L1"],
+        "revision": 5,
+        "approved_at": "2025-01-01",
+        "notes": "N",
+    }
+    panel.load(data, path=tmp_path / "req.json", mtime=123.0)
+    panel.new_requirement()
+
+    assert all(ctrl.GetValue() == "" for ctrl in panel.fields.values())
+    defaults = panel.get_data()
+    assert defaults["type"] == "requirement"
+    assert defaults["status"] == "draft"
+    assert defaults["priority"] == "medium"
+    assert defaults["verification"] == "analysis"
+    assert panel.attachments == []
+    assert panel.current_path is None
+    assert panel.mtime is None
+    assert defaults["labels"] == []
+    assert defaults["revision"] == 1
+    assert defaults["approved_at"] is None
+    assert defaults["notes"] == ""
+
+
+def test_editor_add_attachment_included():
+    panel = _make_panel()
+    panel.new_requirement()
+    panel.add_attachment("file.txt", "note")
+    data = panel.get_data()
+    assert data["attachments"] == [{"path": "file.txt", "note": "note"}]
+
+
+def test_editor_load_populates_fields(tmp_path):
+    panel = _make_panel()
+    data = {
+        "id": "REQ-1",
+        "title": "Title",
+        "statement": "Statement",
+        "acceptance": "Accept",
+        "owner": "Alice",
+        "source": "Doc",
+        "type": "constraint",
+        "status": "in_review",
+        "priority": "high",
+        "verification": "test",
+        "attachments": [{"path": "a.txt", "note": "n"}],
+        "labels": ["L"],
+        "revision": 2,
+        "approved_at": "2025-01-02",
+        "notes": "Note",
+    }
+    path = tmp_path / "req.json"
+    panel.load(data, path=path, mtime=42.0)
+
+    result = panel.get_data()
+    for key in (
+        "id",
+        "title",
+        "statement",
+        "acceptance",
+        "owner",
+        "source",
+        "type",
+        "status",
+        "priority",
+        "verification",
+        "labels",
+        "attachments",
+        "revision",
+        "approved_at",
+        "notes",
+    ):
+        assert result[key] == data[key]
+    assert panel.current_path == path
+    assert panel.mtime == 42.0
+
+
+def test_editor_clone_resets_path_and_mtime(tmp_path):
+    panel = _make_panel()
+    panel.load({"id": "OLD"}, path=tmp_path / "old.json", mtime=1.0)
+    panel.clone("NEW")
+    assert panel.fields["id"].GetValue() == "NEW"
+    assert panel.current_path is None
+    assert panel.mtime is None
+
+
+def test_editor_save_and_delete_roundtrip(tmp_path):
+    import json
+
+    panel = _make_panel()
+    panel.new_requirement()
+    panel.fields["id"].SetValue("REQ-2")
+    panel.fields["title"].SetValue("Title")
+    saved_path = panel.save(tmp_path)
+
+    assert saved_path.exists()
+    assert panel.current_path == saved_path
+    assert panel.mtime == saved_path.stat().st_mtime
+    with saved_path.open() as fh:
+        saved = json.load(fh)
+    assert saved["id"] == "REQ-2"
+    assert saved["title"] == "Title"
+
+    panel.delete()
+    assert panel.current_path is None
+    assert panel.mtime is None
+    assert not saved_path.exists()

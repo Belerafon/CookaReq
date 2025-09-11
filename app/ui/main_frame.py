@@ -1,5 +1,6 @@
 """Main application window."""
 
+import re
 import wx
 from pathlib import Path
 from dataclasses import fields
@@ -63,7 +64,9 @@ class MainFrame(wx.Frame):
     def _create_toolbar(self) -> None:
         toolbar = self.CreateToolBar()
         open_tool = toolbar.AddTool(wx.ID_OPEN, "Open", wx.ArtProvider.GetBitmap(wx.ART_FOLDER_OPEN))
+        new_tool = toolbar.AddTool(wx.ID_NEW, "New", wx.ArtProvider.GetBitmap(wx.ART_NEW))
         self.Bind(wx.EVT_TOOL, self.on_open_folder, open_tool)
+        self.Bind(wx.EVT_TOOL, self.on_new_requirement, new_tool)
         toolbar.Realize()
 
     def on_open_folder(self, event: wx.Event) -> None:
@@ -123,13 +126,56 @@ class MainFrame(wx.Frame):
         self.config.Flush()
 
     # context menu actions -------------------------------------------
+    def _generate_new_id(self, base: str | None = None) -> str:
+        existing = {req["id"] for req in self.requirements}
+        if base:
+            match = re.match(r"^(.*?)(\d+)$", base)
+            if match:
+                prefix, num = match.groups()
+                width = len(num)
+                n = int(num)
+                while True:
+                    n += 1
+                    candidate = f"{prefix}{n:0{width}d}"
+                    if candidate not in existing:
+                        return candidate
+            base_candidate = f"{base}_copy"
+            candidate = base_candidate
+            counter = 1
+            while candidate in existing:
+                candidate = f"{base_candidate}{counter}"
+                counter += 1
+            return candidate
+        prefix = "REQ-"
+        n = 1
+        candidate = f"{prefix}{n:03d}"
+        while candidate in existing:
+            n += 1
+            candidate = f"{prefix}{n:03d}"
+        return candidate
+
+    def on_new_requirement(self, event: wx.Event) -> None:
+        new_id = self._generate_new_id()
+        self.editor.new_requirement()
+        self.editor.fields["id"].SetValue(new_id)
+        data = self.editor.get_data()
+        self.requirements.append(data)
+        self.panel.set_requirements(self.requirements)
+        self.editor.Show()
+        self.splitter.UpdateSize()
+
     def on_clone_requirement(self, index: int) -> None:
         if not (0 <= index < len(self.requirements)):
             return
-        data = dict(self.requirements[index])
-        data["id"] = ""
+        source = self.requirements[index]
+        new_id = self._generate_new_id(source.get("id", ""))
+        data = dict(source)
+        data["id"] = new_id
+        data["title"] = f"(Копия) {source.get('title', '')}".strip()
         data["modified_at"] = ""
         data["revision"] = 1
+        self.requirements.append(data)
+        self.panel.set_requirements(self.requirements)
         self.editor.load(data, path=None, mtime=None)
         self.editor.Show()
         self.splitter.UpdateSize()

@@ -9,6 +9,7 @@ from app.core import store
 from app.core.model import Requirement
 from .list_panel import ListPanel
 from .editor_panel import EditorPanel
+from .settings_dialog import SettingsDialog
 
 
 class MainFrame(wx.Frame):
@@ -21,6 +22,10 @@ class MainFrame(wx.Frame):
         self.selected_fields = self._load_columns()
         self.recent_dirs = self._load_recent_dirs()
         self._recent_items: Dict[int, Path] = {}
+        self.auto_open_last = self.config.ReadBool("auto_open_last", False)
+        self.remember_sort = self.config.ReadBool("remember_sort", False)
+        self.sort_column = self.config.ReadInt("sort_column", -1)
+        self.sort_ascending = self.config.ReadBool("sort_ascending", True)
         super().__init__(parent=parent, title=self._base_title)
         self._create_menu()
         self._create_toolbar()
@@ -29,6 +34,7 @@ class MainFrame(wx.Frame):
             self.splitter,
             on_clone=self.on_clone_requirement,
             on_delete=self.on_delete_requirement,
+            on_sort_changed=self._on_sort_changed,
         )
         self.panel.set_columns(self.selected_fields)
         self.editor = EditorPanel(self.splitter, on_save=self._on_editor_save)
@@ -42,6 +48,10 @@ class MainFrame(wx.Frame):
         self.current_dir: Path | None = None
         self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        if self.auto_open_last and self.recent_dirs:
+            path = Path(self.recent_dirs[0])
+            if path.exists():
+                self._load_directory(path)
 
     def _create_menu(self) -> None:
         menu_bar = wx.MenuBar()
@@ -49,8 +59,10 @@ class MainFrame(wx.Frame):
         open_item = file_menu.Append(wx.ID_OPEN, "&Open Folder\tCtrl+O")
         self._recent_menu = wx.Menu()
         self._recent_menu_item = file_menu.AppendSubMenu(self._recent_menu, "Open &Recent")
+        settings_item = file_menu.Append(wx.ID_PREFERENCES, "Settings")
         exit_item = file_menu.Append(wx.ID_EXIT, "E&xit")
         self.Bind(wx.EVT_MENU, self.on_open_folder, open_item)
+        self.Bind(wx.EVT_MENU, self.on_open_settings, settings_item)
         self.Bind(wx.EVT_MENU, lambda evt: self.Close(), exit_item)
         self._rebuild_recent_menu()
         menu_bar.Append(file_menu, "&File")
@@ -84,6 +96,19 @@ class MainFrame(wx.Frame):
         if path:
             self._load_directory(path)
 
+    def on_open_settings(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+        dlg = SettingsDialog(
+            self,
+            open_last=self.auto_open_last,
+            remember_sort=self.remember_sort,
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            self.auto_open_last, self.remember_sort = dlg.get_values()
+            self.config.WriteBool("auto_open_last", self.auto_open_last)
+            self.config.WriteBool("remember_sort", self.remember_sort)
+            self.config.Flush()
+        dlg.Destroy()
+
     def _load_directory(self, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""
         self._add_recent_dir(path)
@@ -97,6 +122,8 @@ class MainFrame(wx.Frame):
             except Exception:
                 continue
         self.panel.set_requirements(self.requirements)
+        if self.remember_sort and self.sort_column != -1:
+            self.panel.sort(self.sort_column, self.sort_ascending)
         self.editor.Hide()
 
     # recent directories -------------------------------------------------
@@ -204,6 +231,15 @@ class MainFrame(wx.Frame):
     def _on_close(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._save_layout()
         event.Skip()
+
+    def _on_sort_changed(self, column: int, ascending: bool) -> None:
+        if not self.remember_sort:
+            return
+        self.sort_column = column
+        self.sort_ascending = ascending
+        self.config.WriteInt("sort_column", column)
+        self.config.WriteBool("sort_ascending", ascending)
+        self.config.Flush()
 
     # context menu actions -------------------------------------------
     def _generate_new_id(self) -> int:

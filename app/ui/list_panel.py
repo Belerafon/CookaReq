@@ -23,6 +23,7 @@ class ListPanel(wx.Panel):
         *,
         on_clone: Callable[[int], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
+        on_sort_changed: Callable[[int, bool], None] | None = None,
     ):
         super().__init__(parent)
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -36,6 +37,7 @@ class ListPanel(wx.Panel):
         self._fields: Sequence[str] | None = None
         self._on_clone = on_clone
         self._on_delete = on_delete
+        self._on_sort_changed = on_sort_changed
         self._sort_column = -1
         self._sort_ascending = True
         self._setup_columns()
@@ -167,11 +169,17 @@ class ListPanel(wx.Panel):
     def _on_col_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event
         col = event.GetColumn()
         if col == self._sort_column:
-            self._sort_ascending = not self._sort_ascending
+            ascending = not self._sort_ascending
         else:
-            self._sort_column = col
-            self._sort_ascending = True
-        field = "title" if col == 0 else self.columns[col - 1]
+            ascending = True
+        self.sort(col, ascending)
+
+    def sort(self, column: int, ascending: bool) -> None:
+        """Sort list by ``column`` with ``ascending`` order."""
+        self._sort_column = column
+        self._sort_ascending = ascending
+        field = "title" if column == 0 else self.columns[column - 1]
+
         def get_value(req):
             value = req.get(field, "") if isinstance(req, dict) else getattr(req, field, "")
             if field == "id":
@@ -180,12 +188,15 @@ class ListPanel(wx.Panel):
                 except Exception:
                     return 0
             return value
+
         sorted_reqs = sorted(
             self._requirements,
             key=get_value,
             reverse=not self._sort_ascending,
         )
         self.set_requirements(sorted_reqs)
+        if self._on_sort_changed:
+            self._on_sort_changed(self._sort_column, self._sort_ascending)
 
     # context menu ----------------------------------------------------
     def _on_right_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event

@@ -5,6 +5,7 @@ import wx
 from typing import Callable, List, Sequence, TYPE_CHECKING
 
 from app.core import search as core_search
+from app.core.model import Priority, RequirementType, Status, Verification
 
 if TYPE_CHECKING:  # pragma: no cover
     from wx import ListEvent
@@ -147,16 +148,81 @@ class ListPanel(wx.Panel):
 
     # context menu ----------------------------------------------------
     def _on_right_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event
-        menu, _, _ = self._create_context_menu(event.GetIndex())
+        x, y = event.GetPoint()
+        _, _, col = self.list.HitTest((x, y))
+        menu, _, _, _ = self._create_context_menu(event.GetIndex(), col)
         self.PopupMenu(menu)
         menu.Destroy()
 
-    def _create_context_menu(self, index: int):
+    def _field_from_column(self, col: int | None) -> str | None:
+        if col is None or col < 0:
+            return None
+        if col == 0:
+            return "title"
+        if 1 <= col <= len(self.columns):
+            return self.columns[col - 1]
+        return None
+
+    def _create_context_menu(self, index: int, column: int | None):
         menu = wx.Menu()
         clone_item = menu.Append(wx.ID_ANY, "Клонировать")
         delete_item = menu.Append(wx.ID_ANY, "Удалить")
+        field = self._field_from_column(column)
+        edit_item = None
+        if field and field != "title":
+            edit_item = menu.Append(wx.ID_ANY, f"Изменить {field}")
+            self.Bind(wx.EVT_MENU, lambda evt, c=column: self._on_edit_field(c), edit_item)
         if self._on_clone:
             self.Bind(wx.EVT_MENU, lambda evt: self._on_clone(index), clone_item)
         if self._on_delete:
             self.Bind(wx.EVT_MENU, lambda evt: self._on_delete(index), delete_item)
-        return menu, clone_item, delete_item
+        return menu, clone_item, delete_item, edit_item
+
+    def _get_selected_indices(self) -> List[int]:
+        indices: List[int] = []
+        idx = self.list.GetFirstSelected()
+        while idx != -1:
+            indices.append(idx)
+            idx = self.list.GetNextSelected(idx)
+        return indices
+
+    def _prompt_value(self, field: str) -> str | None:
+        enum_map = {
+            "type": RequirementType,
+            "status": Status,
+            "priority": Priority,
+            "verification": Verification,
+        }
+        if field in enum_map:
+            choices = [e.value for e in enum_map[field]]
+            dlg = wx.SingleChoiceDialog(self, f"Выберите {field}", "Редактирование", choices)
+            if dlg.ShowModal() == wx.ID_OK:
+                value = dlg.GetStringSelection()
+            else:
+                value = None
+            dlg.Destroy()
+            return value
+        dlg = wx.TextEntryDialog(self, f"Новое значение для {field}", "Редактирование")
+        if dlg.ShowModal() == wx.ID_OK:
+            value = dlg.GetValue()
+        else:
+            value = None
+        dlg.Destroy()
+        return value
+
+    def _on_edit_field(self, column: int) -> None:  # pragma: no cover - GUI event
+        field = self._field_from_column(column)
+        if not field:
+            return
+        value = self._prompt_value(field)
+        if value is None:
+            return
+        for idx in self._get_selected_indices():
+            if idx >= len(self._requirements):
+                continue
+            req = self._requirements[idx]
+            if isinstance(req, dict):
+                req[field] = value
+            else:
+                setattr(req, field, value)
+            self.list.SetItem(idx, column, str(value))

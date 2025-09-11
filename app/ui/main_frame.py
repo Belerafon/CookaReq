@@ -118,7 +118,8 @@ class MainFrame(wx.Frame):
         self._rebuild_recent_menu()
 
     def _rebuild_recent_menu(self) -> None:
-        self._recent_menu.Clear()
+        for item in list(self._recent_menu.GetMenuItems()):
+            self._recent_menu.Delete(item)
         self._recent_items.clear()
         for p in self.recent_dirs:
             item = self._recent_menu.Append(wx.ID_ANY, p)

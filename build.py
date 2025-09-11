@@ -5,6 +5,7 @@ folder. It requires PyInstaller to be installed in the active
 environment.
 """
 from pathlib import Path
+import sys
 
 import PyInstaller.__main__  # type: ignore
 
@@ -12,15 +13,27 @@ import PyInstaller.__main__  # type: ignore
 def main() -> None:
     root = Path(__file__).resolve().parent
     script = root / "app" / "main.py"
-    PyInstaller.__main__.run(
-        [
-            str(script),
-            "--name=CookaReq",
-            "--onedir",
-            "--noconfirm",
-            "--windowed",
-        ]
-    )
+    args: list[str] = [
+        str(script),
+        "--name=CookaReq",
+        "--noconfirm",
+        "--windowed",
+        # Default to one-folder; can be overridden by --onefile passed to this script
+        "--onedir",
+        # Be explicit to ensure third-party libs are discovered
+        "--hidden-import=wx",
+        "--hidden-import=jsonschema",
+        # Collect package data/binaries that wx/jsonschema may need
+        "--collect-all=wx",
+        "--collect-all=jsonschema",
+    ]
+
+    # Allow switching to a single EXE if user passes "--onefile"
+    if any(a == "--onefile" for a in sys.argv[1:]):
+        # Replace --onedir with --onefile
+        args = [a for a in args if a != "--onedir"] + ["--onefile"]
+
+    PyInstaller.__main__.run(args)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,2 @@
+wxPython>=4.2
+jsonschema>=4.21

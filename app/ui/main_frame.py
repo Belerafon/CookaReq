@@ -8,7 +8,8 @@ class MainFrame(wx.Frame):
     """Top-level frame with basic menu and toolbar."""
 
     def __init__(self, parent: wx.Window | None):
-        super().__init__(parent=parent, title="CookaReq")
+        self._base_title = "CookaReq"
+        super().__init__(parent=parent, title=self._base_title)
         self._create_menu()
         self._create_toolbar()
         self.panel = ListPanel(self)
@@ -35,6 +36,7 @@ class MainFrame(wx.Frame):
         dlg = wx.DirDialog(self, "Select requirements folder")
         if dlg.ShowModal() == wx.ID_OK:
             path = dlg.GetPath()
+            self.SetTitle(f"{self._base_title} - {path}")
             # TODO: connect to storage later
             _ = path
         dlg.Destroy()

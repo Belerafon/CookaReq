@@ -234,7 +234,7 @@ def _prepare_frame(monkeypatch, tmp_path):
     return wx, app, frame
 
 
-def test_main_frame_clone_requirement_clears_id(monkeypatch, tmp_path):
+def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path):
     from app.core.store import save
 
     data = _sample_requirement()
@@ -245,8 +245,25 @@ def test_main_frame_clone_requirement_clears_id(monkeypatch, tmp_path):
     frame.on_clone_requirement(0)
 
     assert frame.editor.IsShown()
-    assert frame.editor.fields["id"].GetValue() == ""
-    assert frame.editor.fields["title"].GetValue() == data["title"]
+    new_id = frame.editor.fields["id"].GetValue()
+    assert new_id and new_id != data["id"]
+    assert frame.editor.fields["title"].GetValue().startswith("(Копия)")
+    assert len(frame.requirements) == 2
+
+    frame.Destroy()
+    app.Destroy()
+
+
+def test_main_frame_new_requirement_button(monkeypatch, tmp_path):
+    wx, app, frame = _prepare_frame(monkeypatch, tmp_path)
+
+    # emulate toolbar event for new requirement
+    evt = wx.CommandEvent(wx.EVT_TOOL.typeId, wx.ID_NEW)
+    frame.ProcessEvent(evt)
+
+    assert frame.editor.IsShown()
+    assert frame.requirements
+    assert frame.editor.fields["id"].GetValue() == frame.requirements[0]["id"]
 
     frame.Destroy()
     app.Destroy()

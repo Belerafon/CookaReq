@@ -25,7 +25,7 @@ class MainFrame(wx.Frame):
         self.splitter = wx.SplitterWindow(self)
         self.panel = ListPanel(self.splitter)
         self.panel.set_columns(self.selected_fields)
-        self.editor = EditorPanel(self.splitter)
+        self.editor = EditorPanel(self.splitter, on_save=self._on_editor_save)
         self.splitter.SplitVertically(self.panel, self.editor, 300)
         self.editor.Hide()
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -34,6 +34,7 @@ class MainFrame(wx.Frame):
         self.SetSize((800, 600))
         self.Centre()
         self.requirements: list[dict] = []
+        self.current_dir: Path | None = None
         self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
 
     def _create_menu(self) -> None:
@@ -66,8 +67,9 @@ class MainFrame(wx.Frame):
         if dlg.ShowModal() == wx.ID_OK:
             path = dlg.GetPath()
             self.SetTitle(f"{self._base_title} - {path}")
+            self.current_dir = Path(path)
             self.requirements = []
-            for fp in Path(path).glob("*.json"):
+            for fp in self.current_dir.glob("*.json"):
                 try:
                     data, _ = store.load(fp)
                     self.requirements.append(data)
@@ -83,6 +85,19 @@ class MainFrame(wx.Frame):
             self.editor.load(self.requirements[idx])
             self.editor.Show()
             self.splitter.UpdateSize()
+
+    def _on_editor_save(self) -> None:
+        if not self.current_dir:
+            return
+        path = self.editor.save(self.current_dir)
+        data = self.editor.get_data()
+        for i, req in enumerate(self.requirements):
+            if req.get("id") == data.get("id"):
+                self.requirements[i] = data
+                break
+        else:
+            self.requirements.append(data)
+        self.panel.set_requirements(self.requirements)
 
     def on_toggle_column(self, event: wx.CommandEvent) -> None:
         field = self._column_items.get(event.GetId())

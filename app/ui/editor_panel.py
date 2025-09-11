@@ -1,8 +1,9 @@
 """Requirement editor panel."""
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import wx
 from wx.lib.dialogs import ScrolledMessageDialog
@@ -14,16 +15,22 @@ from . import locale
 class EditorPanel(wx.Panel):
     """Panel for creating and editing requirements."""
 
-    def __init__(self, parent: wx.Window):
+    def __init__(self, parent: wx.Window, on_save: Callable[[], None] | None = None):
         super().__init__(parent)
         self.fields: dict[str, wx.TextCtrl] = {}
         self.enums: dict[str, wx.Choice] = {}
+        self._on_save_callback = on_save
 
         labels = {
             "id": "Идентификатор требования (например, REQ-001)",
             "title": "Краткое название требования",
             "statement": "Полный текст требования",
             "acceptance": "Критерии приемки требования",
+            "conditions": "Условия и режимы",
+            "trace_up": "Трассировка вверх",
+            "trace_down": "Трассировка вниз",
+            "version": "Версия требования",
+            "modified_at": "Дата изменения",
             "owner": "Ответственный за требование",
             "source": "Источник требования",
             "type": "Тип требования",
@@ -60,6 +67,11 @@ class EditorPanel(wx.Panel):
                 "Пример: 'При потере связи с сервером появляется уведомление и запись "
                 "сохраняется локально.'"
             ),
+            "conditions": "Условия выполнения и режимы работы для требования.",
+            "trace_up": "Связанные вышестоящие требования.",
+            "trace_down": "Связанные нижестоящие требования.",
+            "version": "Версия текущего требования.",
+            "modified_at": "Дата последнего изменения (устанавливается автоматически).",
             "owner": (
                 "Ответственный человек или команда за требование. Укажите имя, "
                 "логин или роль, чтобы было понятно, к кому обращаться за "
@@ -106,6 +118,11 @@ class EditorPanel(wx.Panel):
             ("title", False),
             ("statement", True),
             ("acceptance", True),
+            ("conditions", True),
+            ("trace_up", True),
+            ("trace_down", True),
+            ("version", False),
+            ("modified_at", False),
             ("owner", False),
             ("source", False),
         ]:
@@ -118,6 +135,8 @@ class EditorPanel(wx.Panel):
 
             style = wx.TE_MULTILINE if multiline else 0
             ctrl = wx.TextCtrl(self, style=style)
+            if name == "modified_at":
+                ctrl.SetEditable(False)
             self.fields[name] = ctrl
             sizer.Add(ctrl, 1 if multiline else 0, wx.EXPAND | wx.ALL, 5)
 
@@ -136,6 +155,10 @@ class EditorPanel(wx.Panel):
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
             self.enums[name] = choice
             sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
+
+        self.save_btn = wx.Button(self, label="Сохранить")
+        self.save_btn.Bind(wx.EVT_BUTTON, self._on_save_button)
+        sizer.Add(self.save_btn, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
 
         self.SetSizer(sizer)
 
@@ -205,6 +228,11 @@ class EditorPanel(wx.Panel):
                 "verification", self.enums["verification"].GetStringSelection()
             ),
             "acceptance": self.fields["acceptance"].GetValue(),
+            "conditions": self.fields["conditions"].GetValue(),
+            "trace_up": self.fields["trace_up"].GetValue(),
+            "trace_down": self.fields["trace_down"].GetValue(),
+            "version": self.fields["version"].GetValue(),
+            "modified_at": self.fields["modified_at"].GetValue(),
             "labels": self.extra.get("labels", []),
             "attachments": list(self.attachments),
             "revision": self.extra.get("revision", 1),
@@ -212,6 +240,12 @@ class EditorPanel(wx.Panel):
             "notes": self.extra.get("notes", ""),
         }
         return data
+
+    def _on_save_button(self, _evt: wx.Event) -> None:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.fields["modified_at"].SetValue(now)
+        if self._on_save_callback:
+            self._on_save_callback()
 
     def save(self, directory: str | Path) -> Path:
         data = self.get_data()

@@ -6,9 +6,12 @@ def test_gui_imports():
     from app.main import main
     from app.ui.main_frame import MainFrame
     from app.ui.list_panel import ListPanel
+    from app.ui.editor_panel import EditorPanel
 
     app = wx.App()
     frame = MainFrame(None)
-    panel = ListPanel(frame)
-    assert panel.GetParent() is frame
+    list_panel = ListPanel(frame)
+    editor_panel = EditorPanel(frame)
+    assert list_panel.GetParent() is frame
+    assert editor_panel.GetParent() is frame
     assert callable(main)

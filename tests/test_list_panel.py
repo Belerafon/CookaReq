@@ -173,3 +173,29 @@ def test_bulk_edit_updates_requirements(monkeypatch):
     monkeypatch.setattr(panel, "_prompt_value", lambda field: "2")
     panel._on_edit_field(1)
     assert [r["version"] for r in reqs] == ["2", "2"]
+
+
+def test_sort_method_and_callback(monkeypatch):
+    wx_stub = _build_wx_stub()
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    calls = []
+    panel = ListPanel(frame, on_sort_changed=lambda c, a: calls.append((c, a)))
+    panel.set_columns(["id"])
+    panel.set_requirements([
+        {"id": 2, "title": "B"},
+        {"id": 1, "title": "A"},
+    ])
+
+    panel.sort(1, True)
+    assert [r["id"] for r in panel._requirements] == [1, 2]
+    assert calls[-1] == (1, True)
+
+    panel.sort(1, False)
+    assert [r["id"] for r in panel._requirements] == [2, 1]
+    assert calls[-1] == (1, False)

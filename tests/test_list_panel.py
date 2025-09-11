@@ -25,6 +25,12 @@ def _build_wx_stub():
     class ListCtrl(Window):
         def __init__(self, parent=None, style=0):
             super().__init__(parent)
+        def InsertColumn(self, col, heading):
+            pass
+        def DeleteAllItems(self):
+            pass
+        def InsertItem(self, index, text):
+            pass
 
     class BoxSizer:
         def __init__(self, orient):

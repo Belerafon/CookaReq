@@ -116,6 +116,7 @@ class MainFrame(wx.Frame):
             self.selected_fields.append(field)
         self.panel.set_columns(self.selected_fields)
         self.panel.load_column_widths(self.config)
+        self.panel.load_column_order(self.config)
         self._save_columns()
 
     def _load_columns(self) -> list[str]:
@@ -144,6 +145,7 @@ class MainFrame(wx.Frame):
         sash = max(100, min(sash, max(client_w - 100, 100)))
         self.splitter.SetSashPosition(sash)
         self.panel.load_column_widths(self.config)
+        self.panel.load_column_order(self.config)
 
     def _save_layout(self) -> None:
         """Persist window geometry, splitter, and column widths."""
@@ -155,6 +157,7 @@ class MainFrame(wx.Frame):
         self.config.WriteInt("win_y", y)
         self.config.WriteInt("sash_pos", self.splitter.GetSashPosition())
         self.panel.save_column_widths(self.config)
+        self.panel.save_column_order(self.config)
         self.config.Flush()
 
     def _on_close(self, event: wx.Event) -> None:  # pragma: no cover - GUI event

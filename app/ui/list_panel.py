@@ -82,6 +82,41 @@ class ListPanel(wx.Panel):
             width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
             config.WriteInt(f"col_width_{i}", width)
 
+    def load_column_order(self, config: wx.Config) -> None:
+        """Restore column ordering from config."""
+        value = config.Read("col_order", "")
+        if not value:
+            return
+        names = [n for n in value.split(",") if n]
+        order: List[int] = []
+        for name in names:
+            if name == "title":
+                order.append(0)
+            elif name in self.columns:
+                order.append(self.columns.index(name) + 1)
+        count = self.list.GetColumnCount()
+        for idx in range(count):
+            if idx not in order:
+                order.append(idx)
+        try:  # pragma: no cover - depends on GUI backend
+            self.list.SetColumnsOrder(order)
+        except Exception:
+            pass
+
+    def save_column_order(self, config: wx.Config) -> None:
+        """Persist current column ordering to config."""
+        try:  # pragma: no cover - depends on GUI backend
+            order = self.list.GetColumnsOrder()
+        except Exception:
+            return
+        names: List[str] = []
+        for idx in order:
+            if idx == 0:
+                names.append("title")
+            elif 1 <= idx <= len(self.columns):
+                names.append(self.columns[idx - 1])
+        config.Write("col_order", ",".join(names))
+
     def set_columns(self, fields: List[str]) -> None:
         """Set additional columns (beyond Title) to display."""
         self.columns = fields

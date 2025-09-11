@@ -1,6 +1,8 @@
 """Main application window."""
 
 import wx
+from pathlib import Path
+from app.core import store
 from .list_panel import ListPanel
 
 
@@ -37,6 +39,12 @@ class MainFrame(wx.Frame):
         if dlg.ShowModal() == wx.ID_OK:
             path = dlg.GetPath()
             self.SetTitle(f"{self._base_title} - {path}")
-            # TODO: connect to storage later
-            _ = path
+            requirements = []
+            for fp in Path(path).glob("*.json"):
+                try:
+                    data, _ = store.load(fp)
+                    requirements.append(data)
+                except Exception:
+                    continue
+            self.panel.set_requirements(requirements)
         dlg.Destroy()

@@ -7,10 +7,15 @@ def _build_wx_stub():
     class Window:
         def __init__(self, parent=None):
             self._parent = parent
+            self._bindings = {}
         def GetParent(self):
             return self._parent
         def Bind(self, event, handler):
-            pass
+            self._bindings[event] = handler
+
+        # helper for tests
+        def get_bound_handler(self, event):
+            return self._bindings.get(event)
 
     class Panel(Window):
         def __init__(self, parent=None):
@@ -86,13 +91,18 @@ def _build_wx_stub():
         EXPAND=0,
         ALL=0,
         LC_REPORT=0,
-        EVT_LIST_ITEM_RIGHT_CLICK=types.SimpleNamespace(),
-        EVT_LIST_COL_CLICK=types.SimpleNamespace(),
-        EVT_TEXT=types.SimpleNamespace(),
+        EVT_LIST_ITEM_RIGHT_CLICK=object(),
+        EVT_LIST_COL_CLICK=object(),
+        EVT_TEXT=object(),
         Config=Config,
     )
     class ColumnSorterMixin:
         def __init__(self, *args, **kwargs):
+            ctrl = self.GetListCtrl()
+            ctrl.Bind(wx_mod.EVT_LIST_COL_CLICK, self._mixin_col_click)
+
+        def _mixin_col_click(self, event):
+            # default mixin handler does nothing in stub
             pass
 
     mixins_mod = types.SimpleNamespace(ColumnSorterMixin=ColumnSorterMixin)
@@ -150,6 +160,29 @@ def test_column_click_sorts(monkeypatch):
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 1))
     assert [r["id"] for r in panel.model.get_visible()] == [2, 1]
+
+
+def test_column_click_after_set_columns_triggers_sort(monkeypatch):
+    wx_stub, mixins = _build_wx_stub()
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["id"])
+    panel.set_requirements([
+        {"id": 2, "title": "B"},
+        {"id": 1, "title": "A"},
+    ])
+
+    handler = panel.list.get_bound_handler(wx_stub.EVT_LIST_COL_CLICK)
+    handler(types.SimpleNamespace(GetColumn=lambda: 1))
+    assert [r["id"] for r in panel.model.get_visible()] == [1, 2]
 
 
 def test_search_and_label_filters(monkeypatch):

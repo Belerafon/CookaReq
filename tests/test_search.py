@@ -1,0 +1,70 @@
+from app.core.model import (
+    Priority,
+    Requirement,
+    RequirementType,
+    Status,
+    Verification,
+)
+from app.core.search import filter_by_labels, search, search_text
+
+
+def sample_requirements():
+    return [
+        Requirement(
+            id="REQ-1",
+            title="Login form",
+            statement="System shows login form",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="alice",
+            priority=Priority.MEDIUM,
+            source="spec",
+            verification=Verification.ANALYSIS,
+            labels=["ui", "auth"],
+            notes="Requires username",
+        ),
+        Requirement(
+            id="REQ-2",
+            title="Store data",
+            statement="System stores data in DB",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="bob",
+            priority=Priority.MEDIUM,
+            source="spec",
+            verification=Verification.ANALYSIS,
+            labels=["backend"],
+        ),
+        Requirement(
+            id="REQ-3",
+            title="Export report",
+            statement="User can export report",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="carol",
+            priority=Priority.MEDIUM,
+            source="spec",
+            verification=Verification.ANALYSIS,
+            labels=["ui"],
+        ),
+    ]
+
+
+def test_filter_by_labels():
+    reqs = sample_requirements()
+    assert {r.id for r in filter_by_labels(reqs, ["ui"])} == {"REQ-1", "REQ-3"}
+    assert [r.id for r in filter_by_labels(reqs, ["ui", "auth"])] == ["REQ-1"]
+
+
+def test_search_text():
+    reqs = sample_requirements()
+    found = search_text(reqs, "login", ["title", "notes"])
+    assert [r.id for r in found] == ["REQ-1"]
+    found = search_text(reqs, "EXPORT", ["title"])
+    assert [r.id for r in found] == ["REQ-3"]
+
+
+def test_combined_search():
+    reqs = sample_requirements()
+    found = search(reqs, labels=["ui"], query="export", fields=["title"])
+    assert [r.id for r in found] == ["REQ-3"]

@@ -56,8 +56,14 @@ class EditorPanel(wx.Panel):
     def new_requirement(self) -> None:
         for ctrl in self.fields.values():
             ctrl.SetValue("")
-        for choice in self.enums.values():
-            choice.SetSelection(0)
+        defaults = {
+            "type": locale.TYPE["requirement"],
+            "status": locale.STATUS["draft"],
+            "priority": locale.PRIORITY["medium"],
+            "verification": locale.VERIFICATION["analysis"],
+        }
+        for name, choice in self.enums.items():
+            choice.SetStringSelection(defaults[name])
         self.attachments = []
         self.current_path = None
         self.mtime = None
@@ -89,7 +95,7 @@ class EditorPanel(wx.Panel):
 
     # data helpers -----------------------------------------------------
     def get_data(self) -> dict[str, Any]:
-        return {
+        data = {
             "id": self.fields["id"].GetValue(),
             "title": self.fields["title"].GetValue(),
             "statement": self.fields["statement"].GetValue(),
@@ -101,14 +107,14 @@ class EditorPanel(wx.Panel):
             "verification": locale.ru_to_code(
                 "verification", self.enums["verification"].GetStringSelection()
             ),
-            "acceptance": self.fields["acceptance"].GetValue() or None,
-            "units": None,
+            "acceptance": self.fields["acceptance"].GetValue(),
             "labels": self.extra.get("labels", []),
             "attachments": list(self.attachments),
             "revision": self.extra.get("revision", 1),
             "approved_at": self.extra.get("approved_at"),
             "notes": self.extra.get("notes", ""),
         }
+        return data
 
     def save(self, directory: str | Path) -> Path:
         data = self.get_data()

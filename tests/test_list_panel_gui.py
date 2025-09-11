@@ -1,12 +1,14 @@
+import importlib
 import pytest
 
 
 def test_list_panel_real_widgets():
     wx = pytest.importorskip("wx")
     app = wx.App()
-    from app.ui.list_panel import ListPanel
+    import app.ui.list_panel as list_panel
+    importlib.reload(list_panel)
     frame = wx.Frame(None)
-    panel = ListPanel(frame)
+    panel = list_panel.ListPanel(frame)
 
     assert isinstance(panel.search, wx.SearchCtrl)
     assert isinstance(panel.list, wx.ListCtrl)

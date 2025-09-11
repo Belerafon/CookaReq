@@ -2,7 +2,9 @@
 
 import wx
 
-from typing import Callable, List, TYPE_CHECKING
+from typing import Callable, List, Sequence, TYPE_CHECKING
+
+from app.core import search as core_search
 
 if TYPE_CHECKING:  # pragma: no cover
     from wx import ListEvent
@@ -27,6 +29,10 @@ class ListPanel(wx.Panel):
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
         self.columns: List[str] = []
         self._requirements: List = []
+        self._all_requirements: List = []
+        self._labels: List[str] = []
+        self._query: str = ""
+        self._fields: Sequence[str] | None = None
         self._on_clone = on_clone
         self._on_delete = on_delete
         self._sort_column = -1
@@ -37,6 +43,7 @@ class ListPanel(wx.Panel):
         self.SetSizer(sizer)
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
         self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
+        self.search.Bind(wx.EVT_TEXT, self._on_search)
 
     def set_handlers(
         self,
@@ -83,9 +90,35 @@ class ListPanel(wx.Panel):
 
     def set_requirements(self, requirements: list) -> None:
         """Populate list control with requirement data."""
-        self._requirements = requirements
+        self._all_requirements = requirements
+        self._apply_filters()
+
+    # filtering -------------------------------------------------------
+    def set_label_filter(self, labels: List[str]) -> None:
+        """Filter by requirement labels."""
+        self._labels = labels
+        self._apply_filters()
+
+    def set_search_query(self, query: str, fields: Sequence[str] | None = None) -> None:
+        """Apply text search across ``fields``."""
+        self._query = query
+        self._fields = fields
+        self._apply_filters()
+
+    def _on_search(self, event):  # pragma: no cover - simple event binding
+        self.set_search_query(self.search.GetValue())
+        event.Skip()
+
+    def _apply_filters(self) -> None:
+        """Apply current search and label filters to the requirement list."""
+        self._requirements = core_search.search(
+            self._all_requirements,
+            labels=self._labels,
+            query=self._query,
+            fields=self._fields,
+        )
         self.list.DeleteAllItems()
-        for req in requirements:
+        for req in self._requirements:
             title = req.get("title") if isinstance(req, dict) else getattr(req, "title", "")
             index = self.list.InsertItem(self.list.GetItemCount(), title)
             for col, field in enumerate(self.columns, start=1):

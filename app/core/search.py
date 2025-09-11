@@ -1,7 +1,7 @@
 """In-memory search helpers for requirements."""
 from __future__ import annotations
 
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Sequence, Any
 
 from .model import Requirement
 
@@ -15,7 +15,21 @@ SEARCHABLE_FIELDS = {
     "notes",
 }
 
-def filter_by_labels(requirements: Iterable[Requirement], labels: Sequence[str]) -> List[Requirement]:
+def _get_attr(obj: Any, name: str, default: Any = None) -> Any:
+    """Return attribute or dict value ``name`` from ``obj``.
+
+    Supports both dataclass instances and plain dictionaries. If ``name`` is
+    missing, ``default`` is returned.
+    """
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def filter_by_labels(
+    requirements: Iterable[Requirement | dict],
+    labels: Sequence[str],
+) -> List[Requirement | dict]:
     """Return requirements containing all of the given labels.
 
     Empty ``labels`` yields all requirements unchanged.
@@ -24,9 +38,13 @@ def filter_by_labels(requirements: Iterable[Requirement], labels: Sequence[str])
     if not labels:
         return reqs
     label_set = set(labels)
-    return [r for r in reqs if label_set.issubset(set(r.labels))]
+    return [r for r in reqs if label_set.issubset(set(_get_attr(r, "labels", [])))]
 
-def search_text(requirements: Iterable[Requirement], query: str, fields: Sequence[str]) -> List[Requirement]:
+def search_text(
+    requirements: Iterable[Requirement | dict],
+    query: str,
+    fields: Sequence[str],
+) -> List[Requirement | dict]:
     """Perform case-insensitive text search over selected fields.
 
     ``fields`` outside of :data:`SEARCHABLE_FIELDS` are ignored. If no ``fields``
@@ -39,22 +57,22 @@ def search_text(requirements: Iterable[Requirement], query: str, fields: Sequenc
     if not fields:
         return reqs
     q = query.lower()
-    result: List[Requirement] = []
+    result: List[Requirement | dict] = []
     for r in reqs:
         for field in fields:
-            value = getattr(r, field, None)
+            value = _get_attr(r, field, None)
             if value and q in str(value).lower():
                 result.append(r)
                 break
     return result
 
 def search(
-    requirements: Iterable[Requirement],
+    requirements: Iterable[Requirement | dict],
     *,
     labels: Sequence[str] | None = None,
     query: str | None = None,
     fields: Sequence[str] | None = None,
-) -> List[Requirement]:
+) -> List[Requirement | dict]:
     """Filter requirements by ``labels`` and ``query`` across ``fields``.
 
     ``fields`` defaults to :data:`SEARCHABLE_FIELDS` when ``query`` is provided.

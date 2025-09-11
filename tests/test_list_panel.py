@@ -22,7 +22,13 @@ def _build_wx_stub():
             return self._sizer
 
     class SearchCtrl(Window):
-        pass
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self._value = ""
+        def SetValue(self, value):
+            self._value = value
+        def GetValue(self):
+            return self._value
 
     class ListCtrl(Window):
         def __init__(self, parent=None, style=0):
@@ -68,6 +74,7 @@ def _build_wx_stub():
         LC_REPORT=0,
         EVT_LIST_ITEM_RIGHT_CLICK=types.SimpleNamespace(),
         EVT_LIST_COL_CLICK=types.SimpleNamespace(),
+        EVT_TEXT=types.SimpleNamespace(),
         Config=Config,
     )
 
@@ -117,3 +124,30 @@ def test_column_click_sorts(monkeypatch):
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 1))
     assert [r["id"] for r in panel._requirements] == ["2", "1"]
+
+
+def test_search_and_label_filters(monkeypatch):
+    wx_stub = _build_wx_stub()
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame)
+    panel.set_requirements([
+        {"id": "1", "title": "Login", "labels": ["ui"]},
+        {"id": "2", "title": "Export", "labels": ["report"]},
+    ])
+
+    panel.set_label_filter(["ui"])
+    assert [r["id"] for r in panel._requirements] == ["1"]
+
+    panel.set_label_filter([])
+    panel.set_search_query("Export", fields=["title"])
+    assert [r["id"] for r in panel._requirements] == ["2"]
+
+    panel.set_label_filter(["ui"])
+    panel.set_search_query("Export", fields=["title"])
+    assert panel._requirements == []

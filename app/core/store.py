@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 import json
+import re
 from pathlib import Path
 
-from app.util.hashing import id_to_hash
 from .validate import validate
 
 
@@ -13,9 +13,16 @@ class ConflictError(Exception):
     """Raised when a file was modified on disk since loading."""
 
 
-def filename_for(req_id: str, length: int = 12) -> str:
-    """Return hashed filename for *req_id* with ``.json`` extension."""
-    return f"{id_to_hash(req_id, length)}.json"
+_INVALID_CHARS = r"[\\/:*?\"<>|]"
+
+
+def filename_for(req_id: str) -> str:
+    """Return filename based on *req_id* with ``.json`` extension.
+
+    Any characters illegal for filenames are replaced with ``_``.
+    """
+    safe_id = re.sub(_INVALID_CHARS, "_", req_id)
+    return f"{safe_id}.json"
 
 
 def load(path: str | Path) -> tuple[dict, float]:
@@ -45,7 +52,6 @@ def save(
     data: dict | object,
     *,
     mtime: float | None = None,
-    filename_length: int = 12,
 ) -> Path:
     """Save *data* into *directory* and return resulting path.
 
@@ -58,8 +64,6 @@ def save(
     mtime:
         Expected modification time of an existing file. If provided and the
         file's current mtime differs, :class:`ConflictError` is raised.
-    filename_length:
-        Length of hash used in filename generation.
     """
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -67,7 +71,7 @@ def save(
     if is_dataclass(data):
         data = asdict(data)
 
-    filename = filename_for(data["id"], length=filename_length)
+    filename = filename_for(data["id"])
     path = directory / filename
 
     validate(data, existing_ids=_existing_ids(directory, path))

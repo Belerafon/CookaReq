@@ -1,0 +1,15 @@
+{
+  "id": "CR-001",
+  "labels": [
+    "storage"
+  ],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "statement": "Система должна сохранять каждое требование в JSON-файл, имя которого совпадает с его идентификатором.",
+  "status": "approved",
+  "title": "Именование по идентификатору",
+  "type": "requirement",
+  "verification": "analysis"
+}

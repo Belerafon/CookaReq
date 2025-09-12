@@ -1,6 +1,8 @@
 [project]
 name = "cookareq"
 version = "0.1.0"
+authors = [{ name = "Maksim Lashkevich & Codex" }]
+license = { file = "LICENSE" }
 dependencies = [
     "wxPython",
     "pytest",

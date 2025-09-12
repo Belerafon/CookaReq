@@ -174,7 +174,72 @@ class MainFrame(wx.Frame):
             self.config.WriteBool("remember_sort", self.remember_sort)
             self.config.Write("language", self.language)
             self.config.Flush()
+            self._apply_language()
         dlg.Destroy()
+
+    def _apply_language(self) -> None:
+        """Reinitialize locale and rebuild UI after language change."""
+        from app.main import init_locale, APP_NAME, LOCALE_DIR
+        import gettext, sys
+
+        app = wx.GetApp()
+        app.locale = init_locale(self.language)
+
+        trans = gettext.translation(
+            APP_NAME, LOCALE_DIR, languages=[self.language], fallback=True
+        )
+        trans.install()
+        for mod in [
+            sys.modules.get("app.ui.main_frame"),
+            sys.modules.get("app.ui.list_panel"),
+            sys.modules.get("app.ui.editor_panel"),
+            sys.modules.get("app.ui.settings_dialog"),
+            sys.modules.get("app.ui.labels_dialog"),
+        ]:
+            if mod and hasattr(mod, "_"):
+                mod._ = trans.gettext
+
+        # Rebuild menus and toolbar with new translations
+        self.SetMenuBar(None)
+        tb = self.GetToolBar()
+        if tb is not None:
+            tb.Destroy()
+        self._create_menu()
+        self._create_toolbar()
+
+        # Replace panels to update all labels
+        old_panel, old_editor = self.panel, self.editor
+        self.panel = ListPanel(
+            self.splitter,
+            model=self.model,
+            on_clone=self.on_clone_requirement,
+            on_delete=self.on_delete_requirement,
+            on_sort_changed=self._on_sort_changed,
+            on_derive=self.on_derive_requirement,
+        )
+        self.panel.set_columns(self.selected_fields)
+        self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
+
+        self.editor = EditorPanel(
+            self.splitter,
+            on_save=self._on_editor_save,
+            on_add_derived=self.on_add_derived_requirement,
+        )
+        self.editor.Hide()
+
+        self.splitter.ReplaceWindow(old_panel, self.panel)
+        self.splitter.ReplaceWindow(old_editor, self.editor)
+        old_panel.Destroy()
+        old_editor.Destroy()
+
+        # Restore layout and reload data if any directory is open
+        self._load_layout()
+        if self.current_dir:
+            self._load_directory(self.current_dir)
+        else:
+            self.panel.set_requirements(self.model.get_all(), {})
+
+        self.Layout()
 
     def on_manage_labels(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         if not self.current_dir:

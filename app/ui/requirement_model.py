@@ -92,8 +92,8 @@ class RequirementModel:
                 except Exception:
                     return 0
             if self._sort_field == "labels" and isinstance(value, list):
-                # сортируем по первой метке, остальные не учитываем
-                return value[0] if value else ""
+                # учитываем все метки, чтобы корректно сравнивать несколько
+                return "|".join(value)
             return value
 
         self._visible.sort(key=get_value, reverse=not self._sort_ascending)

@@ -285,6 +285,28 @@ def test_sort_by_labels(monkeypatch):
     assert [r["id"] for r in panel.model.get_visible()] == [2, 1]
 
 
+def test_sort_by_multiple_labels(monkeypatch):
+    wx_stub, mixins = _build_wx_stub()
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["labels"])
+    panel.set_requirements([
+        {"id": 1, "title": "A", "labels": ["alpha", "zeta"]},
+        {"id": 2, "title": "B", "labels": ["alpha", "beta"]},
+    ])
+
+    panel.sort(1, True)
+    assert [r["id"] for r in panel.model.get_visible()] == [2, 1]
+
+
 def test_bulk_edit_updates_requirements(monkeypatch):
     wx_stub, mixins = _build_wx_stub()
     monkeypatch.setitem(sys.modules, "wx", wx_stub)

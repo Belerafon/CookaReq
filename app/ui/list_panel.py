@@ -39,6 +39,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._label_choices: list[str] = []
         self._ignore_label_event = False
         self.match_any = wx.CheckBox(self, label=_("Match any labels"))
+        self.is_derived = wx.CheckBox(self, label=_("Derived only"))
+        self.has_derived = wx.CheckBox(self, label=_("Has derived"))
+        self.suspect_only = wx.CheckBox(self, label=_("Suspect only"))
         # На Windows ``SearchCtrl`` рисует пустые белые квадраты вместо
         # иконок поиска/сброса, если битмапы не заданы. Загрузим стандартные
         # изображения через ``wx.ArtProvider`` и включим обе кнопки. Для
@@ -70,6 +73,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         sizer.Add(self.search, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(self.labels, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(self.match_any, 0, wx.ALL, 5)
+        sizer.Add(self.is_derived, 0, wx.ALL, 5)
+        sizer.Add(self.has_derived, 0, wx.ALL, 5)
+        sizer.Add(self.suspect_only, 0, wx.ALL, 5)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         self.SetSizer(sizer)
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
@@ -77,6 +83,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.search.Bind(wx.EVT_TEXT, self._on_search)
         self.labels.Bind(wx.EVT_TEXT, self._on_labels_changed)
         self.match_any.Bind(wx.EVT_CHECKBOX, self._on_match_any)
+        self.is_derived.Bind(wx.EVT_CHECKBOX, self._on_is_derived)
+        self.has_derived.Bind(wx.EVT_CHECKBOX, self._on_has_derived)
+        self.suspect_only.Bind(wx.EVT_CHECKBOX, self._on_suspect_only)
 
     # ColumnSorterMixin requirement
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
@@ -221,6 +230,21 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _on_match_any(self, event):  # pragma: no cover - simple event binding
         self.model.set_label_match_all(not self.match_any.GetValue())
+        if hasattr(event, "Skip"):
+            event.Skip()
+
+    def _on_is_derived(self, event):  # pragma: no cover - simple event binding
+        self.model.set_is_derived(self.is_derived.GetValue())
+        if hasattr(event, "Skip"):
+            event.Skip()
+
+    def _on_has_derived(self, event):  # pragma: no cover - simple event binding
+        self.model.set_has_derived(self.has_derived.GetValue())
+        if hasattr(event, "Skip"):
+            event.Skip()
+
+    def _on_suspect_only(self, event):  # pragma: no cover - simple event binding
+        self.model.set_suspect_only(self.suspect_only.GetValue())
         if hasattr(event, "Skip"):
             event.Skip()
 

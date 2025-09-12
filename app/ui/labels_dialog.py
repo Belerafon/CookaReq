@@ -17,7 +17,6 @@ class LabelsDialog(wx.Dialog):
 
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.list.InsertColumn(0, _("Name"))
-        self.list.InsertColumn(1, _("Color"))
 
         # image list to display colored rectangles instead of hex codes
         self._img_list = wx.ImageList(16, 16)
@@ -72,8 +71,7 @@ class LabelsDialog(wx.Dialog):
         for lbl in self._labels:
             idx = self.list.InsertItem(self.list.GetItemCount(), lbl.name)
             img_idx = self._get_icon_index(lbl.color)
-            self.list.SetItem(idx, 1, "")
-            self.list.SetItemColumnImage(idx, 1, img_idx)
+            self.list.SetItemColumnImage(idx, 0, img_idx)
 
     def _on_select(self, event: wx.ListEvent) -> None:  # pragma: no cover - GUI event
         idx = event.GetIndex()
@@ -88,8 +86,7 @@ class LabelsDialog(wx.Dialog):
         colour = event.GetColour().GetAsString(wx.C2S_HTML_SYNTAX)
         self._labels[idx].color = colour
         img_idx = self._get_icon_index(colour)
-        self.list.SetItem(idx, 1, "")
-        self.list.SetItemColumnImage(idx, 1, img_idx)
+        self.list.SetItemColumnImage(idx, 0, img_idx)
 
     def _get_selected_indices(self) -> list[int]:
         indices: list[int] = []

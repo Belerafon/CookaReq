@@ -22,9 +22,8 @@ def test_labels_dialog_changes_color():
     dlg._on_color_changed(DummyEvent())
     labels = dlg.get_labels()
     assert labels[0].color.lower() == "#00ff00"
-    # after changing, colour column should show rectangle, not text
-    assert dlg.list.GetItemText(0, 1) == ""
-    img_idx = dlg.list.GetItem(0, 1).GetImage()
+    # colour icon should update for the selected item
+    img_idx = dlg.list.GetItem(0).GetImage()
     img = dlg.list.GetImageList(wx.IMAGE_LIST_SMALL).GetBitmap(img_idx).ConvertToImage()
     assert (img.GetRed(0, 0), img.GetGreen(0, 0), img.GetBlue(0, 0)) == (0, 255, 0)
     dlg.Destroy()
@@ -37,8 +36,7 @@ def test_labels_dialog_displays_color_rect():
     from app.ui.labels_dialog import LabelsDialog
 
     dlg = LabelsDialog(None, [Label("ui", "#ff0000")])
-    assert dlg.list.GetItemText(0, 1) == ""
-    img_idx = dlg.list.GetItem(0, 1).GetImage()
+    img_idx = dlg.list.GetItem(0).GetImage()
     assert img_idx != -1
     img = dlg.list.GetImageList(wx.IMAGE_LIST_SMALL).GetBitmap(img_idx).ConvertToImage()
     assert (img.GetRed(0, 0), img.GetGreen(0, 0), img.GetBlue(0, 0)) == (255, 0, 0)
@@ -170,6 +168,45 @@ def test_main_frame_manage_labels_saves(monkeypatch, tmp_path):
     assert labels[0].color == "#123456"
     assert ("editor", ["ui"]) in captured
     assert ("panel", ["ui"]) in captured
+
+    frame.Destroy()
+    app.Destroy()
+
+
+def test_main_frame_manage_labels_deletes_used(monkeypatch, tmp_path):
+    wx, app, frame, main_frame_mod = _prepare_frame(monkeypatch, tmp_path)
+
+    class DummyLabelsDialog:
+        def __init__(self, parent, labels):
+            self._labels = []
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def get_labels(self):
+            return self._labels
+
+        def Destroy(self):
+            pass
+
+    calls = {}
+
+    def fake_message(msg, *args, **kwargs):
+        calls["msg"] = msg
+        return wx.YES
+
+    monkeypatch.setattr(main_frame_mod, "LabelsDialog", DummyLabelsDialog)
+    monkeypatch.setattr(wx, "MessageBox", fake_message)
+
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, frame.manage_labels_id)
+    frame.ProcessEvent(evt)
+
+    assert calls
+    from app.core import store
+    data, _ = store.load(tmp_path / "1.json")
+    assert data["labels"] == []
+    req = frame.model.get_all()[0]
+    assert req.labels == []
 
     frame.Destroy()
     app.Destroy()

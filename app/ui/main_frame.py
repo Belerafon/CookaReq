@@ -246,12 +246,42 @@ class MainFrame(wx.Frame):
             return
         dlg = LabelsDialog(self, self.labels)
         if dlg.ShowModal() == wx.ID_OK:
-            self.labels = dlg.get_labels()
+            new_labels = dlg.get_labels()
+            old_names = {lbl.name for lbl in self.labels}
+            new_names = {lbl.name for lbl in new_labels}
+            removed = old_names - new_names
+            used: Dict[str, list[int]] = {}
+            if removed:
+                for lbl in removed:
+                    ids = [req.id for req in self.model.get_all() if lbl in req.labels]
+                    if ids:
+                        used[lbl] = ids
+            if used:
+                lines = [f"{k}: {', '.join(map(str, v))}" for k, v in used.items()]
+                msg = _(
+                    "Labels in use will be removed from requirements:\n%s\nContinue?"
+                ) % "\n".join(lines)
+                res = wx.MessageBox(
+                    msg, _("Confirm"), style=wx.YES_NO | wx.ICON_WARNING
+                )
+                if res != wx.YES:
+                    dlg.Destroy()
+                    return
+                removed_set = set(used)
+                for req in self.model.get_all():
+                    before = list(req.labels)
+                    req.labels = [l for l in req.labels if l not in removed_set]
+                    if before != req.labels:
+                        try:
+                            store.save(self.current_dir, req)
+                        except Exception as exc:  # pragma: no cover - disk errors
+                            logger.warning("Failed to save %s: %s", req.id, exc)
+                self.panel.refresh()
+            self.labels = new_labels
             try:
                 store.save_labels(self.current_dir, self.labels)
             except Exception as exc:  # pragma: no cover - disk errors
                 logger.warning("Failed to save labels: %s", exc)
-            self.panel.refresh()
             names = [lbl.name for lbl in self.labels]
             self.editor.update_labels_list(names)
             self.panel.update_labels_list(names)
@@ -309,8 +339,9 @@ class MainFrame(wx.Frame):
         if not self.current_dir:
             return
         existing_colors = {lbl.name: lbl.color for lbl in self.labels}
-        names = sorted({l for req in self.model.get_all() for l in req.labels})
-        self.labels = [Label(name=n, color=existing_colors.get(n, "#ffffff")) for n in names]
+        used_names = {l for req in self.model.get_all() for l in req.labels}
+        all_names = sorted(existing_colors.keys() | used_names)
+        self.labels = [Label(name=n, color=existing_colors.get(n, "#ffffff")) for n in all_names]
         try:
             store.save_labels(self.current_dir, self.labels)
         except Exception as exc:

@@ -85,6 +85,9 @@ class RequirementModel:
                     return int(value)
                 except Exception:
                     return 0
+            if self._sort_field == "labels" and isinstance(value, list):
+                # сортируем по первой метке, остальные не учитываем
+                return value[0] if value else ""
             return value
 
         self._visible.sort(key=get_value, reverse=not self._sort_ascending)

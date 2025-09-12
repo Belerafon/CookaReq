@@ -40,7 +40,13 @@ class MainFrame(wx.Frame):
     def __init__(self, parent: wx.Window | None):
         self._base_title = "CookaReq"
         self.config = wx.Config(appName="CookaReq")
-        self.available_fields = [f.name for f in fields(Requirement) if f.name != "title"]
+        # ``Requirement`` содержит множество полей, но в списке колонок
+        # нам нужны только скалярные значения. Метки отображаются особым
+        # образом, поэтому добавим их вручную в конец списка.
+        self.available_fields = [
+            f.name for f in fields(Requirement) if f.name not in {"title", "labels"}
+        ]
+        self.available_fields.append("labels")
         self.selected_fields = self._load_columns()
         self.recent_dirs = self._load_recent_dirs()
         self._recent_items: Dict[int, Path] = {}

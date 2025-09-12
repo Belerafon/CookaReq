@@ -11,6 +11,9 @@ from .labels import Label
 
 LABELS_FILENAME = "labels.json"
 
+# in-memory cache of requirement ids per directory
+_ID_CACHE: dict[Path, set[int]] = {}
+
 
 class ConflictError(Exception):
     """Raised when a file was modified on disk since loading."""
@@ -30,10 +33,11 @@ def load(path: str | Path) -> tuple[dict, float]:
     return data, mtime
 
 
-def _existing_ids(directory: Path, exclude: Path) -> set[int]:
+def _scan_ids(directory: Path) -> set[int]:
+    """Scan ``directory`` for requirement ids."""
     ids: set[int] = set()
     for fp in directory.glob("*.json"):
-        if fp == exclude or fp.name == LABELS_FILENAME:
+        if fp.name == LABELS_FILENAME:
             continue
         try:
             with fp.open("r", encoding="utf-8") as fh:
@@ -42,6 +46,33 @@ def _existing_ids(directory: Path, exclude: Path) -> set[int]:
             logging.warning("Failed to read %s: %s", fp, exc)
             continue
     return ids
+
+
+def load_index(directory: str | Path) -> set[int]:
+    """Return cached ids for ``directory``, loading once if needed."""
+    path = Path(directory)
+    ids = _ID_CACHE.get(path)
+    if ids is None:
+        ids = _scan_ids(path)
+        _ID_CACHE[path] = ids
+    return ids
+
+
+def add_to_index(directory: str | Path, req_id: int) -> None:
+    """Add ``req_id`` to cache for ``directory``."""
+    load_index(directory).add(req_id)
+
+
+def remove_from_index(directory: str | Path, req_id: int) -> None:
+    """Remove ``req_id`` from cache for ``directory``."""
+    ids = _ID_CACHE.get(Path(directory))
+    if ids is not None:
+        ids.discard(req_id)
+
+
+def clear_index(directory: str | Path) -> None:
+    """Drop cached ids for ``directory``."""
+    _ID_CACHE.pop(Path(directory), None)
 
 
 def save(
@@ -71,7 +102,10 @@ def save(
     filename = filename_for(data["id"])
     path = directory / filename
 
-    validate(data, existing_ids=_existing_ids(directory, path))
+    ids = load_index(directory)
+    existing_ids = set(ids)
+    existing_ids.discard(data["id"])
+    validate(data, existing_ids=existing_ids)
 
     if path.exists() and mtime is not None:
         current = path.stat().st_mtime
@@ -80,7 +114,19 @@ def save(
 
     with path.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
+    add_to_index(directory, data["id"])
     return path
+
+
+def delete(directory: str | Path, req_id: int) -> None:
+    """Remove requirement ``req_id`` from ``directory`` and update cache."""
+    directory = Path(directory)
+    path = directory / filename_for(req_id)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    remove_from_index(directory, req_id)
 
 
 # ---------------------------------------------------------------------------

@@ -21,5 +21,6 @@ def validate(data: dict, existing_ids: Iterable[int] = ()) -> None:
         Iterable of identifiers already present in the store.
     """
     validate_schema(data)
-    if data["id"] in set(existing_ids):
+    ids = existing_ids if isinstance(existing_ids, set) else set(existing_ids)
+    if data["id"] in ids:
         raise ValidationError(f"duplicate id: {data['id']}")

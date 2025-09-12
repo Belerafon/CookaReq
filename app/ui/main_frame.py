@@ -183,14 +183,17 @@ class MainFrame(wx.Frame):
         self._add_recent_dir(path)
         self.SetTitle(f"{self._base_title} - {path}")
         self.current_dir = path
+        self.editor.set_directory(self.current_dir)
         self.labels = store.load_labels(self.current_dir)
         items: list[dict] = []
+        store.clear_index(self.current_dir)
         for fp in self.current_dir.glob("*.json"):
             if fp.name == store.LABELS_FILENAME:
                 continue
             try:
                 data, _ = store.load(fp)
                 items.append(data)
+                store.add_to_index(self.current_dir, data.get("id"))
             except Exception as exc:
                 logging.warning("Failed to load %s: %s", fp, exc)
                 continue
@@ -405,7 +408,7 @@ class MainFrame(wx.Frame):
             return
         self.model.delete(req_id)
         try:
-            (self.current_dir / store.filename_for(req["id"])).unlink()
+            store.delete(self.current_dir, req["id"])
         except Exception:
             pass
         self.panel.refresh()

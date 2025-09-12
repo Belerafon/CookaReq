@@ -37,6 +37,9 @@ def _build_wx_stub():
         def GetValue(self):
             return self._value
 
+    class TextCtrl(SearchCtrl):
+        pass
+
     class ComboCtrl(SearchCtrl):
         pass
 
@@ -102,6 +105,7 @@ def _build_wx_stub():
     wx_mod = types.SimpleNamespace(
         Panel=Panel,
         SearchCtrl=SearchCtrl,
+        TextCtrl=TextCtrl,
         ComboCtrl=ComboCtrl,
         CheckBox=CheckBox,
         ListCtrl=ListCtrl,
@@ -164,7 +168,7 @@ def test_list_panel_has_search_and_list(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
 
     assert isinstance(panel.search, wx_stub.SearchCtrl)
-    assert isinstance(panel.labels, wx_stub.ComboCtrl)
+    assert isinstance(panel.labels, wx_stub.TextCtrl)
     assert isinstance(panel.match_any, wx_stub.CheckBox)
     assert isinstance(panel.list, wx_stub.ListCtrl)
     assert panel.search.GetParent() is panel

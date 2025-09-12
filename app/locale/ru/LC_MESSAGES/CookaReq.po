@@ -1,0 +1,266 @@
+msgid ""
+msgstr ""
+"Language: ru\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+# Enumeration labels
+msgid "Requirement"
+msgstr "Требование"
+
+msgid "Constraint"
+msgstr "Ограничение"
+
+msgid "Interface"
+msgstr "Интерфейс"
+
+msgid "Draft"
+msgstr "Черновик"
+
+msgid "In review"
+msgstr "На рецензии"
+
+msgid "Approved"
+msgstr "Согласовано"
+
+msgid "Baselined"
+msgstr "Зафиксировано"
+
+msgid "Retired"
+msgstr "Снято с применения"
+
+msgid "Low"
+msgstr "Низкий"
+
+msgid "Medium"
+msgstr "Средний"
+
+msgid "High"
+msgstr "Высокий"
+
+msgid "Inspection"
+msgstr "Инспекция"
+
+msgid "Analysis"
+msgstr "Анализ"
+
+msgid "Demonstration"
+msgstr "Демонстрация"
+
+msgid "Test"
+msgstr "Испытание"
+
+# List panel
+msgid "Title"
+msgstr "Название"
+
+msgid "Clone"
+msgstr "Клонировать"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Edit {field}"
+msgstr "Изменить {field}"
+
+msgid "Select {field}"
+msgstr "Выберите {field}"
+
+msgid "Edit"
+msgstr "Редактирование"
+
+msgid "New value for {field}"
+msgstr "Новое значение для {field}"
+
+# Editor panel labels
+msgid "Requirement ID (number)"
+msgstr "Идентификатор требования (число)"
+
+msgid "Short title"
+msgstr "Краткое название требования"
+
+msgid "Requirement text"
+msgstr "Полный текст требования"
+
+msgid "Acceptance criteria"
+msgstr "Критерии приемки требования"
+
+msgid "Conditions"
+msgstr "Условия и режимы"
+
+msgid "Trace up"
+msgstr "Трассировка вверх"
+
+msgid "Trace down"
+msgstr "Трассировка вниз"
+
+msgid "Requirement version"
+msgstr "Версия требования"
+
+msgid "Modified at"
+msgstr "Дата изменения"
+
+msgid "Owner"
+msgstr "Ответственный за требование"
+
+msgid "Source"
+msgstr "Источник требования"
+
+msgid "Requirement type"
+msgstr "Тип требования"
+
+msgid "Status"
+msgstr "Текущий статус"
+
+msgid "Priority"
+msgstr "Приоритет исполнения"
+
+msgid "Verification method"
+msgstr "Метод проверки"
+
+# Editor panel help texts
+msgid "The 'Requirement ID' field must contain a unique integer without prefixes. It is used to reference the requirement in documentation and tests."
+msgstr "Поле 'Идентификатор требования' должно содержать уникальное целое число без префиксов. Этот номер используется для ссылок на требование в документации и тестах."
+
+msgid "Short descriptive title displayed in lists. Helps to quickly understand the requirement."
+msgstr "Введите краткое название, которое описывает суть требования. Оно отображается в списках и помогает быстро понять, о чем идет речь."
+
+msgid "Full description of what the system must do or which constraints exist."
+msgstr "Основной текст требования. Опишите, что должна делать система или какие ограничения существуют."
+
+msgid "Describe how to verify the requirement. Can be scenarios or measurable criteria."
+msgstr "Критерии приемки описывают, как проверить выполнение требования. Это могут быть сценарии или измеримые показатели."
+
+msgid "Conditions of execution and modes for the requirement."
+msgstr "Условия выполнения и режимы работы для требования."
+
+msgid "Related higher level requirements."
+msgstr "Связанные вышестоящие требования."
+
+msgid "Related lower level requirements."
+msgstr "Связанные нижестоящие требования."
+
+msgid "Current requirement version."
+msgstr "Версия текущего требования."
+
+msgid "Date of last change (set automatically)."
+msgstr "Дата последнего изменения (устанавливается автоматически)."
+
+msgid "Person or team responsible for the requirement. Provide a name or role."
+msgstr "Ответственный человек или команда за требование. Укажите имя, логин или роль."
+
+msgid "Source of the requirement: document, customer request or regulation."
+msgstr "Источник требования: документ, запрос клиента или нормативный акт."
+
+msgid "Choose requirement type: functional, constraint, interface, etc."
+msgstr "Выберите тип требования: функциональное, ограничение, интерфейс и т.д."
+
+msgid "Current processing status: draft, in review, approved, etc."
+msgstr "Текущий статус проработки требования: черновик, на рецензии, согласовано и т.п."
+
+msgid "Importance of the requirement. High priority is implemented earlier."
+msgstr "Важность требования. Высокий приоритет реализуется раньше."
+
+msgid "Method of verification: inspection, analysis, demonstration, test."
+msgstr "Метод проверки: инспекция, анализ, демонстрация, испытание."
+
+msgid "Unique integer identifier"
+msgstr "Уникальный целочисленный идентификатор"
+
+msgid "Save"
+msgstr "Сохранить"
+
+msgid "ID is required"
+msgstr "требуется указать идентификатор"
+
+msgid "ID must be an integer"
+msgstr "идентификатор должен быть целым числом"
+
+msgid "ID must be positive"
+msgstr "идентификатор должен быть положительным"
+
+msgid "Hint"
+msgstr "Подсказка"
+
+# Main frame
+msgid "&Open Folder\tCtrl+O"
+msgstr "О&ткрыть папку\tCtrl+O"
+
+msgid "Open &Recent"
+msgstr "Открыть &недавние"
+
+msgid "Settings"
+msgstr "Настройки"
+
+msgid "E&xit"
+msgstr "В&ыход"
+
+msgid "&File"
+msgstr "&Файл"
+
+msgid "Show Error Console"
+msgstr "Показать консоль ошибок"
+
+msgid "&View"
+msgstr "&Вид"
+
+msgid "Open"
+msgstr "Открыть"
+
+msgid "New"
+msgstr "Создать"
+
+msgid "Select requirements folder"
+msgstr "Выберите папку требований"
+
+msgid "File was modified on disk. Save cancelled."
+msgstr "Файл был изменён на диске. Сохранение отменено."
+
+msgid "Error"
+msgstr "Ошибка"
+
+msgid "(Copy)"
+msgstr "(Копия)"
+
+# Settings dialog
+msgid "Open last folder on startup"
+msgstr "Открывать последнюю папку при запуске"
+
+msgid "Remember sort order"
+msgstr "Запоминать порядок сортировки"
+
+# CLI strings
+msgid "CookaReq CLI"
+msgstr "CookaReq CLI"
+
+msgid "list requirements"
+msgstr "перечислить требования"
+
+msgid "requirements directory"
+msgstr "каталог требований"
+
+msgid "filter by labels"
+msgstr "фильтр по меткам"
+
+msgid "text search query"
+msgstr "текстовый запрос"
+
+msgid "fields for text search"
+msgstr "поля для текстового поиска"
+
+msgid "add requirement from JSON file"
+msgstr "добавить требование из JSON-файла"
+
+msgid "JSON file with requirement"
+msgstr "JSON-файл с требованием"
+
+msgid "edit requirement from JSON file"
+msgstr "изменить требование по JSON-файлу"
+
+msgid "JSON file with updated requirement"
+msgstr "JSON-файл с обновлённым требованием"
+
+msgid "show requirement details"
+msgstr "показать детали требования"
+
+msgid "requirement id"
+msgstr "идентификатор требования"

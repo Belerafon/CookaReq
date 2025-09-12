@@ -11,7 +11,21 @@ def test_main_runs(monkeypatch):
             self.loop_ran = True
 
     dummy_app = DummyApp()
-    wx_stub = types.SimpleNamespace(App=lambda: dummy_app)
+    class DummyLocale:
+        def __init__(self, lang):
+            self.lang = lang
+        def AddCatalog(self, name):
+            pass
+
+    def add_prefix(path):
+        return None
+
+    wx_stub = types.SimpleNamespace(
+        App=lambda: dummy_app,
+        Locale=DummyLocale,
+        LANGUAGE_DEFAULT=0,
+    )
+    wx_stub.Locale.AddCatalogLookupPathPrefix = add_prefix
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
 
     class DummyFrame:

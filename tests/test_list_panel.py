@@ -52,6 +52,46 @@ def _build_wx_stub():
         def GetValue(self):
             return self._value
 
+    class Button(Window):
+        def __init__(self, parent=None, label=""):
+            super().__init__(parent)
+            self._label = label
+        def GetLabel(self):
+            return self._label
+
+    class Dialog(Window):
+        def __init__(self, parent=None, title=""):
+            super().__init__(parent)
+            self._title = title
+        def CreateButtonSizer(self, flags):
+            return BoxSizer(0)
+        def SetSizerAndFit(self, sizer):
+            self._sizer = sizer
+        def ShowModal(self):
+            return 0
+        def Destroy(self):
+            pass
+
+    class CheckListBox(Window):
+        def __init__(self, parent=None, choices=None):
+            super().__init__(parent)
+            self._choices = choices or []
+            self._checked: set[int] = set()
+        def GetCount(self):
+            return len(self._choices)
+        def IsChecked(self, idx):
+            return idx in self._checked
+        def Check(self, idx, check=True):
+            if check:
+                self._checked.add(idx)
+            else:
+                self._checked.discard(idx)
+
+    class StaticText(Window):
+        def __init__(self, parent=None, label=""):
+            super().__init__(parent)
+            self.label = label
+
     class _BaseList(Window):
         def __init__(self, parent=None, style=0):
             super().__init__(parent)
@@ -141,12 +181,19 @@ def _build_wx_stub():
         TextCtrl=TextCtrl,
         ComboCtrl=ComboCtrl,
         CheckBox=CheckBox,
+        Button=Button,
+        Dialog=Dialog,
+        CheckListBox=CheckListBox,
+        StaticText=StaticText,
         ListCtrl=ListCtrl,
         BoxSizer=BoxSizer,
         Window=Window,
         VERTICAL=0,
         EXPAND=0,
         ALL=0,
+        OK=1,
+        CANCEL=2,
+        EVT_BUTTON=object(),
         LC_REPORT=0,
         EVT_LIST_ITEM_RIGHT_CLICK=object(),
         EVT_CONTEXT_MENU=object(),
@@ -190,7 +237,7 @@ def _req(id: int, title: str, **kwargs) -> Requirement:
     return Requirement(**base)
 
 
-def test_list_panel_has_search_and_list(monkeypatch):
+def test_list_panel_has_filter_and_list(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -208,32 +255,14 @@ def test_list_panel_has_search_and_list(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = ListPanel(frame, model=RequirementModel())
 
-    assert isinstance(panel.search, wx_stub.SearchCtrl)
-    assert isinstance(panel.labels, wx_stub.TextCtrl)
-    assert isinstance(panel.match_any, wx_stub.CheckBox)
-    assert isinstance(panel.is_derived, wx_stub.CheckBox)
-    assert isinstance(panel.has_derived, wx_stub.CheckBox)
-    assert isinstance(panel.suspect_only, wx_stub.CheckBox)
+    assert isinstance(panel.filter_btn, wx_stub.Button)
     assert isinstance(panel.list, ulc.UltimateListCtrl)
-    assert panel.search.GetParent() is panel
-    assert panel.labels.GetParent() is panel
-    assert panel.match_any.GetParent() is panel
-    assert panel.is_derived.GetParent() is panel
-    assert panel.has_derived.GetParent() is panel
-    assert panel.suspect_only.GetParent() is panel
+    assert panel.filter_btn.GetParent() is panel
     assert panel.list.GetParent() is panel
 
     sizer = panel.GetSizer()
     children = [child.GetWindow() for child in sizer.GetChildren()]
-    assert children == [
-        panel.search,
-        panel.labels,
-        panel.match_any,
-        panel.is_derived,
-        panel.has_derived,
-        panel.suspect_only,
-        panel.list,
-    ]
+    assert children == [panel.filter_btn, panel.list]
 
 
 def test_column_click_sorts(monkeypatch):
@@ -323,6 +352,33 @@ def test_search_and_label_filters(monkeypatch):
     panel.set_label_filter(["ui"])
     panel.set_search_query("Export", fields=["title"])
     assert panel.model.get_visible() == []
+
+
+def test_apply_filters(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    panel.set_requirements([
+        _req(1, "Login", labels=["ui"], owner="alice"),
+        _req(2, "Export", labels=["report"], owner="bob"),
+    ])
+
+    panel.apply_filters({"labels": ["ui"]})
+    assert [r.id for r in panel.model.get_visible()] == [1]
+
+    panel.apply_filters({"labels": [], "field_queries": {"owner": "bob"}})
+    assert [r.id for r in panel.model.get_visible()] == [2]
 
 
 def test_labels_column_renders_joined(monkeypatch):
@@ -463,127 +519,3 @@ def test_sort_method_and_callback(monkeypatch):
     assert calls[-1] == (1, False)
 
 
-def test_label_filter_widget_calls_model(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    model_module = importlib.import_module("app.ui.requirement_model")
-    importlib.reload(model_module)
-    ListPanel = list_panel_module.ListPanel
-    RequirementModel = model_module.RequirementModel
-
-    frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
-    panel.update_labels_list(["ui", "backend"])
-
-    called: list[list[str]] = []
-    panel.model.set_label_filter = lambda labels: called.append(labels)
-    handler = panel.labels.get_bound_handler(wx_stub.EVT_TEXT)
-    panel.labels.SetValue("ui,backend")
-    handler(None)
-    assert called[-1] == ["ui", "backend"]
-    panel.labels.SetValue("")
-    handler(None)
-    assert called[-1] == []
-
-
-def test_label_filter_validates_known_labels(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    model_module = importlib.import_module("app.ui.requirement_model")
-    importlib.reload(model_module)
-    ListPanel = list_panel_module.ListPanel
-    RequirementModel = model_module.RequirementModel
-
-    frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
-    panel.update_labels_list(["ui", "backend"])
-
-    captured: list[list[str]] = []
-    panel.model.set_label_filter = lambda labels: captured.append(labels)
-    handler = panel.labels.get_bound_handler(wx_stub.EVT_TEXT)
-    panel.labels.SetValue("ui,unknown,backend,ui")
-    handler(None)
-    assert captured[-1] == ["ui", "backend"]
-    assert panel.labels.GetValue() == "ui, backend"
-
-
-def test_match_any_checkbox_affects_model(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    model_module = importlib.import_module("app.ui.requirement_model")
-    importlib.reload(model_module)
-    ListPanel = list_panel_module.ListPanel
-    RequirementModel = model_module.RequirementModel
-
-    frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
-
-    called: list[bool] = []
-    panel.model.set_label_match_all = lambda m: called.append(m)
-    handler = panel.match_any.get_bound_handler(wx_stub.EVT_CHECKBOX)
-    panel.match_any.SetValue(True)
-    handler(None)
-    assert called[-1] is False
-    panel.match_any.SetValue(False)
-    handler(None)
-    assert called[-1] is True
-
-
-def test_derived_checkboxes_affect_model(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    model_module = importlib.import_module("app.ui.requirement_model")
-    importlib.reload(model_module)
-    ListPanel = list_panel_module.ListPanel
-    RequirementModel = model_module.RequirementModel
-
-    frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
-
-    called: list[tuple[str, bool]] = []
-    panel.model.set_is_derived = lambda v: called.append(("is", v))
-    panel.model.set_has_derived = lambda v: called.append(("has", v))
-    panel.model.set_suspect_only = lambda v: called.append(("suspect", v))
-
-    handler = panel.is_derived.get_bound_handler(wx_stub.EVT_CHECKBOX)
-    panel.is_derived.SetValue(True)
-    handler(None)
-    assert called[-1] == ("is", True)
-
-    handler = panel.has_derived.get_bound_handler(wx_stub.EVT_CHECKBOX)
-    panel.has_derived.SetValue(True)
-    handler(None)
-    assert called[-1] == ("has", True)
-
-    handler = panel.suspect_only.get_bound_handler(wx_stub.EVT_CHECKBOX)
-    panel.suspect_only.SetValue(True)
-    handler(None)
-    assert called[-1] == ("suspect", True)

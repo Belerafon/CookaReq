@@ -169,7 +169,14 @@ class MainFrame(wx.Frame):
             return
         try:
             self.editor.save(self.current_dir)
-        except ValueError as exc:  # pragma: no cover - GUI event
+        except store.ConflictError:  # pragma: no cover - GUI event
+            wx.MessageBox(
+                "Файл был изменён на диске. Сохранение отменено.",
+                "Ошибка",
+                wx.ICON_ERROR,
+            )
+            return
+        except Exception as exc:  # pragma: no cover - GUI event
             wx.MessageBox(str(exc), "Ошибка", wx.ICON_ERROR)
             return
         data = self.editor.get_data()

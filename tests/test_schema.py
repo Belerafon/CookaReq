@@ -34,3 +34,35 @@ def test_validate_rejects_bad_enum():
     data["type"] = "bad"
     with pytest.raises(ValueError):
         validate(data)
+
+
+def test_derived_from_and_derivation_valid():
+    data = make_valid()
+    data["derived_from"] = [
+        {"source_id": 2, "source_revision": 1, "suspect": True}
+    ]
+    data["derivation"] = {
+        "rationale": "r",
+        "assumptions": ["a"],
+        "method": "m",
+        "margin": "10%",
+    }
+    validate(data)
+
+
+def test_derived_from_missing_field():
+    data = make_valid()
+    data["derived_from"] = [{"source_id": 2}]
+    with pytest.raises(ValueError):
+        validate(data)
+
+
+def test_derivation_missing_field():
+    data = make_valid()
+    data["derivation"] = {
+        "rationale": "r",
+        "assumptions": ["a"],
+        "method": "m",
+    }
+    with pytest.raises(ValueError):
+        validate(data)

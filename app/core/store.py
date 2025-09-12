@@ -107,7 +107,7 @@ def save(
     ids = load_index(directory)
     existing_ids = set(ids)
     existing_ids.discard(data["id"])
-    validate(data, existing_ids=existing_ids)
+    validate(data, directory, existing_ids=existing_ids)
 
     if path.exists() and mtime is not None:
         current = path.stat().st_mtime

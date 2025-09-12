@@ -33,7 +33,14 @@ def test_switch_to_russian_updates_ui(monkeypatch):
         def ShowModal(self):
             return wx.ID_OK
         def get_values(self):
-            return frame.auto_open_last, frame.remember_sort, "ru"
+            return (
+                frame.auto_open_last,
+                frame.remember_sort,
+                "ru",
+                frame.mcp_host,
+                frame.mcp_port,
+                frame.mcp_base_path,
+            )
         def Destroy(self):
             pass
 

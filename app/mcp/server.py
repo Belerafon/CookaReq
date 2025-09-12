@@ -21,6 +21,12 @@ from mcp.server.fastmcp import FastMCP
 # be added by the GUI part of the application if needed.
 app = FastAPI()
 
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    """Simple readiness probe used by external tools."""
+    return {"status": "ok"}
+
 # FastMCP provides the server-side implementation of the MCP protocol.
 # Using the default configuration is sufficient for exposing an HTTP
 # endpoint that tools like the MCP SDK can connect to.
@@ -36,12 +42,13 @@ _uvicorn_server: Optional[uvicorn.Server] = None
 _server_thread: Optional[threading.Thread] = None
 
 
-def start_server(host: str = "127.0.0.1", port: int = 8000) -> None:
+def start_server(host: str = "127.0.0.1", port: int = 8000, base_path: str = "") -> None:
     """Start the HTTP server in a background thread.
 
     Args:
         host: Interface to bind the server to.
         port: TCP port where the server listens.
+        base_path: Base filesystem path available to the MCP server.
     """
     global _uvicorn_server, _server_thread
 
@@ -49,6 +56,7 @@ def start_server(host: str = "127.0.0.1", port: int = 8000) -> None:
         # Server already running
         return
 
+    app.state.base_path = base_path
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     _uvicorn_server = uvicorn.Server(config)
     # Disable signal handlers so uvicorn can run outside the main thread

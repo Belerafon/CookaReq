@@ -18,6 +18,7 @@ class RequirementModel:
         self._labels_match_all: bool = True
         self._query: str = ""
         self._fields: Sequence[str] | None = None
+        self._field_queries: dict[str, str] = {}
         self._is_derived: bool = False
         self._has_derived: bool = False
         self._suspect_only: bool = False
@@ -80,6 +81,11 @@ class RequirementModel:
         self._suspect_only = value
         self._refresh()
 
+    def set_field_queries(self, queries: dict[str, str]) -> None:
+        """Set per-field text filters."""
+        self._field_queries = queries
+        self._refresh()
+
     # sorting ---------------------------------------------------------
     def sort(self, field: str, ascending: bool = True) -> None:
         self._sort_field = field
@@ -93,6 +99,7 @@ class RequirementModel:
             labels=self._labels,
             query=self._query,
             fields=self._fields,
+            field_queries=self._field_queries,
             match_all=self._labels_match_all,
             is_derived=self._is_derived,
             has_derived=self._has_derived,

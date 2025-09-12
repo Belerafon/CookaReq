@@ -42,11 +42,11 @@ def test_list_panel_real_widgets():
     from wx.lib.agw import ultimatelistctrl as ULC
 
     assert panel in frame.GetChildren()
-    assert isinstance(panel.search, wx.SearchCtrl)
+    assert isinstance(panel.filter_btn, wx.Button)
     assert isinstance(panel.list, ULC.UltimateListCtrl)
-    assert panel.search.GetParent() is panel
+    assert panel.filter_btn.GetParent() is panel
     assert panel.list.GetParent() is panel
-    assert panel.search.IsShown()
+    assert panel.filter_btn.IsShown()
     assert panel.list.IsShown()
 
     frame.Destroy()

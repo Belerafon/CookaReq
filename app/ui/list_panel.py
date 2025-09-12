@@ -11,6 +11,7 @@ from enum import Enum
 
 from app.core.model import Priority, RequirementType, Status, Verification, Requirement
 from .requirement_model import RequirementModel
+from .filter_dialog import FilterDialog
 from . import locale
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -55,7 +56,7 @@ class _LabelsRenderer:
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):
-    """Panel with a search box and list of requirement fields."""
+    """Panel with a filter button and list of requirement fields."""
 
     MIN_COL_WIDTH = 50
     MAX_COL_WIDTH = 1000
@@ -73,34 +74,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         wx.Panel.__init__(self, parent)
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self.search = wx.SearchCtrl(self)
-        self.labels = wx.TextCtrl(self)
-        self._label_choices: list[str] = []
-        self._ignore_label_event = False
-        self.match_any = wx.CheckBox(self, label=_("Match any labels"))
-        self.is_derived = wx.CheckBox(self, label=_("Derived only"))
-        self.has_derived = wx.CheckBox(self, label=_("Has derived"))
-        self.suspect_only = wx.CheckBox(self, label=_("Suspect only"))
-        # На Windows ``SearchCtrl`` рисует пустые белые квадраты вместо
-        # иконок поиска/сброса, если битмапы не заданы. Загрузим стандартные
-        # изображения через ``wx.ArtProvider`` и включим обе кнопки. Для
-        # тестов, где используется упрощённый заглушечный ``wx``, все вызовы
-        # защищены через ``hasattr``.
-        if hasattr(wx, "ArtProvider"):
-            size = (16, 16)
-            if hasattr(self.search, "SetSearchBitmap"):
-                bmp = wx.ArtProvider.GetBitmap(wx.ART_FIND, wx.ART_TOOLBAR, size)
-                if bmp.IsOk():
-                    self.search.SetSearchBitmap(bmp)
-            if hasattr(self.search, "SetCancelBitmap"):
-                bmp = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR, size)
-                if bmp.IsOk():
-                    self.search.SetCancelBitmap(bmp)
-        if hasattr(self.search, "ShowSearchButton"):
-            self.search.ShowSearchButton(True)
-        if hasattr(self.search, "ShowCancelButton"):
-            self.search.ShowCancelButton(True)
+        self.filter_btn = wx.Button(self, label=_("Filters"))
         self.list = ULC.UltimateListCtrl(self, agwStyle=ULC.ULC_REPORT)
+        self._label_choices: list[str] = []
+        self.current_filters: dict = {}
         ColumnSorterMixin.__init__(self, 1)
         self.columns: List[str] = []
         self._on_clone = on_clone
@@ -111,22 +88,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._sort_column = -1
         self._sort_ascending = True
         self._setup_columns()
-        sizer.Add(self.search, 0, wx.EXPAND | wx.ALL, 5)
-        sizer.Add(self.labels, 0, wx.EXPAND | wx.ALL, 5)
-        sizer.Add(self.match_any, 0, wx.ALL, 5)
-        sizer.Add(self.is_derived, 0, wx.ALL, 5)
-        sizer.Add(self.has_derived, 0, wx.ALL, 5)
-        sizer.Add(self.suspect_only, 0, wx.ALL, 5)
+        sizer.Add(self.filter_btn, 0, wx.ALL, 5)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         self.SetSizer(sizer)
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
         self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
-        self.search.Bind(wx.EVT_TEXT, self._on_search)
-        self.labels.Bind(wx.EVT_TEXT, self._on_labels_changed)
-        self.match_any.Bind(wx.EVT_CHECKBOX, self._on_match_any)
-        self.is_derived.Bind(wx.EVT_CHECKBOX, self._on_is_derived)
-        self.has_derived.Bind(wx.EVT_CHECKBOX, self._on_has_derived)
-        self.suspect_only.Bind(wx.EVT_CHECKBOX, self._on_suspect_only)
+        self.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter)
 
     # ColumnSorterMixin requirement
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
@@ -241,75 +208,42 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._refresh()
 
     # filtering -------------------------------------------------------
-    def set_label_filter(self, labels: List[str]) -> None:
-        """Filter by requirement labels."""
-        self.model.set_label_filter(labels)
+    def apply_filters(self, filters: dict) -> None:
+        """Apply filters to the underlying model."""
+        self.current_filters.update(filters)
+        self.model.set_label_filter(self.current_filters.get("labels", []))
+        self.model.set_label_match_all(not self.current_filters.get("match_any", False))
+        fields = self.current_filters.get("fields")
+        self.model.set_search_query(self.current_filters.get("query", ""), fields)
+        self.model.set_field_queries(self.current_filters.get("field_queries", {}))
+        self.model.set_is_derived(self.current_filters.get("is_derived", False))
+        self.model.set_has_derived(self.current_filters.get("has_derived", False))
+        self.model.set_suspect_only(self.current_filters.get("suspect_only", False))
         self._refresh()
 
+    def set_label_filter(self, labels: List[str]) -> None:
+        self.apply_filters({"labels": labels})
+
+    def set_search_query(self, query: str, fields: Sequence[str] | None = None) -> None:
+        filters = {"query": query}
+        if fields is not None:
+            filters["fields"] = list(fields)
+        self.apply_filters(filters)
+
     def update_labels_list(self, labels: list[str]) -> None:
-        """Update available labels and reapply current filter."""
-        # keep unique order
+        """Update available labels for the filter dialog."""
         seen: dict[str, None] = {}
         for lbl in labels:
             seen.setdefault(lbl, None)
         self._label_choices = list(seen.keys())
-        if hasattr(self.labels, "AutoComplete"):
-            self.labels.AutoComplete(self._label_choices)
-        self._apply_label_filter()
 
-    def _sanitize_labels(self, raw: str) -> list[str]:
-        labels: list[str] = []
-        for part in [l.strip() for l in raw.split(",") if l.strip()]:
-            if part in self._label_choices and part not in labels:
-                labels.append(part)
-        return labels
-
-    def _apply_label_filter(self) -> None:
-        labels = self._sanitize_labels(self.labels.GetValue())
-        text = ", ".join(labels)
-        if self.labels.GetValue() != text:
-            self._ignore_label_event = True
-            self.labels.SetValue(text)
-            self._ignore_label_event = False
-        self.set_label_filter(labels)
-
-    def _on_labels_changed(self, event):  # pragma: no cover - simple event binding
-        if self._ignore_label_event:
-            if hasattr(event, "Skip"):
-                event.Skip()
-            return
-        self._apply_label_filter()
+    def _on_filter(self, event):  # pragma: no cover - simple event binding
+        dlg = FilterDialog(self, labels=self._label_choices, values=self.current_filters)
+        if dlg.ShowModal() == wx.ID_OK:
+            self.apply_filters(dlg.get_filters())
+        dlg.Destroy()
         if hasattr(event, "Skip"):
             event.Skip()
-
-    def _on_match_any(self, event):  # pragma: no cover - simple event binding
-        self.model.set_label_match_all(not self.match_any.GetValue())
-        if hasattr(event, "Skip"):
-            event.Skip()
-
-    def _on_is_derived(self, event):  # pragma: no cover - simple event binding
-        self.model.set_is_derived(self.is_derived.GetValue())
-        if hasattr(event, "Skip"):
-            event.Skip()
-
-    def _on_has_derived(self, event):  # pragma: no cover - simple event binding
-        self.model.set_has_derived(self.has_derived.GetValue())
-        if hasattr(event, "Skip"):
-            event.Skip()
-
-    def _on_suspect_only(self, event):  # pragma: no cover - simple event binding
-        self.model.set_suspect_only(self.suspect_only.GetValue())
-        if hasattr(event, "Skip"):
-            event.Skip()
-
-    def set_search_query(self, query: str, fields: Sequence[str] | None = None) -> None:
-        """Apply text search across ``fields``."""
-        self.model.set_search_query(query, fields)
-        self._refresh()
-
-    def _on_search(self, event):  # pragma: no cover - simple event binding
-        self.set_search_query(self.search.GetValue())
-        event.Skip()
 
     def _refresh(self) -> None:
         """Reload list control from the model."""

@@ -1,7 +1,7 @@
 """In-memory search helpers for requirements."""
 from __future__ import annotations
 
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Sequence, Mapping
 
 from .model import Requirement
 
@@ -63,6 +63,29 @@ def search_text(
     return result
 
 
+def filter_text_fields(
+    requirements: Iterable[Requirement],
+    queries: Mapping[str, str],
+) -> List[Requirement]:
+    """Filter requirements by individual field queries.
+
+    ``queries`` maps field names to case-insensitive substrings that must be
+    present in the corresponding field. Fields outside of
+    :data:`SEARCHABLE_FIELDS` or empty query strings are ignored. A requirement
+    must satisfy *all* provided field queries to be included in the result.
+    """
+
+    reqs = list(requirements)
+    if not queries:
+        return reqs
+    for field, query in queries.items():
+        if not query or field not in SEARCHABLE_FIELDS:
+            continue
+        q = query.lower()
+        reqs = [r for r in reqs if q in str(getattr(r, field, "")).lower()]
+    return reqs
+
+
 def filter_is_derived(
     requirements: Iterable[Requirement],
     *,
@@ -122,6 +145,7 @@ def search(
     is_derived: bool = False,
     has_derived: bool = False,
     suspect_only: bool = False,
+    field_queries: Mapping[str, str] | None = None,
 ) -> List[Requirement]:
     """Filter requirements by ``labels`` and ``query`` across ``fields``.
 
@@ -133,6 +157,8 @@ def search(
     reqs = filter_by_labels(all_reqs, labels or [], match_all=match_all)
     if query:
         reqs = search_text(reqs, query, fields or list(SEARCHABLE_FIELDS))
+    if field_queries:
+        reqs = filter_text_fields(reqs, field_queries)
     if is_derived:
         reqs = filter_is_derived(reqs, suspect_only=suspect_only)
     if has_derived:

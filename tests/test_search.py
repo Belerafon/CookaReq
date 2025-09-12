@@ -121,3 +121,11 @@ def test_search_with_derived_filters():
     assert [r.id for r in search(reqs, has_derived=True, suspect_only=True)] == [2]
 
 
+def test_field_queries():
+    reqs = sample_requirements()
+    found = search(reqs, field_queries={"owner": "alice"})
+    assert [r.id for r in found] == [1]
+    found = search(reqs, field_queries={"title": "report", "owner": "carol"})
+    assert [r.id for r in found] == [3]
+
+

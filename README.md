@@ -66,6 +66,14 @@ Each requirement is stored in its own `<id>.json` file and contains the followin
 
 The interface uses `gettext`. If the corresponding `.mo` files are available, the language is selected automatically based on system settings.
 
+## Development
+
+Install the package along with development dependencies:
+
+```bash
+pip install .[dev]
+```
+
 ## License
 
 This project is distributed under the [Apache License 2.0](LICENSE).

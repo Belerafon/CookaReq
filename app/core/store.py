@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 import json
+import logging
 from pathlib import Path
 
 from .validate import validate
@@ -34,7 +35,8 @@ def _existing_ids(directory: Path, exclude: Path) -> set[int]:
         try:
             with fp.open("r", encoding="utf-8") as fh:
                 ids.add(json.load(fh)["id"])
-        except Exception:
+        except Exception as exc:
+            logging.warning("Failed to read %s: %s", fp, exc)
             continue
     return ids
 

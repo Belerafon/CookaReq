@@ -1,5 +1,6 @@
 """Main application window."""
 
+import logging
 import wx
 from pathlib import Path
 from dataclasses import fields
@@ -11,6 +12,21 @@ from .list_panel import ListPanel
 from .editor_panel import EditorPanel
 from .settings_dialog import SettingsDialog
 from .requirement_model import RequirementModel
+
+
+class WxLogHandler(logging.Handler):
+    """Forward log records to a ``wx.TextCtrl``."""
+
+    def __init__(self, target: wx.TextCtrl) -> None:
+        super().__init__()
+        self._target = target
+        self.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - GUI side effect
+        if not wx.GetApp():
+            return
+        msg = self.format(record)
+        wx.CallAfter(self._target.AppendText, msg + "\n")
 
 
 class MainFrame(wx.Frame):
@@ -31,7 +47,10 @@ class MainFrame(wx.Frame):
         self.model = RequirementModel()
         self._create_menu()
         self._create_toolbar()
-        self.splitter = wx.SplitterWindow(self)
+
+        # split horizontally: top is main content, bottom is log console
+        self.main_splitter = wx.SplitterWindow(self)
+        self.splitter = wx.SplitterWindow(self.main_splitter)
         self.panel = ListPanel(
             self.splitter,
             model=self.model,
@@ -43,8 +62,21 @@ class MainFrame(wx.Frame):
         self.editor = EditorPanel(self.splitter, on_save=self._on_editor_save)
         self.splitter.SplitVertically(self.panel, self.editor, 300)
         self.editor.Hide()
+
+        self.log_console = wx.TextCtrl(
+            self.main_splitter,
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP,
+        )
+        self.log_handler = WxLogHandler(self.log_console)
+        self.log_handler.setLevel(logging.WARNING)
+        root_logger = logging.getLogger()
+        for h in list(root_logger.handlers):
+            if isinstance(h, WxLogHandler):
+                root_logger.removeHandler(h)
+        root_logger.addHandler(self.log_handler)
+
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(self.splitter, 1, wx.EXPAND)
+        sizer.Add(self.main_splitter, 1, wx.EXPAND)
         self.SetSizer(sizer)
         self._load_layout()
         self.current_dir: Path | None = None
@@ -76,6 +108,8 @@ class MainFrame(wx.Frame):
             item.Check(field in self.selected_fields)
             self.Bind(wx.EVT_MENU, self.on_toggle_column, item)
             self._column_items[item.GetId()] = field
+        self.log_menu_item = view_menu.AppendCheckItem(wx.ID_ANY, "Show Error Console")
+        self.Bind(wx.EVT_MENU, self.on_toggle_log_console, self.log_menu_item)
         menu_bar.Append(view_menu, "&View")
         self.SetMenuBar(menu_bar)
 
@@ -121,7 +155,8 @@ class MainFrame(wx.Frame):
             try:
                 data, _ = store.load(fp)
                 items.append(data)
-            except Exception:
+            except Exception as exc:
+                logging.warning("Failed to load %s: %s", fp, exc)
                 continue
         self.panel.set_requirements(items)
         if self.remember_sort and self.sort_column != -1:
@@ -196,6 +231,17 @@ class MainFrame(wx.Frame):
         self.panel.load_column_order(self.config)
         self._save_columns()
 
+    def on_toggle_log_console(self, event: wx.CommandEvent) -> None:
+        if self.log_menu_item.IsChecked():
+            sash = self.config.ReadInt("log_sash", self.GetClientSize().height - 150)
+            self.main_splitter.SplitHorizontally(self.splitter, self.log_console, sash)
+        else:
+            if self.main_splitter.IsSplit():
+                self.config.WriteInt("log_sash", self.main_splitter.GetSashPosition())
+            self.main_splitter.Unsplit(self.log_console)
+        self.config.WriteBool("log_shown", self.log_menu_item.IsChecked())
+        self.config.Flush()
+
     def _load_columns(self) -> list[str]:
         value = self.config.Read("list_columns", "")
         return [f for f in value.split(",") if f]
@@ -205,7 +251,7 @@ class MainFrame(wx.Frame):
         self.config.Flush()
 
     def _load_layout(self) -> None:
-        """Restore window geometry, splitter, and column widths."""
+        """Restore window geometry, splitter, console, and column widths."""
         w = self.config.ReadInt("win_w", 800)
         h = self.config.ReadInt("win_h", 600)
         w = max(400, min(w, 3000))
@@ -224,8 +270,19 @@ class MainFrame(wx.Frame):
         self.panel.load_column_widths(self.config)
         self.panel.load_column_order(self.config)
 
+        log_shown = self.config.ReadBool("log_shown", False)
+        log_sash = self.config.ReadInt("log_sash", self.GetClientSize().height - 150)
+        if log_shown:
+            self.main_splitter.SplitHorizontally(self.splitter, self.log_console, log_sash)
+            if hasattr(self, "log_menu_item"):
+                self.log_menu_item.Check(True)
+        else:
+            self.main_splitter.Initialize(self.splitter)
+            if hasattr(self, "log_menu_item"):
+                self.log_menu_item.Check(False)
+
     def _save_layout(self) -> None:
-        """Persist window geometry, splitter, and column widths."""
+        """Persist window geometry, splitter, console, and column widths."""
         w, h = self.GetSize()
         x, y = self.GetPosition()
         self.config.WriteInt("win_w", w)
@@ -233,12 +290,18 @@ class MainFrame(wx.Frame):
         self.config.WriteInt("win_x", x)
         self.config.WriteInt("win_y", y)
         self.config.WriteInt("sash_pos", self.splitter.GetSashPosition())
+        if self.main_splitter.IsSplit():
+            self.config.WriteBool("log_shown", True)
+            self.config.WriteInt("log_sash", self.main_splitter.GetSashPosition())
+        else:
+            self.config.WriteBool("log_shown", False)
         self.panel.save_column_widths(self.config)
         self.panel.save_column_order(self.config)
         self.config.Flush()
 
     def _on_close(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._save_layout()
+        logging.getLogger().removeHandler(self.log_handler)
         event.Skip()
 
     def _on_sort_changed(self, column: int, ascending: bool) -> None:

@@ -66,6 +66,10 @@ def _build_wx_stub():
             self._data[index] = data
         def GetItemData(self, index):
             return self._data[index]
+        def HitTest(self, pt):
+            return -1, 0
+        def HitTestSubItem(self, pt):
+            return -1, 0, -1
 
     class BoxSizer:
         def __init__(self, orient):
@@ -92,9 +96,11 @@ def _build_wx_stub():
         ALL=0,
         LC_REPORT=0,
         EVT_LIST_ITEM_RIGHT_CLICK=object(),
+        EVT_CONTEXT_MENU=object(),
         EVT_LIST_COL_CLICK=object(),
         EVT_TEXT=object(),
         Config=Config,
+        ContextMenuEvent=types.SimpleNamespace,
     )
     class ColumnSorterMixin:
         def __init__(self, *args, **kwargs):

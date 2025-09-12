@@ -12,7 +12,7 @@ from .requirement_model import RequirementModel
 from . import locale
 
 if TYPE_CHECKING:  # pragma: no cover
-    from wx import ListEvent
+    from wx import ListEvent, ContextMenuEvent
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):
@@ -66,6 +66,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         self.SetSizer(sizer)
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
+        self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
         self.search.Bind(wx.EVT_TEXT, self._on_search)
 
     # ColumnSorterMixin requirement
@@ -218,12 +219,34 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._on_sort_changed(self._sort_column, self._sort_ascending)
 
     # context menu ----------------------------------------------------
-    def _on_right_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event
-        x, y = event.GetPoint()
-        _, _, col = self.list.HitTest((x, y))
-        menu, _, _, _ = self._create_context_menu(event.GetIndex(), col)
+    def _popup_context_menu(self, index: int, column: int | None) -> None:
+        menu, _, _, _ = self._create_context_menu(index, column)
         self.PopupMenu(menu)
         menu.Destroy()
+
+    def _on_right_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event
+        x, y = event.GetPoint()
+        if hasattr(self.list, "HitTestSubItem"):
+            _, _, col = self.list.HitTestSubItem((x, y))
+        else:  # pragma: no cover - fallback for older wx
+            _, _ = self.list.HitTest((x, y))
+            col = None
+        self._popup_context_menu(event.GetIndex(), col)
+
+    def _on_context_menu(self, event: "ContextMenuEvent") -> None:  # pragma: no cover - GUI event
+        pos = event.GetPosition()
+        if pos == wx.DefaultPosition:
+            pos = wx.GetMousePosition()
+        pt = self.list.ScreenToClient(pos)
+        if hasattr(self.list, "HitTestSubItem"):
+            index, _, col = self.list.HitTestSubItem(pt)
+        else:  # pragma: no cover - fallback for older wx
+            index, _ = self.list.HitTest(pt)
+            col = None
+        if index == wx.NOT_FOUND:
+            return
+        self.list.Select(index)
+        self._popup_context_menu(index, col)
 
     def _field_from_column(self, col: int | None) -> str | None:
         if col is None or col < 0:

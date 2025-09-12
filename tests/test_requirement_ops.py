@@ -64,14 +64,14 @@ def test_link_requirements(tmp_path: Path):
     create_requirement(tmp_path, _base_req(2))
 
     # link
-    link_requirements(tmp_path, source_id=1, derived_id=2, rev=1)
+    link_requirements(tmp_path, source_id=1, derived_id=2, link_type="derived_from", rev=1)
     path = tmp_path / filename_for(2)
     data, _ = load(path)
     assert data["revision"] == 2
     assert data["derived_from"] == [{"source_id": 1, "source_revision": 1, "suspect": False}]
 
     # outdated rev
-    err = link_requirements(tmp_path, source_id=1, derived_id=2, rev=1)
+    err = link_requirements(tmp_path, source_id=1, derived_id=2, link_type="derived_from", rev=1)
     assert err["error"]["code"] == ErrorCode.CONFLICT
 
     # patching derived_from should be prohibited
@@ -136,12 +136,12 @@ def test_delete_requirement_errors(tmp_path: Path, monkeypatch) -> None:
 def test_link_requirements_errors(tmp_path: Path, monkeypatch) -> None:
     # missing source
     create_requirement(tmp_path, _base_req(2))
-    err = link_requirements(tmp_path, source_id=1, derived_id=2, rev=1)
+    err = link_requirements(tmp_path, source_id=1, derived_id=2, link_type="derived_from", rev=1)
     assert err["error"]["code"] == ErrorCode.NOT_FOUND
 
     # missing derived
     create_requirement(tmp_path, _base_req(1))
-    err = link_requirements(tmp_path, source_id=1, derived_id=3, rev=1)
+    err = link_requirements(tmp_path, source_id=1, derived_id=3, link_type="derived_from", rev=1)
     assert err["error"]["code"] == ErrorCode.NOT_FOUND
 
     def val_err(*args, **kwargs):  # noqa: ANN001, ANN002
@@ -149,7 +149,7 @@ def test_link_requirements_errors(tmp_path: Path, monkeypatch) -> None:
 
     orig = tools_write.requirement_from_dict
     monkeypatch.setattr(tools_write, "requirement_from_dict", val_err)
-    err = link_requirements(tmp_path, source_id=1, derived_id=2, rev=1)
+    err = link_requirements(tmp_path, source_id=1, derived_id=2, link_type="derived_from", rev=1)
     assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
 
     monkeypatch.setattr(tools_write, "requirement_from_dict", orig)
@@ -158,5 +158,28 @@ def test_link_requirements_errors(tmp_path: Path, monkeypatch) -> None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(tools_write, "save", boom)
-    err = link_requirements(tmp_path, source_id=1, derived_id=2, rev=1)
+    err = link_requirements(tmp_path, source_id=1, derived_id=2, link_type="derived_from", rev=1)
     assert err["error"]["code"] == ErrorCode.INTERNAL
+
+    err = link_requirements(tmp_path, source_id=1, derived_id=2, link_type="bogus", rev=1)
+    assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
+
+
+def test_link_requirements_types(tmp_path: Path) -> None:
+    for i in range(1, 7):
+        create_requirement(tmp_path, _base_req(i))
+
+    link_requirements(tmp_path, source_id=1, derived_id=2, link_type="parent", rev=1)
+    data, _ = load(tmp_path / filename_for(2))
+    assert data["parent"] == {"source_id": 1, "source_revision": 1, "suspect": False}
+    assert data["revision"] == 2
+
+    link_requirements(tmp_path, source_id=3, derived_id=4, link_type="verifies", rev=1)
+    data, _ = load(tmp_path / filename_for(4))
+    assert data["links"]["verifies"] == [{"source_id": 3, "source_revision": 1, "suspect": False}]
+    assert data["revision"] == 2
+
+    link_requirements(tmp_path, source_id=5, derived_id=6, link_type="relates", rev=1)
+    data, _ = load(tmp_path / filename_for(6))
+    assert data["links"]["relates"] == [{"source_id": 5, "source_revision": 1, "suspect": False}]
+    assert data["revision"] == 2

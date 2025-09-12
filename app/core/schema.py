@@ -71,6 +71,45 @@ SCHEMA: dict[str, Any] = {
                 },
             },
         },
+        "parent": {
+            "type": "object",
+            "required": ["source_id", "source_revision"],
+            "properties": {
+                "source_id": {"type": "integer"},
+                "source_revision": {"type": "integer"},
+                "suspect": {"type": "boolean"},
+            },
+        },
+        "links": {
+            "type": "object",
+            "properties": {
+                "verifies": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["source_id", "source_revision"],
+                        "properties": {
+                            "source_id": {"type": "integer"},
+                            "source_revision": {"type": "integer"},
+                            "suspect": {"type": "boolean"},
+                        },
+                    },
+                },
+                "relates": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["source_id", "source_revision"],
+                        "properties": {
+                            "source_id": {"type": "integer"},
+                            "source_revision": {"type": "integer"},
+                            "suspect": {"type": "boolean"},
+                        },
+                    },
+                },
+            },
+            "additionalProperties": False,
+        },
         "derivation": {
             "type": "object",
             "required": ["rationale", "assumptions", "method", "margin"],

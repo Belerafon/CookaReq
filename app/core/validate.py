@@ -41,13 +41,23 @@ def validate(
     if data["id"] in ids:
         raise ValidationError(f"duplicate id: {data['id']}")
 
-    for link in data.get("derived_from", []):
+    links: list[dict] = []
+    if parent := data.get("parent"):
+        links.append(parent)
+    links.extend(data.get("derived_from", []))
+    links_data = data.get("links", {})
+    links.extend(links_data.get("verifies", []))
+    links.extend(links_data.get("relates", []))
+
+    for link in links:
         src_id = link.get("source_id")
         if src_id == data["id"]:
-            raise ValidationError("derived_from references self")
+            raise ValidationError("link references self")
         if src_id not in all_ids:
             raise ValidationError(f"missing source id: {src_id}")
 
+    for link in data.get("derived_from", []):
+        src_id = link.get("source_id")
         src_path = directory / store.filename_for(src_id)
         src_data, _ = store.load(src_path)
         for back in src_data.get("derived_from", []):

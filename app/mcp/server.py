@@ -206,6 +206,7 @@ def link_requirements(
     *,
     source_id: int,
     derived_id: int,
+    link_type: str,
     rev: int,
 ) -> dict:
     """Link one requirement to another."""
@@ -214,6 +215,7 @@ def link_requirements(
         directory,
         source_id=source_id,
         derived_id=derived_id,
+        link_type=link_type,
         rev=rev,
     )
 

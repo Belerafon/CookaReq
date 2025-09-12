@@ -19,7 +19,7 @@ from app.core.store import (
 from app.mcp.utils import ErrorCode, mcp_error
 
 # Fields that must not be modified directly through patching
-UNPATCHABLE_FIELDS = {"id", "revision", "derived_from"}
+UNPATCHABLE_FIELDS = {"id", "revision", "derived_from", "parent", "links"}
 
 # Known requirement fields
 KNOWN_FIELDS = set(SCHEMA["properties"].keys())
@@ -164,6 +164,7 @@ def link_requirements(
     *,
     source_id: int,
     derived_id: int,
+    link_type: str,
     rev: int,
 ) -> dict:
     """Link ``derived_id`` requirement to ``source_id``.
@@ -186,9 +187,22 @@ def link_requirements(
     if current != rev:
         return mcp_error(ErrorCode.CONFLICT, f"revision mismatch: expected {rev}, have {current}")
 
-    links = [l for l in data.get("derived_from", []) if l.get("source_id") != source_id]
-    links.append({"source_id": source_id, "source_revision": src_revision, "suspect": False})
-    data["derived_from"] = links
+    if link_type not in {"parent", "derived_from", "verifies", "relates"}:
+        return mcp_error(ErrorCode.VALIDATION_ERROR, f"invalid link_type: {link_type}")
+
+    link = {"source_id": source_id, "source_revision": src_revision, "suspect": False}
+    if link_type == "parent":
+        data["parent"] = link
+    elif link_type == "derived_from":
+        links = [l for l in data.get("derived_from", []) if l.get("source_id") != source_id]
+        links.append(link)
+        data["derived_from"] = links
+    else:
+        links_obj = data.get("links", {})
+        lst = [l for l in links_obj.get(link_type, []) if l.get("source_id") != source_id]
+        lst.append(link)
+        links_obj[link_type] = lst
+        data["links"] = links_obj
     data["revision"] = current + 1
     try:
         obj = requirement_from_dict(data)

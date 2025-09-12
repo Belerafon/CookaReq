@@ -69,6 +69,7 @@ def test_editor_load_populates_fields(tmp_path):
         "notes": "Note",
     }
     path = tmp_path / "req.json"
+    panel.update_labels_list(["L"])
     panel.load(data, path=path, mtime=42.0)
 
     result = panel.get_data()

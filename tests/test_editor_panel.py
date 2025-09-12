@@ -124,3 +124,22 @@ def test_enum_localization_roundtrip():
     assert data["priority"] == "low"
     assert data["verification"] == "demonstration"
 
+
+def test_labels_selection_and_update():
+    panel = _make_panel()
+    panel.update_labels_list(["ui", "backend"])
+    panel.new_requirement()
+    panel.fields["id"].SetValue("1")
+    # select one label
+    panel.labels_list.Check(1, True)
+    data = panel.get_data()
+    assert data["labels"] == ["backend"]
+    # load with different label
+    panel.load({"id": 1, "labels": ["ui"]})
+    assert panel.labels_list.IsChecked(0)
+    assert not panel.labels_list.IsChecked(1)
+    # update list removing old selection
+    panel.update_labels_list(["docs"])
+    assert panel.labels_list.GetCount() == 1
+    assert panel.extra["labels"] == []
+

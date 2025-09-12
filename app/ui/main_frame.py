@@ -167,6 +167,7 @@ class MainFrame(wx.Frame):
             except Exception as exc:  # pragma: no cover - disk errors
                 logging.warning("Failed to save labels: %s", exc)
             self.panel.refresh()
+            self.editor.update_labels_list([lbl.name for lbl in self.labels])
         dlg.Destroy()
 
     def _load_directory(self, path: Path) -> None:
@@ -202,6 +203,7 @@ class MainFrame(wx.Frame):
             store.save_labels(self.current_dir, self.labels)
         except Exception as exc:
             logging.warning("Failed to save labels: %s", exc)
+        self.editor.update_labels_list([lbl.name for lbl in self.labels])
 
     # recent directories -------------------------------------------------
     def _load_recent_dirs(self) -> list[str]:

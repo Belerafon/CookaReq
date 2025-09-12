@@ -243,8 +243,9 @@ class EditorPanel(wx.Panel):
 
     # data helpers -----------------------------------------------------
     def get_data(self) -> dict[str, Any]:
+        id_value = self.fields["id"].GetValue().strip()
         data = {
-            "id": int(self.fields["id"].GetValue()),
+            "id": int(id_value) if id_value else 0,
             "title": self.fields["title"].GetValue(),
             "statement": self.fields["statement"].GetValue(),
             "type": locale.ru_to_code("type", self.enums["type"].GetStringSelection()),

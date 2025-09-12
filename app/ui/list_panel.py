@@ -22,13 +22,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self,
         parent: wx.Window,
         *,
-        model: RequirementModel,
+        model: RequirementModel | None = None,
         on_clone: Callable[[int], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
         on_sort_changed: Callable[[int, bool], None] | None = None,
     ):
         wx.Panel.__init__(self, parent)
-        self.model = model
+        self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.search = wx.SearchCtrl(self)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)

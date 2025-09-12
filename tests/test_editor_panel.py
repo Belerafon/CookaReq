@@ -1,5 +1,6 @@
 import os
 import pytest
+from gettext import gettext as _
 
 from app.core.model import RequirementType, Status, Priority, Verification
 from app.core.labels import Label
@@ -141,4 +142,16 @@ def test_labels_selection_and_update():
     panel.update_labels_list([Label("docs", "#123456")])
     assert len(panel._label_defs) == 1
     assert panel.extra["labels"] == []
+
+
+def test_loading_requirement_without_labels_clears_display():
+    panel = _make_panel()
+    panel.update_labels_list([Label("ui", "#ff0000")])
+    panel.load({"id": 1, "labels": ["ui"]})
+    assert panel.extra["labels"] == ["ui"]
+    panel.load({"id": 2})
+    assert panel.extra["labels"] == []
+    children = panel.labels_panel.GetChildren()
+    assert len(children) == 1
+    assert children[0].GetLabel() == _("(none)")
 

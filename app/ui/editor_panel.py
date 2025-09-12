@@ -350,9 +350,13 @@ class EditorPanel(ScrolledPanel):
             mapping = getattr(locale, name.upper())
             code = data.get(name, next(iter(mapping)))
             choice.SetStringSelection(locale.code_to_label(name, code))
-        for key in self.extra:
-            if key in data:
-                self.extra[key] = data[key]
+        labels = data.get("labels")
+        self.extra = {
+            "labels": list(labels) if isinstance(labels, list) else [],
+            "revision": data.get("revision", 1),
+            "approved_at": data.get("approved_at"),
+            "notes": data.get("notes", ""),
+        }
         self.current_path = Path(path) if path else None
         self.mtime = mtime
         self.original_id = data.get("id")
@@ -453,7 +457,7 @@ class EditorPanel(ScrolledPanel):
             return
         sizer = self.labels_panel.GetSizer()
         if sizer:
-            sizer.Clear(False)
+            sizer.Clear(True)
         labels = self.extra.get("labels", [])
         if not labels:
             placeholder = wx.StaticText(self.labels_panel, label=_("(none)"))

@@ -34,6 +34,25 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.search = wx.SearchCtrl(self)
+        # На Windows ``SearchCtrl`` рисует пустые белые квадраты вместо
+        # иконок поиска/сброса, если битмапы не заданы. Загрузим стандартные
+        # изображения через ``wx.ArtProvider`` и включим обе кнопки. Для
+        # тестов, где используется упрощённый заглушечный ``wx``, все вызовы
+        # защищены через ``hasattr``.
+        if hasattr(wx, "ArtProvider"):
+            size = (16, 16)
+            if hasattr(self.search, "SetSearchBitmap"):
+                bmp = wx.ArtProvider.GetBitmap(wx.ART_FIND, wx.ART_TOOLBAR, size)
+                if bmp.IsOk():
+                    self.search.SetSearchBitmap(bmp)
+            if hasattr(self.search, "SetCancelBitmap"):
+                bmp = wx.ArtProvider.GetBitmap(wx.ART_CROSS_MARK, wx.ART_TOOLBAR, size)
+                if bmp.IsOk():
+                    self.search.SetCancelBitmap(bmp)
+        if hasattr(self.search, "ShowSearchButton"):
+            self.search.ShowSearchButton(True)
+        if hasattr(self.search, "ShowCancelButton"):
+            self.search.ShowCancelButton(True)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
         ColumnSorterMixin.__init__(self, 1)
         self.columns: List[str] = []

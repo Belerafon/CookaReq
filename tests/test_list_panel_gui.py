@@ -27,7 +27,7 @@ def test_list_panel_real_widgets():
     app.Destroy()
 
 
-def test_list_panel_context_menu_calls_handlers():
+def test_list_panel_context_menu_calls_handlers(monkeypatch):
     wx = pytest.importorskip("wx")
     app = wx.App()
     import app.ui.list_panel as list_panel
@@ -43,19 +43,29 @@ def test_list_panel_context_menu_calls_handlers():
 
     from app.ui.requirement_model import RequirementModel
     panel = list_panel.ListPanel(frame, model=RequirementModel(), on_clone=on_clone, on_delete=on_delete)
-    panel.set_requirements([{ "id": 1, "title": "T" }])
+    panel.set_columns(["version"])
+    reqs = [{"id": 1, "title": "T", "version": "1"}]
+    panel.set_requirements(reqs)
+    monkeypatch.setattr(panel, "_prompt_value", lambda field: "2")
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
 
-    menu, clone_item, delete_item, _ = panel._create_context_menu(0, 0)
+    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 0)
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, clone_item.GetId())
-    panel.ProcessEvent(evt)
+    menu.ProcessEvent(evt)
     menu.Destroy()
 
-    menu, clone_item, delete_item, _ = panel._create_context_menu(0, 0)
+    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 0)
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, delete_item.GetId())
-    panel.ProcessEvent(evt)
+    menu.ProcessEvent(evt)
+    menu.Destroy()
+
+    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 1)
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, edit_item.GetId())
+    menu.ProcessEvent(evt)
     menu.Destroy()
 
     assert called == {"clone": 1, "delete": 1}
+    assert reqs[0]["version"] == "2"
 
     frame.Destroy()
     app.Destroy()

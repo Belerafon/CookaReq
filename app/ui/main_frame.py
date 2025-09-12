@@ -16,6 +16,7 @@ from .list_panel import ListPanel
 from .editor_panel import EditorPanel
 from .settings_dialog import SettingsDialog
 from .requirement_model import RequirementModel
+from .labels_dialog import LabelsDialog
 
 
 class WxLogHandler(logging.Handler):
@@ -101,11 +102,14 @@ class MainFrame(wx.Frame):
         self._recent_menu = wx.Menu()
         self._recent_menu_item = file_menu.AppendSubMenu(self._recent_menu, _("Open &Recent"))
         settings_item = file_menu.Append(wx.ID_PREFERENCES, _("Settings"))
+        labels_item = file_menu.Append(wx.ID_ANY, _("Manage Labels"))
         exit_item = file_menu.Append(wx.ID_EXIT, _("E&xit"))
         self.Bind(wx.EVT_MENU, self.on_open_folder, open_item)
         self.Bind(wx.EVT_MENU, self.on_open_settings, settings_item)
+        self.Bind(wx.EVT_MENU, self.on_manage_labels, labels_item)
         self.Bind(wx.EVT_MENU, lambda evt: self.Close(), exit_item)
         self._rebuild_recent_menu()
+        self.manage_labels_id = labels_item.GetId()
         menu_bar.Append(file_menu, _("&File"))
 
         view_menu = wx.Menu()
@@ -150,6 +154,19 @@ class MainFrame(wx.Frame):
             self.config.WriteBool("auto_open_last", self.auto_open_last)
             self.config.WriteBool("remember_sort", self.remember_sort)
             self.config.Flush()
+        dlg.Destroy()
+
+    def on_manage_labels(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+        if not self.current_dir:
+            return
+        dlg = LabelsDialog(self, self.labels)
+        if dlg.ShowModal() == wx.ID_OK:
+            self.labels = dlg.get_labels()
+            try:
+                store.save_labels(self.current_dir, self.labels)
+            except Exception as exc:  # pragma: no cover - disk errors
+                logging.warning("Failed to save labels: %s", exc)
+            self.panel.refresh()
         dlg.Destroy()
 
     def _load_directory(self, path: Path) -> None:

@@ -3,6 +3,7 @@
 from gettext import gettext as _
 
 import logging
+from importlib import resources
 import wx
 from pathlib import Path
 from dataclasses import fields
@@ -46,6 +47,8 @@ class MainFrame(wx.Frame):
         self.sort_column = self.config.ReadInt("sort_column", -1)
         self.sort_ascending = self.config.ReadBool("sort_ascending", True)
         super().__init__(parent=parent, title=self._base_title)
+        with resources.as_file(resources.files("app.resources") / "app.ico") as icon_path:
+            self.SetIcon(wx.Icon(str(icon_path)))
         self.model = RequirementModel()
         self._create_menu()
         self._create_toolbar()

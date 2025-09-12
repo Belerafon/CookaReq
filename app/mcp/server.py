@@ -19,8 +19,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 from mcp.server.fastmcp import FastMCP
+
 from app.log import configure_logging, logger
 from app.mcp.utils import ErrorCode, mcp_error
+from app.mcp import tools_read, tools_write
 
 # Public FastAPI application and MCP server instances -----------------------
 
@@ -118,14 +120,151 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 # FastMCP provides the server-side implementation of the MCP protocol.
-# Using the default configuration is sufficient for exposing an HTTP
-# endpoint that tools like the MCP SDK can connect to.
+# Tools are registered via decorators below and invoked through the custom
+# `/mcp` HTTP endpoint defined later in this module.
 mcp_server = FastMCP(name="CookaReq")
 
-# Mount the MCP Starlette application under the root FastAPI app.  The
-# FastMCP instance already defines its own path ("/mcp" by default), so we
-# mount it at the root without an extra prefix to avoid double paths.
-app.mount("/", mcp_server.streamable_http_app())
+
+# ----------------------------- MCP Tools -----------------------------------
+
+
+@mcp_server.tool()
+def list_requirements(
+    *,
+    page: int = 1,
+    per_page: int = 50,
+    status: str | None = None,
+    tags: list[str] | None = None,
+) -> dict:
+    """List requirements using the configured base directory."""
+    directory = app.state.base_path
+    return tools_read.list_requirements(
+        directory,
+        page=page,
+        per_page=per_page,
+        status=status,
+        tags=tags,
+    )
+
+
+@mcp_server.tool()
+def get_requirement(req_id: int) -> dict:
+    """Return a single requirement by identifier."""
+    directory = app.state.base_path
+    return tools_read.get_requirement(directory, req_id)
+
+
+@mcp_server.tool()
+def search_requirements(
+    *,
+    query: str | None = None,
+    tags: list[str] | None = None,
+    status: str | None = None,
+    page: int = 1,
+    per_page: int = 50,
+) -> dict:
+    """Search requirements with optional filters."""
+    directory = app.state.base_path
+    return tools_read.search_requirements(
+        directory,
+        query=query,
+        tags=tags,
+        status=status,
+        page=page,
+        per_page=per_page,
+    )
+
+
+@mcp_server.tool()
+def create_requirement(data: Mapping[str, object]) -> dict:
+    """Create a requirement in the configured directory."""
+    directory = app.state.base_path
+    return tools_write.create_requirement(directory, data)
+
+
+@mcp_server.tool()
+def patch_requirement(
+    req_id: int,
+    patches: Mapping[str, object],
+    *,
+    rev: int,
+) -> dict:
+    """Apply patches to a requirement."""
+    directory = app.state.base_path
+    return tools_write.patch_requirement(directory, req_id, patches, rev=rev)
+
+
+@mcp_server.tool()
+def delete_requirement(req_id: int, *, rev: int) -> dict | None:
+    """Delete a requirement if revision matches."""
+    directory = app.state.base_path
+    return tools_write.delete_requirement(directory, req_id, rev=rev)
+
+
+@mcp_server.tool()
+def link_requirements(
+    *,
+    source_id: int,
+    derived_id: int,
+    rev: int,
+) -> dict:
+    """Link one requirement to another."""
+    directory = app.state.base_path
+    return tools_write.link_requirements(
+        directory,
+        source_id=source_id,
+        derived_id=derived_id,
+        rev=rev,
+    )
+
+
+# Mapping of tool names to wrapper functions for direct dispatch
+_TOOLS: dict[str, callable] = {
+    "list_requirements": list_requirements,
+    "get_requirement": get_requirement,
+    "search_requirements": search_requirements,
+    "create_requirement": create_requirement,
+    "patch_requirement": patch_requirement,
+    "delete_requirement": delete_requirement,
+    "link_requirements": link_requirements,
+}
+
+
+# --------------------------- MCP endpoint ----------------------------------
+
+
+@app.post("/mcp")
+async def call_tool(request: Request) -> JSONResponse:
+    """Invoke a registered MCP tool via HTTP."""
+    try:
+        body = await request.json()
+    except Exception:  # pragma: no cover - defensive
+        return JSONResponse(
+            mcp_error(ErrorCode.VALIDATION_ERROR, "invalid json"), status_code=400
+        )
+
+    name = body.get("name")
+    arguments = body.get("arguments") or {}
+    if not isinstance(name, str):
+        return JSONResponse(
+            mcp_error(ErrorCode.VALIDATION_ERROR, "missing tool name"),
+            status_code=400,
+        )
+
+    func = _TOOLS.get(name)
+    if func is None:
+        return JSONResponse(
+            mcp_error(ErrorCode.NOT_FOUND, f"unknown tool: {name}"),
+            status_code=404,
+        )
+
+    try:
+        result = func(**arguments)
+    except TypeError as exc:
+        return JSONResponse(
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)), status_code=400
+        )
+    return JSONResponse(result)
 
 # Internal state for the background server
 _uvicorn_server: Optional[uvicorn.Server] = None

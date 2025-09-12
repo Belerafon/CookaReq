@@ -73,6 +73,20 @@ class ConfigManager:
         self._cfg.Flush()
 
     # ------------------------------------------------------------------
+    # MCP server settings
+    def get_mcp_settings(self) -> tuple[str, int, str]:
+        host = self._cfg.Read("mcp_host", "127.0.0.1")
+        port = self._cfg.ReadInt("mcp_port", 8000)
+        base_path = self._cfg.Read("mcp_base_path", "")
+        return host, port, base_path
+
+    def set_mcp_settings(self, host: str, port: int, base_path: str) -> None:
+        self._cfg.Write("mcp_host", host)
+        self._cfg.WriteInt("mcp_port", port)
+        self._cfg.Write("mcp_base_path", base_path)
+        self._cfg.Flush()
+
+    # ------------------------------------------------------------------
     # sort settings
     def get_sort_settings(self) -> tuple[int, bool]:
         column = self._cfg.ReadInt("sort_column", -1)

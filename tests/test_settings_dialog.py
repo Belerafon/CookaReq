@@ -16,7 +16,15 @@ def test_settings_dialog_returns_language():
     _app = wx.App()
     from app.ui.settings_dialog import SettingsDialog
 
-    dlg = SettingsDialog(None, open_last=True, remember_sort=False, language="ru")
+    dlg = SettingsDialog(
+        None,
+        open_last=True,
+        remember_sort=False,
+        language="ru",
+        host="127.0.0.1",
+        port=8000,
+        base_path="/tmp",
+    )
     values = dlg.get_values()
-    assert values == (True, False, "ru")
+    assert values == (True, False, "ru", "127.0.0.1", 8000, "/tmp")
     dlg.Destroy()

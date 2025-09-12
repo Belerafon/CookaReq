@@ -1,5 +1,7 @@
 """Main application window."""
 
+from gettext import gettext as _
+
 import logging
 import wx
 from pathlib import Path
@@ -90,16 +92,16 @@ class MainFrame(wx.Frame):
     def _create_menu(self) -> None:
         menu_bar = wx.MenuBar()
         file_menu = wx.Menu()
-        open_item = file_menu.Append(wx.ID_OPEN, "&Open Folder\tCtrl+O")
+        open_item = file_menu.Append(wx.ID_OPEN, _("&Open Folder\tCtrl+O"))
         self._recent_menu = wx.Menu()
-        self._recent_menu_item = file_menu.AppendSubMenu(self._recent_menu, "Open &Recent")
-        settings_item = file_menu.Append(wx.ID_PREFERENCES, "Settings")
-        exit_item = file_menu.Append(wx.ID_EXIT, "E&xit")
+        self._recent_menu_item = file_menu.AppendSubMenu(self._recent_menu, _("Open &Recent"))
+        settings_item = file_menu.Append(wx.ID_PREFERENCES, _("Settings"))
+        exit_item = file_menu.Append(wx.ID_EXIT, _("E&xit"))
         self.Bind(wx.EVT_MENU, self.on_open_folder, open_item)
         self.Bind(wx.EVT_MENU, self.on_open_settings, settings_item)
         self.Bind(wx.EVT_MENU, lambda evt: self.Close(), exit_item)
         self._rebuild_recent_menu()
-        menu_bar.Append(file_menu, "&File")
+        menu_bar.Append(file_menu, _("&File"))
 
         view_menu = wx.Menu()
         self._column_items: Dict[int, str] = {}
@@ -108,21 +110,21 @@ class MainFrame(wx.Frame):
             item.Check(field in self.selected_fields)
             self.Bind(wx.EVT_MENU, self.on_toggle_column, item)
             self._column_items[item.GetId()] = field
-        self.log_menu_item = view_menu.AppendCheckItem(wx.ID_ANY, "Show Error Console")
+        self.log_menu_item = view_menu.AppendCheckItem(wx.ID_ANY, _("Show Error Console"))
         self.Bind(wx.EVT_MENU, self.on_toggle_log_console, self.log_menu_item)
-        menu_bar.Append(view_menu, "&View")
+        menu_bar.Append(view_menu, _("&View"))
         self.SetMenuBar(menu_bar)
 
     def _create_toolbar(self) -> None:
         toolbar = self.CreateToolBar()
-        open_tool = toolbar.AddTool(wx.ID_OPEN, "Open", wx.ArtProvider.GetBitmap(wx.ART_FOLDER_OPEN))
-        new_tool = toolbar.AddTool(wx.ID_NEW, "New", wx.ArtProvider.GetBitmap(wx.ART_NEW))
+        open_tool = toolbar.AddTool(wx.ID_OPEN, _("Open"), wx.ArtProvider.GetBitmap(wx.ART_FOLDER_OPEN))
+        new_tool = toolbar.AddTool(wx.ID_NEW, _("New"), wx.ArtProvider.GetBitmap(wx.ART_NEW))
         self.Bind(wx.EVT_TOOL, self.on_open_folder, open_tool)
         self.Bind(wx.EVT_TOOL, self.on_new_requirement, new_tool)
         toolbar.Realize()
 
     def on_open_folder(self, event: wx.Event) -> None:
-        dlg = wx.DirDialog(self, "Select requirements folder")
+        dlg = wx.DirDialog(self, _("Select requirements folder"))
         if dlg.ShowModal() == wx.ID_OK:
             self._load_directory(Path(dlg.GetPath()))
         dlg.Destroy()
@@ -206,13 +208,13 @@ class MainFrame(wx.Frame):
             self.editor.save(self.current_dir)
         except store.ConflictError:  # pragma: no cover - GUI event
             wx.MessageBox(
-                "Файл был изменён на диске. Сохранение отменено.",
-                "Ошибка",
+                _("File was modified on disk. Save cancelled."),
+                _("Error"),
                 wx.ICON_ERROR,
             )
             return
         except Exception as exc:  # pragma: no cover - GUI event
-            wx.MessageBox(str(exc), "Ошибка", wx.ICON_ERROR)
+            wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
             return
         data = self.editor.get_data()
         self.model.update(data)
@@ -335,7 +337,7 @@ class MainFrame(wx.Frame):
         new_id = self._generate_new_id()
         data = dict(source)
         data["id"] = new_id
-        data["title"] = f"(Копия) {source.get('title', '')}".strip()
+        data["title"] = f"{_("(Copy)")} {source.get('title', '')}".strip()
         data["modified_at"] = ""
         data["revision"] = 1
         self.model.add(data)

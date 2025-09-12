@@ -1,33 +1,36 @@
-"""Russian localization dictionaries for enum fields."""
+"""Localization helpers for enumerated fields using gettext."""
 
+from gettext import gettext as _
+
+# English labels for enum values
 TYPE = {
-    "requirement": "Требование",
-    "constraint": "Ограничение",
-    "interface": "Интерфейс",
+    "requirement": "Requirement",
+    "constraint": "Constraint",
+    "interface": "Interface",
 }
 
 STATUS = {
-    "draft": "Черновик",
-    "in_review": "На рецензии",
-    "approved": "Согласовано",
-    "baselined": "Зафиксировано",
-    "retired": "Снято с применения",
+    "draft": "Draft",
+    "in_review": "In review",
+    "approved": "Approved",
+    "baselined": "Baselined",
+    "retired": "Retired",
 }
 
 PRIORITY = {
-    "low": "Низкий",
-    "medium": "Средний",
-    "high": "Высокий",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
 }
 
 VERIFICATION = {
-    "inspection": "Инспекция",
-    "analysis": "Анализ",
-    "demonstration": "Демонстрация",
-    "test": "Испытание",
+    "inspection": "Inspection",
+    "analysis": "Analysis",
+    "demonstration": "Demonstration",
+    "test": "Test",
 }
 
-TRANSLATIONS = {
+EN_LABELS = {
     "type": TYPE,
     "status": STATUS,
     "priority": PRIORITY,
@@ -35,21 +38,12 @@ TRANSLATIONS = {
 }
 
 
-def code_to_ru(category: str, code: str) -> str:
-    """Return Russian label for given code.
-
-    If the code or category is unknown, the original code is returned.
-    """
-    return TRANSLATIONS.get(category, {}).get(code, code)
+def code_to_label(category: str, code: str) -> str:
+    """Return localized label for given code."""
+    return _(EN_LABELS.get(category, {}).get(code, code))
 
 
-def ru_to_code(category: str, label: str) -> str:
-    """Return internal code for given Russian label.
-
-    If the label or category is unknown, the original label is returned.
-    """
-    mapping = TRANSLATIONS.get(category, {})
-    for code, ru in mapping.items():
-        if ru == label:
-            return code
-    return label
+def label_to_code(category: str, label: str) -> str:
+    """Return internal code for given localized label."""
+    mapping = {_(lbl): code for code, lbl in EN_LABELS.get(category, {}).items()}
+    return mapping.get(label, label)

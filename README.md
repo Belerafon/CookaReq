@@ -56,3 +56,15 @@ pytest -q
 
 `pytest-xvfb` автоматически поднимает виртуальный дисплей, поэтому
 окна не появятся и тесты выполняются в headless-режиме.
+
+## Локализация
+
+Проект использует `gettext` и `wx.Locale`. В репозитории хранятся только исходные `.po`‑файлы переводов. Скомпилированные каталоги `.mo`
+не добавляются в git и генерируются локально. Для их создания установите утилиты GNU gettext и выполните:
+
+```bash
+msgfmt app/locale/ru/LC_MESSAGES/CookaReq.po -o app/locale/ru/LC_MESSAGES/CookaReq.mo
+msgfmt app/locale/en/LC_MESSAGES/CookaReq.po -o app/locale/en/LC_MESSAGES/CookaReq.mo
+```
+
+После этого приложение и тесты будут использовать переводы из соответствующих `.mo`.

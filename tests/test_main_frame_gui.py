@@ -247,7 +247,7 @@ def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path):
     assert frame.editor.IsShown()
     new_id = frame.editor.fields["id"].GetValue()
     assert new_id and new_id != str(data["id"])
-    assert frame.editor.fields["title"].GetValue().startswith("(Копия)")
+    assert frame.editor.fields["title"].GetValue().startswith("(Copy)")
     assert len(frame.model.get_all()) == 2
 
     frame.Destroy()

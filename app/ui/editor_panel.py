@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from gettext import gettext as _
+
 import wx
 from wx.lib.dialogs import ScrolledMessageDialog
 
@@ -22,84 +24,57 @@ class EditorPanel(wx.Panel):
         self._on_save_callback = on_save
 
         labels = {
-            "id": "Идентификатор требования (число)",
-            "title": "Краткое название требования",
-            "statement": "Полный текст требования",
-            "acceptance": "Критерии приемки требования",
-            "conditions": "Условия и режимы",
-            "trace_up": "Трассировка вверх",
-            "trace_down": "Трассировка вниз",
-            "version": "Версия требования",
-            "modified_at": "Дата изменения",
-            "owner": "Ответственный за требование",
-            "source": "Источник требования",
-            "type": "Тип требования",
-            "status": "Текущий статус",
-            "priority": "Приоритет исполнения",
-            "verification": "Метод проверки",
+            "id": _("Requirement ID (number)"),
+            "title": _("Short title"),
+            "statement": _("Requirement text"),
+            "acceptance": _("Acceptance criteria"),
+            "conditions": _("Conditions"),
+            "trace_up": _("Trace up"),
+            "trace_down": _("Trace down"),
+            "version": _("Requirement version"),
+            "modified_at": _("Modified at"),
+            "owner": _("Owner"),
+            "source": _("Source"),
+            "type": _("Requirement type"),
+            "status": _("Status"),
+            "priority": _("Priority"),
+            "verification": _("Verification method"),
         }
 
         help_texts = {
-            "id": (
-                "Поле 'Идентификатор требования' должно содержать уникальное целое "
-                "число без префиксов. Этот номер используется для ссылок на "
-                "требование в документации и тестах."
+            "id": _(
+                "The 'Requirement ID' field must contain a unique integer without prefixes. "
+                "It is used to reference the requirement in documentation and tests."
             ),
-            "title": (
-                "Введите краткое название, которое описывает суть требования. Оно "
-                "отображается в списках и помогает быстро понять, о чем идет речь. "
-                "Название должно быть коротким, но емким. Заполнение помогает при "
-                "поиске и сортировке. Пример: 'Отображение состояния загрузки файла'."
+            "title": _(
+                "Short descriptive title displayed in lists. Helps to quickly understand the requirement."
             ),
-            "statement": (
-                "Основной текст требования. Опишите, что должна делать система или "
-                "какие ограничения существуют. Четкая формулировка помогает "
-                "разработчикам и тестировщикам одинаково понимать задачу. Пример: "
-                "'Система должна сохранять черновик автоматически каждые 5 минут.'"
+            "statement": _(
+                "Full description of what the system must do or which constraints exist."
             ),
-            "acceptance": (
-                "Критерии приемки описывают, как проверить выполнение требования. "
-                "Это могут быть тестовые сценарии или измеримые показатели. "
-                "Заполнение поля облегчает работу тестировщиков и заказчика. "
-                "Пример: 'При потере связи с сервером появляется уведомление и запись "
-                "сохраняется локально.'"
+            "acceptance": _(
+                "Describe how to verify the requirement. Can be scenarios or measurable criteria."
             ),
-            "conditions": "Условия выполнения и режимы работы для требования.",
-            "trace_up": "Связанные вышестоящие требования.",
-            "trace_down": "Связанные нижестоящие требования.",
-            "version": "Версия текущего требования.",
-            "modified_at": "Дата последнего изменения (устанавливается автоматически).",
-            "owner": (
-                "Ответственный человек или команда за требование. Укажите имя, "
-                "логин или роль, чтобы было понятно, к кому обращаться за "
-                "уточнениями. Пример: 'Команда backend', 'Иван Петров'."
+            "conditions": _("Conditions of execution and modes for the requirement."),
+            "trace_up": _("Related higher level requirements."),
+            "trace_down": _("Related lower level requirements."),
+            "version": _("Current requirement version."),
+            "modified_at": _("Date of last change (set automatically)."),
+            "owner": _(
+                "Person or team responsible for the requirement. Provide a name or role."
             ),
-            "source": (
-                "Источник требования: документ, запрос клиента или нормативный акт. "
-                "Указание источника позволяет отслеживать происхождение и при "
-                "изменениях возвращаться к первоисточнику. Пример: 'Договор №123', "
-                "'ГОСТ 34.201-89', 'Письмо клиента от 01.01.2025'."
+            "source": _(
+                "Source of the requirement: document, customer request or regulation."
             ),
-            "type": (
-                "Выберите тип требования: функциональное, ограничение, интерфейс и т.д. "
-                "Правильная классификация помогает при анализе и планировании. Пример: "
-                "'Ограничение'."
+            "type": _("Choose requirement type: functional, constraint, interface, etc."),
+            "status": _(
+                "Current processing status: draft, in review, approved, etc."
             ),
-            "status": (
-                "Текущий статус проработки требования. Используется для отслеживания "
-                "прогресса: черновик, на рецензии, согласовано и т.п. Это поле помогает "
-                "управлять процессом согласования и видеть, что еще требует внимания. "
-                "Пример: 'На рецензии'."
+            "priority": _(
+                "Importance of the requirement. High priority is implemented earlier."
             ),
-            "priority": (
-                "Важность требования. Высокий приоритет реализуется раньше, низкий можно "
-                "отложить. Заполнение приоритета помогает планировать релизы и "
-                "расставлять ресурсы. Пример: 'Высокий'."
-            ),
-            "verification": (
-                "Метод проверки: инспекция, анализ, демонстрация, испытание. Указание "
-                "метода помогает определить подход к тестированию и необходимые ресурсы. "
-                "Пример: 'Испытание'."
+            "verification": _(
+                "Method of verification: inspection, analysis, demonstration, test."
             ),
         }
 
@@ -135,7 +110,7 @@ class EditorPanel(wx.Panel):
             proportion = 1 if multiline and name != "source" else 0
             sizer.Add(ctrl, proportion, wx.EXPAND | wx.ALL, 5)
             if name == "id":
-                ctrl.SetHint("Уникальный целочисленный идентификатор")
+                ctrl.SetHint(_("Unique integer identifier"))
 
         def add_text_field(name: str) -> None:
             container = wx.BoxSizer(wx.VERTICAL)
@@ -152,10 +127,12 @@ class EditorPanel(wx.Panel):
             container.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
             grid.Add(container, 1, wx.EXPAND)
 
-        def add_enum_field(name: str, mapping: dict[str, str]) -> None:
+        def add_enum_field(name: str) -> None:
             container = wx.BoxSizer(wx.VERTICAL)
             label = wx.StaticText(self, label=labels[name])
-            choice = wx.Choice(self, choices=list(mapping.values()))
+            codes = getattr(locale, name.upper()).keys()
+            choices = [locale.code_to_label(name, code) for code in codes]
+            choice = wx.Choice(self, choices=choices)
             help_btn = make_help_button(help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -170,23 +147,23 @@ class EditorPanel(wx.Panel):
         grid.AddGrowableCol(1, 1)
 
         items = [
-            ("type", "enum", locale.TYPE),
-            ("status", "enum", locale.STATUS),
-            ("priority", "enum", locale.PRIORITY),
-            ("verification", "enum", locale.VERIFICATION),
-            ("modified_at", "text", None),
-            ("owner", "text", None),
-            ("version", "text", None),
+            ("type", "enum"),
+            ("status", "enum"),
+            ("priority", "enum"),
+            ("verification", "enum"),
+            ("modified_at", "text"),
+            ("owner", "text"),
+            ("version", "text"),
         ]
-        for name, kind, mapping in items:
+        for name, kind in items:
             if kind == "enum":
-                add_enum_field(name, mapping)
+                add_enum_field(name)
             else:
                 add_text_field(name)
 
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
 
-        self.save_btn = wx.Button(self, label="Сохранить")
+        self.save_btn = wx.Button(self, label=_("Save"))
         self.save_btn.Bind(wx.EVT_BUTTON, self._on_save_button)
         sizer.Add(self.save_btn, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
 
@@ -207,10 +184,10 @@ class EditorPanel(wx.Panel):
         for ctrl in self.fields.values():
             ctrl.SetValue("")
         defaults = {
-            "type": locale.TYPE["requirement"],
-            "status": locale.STATUS["draft"],
-            "priority": locale.PRIORITY["medium"],
-            "verification": locale.VERIFICATION["analysis"],
+            "type": locale.code_to_label("type", "requirement"),
+            "status": locale.code_to_label("status", "draft"),
+            "priority": locale.code_to_label("priority", "medium"),
+            "verification": locale.code_to_label("verification", "analysis"),
         }
         for name, choice in self.enums.items():
             choice.SetStringSelection(defaults[name])
@@ -231,7 +208,7 @@ class EditorPanel(wx.Panel):
         for name, choice in self.enums.items():
             mapping = getattr(locale, name.upper())
             code = data.get(name, next(iter(mapping)))
-            choice.SetStringSelection(locale.code_to_ru(name, code))
+            choice.SetStringSelection(locale.code_to_label(name, code))
         for key in self.extra:
             if key in data:
                 self.extra[key] = data[key]
@@ -247,24 +224,24 @@ class EditorPanel(wx.Panel):
     def get_data(self) -> dict[str, Any]:
         id_value = self.fields["id"].GetValue().strip()
         if not id_value:
-            raise ValueError("требуется указать идентификатор")
+            raise ValueError(_("ID is required"))
         try:
             req_id = int(id_value)
         except ValueError as exc:  # pragma: no cover - error path
-            raise ValueError("идентификатор должен быть целым числом") from exc
+            raise ValueError(_("ID must be an integer")) from exc
         if req_id <= 0:
-            raise ValueError("идентификатор должен быть положительным")
+            raise ValueError(_("ID must be positive"))
 
         data = {
             "id": req_id,
             "title": self.fields["title"].GetValue(),
             "statement": self.fields["statement"].GetValue(),
-            "type": locale.ru_to_code("type", self.enums["type"].GetStringSelection()),
-            "status": locale.ru_to_code("status", self.enums["status"].GetStringSelection()),
+            "type": locale.label_to_code("type", self.enums["type"].GetStringSelection()),
+            "status": locale.label_to_code("status", self.enums["status"].GetStringSelection()),
             "owner": self.fields["owner"].GetValue(),
-            "priority": locale.ru_to_code("priority", self.enums["priority"].GetStringSelection()),
+            "priority": locale.label_to_code("priority", self.enums["priority"].GetStringSelection()),
             "source": self.fields["source"].GetValue(),
-            "verification": locale.ru_to_code(
+            "verification": locale.label_to_code(
                 "verification", self.enums["verification"].GetStringSelection()
             ),
             "acceptance": self.fields["acceptance"].GetValue(),
@@ -305,6 +282,6 @@ class EditorPanel(wx.Panel):
 
     # helpers ----------------------------------------------------------
     def _show_help(self, message: str) -> None:
-        dlg = ScrolledMessageDialog(self, message, "Подсказка")
+        dlg = ScrolledMessageDialog(self, message, _("Hint"))
         dlg.ShowModal()
         dlg.Destroy()

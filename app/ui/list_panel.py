@@ -1,5 +1,7 @@
 """Panel displaying requirements list and simple filters."""
 
+from gettext import gettext as _
+
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
@@ -7,6 +9,7 @@ from typing import Callable, List, Sequence, TYPE_CHECKING
 
 from app.core.model import Priority, RequirementType, Status, Verification
 from .requirement_model import RequirementModel
+from . import locale
 
 if TYPE_CHECKING:  # pragma: no cover
     from wx import ListEvent
@@ -68,7 +71,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""
         self.list.ClearAll()
-        self.list.InsertColumn(0, "Title")
+        self.list.InsertColumn(0, _("Title"))
         for idx, field in enumerate(self.columns, start=1):
             self.list.InsertColumn(idx, field)
         ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
@@ -214,13 +217,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _create_context_menu(self, index: int, column: int | None):
         menu = wx.Menu()
-        clone_item = menu.Append(wx.ID_ANY, "Клонировать")
-        delete_item = menu.Append(wx.ID_ANY, "Удалить")
+        clone_item = menu.Append(wx.ID_ANY, _("Clone"))
+        delete_item = menu.Append(wx.ID_ANY, _("Delete"))
         req_id = self.list.GetItemData(index)
         field = self._field_from_column(column)
         edit_item = None
         if field and field != "title":
-            edit_item = menu.Append(wx.ID_ANY, f"Изменить {field}")
+            edit_item = menu.Append(wx.ID_ANY, _("Edit {field}").format(field=field))
             menu.Bind(wx.EVT_MENU, lambda evt, c=column: self._on_edit_field(c), edit_item)
         if self._on_clone:
             menu.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_clone(i), clone_item)
@@ -244,15 +247,16 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             "verification": Verification,
         }
         if field in enum_map:
-            choices = [e.value for e in enum_map[field]]
-            dlg = wx.SingleChoiceDialog(self, f"Выберите {field}", "Редактирование", choices)
+            choices = [locale.code_to_label(field, e.value) for e in enum_map[field]]
+            dlg = wx.SingleChoiceDialog(self, _("Select {field}").format(field=field), _("Edit"), choices)
             if dlg.ShowModal() == wx.ID_OK:
-                value = dlg.GetStringSelection()
+                label = dlg.GetStringSelection()
+                value = locale.label_to_code(field, label)
             else:
                 value = None
             dlg.Destroy()
             return value
-        dlg = wx.TextEntryDialog(self, f"Новое значение для {field}", "Редактирование")
+        dlg = wx.TextEntryDialog(self, _("New value for {field}").format(field=field), _("Edit"))
         if dlg.ShowModal() == wx.ID_OK:
             value = dlg.GetValue()
         else:

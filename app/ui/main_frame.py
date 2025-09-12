@@ -60,8 +60,13 @@ class MainFrame(wx.Frame):
         self.sort_ascending = self.config.ReadBool("sort_ascending", True)
         self.labels: list[Label] = []
         super().__init__(parent=parent, title=self._base_title)
+        # Load all available icon sizes so that Windows taskbar and other
+        # platforms can pick the most appropriate resolution. Using
+        # ``SetIcons`` with an ``IconBundle`` ensures both the title bar and
+        # the taskbar use the custom application icon.
         with resources.as_file(resources.files("app.resources") / "app.ico") as icon_path:
-            self.SetIcon(wx.Icon(str(icon_path)))
+            icons = wx.IconBundle(str(icon_path), wx.BITMAP_TYPE_ANY)
+            self.SetIcons(icons)
         self.model = RequirementModel()
         self._create_menu()
         self._create_toolbar()

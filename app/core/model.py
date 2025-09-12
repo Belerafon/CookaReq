@@ -47,6 +47,25 @@ class Attachment:
 
 
 @dataclass
+class DerivationLink:
+    """Reference to a source requirement used for derivation."""
+
+    source_id: int
+    source_revision: int
+    suspect: bool = False
+
+
+@dataclass
+class DerivationInfo:
+    """Details describing how the requirement was derived."""
+
+    rationale: str
+    assumptions: List[str]
+    method: str
+    margin: str
+
+
+@dataclass
 class Requirement:
     id: int
     title: str
@@ -69,18 +88,23 @@ class Requirement:
     revision: int = 1
     approved_at: Optional[str] = None
     notes: str = ""
+    derived_from: List[DerivationLink] = field(default_factory=list)
+    derivation: Optional[DerivationInfo] = None
 
 
 def requirement_from_dict(data: dict[str, Any]) -> Requirement:
     """Create :class:`Requirement` instance from a plain ``dict``.
 
-    Nested ``attachments`` and ``units`` structures are converted into their
-    respective dataclasses. Missing optional fields fall back to sensible
-    defaults.
+    Nested ``attachments``, ``units`` and derivation structures are converted
+    into their respective dataclasses. Missing optional fields fall back to
+    sensible defaults.
     """
     units_data = data.get("units")
     units = Units(**units_data) if units_data else None
     attachments = [Attachment(**a) for a in data.get("attachments", [])]
+    derived_from = [DerivationLink(**d) for d in data.get("derived_from", [])]
+    derivation_data = data.get("derivation")
+    derivation = DerivationInfo(**derivation_data) if derivation_data else None
     return Requirement(
         id=data["id"],
         title=data.get("title", ""),
@@ -103,6 +127,8 @@ def requirement_from_dict(data: dict[str, Any]) -> Requirement:
         revision=data.get("revision", 1),
         approved_at=data.get("approved_at"),
         notes=data.get("notes", ""),
+        derived_from=derived_from,
+        derivation=derivation,
     )
 
 

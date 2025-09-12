@@ -134,12 +134,14 @@ class MainFrame(wx.Frame):
         menu_bar.Append(file_menu, _("&File"))
 
         view_menu = wx.Menu()
+        columns_menu = wx.Menu()
         self._column_items: Dict[int, str] = {}
         for field in self.available_fields:
-            item = view_menu.AppendCheckItem(wx.ID_ANY, field)
+            item = columns_menu.AppendCheckItem(wx.ID_ANY, field)
             item.Check(field in self.selected_fields)
             self.Bind(wx.EVT_MENU, self.on_toggle_column, item)
             self._column_items[item.GetId()] = field
+        view_menu.AppendSubMenu(columns_menu, _("Columns"))
         self.log_menu_item = view_menu.AppendCheckItem(wx.ID_ANY, _("Show Error Console"))
         self.Bind(wx.EVT_MENU, self.on_toggle_log_console, self.log_menu_item)
         graph_item = view_menu.Append(wx.ID_ANY, _("Show Derivation Graph"))
@@ -428,11 +430,13 @@ class MainFrame(wx.Frame):
     def on_toggle_log_console(self, event: wx.CommandEvent) -> None:
         if self.log_menu_item.IsChecked():
             sash = self.config.ReadInt("log_sash", self.GetClientSize().height - 150)
+            self.log_console.Show()
             self.main_splitter.SplitHorizontally(self.splitter, self.log_console, sash)
         else:
             if self.main_splitter.IsSplit():
                 self.config.WriteInt("log_sash", self.main_splitter.GetSashPosition())
             self.main_splitter.Unsplit(self.log_console)
+            self.log_console.Hide()
         self.config.WriteBool("log_shown", self.log_menu_item.IsChecked())
         self.config.Flush()
 
@@ -467,11 +471,13 @@ class MainFrame(wx.Frame):
         log_shown = self.config.ReadBool("log_shown", False)
         log_sash = self.config.ReadInt("log_sash", self.GetClientSize().height - 150)
         if log_shown:
+            self.log_console.Show()
             self.main_splitter.SplitHorizontally(self.splitter, self.log_console, log_sash)
             if hasattr(self, "log_menu_item"):
                 self.log_menu_item.Check(True)
         else:
             self.main_splitter.Initialize(self.splitter)
+            self.log_console.Hide()
             if hasattr(self, "log_menu_item"):
                 self.log_menu_item.Check(False)
 

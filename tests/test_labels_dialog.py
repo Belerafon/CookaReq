@@ -22,6 +22,26 @@ def test_labels_dialog_changes_color():
     dlg._on_color_changed(DummyEvent())
     labels = dlg.get_labels()
     assert labels[0].color.lower() == "#00ff00"
+    # after changing, colour column should show rectangle, not text
+    assert dlg.list.GetItemText(0, 1) == ""
+    img_idx = dlg.list.GetItem(0, 1).GetImage()
+    img = dlg.list.GetImageList(wx.IMAGE_LIST_SMALL).GetBitmap(img_idx).ConvertToImage()
+    assert (img.GetRed(0, 0), img.GetGreen(0, 0), img.GetBlue(0, 0)) == (0, 255, 0)
+    dlg.Destroy()
+    app.Destroy()
+
+
+def test_labels_dialog_displays_color_rect():
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+    from app.ui.labels_dialog import LabelsDialog
+
+    dlg = LabelsDialog(None, [Label("ui", "#ff0000")])
+    assert dlg.list.GetItemText(0, 1) == ""
+    img_idx = dlg.list.GetItem(0, 1).GetImage()
+    assert img_idx != -1
+    img = dlg.list.GetImageList(wx.IMAGE_LIST_SMALL).GetBitmap(img_idx).ConvertToImage()
+    assert (img.GetRed(0, 0), img.GetGreen(0, 0), img.GetBlue(0, 0)) == (255, 0, 0)
     dlg.Destroy()
     app.Destroy()
 

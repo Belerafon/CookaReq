@@ -19,6 +19,11 @@ class LabelsDialog(wx.Dialog):
         self.list.InsertColumn(0, _("Name"))
         self.list.InsertColumn(1, _("Color"))
 
+        # image list to display colored rectangles instead of hex codes
+        self._img_list = wx.ImageList(16, 16)
+        self._color_icons: dict[str, int] = {}
+        self.list.AssignImageList(self._img_list, wx.IMAGE_LIST_SMALL)
+
         self._populate()
 
         self.color_picker = wx.ColourPickerCtrl(self)
@@ -49,11 +54,26 @@ class LabelsDialog(wx.Dialog):
             sizer.Add(btn_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
         self.SetSizerAndFit(sizer)
 
+    def _get_icon_index(self, colour: str) -> int:
+        """Return image index for ``colour``, creating bitmap if needed."""
+        if colour not in self._color_icons:
+            bmp = wx.Bitmap(16, 16)
+            dc = wx.MemoryDC(bmp)
+            wx_colour = wx.Colour(colour)
+            dc.SetBrush(wx.Brush(wx_colour))
+            dc.SetPen(wx.Pen(wx_colour))
+            dc.DrawRectangle(0, 0, 16, 16)
+            dc.SelectObject(wx.NullBitmap)
+            self._color_icons[colour] = self._img_list.Add(bmp)
+        return self._color_icons[colour]
+
     def _populate(self) -> None:
         self.list.DeleteAllItems()
         for lbl in self._labels:
             idx = self.list.InsertItem(self.list.GetItemCount(), lbl.name)
-            self.list.SetItem(idx, 1, lbl.color)
+            img_idx = self._get_icon_index(lbl.color)
+            self.list.SetItem(idx, 1, "")
+            self.list.SetItemColumnImage(idx, 1, img_idx)
 
     def _on_select(self, event: wx.ListEvent) -> None:  # pragma: no cover - GUI event
         idx = event.GetIndex()
@@ -67,7 +87,9 @@ class LabelsDialog(wx.Dialog):
             return
         colour = event.GetColour().GetAsString(wx.C2S_HTML_SYNTAX)
         self._labels[idx].color = colour
-        self.list.SetItem(idx, 1, colour)
+        img_idx = self._get_icon_index(colour)
+        self.list.SetItem(idx, 1, "")
+        self.list.SetItemColumnImage(idx, 1, img_idx)
 
     def _get_selected_indices(self) -> list[int]:
         indices: list[int] = []

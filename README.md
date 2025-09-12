@@ -59,12 +59,23 @@ pytest -q
 
 ## Локализация
 
-Проект использует `gettext` и `wx.Locale`. В репозитории хранятся только исходные `.po`‑файлы переводов. Скомпилированные каталоги `.mo`
-не добавляются в git и генерируются локально. Для их создания установите утилиты GNU gettext и выполните:
+Проект использует `gettext` и `wx.Locale`. В репозитории хранятся только исходные
+`.po`‑файлы переводов. Скомпилированные каталоги `.mo` не добавляются в git и
+генерируются локально.
 
-```bash
-msgfmt app/locale/ru/LC_MESSAGES/CookaReq.po -o app/locale/ru/LC_MESSAGES/CookaReq.mo
-msgfmt app/locale/en/LC_MESSAGES/CookaReq.po -o app/locale/en/LC_MESSAGES/CookaReq.mo
-```
+1. Установите утилиты GNU gettext (необходима команда `msgfmt`). Например, в
+   Ubuntu:
 
-После этого приложение и тесты будут использовать переводы из соответствующих `.mo`.
+   ```bash
+   sudo apt-get update && sudo apt-get install -y gettext
+   ```
+
+2. Скомпилируйте все переводы:
+
+   ```bash
+   python3 compile_translations.py
+   ```
+
+Скрипт сгенерирует `.mo`‑файлы рядом с соответствующими `.po`. При запуске
+`build.py` компиляция выполняется автоматически, поэтому готовая сборка всегда
+содержит актуальные переводы.

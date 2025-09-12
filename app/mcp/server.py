@@ -185,13 +185,13 @@ def create_requirement(data: Mapping[str, object]) -> dict:
 @mcp_server.tool()
 def patch_requirement(
     req_id: int,
-    patches: Mapping[str, object],
+    patch: list[dict],
     *,
     rev: int,
 ) -> dict:
-    """Apply patches to a requirement."""
+    """Apply JSON Patch to a requirement."""
     directory = app.state.base_path
-    return tools_write.patch_requirement(directory, req_id, patches, rev=rev)
+    return tools_write.patch_requirement(directory, req_id, patch, rev=rev)
 
 
 @mcp_server.tool()

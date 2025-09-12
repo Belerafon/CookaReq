@@ -105,7 +105,11 @@ def test_patch_requirement_via_http(tmp_path: Path) -> None:
     start_server(port=port, base_path=str(tmp_path))
     try:
         _wait_until_ready(port)
-        status, body = _call_tool(port, "patch_requirement", {"req_id": 1, "patches": {"title": "A2"}, "rev": 1})
+        status, body = _call_tool(
+            port,
+            "patch_requirement",
+            {"req_id": 1, "patch": [{"op": "replace", "path": "/title", "value": "A2"}], "rev": 1},
+        )
         assert status == 200
         assert body["title"] == "A2"
         assert body["revision"] == 2

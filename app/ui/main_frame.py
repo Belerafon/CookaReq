@@ -353,6 +353,7 @@ class MainFrame(wx.Frame):
         if req:
             self.editor.load(req)
             self.editor.Show()
+            self.editor.Layout()
             self.splitter.UpdateSize()
 
     def _on_editor_save(self) -> None:

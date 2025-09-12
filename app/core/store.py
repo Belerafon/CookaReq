@@ -7,6 +7,9 @@ import logging
 from pathlib import Path
 
 from .validate import validate
+from .labels import Label
+
+LABELS_FILENAME = "labels.json"
 
 
 class ConflictError(Exception):
@@ -30,7 +33,7 @@ def load(path: str | Path) -> tuple[dict, float]:
 def _existing_ids(directory: Path, exclude: Path) -> set[int]:
     ids: set[int] = set()
     for fp in directory.glob("*.json"):
-        if fp == exclude:
+        if fp == exclude or fp.name == LABELS_FILENAME:
             continue
         try:
             with fp.open("r", encoding="utf-8") as fh:
@@ -77,4 +80,31 @@ def save(
 
     with path.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
+    return path
+
+
+# ---------------------------------------------------------------------------
+# label storage
+
+
+def load_labels(directory: str | Path) -> list[Label]:
+    """Load labels from ``directory``.
+
+    Missing files yield an empty list.
+    """
+    path = Path(directory) / LABELS_FILENAME
+    if not path.exists():
+        return []
+    with path.open("r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    return [Label(**item) for item in data]
+
+
+def save_labels(directory: str | Path, labels: list[Label]) -> Path:
+    """Persist ``labels`` into ``directory`` and return resulting path."""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / LABELS_FILENAME
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump([asdict(lbl) for lbl in labels], fh, ensure_ascii=False, indent=2, sort_keys=True)
     return path

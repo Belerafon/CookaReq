@@ -4,6 +4,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+import jsonpatch
+import jsonschema
+
 from app.core.schema import SCHEMA
 from app.core.model import requirement_from_dict, requirement_to_dict
 from app.core.store import (
@@ -20,6 +23,43 @@ UNPATCHABLE_FIELDS = {"id", "revision", "derived_from"}
 
 # Known requirement fields
 KNOWN_FIELDS = set(SCHEMA["properties"].keys())
+
+
+PATCH_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "required": ["op", "path"],
+        "properties": {
+            "op": {
+                "type": "string",
+                "enum": [
+                    "add",
+                    "remove",
+                    "replace",
+                    "move",
+                    "copy",
+                    "test",
+                ],
+            },
+            "path": {"type": "string", "pattern": "^/"},
+            "value": {},
+            "from": {"type": "string", "pattern": "^/"},
+        },
+        "oneOf": [
+            {
+                "properties": {"op": {"enum": ["add", "replace", "test"]}},
+                "required": ["value"],
+            },
+            {"properties": {"op": {"enum": ["remove"]}}},
+            {
+                "properties": {"op": {"enum": ["move", "copy"]}},
+                "required": ["from"],
+            },
+        ],
+        "additionalProperties": False,
+    },
+}
 
 
 def _load_requirement(directory: str | Path, req_id: int) -> tuple[dict[str, Any], float]:
@@ -50,11 +90,12 @@ def create_requirement(directory: str | Path, data: Mapping[str, Any]) -> dict:
 def patch_requirement(
     directory: str | Path,
     req_id: int,
-    patches: Mapping[str, Any],
+    patch: list[dict[str, Any]],
     *,
     rev: int,
 ) -> dict:
-    """Apply ``patches`` to requirement ``req_id`` stored in ``directory``.
+    """Apply JSON Patch ``patch`` to requirement ``req_id`` stored in
+    ``directory``.
 
     ``rev`` must match the current revision. ``id`` and other service fields are
     immutable. Returns the updated requirement as a dictionary.
@@ -67,13 +108,26 @@ def patch_requirement(
     if current != rev:
         return mcp_error(ErrorCode.CONFLICT, f"revision mismatch: expected {rev}, have {current}")
 
-    for field in patches:
-        if field in UNPATCHABLE_FIELDS:
-            return mcp_error(ErrorCode.VALIDATION_ERROR, f"field is read-only: {field}")
-        if field not in KNOWN_FIELDS:
-            return mcp_error(ErrorCode.VALIDATION_ERROR, f"unknown field: {field}")
+    try:
+        jsonschema.validate(patch, PATCH_SCHEMA)
+    except jsonschema.ValidationError as exc:
+        return mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))
 
-    data.update(patches)
+    for op in patch:
+        for key in ("path", "from"):
+            if key not in op:
+                continue
+            target = op[key].lstrip("/").split("/", 1)[0]
+            if target in UNPATCHABLE_FIELDS:
+                return mcp_error(ErrorCode.VALIDATION_ERROR, f"field is read-only: {target}")
+            if target and target not in KNOWN_FIELDS:
+                return mcp_error(ErrorCode.VALIDATION_ERROR, f"unknown field: {target}")
+
+    try:
+        data = jsonpatch.apply_patch(data, patch, in_place=False)
+    except jsonpatch.JsonPatchException as exc:
+        return mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))
+
     data["revision"] = current + 1
     try:
         obj = requirement_from_dict(data)

@@ -35,17 +35,17 @@ def test_create_patch_delete(tmp_path: Path):
     assert path.exists()
 
     # patch allowed field
-    patch_requirement(tmp_path, 1, {"title": "New"}, rev=1)
+    patch_requirement(tmp_path, 1, [{"op": "replace", "path": "/title", "value": "New"}], rev=1)
     data, _ = load(path)
     assert data["title"] == "New"
     assert data["revision"] == 2
 
     # conflicting revision
-    err = patch_requirement(tmp_path, 1, {"title": "Other"}, rev=1)
+    err = patch_requirement(tmp_path, 1, [{"op": "replace", "path": "/title", "value": "Other"}], rev=1)
     assert err["error"]["code"] == ErrorCode.CONFLICT
 
     # forbidden fields
-    err = patch_requirement(tmp_path, 1, {"id": 5}, rev=2)
+    err = patch_requirement(tmp_path, 1, [{"op": "replace", "path": "/id", "value": 5}], rev=2)
     assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
 
     # delete with wrong revision
@@ -75,7 +75,7 @@ def test_link_requirements(tmp_path: Path):
     assert err["error"]["code"] == ErrorCode.CONFLICT
 
     # patching derived_from should be prohibited
-    err = patch_requirement(tmp_path, 2, {"derived_from": []}, rev=2)
+    err = patch_requirement(tmp_path, 2, [{"op": "replace", "path": "/derived_from", "value": []}], rev=2)
     assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
 
 
@@ -102,16 +102,20 @@ def test_create_requirement_errors(tmp_path: Path, monkeypatch) -> None:
 
 def test_patch_requirement_errors(tmp_path: Path, monkeypatch) -> None:
     # not found
-    err = patch_requirement(tmp_path, 1, {"title": "X"}, rev=1)
+    err = patch_requirement(tmp_path, 1, [{"op": "replace", "path": "/title", "value": "X"}], rev=1)
     assert err["error"]["code"] == ErrorCode.NOT_FOUND
 
     create_requirement(tmp_path, _base_req(1))
+
+    # invalid patch structure
+    err = patch_requirement(tmp_path, 1, [{"path": "/title", "value": "Y"}], rev=1)
+    assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
 
     def boom(*args, **kwargs):  # noqa: ANN001, ANN002
         raise RuntimeError("boom")
 
     monkeypatch.setattr(tools_write, "save", boom)
-    err = patch_requirement(tmp_path, 1, {"title": "X"}, rev=1)
+    err = patch_requirement(tmp_path, 1, [{"op": "replace", "path": "/title", "value": "X"}], rev=1)
     assert err["error"]["code"] == ErrorCode.INTERNAL
 
 

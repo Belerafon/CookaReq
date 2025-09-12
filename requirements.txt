@@ -5,3 +5,4 @@ pydot>=1.4
 fastapi
 uvicorn
 mcp
+jsonpatch

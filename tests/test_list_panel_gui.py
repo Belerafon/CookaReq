@@ -1,6 +1,13 @@
 import importlib
 import pytest
-from app.core.model import Requirement, RequirementType, Status, Priority, Verification
+from app.core.model import (
+    Requirement,
+    RequirementType,
+    Status,
+    Priority,
+    Verification,
+    DerivationLink,
+)
 
 
 def _req(id: int, title: str, **kwargs) -> Requirement:
@@ -151,3 +158,22 @@ def test_bulk_edit_updates_selected_items(monkeypatch):
     frame.Destroy()
     app.Destroy()
 
+
+def test_recalc_derived_map_updates_count():
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+    import app.ui.list_panel as list_panel
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["derived_count"])
+    req1 = _req(1, "S")
+    req2 = _req(2, "D", derived_from=[DerivationLink(source_id=1, source_revision=1, suspect=False)])
+    panel.set_requirements([req1, req2])
+    assert panel.list.GetItemText(0, 1) == "1"
+    req2.derived_from = []
+    panel.recalc_derived_map([req1, req2])
+    assert panel.list.GetItemText(0, 1) == "0"
+    frame.Destroy()
+    app.Destroy()

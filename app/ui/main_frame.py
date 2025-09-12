@@ -283,7 +283,7 @@ class MainFrame(wx.Frame):
             except Exception as exc:  # pragma: no cover - disk errors
                 logger.warning("Failed to save labels: %s", exc)
             names = [lbl.name for lbl in self.labels]
-            self.editor.update_labels_list(names)
+            self.editor.update_labels_list(self.labels)
             self.panel.update_labels_list(names)
         dlg.Destroy()
 
@@ -347,7 +347,7 @@ class MainFrame(wx.Frame):
         except Exception as exc:
             logger.warning("Failed to save labels: %s", exc)
         names = [lbl.name for lbl in self.labels]
-        self.editor.update_labels_list(names)
+        self.editor.update_labels_list(self.labels)
         self.panel.update_labels_list(names)
 
     # recent directories -------------------------------------------------

@@ -2,6 +2,7 @@ import os
 import pytest
 
 from app.core.model import RequirementType, Status, Priority, Verification
+from app.core.labels import Label
 
 
 def _make_panel():
@@ -129,19 +130,15 @@ def test_enum_localization_roundtrip():
 
 def test_labels_selection_and_update():
     panel = _make_panel()
-    panel.update_labels_list(["ui", "backend"])
+    panel.update_labels_list([Label("ui", "#ff0000"), Label("backend", "#00ff00")])
     panel.new_requirement()
     panel.fields["id"].SetValue("1")
-    # select one label
-    panel.labels_list.Check(1, True)
+    panel.apply_label_selection(["backend"])
     data = panel.get_data()
     assert data.labels == ["backend"]
-    # load with different label
     panel.load({"id": 1, "labels": ["ui"]})
-    assert panel.labels_list.IsChecked(0)
-    assert not panel.labels_list.IsChecked(1)
-    # update list removing old selection
-    panel.update_labels_list(["docs"])
-    assert panel.labels_list.GetCount() == 1
+    assert panel.extra["labels"] == ["ui"]
+    panel.update_labels_list([Label("docs", "#123456")])
+    assert len(panel._label_defs) == 1
     assert panel.extra["labels"] == []
 

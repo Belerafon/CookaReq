@@ -2,6 +2,7 @@ import pytest
 from dataclasses import asdict
 
 from app.core.model import RequirementType, Status, Priority, Verification
+from app.core.labels import Label
 
 
 def _make_panel():
@@ -104,7 +105,7 @@ def test_editor_load_populates_fields(tmp_path):
         "notes": "Note",
     }
     path = tmp_path / "req.json"
-    panel.update_labels_list(["L"])
+    panel.update_labels_list([Label("L", "#000000")])
     panel.load(data, path=path, mtime=42.0)
 
     result = panel.get_data()

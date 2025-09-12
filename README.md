@@ -2,6 +2,13 @@
 
 Приложение на wxPython для работы с требованиями, сохраняемыми в виде JSON-файлов.
 
+## Версия Python
+
+В репозитории используется системный Python 3.12.3. Файл `.python-version`
+фиксирует `pyenv` на значении `system`, поэтому при входе в каталог команды
+`python3` и `pip` указывают на нужный интерпретатор. Команда `python`
+в контейнере отсутствует, используйте `python3`.
+
 ## Сборка
 
 Для создания Windows-сборки используется PyInstaller. Важно собирать в том же окружении, где установлены все зависимости (wxPython и jsonschema), иначе в сборку не попадут нужные пакеты.
@@ -9,7 +16,7 @@
 1) Подготовьте окружение
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 .venv\\Scripts\\activate
 pip install -r requirements.txt
 pip install pyinstaller
@@ -18,7 +25,7 @@ pip install pyinstaller
 2) Соберите приложение (режим one-folder по умолчанию)
 
 ```bash
-python build.py
+python3 build.py
 ```
 
 Готовые файлы появятся в каталоге `dist/CookaReq`. Этот вариант самодостаточный: папка содержит все нужные DLL/библиотеки.
@@ -26,7 +33,7 @@ python build.py
 3) Альтернатива: один файл (one-file)
 
 ```bash
-python build.py --onefile
+python3 build.py --onefile
 ```
 
 Будет создан один `CookaReq.exe`, который при запуске распаковывается во временную папку. Такой EXE также самодостаточный и не зависит от установленных модулей в системе.

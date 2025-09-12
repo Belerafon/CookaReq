@@ -25,6 +25,7 @@ def test_editor_new_requirement_resets(tmp_path):
     panel.new_requirement()
 
     assert all(ctrl.GetValue() == "" for ctrl in panel.fields.values())
+    panel.fields["id"].SetValue("1")
     defaults = panel.get_data()
     assert defaults["type"] == "requirement"
     assert defaults["status"] == "draft"
@@ -43,6 +44,7 @@ def test_editor_add_attachment_included():
     panel = _make_panel()
     panel.new_requirement()
     panel.add_attachment("file.txt", "note")
+    panel.fields["id"].SetValue("1")
     data = panel.get_data()
     assert data["attachments"] == [{"path": "file.txt", "note": "note"}]
 

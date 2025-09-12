@@ -169,3 +169,24 @@ def test_editor_toggle_derived_link_updates_data(tmp_path):
     panel._on_link_toggle(None)
     result = panel.get_data()
     assert result.derived_from[0].suspect is True
+
+
+def test_multiline_fields_resize_dynamically():
+    panel = _make_panel()
+    wx = pytest.importorskip("wx")
+    panel.new_requirement()
+    ctrl = panel.fields["statement"]
+    wx.Yield()
+    line_h = ctrl.GetCharHeight()
+    start = ctrl.GetSize().height
+    assert start >= line_h * 2
+    ctrl.SetValue("one\ntwo\nthree")
+    wx.Yield()
+    grown = ctrl.GetSize().height
+    assert grown >= line_h * 4
+    assert grown > start
+    ctrl.SetValue("single line")
+    wx.Yield()
+    shrunk = ctrl.GetSize().height
+    assert shrunk < grown
+    assert shrunk >= line_h * 2

@@ -9,6 +9,7 @@ from gettext import gettext as _
 
 import wx
 from wx.lib.dialogs import ScrolledMessageDialog
+from wx.lib.scrolledpanel import ScrolledPanel
 
 from app.core import store
 from app.core.model import (
@@ -24,7 +25,7 @@ from app.core.model import (
 from . import locale
 
 
-class EditorPanel(wx.Panel):
+class EditorPanel(ScrolledPanel):
     """Panel for creating and editing requirements."""
 
     def __init__(
@@ -131,10 +132,11 @@ class EditorPanel(wx.Panel):
 
             style = wx.TE_MULTILINE if multiline else 0
             ctrl = wx.TextCtrl(self, style=style)
-            if name == "source":
-                ctrl.SetMinSize((-1, 60))
+            if multiline:
+                height = 60 if name == "source" else 80
+                ctrl.SetMinSize((-1, height))
             self.fields[name] = ctrl
-            proportion = 1 if multiline and name != "source" else 0
+            proportion = 1 if name == "statement" else 0
             sizer.Add(ctrl, proportion, wx.EXPAND | wx.ALL, 5)
             if name == "id":
                 ctrl.SetHint(_("Unique integer identifier"))
@@ -239,6 +241,7 @@ class EditorPanel(wx.Panel):
         sizer.Add(btn_row, 0, wx.ALIGN_RIGHT)
 
         self.SetSizer(sizer)
+        self.SetupScrolling()
 
         self.attachments: list[dict[str, str]] = []
         self.derived_from: list[dict[str, Any]] = []

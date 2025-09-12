@@ -6,11 +6,11 @@ import logging
 from importlib import resources
 import wx
 from pathlib import Path
-from dataclasses import fields
+from dataclasses import fields, replace
 from typing import Dict
 
 from app.core import store
-from app.core.model import Requirement
+from app.core.model import Requirement, requirement_from_dict
 from app.core.labels import Label
 from .list_panel import ListPanel
 from .editor_panel import EditorPanel
@@ -185,15 +185,16 @@ class MainFrame(wx.Frame):
         self.current_dir = path
         self.editor.set_directory(self.current_dir)
         self.labels = store.load_labels(self.current_dir)
-        items: list[dict] = []
+        items: list[Requirement] = []
         store.clear_index(self.current_dir)
         for fp in self.current_dir.glob("*.json"):
             if fp.name == store.LABELS_FILENAME:
                 continue
             try:
                 data, _ = store.load(fp)
-                items.append(data)
-                store.add_to_index(self.current_dir, data.get("id"))
+                req = requirement_from_dict(data)
+                items.append(req)
+                store.add_to_index(self.current_dir, req.id)
             except Exception as exc:
                 logging.warning("Failed to load %s: %s", fp, exc)
                 continue
@@ -208,7 +209,7 @@ class MainFrame(wx.Frame):
         if not self.current_dir:
             return
         existing_colors = {lbl.name: lbl.color for lbl in self.labels}
-        names = sorted({l for req in self.model.get_all() for l in req.get("labels", [])})
+        names = sorted({l for req in self.model.get_all() for l in req.labels})
         self.labels = [Label(name=n, color=existing_colors.get(n, "#ffffff")) for n in names]
         try:
             store.save_labels(self.current_dir, self.labels)
@@ -371,7 +372,7 @@ class MainFrame(wx.Frame):
 
     # context menu actions -------------------------------------------
     def _generate_new_id(self) -> int:
-        existing = {req["id"] for req in self.model.get_all()}
+        existing = {req.id for req in self.model.get_all()}
         return max(existing, default=0) + 1
 
     def on_new_requirement(self, event: wx.Event) -> None:
@@ -389,14 +390,16 @@ class MainFrame(wx.Frame):
         if not source:
             return
         new_id = self._generate_new_id()
-        data = dict(source)
-        data["id"] = new_id
-        data["title"] = f"{_('(Copy)')} {source.get('title', '')}".strip()
-        data["modified_at"] = ""
-        data["revision"] = 1
-        self.model.add(data)
+        clone = replace(
+            source,
+            id=new_id,
+            title=f"{_('(Copy)')} {source.title}".strip(),
+            modified_at="",
+            revision=1,
+        )
+        self.model.add(clone)
         self.panel.refresh()
-        self.editor.load(data, path=None, mtime=None)
+        self.editor.load(clone, path=None, mtime=None)
         self.editor.Show()
         self.splitter.UpdateSize()
 
@@ -408,7 +411,7 @@ class MainFrame(wx.Frame):
             return
         self.model.delete(req_id)
         try:
-            store.delete(self.current_dir, req["id"])
+            store.delete(self.current_dir, req.id)
         except Exception:
             pass
         self.panel.refresh()

@@ -1,5 +1,22 @@
 import importlib
 import pytest
+from app.core.model import Requirement, RequirementType, Status, Priority, Verification
+
+
+def _req(id: int, title: str, **kwargs) -> Requirement:
+    base = dict(
+        id=id,
+        title=title,
+        statement="",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+    )
+    base.update(kwargs)
+    return Requirement(**base)
 
 
 def test_list_panel_real_widgets():
@@ -44,7 +61,7 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch):
     from app.ui.requirement_model import RequirementModel
     panel = list_panel.ListPanel(frame, model=RequirementModel(), on_clone=on_clone, on_delete=on_delete)
     panel.set_columns(["version"])
-    reqs = [{"id": 1, "title": "T", "version": "1"}]
+    reqs = [_req(1, "T", version="1")]
     panel.set_requirements(reqs)
     monkeypatch.setattr(panel, "_prompt_value", lambda field: "2")
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
@@ -65,7 +82,7 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch):
     menu.Destroy()
 
     assert called == {"clone": 1, "delete": 1}
-    assert reqs[0]["version"] == "2"
+    assert reqs[0].version == "2"
 
     frame.Destroy()
     app.Destroy()
@@ -80,7 +97,7 @@ def test_list_panel_context_menu_via_event(monkeypatch):
     from app.ui.requirement_model import RequirementModel
     panel = list_panel.ListPanel(frame, model=RequirementModel())
     panel.set_columns(["version"])
-    panel.set_requirements([{ "id": 1, "title": "T", "version": "1" }])
+    panel.set_requirements([_req(1, "T", version="1")])
     frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
     frame.GetSizer().Add(panel, 1, wx.EXPAND)
     frame.Layout()
@@ -116,17 +133,21 @@ def test_bulk_edit_updates_selected_items(monkeypatch):
     panel = list_panel.ListPanel(frame, model=RequirementModel())
     panel.set_columns(["version", "type"])
     reqs = [
-        {"id": 1, "title": "A", "version": "1", "type": "requirement"},
-        {"id": 2, "title": "B", "version": "1", "type": "requirement"},
+        _req(1, "A", version="1", type=RequirementType.REQUIREMENT),
+        _req(2, "B", version="1", type=RequirementType.REQUIREMENT),
     ]
     panel.set_requirements(reqs)
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
     panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
-    monkeypatch.setattr(panel, "_prompt_value", lambda field: "2" if field == "version" else "constraint")
+    monkeypatch.setattr(
+        panel,
+        "_prompt_value",
+        lambda field: "2" if field == "version" else RequirementType.CONSTRAINT,
+    )
     panel._on_edit_field(1)
     panel._on_edit_field(2)
-    assert [r["version"] for r in reqs] == ["2", "2"]
-    assert [r["type"] for r in reqs] == ["constraint", "constraint"]
+    assert [r.version for r in reqs] == ["2", "2"]
+    assert [r.type for r in reqs] == [RequirementType.CONSTRAINT, RequirementType.CONSTRAINT]
     frame.Destroy()
     app.Destroy()
 

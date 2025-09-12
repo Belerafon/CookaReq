@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .validate import validate
 from .labels import Label
+from .model import requirement_to_dict
 
 LABELS_FILENAME = "labels.json"
 
@@ -97,7 +98,7 @@ def save(
     directory.mkdir(parents=True, exist_ok=True)
 
     if is_dataclass(data):
-        data = asdict(data)
+        data = requirement_to_dict(data)
 
     filename = filename_for(data["id"])
     path = directory / filename

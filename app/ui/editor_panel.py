@@ -11,6 +11,16 @@ import wx
 from wx.lib.dialogs import ScrolledMessageDialog
 
 from app.core import store
+from app.core.model import (
+    Requirement,
+    RequirementType,
+    Status,
+    Priority,
+    Verification,
+    Attachment,
+    requirement_from_dict,
+    requirement_to_dict,
+)
 from . import locale
 
 
@@ -221,7 +231,15 @@ class EditorPanel(wx.Panel):
             self.labels_list.Check(i, False)
         self._on_id_change()
 
-    def load(self, data: dict[str, Any], *, path: str | Path | None = None, mtime: float | None = None) -> None:
+    def load(
+        self,
+        data: Requirement | dict[str, Any],
+        *,
+        path: str | Path | None = None,
+        mtime: float | None = None,
+    ) -> None:
+        if isinstance(data, Requirement):
+            data = requirement_to_dict(data)
         for name, ctrl in self.fields.items():
             ctrl.SetValue(str(data.get(name, "")))
         self.attachments = list(data.get("attachments", []))
@@ -247,7 +265,7 @@ class EditorPanel(wx.Panel):
         self.original_id = None
 
     # data helpers -----------------------------------------------------
-    def get_data(self) -> dict[str, Any]:
+    def get_data(self) -> Requirement:
         id_value = self.fields["id"].GetValue().strip()
         if not id_value:
             raise ValueError(_("ID is required"))
@@ -287,7 +305,7 @@ class EditorPanel(wx.Panel):
             "notes": self.extra.get("notes", ""),
         }
         self.extra["labels"] = data["labels"]
-        return data
+        return requirement_from_dict(data)
 
     # labels helpers ---------------------------------------------------
     def update_labels_list(self, labels: list[str]) -> None:
@@ -339,12 +357,12 @@ class EditorPanel(wx.Panel):
             self._on_save_callback()
 
     def save(self, directory: str | Path) -> Path:
-        data = self.get_data()
-        path = store.save(directory, data, mtime=self.mtime)
+        req = self.get_data()
+        path = store.save(directory, req, mtime=self.mtime)
         self.current_path = path
         self.mtime = path.stat().st_mtime
         self.directory = Path(directory)
-        self.original_id = data["id"]
+        self.original_id = req.id
         self._on_id_change()
         return path
 

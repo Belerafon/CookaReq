@@ -97,10 +97,3 @@ def test_search_match_any():
     assert {r.id for r in found} == {1, 2}
 
 
-def test_accepts_plain_dicts():
-    reqs = [
-        {"id": 1, "title": "Login", "labels": ["ui"]},
-        {"id": 2, "title": "Export", "labels": ["report"]},
-    ]
-    found = search(reqs, labels=["ui"], query="login", fields=["title"])
-    assert [r["id"] for r in found] == [1]

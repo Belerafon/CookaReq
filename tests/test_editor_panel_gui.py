@@ -1,4 +1,7 @@
 import pytest
+from dataclasses import asdict
+
+from app.core.model import RequirementType, Status, Priority, Verification
 
 
 def _make_panel():
@@ -27,17 +30,17 @@ def test_editor_new_requirement_resets(tmp_path):
     assert all(ctrl.GetValue() == "" for ctrl in panel.fields.values())
     panel.fields["id"].SetValue("1")
     defaults = panel.get_data()
-    assert defaults["type"] == "requirement"
-    assert defaults["status"] == "draft"
-    assert defaults["priority"] == "medium"
-    assert defaults["verification"] == "analysis"
+    assert defaults.type == RequirementType.REQUIREMENT
+    assert defaults.status == Status.DRAFT
+    assert defaults.priority == Priority.MEDIUM
+    assert defaults.verification == Verification.ANALYSIS
     assert panel.attachments == []
     assert panel.current_path is None
     assert panel.mtime is None
-    assert defaults["labels"] == []
-    assert defaults["revision"] == 1
-    assert defaults["approved_at"] is None
-    assert defaults["notes"] == ""
+    assert defaults.labels == []
+    assert defaults.revision == 1
+    assert defaults.approved_at is None
+    assert defaults.notes == ""
 
 
 def test_editor_add_attachment_included():
@@ -46,7 +49,7 @@ def test_editor_add_attachment_included():
     panel.add_attachment("file.txt", "note")
     panel.fields["id"].SetValue("1")
     data = panel.get_data()
-    assert data["attachments"] == [{"path": "file.txt", "note": "note"}]
+    assert [asdict(a) for a in data.attachments] == [{"path": "file.txt", "note": "note"}]
 
 
 def test_id_field_highlight_on_duplicate(tmp_path):
@@ -105,24 +108,21 @@ def test_editor_load_populates_fields(tmp_path):
     panel.load(data, path=path, mtime=42.0)
 
     result = panel.get_data()
-    for key in (
-        "id",
-        "title",
-        "statement",
-        "acceptance",
-        "owner",
-        "source",
-        "type",
-        "status",
-        "priority",
-        "verification",
-        "labels",
-        "attachments",
-        "revision",
-        "approved_at",
-        "notes",
-    ):
-        assert result[key] == data[key]
+    assert result.id == data["id"]
+    assert result.title == data["title"]
+    assert result.statement == data["statement"]
+    assert result.acceptance == data["acceptance"]
+    assert result.owner == data["owner"]
+    assert result.source == data["source"]
+    assert result.type.value == data["type"]
+    assert result.status.value == data["status"]
+    assert result.priority.value == data["priority"]
+    assert result.verification.value == data["verification"]
+    assert result.labels == data["labels"]
+    assert [asdict(a) for a in result.attachments] == data["attachments"]
+    assert result.revision == data["revision"]
+    assert result.approved_at == data["approved_at"]
+    assert result.notes == data["notes"]
     assert panel.current_path == path
     assert panel.mtime == 42.0
 

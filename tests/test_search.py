@@ -56,6 +56,12 @@ def test_filter_by_labels():
     assert [r.id for r in filter_by_labels(reqs, ["ui", "auth"])] == [1]
 
 
+def test_filter_by_labels_any_mode():
+    reqs = sample_requirements()
+    ids = {r.id for r in filter_by_labels(reqs, ["auth", "backend"], match_all=False)}
+    assert ids == {1, 2}
+
+
 def test_filter_by_labels_empty_returns_all():
     reqs = sample_requirements()
     assert filter_by_labels(reqs, []) == reqs
@@ -83,6 +89,12 @@ def test_combined_search():
     reqs = sample_requirements()
     found = search(reqs, labels=["ui"], query="export", fields=["title"])
     assert [r.id for r in found] == [3]
+
+
+def test_search_match_any():
+    reqs = sample_requirements()
+    found = search(reqs, labels=["auth", "backend"], match_all=False)
+    assert {r.id for r in found} == {1, 2}
 
 
 def test_accepts_plain_dicts():

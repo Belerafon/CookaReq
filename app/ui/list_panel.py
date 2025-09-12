@@ -34,6 +34,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.search = wx.SearchCtrl(self)
+        self.labels = wx.ComboCtrl(self)
+        self.match_any = wx.CheckBox(self, label=_("Match any labels"))
         # На Windows ``SearchCtrl`` рисует пустые белые квадраты вместо
         # иконок поиска/сброса, если битмапы не заданы. Загрузим стандартные
         # изображения через ``wx.ArtProvider`` и включим обе кнопки. Для
@@ -63,11 +65,15 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._sort_ascending = True
         self._setup_columns()
         sizer.Add(self.search, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(self.labels, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(self.match_any, 0, wx.ALL, 5)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         self.SetSizer(sizer)
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
         self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
         self.search.Bind(wx.EVT_TEXT, self._on_search)
+        self.labels.Bind(wx.EVT_TEXT, self._on_labels_changed)
+        self.match_any.Bind(wx.EVT_CHECKBOX, self._on_match_any)
 
     # ColumnSorterMixin requirement
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
@@ -173,6 +179,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Filter by requirement labels."""
         self.model.set_label_filter(labels)
         self._refresh()
+
+    def _on_labels_changed(self, event):  # pragma: no cover - simple event binding
+        value = self.labels.GetValue()
+        labels = [l.strip() for l in value.split(",") if l.strip()]
+        self.set_label_filter(labels)
+        if hasattr(event, "Skip"):
+            event.Skip()
+
+    def _on_match_any(self, event):  # pragma: no cover - simple event binding
+        self.model.set_label_match_all(not self.match_any.GetValue())
+        if hasattr(event, "Skip"):
+            event.Skip()
 
     def set_search_query(self, query: str, fields: Sequence[str] | None = None) -> None:
         """Apply text search across ``fields``."""

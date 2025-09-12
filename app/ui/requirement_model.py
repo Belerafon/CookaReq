@@ -13,6 +13,7 @@ class RequirementModel:
         self._all: List[dict] = []
         self._visible: List[dict] = []
         self._labels: List[str] = []
+        self._labels_match_all: bool = True
         self._query: str = ""
         self._fields: Sequence[str] | None = None
         self._sort_field: str | None = None
@@ -53,6 +54,10 @@ class RequirementModel:
         self._labels = labels
         self._refresh()
 
+    def set_label_match_all(self, match_all: bool) -> None:
+        self._labels_match_all = match_all
+        self._refresh()
+
     def set_search_query(self, query: str, fields: Sequence[str] | None = None) -> None:
         self._query = query
         self._fields = fields
@@ -71,6 +76,7 @@ class RequirementModel:
             labels=self._labels,
             query=self._query,
             fields=self._fields,
+            match_all=self._labels_match_all,
         )
         self._apply_sort()
 

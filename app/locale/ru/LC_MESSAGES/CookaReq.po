@@ -228,6 +228,9 @@ msgstr "Открывать последнюю папку при запуске"
 msgid "Remember sort order"
 msgstr "Запоминать порядок сортировки"
 
+msgid "Language"
+msgstr "Язык"
+
 # CLI strings
 msgid "CookaReq CLI"
 msgstr "CookaReq CLI"

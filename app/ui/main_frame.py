@@ -11,6 +11,7 @@ from typing import Dict
 
 from app.core import store
 from app.core.model import Requirement
+from app.core.labels import Label
 from .list_panel import ListPanel
 from .editor_panel import EditorPanel
 from .settings_dialog import SettingsDialog
@@ -46,6 +47,7 @@ class MainFrame(wx.Frame):
         self.remember_sort = self.config.ReadBool("remember_sort", False)
         self.sort_column = self.config.ReadInt("sort_column", -1)
         self.sort_ascending = self.config.ReadBool("sort_ascending", True)
+        self.labels: list[Label] = []
         super().__init__(parent=parent, title=self._base_title)
         with resources.as_file(resources.files("app.resources") / "app.ico") as icon_path:
             self.SetIcon(wx.Icon(str(icon_path)))
@@ -155,8 +157,11 @@ class MainFrame(wx.Frame):
         self._add_recent_dir(path)
         self.SetTitle(f"{self._base_title} - {path}")
         self.current_dir = path
+        self.labels = store.load_labels(self.current_dir)
         items: list[dict] = []
         for fp in self.current_dir.glob("*.json"):
+            if fp.name == store.LABELS_FILENAME:
+                continue
             try:
                 data, _ = store.load(fp)
                 items.append(data)
@@ -167,6 +172,19 @@ class MainFrame(wx.Frame):
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
         self.editor.Hide()
+        self._sync_labels()
+
+    def _sync_labels(self) -> None:
+        """Synchronize ``labels.json`` with labels used by requirements."""
+        if not self.current_dir:
+            return
+        existing_colors = {lbl.name: lbl.color for lbl in self.labels}
+        names = sorted({l for req in self.model.get_all() for l in req.get("labels", [])})
+        self.labels = [Label(name=n, color=existing_colors.get(n, "#ffffff")) for n in names]
+        try:
+            store.save_labels(self.current_dir, self.labels)
+        except Exception as exc:
+            logging.warning("Failed to save labels: %s", exc)
 
     # recent directories -------------------------------------------------
     def _load_recent_dirs(self) -> list[str]:
@@ -222,6 +240,7 @@ class MainFrame(wx.Frame):
         data = self.editor.get_data()
         self.model.update(data)
         self.panel.refresh()
+        self._sync_labels()
 
     def on_toggle_column(self, event: wx.CommandEvent) -> None:
         field = self._column_items.get(event.GetId())
@@ -363,3 +382,4 @@ class MainFrame(wx.Frame):
         self.panel.refresh()
         self.editor.Hide()
         self.splitter.UpdateSize()
+        self._sync_labels()

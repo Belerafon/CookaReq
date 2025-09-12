@@ -66,8 +66,8 @@ class MainFrame(wx.Frame):
         self.remember_sort = self.config.get_remember_sort()
         self.language = self.config.get_language()
         self.sort_column, self.sort_ascending = self.config.get_sort_settings()
-        self.mcp_host, self.mcp_port, self.mcp_base_path = self.config.get_mcp_settings()
-        start_server(self.mcp_host, self.mcp_port, self.mcp_base_path)
+        self.mcp_host, self.mcp_port, self.mcp_base_path, self.mcp_token = self.config.get_mcp_settings()
+        start_server(self.mcp_host, self.mcp_port, self.mcp_base_path, self.mcp_token)
         self.labels: list[Label] = []
         super().__init__(parent=parent, title=self._base_title)
         # Load all available icon sizes so that Windows taskbar and other
@@ -165,6 +165,7 @@ class MainFrame(wx.Frame):
             host=self.mcp_host,
             port=self.mcp_port,
             base_path=self.mcp_base_path,
+            token=self.mcp_token,
         )
         if dlg.ShowModal() == wx.ID_OK:
             (
@@ -174,20 +175,22 @@ class MainFrame(wx.Frame):
                 host,
                 port,
                 base_path,
+                token,
             ) = dlg.get_values()
             changed = (
                 host != self.mcp_host
                 or port != self.mcp_port
                 or base_path != self.mcp_base_path
+                or token != self.mcp_token
             )
-            self.mcp_host, self.mcp_port, self.mcp_base_path = host, port, base_path
+            self.mcp_host, self.mcp_port, self.mcp_base_path, self.mcp_token = host, port, base_path, token
             self.config.set_auto_open_last(self.auto_open_last)
             self.config.set_remember_sort(self.remember_sort)
             self.config.set_language(self.language)
-            self.config.set_mcp_settings(host, port, base_path)
+            self.config.set_mcp_settings(host, port, base_path, token)
             if changed:
                 stop_server()
-                start_server(self.mcp_host, self.mcp_port, self.mcp_base_path)
+                start_server(self.mcp_host, self.mcp_port, self.mcp_base_path, self.mcp_token)
             self._apply_language()
         dlg.Destroy()
 

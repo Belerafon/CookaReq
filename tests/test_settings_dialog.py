@@ -24,7 +24,8 @@ def test_settings_dialog_returns_language():
         host="127.0.0.1",
         port=8000,
         base_path="/tmp",
+        token="abc",
     )
     values = dlg.get_values()
-    assert values == (True, False, "ru", "127.0.0.1", 8000, "/tmp")
+    assert values == (True, False, "ru", "127.0.0.1", 8000, "/tmp", "abc")
     dlg.Destroy()

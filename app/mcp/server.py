@@ -11,7 +11,8 @@ from __future__ import annotations
 import threading
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 import uvicorn
 from mcp.server.fastmcp import FastMCP
 
@@ -20,6 +21,18 @@ from mcp.server.fastmcp import FastMCP
 # FastAPI application that will host the MCP routes.  Additional routes may
 # be added by the GUI part of the application if needed.
 app = FastAPI()
+app.state.expected_token = ""
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Validate Authorization header if a token is configured."""
+    token = app.state.expected_token
+    if token:
+        header = request.headers.get("Authorization")
+        if header != f"Bearer {token}":
+            return JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
+    return await call_next(request)
 
 
 @app.get("/health")
@@ -42,13 +55,19 @@ _uvicorn_server: Optional[uvicorn.Server] = None
 _server_thread: Optional[threading.Thread] = None
 
 
-def start_server(host: str = "127.0.0.1", port: int = 8000, base_path: str = "") -> None:
+def start_server(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    base_path: str = "",
+    token: str = "",
+) -> None:
     """Start the HTTP server in a background thread.
 
     Args:
         host: Interface to bind the server to.
         port: TCP port where the server listens.
         base_path: Base filesystem path available to the MCP server.
+        token: Authorization token expected in the ``Authorization`` header.
     """
     global _uvicorn_server, _server_thread
 
@@ -57,6 +76,7 @@ def start_server(host: str = "127.0.0.1", port: int = 8000, base_path: str = "")
         return
 
     app.state.base_path = base_path
+    app.state.expected_token = token
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     _uvicorn_server = uvicorn.Server(config)
     # Disable signal handlers so uvicorn can run outside the main thread

@@ -1,34 +1,24 @@
 """Localization helpers for enumerated fields using gettext."""
 
 from gettext import gettext as _
+from enum import Enum
 
-# English labels for enum values
-TYPE = {
-    "requirement": "Requirement",
-    "constraint": "Constraint",
-    "interface": "Interface",
-}
+from app.core.model import RequirementType, Status, Priority, Verification
 
-STATUS = {
-    "draft": "Draft",
-    "in_review": "In review",
-    "approved": "Approved",
-    "baselined": "Baselined",
-    "retired": "Retired",
-}
 
-PRIORITY = {
-    "low": "Low",
-    "medium": "Medium",
-    "high": "High",
-}
+def _enum_label(e: Enum) -> str:
+    """Convert enum member name to human-readable English label."""
+    return e.name.replace("_", " ").lower().capitalize()
 
-VERIFICATION = {
-    "inspection": "Inspection",
-    "analysis": "Analysis",
-    "demonstration": "Demonstration",
-    "test": "Test",
-}
+
+# English labels generated from enum values
+TYPE = {e.value: _(_enum_label(e)) for e in RequirementType}
+
+STATUS = {e.value: _(_enum_label(e)) for e in Status}
+
+PRIORITY = {e.value: _(_enum_label(e)) for e in Priority}
+
+VERIFICATION = {e.value: _(_enum_label(e)) for e in Verification}
 
 EN_LABELS = {
     "type": TYPE,

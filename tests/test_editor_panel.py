@@ -68,12 +68,29 @@ def test_editor_clone(tmp_path):
     assert data["title"] == orig_data["title"]
 
 
+def test_get_data_requires_valid_id():
+    panel = _make_panel()
+    panel.new_requirement()
+    with pytest.raises(ValueError):
+        panel.get_data()
+    panel.fields["id"].SetValue("abc")
+    with pytest.raises(ValueError):
+        panel.get_data()
+    panel.fields["id"].SetValue("-5")
+    with pytest.raises(ValueError):
+        panel.get_data()
+    panel.fields["id"].SetValue("10")
+    data = panel.get_data()
+    assert data["id"] == 10
+
+
 def test_enum_localization_roundtrip():
     wx = pytest.importorskip("wx")
     from app.ui import locale
 
     panel = _make_panel()
     panel.new_requirement()
+    panel.fields["id"].SetValue("1")
     data = panel.get_data()
     assert data["type"] == "requirement"
     assert data["status"] == "draft"

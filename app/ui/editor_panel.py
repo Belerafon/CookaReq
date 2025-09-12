@@ -134,6 +134,8 @@ class EditorPanel(wx.Panel):
             self.fields[name] = ctrl
             proportion = 1 if multiline and name != "source" else 0
             sizer.Add(ctrl, proportion, wx.EXPAND | wx.ALL, 5)
+            if name == "id":
+                ctrl.SetHint("Уникальный целочисленный идентификатор")
 
         def add_text_field(name: str) -> None:
             container = wx.BoxSizer(wx.VERTICAL)
@@ -244,8 +246,17 @@ class EditorPanel(wx.Panel):
     # data helpers -----------------------------------------------------
     def get_data(self) -> dict[str, Any]:
         id_value = self.fields["id"].GetValue().strip()
+        if not id_value:
+            raise ValueError("требуется указать идентификатор")
+        try:
+            req_id = int(id_value)
+        except ValueError as exc:  # pragma: no cover - error path
+            raise ValueError("идентификатор должен быть целым числом") from exc
+        if req_id <= 0:
+            raise ValueError("идентификатор должен быть положительным")
+
         data = {
-            "id": int(id_value) if id_value else 0,
+            "id": req_id,
             "title": self.fields["title"].GetValue(),
             "statement": self.fields["statement"].GetValue(),
             "type": locale.ru_to_code("type", self.enums["type"].GetStringSelection()),

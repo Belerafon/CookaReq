@@ -167,7 +167,11 @@ class MainFrame(wx.Frame):
     def _on_editor_save(self) -> None:
         if not self.current_dir:
             return
-        path = self.editor.save(self.current_dir)
+        try:
+            self.editor.save(self.current_dir)
+        except ValueError as exc:  # pragma: no cover - GUI event
+            wx.MessageBox(str(exc), "Ошибка", wx.ICON_ERROR)
+            return
         data = self.editor.get_data()
         self.model.update(data)
         self.panel.refresh()

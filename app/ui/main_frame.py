@@ -4,13 +4,15 @@ from gettext import gettext as _
 
 import logging
 from importlib import resources
-import wx
 from pathlib import Path
 from dataclasses import fields, replace
 from typing import Dict
 
+import wx
+
 from app.log import logger
 
+from app.config import ConfigManager
 from app.core import store
 from app.core.model import Requirement, requirement_from_dict, DerivationLink
 from app.core.labels import Label
@@ -19,6 +21,7 @@ from .editor_panel import EditorPanel
 from .settings_dialog import SettingsDialog
 from .requirement_model import RequirementModel
 from .labels_dialog import LabelsDialog
+from .navigation import Navigation
 
 
 class WxLogHandler(logging.Handler):
@@ -37,11 +40,18 @@ class WxLogHandler(logging.Handler):
 
 
 class MainFrame(wx.Frame):
-    """Top-level frame with basic menu and toolbar."""
+    """Top-level frame coordinating UI subsystems."""
 
-    def __init__(self, parent: wx.Window | None):
+    def __init__(
+        self,
+        parent: wx.Window | None,
+        *,
+        config: ConfigManager | None = None,
+        model: RequirementModel | None = None,
+    ) -> None:
         self._base_title = "CookaReq"
-        self.config = wx.Config(appName="CookaReq")
+        self.config = config if config is not None else ConfigManager()
+        self.model = model if model is not None else RequirementModel()
         # ``Requirement`` содержит множество полей, но в списке колонок
         # нам нужны только скалярные значения. Метки отображаются особым
         # образом, поэтому добавим их вручную в конец списка.
@@ -50,14 +60,11 @@ class MainFrame(wx.Frame):
         ]
         self.available_fields.append("labels")
         self.available_fields.append("derived_count")
-        self.selected_fields = self._load_columns()
-        self.recent_dirs = self._load_recent_dirs()
-        self._recent_items: Dict[int, Path] = {}
-        self.auto_open_last = self.config.ReadBool("auto_open_last", False)
-        self.remember_sort = self.config.ReadBool("remember_sort", False)
-        self.language = self.config.Read("language")
-        self.sort_column = self.config.ReadInt("sort_column", -1)
-        self.sort_ascending = self.config.ReadBool("sort_ascending", True)
+        self.selected_fields = self.config.get_columns()
+        self.auto_open_last = self.config.get_auto_open_last()
+        self.remember_sort = self.config.get_remember_sort()
+        self.language = self.config.get_language()
+        self.sort_column, self.sort_ascending = self.config.get_sort_settings()
         self.labels: list[Label] = []
         super().__init__(parent=parent, title=self._base_title)
         # Load all available icon sizes so that Windows taskbar and other
@@ -67,9 +74,24 @@ class MainFrame(wx.Frame):
         with resources.as_file(resources.files("app.resources") / "app.ico") as icon_path:
             icons = wx.IconBundle(str(icon_path), wx.BITMAP_TYPE_ANY)
             self.SetIcons(icons)
-        self.model = RequirementModel()
-        self._create_menu()
-        self._create_toolbar()
+        self.navigation = Navigation(
+            self,
+            self.config,
+            available_fields=self.available_fields,
+            selected_fields=self.selected_fields,
+            on_open_folder=self.on_open_folder,
+            on_open_settings=self.on_open_settings,
+            on_manage_labels=self.on_manage_labels,
+            on_open_recent=self.on_open_recent,
+            on_toggle_column=self.on_toggle_column,
+            on_toggle_log_console=self.on_toggle_log_console,
+            on_show_derivation_graph=self.on_show_derivation_graph,
+            on_new_requirement=self.on_new_requirement,
+        )
+        self._recent_menu = self.navigation.recent_menu
+        self._recent_menu_item = self.navigation.recent_menu_item
+        self.log_menu_item = self.navigation.log_menu_item
+        self.manage_labels_id = self.navigation.manage_labels_id
 
         # split horizontally: top is main content, bottom is log console
         self.main_splitter = wx.SplitterWindow(self)
@@ -116,46 +138,9 @@ class MainFrame(wx.Frame):
             if path.exists():
                 self._load_directory(path)
 
-    def _create_menu(self) -> None:
-        menu_bar = wx.MenuBar()
-        file_menu = wx.Menu()
-        open_item = file_menu.Append(wx.ID_OPEN, _("&Open Folder\tCtrl+O"))
-        self._recent_menu = wx.Menu()
-        self._recent_menu_item = file_menu.AppendSubMenu(self._recent_menu, _("Open &Recent"))
-        settings_item = file_menu.Append(wx.ID_PREFERENCES, _("Settings"))
-        labels_item = file_menu.Append(wx.ID_ANY, _("Manage Labels"))
-        exit_item = file_menu.Append(wx.ID_EXIT, _("E&xit"))
-        self.Bind(wx.EVT_MENU, self.on_open_folder, open_item)
-        self.Bind(wx.EVT_MENU, self.on_open_settings, settings_item)
-        self.Bind(wx.EVT_MENU, self.on_manage_labels, labels_item)
-        self.Bind(wx.EVT_MENU, lambda evt: self.Close(), exit_item)
-        self._rebuild_recent_menu()
-        self.manage_labels_id = labels_item.GetId()
-        menu_bar.Append(file_menu, _("&File"))
-
-        view_menu = wx.Menu()
-        columns_menu = wx.Menu()
-        self._column_items: Dict[int, str] = {}
-        for field in self.available_fields:
-            item = columns_menu.AppendCheckItem(wx.ID_ANY, field)
-            item.Check(field in self.selected_fields)
-            self.Bind(wx.EVT_MENU, self.on_toggle_column, item)
-            self._column_items[item.GetId()] = field
-        view_menu.AppendSubMenu(columns_menu, _("Columns"))
-        self.log_menu_item = view_menu.AppendCheckItem(wx.ID_ANY, _("Show Error Console"))
-        self.Bind(wx.EVT_MENU, self.on_toggle_log_console, self.log_menu_item)
-        graph_item = view_menu.Append(wx.ID_ANY, _("Show Derivation Graph"))
-        self.Bind(wx.EVT_MENU, self.on_show_derivation_graph, graph_item)
-        menu_bar.Append(view_menu, _("&View"))
-        self.SetMenuBar(menu_bar)
-
-    def _create_toolbar(self) -> None:
-        toolbar = self.CreateToolBar()
-        open_tool = toolbar.AddTool(wx.ID_OPEN, _("Open"), wx.ArtProvider.GetBitmap(wx.ART_FOLDER_OPEN))
-        new_tool = toolbar.AddTool(wx.ID_NEW, _("New"), wx.ArtProvider.GetBitmap(wx.ART_NEW))
-        self.Bind(wx.EVT_TOOL, self.on_open_folder, open_tool)
-        self.Bind(wx.EVT_TOOL, self.on_new_requirement, new_tool)
-        toolbar.Realize()
+    @property
+    def recent_dirs(self) -> list[str]:
+        return self.config.get_recent_dirs()
 
     def on_open_folder(self, event: wx.Event) -> None:
         dlg = wx.DirDialog(self, _("Select requirements folder"))
@@ -164,7 +149,7 @@ class MainFrame(wx.Frame):
         dlg.Destroy()
 
     def on_open_recent(self, event: wx.CommandEvent) -> None:
-        path = self._recent_items.get(event.GetId())
+        path = self.navigation.get_recent_path(event.GetId())
         if path:
             self._load_directory(path)
 
@@ -177,10 +162,9 @@ class MainFrame(wx.Frame):
         )
         if dlg.ShowModal() == wx.ID_OK:
             self.auto_open_last, self.remember_sort, self.language = dlg.get_values()
-            self.config.WriteBool("auto_open_last", self.auto_open_last)
-            self.config.WriteBool("remember_sort", self.remember_sort)
-            self.config.Write("language", self.language)
-            self.config.Flush()
+            self.config.set_auto_open_last(self.auto_open_last)
+            self.config.set_remember_sort(self.remember_sort)
+            self.config.set_language(self.language)
             self._apply_language()
         dlg.Destroy()
 
@@ -202,17 +186,17 @@ class MainFrame(wx.Frame):
             sys.modules.get("app.ui.editor_panel"),
             sys.modules.get("app.ui.settings_dialog"),
             sys.modules.get("app.ui.labels_dialog"),
+            sys.modules.get("app.ui.navigation"),
         ]:
             if mod and hasattr(mod, "_"):
                 mod._ = trans.gettext
 
         # Rebuild menus and toolbar with new translations
-        self.SetMenuBar(None)
-        tb = self.GetToolBar()
-        if tb is not None:
-            tb.Destroy()
-        self._create_menu()
-        self._create_toolbar()
+        self.navigation.rebuild(self.selected_fields)
+        self._recent_menu = self.navigation.recent_menu
+        self._recent_menu_item = self.navigation.recent_menu_item
+        self.log_menu_item = self.navigation.log_menu_item
+        self.manage_labels_id = self.navigation.manage_labels_id
 
         # Replace panels to update all labels
         old_panel, old_editor = self.panel, self.editor
@@ -313,7 +297,8 @@ class MainFrame(wx.Frame):
 
     def _load_directory(self, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""
-        self._add_recent_dir(path)
+        self.config.add_recent_dir(path)
+        self.navigation.update_recent_menu()
         self.SetTitle(f"{self._base_title} - {path}")
         self.current_dir = path
         self.editor.set_directory(self.current_dir)
@@ -358,32 +343,6 @@ class MainFrame(wx.Frame):
         self.panel.update_labels_list(names)
 
     # recent directories -------------------------------------------------
-    def _load_recent_dirs(self) -> list[str]:
-        value = self.config.Read("recent_dirs", "")
-        return [p for p in value.split("|") if p]
-
-    def _save_recent_dirs(self) -> None:
-        self.config.Write("recent_dirs", "|".join(self.recent_dirs))
-        self.config.Flush()
-
-    def _add_recent_dir(self, path: Path) -> None:
-        p = str(path)
-        if p in self.recent_dirs:
-            self.recent_dirs.remove(p)
-        self.recent_dirs.insert(0, p)
-        del self.recent_dirs[5:]
-        self._save_recent_dirs()
-        self._rebuild_recent_menu()
-
-    def _rebuild_recent_menu(self) -> None:
-        for item in list(self._recent_menu.GetMenuItems()):
-            self._recent_menu.Delete(item)
-        self._recent_items.clear()
-        for p in self.recent_dirs:
-            item = self._recent_menu.Append(wx.ID_ANY, p)
-            self.Bind(wx.EVT_MENU, self.on_open_recent, item)
-            self._recent_items[item.GetId()] = Path(p)
-        self._recent_menu_item.Enable(bool(self.recent_dirs))
 
     def on_requirement_selected(self, event: wx.ListEvent) -> None:
         req_id = event.GetData()
@@ -415,7 +374,7 @@ class MainFrame(wx.Frame):
         self._sync_labels()
 
     def on_toggle_column(self, event: wx.CommandEvent) -> None:
-        field = self._column_items.get(event.GetId())
+        field = self.navigation.get_field_for_id(event.GetId())
         if not field:
             return
         if field in self.selected_fields:
@@ -423,81 +382,36 @@ class MainFrame(wx.Frame):
         else:
             self.selected_fields.append(field)
         self.panel.set_columns(self.selected_fields)
-        self.panel.load_column_widths(self.config)
-        self.panel.load_column_order(self.config)
-        self._save_columns()
+        self.panel.load_column_widths(self.config.wx)
+        self.panel.load_column_order(self.config.wx)
+        self.config.set_columns(self.selected_fields)
 
     def on_toggle_log_console(self, event: wx.CommandEvent) -> None:
-        if self.log_menu_item.IsChecked():
-            sash = self.config.ReadInt("log_sash", self.GetClientSize().height - 150)
+        if self.navigation.log_menu_item.IsChecked():
+            sash = self.config.get_log_sash(self.GetClientSize().height - 150)
             self.log_console.Show()
             self.main_splitter.SplitHorizontally(self.splitter, self.log_console, sash)
         else:
             if self.main_splitter.IsSplit():
-                self.config.WriteInt("log_sash", self.main_splitter.GetSashPosition())
+                self.config.set_log_sash(self.main_splitter.GetSashPosition())
             self.main_splitter.Unsplit(self.log_console)
             self.log_console.Hide()
-        self.config.WriteBool("log_shown", self.log_menu_item.IsChecked())
-        self.config.Flush()
-
-    def _load_columns(self) -> list[str]:
-        value = self.config.Read("list_columns", "")
-        return [f for f in value.split(",") if f]
-
-    def _save_columns(self) -> None:
-        self.config.Write("list_columns", ",".join(self.selected_fields))
-        self.config.Flush()
+        self.config.set_log_shown(self.navigation.log_menu_item.IsChecked())
 
     def _load_layout(self) -> None:
         """Restore window geometry, splitter, console, and column widths."""
-        w = self.config.ReadInt("win_w", 800)
-        h = self.config.ReadInt("win_h", 600)
-        w = max(400, min(w, 3000))
-        h = max(300, min(h, 2000))
-        self.SetSize((w, h))
-        x = self.config.ReadInt("win_x", -1)
-        y = self.config.ReadInt("win_y", -1)
-        if x != -1 and y != -1:
-            self.SetPosition((x, y))
-        else:
-            self.Centre()
-        sash = self.config.ReadInt("sash_pos", 300)
-        client_w = self.GetClientSize().width
-        sash = max(100, min(sash, max(client_w - 100, 100)))
-        self.splitter.SetSashPosition(sash)
-        self.panel.load_column_widths(self.config)
-        self.panel.load_column_order(self.config)
-
-        log_shown = self.config.ReadBool("log_shown", False)
-        log_sash = self.config.ReadInt("log_sash", self.GetClientSize().height - 150)
-        if log_shown:
-            self.log_console.Show()
-            self.main_splitter.SplitHorizontally(self.splitter, self.log_console, log_sash)
-            if hasattr(self, "log_menu_item"):
-                self.log_menu_item.Check(True)
-        else:
-            self.main_splitter.Initialize(self.splitter)
-            self.log_console.Hide()
-            if hasattr(self, "log_menu_item"):
-                self.log_menu_item.Check(False)
+        self.config.restore_layout(
+            self,
+            self.splitter,
+            self.main_splitter,
+            self.panel,
+            self.log_console,
+            self.log_menu_item,
+        )
 
     def _save_layout(self) -> None:
         """Persist window geometry, splitter, console, and column widths."""
-        w, h = self.GetSize()
-        x, y = self.GetPosition()
-        self.config.WriteInt("win_w", w)
-        self.config.WriteInt("win_h", h)
-        self.config.WriteInt("win_x", x)
-        self.config.WriteInt("win_y", y)
-        self.config.WriteInt("sash_pos", self.splitter.GetSashPosition())
-        if self.main_splitter.IsSplit():
-            self.config.WriteBool("log_shown", True)
-            self.config.WriteInt("log_sash", self.main_splitter.GetSashPosition())
-        else:
-            self.config.WriteBool("log_shown", False)
-        self.panel.save_column_widths(self.config)
-        self.panel.save_column_order(self.config)
-        self.config.Flush()
+        self.config.save_layout(self, self.splitter, self.main_splitter, self.panel)
 
     def _on_close(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._save_layout()
@@ -510,9 +424,7 @@ class MainFrame(wx.Frame):
             return
         self.sort_column = column
         self.sort_ascending = ascending
-        self.config.WriteInt("sort_column", column)
-        self.config.WriteBool("sort_ascending", ascending)
-        self.config.Flush()
+        self.config.set_sort_settings(column, ascending)
 
     # context menu actions -------------------------------------------
     def _generate_new_id(self) -> int:

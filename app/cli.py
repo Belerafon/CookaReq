@@ -15,6 +15,8 @@ def _load_all(directory: str | Path) -> list[model.Requirement]:
     """Load all requirements from *directory*."""
     reqs: list[model.Requirement] = []
     for path in Path(directory).glob("*.json"):
+        if path.name == store.LABELS_FILENAME:
+            continue
         data, _ = store.load(path)
         reqs.append(model.Requirement(**data))
     return reqs

@@ -1,6 +1,7 @@
 import pytest
 from pathlib import Path
 
+import app.mcp.tools_write as tools_write
 from app.mcp.tools_write import (
     create_requirement,
     patch_requirement,
@@ -76,3 +77,82 @@ def test_link_requirements(tmp_path: Path):
     # patching derived_from should be prohibited
     err = patch_requirement(tmp_path, 2, {"derived_from": []}, rev=2)
     assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
+
+
+def test_create_requirement_errors(tmp_path: Path, monkeypatch) -> None:
+    from app.core.store import ConflictError
+
+    def conflict(*args, **kwargs):  # noqa: ANN001, ANN002
+        raise ConflictError("exists")
+
+    monkeypatch.setattr(tools_write, "save", conflict)
+    err = create_requirement(tmp_path, _base_req(1))
+    assert err["error"]["code"] == ErrorCode.CONFLICT
+
+    err = create_requirement(tmp_path, {"id": 2})
+    assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
+
+    def boom(*args, **kwargs):  # noqa: ANN001, ANN002
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(tools_write, "save", boom)
+    err = create_requirement(tmp_path, _base_req(3))
+    assert err["error"]["code"] == ErrorCode.INTERNAL
+
+
+def test_patch_requirement_errors(tmp_path: Path, monkeypatch) -> None:
+    # not found
+    err = patch_requirement(tmp_path, 1, {"title": "X"}, rev=1)
+    assert err["error"]["code"] == ErrorCode.NOT_FOUND
+
+    create_requirement(tmp_path, _base_req(1))
+
+    def boom(*args, **kwargs):  # noqa: ANN001, ANN002
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(tools_write, "save", boom)
+    err = patch_requirement(tmp_path, 1, {"title": "X"}, rev=1)
+    assert err["error"]["code"] == ErrorCode.INTERNAL
+
+
+def test_delete_requirement_errors(tmp_path: Path, monkeypatch) -> None:
+    err = delete_requirement(tmp_path, 1, rev=1)
+    assert err["error"]["code"] == ErrorCode.NOT_FOUND
+
+    create_requirement(tmp_path, _base_req(1))
+
+    def boom(*args, **kwargs):  # noqa: ANN001, ANN002
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(tools_write, "delete_file", boom)
+    err = delete_requirement(tmp_path, 1, rev=1)
+    assert err["error"]["code"] == ErrorCode.INTERNAL
+
+
+def test_link_requirements_errors(tmp_path: Path, monkeypatch) -> None:
+    # missing source
+    create_requirement(tmp_path, _base_req(2))
+    err = link_requirements(tmp_path, source_id=1, derived_id=2, rev=1)
+    assert err["error"]["code"] == ErrorCode.NOT_FOUND
+
+    # missing derived
+    create_requirement(tmp_path, _base_req(1))
+    err = link_requirements(tmp_path, source_id=1, derived_id=3, rev=1)
+    assert err["error"]["code"] == ErrorCode.NOT_FOUND
+
+    def val_err(*args, **kwargs):  # noqa: ANN001, ANN002
+        raise ValueError("bad")
+
+    orig = tools_write.requirement_from_dict
+    monkeypatch.setattr(tools_write, "requirement_from_dict", val_err)
+    err = link_requirements(tmp_path, source_id=1, derived_id=2, rev=1)
+    assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
+
+    monkeypatch.setattr(tools_write, "requirement_from_dict", orig)
+
+    def boom(*args, **kwargs):  # noqa: ANN001, ANN002
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(tools_write, "save", boom)
+    err = link_requirements(tmp_path, source_id=1, derived_id=2, rev=1)
+    assert err["error"]["code"] == ErrorCode.INTERNAL

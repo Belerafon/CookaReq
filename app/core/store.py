@@ -17,6 +17,15 @@ LABELS_FILENAME = "labels.json"
 _ID_CACHE: dict[Path, set[int]] = {}
 
 
+def _read_json(path: Path) -> object:
+    """Read JSON from *path* and raise :class:`ValueError` on invalid content."""
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
+
+
 class ConflictError(Exception):
     """Raised when a file was modified on disk since loading."""
 
@@ -29,8 +38,7 @@ def filename_for(req_id: int) -> str:
 def load(path: str | Path) -> tuple[dict, float]:
     """Load requirement data from *path* and return data with its mtime."""
     p = Path(path)
-    with p.open("r", encoding="utf-8") as fh:
-        data = json.load(fh)
+    data = _read_json(p)
     mtime = p.stat().st_mtime
     return data, mtime
 
@@ -42,8 +50,10 @@ def _scan_ids(directory: Path) -> set[int]:
         if fp.name == LABELS_FILENAME:
             continue
         try:
-            with fp.open("r", encoding="utf-8") as fh:
-                ids.add(json.load(fh)["id"])
+            ids.add(_read_json(fp)["id"])
+        except ValueError as exc:
+            logger.warning("%s", exc)
+            continue
         except Exception as exc:
             logger.warning("Failed to read %s: %s", fp, exc)
             continue
@@ -142,8 +152,10 @@ def mark_suspects(directory: str | Path, changed_id: int, new_revision: int) -> 
         if fp.name == LABELS_FILENAME:
             continue
         try:
-            with fp.open("r", encoding="utf-8") as fh:
-                data = json.load(fh)
+            data = _read_json(fp)
+        except ValueError as exc:
+            logger.warning("%s", exc)
+            continue
         except Exception as exc:
             logger.warning("Failed to read %s: %s", fp, exc)
             continue
@@ -176,8 +188,11 @@ def load_labels(directory: str | Path) -> list[Label]:
     path = Path(directory) / LABELS_FILENAME
     if not path.exists():
         return []
-    with path.open("r", encoding="utf-8") as fh:
-        data = json.load(fh)
+    try:
+        data = _read_json(path)
+    except ValueError as exc:
+        logger.warning("%s", exc)
+        return []
     return [Label(**item) for item in data]
 
 

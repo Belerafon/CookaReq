@@ -5,6 +5,7 @@ folder. It requires PyInstaller to be installed in the active
 environment.
 """
 from pathlib import Path
+import os
 import sys
 
 import PyInstaller.__main__  # type: ignore
@@ -17,6 +18,7 @@ def main() -> None:
     # Ensure localisation files are compiled before packaging
     compile_all(root / "app" / "locale")
     script = root / "app" / "main.py"
+    icon = root / "app" / "resources" / "app.ico"
     args: list[str] = [
         str(script),
         "--name=CookaReq",
@@ -30,6 +32,8 @@ def main() -> None:
         # Collect package data/binaries that wx/jsonschema may need
         "--collect-all=wx",
         "--collect-all=jsonschema",
+        f"--add-data={icon}{os.pathsep}app/resources",
+        f"--icon={icon}",
     ]
 
     # Allow switching to a single EXE if user passes "--onefile"

@@ -1,6 +1,8 @@
 import os
 import pytest
 
+from app.core.model import RequirementType, Status, Priority, Verification
+
 
 def _make_panel():
     wx = pytest.importorskip("wx")
@@ -82,7 +84,7 @@ def test_get_data_requires_valid_id():
         panel.get_data()
     panel.fields["id"].SetValue("10")
     data = panel.get_data()
-    assert data["id"] == 10
+    assert data.id == 10
 
 
 def test_enum_localization_roundtrip():
@@ -93,10 +95,10 @@ def test_enum_localization_roundtrip():
     panel.new_requirement()
     panel.fields["id"].SetValue("1")
     data = panel.get_data()
-    assert data["type"] == "requirement"
-    assert data["status"] == "draft"
-    assert data["priority"] == "medium"
-    assert data["verification"] == "analysis"
+    assert data.type == RequirementType.REQUIREMENT
+    assert data.status == Status.DRAFT
+    assert data.priority == Priority.MEDIUM
+    assert data.verification == Verification.ANALYSIS
 
     panel.load(
         {
@@ -119,10 +121,10 @@ def test_enum_localization_roundtrip():
     panel.enums["priority"].SetStringSelection(locale.PRIORITY["low"])
     panel.enums["verification"].SetStringSelection(locale.VERIFICATION["demonstration"])
     data = panel.get_data()
-    assert data["type"] == "interface"
-    assert data["status"] == "baselined"
-    assert data["priority"] == "low"
-    assert data["verification"] == "demonstration"
+    assert data.type == RequirementType.INTERFACE
+    assert data.status == Status.BASELINED
+    assert data.priority == Priority.LOW
+    assert data.verification == Verification.DEMONSTRATION
 
 
 def test_labels_selection_and_update():
@@ -133,7 +135,7 @@ def test_labels_selection_and_update():
     # select one label
     panel.labels_list.Check(1, True)
     data = panel.get_data()
-    assert data["labels"] == ["backend"]
+    assert data.labels == ["backend"]
     # load with different label
     panel.load({"id": 1, "labels": ["ui"]})
     assert panel.labels_list.IsChecked(0)

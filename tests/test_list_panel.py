@@ -2,6 +2,8 @@ import sys
 import types
 import importlib
 
+from app.core.model import Requirement, RequirementType, Status, Priority, Verification
+
 
 def _build_wx_stub():
     class Window:
@@ -130,6 +132,22 @@ def _build_wx_stub():
     return wx_mod, mixins_mod
 
 
+def _req(id: int, title: str, **kwargs) -> Requirement:
+    base = dict(
+        id=id,
+        title=title,
+        statement="",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+    )
+    base.update(kwargs)
+    return Requirement(**base)
+
+
 def test_list_panel_has_search_and_list(monkeypatch):
     wx_stub, mixins = _build_wx_stub()
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -173,18 +191,18 @@ def test_column_click_sorts(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["id"])
     panel.set_requirements([
-        {"id": 2, "title": "B"},
-        {"id": 1, "title": "A"},
+        _req(2, "B"),
+        _req(1, "A"),
     ])
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 0))
-    assert [r["id"] for r in panel.model.get_visible()] == [1, 2]
+    assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 1))
-    assert [r["id"] for r in panel.model.get_visible()] == [1, 2]
+    assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 1))
-    assert [r["id"] for r in panel.model.get_visible()] == [2, 1]
+    assert [r.id for r in panel.model.get_visible()] == [2, 1]
 
 
 def test_column_click_after_set_columns_triggers_sort(monkeypatch):
@@ -201,13 +219,13 @@ def test_column_click_after_set_columns_triggers_sort(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["id"])
     panel.set_requirements([
-        {"id": 2, "title": "B"},
-        {"id": 1, "title": "A"},
+        _req(2, "B"),
+        _req(1, "A"),
     ])
 
     handler = panel.list.get_bound_handler(wx_stub.EVT_LIST_COL_CLICK)
     handler(types.SimpleNamespace(GetColumn=lambda: 1))
-    assert [r["id"] for r in panel.model.get_visible()] == [1, 2]
+    assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
 
 def test_search_and_label_filters(monkeypatch):
@@ -223,16 +241,16 @@ def test_search_and_label_filters(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_requirements([
-        {"id": 1, "title": "Login", "labels": ["ui"]},
-        {"id": 2, "title": "Export", "labels": ["report"]},
+        _req(1, "Login", labels=["ui"]),
+        _req(2, "Export", labels=["report"]),
     ])
 
     panel.set_label_filter(["ui"])
-    assert [r["id"] for r in panel.model.get_visible()] == [1]
+    assert [r.id for r in panel.model.get_visible()] == [1]
 
     panel.set_label_filter([])
     panel.set_search_query("Export", fields=["title"])
-    assert [r["id"] for r in panel.model.get_visible()] == [2]
+    assert [r.id for r in panel.model.get_visible()] == [2]
 
     panel.set_label_filter(["ui"])
     panel.set_search_query("Export", fields=["title"])
@@ -256,7 +274,7 @@ def test_labels_column_renders_joined(monkeypatch):
     captured: list[tuple[int, int, str]] = []
     panel.list.SetItem = lambda i, c, t: captured.append((i, c, t))
     panel.set_requirements([
-        {"id": 1, "title": "A", "labels": ["ui", "backend"]},
+        _req(1, "A", labels=["ui", "backend"]),
     ])
 
     # ищем запись для первой колонки после заголовка
@@ -277,12 +295,12 @@ def test_sort_by_labels(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
     panel.set_requirements([
-        {"id": 1, "title": "A", "labels": ["beta"]},
-        {"id": 2, "title": "B", "labels": ["alpha"]},
+        _req(1, "A", labels=["beta"]),
+        _req(2, "B", labels=["alpha"]),
     ])
 
     panel.sort(1, True)
-    assert [r["id"] for r in panel.model.get_visible()] == [2, 1]
+    assert [r.id for r in panel.model.get_visible()] == [2, 1]
 
 
 def test_sort_by_multiple_labels(monkeypatch):
@@ -299,12 +317,12 @@ def test_sort_by_multiple_labels(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
     panel.set_requirements([
-        {"id": 1, "title": "A", "labels": ["alpha", "zeta"]},
-        {"id": 2, "title": "B", "labels": ["alpha", "beta"]},
+        _req(1, "A", labels=["alpha", "zeta"]),
+        _req(2, "B", labels=["alpha", "beta"]),
     ])
 
     panel.sort(1, True)
-    assert [r["id"] for r in panel.model.get_visible()] == [2, 1]
+    assert [r.id for r in panel.model.get_visible()] == [2, 1]
 
 
 def test_bulk_edit_updates_requirements(monkeypatch):
@@ -321,14 +339,14 @@ def test_bulk_edit_updates_requirements(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["version"])
     reqs = [
-        {"id": 1, "title": "A", "version": "1"},
-        {"id": 2, "title": "B", "version": "1"},
+        _req(1, "A", version="1"),
+        _req(2, "B", version="1"),
     ]
     panel.set_requirements(reqs)
     monkeypatch.setattr(panel, "_get_selected_indices", lambda: [0, 1])
     monkeypatch.setattr(panel, "_prompt_value", lambda field: "2")
     panel._on_edit_field(1)
-    assert [r["version"] for r in reqs] == ["2", "2"]
+    assert [r.version for r in reqs] == ["2", "2"]
 
 
 def test_sort_method_and_callback(monkeypatch):
@@ -346,16 +364,16 @@ def test_sort_method_and_callback(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel(), on_sort_changed=lambda c, a: calls.append((c, a)))
     panel.set_columns(["id"])
     panel.set_requirements([
-        {"id": 2, "title": "B"},
-        {"id": 1, "title": "A"},
+        _req(2, "B"),
+        _req(1, "A"),
     ])
 
     panel.sort(1, True)
-    assert [r["id"] for r in panel.model.get_visible()] == [1, 2]
+    assert [r.id for r in panel.model.get_visible()] == [1, 2]
     assert calls[-1] == (1, True)
 
     panel.sort(1, False)
-    assert [r["id"] for r in panel.model.get_visible()] == [2, 1]
+    assert [r.id for r in panel.model.get_visible()] == [2, 1]
     assert calls[-1] == (1, False)
 
 

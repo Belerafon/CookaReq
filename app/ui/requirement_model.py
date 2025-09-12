@@ -1,17 +1,19 @@
 """Model managing requirements data with filtering and sorting."""
 from __future__ import annotations
 
-from typing import List, Sequence, Any
+from typing import List, Sequence
+from enum import Enum
 
 from app.core import search as core_search
+from app.core.model import Requirement
 
 
 class RequirementModel:
     """Maintain requirement data and apply filters/sorting."""
 
     def __init__(self) -> None:
-        self._all: List[dict] = []
-        self._visible: List[dict] = []
+        self._all: List[Requirement] = []
+        self._visible: List[Requirement] = []
         self._labels: List[str] = []
         self._labels_match_all: bool = True
         self._query: str = ""
@@ -20,19 +22,19 @@ class RequirementModel:
         self._sort_ascending: bool = True
 
     # data management -------------------------------------------------
-    def set_requirements(self, requirements: List[dict]) -> None:
+    def set_requirements(self, requirements: List[Requirement]) -> None:
         """Replace all requirements."""
         self._all = list(requirements)
         self._refresh()
 
-    def add(self, requirement: dict) -> None:
+    def add(self, requirement: Requirement) -> None:
         self._all.append(requirement)
         self._refresh()
 
-    def update(self, requirement: dict) -> None:
-        rid = requirement.get("id")
+    def update(self, requirement: Requirement) -> None:
+        rid = requirement.id
         for i, req in enumerate(self._all):
-            if req.get("id") == rid:
+            if req.id == rid:
                 self._all[i] = requirement
                 break
         else:  # not found
@@ -40,12 +42,12 @@ class RequirementModel:
         self._refresh()
 
     def delete(self, req_id: int) -> None:
-        self._all = [r for r in self._all if r.get("id") != req_id]
+        self._all = [r for r in self._all if r.id != req_id]
         self._refresh()
 
-    def get_by_id(self, req_id: int) -> dict | None:
+    def get_by_id(self, req_id: int) -> Requirement | None:
         for req in self._all:
-            if req.get("id") == req_id:
+            if req.id == req_id:
                 return req
         return None
 
@@ -84,23 +86,24 @@ class RequirementModel:
         if not self._sort_field:
             return
 
-        def get_value(req: Any):
-            value = req.get(self._sort_field, "")
+        def get_value(req: Requirement):
+            value = getattr(req, self._sort_field, "")
+            if isinstance(value, Enum):
+                value = value.value
             if self._sort_field == "id":
                 try:
                     return int(value)
                 except Exception:
                     return 0
             if self._sort_field == "labels" and isinstance(value, list):
-                # учитываем все метки, чтобы корректно сравнивать несколько
                 return "|".join(value)
             return value
 
         self._visible.sort(key=get_value, reverse=not self._sort_ascending)
 
     # access ----------------------------------------------------------
-    def get_visible(self) -> List[dict]:
+    def get_visible(self) -> List[Requirement]:
         return list(self._visible)
 
-    def get_all(self) -> List[dict]:
+    def get_all(self) -> List[Requirement]:
         return list(self._all)

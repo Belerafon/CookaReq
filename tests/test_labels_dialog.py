@@ -26,6 +26,51 @@ def test_labels_dialog_changes_color():
     app.Destroy()
 
 
+def test_labels_dialog_adds_presets():
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+    from app.ui.labels_dialog import LabelsDialog
+    from app.core.labels import PRESET_SETS
+
+    dlg = LabelsDialog(None, [])
+    dlg._on_add_preset_set("basic")
+    labels = dlg.get_labels()
+    assert {l.name for l in labels} == {l.name for l in PRESET_SETS["basic"]}
+    # calling again should not duplicate
+    dlg._on_add_preset_set("basic")
+    assert len(dlg.get_labels()) == len(PRESET_SETS["basic"])
+    dlg.Destroy()
+    app.Destroy()
+
+
+def test_labels_dialog_deletes_selected():
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+    from app.ui.labels_dialog import LabelsDialog
+
+    dlg = LabelsDialog(None, [Label("a", "#111111"), Label("b", "#222222"), Label("c", "#333333")])
+    dlg.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+    dlg.list.SetItemState(2, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+    dlg._on_delete_selected(None)
+    names = [l.name for l in dlg.get_labels()]
+    assert names == ["b"]
+    dlg.Destroy()
+    app.Destroy()
+
+
+def test_labels_dialog_clear_all(monkeypatch):
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+    from app.ui.labels_dialog import LabelsDialog
+
+    dlg = LabelsDialog(None, [Label("a", "#111111")])
+    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
+    dlg._on_clear_all(None)
+    assert dlg.get_labels() == []
+    dlg.Destroy()
+    app.Destroy()
+
+
 def _prepare_frame(monkeypatch, tmp_path):
     from app.core.store import save
 

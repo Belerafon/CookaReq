@@ -337,7 +337,7 @@ class MainFrame(wx.Frame):
         new_id = self._generate_new_id()
         data = dict(source)
         data["id"] = new_id
-        data["title"] = f"{_("(Copy)")} {source.get('title', '')}".strip()
+        data["title"] = f"{_('(Copy)')} {source.get('title', '')}".strip()
         data["modified_at"] = ""
         data["revision"] = 1
         self.model.add(data)

@@ -1,3 +1,4 @@
+import os
 import pytest
 
 
@@ -45,7 +46,7 @@ def test_editor_save_and_delete(tmp_path):
 
     data, _ = store.load(path)
     assert data["id"] == 1
-    assert data["attachments"][0]["path"] == f"attachments/{att.name}"
+    assert data["attachments"][0]["path"] == f"attachments{os.sep}{att.name}"
 
     panel.delete()
     assert not path.exists()

@@ -10,7 +10,8 @@ import pytest
 
 @pytest.fixture(scope="session", autouse=True)
 def _virtual_display():
-    if os.environ.get("DISPLAY"):
+    # Skip virtual display on Windows or if DISPLAY is set
+    if os.name == 'nt' or os.environ.get("DISPLAY"):
         yield
         return
     try:

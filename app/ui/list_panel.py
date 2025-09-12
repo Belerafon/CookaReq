@@ -35,6 +35,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.search = wx.SearchCtrl(self)
         self.labels = wx.ComboCtrl(self)
+        self._label_choices: list[str] = []
+        self._ignore_label_event = False
         self.match_any = wx.CheckBox(self, label=_("Match any labels"))
         # На Windows ``SearchCtrl`` рисует пустые белые квадраты вместо
         # иконок поиска/сброса, если битмапы не заданы. Загрузим стандартные
@@ -180,10 +182,39 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.model.set_label_filter(labels)
         self._refresh()
 
-    def _on_labels_changed(self, event):  # pragma: no cover - simple event binding
-        value = self.labels.GetValue()
-        labels = [l.strip() for l in value.split(",") if l.strip()]
+    def update_labels_list(self, labels: list[str]) -> None:
+        """Update available labels and reapply current filter."""
+        # keep unique order
+        seen: dict[str, None] = {}
+        for lbl in labels:
+            seen.setdefault(lbl, None)
+        self._label_choices = list(seen.keys())
+        if hasattr(self.labels, "AutoComplete"):
+            self.labels.AutoComplete(self._label_choices)
+        self._apply_label_filter()
+
+    def _sanitize_labels(self, raw: str) -> list[str]:
+        labels: list[str] = []
+        for part in [l.strip() for l in raw.split(",") if l.strip()]:
+            if part in self._label_choices and part not in labels:
+                labels.append(part)
+        return labels
+
+    def _apply_label_filter(self) -> None:
+        labels = self._sanitize_labels(self.labels.GetValue())
+        text = ", ".join(labels)
+        if self.labels.GetValue() != text:
+            self._ignore_label_event = True
+            self.labels.SetValue(text)
+            self._ignore_label_event = False
         self.set_label_filter(labels)
+
+    def _on_labels_changed(self, event):  # pragma: no cover - simple event binding
+        if self._ignore_label_event:
+            if hasattr(event, "Skip"):
+                event.Skip()
+            return
+        self._apply_label_filter()
         if hasattr(event, "Skip"):
             event.Skip()
 

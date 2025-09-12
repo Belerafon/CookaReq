@@ -351,6 +351,7 @@ def test_label_filter_widget_calls_model(monkeypatch):
 
     frame = wx_stub.Panel(None)
     panel = ListPanel(frame, model=RequirementModel())
+    panel.update_labels_list(["ui", "backend"])
 
     called: list[list[str]] = []
     panel.model.set_label_filter = lambda labels: called.append(labels)
@@ -361,6 +362,31 @@ def test_label_filter_widget_calls_model(monkeypatch):
     panel.labels.SetValue("")
     handler(None)
     assert called[-1] == []
+
+
+def test_label_filter_validates_known_labels(monkeypatch):
+    wx_stub, mixins = _build_wx_stub()
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+    ListPanel = list_panel_module.ListPanel
+    RequirementModel = model_module.RequirementModel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    panel.update_labels_list(["ui", "backend"])
+
+    captured: list[list[str]] = []
+    panel.model.set_label_filter = lambda labels: captured.append(labels)
+    handler = panel.labels.get_bound_handler(wx_stub.EVT_TEXT)
+    panel.labels.SetValue("ui,unknown,backend,ui")
+    handler(None)
+    assert captured[-1] == ["ui", "backend"]
+    assert panel.labels.GetValue() == "ui, backend"
 
 
 def test_match_any_checkbox_affects_model(monkeypatch):

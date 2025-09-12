@@ -117,6 +117,10 @@ def save(
     with path.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
     add_to_index(directory, data["id"])
+    try:
+        mark_suspects(directory, data["id"], data.get("revision", 0))
+    except Exception as exc:
+        logger.warning("mark_suspects failed for %s: %s", data["id"], exc)
     return path
 
 
@@ -129,6 +133,35 @@ def delete(directory: str | Path, req_id: int) -> None:
     except FileNotFoundError:
         pass
     remove_from_index(directory, req_id)
+
+
+def mark_suspects(directory: str | Path, changed_id: int, new_revision: int) -> None:
+    """Mark referencing requirements as suspect when a source revision changes."""
+    directory = Path(directory)
+    for fp in directory.glob("*.json"):
+        if fp.name == LABELS_FILENAME:
+            continue
+        try:
+            with fp.open("r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except Exception as exc:
+            logger.warning("Failed to read %s: %s", fp, exc)
+            continue
+        links = data.get("derived_from")
+        if not links:
+            continue
+        changed = False
+        for link in links:
+            if (
+                link.get("source_id") == changed_id
+                and link.get("source_revision") != new_revision
+                and not link.get("suspect", False)
+            ):
+                link["suspect"] = True
+                changed = True
+        if changed:
+            with fp.open("w", encoding="utf-8") as fh:
+                json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
 
 
 # ---------------------------------------------------------------------------

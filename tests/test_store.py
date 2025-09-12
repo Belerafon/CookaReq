@@ -119,3 +119,23 @@ def test_id_cache_scans_once_with_many_files(monkeypatch, tmp_path: Path):
     save(tmp_path, sample(101))
 
     assert calls["n"] == 1
+
+
+def test_mark_suspects_on_revision_change(tmp_path: Path):
+    req1 = sample(1)
+    req2 = sample(2)
+    req2["derived_from"] = [{"source_id": 1, "source_revision": 1, "suspect": False}]
+
+    save(tmp_path, req1)
+    save(tmp_path, req2)
+
+    # saving without revision change should not mark suspect
+    save(tmp_path, req1)
+    data, _ = load(tmp_path / filename_for(2))
+    assert data["derived_from"][0]["suspect"] is False
+
+    # change revision -> mark suspect
+    req1["revision"] = 2
+    save(tmp_path, req1)
+    data, _ = load(tmp_path / filename_for(2))
+    assert data["derived_from"][0]["suspect"] is True

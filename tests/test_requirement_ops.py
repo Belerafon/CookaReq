@@ -7,7 +7,8 @@ from app.mcp.tools_write import (
     delete_requirement,
     link_requirements,
 )
-from app.core.store import load, filename_for, ConflictError
+from app.mcp.utils import ErrorCode
+from app.core.store import load, filename_for
 
 
 def _base_req(req_id: int) -> dict:
@@ -39,20 +40,21 @@ def test_create_patch_delete(tmp_path: Path):
     assert data["revision"] == 2
 
     # conflicting revision
-    with pytest.raises(ConflictError):
-        patch_requirement(tmp_path, 1, {"title": "Other"}, rev=1)
+    err = patch_requirement(tmp_path, 1, {"title": "Other"}, rev=1)
+    assert err["error"]["code"] == ErrorCode.CONFLICT
 
     # forbidden fields
-    with pytest.raises(ValueError):
-        patch_requirement(tmp_path, 1, {"id": 5}, rev=2)
+    err = patch_requirement(tmp_path, 1, {"id": 5}, rev=2)
+    assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
 
     # delete with wrong revision
-    with pytest.raises(ConflictError):
-        delete_requirement(tmp_path, 1, rev=1)
+    err = delete_requirement(tmp_path, 1, rev=1)
+    assert err["error"]["code"] == ErrorCode.CONFLICT
     assert path.exists()
 
     # delete with correct revision
-    delete_requirement(tmp_path, 1, rev=2)
+    res = delete_requirement(tmp_path, 1, rev=2)
+    assert res == {"id": 1}
     assert not path.exists()
 
 
@@ -68,9 +70,9 @@ def test_link_requirements(tmp_path: Path):
     assert data["derived_from"] == [{"source_id": 1, "source_revision": 1, "suspect": False}]
 
     # outdated rev
-    with pytest.raises(ConflictError):
-        link_requirements(tmp_path, source_id=1, derived_id=2, rev=1)
+    err = link_requirements(tmp_path, source_id=1, derived_id=2, rev=1)
+    assert err["error"]["code"] == ErrorCode.CONFLICT
 
     # patching derived_from should be prohibited
-    with pytest.raises(ValueError):
-        patch_requirement(tmp_path, 2, {"derived_from": []}, rev=2)
+    err = patch_requirement(tmp_path, 2, {"derived_from": []}, rev=2)
+    assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR

@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 import uvicorn
 from mcp.server.fastmcp import FastMCP
 from app.log import configure_logging, logger
+from app.mcp.utils import ErrorCode, mcp_error
 
 # Public FastAPI application and MCP server instances -----------------------
 
@@ -100,7 +101,10 @@ async def auth_middleware(request: Request, call_next):
     if token:
         header = request.headers.get("Authorization")
         if header != f"Bearer {token}":
-            response = JSONResponse({"error": "UNAUTHORIZED"}, status_code=401)
+            response = JSONResponse(
+                mcp_error(ErrorCode.UNAUTHORIZED, "unauthorized"),
+                status_code=401,
+            )
             _log_request(request, response.status_code)
             return response
     response = await call_next(request)

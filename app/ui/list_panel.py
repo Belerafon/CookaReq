@@ -154,7 +154,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         config.Write("col_order", ",".join(names))
 
     def set_columns(self, fields: List[str]) -> None:
-        """Set additional columns (beyond Title) to display."""
+        """Set additional columns (beyond Title) to display.
+
+        ``labels`` is treated specially and rendered as a comma-separated list.
+        """
         self.columns = fields
         self._setup_columns()
         # repopulate with existing requirements after changing columns
@@ -194,6 +197,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self.list.SetItemData(index, 0)
             for col, field in enumerate(self.columns, start=1):
                 value = req.get(field, "")
+                if field == "labels" and isinstance(value, list):
+                    value = ", ".join(value)
                 self.list.SetItem(index, col, str(value))
 
     def refresh(self) -> None:

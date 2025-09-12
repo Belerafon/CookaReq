@@ -220,6 +220,52 @@ def test_search_and_label_filters(monkeypatch):
     assert panel.model.get_visible() == []
 
 
+def test_labels_column_renders_joined(monkeypatch):
+    wx_stub, mixins = _build_wx_stub()
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["labels"])
+
+    captured: list[tuple[int, int, str]] = []
+    panel.list.SetItem = lambda i, c, t: captured.append((i, c, t))
+    panel.set_requirements([
+        {"id": 1, "title": "A", "labels": ["ui", "backend"]},
+    ])
+
+    # ищем запись для первой колонки после заголовка
+    assert (0, 1, "ui, backend") in captured
+
+
+def test_sort_by_labels(monkeypatch):
+    wx_stub, mixins = _build_wx_stub()
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["labels"])
+    panel.set_requirements([
+        {"id": 1, "title": "A", "labels": ["beta"]},
+        {"id": 2, "title": "B", "labels": ["alpha"]},
+    ])
+
+    panel.sort(1, True)
+    assert [r["id"] for r in panel.model.get_visible()] == [2, 1]
+
+
 def test_bulk_edit_updates_requirements(monkeypatch):
     wx_stub, mixins = _build_wx_stub()
     monkeypatch.setitem(sys.modules, "wx", wx_stub)

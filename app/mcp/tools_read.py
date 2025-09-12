@@ -8,6 +8,7 @@ from app.log import logger
 from app.core import store
 from app.core.model import Requirement, Status, requirement_from_dict, requirement_to_dict
 from app.core import search as core_search
+from app.mcp.utils import ErrorCode, mcp_error
 
 
 def _load_all(directory: str | Path) -> list[Requirement]:
@@ -56,7 +57,12 @@ def list_requirements(
     tags: Sequence[str] | None = None,
 ) -> dict:
     """Return requirements from ``directory`` with optional filters."""
-    reqs = _load_all(directory)
+    try:
+        reqs = _load_all(directory)
+    except FileNotFoundError:
+        return mcp_error(ErrorCode.NOT_FOUND, "directory not found", {"directory": str(directory)})
+    except Exception as exc:  # pragma: no cover - defensive
+        return mcp_error(ErrorCode.INTERNAL, str(exc))
     reqs = _filter_status(reqs, status)
     if tags:
         reqs = core_search.filter_by_labels(reqs, list(tags))
@@ -66,8 +72,13 @@ def list_requirements(
 def get_requirement(directory: str | Path, req_id: int) -> dict:
     """Return requirement ``req_id`` from ``directory``."""
     path = Path(directory) / store.filename_for(req_id)
-    data, _ = store.load(path)
-    req = requirement_from_dict(data)
+    try:
+        data, _ = store.load(path)
+        req = requirement_from_dict(data)
+    except FileNotFoundError:
+        return mcp_error(ErrorCode.NOT_FOUND, f"requirement {req_id} not found")
+    except Exception as exc:  # pragma: no cover - defensive
+        return mcp_error(ErrorCode.INTERNAL, str(exc))
     return requirement_to_dict(req)
 
 
@@ -81,7 +92,12 @@ def search_requirements(
     per_page: int = 50,
 ) -> dict:
     """Search requirements with text query and optional filters."""
-    reqs = _load_all(directory)
+    try:
+        reqs = _load_all(directory)
+    except FileNotFoundError:
+        return mcp_error(ErrorCode.NOT_FOUND, "directory not found", {"directory": str(directory)})
+    except Exception as exc:  # pragma: no cover - defensive
+        return mcp_error(ErrorCode.INTERNAL, str(exc))
     reqs = _filter_status(reqs, status)
     reqs = core_search.search(reqs, labels=list(tags or []), query=query)
     return _paginate(reqs, page, per_page)

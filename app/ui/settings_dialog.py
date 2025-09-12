@@ -32,6 +32,7 @@ class SettingsDialog(wx.Dialog):
         host: str,
         port: int,
         base_path: str,
+        token: str,
     ) -> None:
         super().__init__(parent, title=_("Settings"))
         self._open_last = wx.CheckBox(self, label=_("Open last folder on startup"))
@@ -42,6 +43,7 @@ class SettingsDialog(wx.Dialog):
         self._host = wx.TextCtrl(self, value=host)
         self._port = wx.SpinCtrl(self, min=1, max=65535, initial=port)
         self._base_path = wx.TextCtrl(self, value=base_path)
+        self._token = wx.TextCtrl(self, value=token)
 
         self._languages = available_translations()
         choices = [name for _, name in self._languages]
@@ -67,6 +69,10 @@ class SettingsDialog(wx.Dialog):
         base_sizer.Add(wx.StaticText(self, label=_("Base path")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         base_sizer.Add(self._base_path, 1, wx.ALIGN_CENTER_VERTICAL)
         sizer.Add(base_sizer, 0, wx.ALL | wx.EXPAND, 5)
+        token_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        token_sizer.Add(wx.StaticText(self, label=_("Token")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        token_sizer.Add(self._token, 1, wx.ALIGN_CENTER_VERTICAL)
+        sizer.Add(token_sizer, 0, wx.ALL | wx.EXPAND, 5)
         lang_sizer = wx.BoxSizer(wx.HORIZONTAL)
         lang_sizer.Add(wx.StaticText(self, label=_("Language")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         lang_sizer.Add(self._language_choice, 1, wx.ALIGN_CENTER_VERTICAL)
@@ -76,8 +82,8 @@ class SettingsDialog(wx.Dialog):
             sizer.Add(btn_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
         self.SetSizerAndFit(sizer)
 
-    def get_values(self) -> tuple[bool, bool, str, str, int, str]:
-        """Return (open_last_folder, remember_sort, language, host, port, base_path)."""
+    def get_values(self) -> tuple[bool, bool, str, str, int, str, str]:
+        """Return (open_last_folder, remember_sort, language, host, port, base_path, token)."""
         lang_code = self._languages[self._language_choice.GetSelection()][0]
         return (
             self._open_last.GetValue(),
@@ -86,4 +92,5 @@ class SettingsDialog(wx.Dialog):
             self._host.GetValue(),
             self._port.GetValue(),
             self._base_path.GetValue(),
+            self._token.GetValue(),
         )

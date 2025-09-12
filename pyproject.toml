@@ -6,6 +6,9 @@ license = { file = "LICENSE" }
 dependencies = [
     "wxPython",
     "jsonschema",
+    "fastapi",
+    "uvicorn",
+    "mcp",
 ]
 
 [project.optional-dependencies]

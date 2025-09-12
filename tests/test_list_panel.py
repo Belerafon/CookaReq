@@ -35,6 +35,18 @@ def _build_wx_stub():
         def GetValue(self):
             return self._value
 
+    class ComboCtrl(SearchCtrl):
+        pass
+
+    class CheckBox(Window):
+        def __init__(self, parent=None, label=""):
+            super().__init__(parent)
+            self._value = False
+        def SetValue(self, value):
+            self._value = bool(value)
+        def GetValue(self):
+            return self._value
+
     class ListCtrl(Window):
         def __init__(self, parent=None, style=0):
             super().__init__(parent)
@@ -88,6 +100,8 @@ def _build_wx_stub():
     wx_mod = types.SimpleNamespace(
         Panel=Panel,
         SearchCtrl=SearchCtrl,
+        ComboCtrl=ComboCtrl,
+        CheckBox=CheckBox,
         ListCtrl=ListCtrl,
         BoxSizer=BoxSizer,
         Window=Window,
@@ -99,6 +113,7 @@ def _build_wx_stub():
         EVT_CONTEXT_MENU=object(),
         EVT_LIST_COL_CLICK=object(),
         EVT_TEXT=object(),
+        EVT_CHECKBOX=object(),
         Config=Config,
         ContextMenuEvent=types.SimpleNamespace,
     )
@@ -131,13 +146,17 @@ def test_list_panel_has_search_and_list(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
 
     assert isinstance(panel.search, wx_stub.SearchCtrl)
+    assert isinstance(panel.labels, wx_stub.ComboCtrl)
+    assert isinstance(panel.match_any, wx_stub.CheckBox)
     assert isinstance(panel.list, wx_stub.ListCtrl)
     assert panel.search.GetParent() is panel
+    assert panel.labels.GetParent() is panel
+    assert panel.match_any.GetParent() is panel
     assert panel.list.GetParent() is panel
 
     sizer = panel.GetSizer()
     children = [child.GetWindow() for child in sizer.GetChildren()]
-    assert children == [panel.search, panel.list]
+    assert children == [panel.search, panel.labels, panel.match_any, panel.list]
 
 
 def test_column_click_sorts(monkeypatch):
@@ -316,3 +335,55 @@ def test_sort_method_and_callback(monkeypatch):
     panel.sort(1, False)
     assert [r["id"] for r in panel.model.get_visible()] == [2, 1]
     assert calls[-1] == (1, False)
+
+
+def test_label_filter_widget_calls_model(monkeypatch):
+    wx_stub, mixins = _build_wx_stub()
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+    ListPanel = list_panel_module.ListPanel
+    RequirementModel = model_module.RequirementModel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+
+    called: list[list[str]] = []
+    panel.model.set_label_filter = lambda labels: called.append(labels)
+    handler = panel.labels.get_bound_handler(wx_stub.EVT_TEXT)
+    panel.labels.SetValue("ui,backend")
+    handler(None)
+    assert called[-1] == ["ui", "backend"]
+    panel.labels.SetValue("")
+    handler(None)
+    assert called[-1] == []
+
+
+def test_match_any_checkbox_affects_model(monkeypatch):
+    wx_stub, mixins = _build_wx_stub()
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+    ListPanel = list_panel_module.ListPanel
+    RequirementModel = model_module.RequirementModel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+
+    called: list[bool] = []
+    panel.model.set_label_match_all = lambda m: called.append(m)
+    handler = panel.match_any.get_bound_handler(wx_stub.EVT_CHECKBOX)
+    panel.match_any.SetValue(True)
+    handler(None)
+    assert called[-1] is False
+    panel.match_any.SetValue(False)
+    handler(None)
+    assert called[-1] is True

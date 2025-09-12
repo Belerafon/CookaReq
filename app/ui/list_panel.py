@@ -221,11 +221,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         edit_item = None
         if field and field != "title":
             edit_item = menu.Append(wx.ID_ANY, f"Изменить {field}")
-            self.Bind(wx.EVT_MENU, lambda evt, c=column: self._on_edit_field(c), edit_item)
+            menu.Bind(wx.EVT_MENU, lambda evt, c=column: self._on_edit_field(c), edit_item)
         if self._on_clone:
-            self.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_clone(i), clone_item)
+            menu.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_clone(i), clone_item)
         if self._on_delete:
-            self.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_delete(i), delete_item)
+            menu.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_delete(i), delete_item)
         return menu, clone_item, delete_item, edit_item
 
     def _get_selected_indices(self) -> List[int]:

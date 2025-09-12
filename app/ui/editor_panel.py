@@ -163,6 +163,14 @@ class EditorPanel(wx.Panel):
 
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
 
+        # labels section -------------------------------------------------
+        box = wx.StaticBox(self, label=_("Labels"))
+        box_sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
+        self.labels_list = wx.CheckListBox(box, choices=[])
+        self.labels_list.Bind(wx.EVT_CHECKLISTBOX, self._on_label_toggle)
+        box_sizer.Add(self.labels_list, 1, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(box_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
         self.save_btn = wx.Button(self, label=_("Save"))
         self.save_btn.Bind(wx.EVT_BUTTON, self._on_save_button)
         sizer.Add(self.save_btn, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
@@ -200,6 +208,8 @@ class EditorPanel(wx.Panel):
             "approved_at": None,
             "notes": "",
         })
+        for i in range(self.labels_list.GetCount()):
+            self.labels_list.Check(i, False)
 
     def load(self, data: dict[str, Any], *, path: str | Path | None = None, mtime: float | None = None) -> None:
         for name, ctrl in self.fields.items():
@@ -214,6 +224,9 @@ class EditorPanel(wx.Panel):
                 self.extra[key] = data[key]
         self.current_path = Path(path) if path else None
         self.mtime = mtime
+        for i in range(self.labels_list.GetCount()):
+            name = self.labels_list.GetString(i)
+            self.labels_list.Check(i, name in self.extra["labels"])
 
     def clone(self, new_id: int) -> None:
         self.fields["id"].SetValue(str(new_id))
@@ -250,13 +263,34 @@ class EditorPanel(wx.Panel):
             "trace_down": self.fields["trace_down"].GetValue(),
             "version": self.fields["version"].GetValue(),
             "modified_at": self.fields["modified_at"].GetValue(),
-            "labels": self.extra.get("labels", []),
+            "labels": [
+                self.labels_list.GetString(i)
+                for i in range(self.labels_list.GetCount())
+                if self.labels_list.IsChecked(i)
+            ],
             "attachments": list(self.attachments),
             "revision": self.extra.get("revision", 1),
             "approved_at": self.extra.get("approved_at"),
             "notes": self.extra.get("notes", ""),
         }
+        self.extra["labels"] = data["labels"]
         return data
+
+    # labels helpers ---------------------------------------------------
+    def update_labels_list(self, labels: list[str]) -> None:
+        """Update available labels and reapply selection."""
+        self.labels_list.Set(labels)
+        current = [lbl for lbl in self.extra.get("labels", []) if lbl in labels]
+        self.extra["labels"] = current
+        for i, name in enumerate(labels):
+            self.labels_list.Check(i, name in current)
+
+    def _on_label_toggle(self, _event: wx.CommandEvent) -> None:
+        self.extra["labels"] = [
+            self.labels_list.GetString(i)
+            for i in range(self.labels_list.GetCount())
+            if self.labels_list.IsChecked(i)
+        ]
 
     def _on_save_button(self, _evt: wx.Event) -> None:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

@@ -19,13 +19,14 @@ from app.core.store import (
     filename_for,
     load,
     save,
-    _existing_ids,
+    delete,
+    _scan_ids,
 )
 
 
-def sample() -> dict:
+def sample(req_id: int = 1) -> dict:
     return {
-        "id": 1,
+        "id": req_id,
         "title": "Title",
         "statement": "Statement",
         "type": "requirement",
@@ -59,15 +60,15 @@ def test_conflict_detection(tmp_path: Path):
         save(tmp_path, data, mtime=mtime)
 
 
-def test_existing_ids_skips_invalid_and_excluded(tmp_path: Path):
+def test_scan_ids_skips_invalid_and_labels(tmp_path: Path):
     valid = tmp_path / "valid.json"
     valid.write_text(json.dumps({"id": 1}))
-    exclude = tmp_path / "exclude.json"
-    exclude.write_text(json.dumps({"id": 2}))
+    labels = tmp_path / "labels.json"
+    labels.write_text("[]")
     bad = tmp_path / "bad.json"
     bad.write_text("{invalid json")
 
-    ids = _existing_ids(tmp_path, exclude)
+    ids = _scan_ids(tmp_path)
     assert ids == {1}
 
 
@@ -93,3 +94,28 @@ def test_save_accepts_dataclass(tmp_path: Path):
 
 def test_filename_for_sanitizes():
     assert filename_for(1) == "1.json"
+
+
+def test_delete_updates_cache(tmp_path: Path):
+    save(tmp_path, sample(1))
+    delete(tmp_path, 1)
+    save(tmp_path, sample(1))
+
+
+def test_id_cache_scans_once_with_many_files(monkeypatch, tmp_path: Path):
+    for i in range(100):
+        (tmp_path / f"{i}.json").write_text(json.dumps({"id": i}))
+
+    calls = {"n": 0}
+    original = _scan_ids
+
+    def spy(directory: Path) -> set[int]:
+        calls["n"] += 1
+        return original(directory)
+
+    monkeypatch.setattr("app.core.store._scan_ids", spy)
+
+    save(tmp_path, sample(100))
+    save(tmp_path, sample(101))
+
+    assert calls["n"] == 1

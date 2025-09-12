@@ -22,6 +22,8 @@ class EditorPanel(wx.Panel):
         self.fields: dict[str, wx.TextCtrl] = {}
         self.enums: dict[str, wx.Choice] = {}
         self._on_save_callback = on_save
+        self.directory: Path | None = None
+        self.original_id: int | None = None
 
         labels = {
             "id": _("Requirement ID (number)"),
@@ -111,6 +113,7 @@ class EditorPanel(wx.Panel):
             sizer.Add(ctrl, proportion, wx.EXPAND | wx.ALL, 5)
             if name == "id":
                 ctrl.SetHint(_("Unique integer identifier"))
+                ctrl.Bind(wx.EVT_TEXT, self._on_id_change)
 
         def add_text_field(name: str) -> None:
             container = wx.BoxSizer(wx.VERTICAL)
@@ -188,6 +191,11 @@ class EditorPanel(wx.Panel):
         self.mtime: float | None = None
 
     # basic operations -------------------------------------------------
+    def set_directory(self, directory: str | Path | None) -> None:
+        """Set working directory for ID validation."""
+        self.directory = Path(directory) if directory else None
+        self._on_id_change()
+
     def new_requirement(self) -> None:
         for ctrl in self.fields.values():
             ctrl.SetValue("")
@@ -202,6 +210,7 @@ class EditorPanel(wx.Panel):
         self.attachments = []
         self.current_path = None
         self.mtime = None
+        self.original_id = None
         self.extra.update({
             "labels": [],
             "revision": 1,
@@ -210,6 +219,7 @@ class EditorPanel(wx.Panel):
         })
         for i in range(self.labels_list.GetCount()):
             self.labels_list.Check(i, False)
+        self._on_id_change()
 
     def load(self, data: dict[str, Any], *, path: str | Path | None = None, mtime: float | None = None) -> None:
         for name, ctrl in self.fields.items():
@@ -224,14 +234,17 @@ class EditorPanel(wx.Panel):
                 self.extra[key] = data[key]
         self.current_path = Path(path) if path else None
         self.mtime = mtime
+        self.original_id = data.get("id")
         for i in range(self.labels_list.GetCount()):
             name = self.labels_list.GetString(i)
             self.labels_list.Check(i, name in self.extra["labels"])
+        self._on_id_change()
 
     def clone(self, new_id: int) -> None:
         self.fields["id"].SetValue(str(new_id))
         self.current_path = None
         self.mtime = None
+        self.original_id = None
 
     # data helpers -----------------------------------------------------
     def get_data(self) -> dict[str, Any]:
@@ -292,6 +305,33 @@ class EditorPanel(wx.Panel):
             if self.labels_list.IsChecked(i)
         ]
 
+    def _on_id_change(self, _event: wx.CommandEvent | None = None) -> None:
+        ctrl = self.fields["id"]
+        ctrl.SetBackgroundColour(wx.NullColour)
+        if not self.directory:
+            ctrl.Refresh()
+            return
+        value = ctrl.GetValue().strip()
+        if not value:
+            ctrl.Refresh()
+            return
+        try:
+            req_id = int(value)
+            if req_id <= 0:
+                raise ValueError
+        except Exception:
+            ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
+            ctrl.Refresh()
+            return
+        ids = set(store.load_index(self.directory))
+        if self.original_id is not None:
+            ids.discard(self.original_id)
+        if req_id in ids:
+            ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
+        else:
+            ctrl.SetBackgroundColour(wx.NullColour)
+        ctrl.Refresh()
+
     def _on_save_button(self, _evt: wx.Event) -> None:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.fields["modified_at"].SetValue(now)
@@ -303,13 +343,17 @@ class EditorPanel(wx.Panel):
         path = store.save(directory, data, mtime=self.mtime)
         self.current_path = path
         self.mtime = path.stat().st_mtime
+        self.directory = Path(directory)
+        self.original_id = data["id"]
+        self._on_id_change()
         return path
 
     def delete(self) -> None:
         if self.current_path and self.current_path.exists():
-            self.current_path.unlink()
+            store.delete(self.current_path.parent, int(self.current_path.stem))
         self.current_path = None
         self.mtime = None
+        self.original_id = None
 
     def add_attachment(self, path: str, note: str = "") -> None:
         self.attachments.append({"path": path, "note": note})

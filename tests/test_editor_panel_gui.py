@@ -49,6 +49,38 @@ def test_editor_add_attachment_included():
     assert data["attachments"] == [{"path": "file.txt", "note": "note"}]
 
 
+def test_id_field_highlight_on_duplicate(tmp_path):
+    wx = pytest.importorskip("wx")
+    from app.core import store
+
+    existing = {
+        "id": 1,
+        "title": "T",
+        "statement": "S",
+        "type": "requirement",
+        "status": "draft",
+        "owner": "u",
+        "priority": "medium",
+        "source": "s",
+        "verification": "analysis",
+        "revision": 1,
+    }
+    store.save(tmp_path, existing)
+
+    panel = _make_panel()
+    panel.set_directory(tmp_path)
+    panel.new_requirement()
+    default = panel.fields["id"].GetBackgroundColour()
+
+    panel.fields["id"].SetValue("1")
+    wx.Yield()
+    assert panel.fields["id"].GetBackgroundColour() != default
+
+    panel.fields["id"].SetValue("2")
+    wx.Yield()
+    assert panel.fields["id"].GetBackgroundColour() == default
+
+
 def test_editor_load_populates_fields(tmp_path):
     panel = _make_panel()
     data = {

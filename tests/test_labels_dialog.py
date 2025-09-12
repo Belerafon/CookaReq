@@ -89,6 +89,34 @@ def test_labels_dialog_clear_all(monkeypatch):
     app.Destroy()
 
 
+def test_labels_dialog_renames_selected(monkeypatch):
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+    from app.ui.labels_dialog import LabelsDialog
+
+    dlg = LabelsDialog(None, [Label("old", "#111111")])
+    dlg.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    class DummyTextEntryDialog:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def GetValue(self):
+            return "new"
+
+        def Destroy(self):
+            pass
+
+    monkeypatch.setattr(wx, "TextEntryDialog", DummyTextEntryDialog)
+    dlg._on_rename_selected(None)
+    assert dlg.get_labels()[0].name == "new"
+    dlg.Destroy()
+    app.Destroy()
+
+
 def _prepare_frame(monkeypatch, tmp_path):
     from app.core.store import save
 

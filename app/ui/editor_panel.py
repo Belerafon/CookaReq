@@ -24,6 +24,7 @@ from app.core.model import (
     requirement_to_dict,
 )
 from . import locale
+from .label_selection_dialog import LabelSelectionDialog
 
 
 class EditorPanel(ScrolledPanel):
@@ -474,17 +475,12 @@ class EditorPanel(ScrolledPanel):
         self.labels_panel.Layout()
 
     def _on_labels_click(self, _event: wx.Event) -> None:
-        choices = [lbl.name for lbl in self._label_defs]
-        if not choices:
+        if not self._label_defs:
             return
-        preselect = [
-            i for i, lbl in enumerate(self._label_defs) if lbl.name in self.extra.get("labels", [])
-        ]
-        dlg = wx.MultiChoiceDialog(self, _("Select labels"), _("Labels"), choices)
-        dlg.SetSelections(preselect)
+        selected = self.extra.get("labels", [])
+        dlg = LabelSelectionDialog(self, self._label_defs, selected)
         if dlg.ShowModal() == wx.ID_OK:
-            selected = [choices[i] for i in dlg.GetSelections()]
-            self.apply_label_selection(selected)
+            self.apply_label_selection(dlg.get_selected())
         dlg.Destroy()
 
     def _on_add_link(self, _event: wx.CommandEvent) -> None:

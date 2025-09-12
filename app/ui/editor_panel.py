@@ -38,6 +38,7 @@ class EditorPanel(ScrolledPanel):
         self.fields: dict[str, wx.TextCtrl] = {}
         self.enums: dict[str, wx.Choice] = {}
         self.derivation_fields: dict[str, wx.TextCtrl] = {}
+        self._autosize_fields: list[wx.TextCtrl] = []
         self._on_save_callback = on_save
         self._on_add_derived_callback = on_add_derived
         self.directory: Path | None = None
@@ -133,8 +134,7 @@ class EditorPanel(ScrolledPanel):
             style = wx.TE_MULTILINE if multiline else 0
             ctrl = wx.TextCtrl(self, style=style)
             if multiline:
-                height = 60 if name == "source" else 80
-                ctrl.SetMinSize((-1, height))
+                self._bind_autosize(ctrl)
             self.fields[name] = ctrl
             proportion = 1 if name == "statement" else 0
             sizer.Add(ctrl, proportion, wx.EXPAND | wx.ALL, 5)
@@ -227,6 +227,8 @@ class EditorPanel(ScrolledPanel):
             sizer.Add(label, 0, wx.ALL, 5)
             style = wx.TE_MULTILINE if multiline else 0
             ctrl = wx.TextCtrl(self, style=style)
+            if multiline:
+                self._bind_autosize(ctrl)
             self.derivation_fields[name] = ctrl
             proportion = 1 if multiline else 0
             sizer.Add(ctrl, proportion, wx.EXPAND | wx.ALL, 5)
@@ -253,6 +255,34 @@ class EditorPanel(ScrolledPanel):
         }
         self.current_path: Path | None = None
         self.mtime: float | None = None
+
+    def _bind_autosize(self, ctrl: wx.TextCtrl) -> None:
+        """Register multiline text control for dynamic height."""
+        self._autosize_fields.append(ctrl)
+
+        def _handler(evt: wx.Event) -> None:
+            self._auto_resize_text(ctrl)
+            evt.Skip()
+
+        ctrl.Bind(wx.EVT_TEXT, _handler)
+        ctrl.Bind(wx.EVT_SIZE, _handler)
+        self._auto_resize_text(ctrl)
+
+    def _auto_resize_text(self, ctrl: wx.TextCtrl) -> None:
+        lines = max(ctrl.GetNumberOfLines(), 1)
+        line_height = ctrl.GetCharHeight()
+        border = ctrl.GetWindowBorderSize().height * 2
+        padding = 4
+        height = line_height * (lines + 1) + border + padding
+        if ctrl.GetMinSize().height != height:
+            ctrl.SetMinSize((-1, height))
+            ctrl.SetSize((-1, height))
+            self.FitInside()
+            self.Layout()
+
+    def _auto_resize_all(self) -> None:
+        for ctrl in self._autosize_fields:
+            self._auto_resize_text(ctrl)
 
     # basic operations -------------------------------------------------
     def set_directory(self, directory: str | Path | None) -> None:
@@ -288,6 +318,7 @@ class EditorPanel(ScrolledPanel):
         self.derived_id.SetValue("")
         for ctrl in self.derivation_fields.values():
             ctrl.SetValue("")
+        self._auto_resize_all()
         self._on_id_change()
 
     def load(
@@ -327,6 +358,7 @@ class EditorPanel(ScrolledPanel):
                 ctrl.SetValue("\n".join(derivation.get(name, [])))
             else:
                 ctrl.SetValue(derivation.get(name, ""))
+        self._auto_resize_all()
         self._on_id_change()
 
     def clone(self, new_id: int) -> None:
@@ -338,6 +370,7 @@ class EditorPanel(ScrolledPanel):
         self.derived_list.Set([])
         for ctrl in self.derivation_fields.values():
             ctrl.SetValue("")
+        self._auto_resize_all()
 
     # data helpers -----------------------------------------------------
     def get_data(self) -> Requirement:

@@ -12,7 +12,7 @@ from typing import Dict
 from app.log import logger
 
 from app.core import store
-from app.core.model import Requirement, requirement_from_dict
+from app.core.model import Requirement, requirement_from_dict, DerivationLink
 from app.core.labels import Label
 from .list_panel import ListPanel
 from .editor_panel import EditorPanel
@@ -49,6 +49,7 @@ class MainFrame(wx.Frame):
             f.name for f in fields(Requirement) if f.name not in {"title", "labels"}
         ]
         self.available_fields.append("labels")
+        self.available_fields.append("derived_count")
         self.selected_fields = self._load_columns()
         self.recent_dirs = self._load_recent_dirs()
         self._recent_items: Dict[int, Path] = {}
@@ -74,9 +75,14 @@ class MainFrame(wx.Frame):
             on_clone=self.on_clone_requirement,
             on_delete=self.on_delete_requirement,
             on_sort_changed=self._on_sort_changed,
+            on_derive=self.on_derive_requirement,
         )
         self.panel.set_columns(self.selected_fields)
-        self.editor = EditorPanel(self.splitter, on_save=self._on_editor_save)
+        self.editor = EditorPanel(
+            self.splitter,
+            on_save=self._on_editor_save,
+            on_add_derived=self.on_add_derived_requirement,
+        )
         self.splitter.SplitVertically(self.panel, self.editor, 300)
         self.editor.Hide()
 
@@ -204,7 +210,11 @@ class MainFrame(wx.Frame):
             except Exception as exc:
                 logger.warning("Failed to load %s: %s", fp, exc)
                 continue
-        self.panel.set_requirements(items)
+        derived_map: dict[int, list[int]] = {}
+        for req in items:
+            for link in req.derived_from:
+                derived_map.setdefault(link.source_id, []).append(req.id)
+        self.panel.set_requirements(items, derived_map)
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
         self.editor.Hide()
@@ -278,7 +288,7 @@ class MainFrame(wx.Frame):
             return
         data = self.editor.get_data()
         self.model.update(data)
-        self.panel.refresh()
+        self.panel.recalc_derived_map(self.model.get_all())
         self._sync_labels()
 
     def on_toggle_column(self, event: wx.CommandEvent) -> None:
@@ -405,6 +415,43 @@ class MainFrame(wx.Frame):
             revision=1,
         )
         self.model.add(clone)
+        self.panel.refresh()
+        self.editor.load(clone, path=None, mtime=None)
+        self.editor.Show()
+        self.splitter.UpdateSize()
+
+    def _create_derived_from(self, source: Requirement) -> Requirement:
+        new_id = self._generate_new_id()
+        clone = replace(
+            source,
+            id=new_id,
+            title=f"{_('(Derived)')} {source.title}".strip(),
+            modified_at="",
+            revision=1,
+        )
+        link = DerivationLink(
+            source_id=source.id, source_revision=source.revision, suspect=False
+        )
+        clone.derived_from = list(source.derived_from) + [link]
+        clone.derivation = None
+        return clone
+
+    def on_derive_requirement(self, req_id: int) -> None:
+        source = self.model.get_by_id(req_id)
+        if not source:
+            return
+        clone = self._create_derived_from(source)
+        self.model.add(clone)
+        self.panel.add_derived_link(source.id, clone.id)
+        self.panel.refresh()
+        self.editor.load(clone, path=None, mtime=None)
+        self.editor.Show()
+        self.splitter.UpdateSize()
+
+    def on_add_derived_requirement(self, source: Requirement) -> None:
+        clone = self._create_derived_from(source)
+        self.model.add(clone)
+        self.panel.add_derived_link(source.id, clone.id)
         self.panel.refresh()
         self.editor.load(clone, path=None, mtime=None)
         self.editor.Show()

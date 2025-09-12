@@ -30,6 +30,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         on_clone: Callable[[int], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
         on_sort_changed: Callable[[int, bool], None] | None = None,
+        on_derive: Callable[[int], None] | None = None,
     ):
         wx.Panel.__init__(self, parent)
         self.model = model if model is not None else RequirementModel()
@@ -67,6 +68,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._on_clone = on_clone
         self._on_delete = on_delete
         self._on_sort_changed = on_sort_changed
+        self._on_derive = on_derive
+        self.derived_map: dict[int, List[int]] = {}
         self._sort_column = -1
         self._sort_ascending = True
         self._setup_columns()
@@ -99,12 +102,15 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         *,
         on_clone: Callable[[int], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
+        on_derive: Callable[[int], None] | None = None,
     ) -> None:
         """Set callbacks for context menu actions."""
         if on_clone is not None:
             self._on_clone = on_clone
         if on_delete is not None:
             self._on_delete = on_delete
+        if on_derive is not None:
+            self._on_derive = on_derive
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""
@@ -181,9 +187,19 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         # repopulate with existing requirements after changing columns
         self._refresh()
 
-    def set_requirements(self, requirements: list) -> None:
+    def set_requirements(
+        self,
+        requirements: list,
+        derived_map: dict[int, List[int]] | None = None,
+    ) -> None:
         """Populate list control with requirement data via model."""
         self.model.set_requirements(requirements)
+        if derived_map is None:
+            derived_map = {}
+            for req in requirements:
+                for link in getattr(req, "derived_from", []):
+                    derived_map.setdefault(link.source_id, []).append(req.id)
+        self.derived_map = derived_map
         self._refresh()
 
     # filtering -------------------------------------------------------
@@ -269,16 +285,50 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self.list.SetItemData(index, int(req_id))
             except Exception:
                 self.list.SetItemData(index, 0)
+            suspect_row = False
             for col, field in enumerate(self.columns, start=1):
+                if field == "derived_from":
+                    links = getattr(req, "derived_from", [])
+                    texts: list[str] = []
+                    for link in links:
+                        txt = str(getattr(link, "source_id", ""))
+                        if getattr(link, "suspect", False):
+                            txt = f"!{txt}"
+                            suspect_row = True
+                        texts.append(txt)
+                    value = ", ".join(texts)
+                    self.list.SetItem(index, col, value)
+                    continue
+                if field == "derived_count":
+                    count = len(self.derived_map.get(req.id, []))
+                    self.list.SetItem(index, col, str(count))
+                    continue
                 value = getattr(req, field, "")
                 if isinstance(value, Enum):
                     value = value.value
                 if field == "labels" and isinstance(value, list):
                     value = ", ".join(value)
                 self.list.SetItem(index, col, str(value))
+            if suspect_row and hasattr(self.list, "SetItemTextColour"):
+                try:
+                    colour = getattr(wx, "RED", None) or wx.Colour(255, 0, 0)
+                    self.list.SetItemTextColour(index, colour)
+                except Exception:
+                    pass
 
     def refresh(self) -> None:
         """Public wrapper to reload list control."""
+        self._refresh()
+
+    def add_derived_link(self, source_id: int, derived_id: int) -> None:
+        self.derived_map.setdefault(source_id, []).append(derived_id)
+
+    def recalc_derived_map(self, requirements: list[Requirement]) -> None:
+        derived_map: dict[int, List[int]] = {}
+        for req in requirements:
+            for link in getattr(req, "derived_from", []):
+                derived_map.setdefault(link.source_id, []).append(req.id)
+        self.derived_map = derived_map
         self._refresh()
 
     def _on_col_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event
@@ -340,6 +390,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _create_context_menu(self, index: int, column: int | None):
         menu = wx.Menu()
+        derive_item = menu.Append(wx.ID_ANY, _("Derive"))
         clone_item = menu.Append(wx.ID_ANY, _("Clone"))
         delete_item = menu.Append(wx.ID_ANY, _("Delete"))
         req_id = self.list.GetItemData(index)
@@ -352,6 +403,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             menu.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_clone(i), clone_item)
         if self._on_delete:
             menu.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_delete(i), delete_item)
+        if self._on_derive:
+            menu.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_derive(i), derive_item)
         return menu, clone_item, delete_item, edit_item
 
     def _get_selected_indices(self) -> List[int]:

@@ -5,9 +5,11 @@ authors = [{ name = "Maksim Lashkevich & Codex" }]
 license = { file = "LICENSE" }
 dependencies = [
     "wxPython",
-    "pytest",
     "jsonschema",
 ]
+
+[project.optional-dependencies]
+dev = ["pytest"]
 
 [build-system]
 requires = ["setuptools", "wheel"]

@@ -190,3 +190,23 @@ def test_multiline_fields_resize_dynamically():
     shrunk = ctrl.GetSize().height
     assert shrunk < grown
     assert shrunk >= line_h * 2
+
+def test_rationale_autosizes_without_affecting_statement():
+    panel = _make_panel()
+    wx = pytest.importorskip("wx")
+    panel.new_requirement()
+    stmt = panel.fields["statement"]
+    rat = panel.derivation_fields["rationale"]
+    wx.Yield()
+    line_h = rat.GetCharHeight()
+    s_start = stmt.GetSize().height
+    r_start = rat.GetSize().height
+    assert s_start >= line_h * 2
+    assert r_start >= line_h * 2
+    rat.SetValue("one\ntwo\nthree")
+    wx.Yield()
+    s_after = stmt.GetSize().height
+    r_after = rat.GetSize().height
+    assert r_after >= line_h * 4
+    assert r_after > r_start
+    assert s_after == s_start

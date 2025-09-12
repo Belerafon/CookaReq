@@ -136,8 +136,9 @@ class EditorPanel(ScrolledPanel):
             if multiline:
                 self._bind_autosize(ctrl)
             self.fields[name] = ctrl
-            proportion = 1 if name == "statement" else 0
-            sizer.Add(ctrl, proportion, wx.EXPAND | wx.ALL, 5)
+            # Высоту многострочных полей мы управляем вручную,
+            # поэтому не передаём sizer'у коэффициент роста.
+            sizer.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
             if name == "id":
                 ctrl.SetHint(_("Unique integer identifier"))
                 ctrl.Bind(wx.EVT_TEXT, self._on_id_change)
@@ -230,8 +231,9 @@ class EditorPanel(ScrolledPanel):
             if multiline:
                 self._bind_autosize(ctrl)
             self.derivation_fields[name] = ctrl
-            proportion = 1 if multiline else 0
-            sizer.Add(ctrl, proportion, wx.EXPAND | wx.ALL, 5)
+            # Здесь также используем пропорцию 0, чтобы изменение
+            # одного поля не растягивало другие.
+            sizer.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
 
         self.save_btn = wx.Button(self, label=_("Save"))
         self.save_btn.Bind(wx.EVT_BUTTON, self._on_save_button)

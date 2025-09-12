@@ -1,0 +1,20 @@
+import time
+from http.client import HTTPConnection
+
+
+def _request(port, headers=None):
+    conn = HTTPConnection("127.0.0.1", port)
+    conn.request("GET", "/health", headers=headers or {})
+    resp = conn.getresponse()
+    body = resp.read().decode()
+    conn.close()
+    return resp.status, body
+
+
+def _wait_until_ready(port, headers=None):
+    for _ in range(50):
+        try:
+            _request(port, headers=headers)
+            return
+        except ConnectionRefusedError:
+            time.sleep(0.1)

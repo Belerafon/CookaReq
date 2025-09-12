@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from pathlib import Path
 
 # Ensure project root is on sys.path for imports
@@ -25,3 +26,19 @@ def _virtual_display():
         yield
     finally:
         display.stop()
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session):
+    session.config._start_time = time.time()
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_terminal_summary(terminalreporter, exitstatus):
+    passed = len(terminalreporter.stats.get("passed", []))
+    failed = len(terminalreporter.stats.get("failed", []))
+    skipped = len(terminalreporter.stats.get("skipped", []))
+    duration = time.time() - terminalreporter.config._start_time
+    terminalreporter.write_sep(
+        "=", f"{passed} passed, {failed} failed, {skipped} skipped in {duration:.2f}s"
+    )

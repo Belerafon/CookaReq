@@ -1,19 +1,9 @@
 import json
 import os
-import time
-from http.client import HTTPConnection
 from tempfile import TemporaryDirectory
 
 from app.mcp.server import start_server, stop_server
-
-
-def _request(port, headers=None):
-    conn = HTTPConnection("127.0.0.1", port)
-    conn.request("GET", "/health", headers=headers or {})
-    resp = conn.getresponse()
-    resp.read()
-    conn.close()
-    return resp.status
+from tests.mcp_utils import _request, _wait_until_ready
 
 
 def test_request_logged_and_token_masked():
@@ -22,14 +12,8 @@ def test_request_logged_and_token_masked():
         stop_server()
         start_server(port=port, base_path=tmp, token="secret")
         try:
-            # wait for server to be ready
-            for _ in range(50):
-                try:
-                    _request(port, {"Authorization": "Bearer secret"})
-                    break
-                except ConnectionRefusedError:
-                    time.sleep(0.1)
-            status = _request(port, {"Authorization": "Bearer secret"})
+            _wait_until_ready(port, {"Authorization": "Bearer secret"})
+            status, _ = _request(port, {"Authorization": "Bearer secret"})
             assert status == 200
         finally:
             stop_server()

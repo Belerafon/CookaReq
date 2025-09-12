@@ -1,11 +1,11 @@
 """Application entry point for CookaReq."""
 
-import logging
 import os
 import gettext
 import wx
 
 from .ui.main_frame import MainFrame
+from .log import configure_logging
 
 
 APP_NAME = "CookaReq"
@@ -25,7 +25,7 @@ def init_locale() -> wx.Locale:
 
 def main() -> None:
     """Run wx application with the main frame."""
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
     app = wx.App()
     app.locale = init_locale()
     frame = MainFrame(parent=None)

@@ -1,5 +1,6 @@
 import importlib
 import pytest
+import logging
 
 
 def test_main_frame_open_folder(monkeypatch, tmp_path):
@@ -76,6 +77,40 @@ def test_main_frame_open_folder_toolbar(monkeypatch, tmp_path):
     assert isinstance(frame.panel, list_panel.ListPanel)
 
     frame.Destroy()
+    app.Destroy()
+
+
+def test_log_handler_not_duplicated(tmp_path):
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+
+    import app.ui.main_frame as main_frame
+
+    logger = logging.getLogger("cookareq")
+    for h in list(logger.handlers):
+        if isinstance(h, main_frame.WxLogHandler):
+            logger.removeHandler(h)
+
+    frame1 = main_frame.MainFrame(None)
+    assert (
+        sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 1
+    )
+    frame1.Close()
+    app.Yield()
+    assert (
+        sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 0
+    )
+
+    frame2 = main_frame.MainFrame(None)
+    assert (
+        sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 1
+    )
+    frame2.Close()
+    app.Yield()
+    assert (
+        sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 0
+    )
+
     app.Destroy()
 
 

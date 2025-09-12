@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 import json
-import logging
 from pathlib import Path
+
+from app.log import logger
 
 from .validate import validate
 from .labels import Label
@@ -43,7 +44,7 @@ def _scan_ids(directory: Path) -> set[int]:
             with fp.open("r", encoding="utf-8") as fh:
                 ids.add(json.load(fh)["id"])
         except Exception as exc:
-            logging.warning("Failed to read %s: %s", fp, exc)
+            logger.warning("Failed to read %s: %s", fp, exc)
             continue
     return ids
 

@@ -1,17 +1,5 @@
-import time
-import time
-from http.client import HTTPConnection
-
 from app.mcp.server import start_server, stop_server
-
-
-def _request(port, headers=None):
-    conn = HTTPConnection("127.0.0.1", port)
-    conn.request("GET", "/health", headers=headers or {})
-    resp = conn.getresponse()
-    body = resp.read().decode()
-    conn.close()
-    return resp.status, body
+from tests.mcp_utils import _request, _wait_until_ready
 
 
 def test_authorization_header_rejected_without_valid_token():
@@ -19,13 +7,7 @@ def test_authorization_header_rejected_without_valid_token():
     stop_server()  # ensure clean state
     start_server(port=port, token="secret")
     try:
-        # wait for server to be ready
-        for _ in range(50):
-            try:
-                _request(port, {"Authorization": "Bearer wrong"})
-                break
-            except ConnectionRefusedError:
-                time.sleep(0.1)
+        _wait_until_ready(port, {"Authorization": "Bearer wrong"})
         status, body = _request(port, {"Authorization": "Bearer wrong"})
         assert status == 401
         assert "UNAUTHORIZED" in body

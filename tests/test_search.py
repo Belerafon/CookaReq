@@ -4,8 +4,15 @@ from app.core.model import (
     RequirementType,
     Status,
     Verification,
+    DerivationLink,
 )
-from app.core.search import filter_by_labels, search, search_text
+from app.core.search import (
+    filter_by_labels,
+    filter_has_derived,
+    filter_is_derived,
+    search,
+    search_text,
+)
 
 
 def sample_requirements():
@@ -46,6 +53,7 @@ def sample_requirements():
             source="spec",
             verification=Verification.ANALYSIS,
             labels=["ui"],
+            derived_from=[DerivationLink(source_id=2, source_revision=1, suspect=True)],
         ),
     ]
 
@@ -95,5 +103,21 @@ def test_search_match_any():
     reqs = sample_requirements()
     found = search(reqs, labels=["auth", "backend"], match_all=False)
     assert {r.id for r in found} == {1, 2}
+
+
+def test_filter_is_and_has_derived():
+    reqs = sample_requirements()
+    assert [r.id for r in filter_is_derived(reqs)] == [3]
+    assert [r.id for r in filter_is_derived(reqs, suspect_only=True)] == [3]
+    assert [r.id for r in filter_has_derived(reqs, reqs)] == [2]
+    assert [r.id for r in filter_has_derived(reqs, reqs, suspect_only=True)] == [2]
+
+
+def test_search_with_derived_filters():
+    reqs = sample_requirements()
+    assert [r.id for r in search(reqs, is_derived=True)] == [3]
+    assert [r.id for r in search(reqs, has_derived=True)] == [2]
+    assert [r.id for r in search(reqs, is_derived=True, suspect_only=True)] == [3]
+    assert [r.id for r in search(reqs, has_derived=True, suspect_only=True)] == [2]
 
 

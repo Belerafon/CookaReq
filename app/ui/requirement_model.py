@@ -18,6 +18,9 @@ class RequirementModel:
         self._labels_match_all: bool = True
         self._query: str = ""
         self._fields: Sequence[str] | None = None
+        self._is_derived: bool = False
+        self._has_derived: bool = False
+        self._suspect_only: bool = False
         self._sort_field: str | None = None
         self._sort_ascending: bool = True
 
@@ -65,6 +68,18 @@ class RequirementModel:
         self._fields = fields
         self._refresh()
 
+    def set_is_derived(self, value: bool) -> None:
+        self._is_derived = value
+        self._refresh()
+
+    def set_has_derived(self, value: bool) -> None:
+        self._has_derived = value
+        self._refresh()
+
+    def set_suspect_only(self, value: bool) -> None:
+        self._suspect_only = value
+        self._refresh()
+
     # sorting ---------------------------------------------------------
     def sort(self, field: str, ascending: bool = True) -> None:
         self._sort_field = field
@@ -79,6 +94,9 @@ class RequirementModel:
             query=self._query,
             fields=self._fields,
             match_all=self._labels_match_all,
+            is_derived=self._is_derived,
+            has_derived=self._has_derived,
+            suspect_only=self._suspect_only,
         )
         self._apply_sort()
 

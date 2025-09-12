@@ -170,15 +170,29 @@ def test_list_panel_has_search_and_list(monkeypatch):
     assert isinstance(panel.search, wx_stub.SearchCtrl)
     assert isinstance(panel.labels, wx_stub.TextCtrl)
     assert isinstance(panel.match_any, wx_stub.CheckBox)
+    assert isinstance(panel.is_derived, wx_stub.CheckBox)
+    assert isinstance(panel.has_derived, wx_stub.CheckBox)
+    assert isinstance(panel.suspect_only, wx_stub.CheckBox)
     assert isinstance(panel.list, wx_stub.ListCtrl)
     assert panel.search.GetParent() is panel
     assert panel.labels.GetParent() is panel
     assert panel.match_any.GetParent() is panel
+    assert panel.is_derived.GetParent() is panel
+    assert panel.has_derived.GetParent() is panel
+    assert panel.suspect_only.GetParent() is panel
     assert panel.list.GetParent() is panel
 
     sizer = panel.GetSizer()
     children = [child.GetWindow() for child in sizer.GetChildren()]
-    assert children == [panel.search, panel.labels, panel.match_any, panel.list]
+    assert children == [
+        panel.search,
+        panel.labels,
+        panel.match_any,
+        panel.is_derived,
+        panel.has_derived,
+        panel.suspect_only,
+        panel.list,
+    ]
 
 
 def test_column_click_sorts(monkeypatch):
@@ -457,3 +471,39 @@ def test_match_any_checkbox_affects_model(monkeypatch):
     panel.match_any.SetValue(False)
     handler(None)
     assert called[-1] is True
+
+
+def test_derived_checkboxes_affect_model(monkeypatch):
+    wx_stub, mixins = _build_wx_stub()
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+    ListPanel = list_panel_module.ListPanel
+    RequirementModel = model_module.RequirementModel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+
+    called: list[tuple[str, bool]] = []
+    panel.model.set_is_derived = lambda v: called.append(("is", v))
+    panel.model.set_has_derived = lambda v: called.append(("has", v))
+    panel.model.set_suspect_only = lambda v: called.append(("suspect", v))
+
+    handler = panel.is_derived.get_bound_handler(wx_stub.EVT_CHECKBOX)
+    panel.is_derived.SetValue(True)
+    handler(None)
+    assert called[-1] == ("is", True)
+
+    handler = panel.has_derived.get_bound_handler(wx_stub.EVT_CHECKBOX)
+    panel.has_derived.SetValue(True)
+    handler(None)
+    assert called[-1] == ("has", True)
+
+    handler = panel.suspect_only.get_bound_handler(wx_stub.EVT_CHECKBOX)
+    panel.suspect_only.SetValue(True)
+    handler(None)
+    assert called[-1] == ("suspect", True)

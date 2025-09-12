@@ -59,6 +59,28 @@ SCHEMA: dict[str, Any] = {
                 },
             },
         },
+        "derived_from": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["source_id", "source_revision"],
+                "properties": {
+                    "source_id": {"type": "integer"},
+                    "source_revision": {"type": "integer"},
+                    "suspect": {"type": "boolean"},
+                },
+            },
+        },
+        "derivation": {
+            "type": "object",
+            "required": ["rationale", "assumptions", "method", "margin"],
+            "properties": {
+                "rationale": {"type": "string"},
+                "assumptions": {"type": "array", "items": {"type": "string"}},
+                "method": {"type": "string"},
+                "margin": {"type": "string"},
+            },
+        },
         "revision": {"type": "integer", "minimum": 1},
         "approved_at": {"type": ["string", "null"]},
         "notes": {"type": "string"},

@@ -12,6 +12,7 @@ from wx.lib.dialogs import ScrolledMessageDialog
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from app.core import store
+from app.core.labels import Label
 from app.core.model import (
     Requirement,
     RequirementType,
@@ -197,10 +198,12 @@ class EditorPanel(ScrolledPanel):
         # labels section -------------------------------------------------
         box = wx.StaticBox(self, label=_("Labels"))
         box_sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
-        self.labels_list = wx.CheckListBox(box, choices=[])
-        self.labels_list.Bind(wx.EVT_CHECKLISTBOX, self._on_label_toggle)
-        box_sizer.Add(self.labels_list, 1, wx.EXPAND | wx.ALL, 5)
+        self.labels_panel = wx.Panel(box)
+        self.labels_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
+        self.labels_panel.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)
+        box_sizer.Add(self.labels_panel, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(box_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        self._label_defs: list[Label] = []
 
         # derived from section -------------------------------------------
         df_box = wx.StaticBox(self, label=_("Derived from"))
@@ -257,6 +260,8 @@ class EditorPanel(ScrolledPanel):
         }
         self.current_path: Path | None = None
         self.mtime: float | None = None
+        self._app = wx.GetApp()
+        self._refresh_labels_display()
 
     def _bind_autosize(self, ctrl: wx.TextCtrl) -> None:
         """Register multiline text control for dynamic height."""
@@ -314,13 +319,12 @@ class EditorPanel(ScrolledPanel):
             "approved_at": None,
             "notes": "",
         })
-        for i in range(self.labels_list.GetCount()):
-            self.labels_list.Check(i, False)
         self.derived_list.Set([])
         self.derived_id.SetValue("")
         for ctrl in self.derivation_fields.values():
             ctrl.SetValue("")
         self._auto_resize_all()
+        self._refresh_labels_display()
         self._on_id_change()
 
     def load(
@@ -351,9 +355,7 @@ class EditorPanel(ScrolledPanel):
         self.current_path = Path(path) if path else None
         self.mtime = mtime
         self.original_id = data.get("id")
-        for i in range(self.labels_list.GetCount()):
-            name = self.labels_list.GetString(i)
-            self.labels_list.Check(i, name in self.extra["labels"])
+        self._refresh_labels_display()
         derivation = data.get("derivation", {})
         for name, ctrl in self.derivation_fields.items():
             if name == "assumptions":
@@ -373,6 +375,7 @@ class EditorPanel(ScrolledPanel):
         for ctrl in self.derivation_fields.values():
             ctrl.SetValue("")
         self._auto_resize_all()
+        self._refresh_labels_display()
 
     # data helpers -----------------------------------------------------
     def get_data(self) -> Requirement:
@@ -404,11 +407,7 @@ class EditorPanel(ScrolledPanel):
             "trace_down": self.fields["trace_down"].GetValue(),
             "version": self.fields["version"].GetValue(),
             "modified_at": self.fields["modified_at"].GetValue(),
-            "labels": [
-                self.labels_list.GetString(i)
-                for i in range(self.labels_list.GetCount())
-                if self.labels_list.IsChecked(i)
-            ],
+            "labels": list(self.extra.get("labels", [])),
             "attachments": list(self.attachments),
             "revision": self.extra.get("revision", 1),
             "approved_at": self.extra.get("approved_at"),
@@ -433,20 +432,60 @@ class EditorPanel(ScrolledPanel):
         return requirement_from_dict(data)
 
     # labels helpers ---------------------------------------------------
-    def update_labels_list(self, labels: list[str]) -> None:
+    def update_labels_list(self, labels: list[Label]) -> None:
         """Update available labels and reapply selection."""
-        self.labels_list.Set(labels)
-        current = [lbl for lbl in self.extra.get("labels", []) if lbl in labels]
-        self.extra["labels"] = current
-        for i, name in enumerate(labels):
-            self.labels_list.Check(i, name in current)
-
-    def _on_label_toggle(self, _event: wx.CommandEvent) -> None:
-        self.extra["labels"] = [
-            self.labels_list.GetString(i)
-            for i in range(self.labels_list.GetCount())
-            if self.labels_list.IsChecked(i)
+        self._label_defs = list(labels)
+        current = [
+            lbl for lbl in self.extra.get("labels", []) if any(l.name == lbl for l in labels)
         ]
+        self.extra["labels"] = current
+        self._refresh_labels_display()
+
+    def apply_label_selection(self, labels: list[str]) -> None:
+        """Apply selected ``labels`` to requirement and refresh display."""
+        available = {l.name for l in self._label_defs}
+        self.extra["labels"] = [lbl for lbl in labels if lbl in available]
+        self._refresh_labels_display()
+
+    def _refresh_labels_display(self) -> None:
+        if not wx.GetApp():
+            return
+        sizer = self.labels_panel.GetSizer()
+        if sizer:
+            sizer.Clear(False)
+        labels = self.extra.get("labels", [])
+        if not labels:
+            placeholder = wx.StaticText(self.labels_panel, label=_("(none)"))
+            placeholder.SetForegroundColour(wx.Colour("grey"))
+            placeholder.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)
+            sizer.Add(placeholder, 0)
+        else:
+            for i, name in enumerate(labels):
+                lbl_def = next((l for l in self._label_defs if l.name == name), None)
+                color = lbl_def.color if lbl_def else "#cccccc"
+                txt = wx.StaticText(self.labels_panel, label=name)
+                txt.SetBackgroundColour(color)
+                txt.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)
+                sizer.Add(txt, 0, wx.RIGHT, 2)
+                if i < len(labels) - 1:
+                    comma = wx.StaticText(self.labels_panel, label=", ")
+                    comma.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)
+                    sizer.Add(comma, 0, wx.RIGHT, 2)
+        self.labels_panel.Layout()
+
+    def _on_labels_click(self, _event: wx.Event) -> None:
+        choices = [lbl.name for lbl in self._label_defs]
+        if not choices:
+            return
+        preselect = [
+            i for i, lbl in enumerate(self._label_defs) if lbl.name in self.extra.get("labels", [])
+        ]
+        dlg = wx.MultiChoiceDialog(self, _("Select labels"), _("Labels"), choices)
+        dlg.SetSelections(preselect)
+        if dlg.ShowModal() == wx.ID_OK:
+            selected = [choices[i] for i in dlg.GetSelections()]
+            self.apply_label_selection(selected)
+        dlg.Destroy()
 
     def _on_add_link(self, _event: wx.CommandEvent) -> None:
         value = self.derived_id.GetValue().strip()

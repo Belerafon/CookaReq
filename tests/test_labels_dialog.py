@@ -156,7 +156,9 @@ def test_main_frame_manage_labels_saves(monkeypatch, tmp_path):
     monkeypatch.setattr(main_frame_mod, "LabelsDialog", DummyLabelsDialog)
 
     captured: list[tuple[str, list[str]]] = []
-    frame.editor.update_labels_list = lambda labels: captured.append(("editor", labels))
+    frame.editor.update_labels_list = lambda labels: captured.append(
+        ("editor", [l.name for l in labels])
+    )
     frame.panel.update_labels_list = lambda labels: captured.append(("panel", labels))
 
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, frame.manage_labels_id)

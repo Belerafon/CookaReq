@@ -71,6 +71,41 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch):
     app.Destroy()
 
 
+def test_list_panel_context_menu_via_event(monkeypatch):
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+    import app.ui.list_panel as list_panel
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["version"])
+    panel.set_requirements([{ "id": 1, "title": "T", "version": "1" }])
+    frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
+    frame.GetSizer().Add(panel, 1, wx.EXPAND)
+    frame.Layout()
+    frame.Show()
+    app.Yield()
+
+    called: dict[str, tuple[int, int | None]] = {}
+
+    def fake_popup(index: int, col: int | None) -> None:
+        called["args"] = (index, col)
+
+    monkeypatch.setattr(panel, "_popup_context_menu", fake_popup)
+
+    monkeypatch.setattr(panel.list, "HitTestSubItem", lambda pt: (0, 0, 0))
+    monkeypatch.setattr(panel.list, "ScreenToClient", lambda pt: pt)
+    evt = wx.ContextMenuEvent(wx.EVT_CONTEXT_MENU.typeId, panel.list.GetId())
+    evt.SetPosition(wx.Point(0, 0))
+    evt.SetEventObject(panel.list)
+    panel._on_context_menu(evt)
+
+    assert called.get("args") == (0, 0)
+    frame.Destroy()
+    app.Destroy()
+
+
 def test_bulk_edit_updates_selected_items(monkeypatch):
     wx = pytest.importorskip("wx")
     app = wx.App()

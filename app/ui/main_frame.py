@@ -9,6 +9,8 @@ from pathlib import Path
 from dataclasses import fields
 from typing import Dict
 
+from app.log import logger
+
 from app.core import store
 from app.core.model import Requirement
 from app.core.labels import Label
@@ -81,13 +83,14 @@ class MainFrame(wx.Frame):
             self.main_splitter,
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP,
         )
-        self.log_handler = WxLogHandler(self.log_console)
-        self.log_handler.setLevel(logging.WARNING)
-        root_logger = logging.getLogger()
-        for h in list(root_logger.handlers):
-            if isinstance(h, WxLogHandler):
-                root_logger.removeHandler(h)
-        root_logger.addHandler(self.log_handler)
+        existing = next((h for h in logger.handlers if isinstance(h, WxLogHandler)), None)
+        if existing:
+            self.log_handler = existing
+            self.log_handler._target = self.log_console
+        else:
+            self.log_handler = WxLogHandler(self.log_console)
+            self.log_handler.setLevel(logging.WARNING)
+            logger.addHandler(self.log_handler)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.main_splitter, 1, wx.EXPAND)
@@ -171,7 +174,7 @@ class MainFrame(wx.Frame):
             try:
                 store.save_labels(self.current_dir, self.labels)
             except Exception as exc:  # pragma: no cover - disk errors
-                logging.warning("Failed to save labels: %s", exc)
+                logger.warning("Failed to save labels: %s", exc)
             self.panel.refresh()
             names = [lbl.name for lbl in self.labels]
             self.editor.update_labels_list(names)
@@ -195,7 +198,7 @@ class MainFrame(wx.Frame):
                 items.append(data)
                 store.add_to_index(self.current_dir, data.get("id"))
             except Exception as exc:
-                logging.warning("Failed to load %s: %s", fp, exc)
+                logger.warning("Failed to load %s: %s", fp, exc)
                 continue
         self.panel.set_requirements(items)
         if self.remember_sort and self.sort_column != -1:
@@ -213,7 +216,7 @@ class MainFrame(wx.Frame):
         try:
             store.save_labels(self.current_dir, self.labels)
         except Exception as exc:
-            logging.warning("Failed to save labels: %s", exc)
+            logger.warning("Failed to save labels: %s", exc)
         names = [lbl.name for lbl in self.labels]
         self.editor.update_labels_list(names)
         self.panel.update_labels_list(names)
@@ -357,7 +360,8 @@ class MainFrame(wx.Frame):
 
     def _on_close(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._save_layout()
-        logging.getLogger().removeHandler(self.log_handler)
+        if self.log_handler in logger.handlers:
+            logger.removeHandler(self.log_handler)
         event.Skip()
 
     def _on_sort_changed(self, column: int, ascending: bool) -> None:

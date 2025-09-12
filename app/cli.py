@@ -5,10 +5,10 @@ from gettext import gettext as _
 
 import argparse
 import json
-import logging
 from pathlib import Path
 
 from .core import store, search, model
+from .log import configure_logging
 
 
 def _load_all(directory: str | Path) -> list[model.Requirement]:
@@ -89,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
     parser = build_parser()
     args = parser.parse_args(argv)
     args.func(args)

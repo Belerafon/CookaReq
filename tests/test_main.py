@@ -17,12 +17,19 @@ def test_main_runs(monkeypatch):
         def AddCatalog(self, name):
             pass
 
+    class DummyConfig:
+        def __init__(self, appName):
+            self.appName = appName
+        def Read(self, key):
+            return ""
+
     def add_prefix(path):
         return None
 
     wx_stub = types.SimpleNamespace(
         App=lambda: dummy_app,
         Locale=DummyLocale,
+        Config=DummyConfig,
         LANGUAGE_DEFAULT=0,
     )
     wx_stub.Locale.AddCatalogLookupPathPrefix = add_prefix

@@ -54,6 +54,7 @@ class MainFrame(wx.Frame):
         self._recent_items: Dict[int, Path] = {}
         self.auto_open_last = self.config.ReadBool("auto_open_last", False)
         self.remember_sort = self.config.ReadBool("remember_sort", False)
+        self.language = self.config.Read("language")
         self.sort_column = self.config.ReadInt("sort_column", -1)
         self.sort_ascending = self.config.ReadBool("sort_ascending", True)
         self.labels: list[Label] = []
@@ -157,11 +158,13 @@ class MainFrame(wx.Frame):
             self,
             open_last=self.auto_open_last,
             remember_sort=self.remember_sort,
+            language=self.language,
         )
         if dlg.ShowModal() == wx.ID_OK:
-            self.auto_open_last, self.remember_sort = dlg.get_values()
+            self.auto_open_last, self.remember_sort, self.language = dlg.get_values()
             self.config.WriteBool("auto_open_last", self.auto_open_last)
             self.config.WriteBool("remember_sort", self.remember_sort)
+            self.config.Write("language", self.language)
             self.config.Flush()
         dlg.Destroy()
 

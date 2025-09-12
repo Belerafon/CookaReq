@@ -137,6 +137,8 @@ class MainFrame(wx.Frame):
             self._column_items[item.GetId()] = field
         self.log_menu_item = view_menu.AppendCheckItem(wx.ID_ANY, _("Show Error Console"))
         self.Bind(wx.EVT_MENU, self.on_toggle_log_console, self.log_menu_item)
+        graph_item = view_menu.Append(wx.ID_ANY, _("Show Derivation Graph"))
+        self.Bind(wx.EVT_MENU, self.on_show_derivation_graph, graph_item)
         menu_bar.Append(view_menu, _("&View"))
         self.SetMenuBar(menu_bar)
 
@@ -189,6 +191,23 @@ class MainFrame(wx.Frame):
             self.editor.update_labels_list(names)
             self.panel.update_labels_list(names)
         dlg.Destroy()
+
+    def on_show_derivation_graph(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+        """Open window displaying requirement derivation graph."""
+        if not self.current_dir:
+            wx.MessageBox(_("Select requirements folder first"), _("No Data"))
+            return
+        try:
+            from .derivation_graph import DerivationGraphFrame
+        except Exception as exc:
+            wx.MessageBox(str(exc), _("Error"))
+            return
+        reqs = self.model.get_all()
+        if not reqs:
+            wx.MessageBox(_("No requirements loaded"), _("No Data"))
+            return
+        frame = DerivationGraphFrame(self, reqs)
+        frame.Show()
 
     def _load_directory(self, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""

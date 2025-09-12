@@ -1,2 +1,4 @@
 wxPython>=4.2
 jsonschema>=4.21
+networkx>=3.2
+pydot>=1.4

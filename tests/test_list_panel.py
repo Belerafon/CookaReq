@@ -52,7 +52,7 @@ def _build_wx_stub():
         def GetValue(self):
             return self._value
 
-    class ListCtrl(Window):
+    class _BaseList(Window):
         def __init__(self, parent=None, style=0):
             super().__init__(parent)
             self._items = []
@@ -73,11 +73,11 @@ def _build_wx_stub():
             return len(self._items)
         def GetColumnCount(self):
             return len(self._cols)
-        def InsertItem(self, index, text):
+        def InsertStringItem(self, index, text):
             self._items.insert(index, text)
             self._data.insert(index, 0)
             return index
-        def SetItem(self, index, col, text):
+        def SetStringItem(self, index, col, text):
             pass
         def SetItemData(self, index, data):
             self._data[index] = data
@@ -87,6 +87,39 @@ def _build_wx_stub():
             return -1, 0
         def HitTestSubItem(self, pt):
             return -1, 0, -1
+
+    class UltimateListItem:
+        def __init__(self):
+            self._id = 0
+            self._col = 0
+            self._text = ""
+            self._renderer = None
+        def SetId(self, value):
+            self._id = value
+        def GetId(self):
+            return self._id
+        def SetColumn(self, value):
+            self._col = value
+        def GetColumn(self):
+            return self._col
+        def SetText(self, text):
+            self._text = text
+        def GetText(self):
+            return self._text
+        def SetCustomRenderer(self, rend):
+            self._renderer = rend
+        def GetCustomRenderer(self):
+            return self._renderer
+
+    class UltimateListCtrl(_BaseList):
+        def __init__(self, parent=None, agwStyle=0, **kwargs):
+            super().__init__(parent)
+        def SetItem(self, item):
+            pass
+
+    class ListCtrl(_BaseList):
+        # kept for compatibility if needed elsewhere
+        pass
 
     class BoxSizer:
         def __init__(self, orient):
@@ -133,7 +166,12 @@ def _build_wx_stub():
             pass
 
     mixins_mod = types.SimpleNamespace(ColumnSorterMixin=ColumnSorterMixin)
-    return wx_mod, mixins_mod
+    ulc_mod = types.SimpleNamespace(
+        UltimateListCtrl=UltimateListCtrl,
+        UltimateListItem=UltimateListItem,
+        ULC_REPORT=0,
+    )
+    return wx_mod, mixins_mod, ulc_mod
 
 
 def _req(id: int, title: str, **kwargs) -> Requirement:
@@ -153,9 +191,12 @@ def _req(id: int, title: str, **kwargs) -> Requirement:
 
 
 def test_list_panel_has_search_and_list(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -173,7 +214,7 @@ def test_list_panel_has_search_and_list(monkeypatch):
     assert isinstance(panel.is_derived, wx_stub.CheckBox)
     assert isinstance(panel.has_derived, wx_stub.CheckBox)
     assert isinstance(panel.suspect_only, wx_stub.CheckBox)
-    assert isinstance(panel.list, wx_stub.ListCtrl)
+    assert isinstance(panel.list, ulc.UltimateListCtrl)
     assert panel.search.GetParent() is panel
     assert panel.labels.GetParent() is panel
     assert panel.match_any.GetParent() is panel
@@ -196,9 +237,12 @@ def test_list_panel_has_search_and_list(monkeypatch):
 
 
 def test_column_click_sorts(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -224,9 +268,12 @@ def test_column_click_sorts(monkeypatch):
 
 
 def test_column_click_after_set_columns_triggers_sort(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -247,9 +294,12 @@ def test_column_click_after_set_columns_triggers_sort(monkeypatch):
 
 
 def test_search_and_label_filters(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -276,9 +326,12 @@ def test_search_and_label_filters(monkeypatch):
 
 
 def test_labels_column_renders_joined(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -289,20 +342,26 @@ def test_labels_column_renders_joined(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
 
-    captured: list[tuple[int, int, str]] = []
-    panel.list.SetItem = lambda i, c, t: captured.append((i, c, t))
+    captured: list[object] = []
+    panel.list.SetItem = lambda item: captured.append(item)
     panel.set_requirements([
         _req(1, "A", labels=["ui", "backend"]),
     ])
 
-    # ищем запись для первой колонки после заголовка
-    assert (0, 1, "ui, backend") in captured
+    item = next((i for i in captured if i.GetColumn() == 1), None)
+    assert item is not None
+    renderer = item.GetCustomRenderer()
+    assert renderer is not None
+    assert renderer.labels == ["ui", "backend"]
 
 
 def test_sort_by_labels(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -322,9 +381,12 @@ def test_sort_by_labels(monkeypatch):
 
 
 def test_sort_by_multiple_labels(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -344,9 +406,12 @@ def test_sort_by_multiple_labels(monkeypatch):
 
 
 def test_bulk_edit_updates_requirements(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -368,9 +433,12 @@ def test_bulk_edit_updates_requirements(monkeypatch):
 
 
 def test_sort_method_and_callback(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -396,9 +464,12 @@ def test_sort_method_and_callback(monkeypatch):
 
 
 def test_label_filter_widget_calls_model(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -423,9 +494,12 @@ def test_label_filter_widget_calls_model(monkeypatch):
 
 
 def test_label_filter_validates_known_labels(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -448,9 +522,12 @@ def test_label_filter_validates_known_labels(monkeypatch):
 
 
 def test_match_any_checkbox_affects_model(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
@@ -474,9 +551,12 @@ def test_match_any_checkbox_affects_model(monkeypatch):
 
 
 def test_derived_checkboxes_affect_model(monkeypatch):
-    wx_stub, mixins = _build_wx_stub()
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)

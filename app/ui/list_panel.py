@@ -35,7 +35,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.search = wx.SearchCtrl(self)
-        self.labels = wx.ComboCtrl(self)
+        self.labels = wx.TextCtrl(self)
         self._label_choices: list[str] = []
         self._ignore_label_event = False
         self.match_any = wx.CheckBox(self, label=_("Match any labels"))

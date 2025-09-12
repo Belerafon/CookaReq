@@ -4,7 +4,7 @@ from gettext import gettext as _
 
 import wx
 
-from app.core.labels import Label
+from app.core.labels import Label, PRESET_SETS, PRESET_SET_TITLES
 
 
 class LabelsDialog(wx.Dialog):
@@ -24,12 +24,26 @@ class LabelsDialog(wx.Dialog):
         self.color_picker = wx.ColourPickerCtrl(self)
         self.color_picker.Disable()
 
+        self.add_presets = wx.Button(self, label=_("Add presets"))
+        self.add_presets.Bind(wx.EVT_BUTTON, self._on_show_presets_menu)
+
+        self.delete_btn = wx.Button(self, label=_("Delete"))
+        self.delete_btn.Bind(wx.EVT_BUTTON, self._on_delete_selected)
+
+        self.clear_btn = wx.Button(self, label=_("Clear all"))
+        self.clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_all)
+
         self.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_select)
         self.color_picker.Bind(wx.EVT_COLOURPICKER_CHANGED, self._on_color_changed)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         sizer.Add(self.color_picker, 0, wx.ALL | wx.ALIGN_RIGHT, 5)
+        btn_row = wx.BoxSizer(wx.HORIZONTAL)
+        btn_row.Add(self.add_presets, 0, wx.ALL, 5)
+        btn_row.Add(self.delete_btn, 0, wx.ALL, 5)
+        btn_row.Add(self.clear_btn, 0, wx.ALL, 5)
+        sizer.Add(btn_row, 0, wx.ALIGN_RIGHT)
         btn_sizer = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
         if btn_sizer:
             sizer.Add(btn_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
@@ -54,6 +68,52 @@ class LabelsDialog(wx.Dialog):
         colour = event.GetColour().GetAsString(wx.C2S_HTML_SYNTAX)
         self._labels[idx].color = colour
         self.list.SetItem(idx, 1, colour)
+
+    def _get_selected_indices(self) -> list[int]:
+        indices: list[int] = []
+        idx = self.list.GetFirstSelected()
+        while idx != -1:
+            indices.append(idx)
+            idx = self.list.GetNextSelected(idx)
+        return indices
+
+    def _on_add_preset_set(self, key: str) -> None:  # pragma: no cover - GUI event
+        existing = {lbl.name for lbl in self._labels}
+        added = False
+        for preset in PRESET_SETS.get(key, []):
+            if preset.name not in existing:
+                self._labels.append(Label(preset.name, preset.color))
+                added = True
+        if added:
+            self._populate()
+
+    def _on_show_presets_menu(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+        menu = wx.Menu()
+        for key, title in PRESET_SET_TITLES.items():
+            item = menu.Append(wx.ID_ANY, _(title))
+            menu.Bind(wx.EVT_MENU, lambda evt, k=key: self._on_add_preset_set(k), item)
+        self.PopupMenu(menu)
+        menu.Destroy()
+
+    def _on_delete_selected(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+        indices = self._get_selected_indices()
+        if not indices:
+            return
+        for i in sorted(indices, reverse=True):
+            del self._labels[i]
+        self._populate()
+        self.color_picker.Disable()
+
+    def _on_clear_all(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+        res = wx.MessageBox(
+            _("Remove all labels?"),
+            _("Confirm"),
+            style=wx.YES_NO | wx.ICON_WARNING,
+        )
+        if res == wx.YES:
+            self._labels.clear()
+            self._populate()
+            self.color_picker.Disable()
 
     def get_labels(self) -> list[Label]:
         """Return updated labels."""

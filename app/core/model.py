@@ -47,12 +47,16 @@ class Attachment:
 
 
 @dataclass
-class DerivationLink:
-    """Reference to a source requirement used for derivation."""
+class RequirementLink:
+    """Reference to another requirement with revision tracking."""
 
     source_id: int
     source_revision: int
     suspect: bool = False
+
+
+# Backwards compatible alias for existing code/tests
+DerivationLink = RequirementLink
 
 
 @dataclass
@@ -63,6 +67,14 @@ class DerivationInfo:
     assumptions: List[str]
     method: str
     margin: str
+
+
+@dataclass
+class Links:
+    """Grouping for miscellaneous requirement links."""
+
+    verifies: List[RequirementLink] = field(default_factory=list)
+    relates: List[RequirementLink] = field(default_factory=list)
 
 
 @dataclass
@@ -88,7 +100,9 @@ class Requirement:
     revision: int = 1
     approved_at: Optional[str] = None
     notes: str = ""
-    derived_from: List[DerivationLink] = field(default_factory=list)
+    parent: RequirementLink | None = None
+    derived_from: List[RequirementLink] = field(default_factory=list)
+    links: Links = field(default_factory=Links)
     derivation: Optional[DerivationInfo] = None
 
 
@@ -102,7 +116,14 @@ def requirement_from_dict(data: dict[str, Any]) -> Requirement:
     units_data = data.get("units")
     units = Units(**units_data) if units_data else None
     attachments = [Attachment(**a) for a in data.get("attachments", [])]
-    derived_from = [DerivationLink(**d) for d in data.get("derived_from", [])]
+    parent_data = data.get("parent")
+    parent = RequirementLink(**parent_data) if parent_data else None
+    derived_from = [RequirementLink(**d) for d in data.get("derived_from", [])]
+    links_data = data.get("links", {})
+    links = Links(
+        verifies=[RequirementLink(**l) for l in links_data.get("verifies", [])],
+        relates=[RequirementLink(**l) for l in links_data.get("relates", [])],
+    )
     derivation_data = data.get("derivation")
     derivation = DerivationInfo(**derivation_data) if derivation_data else None
     return Requirement(
@@ -127,7 +148,9 @@ def requirement_from_dict(data: dict[str, Any]) -> Requirement:
         revision=data.get("revision", 1),
         approved_at=data.get("approved_at"),
         notes=data.get("notes", ""),
+        parent=parent,
         derived_from=derived_from,
+        links=links,
         derivation=derivation,
     )
 
@@ -135,6 +158,8 @@ def requirement_from_dict(data: dict[str, Any]) -> Requirement:
 def requirement_to_dict(req: Requirement) -> dict[str, Any]:
     """Convert ``req`` into a plain ``dict`` suitable for JSON storage."""
     data = asdict(req)
+    if "links" in data and not data["links"]["verifies"] and not data["links"]["relates"]:
+        del data["links"]
     for key in ("type", "status", "priority", "verification"):
         value = data.get(key)
         if isinstance(value, Enum):

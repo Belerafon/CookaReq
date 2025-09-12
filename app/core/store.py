@@ -159,11 +159,18 @@ def mark_suspects(directory: str | Path, changed_id: int, new_revision: int) -> 
         except Exception as exc:
             logger.warning("Failed to read %s: %s", fp, exc)
             continue
-        links = data.get("derived_from")
-        if not links:
-            continue
         changed = False
-        for link in links:
+        parent = data.get("parent")
+        if (
+            parent
+            and parent.get("source_id") == changed_id
+            and parent.get("source_revision") != new_revision
+            and not parent.get("suspect", False)
+        ):
+            parent["suspect"] = True
+            changed = True
+
+        for link in data.get("derived_from", []):
             if (
                 link.get("source_id") == changed_id
                 and link.get("source_revision") != new_revision
@@ -171,6 +178,17 @@ def mark_suspects(directory: str | Path, changed_id: int, new_revision: int) -> 
             ):
                 link["suspect"] = True
                 changed = True
+
+        links_obj = data.get("links", {})
+        for coll in (links_obj.get("verifies", []), links_obj.get("relates", [])):
+            for link in coll:
+                if (
+                    link.get("source_id") == changed_id
+                    and link.get("source_revision") != new_revision
+                    and not link.get("suspect", False)
+                ):
+                    link["suspect"] = True
+                    changed = True
         if changed:
             with fp.open("w", encoding="utf-8") as fh:
                 json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)

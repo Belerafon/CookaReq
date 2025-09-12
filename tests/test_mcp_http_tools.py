@@ -140,7 +140,7 @@ def test_link_requirements_via_http(tmp_path: Path) -> None:
     start_server(port=port, base_path=str(tmp_path))
     try:
         _wait_until_ready(port)
-        status, body = _call_tool(port, "link_requirements", {"source_id": 1, "derived_id": 2, "rev": 1})
+        status, body = _call_tool(port, "link_requirements", {"source_id": 1, "derived_id": 2, "link_type": "derived_from", "rev": 1})
         assert status == 200
         assert body["revision"] == 2
         assert body["derived_from"] == [{"source_id": 1, "source_revision": 1, "suspect": False}]

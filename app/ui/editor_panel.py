@@ -27,11 +27,18 @@ from . import locale
 class EditorPanel(wx.Panel):
     """Panel for creating and editing requirements."""
 
-    def __init__(self, parent: wx.Window, on_save: Callable[[], None] | None = None):
+    def __init__(
+        self,
+        parent: wx.Window,
+        on_save: Callable[[], None] | None = None,
+        on_add_derived: Callable[[Requirement], None] | None = None,
+    ):
         super().__init__(parent)
         self.fields: dict[str, wx.TextCtrl] = {}
         self.enums: dict[str, wx.Choice] = {}
+        self.derivation_fields: dict[str, wx.TextCtrl] = {}
         self._on_save_callback = on_save
+        self._on_add_derived_callback = on_add_derived
         self.directory: Path | None = None
         self.original_id: int | None = None
 
@@ -51,6 +58,10 @@ class EditorPanel(wx.Panel):
             "status": _("Status"),
             "priority": _("Priority"),
             "verification": _("Verification method"),
+            "rationale": _("Rationale"),
+            "assumptions": _("Assumptions"),
+            "method": _("Method"),
+            "margin": _("Margin"),
         }
 
         help_texts = {
@@ -88,6 +99,10 @@ class EditorPanel(wx.Panel):
             "verification": _(
                 "Method of verification: inspection, analysis, demonstration, test."
             ),
+            "rationale": _("Reasoning for the derivation."),
+            "assumptions": _("Assumptions used during derivation."),
+            "method": _("Derivation method."),
+            "margin": _("Applied margin."),
         }
 
         def make_help_button(message: str) -> wx.Button:
@@ -184,13 +199,49 @@ class EditorPanel(wx.Panel):
         box_sizer.Add(self.labels_list, 1, wx.EXPAND | wx.ALL, 5)
         sizer.Add(box_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
+        # derived from section -------------------------------------------
+        df_box = wx.StaticBox(self, label=_("Derived from"))
+        df_sizer = wx.StaticBoxSizer(df_box, wx.VERTICAL)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.derived_id = wx.TextCtrl(df_box)
+        row.Add(self.derived_id, 1, wx.EXPAND | wx.RIGHT, 5)
+        add_link_btn = wx.Button(df_box, label=_("Add"))
+        add_link_btn.Bind(wx.EVT_BUTTON, self._on_add_link)
+        row.Add(add_link_btn, 0)
+        df_sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
+        self.derived_list = wx.CheckListBox(df_box, choices=[])
+        self.derived_list.Bind(wx.EVT_CHECKLISTBOX, self._on_link_toggle)
+        df_sizer.Add(self.derived_list, 1, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(df_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
+        # derivation details ---------------------------------------------
+        for name, multiline in [
+            ("rationale", True),
+            ("assumptions", True),
+            ("method", False),
+            ("margin", False),
+        ]:
+            label = wx.StaticText(self, label=labels[name])
+            sizer.Add(label, 0, wx.ALL, 5)
+            style = wx.TE_MULTILINE if multiline else 0
+            ctrl = wx.TextCtrl(self, style=style)
+            self.derivation_fields[name] = ctrl
+            proportion = 1 if multiline else 0
+            sizer.Add(ctrl, proportion, wx.EXPAND | wx.ALL, 5)
+
         self.save_btn = wx.Button(self, label=_("Save"))
         self.save_btn.Bind(wx.EVT_BUTTON, self._on_save_button)
-        sizer.Add(self.save_btn, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
+        self.add_derived_btn = wx.Button(self, label=_("Add derived"))
+        self.add_derived_btn.Bind(wx.EVT_BUTTON, self._on_add_derived_button)
+        btn_row = wx.BoxSizer(wx.HORIZONTAL)
+        btn_row.Add(self.add_derived_btn, 0, wx.ALL, 5)
+        btn_row.Add(self.save_btn, 0, wx.ALL, 5)
+        sizer.Add(btn_row, 0, wx.ALIGN_RIGHT)
 
         self.SetSizer(sizer)
 
         self.attachments: list[dict[str, str]] = []
+        self.derived_from: list[dict[str, Any]] = []
         self.extra: dict[str, Any] = {
             "labels": [],
             "revision": 1,
@@ -218,6 +269,7 @@ class EditorPanel(wx.Panel):
         for name, choice in self.enums.items():
             choice.SetStringSelection(defaults[name])
         self.attachments = []
+        self.derived_from = []
         self.current_path = None
         self.mtime = None
         self.original_id = None
@@ -229,6 +281,10 @@ class EditorPanel(wx.Panel):
         })
         for i in range(self.labels_list.GetCount()):
             self.labels_list.Check(i, False)
+        self.derived_list.Set([])
+        self.derived_id.SetValue("")
+        for ctrl in self.derivation_fields.values():
+            ctrl.SetValue("")
         self._on_id_change()
 
     def load(
@@ -243,6 +299,12 @@ class EditorPanel(wx.Panel):
         for name, ctrl in self.fields.items():
             ctrl.SetValue(str(data.get(name, "")))
         self.attachments = list(data.get("attachments", []))
+        self.derived_from = [dict(link) for link in data.get("derived_from", [])]
+        items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.derived_from]
+        self.derived_list.Set(items)
+        for i, link in enumerate(self.derived_from):
+            self.derived_list.Check(i, link.get("suspect", False))
+        self.derived_id.SetValue("")
         for name, choice in self.enums.items():
             mapping = getattr(locale, name.upper())
             code = data.get(name, next(iter(mapping)))
@@ -256,6 +318,12 @@ class EditorPanel(wx.Panel):
         for i in range(self.labels_list.GetCount()):
             name = self.labels_list.GetString(i)
             self.labels_list.Check(i, name in self.extra["labels"])
+        derivation = data.get("derivation", {})
+        for name, ctrl in self.derivation_fields.items():
+            if name == "assumptions":
+                ctrl.SetValue("\n".join(derivation.get(name, [])))
+            else:
+                ctrl.SetValue(derivation.get(name, ""))
         self._on_id_change()
 
     def clone(self, new_id: int) -> None:
@@ -263,6 +331,10 @@ class EditorPanel(wx.Panel):
         self.current_path = None
         self.mtime = None
         self.original_id = None
+        self.derived_from = []
+        self.derived_list.Set([])
+        for ctrl in self.derivation_fields.values():
+            ctrl.SetValue("")
 
     # data helpers -----------------------------------------------------
     def get_data(self) -> Requirement:
@@ -303,8 +375,23 @@ class EditorPanel(wx.Panel):
             "revision": self.extra.get("revision", 1),
             "approved_at": self.extra.get("approved_at"),
             "notes": self.extra.get("notes", ""),
+            "derived_from": list(self.derived_from),
         }
         self.extra["labels"] = data["labels"]
+        if any(
+            ctrl.GetValue().strip() for ctrl in self.derivation_fields.values()
+        ):
+            assumptions = [
+                s.strip()
+                for s in self.derivation_fields["assumptions"].GetValue().splitlines()
+                if s.strip()
+            ]
+            data["derivation"] = {
+                "rationale": self.derivation_fields["rationale"].GetValue(),
+                "assumptions": assumptions,
+                "method": self.derivation_fields["method"].GetValue(),
+                "margin": self.derivation_fields["margin"].GetValue(),
+            }
         return requirement_from_dict(data)
 
     # labels helpers ---------------------------------------------------
@@ -322,6 +409,41 @@ class EditorPanel(wx.Panel):
             for i in range(self.labels_list.GetCount())
             if self.labels_list.IsChecked(i)
         ]
+
+    def _on_add_link(self, _event: wx.CommandEvent) -> None:
+        value = self.derived_id.GetValue().strip()
+        if not value:
+            return
+        try:
+            src_id = int(value)
+        except ValueError:
+            return
+        revision = 1
+        if self.directory:
+            path = self.directory / f"{src_id}.json"
+            try:
+                data, _ = store.load(path)
+                revision = data.get("revision", 1)
+            except Exception:
+                pass
+        self.derived_from.append(
+            {"source_id": src_id, "source_revision": revision, "suspect": False}
+        )
+        self.derived_list.Append(f"{src_id} (r{revision})")
+        self.derived_id.SetValue("")
+
+    def _on_link_toggle(self, _event: wx.CommandEvent) -> None:
+        for i, link in enumerate(self.derived_from):
+            link["suspect"] = self.derived_list.IsChecked(i)
+
+    def _on_add_derived_button(self, _evt: wx.Event) -> None:
+        if not self._on_add_derived_callback:
+            return
+        try:
+            req = self.get_data()
+        except Exception:
+            return
+        self._on_add_derived_callback(req)
 
     def _on_id_change(self, _event: wx.CommandEvent | None = None) -> None:
         ctrl = self.fields["id"]

@@ -39,9 +39,11 @@ def test_list_panel_real_widgets():
     frame.GetSizer().Add(panel, 1, wx.EXPAND)
     frame.Layout()
 
+    from wx.lib.agw import ultimatelistctrl as ULC
+
     assert panel in frame.GetChildren()
     assert isinstance(panel.search, wx.SearchCtrl)
-    assert isinstance(panel.list, wx.ListCtrl)
+    assert isinstance(panel.list, ULC.UltimateListCtrl)
     assert panel.search.GetParent() is panel
     assert panel.list.GetParent() is panel
     assert panel.search.IsShown()
@@ -118,14 +120,14 @@ def test_list_panel_context_menu_via_event(monkeypatch):
 
     monkeypatch.setattr(panel, "_popup_context_menu", fake_popup)
 
-    monkeypatch.setattr(panel.list, "HitTestSubItem", lambda pt: (0, 0, 0))
+    monkeypatch.setattr(panel.list, "HitTest", lambda pt: (0, 0))
     monkeypatch.setattr(panel.list, "ScreenToClient", lambda pt: pt)
     evt = wx.ContextMenuEvent(wx.EVT_CONTEXT_MENU.typeId, panel.list.GetId())
     evt.SetPosition(wx.Point(0, 0))
     evt.SetEventObject(panel.list)
     panel._on_context_menu(evt)
 
-    assert called.get("args") == (0, 0)
+    assert called.get("args") == (0, None)
     frame.Destroy()
     app.Destroy()
 
@@ -171,9 +173,9 @@ def test_recalc_derived_map_updates_count():
     req1 = _req(1, "S")
     req2 = _req(2, "D", derived_from=[DerivationLink(source_id=1, source_revision=1, suspect=False)])
     panel.set_requirements([req1, req2])
-    assert panel.list.GetItemText(0, 1) == "1"
+    assert panel.list.GetItem(0, 1).GetText() == "1"
     req2.derived_from = []
     panel.recalc_derived_map([req1, req2])
-    assert panel.list.GetItemText(0, 1) == "0"
+    assert panel.list.GetItem(0, 1).GetText() == "0"
     frame.Destroy()
     app.Destroy()

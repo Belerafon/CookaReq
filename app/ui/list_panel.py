@@ -3,6 +3,7 @@
 from gettext import gettext as _
 
 import wx
+from wx.lib.agw import ultimatelistctrl as ULC
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
 from typing import Callable, List, Sequence, TYPE_CHECKING
@@ -14,6 +15,43 @@ from . import locale
 
 if TYPE_CHECKING:  # pragma: no cover
     from wx import ListEvent, ContextMenuEvent
+
+
+class _LabelsRenderer:
+    """Simple renderer drawing labels as filled rectangles with text."""
+
+    PADDING_X = 2
+    PADDING_Y = 1
+    GAP = 3
+
+    def __init__(self, labels: list[str]):
+        self.labels = labels
+
+    def DrawSubItem(self, dc, rect, _line, _highlighted, _enabled):  # pragma: no cover - GUI
+        x = rect.x + self.GAP
+        dc.SetPen(wx.TRANSPARENT_PEN)
+        for text in self.labels:
+            tw, th = dc.GetTextExtent(text)
+            w = tw + self.PADDING_X * 2
+            h = th + self.PADDING_Y * 2
+            y = rect.y + (rect.height - h) // 2
+            dc.SetBrush(wx.Brush(wx.Colour(220, 220, 220)))
+            dc.DrawRectangle(x, y, w, h)
+            dc.DrawText(text, x + self.PADDING_X, y + self.PADDING_Y)
+            x += w + self.GAP
+
+    def GetLineHeight(self):  # pragma: no cover - GUI
+        dc = wx.ScreenDC()
+        _, h = dc.GetTextExtent("Hg")
+        return h + self.PADDING_Y * 2
+
+    def GetSubItemWidth(self):  # pragma: no cover - GUI
+        dc = wx.ScreenDC()
+        width = self.GAP
+        for text in self.labels:
+            tw, _ = dc.GetTextExtent(text)
+            width += tw + self.PADDING_X * 2 + self.GAP
+        return width
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):
@@ -62,7 +100,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self.search.ShowSearchButton(True)
         if hasattr(self.search, "ShowCancelButton"):
             self.search.ShowCancelButton(True)
-        self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
+        self.list = ULC.UltimateListCtrl(self, agwStyle=ULC.ULC_REPORT)
         ColumnSorterMixin.__init__(self, 1)
         self.columns: List[str] = []
         self._on_clone = on_clone
@@ -279,7 +317,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.list.DeleteAllItems()
         for req in items:
             title = getattr(req, "title", "")
-            index = self.list.InsertItem(self.list.GetItemCount(), title)
+            index = self.list.InsertStringItem(self.list.GetItemCount(), title)
             req_id = getattr(req, "id", 0)
             try:
                 self.list.SetItemData(index, int(req_id))
@@ -297,18 +335,24 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                             suspect_row = True
                         texts.append(txt)
                     value = ", ".join(texts)
-                    self.list.SetItem(index, col, value)
+                    self.list.SetStringItem(index, col, value)
                     continue
                 if field == "derived_count":
                     count = len(self.derived_map.get(req.id, []))
-                    self.list.SetItem(index, col, str(count))
+                    self.list.SetStringItem(index, col, str(count))
                     continue
                 value = getattr(req, field, "")
                 if isinstance(value, Enum):
                     value = value.value
                 if field == "labels" and isinstance(value, list):
-                    value = ", ".join(value)
-                self.list.SetItem(index, col, str(value))
+                    item = ULC.UltimateListItem()
+                    item.SetId(index)
+                    item.SetColumn(col)
+                    item.SetText("")
+                    item.SetCustomRenderer(_LabelsRenderer(value))
+                    self.list.SetItem(item)
+                    continue
+                self.list.SetStringItem(index, col, str(value))
             if suspect_row and hasattr(self.list, "SetItemTextColour"):
                 try:
                     colour = getattr(wx, "RED", None) or wx.Colour(255, 0, 0)
@@ -456,4 +500,4 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             setattr(req, field, value)
             self.model.update(req)
             display = value.value if isinstance(value, Enum) else value
-            self.list.SetItem(idx, column, str(display))
+            self.list.SetStringItem(idx, column, str(display))

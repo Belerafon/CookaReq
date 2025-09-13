@@ -9,6 +9,7 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "mcp",
+    "openai",
 ]
 
 [project.optional-dependencies]

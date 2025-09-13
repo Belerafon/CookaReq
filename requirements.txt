@@ -6,3 +6,4 @@ fastapi
 uvicorn
 mcp
 jsonpatch
+openai

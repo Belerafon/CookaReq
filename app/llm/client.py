@@ -4,49 +4,19 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
 from typing import Any, Tuple, Mapping
 
-import wx
 from openai import OpenAI
 
 from app.telemetry import log_event
+from app.settings import LLMSettings
 from .spec import SYSTEM_PROMPT, TOOLS
-
-
-@dataclass
-class LLMSettings:
-    """Settings for connecting to an LLM service."""
-
-    api_base: str
-    model: str
-    api_key: str
-    timeout: int
-
-    @classmethod
-    def from_config(cls, cfg: wx.Config) -> "LLMSettings":
-        """Load settings from ``wx.Config`` instance."""
-        return cls(
-            api_base=cfg.Read("llm_api_base", ""),
-            model=cfg.Read("llm_model", ""),
-            api_key=cfg.Read("llm_api_key", ""),
-            timeout=cfg.ReadInt("llm_timeout", 60),
-        )
 
 
 class LLMClient:
     """High-level client for LLM operations."""
 
-    def __init__(
-        self,
-        cfg: wx.Config | None = None,
-        *,
-        settings: LLMSettings | None = None,
-    ) -> None:
-        if settings is None:
-            if cfg is None:
-                raise TypeError("cfg or settings must be provided")
-            settings = LLMSettings.from_config(cfg)
+    def __init__(self, settings: LLMSettings) -> None:
         self.settings = settings
         self._client = OpenAI(
             base_url=self.settings.api_base or None,

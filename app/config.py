@@ -6,6 +6,7 @@ from pathlib import Path
 import wx
 
 from app.ui.list_panel import ListPanel
+from app.settings import LLMSettings, MCPSettings, AppSettings, UISettings
 
 
 class ConfigManager:
@@ -74,39 +75,76 @@ class ConfigManager:
 
     # ------------------------------------------------------------------
     # MCP server settings
-    def get_mcp_settings(self) -> tuple[str, int, str, bool, str]:
-        host = self._cfg.Read("mcp_host", "127.0.0.1")
-        port = self._cfg.ReadInt("mcp_port", 8000)
-        base_path = self._cfg.Read("mcp_base_path", "")
-        require_token = self._cfg.ReadBool("mcp_require_token", False)
-        token = self._cfg.Read("mcp_token", "")
-        return host, port, base_path, require_token, token
+    def get_mcp_settings(self) -> MCPSettings:
+        return MCPSettings(
+            host=self._cfg.Read("mcp_host", "127.0.0.1"),
+            port=self._cfg.ReadInt("mcp_port", 8000),
+            base_path=self._cfg.Read("mcp_base_path", ""),
+            require_token=self._cfg.ReadBool("mcp_require_token", False),
+            token=self._cfg.Read("mcp_token", ""),
+        )
 
-    def set_mcp_settings(
-        self, host: str, port: int, base_path: str, require_token: bool, token: str
-    ) -> None:
-        self._cfg.Write("mcp_host", host)
-        self._cfg.WriteInt("mcp_port", port)
-        self._cfg.Write("mcp_base_path", base_path)
-        self._cfg.WriteBool("mcp_require_token", require_token)
-        self._cfg.Write("mcp_token", token)
+    def set_mcp_settings(self, settings: MCPSettings) -> None:
+        self._cfg.Write("mcp_host", settings.host)
+        self._cfg.WriteInt("mcp_port", settings.port)
+        self._cfg.Write("mcp_base_path", settings.base_path)
+        self._cfg.WriteBool("mcp_require_token", settings.require_token)
+        self._cfg.Write("mcp_token", settings.token)
         self._cfg.Flush()
 
     # ------------------------------------------------------------------
     # LLM client settings
-    def get_llm_settings(self) -> tuple[str, str, str, int]:
-        api_base = self._cfg.Read("llm_api_base", "")
-        model = self._cfg.Read("llm_model", "")
-        api_key = self._cfg.Read("llm_api_key", "")
-        timeout = self._cfg.ReadInt("llm_timeout", 60)
-        return api_base, model, api_key, timeout
+    def get_llm_settings(self) -> LLMSettings:
+        return LLMSettings(
+            api_base=self._cfg.Read("llm_api_base", ""),
+            model=self._cfg.Read("llm_model", ""),
+            api_key=self._cfg.Read("llm_api_key", ""),
+            timeout=self._cfg.ReadInt("llm_timeout", 60),
+        )
 
-    def set_llm_settings(self, api_base: str, model: str, api_key: str, timeout: int) -> None:
-        self._cfg.Write("llm_api_base", api_base)
-        self._cfg.Write("llm_model", model)
-        self._cfg.Write("llm_api_key", api_key)
-        self._cfg.WriteInt("llm_timeout", timeout)
+    def set_llm_settings(self, settings: LLMSettings) -> None:
+        self._cfg.Write("llm_api_base", settings.api_base)
+        self._cfg.Write("llm_model", settings.model)
+        self._cfg.Write("llm_api_key", settings.api_key)
+        self._cfg.WriteInt("llm_timeout", settings.timeout)
         self._cfg.Flush()
+
+    # ------------------------------------------------------------------
+    # composite dataclasses
+    def get_ui_settings(self) -> UISettings:
+        sort_column, sort_ascending = self.get_sort_settings()
+        return UISettings(
+            columns=self.get_columns(),
+            recent_dirs=self.get_recent_dirs(),
+            auto_open_last=self.get_auto_open_last(),
+            remember_sort=self.get_remember_sort(),
+            language=self.get_language(),
+            sort_column=sort_column,
+            sort_ascending=sort_ascending,
+        )
+
+    def set_ui_settings(self, settings: UISettings) -> None:
+        self.set_columns(settings.columns)
+        self.set_recent_dirs(settings.recent_dirs)
+        self.set_auto_open_last(settings.auto_open_last)
+        self.set_remember_sort(settings.remember_sort)
+        if settings.language is not None:
+            self.set_language(settings.language)
+        sort_col = settings.sort_column
+        sort_asc = settings.sort_ascending
+        self.set_sort_settings(sort_col, sort_asc)
+
+    def get_app_settings(self) -> AppSettings:
+        return AppSettings(
+            llm=self.get_llm_settings(),
+            mcp=self.get_mcp_settings(),
+            ui=self.get_ui_settings(),
+        )
+
+    def set_app_settings(self, settings: AppSettings) -> None:
+        self.set_llm_settings(settings.llm)
+        self.set_mcp_settings(settings.mcp)
+        self.set_ui_settings(settings.ui)
 
     # ------------------------------------------------------------------
     # sort settings

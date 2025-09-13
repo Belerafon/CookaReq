@@ -2,7 +2,7 @@ import pytest
 
 def test_controller_check(monkeypatch):
     from app.mcp.controller import MCPController, MCPStatus
-    from app.mcp.settings import MCPSettings
+    from app.settings import MCPSettings
 
     requests = []
 
@@ -57,7 +57,7 @@ def test_controller_check(monkeypatch):
 
 def test_controller_start_stop(monkeypatch):
     from app.mcp.controller import MCPController
-    from app.mcp.settings import MCPSettings
+    from app.settings import MCPSettings
 
     calls = []
 

@@ -16,7 +16,7 @@ from app.core import store
 from app.core.model import Requirement, DerivationLink
 from app.core.labels import Label
 from app.mcp.controller import MCPController
-from app.mcp.settings import MCPSettings
+from app.settings import LLMSettings, MCPSettings
 from .list_panel import ListPanel
 from .editor_panel import EditorPanel
 from .settings_dialog import SettingsDialog
@@ -67,29 +67,10 @@ class MainFrame(wx.Frame):
         self.remember_sort = self.config.get_remember_sort()
         self.language = self.config.get_language()
         self.sort_column, self.sort_ascending = self.config.get_sort_settings()
-        (
-            self.llm_api_base,
-            self.llm_model,
-            self.llm_api_key,
-            self.llm_timeout,
-        ) = self.config.get_llm_settings()
-        (
-            self.mcp_host,
-            self.mcp_port,
-            self.mcp_base_path,
-            self.mcp_require_token,
-            self.mcp_token,
-        ) = self.config.get_mcp_settings()
+        self.llm_settings = self.config.get_llm_settings()
+        self.mcp_settings = self.config.get_mcp_settings()
         self.mcp = MCPController()
-        self.mcp.start(
-            MCPSettings(
-                host=self.mcp_host,
-                port=self.mcp_port,
-                base_path=self.mcp_base_path,
-                require_token=self.mcp_require_token,
-                token=self.mcp_token,
-            )
-        )
+        self.mcp.start(self.mcp_settings)
         self.req_controller: RequirementsController | None = None
         self.labels_controller: LabelsController | None = None
         super().__init__(parent=parent, title=self._base_title)
@@ -189,15 +170,15 @@ class MainFrame(wx.Frame):
             open_last=self.auto_open_last,
             remember_sort=self.remember_sort,
             language=self.language,
-            api_base=self.llm_api_base,
-            model=self.llm_model,
-            api_key=self.llm_api_key,
-            timeout=self.llm_timeout,
-            host=self.mcp_host,
-            port=self.mcp_port,
-            base_path=self.mcp_base_path,
-            require_token=self.mcp_require_token,
-            token=self.mcp_token,
+            api_base=self.llm_settings.api_base,
+            model=self.llm_settings.model,
+            api_key=self.llm_settings.api_key,
+            timeout=self.llm_settings.timeout,
+            host=self.mcp_settings.host,
+            port=self.mcp_settings.port,
+            base_path=self.mcp_settings.base_path,
+            require_token=self.mcp_settings.require_token,
+            token=self.mcp_settings.token,
         )
         if dlg.ShowModal() == wx.ID_OK:
             (
@@ -215,41 +196,33 @@ class MainFrame(wx.Frame):
                 token,
             ) = dlg.get_values()
             changed = (
-                host != self.mcp_host
-                or port != self.mcp_port
-                or base_path != self.mcp_base_path
-                or require_token != self.mcp_require_token
-                or token != self.mcp_token
+                host != self.mcp_settings.host
+                or port != self.mcp_settings.port
+                or base_path != self.mcp_settings.base_path
+                or require_token != self.mcp_settings.require_token
+                or token != self.mcp_settings.token
             )
-            (
-                self.llm_api_base,
-                self.llm_model,
-                self.llm_api_key,
-                self.llm_timeout,
-            ) = (api_base, model, api_key, timeout)
-            self.mcp_host, self.mcp_port, self.mcp_base_path, self.mcp_require_token, self.mcp_token = (
-                host,
-                port,
-                base_path,
-                require_token,
-                token,
+            self.llm_settings = LLMSettings(
+                api_base=api_base,
+                model=model,
+                api_key=api_key,
+                timeout=timeout,
+            )
+            self.mcp_settings = MCPSettings(
+                host=host,
+                port=port,
+                base_path=base_path,
+                require_token=require_token,
+                token=token,
             )
             self.config.set_auto_open_last(self.auto_open_last)
             self.config.set_remember_sort(self.remember_sort)
             self.config.set_language(self.language)
-            self.config.set_llm_settings(api_base, model, api_key, timeout)
-            self.config.set_mcp_settings(host, port, base_path, require_token, token)
+            self.config.set_llm_settings(self.llm_settings)
+            self.config.set_mcp_settings(self.mcp_settings)
             if changed:
                 self.mcp.stop()
-                self.mcp.start(
-                    MCPSettings(
-                        host=self.mcp_host,
-                        port=self.mcp_port,
-                        base_path=self.mcp_base_path,
-                        require_token=self.mcp_require_token,
-                        token=self.mcp_token,
-                    )
-                )
+                self.mcp.start(self.mcp_settings)
             self._apply_language()
         dlg.Destroy()
 

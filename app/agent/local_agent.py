@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import wx
-
 from app.llm.client import LLMClient
 from app.mcp.client import MCPClient
 from app.mcp.utils import ErrorCode, mcp_error
+from app.settings import AppSettings
 from app.telemetry import log_event
 
 
@@ -17,19 +16,18 @@ class LocalAgent:
 
     def __init__(
         self,
-        cfg: wx.Config | None = None,
         *,
+        settings: AppSettings | None = None,
         llm: LLMClient | None = None,
         mcp: MCPClient | None = None,
     ) -> None:
-        if llm is None:
-            if cfg is None:
-                raise TypeError("cfg or llm must be provided")
-            llm = LLMClient(cfg)
-        if mcp is None:
-            if cfg is None:
-                raise TypeError("cfg or mcp must be provided")
-            mcp = MCPClient(cfg)
+        if settings is not None:
+            if llm is None:
+                llm = LLMClient(settings.llm)
+            if mcp is None:
+                mcp = MCPClient(settings.mcp)
+        if llm is None or mcp is None:
+            raise TypeError("settings or clients must be provided")
         self._llm = llm
         self._mcp = mcp
 

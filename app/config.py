@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol
+
 import wx
 
-from app.ui.list_panel import ListPanel
 from app.settings import LLMSettings, MCPSettings, AppSettings, UISettings
+
+
+class ListPanelLike(Protocol):
+    def load_column_widths(self, cfg: "ConfigManager") -> None: ...
+    def load_column_order(self, cfg: "ConfigManager") -> None: ...
+    def save_column_widths(self, cfg: "ConfigManager") -> None: ...
+    def save_column_order(self, cfg: "ConfigManager") -> None: ...
 
 
 class ConfigManager:
@@ -196,7 +204,7 @@ class ConfigManager:
         frame: wx.Frame,
         splitter: wx.SplitterWindow,
         main_splitter: wx.SplitterWindow,
-        panel: ListPanel,
+        panel: ListPanelLike,
         log_console: wx.TextCtrl,
         log_menu_item: wx.MenuItem | None = None,
     ) -> None:
@@ -236,7 +244,7 @@ class ConfigManager:
         frame: wx.Frame,
         splitter: wx.SplitterWindow,
         main_splitter: wx.SplitterWindow,
-        panel: ListPanel,
+        panel: ListPanelLike,
     ) -> None:
         """Persist window geometry and splitter positions."""
         w, h = frame.GetSize()

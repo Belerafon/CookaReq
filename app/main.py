@@ -31,7 +31,12 @@ def init_locale(language: str | None = None) -> wx.Locale:
     else:
         locale = wx.Locale(wx.LANGUAGE_DEFAULT)
     locale.AddCatalog(APP_NAME)
-    codes = [language] if language else [locale.GetName().split("_")[0]]
+    code = language
+    if not code and hasattr(locale, "GetName"):
+        name = locale.GetName()
+        if name:
+            code = name.split("_")[0]
+    codes = [code] if code else []
     i18n.install(APP_NAME, LOCALE_DIR, codes)
     return locale
 

@@ -253,7 +253,7 @@ class MainFrame(wx.Frame):
         app = wx.GetApp()
         app.locale = init_locale(self.language)
 
-        # Rebuild menus and toolbar with new translations
+        # Rebuild menus with new translations
         self.navigation.rebuild(self.selected_fields)
         self._recent_menu = self.navigation.recent_menu
         self._recent_menu_item = self.navigation.recent_menu_item

@@ -39,45 +39,6 @@ def test_main_frame_open_folder(monkeypatch, tmp_path, wx_app):
 
     frame.Destroy()
 
-
-def test_main_frame_open_folder_toolbar(monkeypatch, tmp_path, wx_app):
-    wx = pytest.importorskip("wx")
-
-    called = {}
-
-    class DummyDirDialog:
-        def __init__(self, parent, message):
-            called["init"] = True
-
-        def ShowModal(self):
-            called["show"] = True
-            return wx.ID_OK
-
-        def GetPath(self):
-            return str(tmp_path)
-
-        def Destroy(self):
-            called["destroy"] = True
-
-    monkeypatch.setattr(wx, "DirDialog", DummyDirDialog)
-
-    import app.ui.list_panel as list_panel
-    import app.ui.main_frame as main_frame
-    importlib.reload(list_panel)
-    importlib.reload(main_frame)
-
-    frame = main_frame.MainFrame(None)
-
-    # emulate toolbar event
-    evt = wx.CommandEvent(wx.EVT_TOOL.typeId, wx.ID_OPEN)
-    frame.ProcessEvent(evt)
-
-    assert called == {"init": True, "show": True, "destroy": True}
-    assert isinstance(frame.panel, list_panel.ListPanel)
-
-    frame.Destroy()
-
-
 def test_main_frame_run_command_menu(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
 
@@ -368,11 +329,11 @@ def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path, wx_app
     frame.Destroy()
 
 
-def test_main_frame_new_requirement_button(monkeypatch, tmp_path, wx_app):
+def test_main_frame_new_requirement_menu(monkeypatch, tmp_path, wx_app):
     wx, frame = _prepare_frame(monkeypatch, tmp_path)
 
-    # emulate toolbar event for new requirement
-    evt = wx.CommandEvent(wx.EVT_TOOL.typeId, wx.ID_NEW)
+    # emulate menu event for new requirement
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, wx.ID_NEW)
     frame.ProcessEvent(evt)
 
     assert frame.editor.IsShown()

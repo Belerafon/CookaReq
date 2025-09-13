@@ -34,8 +34,9 @@ python3 -m app.cli <command> [arguments]
 Available commands:
 
 - `list <dir>` — print the list of requirements; supports `--labels`, `--query`, `--fields`, and `--status` for filtering
-- `add <dir> <file>` — add a requirement from a JSON file
-- `edit <dir> <file>` — update an existing requirement with data from a file
+- `add <dir> <file>` — add a requirement from a JSON file (use `--modified-at` to set timestamp)
+- `edit <dir> <file>` — update an existing requirement with data from a file (use `--modified-at` to override timestamp)
+- `clone <dir> <source_id> <new_id>` — copy a requirement to a new id (revision reset; timestamp updated unless `--modified-at` specified)
 - `delete <dir> <id>` — remove a requirement by id
 - `show <dir> <id>` — display the full contents of a requirement as JSON
 

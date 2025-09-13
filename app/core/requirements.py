@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence, Tuple
+from datetime import datetime
 
 from .model import Requirement, requirement_from_dict, Status
 from .labels import Label
@@ -25,6 +26,11 @@ from .store import (
 
 # Re-export searchable fields for UI components
 SEARCHABLE_FIELDS = core_search.SEARCHABLE_FIELDS
+
+
+def _current_timestamp() -> str:
+    """Return current time in unified string format."""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def load_all(directory: str | Path) -> list[Requirement]:
@@ -93,13 +99,18 @@ def get_requirement(directory: str | Path, req_id: int) -> Requirement:
 
 
 def save_requirement(
-    directory: str | Path, data: Mapping | Requirement, *, mtime: float | None = None
+    directory: str | Path,
+    data: Mapping | Requirement,
+    *,
+    mtime: float | None = None,
+    modified_at: str | None = None,
 ):
     """Persist ``data`` as requirement in ``directory`` and return file path."""
     if isinstance(data, Requirement):
         obj = data
     else:
         obj = requirement_from_dict(dict(data))
+    obj.modified_at = modified_at or _current_timestamp()
     return save(directory, obj, mtime=mtime)
 
 

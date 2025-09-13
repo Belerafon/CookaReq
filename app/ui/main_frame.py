@@ -28,6 +28,7 @@ from .navigation import Navigation
 from .command_dialog import CommandDialog
 from .controllers import RequirementsController, LabelsController
 from ..core.repository import FileRequirementRepository
+from ..core.label_repository import FileLabelRepository
 
 
 class WxLogHandler(logging.Handler):
@@ -334,7 +335,10 @@ class MainFrame(wx.Frame):
         self.req_controller = RequirementsController(
             self.config, self.model, path, repo
         )
-        self.labels_controller = LabelsController(self.config, self.model, path)
+        lbl_repo = FileLabelRepository()
+        self.labels_controller = LabelsController(
+            self.config, self.model, path, lbl_repo
+        )
         self.labels_controller.load_labels()
         derived_map = self.req_controller.load_directory()
         self.navigation.update_recent_menu()

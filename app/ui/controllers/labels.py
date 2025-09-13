@@ -8,20 +8,28 @@ from typing import Dict, List
 from ...config import ConfigManager
 from ...core import requirements as req_ops
 from ...core.labels import Label
+from ...core.label_repository import LabelRepository, FileLabelRepository
 from ...log import logger
 
 
 class LabelsController:
     """Manage label persistence and synchronization."""
 
-    def __init__(self, config: ConfigManager, model, directory: Path) -> None:
+    def __init__(
+        self,
+        config: ConfigManager,
+        model,
+        directory: Path,
+        repository: LabelRepository | None = None,
+    ) -> None:
         self.config = config
         self.model = model
         self.directory = directory
+        self.repo = repository or FileLabelRepository()
         self.labels: List[Label] = []
 
     def load_labels(self) -> List[Label]:
-        self.labels = req_ops.load_labels(self.directory)
+        self.labels = req_ops.load_labels(self.directory, repo=self.repo)
         return self.labels
 
     def sync_labels(self) -> List[str]:
@@ -33,7 +41,7 @@ class LabelsController:
         all_names = sorted(existing_colors.keys() | used_names)
         self.labels = [Label(name=n, color=existing_colors.get(n, "#ffffff")) for n in all_names]
         try:
-            req_ops.save_labels(self.directory, self.labels)
+            req_ops.save_labels(self.directory, self.labels, repo=self.repo)
         except Exception as exc:
             logger.warning("Failed to save labels: %s", exc)
         return [lbl.name for lbl in self.labels]
@@ -71,7 +79,7 @@ class LabelsController:
                         logger.warning("Failed to save %s: %s", req.id, exc)
         self.labels = new_labels
         try:
-            req_ops.save_labels(self.directory, self.labels)
+            req_ops.save_labels(self.directory, self.labels, repo=self.repo)
         except Exception as exc:
             logger.warning("Failed to save labels: %s", exc)
         return {}

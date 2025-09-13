@@ -1,17 +1,15 @@
 """JSON file storage for requirements."""
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
+from dataclasses import is_dataclass
 import json
 from pathlib import Path
 
 from ..log import logger
 
 from .validate import validate
-from .labels import Label
 from .model import requirement_to_dict
-
-LABELS_FILENAME = "labels.json"
+from .label_store import LABELS_FILENAME
 
 # in-memory cache of requirement ids per directory
 _ID_CACHE: dict[Path, set[int]] = {}
@@ -193,32 +191,3 @@ def mark_suspects(directory: str | Path, changed_id: int, new_revision: int) -> 
             with fp.open("w", encoding="utf-8") as fh:
                 json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
 
-
-# ---------------------------------------------------------------------------
-# label storage
-
-
-def load_labels(directory: str | Path) -> list[Label]:
-    """Load labels from ``directory``.
-
-    Missing files yield an empty list.
-    """
-    path = Path(directory) / LABELS_FILENAME
-    if not path.exists():
-        return []
-    try:
-        data = _read_json(path)
-    except ValueError as exc:
-        logger.warning("%s", exc)
-        return []
-    return [Label(**item) for item in data]
-
-
-def save_labels(directory: str | Path, labels: list[Label]) -> Path:
-    """Persist ``labels`` into ``directory`` and return resulting path."""
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / LABELS_FILENAME
-    with path.open("w", encoding="utf-8") as fh:
-        json.dump([asdict(lbl) for lbl in labels], fh, ensure_ascii=False, indent=2, sort_keys=True)
-    return path

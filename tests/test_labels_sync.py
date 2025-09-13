@@ -1,7 +1,7 @@
 """Tests for labels sync."""
 
 import pytest
-from app.core import store
+from app.core import store, label_store
 from app.core.labels import PRESET_SETS
 
 
@@ -24,7 +24,7 @@ def _create_requirement(directory):
 
 def test_sync_labels_preserves_unused(monkeypatch, tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    store.save_labels(tmp_path, PRESET_SETS["basic"])
+    label_store.save_labels(tmp_path, PRESET_SETS["basic"])
     _create_requirement(tmp_path)
     from app.ui.main_frame import MainFrame
     frame = MainFrame(None)

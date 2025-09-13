@@ -19,9 +19,8 @@ from .store import (
     save,
     delete,
     ConflictError,
-    load_labels as store_load_labels,
-    save_labels as store_save_labels,
 )
+from .label_repository import LabelRepository, FileLabelRepository
 from ..util.time import local_now_str, normalize_timestamp
 
 # Re-export searchable fields for UI components
@@ -146,11 +145,17 @@ def search_loaded(
     )
 
 
-def load_labels(directory: str | Path) -> list[Label]:
-    """Load labels from ``directory``."""
-    return store_load_labels(directory)
+def load_labels(
+    directory: str | Path, repo: LabelRepository | None = None
+) -> list[Label]:
+    """Load labels from ``directory`` using ``repo`` if provided."""
+    repo = repo or FileLabelRepository()
+    return repo.load(directory)
 
 
-def save_labels(directory: str | Path, labels: list[Label]):
-    """Persist ``labels`` into ``directory``."""
-    return store_save_labels(directory, labels)
+def save_labels(
+    directory: str | Path, labels: list[Label], repo: LabelRepository | None = None
+):
+    """Persist ``labels`` into ``directory`` using ``repo`` if provided."""
+    repo = repo or FileLabelRepository()
+    return repo.save(directory, labels)

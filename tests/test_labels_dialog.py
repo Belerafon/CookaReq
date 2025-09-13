@@ -182,9 +182,9 @@ def test_main_frame_manage_labels_saves(monkeypatch, tmp_path, wx_app):
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, frame.manage_labels_id)
     frame.ProcessEvent(evt)
 
-    from app.core import store
+    from app.core import label_store
 
-    labels = store.load_labels(tmp_path)
+    labels = label_store.load_labels(tmp_path)
     assert labels[0].color == "#123456"
     assert ("editor", ["ui"]) in captured
     assert ("panel", ["ui"]) in captured

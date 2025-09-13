@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "polib"]
 
 [build-system]
 requires = ["setuptools", "wheel"]

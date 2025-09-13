@@ -1,3 +1,4 @@
+#
 msgid ""
 msgstr ""
 "Language: en\n"
@@ -32,3 +33,277 @@ msgstr "ok"
 
 msgid "error"
 msgstr "error"
+
+msgid "&File"
+msgstr "&File"
+
+msgid "&Open Folder\tCtrl+O"
+msgstr "&Open Folder\tCtrl+O"
+
+msgid "&View"
+msgstr "&View"
+
+msgid "(Copy)"
+msgstr "(Copy)"
+
+msgid "Acceptance criteria"
+msgstr "Acceptance criteria"
+
+msgid "Analysis"
+msgstr "Analysis"
+
+msgid "Approved"
+msgstr "Approved"
+
+msgid "Baselined"
+msgstr "Baselined"
+
+msgid "Choose requirement type: functional, constraint, interface, etc."
+msgstr "Choose requirement type: functional, constraint, interface, etc."
+
+msgid "Clone"
+msgstr "Clone"
+
+msgid "Conditions"
+msgstr "Conditions"
+
+msgid "Conditions of execution and modes for the requirement."
+msgstr "Conditions of execution and modes for the requirement."
+
+msgid "Constraint"
+msgstr "Constraint"
+
+msgid "CookaReq CLI"
+msgstr "CookaReq CLI"
+
+msgid "Current processing status: draft, in review, approved, etc."
+msgstr "Current processing status: draft, in review, approved, etc."
+
+msgid "Current requirement version."
+msgstr "Current requirement version."
+
+msgid "Date of last change (set automatically)."
+msgstr "Date of last change (set automatically)."
+
+msgid "Delete"
+msgstr "Delete"
+
+msgid "Demonstration"
+msgstr "Demonstration"
+
+msgid ""
+"Describe how to verify the requirement. Can be scenarios or measurable "
+"criteria."
+msgstr ""
+"Describe how to verify the requirement. Can be scenarios or measurable "
+"criteria."
+
+msgid "Draft"
+msgstr "Draft"
+
+msgid "E&xit"
+msgstr "E&xit"
+
+msgid "Edit"
+msgstr "Edit"
+
+msgid "Edit {field}"
+msgstr "Edit {field}"
+
+msgid "Error"
+msgstr "Error"
+
+msgid "File was modified on disk. Save cancelled."
+msgstr "File was modified on disk. Save cancelled."
+
+msgid ""
+"Full description of what the system must do or which constraints exist."
+msgstr ""
+"Full description of what the system must do or which constraints exist."
+
+msgid "High"
+msgstr "High"
+
+msgid "Hint"
+msgstr "Hint"
+
+msgid "ID is required"
+msgstr "ID is required"
+
+msgid "ID must be an integer"
+msgstr "ID must be an integer"
+
+msgid "ID must be positive"
+msgstr "ID must be positive"
+
+msgid "Importance of the requirement. High priority is implemented earlier."
+msgstr "Importance of the requirement. High priority is implemented earlier."
+
+msgid "In review"
+msgstr "In review"
+
+msgid "Inspection"
+msgstr "Inspection"
+
+msgid "Interface"
+msgstr "Interface"
+
+msgid "JSON file with requirement"
+msgstr "JSON file with requirement"
+
+msgid "JSON file with updated requirement"
+msgstr "JSON file with updated requirement"
+
+msgid "Language"
+msgstr "Language"
+
+msgid "Low"
+msgstr "Low"
+
+msgid "Medium"
+msgstr "Medium"
+
+msgid "Method of verification: inspection, analysis, demonstration, test."
+msgstr "Method of verification: inspection, analysis, demonstration, test."
+
+msgid "Modified at"
+msgstr "Modified at"
+
+msgid "New"
+msgstr "New"
+
+msgid "New value for {field}"
+msgstr "New value for {field}"
+
+msgid "Open"
+msgstr "Open"
+
+msgid "Open &Recent"
+msgstr "Open &Recent"
+
+msgid "Open last folder on startup"
+msgstr "Open last folder on startup"
+
+msgid "Owner"
+msgstr "Owner"
+
+msgid ""
+"Person or team responsible for the requirement. Provide a name or role."
+msgstr ""
+"Person or team responsible for the requirement. Provide a name or role."
+
+msgid "Priority"
+msgstr "Priority"
+
+msgid "Related higher level requirements."
+msgstr "Related higher level requirements."
+
+msgid "Related lower level requirements."
+msgstr "Related lower level requirements."
+
+msgid "Remember sort order"
+msgstr "Remember sort order"
+
+msgid "Requirement"
+msgstr "Requirement"
+
+msgid "Requirement ID (number)"
+msgstr "Requirement ID (number)"
+
+msgid "Requirement text"
+msgstr "Requirement text"
+
+msgid "Requirement type"
+msgstr "Requirement type"
+
+msgid "Requirement version"
+msgstr "Requirement version"
+
+msgid "Retired"
+msgstr "Retired"
+
+msgid "Save"
+msgstr "Save"
+
+msgid "Select requirements folder"
+msgstr "Select requirements folder"
+
+msgid "Select {field}"
+msgstr "Select {field}"
+
+msgid "Settings"
+msgstr "Settings"
+
+msgid ""
+"Short descriptive title displayed in lists. Helps to quickly understand the "
+"requirement."
+msgstr ""
+"Short descriptive title displayed in lists. Helps to quickly understand the "
+"requirement."
+
+msgid "Short title"
+msgstr "Short title"
+
+msgid "Show Error Console"
+msgstr "Show Error Console"
+
+msgid "Source"
+msgstr "Source"
+
+msgid "Source of the requirement: document, customer request or regulation."
+msgstr "Source of the requirement: document, customer request or regulation."
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Test"
+msgstr "Test"
+
+msgid ""
+"The 'Requirement ID' field must contain a unique integer without prefixes. "
+"It is used to reference the requirement in documentation and tests."
+msgstr ""
+"The 'Requirement ID' field must contain a unique integer without prefixes. "
+"It is used to reference the requirement in documentation and tests."
+
+msgid "Title"
+msgstr "Title"
+
+msgid "Trace down"
+msgstr "Trace down"
+
+msgid "Trace up"
+msgstr "Trace up"
+
+msgid "Unique integer identifier"
+msgstr "Unique integer identifier"
+
+msgid "Verification method"
+msgstr "Verification method"
+
+msgid "add requirement from JSON file"
+msgstr "add requirement from JSON file"
+
+msgid "edit requirement from JSON file"
+msgstr "edit requirement from JSON file"
+
+msgid "fields for text search"
+msgstr "fields for text search"
+
+msgid "filter by labels"
+msgstr "filter by labels"
+
+msgid "list requirements"
+msgstr "list requirements"
+
+msgid "requirement id"
+msgstr "requirement id"
+
+msgid "requirements directory"
+msgstr "requirements directory"
+
+msgid "show requirement details"
+msgstr "show requirement details"
+
+msgid "text search query"
+msgstr "text search query"

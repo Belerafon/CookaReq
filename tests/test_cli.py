@@ -60,6 +60,24 @@ def test_cli_edit(tmp_path, capsys):
     assert loaded["title"] == "New title"
 
 
+def test_cli_delete(tmp_path, capsys):
+    data = sample()
+    save(tmp_path, data)
+    main(["delete", str(tmp_path), "1"])
+    captured = capsys.readouterr()
+    assert "deleted" in captured.out
+    assert not (tmp_path / "1.json").exists()
+
+
+def test_cli_delete_invalid_id(tmp_path, capsys):
+    data = sample()
+    save(tmp_path, data)
+    main(["delete", str(tmp_path), "2"])
+    captured = capsys.readouterr()
+    assert "not found" in captured.err
+    assert (tmp_path / "1.json").exists()
+
+
 def test_cli_settings_flag(tmp_path, monkeypatch, capsys):
     req_dir = tmp_path / "reqs"
     req_dir.mkdir()

@@ -80,6 +80,80 @@ def test_main_frame_open_folder_toolbar(monkeypatch, tmp_path):
     app.Destroy()
 
 
+def test_main_frame_run_command_menu(monkeypatch):
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+
+    called = {}
+
+    class DummyDialog:
+        def __init__(self, parent, *, agent, history_path=None):
+            called["init"] = True
+        def ShowModal(self):
+            called["show"] = True
+        def Destroy(self):
+            called["destroy"] = True
+
+    class DummyAgent:
+        def __init__(self, settings):
+            called["agent"] = True
+
+    import app.ui.main_frame as main_frame
+    importlib.reload(main_frame)
+    monkeypatch.setattr(main_frame, "CommandDialog", DummyDialog)
+    monkeypatch.setattr(main_frame, "LocalAgent", DummyAgent)
+
+    frame = main_frame.MainFrame(None)
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, frame.navigation.run_command_id)
+    frame.ProcessEvent(evt)
+
+    assert called == {"agent": True, "init": True, "show": True, "destroy": True}
+    frame.Destroy()
+    app.Destroy()
+
+
+def test_main_frame_run_command_history_persists(monkeypatch, tmp_path):
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+    import importlib
+    import json
+
+    import app.ui.command_dialog as cmd
+    importlib.reload(cmd)
+    history_file = tmp_path / "history.json"
+    monkeypatch.setattr(cmd, "_default_history_path", lambda: history_file)
+
+    class DummyAgent:
+        def __init__(self, settings=None):
+            pass
+        def run_command(self, text):
+            return {"ok": 1}
+
+    class AutoDialog(cmd.CommandDialog):
+        def ShowModal(self):
+            self.input.SetValue("cmd")
+            self._on_run(None)
+            return wx.ID_OK
+
+    import app.ui.main_frame as main_frame
+    importlib.reload(main_frame)
+    monkeypatch.setattr(main_frame, "LocalAgent", DummyAgent)
+    monkeypatch.setattr(main_frame, "CommandDialog", AutoDialog)
+
+    frame = main_frame.MainFrame(None)
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, frame.navigation.run_command_id)
+    frame.ProcessEvent(evt)
+    evt2 = wx.CommandEvent(wx.EVT_MENU.typeId, frame.navigation.run_command_id)
+    frame.ProcessEvent(evt2)
+
+    data = json.loads(history_file.read_text())
+    assert len(data) == 2
+    assert data[0]["command"] == "cmd"
+
+    frame.Destroy()
+    app.Destroy()
+
+
 def test_log_handler_not_duplicated(tmp_path):
     wx = pytest.importorskip("wx")
     app = wx.App()

@@ -196,6 +196,9 @@ msgstr "Short title"
 msgid "Show Error Console"
 msgstr "Show Error Console"
 
+msgid "Error Console"
+msgstr "Error Console"
+
 msgid "Source"
 msgstr "Source"
 

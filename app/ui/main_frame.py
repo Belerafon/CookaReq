@@ -126,10 +126,17 @@ class MainFrame(wx.Frame):
         self.splitter.SplitVertically(self.panel, self.editor, 300)
         self.editor.Hide()
 
+        self.log_panel = wx.Panel(self.main_splitter)
+        log_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.log_label = wx.StaticText(self.log_panel, label=_("Error Console"))
         self.log_console = wx.TextCtrl(
-            self.main_splitter,
+            self.log_panel,
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP,
         )
+        log_sizer.Add(self.log_label, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
+        log_sizer.Add(self.log_console, 1, wx.EXPAND | wx.ALL, 5)
+        self.log_panel.SetSizer(log_sizer)
+
         existing = next((h for h in logger.handlers if isinstance(h, WxLogHandler)), None)
         if existing:
             self.log_handler = existing
@@ -406,13 +413,13 @@ class MainFrame(wx.Frame):
     def on_toggle_log_console(self, event: wx.CommandEvent) -> None:
         if self.navigation.log_menu_item.IsChecked():
             sash = self.config.get_log_sash(self.GetClientSize().height - 150)
-            self.log_console.Show()
-            self.main_splitter.SplitHorizontally(self.splitter, self.log_console, sash)
+            self.log_panel.Show()
+            self.main_splitter.SplitHorizontally(self.splitter, self.log_panel, sash)
         else:
             if self.main_splitter.IsSplit():
                 self.config.set_log_sash(self.main_splitter.GetSashPosition())
-            self.main_splitter.Unsplit(self.log_console)
-            self.log_console.Hide()
+            self.main_splitter.Unsplit(self.log_panel)
+            self.log_panel.Hide()
         self.config.set_log_shown(self.navigation.log_menu_item.IsChecked())
 
     def _load_layout(self) -> None:
@@ -422,7 +429,7 @@ class MainFrame(wx.Frame):
             self.splitter,
             self.main_splitter,
             self.panel,
-            self.log_console,
+            self.log_panel,
             self.log_menu_item,
         )
 

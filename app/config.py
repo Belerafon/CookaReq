@@ -210,7 +210,7 @@ class ConfigManager:
         splitter: wx.SplitterWindow,
         main_splitter: wx.SplitterWindow,
         panel: ListPanelLike,
-        log_console: wx.TextCtrl,
+        log_console: wx.Window,
         log_menu_item: wx.MenuItem | None = None,
     ) -> None:
         """Restore window geometry and splitter positions."""

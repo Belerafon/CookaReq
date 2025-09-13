@@ -185,6 +185,9 @@ msgstr "&Файл"
 msgid "Show Error Console"
 msgstr "Показать консоль ошибок"
 
+msgid "Error Console"
+msgstr "Консоль ошибок"
+
 msgid "&View"
 msgstr "&Вид"
 

@@ -71,7 +71,7 @@ class MCPClient:
             return err
 
     # ------------------------------------------------------------------
-    def _call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
+    def call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Invoke *name* tool with *arguments* on the MCP server."""
 
         if name in {"delete_requirement", "patch_requirement"}:
@@ -120,4 +120,10 @@ class MCPClient:
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
             log_event("ERROR", {"error": err})
             return {"error": err}
+
+    # ------------------------------------------------------------------
+    def _call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Backward compatible wrapper for :meth:`call_tool`."""
+
+        return self.call_tool(name, arguments)
 

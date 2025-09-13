@@ -17,11 +17,11 @@ def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch) -> 
     port = 8155
     stop_server()
     start_server(port=port, base_path=str(tmp_path))
+    app = wx.App()
     try:
         _wait_until_ready(port)
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
         settings = settings_from_env(tmp_path)
-        config = main_frame.ConfigManager(app_name="CookaReqTest")
+        config = main_frame.ConfigManager(app_name="CookaReqTest", path=tmp_path / "cfg.ini")
         config.set_llm_settings(settings.llm)
         config.set_mcp_settings(
             MCPSettings(
@@ -49,7 +49,6 @@ def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch) -> 
                 return wx.ID_OK
 
         monkeypatch.setattr(main_frame, "CommandDialog", AutoDialog)
-        app = wx.App()
         frame = main_frame.MainFrame(None, config=config)
         try:
             evt = wx.CommandEvent(wx.EVT_MENU.typeId, frame.navigation.run_command_id)
@@ -61,6 +60,6 @@ def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch) -> 
             assert "missing reports" in stmt
         finally:
             frame.Destroy()
-            app.Destroy()
     finally:
+        app.Destroy()
         stop_server()

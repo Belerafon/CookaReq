@@ -57,4 +57,4 @@ class LocalAgent:
             err = mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))["error"]
             log_event("ERROR", {"error": err})
             return {"error": err}
-        return self._mcp._call_tool(name, arguments)
+        return self._mcp.call_tool(name, arguments)

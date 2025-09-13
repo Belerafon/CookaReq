@@ -38,6 +38,12 @@ Available commands:
 - `edit <dir> <file>` — update an existing requirement with data from a file
 - `show <dir> <id>` — display the full contents of a requirement as JSON
 
+## MCP Integration
+
+The application exposes a Model Context Protocol (MCP) server for interaction with LLM agents.
+MCP tools such as `list_requirements` and `search_requirements` use the parameter `labels`
+to filter requirements by their labels.
+
 ## Requirement File Format
 
 Each requirement is stored in its own `<id>.json` file and contains the following fields:

@@ -9,7 +9,7 @@ from app.core import store
 from tests.mcp_utils import _wait_until_ready
 
 
-def _sample(req_id: int, title: str) -> dict:
+def _sample(req_id: int, title: str, labels: list[str] | None = None) -> dict:
     return {
         "id": req_id,
         "title": title,
@@ -20,7 +20,7 @@ def _sample(req_id: int, title: str) -> dict:
         "priority": "medium",
         "source": "spec",
         "verification": "analysis",
-        "labels": [],
+        "labels": labels or [],
         "revision": 1,
     }
 
@@ -79,6 +79,22 @@ def test_search_requirements_via_http(tmp_path: Path) -> None:
         assert status == 200
         ids = {item["id"] for item in body["items"]}
         assert ids == {2}
+    finally:
+        stop_server()
+
+
+def test_list_requirements_filter_labels_via_http(tmp_path: Path) -> None:
+    store.save(tmp_path, _sample(1, "A", ["ui"]))
+    store.save(tmp_path, _sample(2, "B", ["backend"]))
+    port = 8134
+    stop_server()
+    start_server(port=port, base_path=str(tmp_path))
+    try:
+        _wait_until_ready(port)
+        status, body = _call_tool(port, "list_requirements", {"labels": ["ui"]})
+        assert status == 200
+        ids = {item["id"] for item in body["items"]}
+        assert ids == {1}
     finally:
         stop_server()
 

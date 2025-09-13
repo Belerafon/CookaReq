@@ -34,7 +34,7 @@ def test_list_requirements_filters_and_paginates(tmp_path: Path) -> None:
     ids = {item["id"] for item in result["items"]}
     assert ids == {1, 3}
 
-    result = list_requirements(tmp_path, tags=["ui"], page=2, per_page=1)
+    result = list_requirements(tmp_path, labels=["ui"], page=2, per_page=1)
     assert result["total"] == 2
     assert [item["id"] for item in result["items"]] == [3]
 
@@ -82,7 +82,7 @@ def test_search_requirements(tmp_path: Path) -> None:
     result = search_requirements(tmp_path, query="login")
     assert [item["id"] for item in result["items"]] == [1]
 
-    result = search_requirements(tmp_path, tags=["ui"], per_page=1, page=2)
+    result = search_requirements(tmp_path, labels=["ui"], per_page=1, page=2)
     assert [item["id"] for item in result["items"]] == [3]
 
     result = search_requirements(tmp_path, status="approved")

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.core.store import save
 from app.settings import AppSettings
+from app.cli import main
 
 
 def sample() -> dict:
@@ -33,6 +34,17 @@ def test_cli_list(tmp_path, capsys):
     run_cli(["list", str(tmp_path)])
     captured = capsys.readouterr().out
     assert "1" in captured
+
+
+def test_cli_list_status_filter(tmp_path, capsys):
+    data1 = sample()
+    data2 = sample() | {"id": 2, "status": "approved"}
+    save(tmp_path, data1)
+    save(tmp_path, data2)
+    run_cli(["list", str(tmp_path), "--status", "approved"])
+    captured = capsys.readouterr().out
+    assert "2" in captured
+    assert "1" not in captured
 
 
 def test_cli_show(tmp_path, capsys):

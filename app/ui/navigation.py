@@ -29,6 +29,7 @@ class Navigation:
         on_toggle_log_console: Callable[[wx.CommandEvent], None],
         on_show_derivation_graph: Callable[[wx.Event], None],
         on_new_requirement: Callable[[wx.Event], None],
+        on_run_command: Callable[[wx.Event], None],
     ) -> None:
         self.frame = frame
         self.config = config
@@ -42,6 +43,7 @@ class Navigation:
         self.on_toggle_log_console = on_toggle_log_console
         self.on_show_derivation_graph = on_show_derivation_graph
         self.on_new_requirement = on_new_requirement
+        self.on_run_command = on_run_command
         self._recent_items: Dict[int, Path] = {}
         self._column_items: Dict[int, str] = {}
         self.menu_bar = wx.MenuBar()
@@ -49,6 +51,7 @@ class Navigation:
         self.log_menu_item: wx.MenuItem | None = None
         self.recent_menu = wx.Menu()
         self.recent_menu_item: wx.MenuItem | None = None
+        self.run_command_id: int | None = None
         self._build()
 
     # ------------------------------------------------------------------
@@ -87,6 +90,12 @@ class Navigation:
         graph_item = view_menu.Append(wx.ID_ANY, _("Show Derivation Graph"))
         self.frame.Bind(wx.EVT_MENU, self.on_show_derivation_graph, graph_item)
         menu_bar.Append(view_menu, _("&View"))
+
+        tools_menu = wx.Menu()
+        cmd_item = tools_menu.Append(wx.ID_ANY, _("Run Agent Command\tCtrl+K"))
+        self.frame.Bind(wx.EVT_MENU, self.on_run_command, cmd_item)
+        self.run_command_id = cmd_item.GetId()
+        menu_bar.Append(tools_menu, _("&Tools"))
         self.menu_bar = menu_bar
         self.frame.SetMenuBar(self.menu_bar)
 

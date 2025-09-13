@@ -16,13 +16,15 @@ from app.core import requirements as req_ops
 from app.core.model import Requirement, DerivationLink
 from app.core.labels import Label
 from app.mcp.controller import MCPController
-from app.settings import LLMSettings, MCPSettings
+from app.settings import AppSettings, LLMSettings, MCPSettings
+from app.agent import LocalAgent
 from .list_panel import ListPanel
 from .editor_panel import EditorPanel
 from .settings_dialog import SettingsDialog
 from .requirement_model import RequirementModel
 from .labels_dialog import LabelsDialog
 from .navigation import Navigation
+from .command_dialog import CommandDialog
 from .controllers import RequirementsController, LabelsController
 
 
@@ -94,6 +96,7 @@ class MainFrame(wx.Frame):
             on_toggle_log_console=self.on_toggle_log_console,
             on_show_derivation_graph=self.on_show_derivation_graph,
             on_new_requirement=self.on_new_requirement,
+            on_run_command=self.on_run_command,
         )
         self._recent_menu = self.navigation.recent_menu
         self._recent_menu_item = self.navigation.recent_menu_item
@@ -224,6 +227,13 @@ class MainFrame(wx.Frame):
                 self.mcp.stop()
                 self.mcp.start(self.mcp_settings)
             self._apply_language()
+        dlg.Destroy()
+
+    def on_run_command(self, event: wx.Event) -> None:
+        settings = AppSettings(llm=self.llm_settings, mcp=self.mcp_settings)
+        agent = LocalAgent(settings=settings)
+        dlg = CommandDialog(self, agent=agent)
+        dlg.ShowModal()
         dlg.Destroy()
 
     def _apply_language(self) -> None:

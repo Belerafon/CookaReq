@@ -1,15 +1,16 @@
 import json
 import logging
+import os
 from pathlib import Path
 
 from app.log import logger
 from app.agent import LocalAgent
 from app.mcp.server import JsonlHandler, start_server, stop_server
-from tests.llm_utils import settings_with_mcp
+from tests.llm_utils import make_openai_mock, settings_with_mcp
 from tests.mcp_utils import _wait_until_ready
 
 
-def test_run_command_list_logs(tmp_path: Path) -> None:
+def test_run_command_list_logs(tmp_path: Path, monkeypatch) -> None:
     port = 8140
     stop_server()
     start_server(port=port, base_path=str(tmp_path))
@@ -18,6 +19,14 @@ def test_run_command_list_logs(tmp_path: Path) -> None:
         settings = settings_with_mcp(
             "127.0.0.1", port, str(tmp_path), "", tmp_path=tmp_path
         )
+        if not os.environ.get("OPENROUTER_REAL"):
+            # Мокаем OpenAI, чтобы исключить внешние вызовы.
+            monkeypatch.setattr(
+                "openai.OpenAI",
+                make_openai_mock(
+                    {"list requirements per page 1": ("list_requirements", {"per_page": 1})}
+                ),
+            )
         client = LocalAgent(settings=settings, confirm=lambda _m: True)
         log_file = tmp_path / "cmd.jsonl"
         handler = JsonlHandler(str(log_file))
@@ -37,7 +46,7 @@ def test_run_command_list_logs(tmp_path: Path) -> None:
         stop_server()
 
 
-def test_run_command_error_logs(tmp_path: Path) -> None:
+def test_run_command_error_logs(tmp_path: Path, monkeypatch) -> None:
     port = 8141
     stop_server()
     start_server(port=port, base_path=str(tmp_path))
@@ -46,6 +55,12 @@ def test_run_command_error_logs(tmp_path: Path) -> None:
         settings = settings_with_mcp(
             "127.0.0.1", port, str(tmp_path), "", tmp_path=tmp_path
         )
+        if not os.environ.get("OPENROUTER_REAL"):
+            # Установите OPENROUTER_REAL=1 для интеграционного теста с API.
+            monkeypatch.setattr(
+                "openai.OpenAI",
+                make_openai_mock({"get requirement 1": ("get_requirement", {"req_id": 1})}),
+            )
         client = LocalAgent(settings=settings, confirm=lambda _m: True)
         log_file = tmp_path / "err.jsonl"
         handler = JsonlHandler(str(log_file))

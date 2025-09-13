@@ -1,8 +1,64 @@
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.settings import AppSettings, load_app_settings
+
+
+def make_openai_mock(responses: dict[str, tuple[str, dict] | Exception]):
+    """Return a ``FakeOpenAI`` class wired with *responses*.
+
+    ``responses`` — словарь ``{prompt: (tool, args) | Exception}``.
+    При вызове ``chat.completions.create`` будет найден последний
+    пользовательский промпт и возвращён подготовленный ответ. Если вместо
+    пары передано исключение, оно будет возбуждёно. Формат результата
+    соответствует минимальному подмножеству OpenAI, используемому в
+    ``LLMClient``. Такой мок можно переиспользовать в других тестах:
+
+    >>> mapping = {"list": ("list_requirements", {"per_page": 1})}
+    >>> monkeypatch.setattr("openai.OpenAI", make_openai_mock(mapping))
+
+    Это позволит детерминированно эмулировать ответ LLM без сетевых
+    запросов. Для простых ping-запросов достаточно указать ключ ``"ping"``
+    c произвольным значением, например ``("noop", {})``.
+    """
+
+    class _Completions:
+        def create(self, *, model, messages, tools=None, **kwargs):  # noqa: D401
+            user_msg = messages[-1]["content"]
+            result = responses.get(user_msg, ("noop", {}))
+            if isinstance(result, Exception):
+                raise result
+            name, args = result
+            if tools:
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                tool_calls=[
+                                    SimpleNamespace(
+                                        function=SimpleNamespace(
+                                            name=name,
+                                            arguments=json.dumps(args),
+                                        )
+                                    )
+                                ]
+                            )
+                        )
+                    ]
+                )
+            return SimpleNamespace()
+
+    class _Chat:
+        def __init__(self) -> None:
+            self.completions = _Completions()
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k) -> None:  # pragma: no cover - simple container
+            self.chat = _Chat()
+
+    return FakeOpenAI
 
 
 def settings_from_env(tmp_path: Path) -> AppSettings:

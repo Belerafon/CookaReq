@@ -1,15 +1,23 @@
 import json
 import logging
+import os
 from pathlib import Path
 
 from app.log import logger
 from app.llm.client import LLMClient
 from app.mcp.server import JsonlHandler
-from tests.llm_utils import settings_from_env
+from tests.llm_utils import make_openai_mock, settings_from_env
 
 
-def test_check_llm(tmp_path: Path) -> None:
+def test_check_llm(tmp_path: Path, monkeypatch) -> None:
     settings = settings_from_env(tmp_path)
+    if not os.environ.get("OPENROUTER_REAL"):
+        # By default подменяем OpenAI, чтобы исключить сетевой вызов.
+        # Установите OPENROUTER_REAL=1 для интеграционного запуска
+        # с реальным OpenRouter.
+        monkeypatch.setattr(
+            "openai.OpenAI", make_openai_mock({"ping": ("noop", {})})
+        )
     client = LLMClient(settings.llm)
     log_file = tmp_path / "llm.jsonl"
     handler = JsonlHandler(str(log_file))

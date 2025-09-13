@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 from pathlib import Path
 
 import wx
@@ -8,22 +7,11 @@ import wx
 from app.log import logger
 from app.llm.client import LLMClient
 from app.mcp.server import JsonlHandler
-
-
-def _cfg_from_env() -> wx.Config:
-    api_key = os.environ.get("OPEN_ROUTER", "")
-    app = wx.App()
-    cfg = wx.Config(appName="CookaReq-LLM-Test", style=wx.CONFIG_USE_LOCAL_FILE)
-    cfg.Write("llm_api_base", "https://openrouter.ai/api/v1")
-    cfg.Write("llm_model", "openai/gpt-oss-20b:free")
-    cfg.Write("llm_api_key", api_key)
-    cfg.Flush()
-    app.Destroy()
-    return cfg
+from tests.llm_utils import cfg_from_env
 
 
 def test_check_llm(tmp_path: Path) -> None:
-    cfg = _cfg_from_env()
+    cfg = cfg_from_env("CookaReq-LLM-Test")
     client = LLMClient(cfg)
     log_file = tmp_path / "llm.jsonl"
     handler = JsonlHandler(str(log_file))

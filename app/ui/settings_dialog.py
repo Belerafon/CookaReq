@@ -234,7 +234,8 @@ class SettingsDialog(wx.Dialog):
         self._tools_status.SetLabel(label)
 
     def _on_check(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
-        status = self._mcp.check(self._current_settings())
+        result = self._mcp.check(self._current_settings())
+        status = result.status
         running = status != MCPStatus.NOT_RUNNING
         self._start.Enable(not running)
         self._stop.Enable(running)
@@ -246,7 +247,10 @@ class SettingsDialog(wx.Dialog):
         label = label_map[status]
         self._status.SetLabel(f"{_('Status')}: {label}")
         self.Layout()
-        wx.MessageBox(f"{_('Status')}: {label}", _("Check MCP"))
+        wx.MessageBox(
+            f"{_('Status')}: {label}\n{result.message}",
+            _("Check MCP"),
+        )
 
     # ------------------------------------------------------------------
     def get_values(self) -> tuple[

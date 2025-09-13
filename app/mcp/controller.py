@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 from http.client import HTTPConnection
 
@@ -17,6 +18,15 @@ class MCPStatus(str, Enum):
     ERROR = "error"
 
 
+
+@dataclass
+class MCPCheckResult:
+    """Detailed result of :meth:`MCPController.check`."""
+
+    status: MCPStatus
+    message: str
+
+
 class MCPController:
     """Service layer controlling the MCP server."""
 
@@ -30,7 +40,7 @@ class MCPController:
     def is_running(self) -> bool:
         return server_is_running()
 
-    def check(self, settings: MCPSettings) -> MCPStatus:
+    def check(self, settings: MCPSettings) -> MCPCheckResult:
         headers = {}
         if settings.require_token and settings.token:
             headers["Authorization"] = f"Bearer {settings.token}"
@@ -41,9 +51,12 @@ class MCPController:
                 resp = conn.getresponse()
                 resp.read()
                 if resp.status == 200:
-                    return MCPStatus.READY
-                return MCPStatus.ERROR
+                    msg = "GET /health -> 200"
+                    return MCPCheckResult(MCPStatus.READY, msg)
+                msg = f"GET /health -> {resp.status}"
+                return MCPCheckResult(MCPStatus.ERROR, msg)
             finally:
                 conn.close()
-        except Exception:
-            return MCPStatus.NOT_RUNNING
+        except Exception as exc:
+            msg = f"connection error: {exc}"
+            return MCPCheckResult(MCPStatus.NOT_RUNNING, msg)

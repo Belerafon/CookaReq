@@ -36,6 +36,7 @@ Thumbs.db
 
 # Localization
 *.mo
+app/locale/missing.po
 
 # Logs
 server.log

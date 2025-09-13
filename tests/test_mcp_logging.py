@@ -1,3 +1,5 @@
+"""Tests for mcp logging."""
+
 import json
 import os
 from tempfile import TemporaryDirectory

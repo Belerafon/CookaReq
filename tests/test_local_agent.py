@@ -1,3 +1,5 @@
+"""Tests for local agent."""
+
 import pytest
 
 from app.agent import local_agent as la

@@ -1,3 +1,5 @@
+"""Tests for gui."""
+
 import pytest
 
 

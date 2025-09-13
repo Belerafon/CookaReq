@@ -1,3 +1,5 @@
+"""Tests for validate."""
+
 import json
 import pytest
 

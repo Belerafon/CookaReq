@@ -1,3 +1,5 @@
+"""Tests for mcp auth."""
+
 from app.mcp.server import start_server, stop_server
 from tests.mcp_utils import _request, _wait_until_ready
 

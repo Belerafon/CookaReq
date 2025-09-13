@@ -1,3 +1,5 @@
+"""Tests for command dialog."""
+
 import json
 import pytest
 

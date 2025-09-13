@@ -1,3 +1,5 @@
+"""Tests for labels dialog."""
+
 import importlib
 from types import SimpleNamespace
 

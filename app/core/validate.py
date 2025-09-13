@@ -1,5 +1,6 @@
-from __future__ import annotations
 """Additional business rules for requirements."""
+
+from __future__ import annotations
 
 from pathlib import Path
 

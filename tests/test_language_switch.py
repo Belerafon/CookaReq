@@ -1,3 +1,5 @@
+"""Tests for language switch."""
+
 import importlib
 
 import pytest

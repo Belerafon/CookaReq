@@ -1,3 +1,5 @@
+"""Tests for main."""
+
 import sys
 import types
 import importlib

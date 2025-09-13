@@ -1,3 +1,5 @@
+"""Utilities for MCP-related tests."""
+
 import time
 from http.client import HTTPConnection
 

@@ -1,3 +1,5 @@
+"""Tests for schema."""
+
 import pytest
 
 from app.core.schema import validate

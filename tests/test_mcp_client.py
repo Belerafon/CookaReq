@@ -1,3 +1,5 @@
+"""Tests for mcp client."""
+
 import json
 import logging
 from pathlib import Path

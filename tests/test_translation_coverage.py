@@ -1,3 +1,5 @@
+"""Tests for translation coverage."""
+
 import polib
 from pathlib import Path
 

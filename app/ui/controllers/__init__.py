@@ -1,3 +1,5 @@
+"""Controller classes for user interface operations."""
+
 from .requirements import RequirementsController
 from .labels import LabelsController
 

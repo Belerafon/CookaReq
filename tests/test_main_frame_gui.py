@@ -1,3 +1,5 @@
+"""Tests for main frame gui."""
+
 import importlib
 import pytest
 import logging

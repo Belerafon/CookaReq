@@ -1,3 +1,5 @@
+"""Tests for model."""
+
 from app.core.model import (
     Priority,
     Requirement,

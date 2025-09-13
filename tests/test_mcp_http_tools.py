@@ -1,3 +1,5 @@
+"""Tests for mcp http tools."""
+
 from __future__ import annotations
 
 import json

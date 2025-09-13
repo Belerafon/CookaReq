@@ -1,3 +1,5 @@
+"""Tests for search."""
+
 from app.core.model import (
     Priority,
     Requirement,
@@ -136,5 +138,3 @@ def test_filter_by_status_function():
     filtered = filter_by_status(reqs, "approved")
     assert [r.id for r in filtered] == [2]
     assert filter_by_status(reqs, None) == reqs
-
-

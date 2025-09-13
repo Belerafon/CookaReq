@@ -1,3 +1,5 @@
+"""Tests for main frame gui size."""
+
 import pytest
 
 from app.core.store import save

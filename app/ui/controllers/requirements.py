@@ -1,3 +1,5 @@
+"""Controller handling requirement CRUD operations."""
+
 from __future__ import annotations
 
 from dataclasses import replace

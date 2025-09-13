@@ -1,3 +1,5 @@
+"""Tests for settings dialog."""
+
 import pytest
 
 

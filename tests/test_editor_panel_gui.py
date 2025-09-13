@@ -1,3 +1,5 @@
+"""Tests for editor panel gui."""
+
 import pytest
 from dataclasses import asdict
 

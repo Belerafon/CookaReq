@@ -1,3 +1,5 @@
+"""Tests for labels sync."""
+
 import pytest
 from app.core import store
 from app.core.labels import PRESET_SETS

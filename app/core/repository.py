@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Requirement repository interface and implementations."""
+
+from __future__ import annotations
 
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence

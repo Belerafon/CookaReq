@@ -87,6 +87,12 @@ Install the package along with development dependencies:
 pip install .[dev]
 ```
 
+Check that every module has a docstring:
+
+```bash
+pydocstyle app tests
+```
+
 ## License
 
 This project is distributed under the [Apache License 2.0](LICENSE).

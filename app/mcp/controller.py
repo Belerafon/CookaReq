@@ -1,3 +1,5 @@
+"""Service controller for managing the MCP server."""
+
 from __future__ import annotations
 
 from enum import Enum

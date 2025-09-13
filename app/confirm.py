@@ -1,3 +1,5 @@
+"""Confirmation callback registry for user interactions."""
+
 from typing import Callable
 
 ConfirmCallback = Callable[[str], bool]

@@ -1,3 +1,5 @@
+"""Tests for missing translations."""
+
 import threading
 from app import i18n
 

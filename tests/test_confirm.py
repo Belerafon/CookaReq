@@ -1,3 +1,5 @@
+"""Tests for confirm."""
+
 import pytest
 
 from app import confirm as confirm_mod

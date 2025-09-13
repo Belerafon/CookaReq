@@ -1,3 +1,5 @@
+"""Pytest fixtures and shared helpers."""
+
 import os
 import sys
 import time

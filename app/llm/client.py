@@ -37,8 +37,17 @@ class LLMSettings:
 class LLMClient:
     """High-level client for LLM operations."""
 
-    def __init__(self, cfg: wx.Config) -> None:
-        self.settings = LLMSettings.from_config(cfg)
+    def __init__(
+        self,
+        cfg: wx.Config | None = None,
+        *,
+        settings: LLMSettings | None = None,
+    ) -> None:
+        if settings is None:
+            if cfg is None:
+                raise TypeError("cfg or settings must be provided")
+            settings = LLMSettings.from_config(cfg)
+        self.settings = settings
         self._client = OpenAI(
             base_url=self.settings.api_base or None,
             api_key=self.settings.api_key or None,

@@ -3,6 +3,37 @@ msgstr ""
 "Language: ru\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 
+# Settings dialog: LLM/Agent
+msgid "LLM/Agent"
+msgstr "LLM/Агент"
+
+msgid "API base"
+msgstr "Адрес API"
+
+msgid "Model"
+msgstr "Модель"
+
+msgid "API key"
+msgstr "Ключ API"
+
+msgid "Timeout"
+msgstr "Таймаут"
+
+msgid "Check LLM"
+msgstr "Проверить LLM"
+
+msgid "Check tools"
+msgstr "Проверить инструменты"
+
+msgid "not checked"
+msgstr "не проверено"
+
+msgid "ok"
+msgstr "OK"
+
+msgid "error"
+msgstr "ошибка"
+
 # Enumeration labels
 msgid "Requirement"
 msgstr "Требование"

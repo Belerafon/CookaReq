@@ -18,9 +18,18 @@ from app.mcp.settings import MCPSettings
 class MCPClient:
     """Simple HTTP client for the MCP server."""
 
-    def __init__(self, cfg: wx.Config) -> None:
+    def __init__(
+        self,
+        cfg: wx.Config | None = None,
+        *,
+        settings: MCPSettings | None = None,
+    ) -> None:
         self._cfg = cfg
-        self.settings = MCPSettings.from_config(cfg)
+        if settings is None:
+            if cfg is None:
+                raise TypeError("cfg or settings must be provided")
+            settings = MCPSettings.from_config(cfg)
+        self.settings = settings
 
     # ------------------------------------------------------------------
     def check_tools(self) -> dict[str, Any]:

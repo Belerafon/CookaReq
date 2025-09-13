@@ -21,6 +21,10 @@ def test_settings_dialog_returns_language():
         open_last=True,
         remember_sort=False,
         language="ru",
+        api_base="http://api",
+        model="gpt-test",
+        api_key="key",
+        timeout=30,
         host="127.0.0.1",
         port=8000,
         base_path="/tmp",
@@ -28,15 +32,28 @@ def test_settings_dialog_returns_language():
         token="abc",
     )
     values = dlg.get_values()
-    assert values == (True, False, "ru", "127.0.0.1", 8000, "/tmp", True, "abc")
+    assert values == (
+        True,
+        False,
+        "ru",
+        "http://api",
+        "gpt-test",
+        "key",
+        30,
+        "127.0.0.1",
+        8000,
+        "/tmp",
+        True,
+        "abc",
+    )
     dlg.Destroy()
 
 
 def test_mcp_start_stop_server(monkeypatch):
     wx = pytest.importorskip("wx")
     _app = wx.App()
-    from gettext import gettext as _
     from app.ui.settings_dialog import SettingsDialog
+    import app.ui.settings_dialog as sd
     from app.mcp.controller import MCPStatus
 
     class FakeMCP:
@@ -66,6 +83,10 @@ def test_mcp_start_stop_server(monkeypatch):
         open_last=False,
         remember_sort=False,
         language="en",
+        api_base="",
+        model="",
+        api_key="",
+        timeout=60,
         host="localhost",
         port=8123,
         base_path="/tmp",
@@ -73,7 +94,9 @@ def test_mcp_start_stop_server(monkeypatch):
         token="",
     )
 
-    assert dlg._start_stop.GetLabel() == _("Start MCP")
+    import app.ui.settings_dialog as sd
+
+    assert dlg._start_stop.GetLabel() == sd._("Start MCP")
 
     dlg._on_start_stop(wx.CommandEvent())
     assert fake.calls[0][0] == "start"
@@ -85,11 +108,11 @@ def test_mcp_start_stop_server(monkeypatch):
         False,
         "",
     )
-    assert dlg._start_stop.GetLabel() == _("Stop MCP")
+    assert dlg._start_stop.GetLabel() == sd._("Stop MCP")
 
     dlg._on_start_stop(wx.CommandEvent())
     assert fake.calls[-1] == ("stop",)
-    assert dlg._start_stop.GetLabel() == _("Start MCP")
+    assert dlg._start_stop.GetLabel() == sd._("Start MCP")
 
     dlg.Destroy()
 
@@ -97,8 +120,8 @@ def test_mcp_start_stop_server(monkeypatch):
 def test_mcp_check_status(monkeypatch):
     wx = pytest.importorskip("wx")
     _app = wx.App()
-    from gettext import gettext as _
     from app.ui.settings_dialog import SettingsDialog
+    import app.ui.settings_dialog as sd
     from app.mcp.controller import MCPStatus
 
     class DummyMCP:
@@ -125,6 +148,10 @@ def test_mcp_check_status(monkeypatch):
         open_last=False,
         remember_sort=False,
         language="en",
+        api_base="",
+        model="",
+        api_key="",
+        timeout=60,
         host="localhost",
         port=8123,
         base_path="/tmp",
@@ -134,14 +161,62 @@ def test_mcp_check_status(monkeypatch):
 
     dummy.state = MCPStatus.READY
     dlg._on_check(wx.CommandEvent())
-    assert dlg._status.GetLabel() == _("ready")
+    assert dlg._status.GetLabel() == sd._("ready")
 
     dummy.state = MCPStatus.ERROR
     dlg._on_check(wx.CommandEvent())
-    assert dlg._status.GetLabel() == _("error")
+    assert dlg._status.GetLabel() == sd._("error")
 
     dummy.state = MCPStatus.NOT_RUNNING
     dlg._on_check(wx.CommandEvent())
-    assert dlg._status.GetLabel() == _("not running")
+    assert dlg._status.GetLabel() == sd._("not running")
+
+    dlg.Destroy()
+
+
+def test_llm_agent_checks(monkeypatch):
+    wx = pytest.importorskip("wx")
+    _app = wx.App()
+    from app.ui.settings_dialog import SettingsDialog
+    import app.ui.settings_dialog as sd
+
+    class DummyLLM:
+        def __init__(self, *, settings):
+            self.settings = settings
+
+        def check_llm(self):
+            return {"ok": True}
+
+    class DummyMCP:
+        def __init__(self, *, settings):
+            self.settings = settings
+
+        def check_tools(self):
+            return {"ok": True}
+
+    monkeypatch.setattr("app.ui.settings_dialog.LLMClient", lambda *, settings: DummyLLM(settings=settings))
+    monkeypatch.setattr("app.ui.settings_dialog.MCPClient", lambda *, settings: DummyMCP(settings=settings))
+
+    dlg = SettingsDialog(
+        None,
+        open_last=False,
+        remember_sort=False,
+        language="en",
+        api_base="http://api",
+        model="gpt", 
+        api_key="key",
+        timeout=30,
+        host="localhost",
+        port=8000,
+        base_path="/tmp",
+        require_token=False,
+        token="",
+    )
+
+    dlg._on_check_llm(wx.CommandEvent())
+    assert dlg._llm_status.GetLabel() == sd._("ok")
+
+    dlg._on_check_tools(wx.CommandEvent())
+    assert dlg._tools_status.GetLabel() == sd._("ok")
 
     dlg.Destroy()

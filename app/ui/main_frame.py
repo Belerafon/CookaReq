@@ -6,7 +6,6 @@ import logging
 from importlib import resources
 from pathlib import Path
 from dataclasses import fields, replace
-from typing import Dict
 
 import wx
 
@@ -14,7 +13,7 @@ from app.log import logger
 
 from app.config import ConfigManager
 from app.core import store
-from app.core.model import Requirement, requirement_from_dict, DerivationLink
+from app.core.model import Requirement, DerivationLink
 from app.core.labels import Label
 from app.mcp.controller import MCPController
 from app.mcp.settings import MCPSettings
@@ -24,6 +23,7 @@ from .settings_dialog import SettingsDialog
 from .requirement_model import RequirementModel
 from .labels_dialog import LabelsDialog
 from .navigation import Navigation
+from .controllers import RequirementsController, LabelsController
 
 
 class WxLogHandler(logging.Handler):
@@ -90,7 +90,8 @@ class MainFrame(wx.Frame):
                 token=self.mcp_token,
             )
         )
-        self.labels: list[Label] = []
+        self.req_controller: RequirementsController | None = None
+        self.labels_controller: LabelsController | None = None
         super().__init__(parent=parent, title=self._base_title)
         # Load all available icon sizes so that Windows taskbar and other
         # platforms can pick the most appropriate resolution. Using
@@ -166,6 +167,10 @@ class MainFrame(wx.Frame):
     @property
     def recent_dirs(self) -> list[str]:
         return self.config.get_recent_dirs()
+
+    @property
+    def labels(self) -> list[Label]:
+        return self.labels_controller.labels if self.labels_controller else []
 
     def on_open_folder(self, event: wx.Event) -> None:
         dlg = wx.DirDialog(self, _("Select requirements folder"))
@@ -313,20 +318,14 @@ class MainFrame(wx.Frame):
         self.Layout()
 
     def on_manage_labels(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
-        if not self.current_dir:
+        if not self.labels_controller:
             return
-        dlg = LabelsDialog(self, self.labels)
+        dlg = LabelsDialog(self, self.labels_controller.labels)
         if dlg.ShowModal() == wx.ID_OK:
             new_labels = dlg.get_labels()
-            old_names = {lbl.name for lbl in self.labels}
-            new_names = {lbl.name for lbl in new_labels}
-            removed = old_names - new_names
-            used: Dict[str, list[int]] = {}
-            if removed:
-                for lbl in removed:
-                    ids = [req.id for req in self.model.get_all() if lbl in req.labels]
-                    if ids:
-                        used[lbl] = ids
+            used = self.labels_controller.update_labels(
+                new_labels, remove_from_requirements=False
+            )
             if used:
                 lines = [f"{k}: {', '.join(map(str, v))}" for k, v in used.items()]
                 msg = _(
@@ -338,23 +337,12 @@ class MainFrame(wx.Frame):
                 if res != wx.YES:
                     dlg.Destroy()
                     return
-                removed_set = set(used)
-                for req in self.model.get_all():
-                    before = list(req.labels)
-                    req.labels = [l for l in req.labels if l not in removed_set]
-                    if before != req.labels:
-                        try:
-                            store.save(self.current_dir, req)
-                        except Exception as exc:  # pragma: no cover - disk errors
-                            logger.warning("Failed to save %s: %s", req.id, exc)
+                self.labels_controller.update_labels(
+                    new_labels, remove_from_requirements=True
+                )
                 self.panel.refresh()
-            self.labels = new_labels
-            try:
-                store.save_labels(self.current_dir, self.labels)
-            except Exception as exc:  # pragma: no cover - disk errors
-                logger.warning("Failed to save labels: %s", exc)
-            names = [lbl.name for lbl in self.labels]
-            self.editor.update_labels_list(self.labels)
+            names = self.labels_controller.get_label_names()
+            self.editor.update_labels_list(self.labels_controller.labels)
             self.panel.update_labels_list(names)
         dlg.Destroy()
 
@@ -377,49 +365,20 @@ class MainFrame(wx.Frame):
 
     def _load_directory(self, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""
-        self.config.add_recent_dir(path)
+        self.req_controller = RequirementsController(self.config, self.model, path)
+        self.labels_controller = LabelsController(self.config, self.model, path)
+        self.labels_controller.load_labels()
+        derived_map = self.req_controller.load_directory()
         self.navigation.update_recent_menu()
         self.SetTitle(f"{self._base_title} - {path}")
         self.current_dir = path
         self.editor.set_directory(self.current_dir)
-        self.labels = store.load_labels(self.current_dir)
-        items: list[Requirement] = []
-        store.clear_index(self.current_dir)
-        for fp in self.current_dir.glob("*.json"):
-            if fp.name == store.LABELS_FILENAME:
-                continue
-            try:
-                data, _ = store.load(fp)
-                req = requirement_from_dict(data)
-                items.append(req)
-                store.add_to_index(self.current_dir, req.id)
-            except Exception as exc:
-                logger.warning("Failed to load %s: %s", fp, exc)
-                continue
-        derived_map: dict[int, list[int]] = {}
-        for req in items:
-            for link in req.derived_from:
-                derived_map.setdefault(link.source_id, []).append(req.id)
-        self.panel.set_requirements(items, derived_map)
+        self.panel.set_requirements(self.model.get_all(), derived_map)
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
         self.editor.Hide()
-        self._sync_labels()
-
-    def _sync_labels(self) -> None:
-        """Synchronize ``labels.json`` with labels used by requirements."""
-        if not self.current_dir:
-            return
-        existing_colors = {lbl.name: lbl.color for lbl in self.labels}
-        used_names = {l for req in self.model.get_all() for l in req.labels}
-        all_names = sorted(existing_colors.keys() | used_names)
-        self.labels = [Label(name=n, color=existing_colors.get(n, "#ffffff")) for n in all_names]
-        try:
-            store.save_labels(self.current_dir, self.labels)
-        except Exception as exc:
-            logger.warning("Failed to save labels: %s", exc)
-        names = [lbl.name for lbl in self.labels]
-        self.editor.update_labels_list(self.labels)
+        names = self.labels_controller.sync_labels()
+        self.editor.update_labels_list(self.labels_controller.labels)
         self.panel.update_labels_list(names)
 
     # recent directories -------------------------------------------------
@@ -451,7 +410,10 @@ class MainFrame(wx.Frame):
         data = self.editor.get_data()
         self.model.update(data)
         self.panel.recalc_derived_map(self.model.get_all())
-        self._sync_labels()
+        if self.labels_controller:
+            names = self.labels_controller.sync_labels()
+            self.editor.update_labels_list(self.labels_controller.labels)
+            self.panel.update_labels_list(names)
 
     def on_toggle_column(self, event: wx.CommandEvent) -> None:
         field = self.navigation.get_field_for_id(event.GetId())
@@ -508,40 +470,33 @@ class MainFrame(wx.Frame):
         self.config.set_sort_settings(column, ascending)
 
     # context menu actions -------------------------------------------
-    def _generate_new_id(self) -> int:
-        existing = {req.id for req in self.model.get_all()}
-        return max(existing, default=0) + 1
-
     def on_new_requirement(self, event: wx.Event) -> None:
-        new_id = self._generate_new_id()
+        if not self.req_controller:
+            return
+        new_id = self.req_controller.generate_new_id()
         self.editor.new_requirement()
         self.editor.fields["id"].SetValue(str(new_id))
         data = self.editor.get_data()
-        self.model.add(data)
+        self.req_controller.add_requirement(data)
         self.panel.refresh()
         self.editor.Show()
         self.splitter.UpdateSize()
 
     def on_clone_requirement(self, req_id: int) -> None:
-        source = self.model.get_by_id(req_id)
-        if not source:
+        if not self.req_controller:
             return
-        new_id = self._generate_new_id()
-        clone = replace(
-            source,
-            id=new_id,
-            title=f"{_('(Copy)')} {source.title}".strip(),
-            modified_at="",
-            revision=1,
-        )
-        self.model.add(clone)
+        clone = self.req_controller.clone_requirement(req_id)
+        if not clone:
+            return
         self.panel.refresh()
         self.editor.load(clone, path=None, mtime=None)
         self.editor.Show()
         self.splitter.UpdateSize()
 
     def _create_derived_from(self, source: Requirement) -> Requirement:
-        new_id = self._generate_new_id()
+        if not self.req_controller:
+            raise RuntimeError("Requirements controller not initialized")
+        new_id = self.req_controller.generate_new_id()
         clone = replace(
             source,
             id=new_id,
@@ -578,17 +533,13 @@ class MainFrame(wx.Frame):
         self.splitter.UpdateSize()
 
     def on_delete_requirement(self, req_id: int) -> None:
-        if not self.current_dir:
+        if not self.req_controller or not self.labels_controller:
             return
-        req = self.model.get_by_id(req_id)
-        if not req:
+        if not self.req_controller.delete_requirement(req_id):
             return
-        self.model.delete(req_id)
-        try:
-            store.delete(self.current_dir, req.id)
-        except Exception:
-            pass
         self.panel.refresh()
         self.editor.Hide()
         self.splitter.UpdateSize()
-        self._sync_labels()
+        names = self.labels_controller.sync_labels()
+        self.editor.update_labels_list(self.labels_controller.labels)
+        self.panel.update_labels_list(names)

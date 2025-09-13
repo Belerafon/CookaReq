@@ -24,6 +24,9 @@ from app.log import JsonlHandler, configure_logging, logger
 from app.mcp.utils import ErrorCode, mcp_error, sanitize
 from app.mcp import tools_read, tools_write
 
+# Dedicated logger for MCP request logging so global handlers remain untouched
+request_logger = logger.getChild("mcp.requests")
+
 # Public FastAPI application and MCP server instances -----------------------
 
 # FastAPI application that will host the MCP routes.  Additional routes may
@@ -37,12 +40,13 @@ _JSONL_LOG_NAME = "server.jsonl"
 
 
 def _configure_request_logging(log_dir: str) -> None:
-    """Attach file handlers for request logging."""
+    """Attach file handlers for request logging without mutating the global logger."""
     configure_logging()
-    # Remove previous request handlers if any
-    for h in list(logger.handlers):
+    # Remove previous request handlers if any from the dedicated logger
+    for h in list(request_logger.handlers):
         if getattr(h, "_cookareq_request", False):
-            logger.removeHandler(h)
+            request_logger.removeHandler(h)
+            h.close()
 
     os.makedirs(log_dir, exist_ok=True)
 
@@ -50,12 +54,12 @@ def _configure_request_logging(log_dir: str) -> None:
     text_handler = logging.FileHandler(text_path)
     text_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     text_handler._cookareq_request = True
-    logger.addHandler(text_handler)
+    request_logger.addHandler(text_handler)
 
     json_path = os.path.join(log_dir, _JSONL_LOG_NAME)
     json_handler = JsonlHandler(json_path)
     json_handler._cookareq_request = True
-    logger.addHandler(json_handler)
+    request_logger.addHandler(json_handler)
 
 
 def _log_request(request: Request, status: int) -> None:
@@ -69,7 +73,9 @@ def _log_request(request: Request, status: int) -> None:
         "headers": headers,
         "status": status,
     }
-    logger.info("%s %s -> %s", request.method, request.url.path, status, extra={"json": entry})
+    request_logger.info(
+        "%s %s -> %s", request.method, request.url.path, status, extra={"json": entry}
+    )
 
 
 @app.middleware("http")
@@ -305,7 +311,7 @@ def stop_server() -> None:
     _uvicorn_server = None
     _server_thread = None
 
-    for h in list(logger.handlers):
+    for h in list(request_logger.handlers):
         if getattr(h, "_cookareq_request", False):
-            logger.removeHandler(h)
+            request_logger.removeHandler(h)
             h.close()

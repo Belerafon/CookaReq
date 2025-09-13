@@ -400,3 +400,32 @@ def test_main_frame_delete_requirement_removes_file(monkeypatch, tmp_path):
 
     frame.Destroy()
     app.Destroy()
+
+
+def test_main_frame_select_any_column_updates_editor(monkeypatch, tmp_path):
+    from app.core.store import save
+
+    save(tmp_path, _sample_requirement())
+
+    wx, app, frame = _prepare_frame(monkeypatch, tmp_path)
+
+    # Add an extra column so clicks on it should still update the editor
+    frame.panel.set_columns(["id"])
+    frame.panel.set_requirements(frame.model.get_all())
+
+    class DummyEvent:
+        def GetData(self):
+            return 0
+
+        def GetIndex(self):
+            return 0
+
+    frame.editor.Hide()
+    frame.editor.fields["title"].SetValue("")
+
+    frame.on_requirement_selected(DummyEvent())
+
+    assert frame.editor.fields["title"].GetValue() == "Title"
+
+    frame.Destroy()
+    app.Destroy()

@@ -353,7 +353,10 @@ class MainFrame(wx.Frame):
     # recent directories -------------------------------------------------
 
     def on_requirement_selected(self, event: wx.ListEvent) -> None:
-        req_id = event.GetData()
+        index = event.GetIndex()
+        if index == wx.NOT_FOUND:
+            return
+        req_id = self.panel.list.GetItemData(index)
         req = self.model.get_by_id(req_id)
         if req:
             self.editor.load(req)

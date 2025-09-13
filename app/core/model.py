@@ -36,13 +36,6 @@ class Verification(str, Enum):
 
 
 @dataclass
-class Units:
-    quantity: str
-    nominal: float
-    tolerance: Optional[float] = None
-
-
-@dataclass
 class Attachment:
     path: str
     note: str = ""
@@ -67,8 +60,6 @@ class DerivationInfo:
 
     rationale: str
     assumptions: List[str]
-    method: str
-    margin: str
 
 
 @dataclass
@@ -96,7 +87,6 @@ class Requirement:
     trace_down: str = ""
     version: str = ""
     modified_at: str = ""
-    units: Optional[Units] = None
     labels: List[str] = field(default_factory=list)
     attachments: List[Attachment] = field(default_factory=list)
     revision: int = 1
@@ -111,12 +101,10 @@ class Requirement:
 def requirement_from_dict(data: dict[str, Any]) -> Requirement:
     """Create :class:`Requirement` instance from a plain ``dict``.
 
-    Nested ``attachments``, ``units`` and derivation structures are converted
+    Nested ``attachments`` and derivation structures are converted
     into their respective dataclasses. Missing optional fields fall back to
     sensible defaults.
     """
-    units_data = data.get("units")
-    units = Units(**units_data) if units_data else None
     attachments = [Attachment(**a) for a in data.get("attachments", [])]
     parent_data = data.get("parent")
     parent = RequirementLink(**parent_data) if parent_data else None
@@ -144,7 +132,6 @@ def requirement_from_dict(data: dict[str, Any]) -> Requirement:
         trace_down=data.get("trace_down", ""),
         version=data.get("version", ""),
         modified_at=normalize_timestamp(data.get("modified_at")),
-        units=units,
         labels=list(data.get("labels", [])),
         attachments=attachments,
         revision=data.get("revision", 1),

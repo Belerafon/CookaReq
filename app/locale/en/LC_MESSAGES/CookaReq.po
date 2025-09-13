@@ -275,9 +275,6 @@ msgstr "Agent Command"
 msgid "Any field contains"
 msgstr "Any field contains"
 
-msgid "Applied margin."
-msgstr "Applied margin."
-
 msgid "Approved at"
 msgstr "Approved at"
 
@@ -313,9 +310,6 @@ msgstr "Delete requirement?"
 
 msgid "Derivation Graph"
 msgstr "Derivation Graph"
-
-msgid "Derivation method."
-msgstr "Derivation method."
 
 msgid "Derive"
 msgstr "Derive"
@@ -368,14 +362,10 @@ msgstr "MCP"
 msgid "Manage Labels"
 msgstr "Manage Labels"
 
-msgid "Margin"
-msgstr "Margin"
 
 msgid "Match any labels"
 msgstr "Match any labels"
 
-msgid "Method"
-msgstr "Method"
 
 msgid "Name"
 msgstr "Name"
@@ -392,11 +382,6 @@ msgstr "No derivation links found."
 msgid "No requirements loaded"
 msgstr "No requirements loaded"
 
-msgid "Nominal"
-msgstr "Nominal"
-
-msgid "Nominal must be a number"
-msgstr "Nominal must be a number"
 
 msgid "Note"
 msgstr "Note"
@@ -413,8 +398,6 @@ msgstr "Path"
 msgid "Port"
 msgstr "Port"
 
-msgid "Quantity"
-msgstr "Quantity"
 
 msgid "Rationale"
 msgstr "Rationale"
@@ -467,17 +450,7 @@ msgstr "Suspect only"
 msgid "Token"
 msgstr "Token"
 
-msgid "Tolerance"
-msgstr "Tolerance"
 
-msgid "Tolerance must be a number"
-msgstr "Tolerance must be a number"
-
-msgid "Units"
-msgstr "Units"
-
-msgid "Units require quantity and nominal"
-msgstr "Units require quantity and nominal"
 
 msgid "Update requirement?"
 msgstr "Update requirement?"
@@ -676,21 +649,6 @@ msgstr ""
 "ensure the requirement remains valid."
 
 msgid ""
-"Technique used to derive the requirement, for example decomposition, "
-"modeling or stakeholder interviews. Knowing the derivation method helps "
-"reviewers assess validity and reproduce the reasoning if needed. It "
-"documents the path from source to requirement."
-msgstr ""
-"Technique used to derive the requirement, for example decomposition, "
-"modeling or stakeholder interviews. Knowing the derivation method helps "
-"reviewers assess validity and reproduce the reasoning if needed. It "
-"documents the path from source to requirement."
-
-msgid ""
-"Safety or performance margin applied during derivation. Record extra "
-"capacity or tolerance added to cover uncertainties. Tracking margins keeps "
 "risk decisions transparent and supports future recalculations."
 msgstr ""
-"Safety or performance margin applied during derivation. Record extra "
-"capacity or tolerance added to cover uncertainties. Tracking margins keeps "
 "risk decisions transparent and supports future recalculations."

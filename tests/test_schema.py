@@ -46,8 +46,6 @@ def test_derived_from_and_derivation_valid():
     data["derivation"] = {
         "rationale": "r",
         "assumptions": ["a"],
-        "method": "m",
-        "margin": "10%",
     }
     validate(data)
 
@@ -63,8 +61,6 @@ def test_derivation_missing_field():
     data = make_valid()
     data["derivation"] = {
         "rationale": "r",
-        "assumptions": ["a"],
-        "method": "m",
     }
     with pytest.raises(ValueError):
         validate(data)

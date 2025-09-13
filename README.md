@@ -38,6 +38,10 @@ Available commands:
 - `edit <dir> <file>` — update an existing requirement with data from a file
 - `show <dir> <id>` — display the full contents of a requirement as JSON
 
+The `add` and `edit` commands validate the input file before saving. If the
+JSON is malformed or does not match the requirement schema, an error message is
+printed and no changes are written to disk.
+
 ## MCP Integration
 
 The application exposes a Model Context Protocol (MCP) server for interaction with LLM agents.

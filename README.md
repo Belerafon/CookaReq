@@ -67,7 +67,6 @@ Each requirement is stored in its own `<id>.json` file and contains the followin
 - `conditions` *(str)* — conditions
 - `trace_up` *(str)* and `trace_down` *(str)* — traceability links
 - `version` *(str)* and `modified_at` *(str)* — version and date of modification
-- `units` *(object, optional)* — {`quantity`, `nominal`, `tolerance`}
 - `labels` *(list[str])* — custom labels
 - `attachments` *(list[obj])* — attachments `{path, note}`
 - `revision` *(int)* — revision number (starting at 1)

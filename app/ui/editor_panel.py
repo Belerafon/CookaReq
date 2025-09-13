@@ -41,7 +41,6 @@ class EditorPanel(ScrolledPanel):
         self.fields: dict[str, wx.TextCtrl] = {}
         self.enums: dict[str, wx.Choice] = {}
         self.derivation_fields: dict[str, wx.TextCtrl] = {}
-        self.units_fields: dict[str, wx.TextCtrl] = {}
         self._autosize_fields: list[wx.TextCtrl] = []
         self._suspend_events = False
         self.original_modified_at = ""
@@ -68,8 +67,6 @@ class EditorPanel(ScrolledPanel):
             "verification": _("Verification method"),
             "rationale": _("Rationale"),
             "assumptions": _("Assumptions"),
-            "method": _("Method"),
-            "margin": _("Margin"),
         }
 
         help_texts = {
@@ -158,16 +155,6 @@ class EditorPanel(ScrolledPanel):
                 "Listing assumptions exposes risks and clarifies the context that might change. "
                 "Revisit them regularly to ensure the requirement remains valid."
             ),
-            "method": _(
-                "Technique used to derive the requirement, for example decomposition, modeling or stakeholder interviews. "
-                "Knowing the derivation method helps reviewers assess validity and reproduce the reasoning if needed. "
-                "It documents the path from source to requirement."
-            ),
-            "margin": _(
-                "Safety or performance margin applied during derivation. "
-                "Record extra capacity or tolerance added to cover uncertainties. "
-                "Tracking margins keeps risk decisions transparent and supports future recalculations."
-            ),
         }
 
         def make_help_button(message: str) -> wx.Button:
@@ -255,25 +242,6 @@ class EditorPanel(ScrolledPanel):
 
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
 
-        # units section --------------------------------------------------
-        u_box = wx.StaticBox(self, label=_("Units"))
-        u_sizer = wx.StaticBoxSizer(u_box, wx.VERTICAL)
-        u_grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
-        u_grid.AddGrowableCol(1, 1)
-        unit_labels = {
-            "quantity": _("Quantity"),
-            "nominal": _("Nominal"),
-            "tolerance": _("Tolerance"),
-        }
-        for name in ("quantity", "nominal", "tolerance"):
-            lbl = wx.StaticText(u_box, label=unit_labels[name])
-            ctrl = wx.TextCtrl(u_box)
-            u_grid.Add(lbl, 0, wx.ALIGN_CENTER_VERTICAL)
-            u_grid.Add(ctrl, 1, wx.EXPAND)
-            self.units_fields[name] = ctrl
-        u_sizer.Add(u_grid, 0, wx.EXPAND | wx.ALL, 5)
-        sizer.Add(u_sizer, 0, wx.EXPAND | wx.ALL, 5)
-
         # attachments section --------------------------------------------
         a_box = wx.StaticBox(self, label=_("Attachments"))
         a_sizer = wx.StaticBoxSizer(a_box, wx.VERTICAL)
@@ -355,8 +323,6 @@ class EditorPanel(ScrolledPanel):
         for name, multiline in [
             ("rationale", True),
             ("assumptions", True),
-            ("method", False),
-            ("margin", False),
         ]:
             label = wx.StaticText(self, label=labels[name])
             sizer.Add(label, 0, wx.ALL, 5)
@@ -499,8 +465,6 @@ class EditorPanel(ScrolledPanel):
                 "approved_at": None,
                 "notes": "",
             })
-            for ctrl in self.units_fields.values():
-                ctrl.ChangeValue("")
             self.approved_picker.SetValue(wx.DefaultDateTime)
             self.notes_ctrl.ChangeValue("")
             self._refresh_attachments()
@@ -564,9 +528,6 @@ class EditorPanel(ScrolledPanel):
                 "approved_at": data.get("approved_at"),
                 "notes": data.get("notes", ""),
             }
-            units = data.get("units") or {}
-            for name, ctrl in self.units_fields.items():
-                ctrl.ChangeValue(str(units.get(name, "")))
             if self.extra.get("approved_at"):
                 dt = wx.DateTime()
                 dt.ParseISODate(str(self.extra["approved_at"]))
@@ -654,27 +615,6 @@ class EditorPanel(ScrolledPanel):
                 "verifies": list(self.verifies),
                 "relates": list(self.relates),
             }
-        qty = self.units_fields["quantity"].GetValue().strip()
-        nom = self.units_fields["nominal"].GetValue().strip()
-        tol = self.units_fields["tolerance"].GetValue().strip()
-        if qty or nom or tol:
-            if not qty or not nom:
-                raise ValueError(_("Units require quantity and nominal"))
-            try:
-                nominal = float(nom)
-            except ValueError as exc:
-                raise ValueError(_("Nominal must be a number")) from exc
-            tolerance = None
-            if tol:
-                try:
-                    tolerance = float(tol)
-                except ValueError as exc:
-                    raise ValueError(_("Tolerance must be a number")) from exc
-            data["units"] = {
-                "quantity": qty,
-                "nominal": nominal,
-                "tolerance": tolerance,
-            }
         dt = self.approved_picker.GetValue()
         approved_at = dt.FormatISODate() if dt.IsValid() else None
         data["approved_at"] = approved_at
@@ -694,8 +634,6 @@ class EditorPanel(ScrolledPanel):
             data["derivation"] = {
                 "rationale": self.derivation_fields["rationale"].GetValue(),
                 "assumptions": assumptions,
-                "method": self.derivation_fields["method"].GetValue(),
-                "margin": self.derivation_fields["margin"].GetValue(),
             }
         return requirement_from_dict(data)
 

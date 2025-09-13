@@ -38,15 +38,6 @@ SCHEMA: dict[str, Any] = {
         "trace_down": {"type": "string"},
         "version": {"type": "string"},
         "modified_at": {"type": "string"},
-        "units": {
-            "type": "object",
-            "properties": {
-                "quantity": {"type": "string"},
-                "nominal": {"type": "number"},
-                "tolerance": {"type": ["number", "null"]},
-            },
-            "required": ["quantity", "nominal"],
-        },
         "labels": {"type": "array", "items": {"type": "string"}},
         "attachments": {
             "type": "array",
@@ -112,12 +103,10 @@ SCHEMA: dict[str, Any] = {
         },
         "derivation": {
             "type": "object",
-            "required": ["rationale", "assumptions", "method", "margin"],
+            "required": ["rationale", "assumptions"],
             "properties": {
                 "rationale": {"type": "string"},
                 "assumptions": {"type": "array", "items": {"type": "string"}},
-                "method": {"type": "string"},
-                "margin": {"type": "string"},
             },
         },
         "revision": {"type": "integer", "minimum": 1},

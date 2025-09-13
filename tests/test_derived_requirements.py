@@ -31,8 +31,6 @@ def test_store_roundtrip_derived_fields(tmp_path: Path) -> None:
     derived["derivation"] = {
         "rationale": "calc",
         "assumptions": ["a1", "a2"],
-        "method": "m",
-        "margin": "10%",
     }
 
     save(tmp_path, src)
@@ -44,7 +42,6 @@ def test_store_roundtrip_derived_fields(tmp_path: Path) -> None:
     assert req.derived_from[0].source_id == 1
     assert req.derived_from[0].suspect is False
     assert req.derivation is not None
-    assert req.derivation.method == "m"
     assert req.derivation.assumptions == ["a1", "a2"]
 
 

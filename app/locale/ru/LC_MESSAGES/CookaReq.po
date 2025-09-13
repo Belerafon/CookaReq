@@ -281,9 +281,6 @@ msgstr "Команда агента"
 msgid "Any field contains"
 msgstr "Любое поле содержит"
 
-msgid "Applied margin."
-msgstr "Применённый запас."
-
 msgid "Approved at"
 msgstr "Утверждено"
 
@@ -319,9 +316,6 @@ msgstr "Удалить требование?"
 
 msgid "Derivation Graph"
 msgstr "Граф выводов"
-
-msgid "Derivation method."
-msgstr "Метод вывода."
 
 msgid "Derive"
 msgstr "Вывести"
@@ -374,14 +368,8 @@ msgstr "MCP"
 msgid "Manage Labels"
 msgstr "Управление метками"
 
-msgid "Margin"
-msgstr "Запас"
-
 msgid "Match any labels"
 msgstr "Совпадает с любой меткой"
-
-msgid "Method"
-msgstr "Метод"
 
 msgid "Name"
 msgstr "Имя"
@@ -398,11 +386,6 @@ msgstr "Связи вывода не найдены."
 msgid "No requirements loaded"
 msgstr "Требования не загружены"
 
-msgid "Nominal"
-msgstr "Номинал"
-
-msgid "Nominal must be a number"
-msgstr "Номинал должен быть числом"
 
 msgid "Note"
 msgstr "Примечание"
@@ -418,9 +401,6 @@ msgstr "Путь"
 
 msgid "Port"
 msgstr "Порт"
-
-msgid "Quantity"
-msgstr "Количество"
 
 msgid "Rationale"
 msgstr "Обоснование"
@@ -473,17 +453,7 @@ msgstr "Только подозрительные"
 msgid "Token"
 msgstr "Токен"
 
-msgid "Tolerance"
-msgstr "Допуск"
 
-msgid "Tolerance must be a number"
-msgstr "Допуск должен быть числом"
-
-msgid "Units"
-msgstr "Единицы"
-
-msgid "Units require quantity and nominal"
-msgstr "Для единиц требуются количество и номинал"
 
 msgid "Update requirement?"
 msgstr "Обновить требование?"
@@ -688,24 +658,10 @@ msgstr ""
 "риски и проясняет контекст, который может измениться. Периодически "
 "пересматривайте их, чтобы требование оставалось актуальным."
 
-msgid ""
-"Technique used to derive the requirement, for example decomposition, "
-"modeling or stakeholder interviews. Knowing the derivation method helps "
-"reviewers assess validity and reproduce the reasoning if needed. It "
-"documents the path from source to requirement."
-msgstr ""
-"Методика, с помощью которой получено требование: декомпозиция, "
-"моделирование, интервью с заинтересованными сторонами и т.п. Знание метода "
-"помогает рецензентам оценить обоснованность и при необходимости "
-"воспроизвести ход рассуждений. Это документирует путь от источника к "
-"требованию."
 
 msgid ""
-"Safety or performance margin applied during derivation. Record extra "
-"capacity or tolerance added to cover uncertainties. Tracking margins keeps "
 "risk decisions transparent and supports future recalculations."
 msgstr ""
-"Запас прочности или производительности, заложенный при выводе требования. "
 "Укажите дополнительный ресурс или допуск, который покрывает "
 "неопределённости. Фиксация запасов делает решения по рискам прозрачными и "
 "помогает при последующих пересчётах."

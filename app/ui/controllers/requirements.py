@@ -7,25 +7,32 @@ from typing import Dict
 from app.i18n import _
 
 from app.config import ConfigManager
-from app.core import requirements as req_ops
 from app.core.model import Requirement
+from app.core.repository import RequirementRepository, FileRequirementRepository
 from app.log import logger
 
 
 class RequirementsController:
     """Handle loading and basic CRUD operations for requirements."""
 
-    def __init__(self, config: ConfigManager, model, directory: Path) -> None:
+    def __init__(
+        self,
+        config: ConfigManager,
+        model,
+        directory: Path,
+        repository: RequirementRepository | None = None,
+    ) -> None:
         self.config = config
         self.model = model
         self.directory = directory
+        self.repo = repository or FileRequirementRepository()
 
     # loading ---------------------------------------------------------
     def load_directory(self) -> Dict[int, list[int]]:
         """Load requirements from ``directory`` and return derivation map."""
         self.config.add_recent_dir(self.directory)
         try:
-            items = req_ops.load_all(self.directory)
+            items = self.repo.load_all(self.directory)
         except Exception as exc:
             logger.warning("Failed to load directory %s: %s", self.directory, exc)
             items = []
@@ -65,7 +72,7 @@ class RequirementsController:
             return False
         self.model.delete(req_id)
         try:
-            req_ops.delete_requirement(self.directory, req.id)
+            self.repo.delete(self.directory, req.id)
         except Exception:
             pass
         return True

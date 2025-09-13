@@ -326,6 +326,13 @@ class EditorPanel(ScrolledPanel):
         container.Add(self.notes_ctrl, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(container, 0, wx.EXPAND | wx.ALL, 5)
 
+        # grouped links and metadata ------------------------------------
+        links_grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
+        links_grid.AddGrowableCol(0, 1)
+        links_grid.AddGrowableCol(1, 1)
+        links_grid.AddGrowableRow(1, 1)
+        links_grid.AddGrowableRow(2, 1)
+
         # labels section -------------------------------------------------
         box, box_sizer = create_help_static_box(
             self, _("Labels"), self._help_texts["labels"], self._show_help
@@ -339,7 +346,7 @@ class EditorPanel(ScrolledPanel):
         edit_labels_btn.Bind(wx.EVT_BUTTON, self._on_labels_click)
         row.Add(edit_labels_btn, 0)
         box_sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
-        sizer.Add(box_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        links_grid.Add(box_sizer, 0, wx.EXPAND | wx.ALL, 5)
         self._label_defs: list[Label] = []
         self.parent: dict[str, Any] | None = None
 
@@ -348,56 +355,62 @@ class EditorPanel(ScrolledPanel):
             self, _("Parent"), self._help_texts["parent"], self._show_help
         )
         row = wx.BoxSizer(wx.HORIZONTAL)
-        self.parent_id = wx.TextCtrl(pr_box)
-        row.Add(self.parent_id, 1, wx.EXPAND | wx.RIGHT, 5)
+        self.parent_id = wx.TextCtrl(pr_box, size=(120, -1))
+        row.Add(self.parent_id, 0, wx.RIGHT, 5)
         set_parent_btn = wx.Button(pr_box, label=_("Set"))
         set_parent_btn.Bind(wx.EVT_BUTTON, self._on_set_parent)
         row.Add(set_parent_btn, 0, wx.RIGHT, 5)
         clear_parent_btn = wx.Button(pr_box, label=_("Clear"))
         clear_parent_btn.Bind(wx.EVT_BUTTON, self._on_clear_parent)
         row.Add(clear_parent_btn, 0)
-        pr_sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
+        pr_sizer.Add(row, 0, wx.ALL, 5)
         self.parent_display = wx.StaticText(pr_box, label=_("(none)"))
         pr_sizer.Add(self.parent_display, 0, wx.ALL, 5)
-        sizer.Add(pr_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        links_grid.Add(pr_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # verifies section ----------------------------------------------
         ver_sizer = self._create_links_section(
             _("Verifies"), "verifies", help_key="verifies"
         )
-        sizer.Add(ver_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        links_grid.Add(ver_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # relates section -----------------------------------------------
         rel_sizer = self._create_links_section(
             _("Relates"), "relates", help_key="relates"
         )
-        sizer.Add(rel_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        links_grid.Add(rel_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # derived from section -------------------------------------------
         df_sizer = self._create_links_section(
             _("Derived from"), "derived_from", help_key="derived_from", id_name="derived_id", list_name="derived_list"
         )
-        sizer.Add(df_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        links_grid.Add(df_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
+        # placeholder to balance grid when odd number of items
+        links_grid.Add((0, 0))
+
+        sizer.Add(links_grid, 0, wx.EXPAND | wx.ALL, 5)
 
         # derivation details ---------------------------------------------
+        deriv_box = wx.StaticBox(self, label=_("Derivation"))
+        deriv_sizer = wx.StaticBoxSizer(deriv_box, wx.VERTICAL)
         for name, multiline in [
             ("rationale", True),
             ("assumptions", True),
         ]:
-            label = wx.StaticText(self, label=labels[name])
+            label = wx.StaticText(deriv_box, label=labels[name])
             help_btn = self._make_help_button(self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-            sizer.Add(row, 0, wx.ALL, 5)
+            deriv_sizer.Add(row, 0, wx.ALL, 5)
             style = wx.TE_MULTILINE if multiline else 0
-            ctrl = wx.TextCtrl(self, style=style)
+            ctrl = wx.TextCtrl(deriv_box, style=style)
             if multiline:
                 self._bind_autosize(ctrl)
             self.derivation_fields[name] = ctrl
-            # Здесь также используем пропорцию 0, чтобы изменение
-            # одного поля не растягивало другие.
-            sizer.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
+            deriv_sizer.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(deriv_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         self.save_btn = wx.Button(self, label=_("Save"))
         self.save_btn.Bind(wx.EVT_BUTTON, self._on_save_button)

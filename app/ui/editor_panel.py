@@ -11,7 +11,7 @@ import wx
 from wx.lib.dialogs import ScrolledMessageDialog
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from app.core import store
+from app.core import requirements as req_ops
 from app.core.labels import Label
 from app.core.model import (
     Requirement,
@@ -497,10 +497,9 @@ class EditorPanel(ScrolledPanel):
             return
         revision = 1
         if self.directory:
-            path = self.directory / f"{src_id}.json"
             try:
-                data, _ = store.load(path)
-                revision = data.get("revision", 1)
+                req = req_ops.get_requirement(self.directory, src_id)
+                revision = req.revision or 1
             except Exception:
                 pass
         self.derived_from.append(
@@ -540,7 +539,7 @@ class EditorPanel(ScrolledPanel):
             ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
             ctrl.Refresh()
             return
-        ids = set(store.load_index(self.directory))
+        ids = req_ops.list_ids(self.directory)
         if self.original_id is not None:
             ids.discard(self.original_id)
         if req_id in ids:
@@ -557,7 +556,7 @@ class EditorPanel(ScrolledPanel):
 
     def save(self, directory: str | Path) -> Path:
         req = self.get_data()
-        path = store.save(directory, req, mtime=self.mtime)
+        path = req_ops.save_requirement(directory, req, mtime=self.mtime)
         self.current_path = path
         self.mtime = path.stat().st_mtime
         self.directory = Path(directory)
@@ -567,7 +566,7 @@ class EditorPanel(ScrolledPanel):
 
     def delete(self) -> None:
         if self.current_path and self.current_path.exists():
-            store.delete(self.current_path.parent, int(self.current_path.stem))
+            req_ops.delete_requirement(self.current_path.parent, int(self.current_path.stem))
         self.current_path = None
         self.mtime = None
         self.original_id = None

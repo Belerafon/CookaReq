@@ -2,38 +2,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Sequence
 
-from app.log import logger
-from app.core import store
-from app.core.model import Requirement, Status, requirement_from_dict, requirement_to_dict
-from app.core import search as core_search
+from app.core import requirements as req_ops
+from app.core.model import Requirement, requirement_to_dict
 from app.mcp.utils import ErrorCode, log_tool, mcp_error
-
-
-def _load_all(directory: str | Path) -> list[Requirement]:
-    """Load all requirements from *directory* as :class:`Requirement` objects."""
-    path = Path(directory)
-    reqs: list[Requirement] = []
-    for req_id in sorted(store.load_index(path)):
-        fp = path / store.filename_for(req_id)
-        try:
-            data, _ = store.load(fp)
-            reqs.append(requirement_from_dict(data))
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Failed to load %s: %s", fp, exc)
-    return reqs
-
-
-def _filter_status(requirements: Iterable[Requirement], status: str | None) -> list[Requirement]:
-    reqs = list(requirements)
-    if not status:
-        return reqs
-    try:
-        st = Status(status)
-    except ValueError:
-        return []
-    return [r for r in reqs if r.status == st]
 
 
 def _paginate(requirements: Sequence[Requirement], page: int, per_page: int) -> dict:
@@ -65,7 +38,7 @@ def list_requirements(
         "labels": list(labels) if labels else None,
     }
     try:
-        reqs = _load_all(directory)
+        reqs = req_ops.search_requirements(directory, labels=labels, status=status)
     except FileNotFoundError:
         return log_tool(
             "list_requirements",
@@ -76,19 +49,14 @@ def list_requirements(
         return log_tool(
             "list_requirements", params, mcp_error(ErrorCode.INTERNAL, str(exc))
         )
-    reqs = _filter_status(reqs, status)
-    if labels:
-        reqs = core_search.filter_by_labels(reqs, list(labels))
     return log_tool("list_requirements", params, _paginate(reqs, page, per_page))
 
 
 def get_requirement(directory: str | Path, req_id: int) -> dict:
     """Return requirement ``req_id`` from ``directory``."""
     params = {"directory": str(directory), "req_id": req_id}
-    path = Path(directory) / store.filename_for(req_id)
     try:
-        data, _ = store.load(path)
-        req = requirement_from_dict(data)
+        req = req_ops.get_requirement(directory, req_id)
     except FileNotFoundError:
         return log_tool(
             "get_requirement",
@@ -121,7 +89,9 @@ def search_requirements(
         "per_page": per_page,
     }
     try:
-        reqs = _load_all(directory)
+        reqs = req_ops.search_requirements(
+            directory, query=query, labels=labels, status=status
+        )
     except FileNotFoundError:
         return log_tool(
             "search_requirements",
@@ -132,6 +102,4 @@ def search_requirements(
         return log_tool(
             "search_requirements", params, mcp_error(ErrorCode.INTERNAL, str(exc))
         )
-    reqs = _filter_status(reqs, status)
-    reqs = core_search.search(reqs, labels=list(labels or []), query=query)
     return log_tool("search_requirements", params, _paginate(reqs, page, per_page))

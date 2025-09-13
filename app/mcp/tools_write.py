@@ -8,13 +8,8 @@ import jsonpatch
 import jsonschema
 from app.core.schema import SCHEMA
 from app.core.model import requirement_from_dict, requirement_to_dict
-from app.core.store import (
-    load,
-    save,
-    delete as delete_file,
-    filename_for,
-    ConflictError,
-)
+from app.core.store import ConflictError
+from app.core import requirements as req_ops
 from app.mcp.utils import ErrorCode, log_tool, mcp_error
 
 # Fields that must not be modified directly through patching
@@ -60,12 +55,6 @@ PATCH_SCHEMA = {
     },
 }
 
-
-def _load_requirement(directory: str | Path, req_id: int) -> tuple[dict[str, Any], float]:
-    path = Path(directory) / filename_for(req_id)
-    return load(path)
-
-
 def create_requirement(directory: str | Path, data: Mapping[str, Any]) -> dict:
     """Create a new requirement in ``directory`` from ``data``.
 
@@ -77,7 +66,7 @@ def create_requirement(directory: str | Path, data: Mapping[str, Any]) -> dict:
     req["revision"] = 1
     try:
         obj = requirement_from_dict(req)
-        save(directory, obj)
+        req_ops.save_requirement(directory, obj)
     except ConflictError as exc:
         return log_tool(
             "create_requirement", params, mcp_error(ErrorCode.CONFLICT, str(exc))
@@ -113,7 +102,7 @@ def patch_requirement(
         "rev": rev,
     }
     try:
-        data, mtime = _load_requirement(directory, req_id)
+        data, mtime = req_ops.load_requirement(directory, req_id)
     except FileNotFoundError:
         return log_tool(
             "patch_requirement",
@@ -176,7 +165,7 @@ def patch_requirement(
     data["revision"] = current + 1
     try:
         obj = requirement_from_dict(data)
-        save(directory, obj, mtime=mtime)
+        req_ops.save_requirement(directory, obj, mtime=mtime)
     except ConflictError as exc:
         return log_tool(
             "patch_requirement", params, mcp_error(ErrorCode.CONFLICT, str(exc))
@@ -196,7 +185,7 @@ def delete_requirement(directory: str | Path, req_id: int, *, rev: int) -> dict 
     """Delete requirement ``req_id`` from ``directory`` if ``rev`` matches."""
     params = {"directory": str(directory), "req_id": req_id, "rev": rev}
     try:
-        data, _ = _load_requirement(directory, req_id)
+        data, _ = req_ops.load_requirement(directory, req_id)
     except FileNotFoundError:
         return log_tool(
             "delete_requirement",
@@ -214,13 +203,7 @@ def delete_requirement(directory: str | Path, req_id: int, *, rev: int) -> dict 
             ),
         )
     try:
-        delete_file(directory, req_id)
-    except FileNotFoundError:
-        return log_tool(
-            "delete_requirement",
-            params,
-            mcp_error(ErrorCode.NOT_FOUND, f"requirement {req_id} not found"),
-        )
+        req_ops.delete_requirement(directory, req_id)
     except Exception as exc:  # pragma: no cover - defensive
         return log_tool(
             "delete_requirement", params, mcp_error(ErrorCode.INTERNAL, str(exc))
@@ -250,7 +233,7 @@ def link_requirements(
         "rev": rev,
     }
     try:
-        src_data, _ = _load_requirement(directory, source_id)
+        src_data, _ = req_ops.load_requirement(directory, source_id)
     except FileNotFoundError:
         return log_tool(
             "link_requirements",
@@ -260,7 +243,7 @@ def link_requirements(
     src_revision = src_data.get("revision", 1)
 
     try:
-        data, mtime = _load_requirement(directory, derived_id)
+        data, mtime = req_ops.load_requirement(directory, derived_id)
     except FileNotFoundError:
         return log_tool(
             "link_requirements",
@@ -301,7 +284,7 @@ def link_requirements(
     data["revision"] = current + 1
     try:
         obj = requirement_from_dict(data)
-        save(directory, obj, mtime=mtime)
+        req_ops.save_requirement(directory, obj, mtime=mtime)
     except ConflictError as exc:
         return log_tool(
             "link_requirements", params, mcp_error(ErrorCode.CONFLICT, str(exc))

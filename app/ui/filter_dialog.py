@@ -6,7 +6,7 @@ from typing import Dict
 
 import wx
 
-from app.core import search as core_search
+from app.core import requirements as req_ops
 
 
 class FilterDialog(wx.Dialog):
@@ -29,7 +29,7 @@ class FilterDialog(wx.Dialog):
 
         # Per-field queries
         self.field_controls: Dict[str, wx.TextCtrl] = {}
-        for field in sorted(core_search.SEARCHABLE_FIELDS):
+        for field in sorted(req_ops.SEARCHABLE_FIELDS):
             sizer.Add(wx.StaticText(self, label=field.title()), 0, wx.ALL, 5)
             ctrl = wx.TextCtrl(self)
             ctrl.SetValue(values.get("field_queries", {}).get(field, ""))

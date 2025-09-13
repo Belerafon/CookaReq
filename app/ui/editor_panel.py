@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
+from contextlib import contextmanager
 
 from app.i18n import _
 
@@ -43,6 +44,7 @@ class EditorPanel(ScrolledPanel):
         self.derivation_fields: dict[str, wx.TextCtrl] = {}
         self.units_fields: dict[str, wx.TextCtrl] = {}
         self._autosize_fields: list[wx.TextCtrl] = []
+        self._suspend_events = False
         self._on_save_callback = on_save
         self._on_add_derived_callback = on_add_derived
         self.directory: Path | None = None
@@ -352,6 +354,8 @@ class EditorPanel(ScrolledPanel):
         self._auto_resize_text(ctrl)
 
     def _auto_resize_text(self, ctrl: wx.TextCtrl) -> None:
+        if self._suspend_events:
+            return
         lines = max(ctrl.GetNumberOfLines(), 1)
         line_height = ctrl.GetCharHeight()
         border = ctrl.GetWindowBorderSize().height * 2
@@ -366,6 +370,17 @@ class EditorPanel(ScrolledPanel):
     def _auto_resize_all(self) -> None:
         for ctrl in self._autosize_fields:
             self._auto_resize_text(ctrl)
+
+    @contextmanager
+    def _bulk_update(self):
+        """Temporarily disable events and redraws during bulk updates."""
+        self._suspend_events = True
+        self.Freeze()
+        try:
+            yield
+        finally:
+            self.Thaw()
+            self._suspend_events = False
 
     def _create_links_section(
         self, label: str, attr: str, *, id_name: str | None = None, list_name: str | None = None
@@ -404,46 +419,47 @@ class EditorPanel(ScrolledPanel):
         self._on_id_change()
 
     def new_requirement(self) -> None:
-        for ctrl in self.fields.values():
-            ctrl.SetValue("")
-        defaults = {
-            "type": locale.code_to_label("type", "requirement"),
-            "status": locale.code_to_label("status", "draft"),
-            "priority": locale.code_to_label("priority", "medium"),
-            "verification": locale.code_to_label("verification", "analysis"),
-        }
-        for name, choice in self.enums.items():
-            choice.SetStringSelection(defaults[name])
-        self.attachments = []
-        self.derived_from = []
-        self.verifies = []
-        self.relates = []
-        self.parent = None
-        self.current_path = None
-        self.mtime = None
-        self.original_id = None
-        self.extra.update({
-            "labels": [],
-            "revision": 1,
-            "approved_at": None,
-            "notes": "",
-        })
-        for ctrl in self.units_fields.values():
-            ctrl.SetValue("")
-        self.approved_picker.SetValue(wx.DefaultDateTime)
-        self.notes_ctrl.SetValue("")
-        self._refresh_attachments()
-        self.derived_list.Set([])
-        self.derived_id.SetValue("")
-        self.verifies_list.Set([])
-        self.verifies_id.SetValue("")
-        self.relates_list.Set([])
-        self.relates_id.SetValue("")
-        self._refresh_parent_display()
-        for ctrl in self.derivation_fields.values():
-            ctrl.SetValue("")
+        with self._bulk_update():
+            for ctrl in self.fields.values():
+                ctrl.ChangeValue("")
+            defaults = {
+                "type": locale.code_to_label("type", "requirement"),
+                "status": locale.code_to_label("status", "draft"),
+                "priority": locale.code_to_label("priority", "medium"),
+                "verification": locale.code_to_label("verification", "analysis"),
+            }
+            for name, choice in self.enums.items():
+                choice.SetStringSelection(defaults[name])
+            self.attachments = []
+            self.derived_from = []
+            self.verifies = []
+            self.relates = []
+            self.parent = None
+            self.current_path = None
+            self.mtime = None
+            self.original_id = None
+            self.extra.update({
+                "labels": [],
+                "revision": 1,
+                "approved_at": None,
+                "notes": "",
+            })
+            for ctrl in self.units_fields.values():
+                ctrl.ChangeValue("")
+            self.approved_picker.SetValue(wx.DefaultDateTime)
+            self.notes_ctrl.ChangeValue("")
+            self._refresh_attachments()
+            self.derived_list.Set([])
+            self.derived_id.ChangeValue("")
+            self.verifies_list.Set([])
+            self.verifies_id.ChangeValue("")
+            self.relates_list.Set([])
+            self.relates_id.ChangeValue("")
+            self._refresh_parent_display()
+            for ctrl in self.derivation_fields.values():
+                ctrl.ChangeValue("")
+            self._refresh_labels_display()
         self._auto_resize_all()
-        self._refresh_labels_display()
         self._on_id_change()
 
     def load(
@@ -455,82 +471,87 @@ class EditorPanel(ScrolledPanel):
     ) -> None:
         if isinstance(data, Requirement):
             data = requirement_to_dict(data)
-        for name, ctrl in self.fields.items():
-            ctrl.SetValue(str(data.get(name, "")))
-        self.attachments = list(data.get("attachments", []))
-        self.derived_from = [dict(link) for link in data.get("derived_from", [])]
-        items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.derived_from]
-        self.derived_list.Set(items)
-        for i, link in enumerate(self.derived_from):
-            self.derived_list.Check(i, link.get("suspect", False))
-        self.derived_id.SetValue("")
-        links = data.get("links", {})
-        self.verifies = [dict(l) for l in links.get("verifies", [])]
-        items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.verifies]
-        self.verifies_list.Set(items)
-        for i, link in enumerate(self.verifies):
-            self.verifies_list.Check(i, link.get("suspect", False))
-        self.verifies_id.SetValue("")
-        self.relates = [dict(l) for l in links.get("relates", [])]
-        items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.relates]
-        self.relates_list.Set(items)
-        for i, link in enumerate(self.relates):
-            self.relates_list.Check(i, link.get("suspect", False))
-        self.relates_id.SetValue("")
-        self.parent = dict(data.get("parent", {})) or None
-        self._refresh_parent_display()
-        for name, choice in self.enums.items():
-            mapping = getattr(locale, name.upper())
-            code = data.get(name, next(iter(mapping)))
-            choice.SetStringSelection(locale.code_to_label(name, code))
-        labels = data.get("labels")
-        self.extra = {
-            "labels": list(labels) if isinstance(labels, list) else [],
-            "revision": data.get("revision", 1),
-            "approved_at": data.get("approved_at"),
-            "notes": data.get("notes", ""),
-        }
-        units = data.get("units") or {}
-        for name, ctrl in self.units_fields.items():
-            ctrl.SetValue(str(units.get(name, "")))
-        if self.extra.get("approved_at"):
-            dt = wx.DateTime()
-            dt.ParseISODate(str(self.extra["approved_at"]))
-            self.approved_picker.SetValue(dt if dt.IsValid() else wx.DefaultDateTime)
-        else:
-            self.approved_picker.SetValue(wx.DefaultDateTime)
-        self.notes_ctrl.SetValue(self.extra.get("notes", ""))
-        self._refresh_attachments()
-        self.current_path = Path(path) if path else None
-        self.mtime = mtime
         self.original_id = data.get("id")
-        self._refresh_labels_display()
-        derivation = data.get("derivation", {})
-        for name, ctrl in self.derivation_fields.items():
-            if name == "assumptions":
-                ctrl.SetValue("\n".join(derivation.get(name, [])))
+        with self._bulk_update():
+            for name, ctrl in self.fields.items():
+                ctrl.ChangeValue(str(data.get(name, "")))
+            self.attachments = list(data.get("attachments", []))
+            self.derived_from = [dict(link) for link in data.get("derived_from", [])]
+            items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.derived_from]
+            self.derived_list.Set(items)
+            for i, link in enumerate(self.derived_from):
+                self.derived_list.Check(i, link.get("suspect", False))
+            self.derived_id.ChangeValue("")
+            links = data.get("links", {})
+            self.verifies = [dict(l) for l in links.get("verifies", [])]
+            items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.verifies]
+            self.verifies_list.Set(items)
+            for i, link in enumerate(self.verifies):
+                self.verifies_list.Check(i, link.get("suspect", False))
+            self.verifies_id.ChangeValue("")
+            self.relates = [dict(l) for l in links.get("relates", [])]
+            items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.relates]
+            self.relates_list.Set(items)
+            for i, link in enumerate(self.relates):
+                self.relates_list.Check(i, link.get("suspect", False))
+            self.relates_id.ChangeValue("")
+            self.parent = dict(data.get("parent", {})) or None
+            self._refresh_parent_display()
+            for name, choice in self.enums.items():
+                mapping = getattr(locale, name.upper())
+                code = data.get(name, next(iter(mapping)))
+                choice.SetStringSelection(locale.code_to_label(name, code))
+            labels = data.get("labels")
+            self.extra = {
+                "labels": list(labels) if isinstance(labels, list) else [],
+                "revision": data.get("revision", 1),
+                "approved_at": data.get("approved_at"),
+                "notes": data.get("notes", ""),
+            }
+            units = data.get("units") or {}
+            for name, ctrl in self.units_fields.items():
+                ctrl.ChangeValue(str(units.get(name, "")))
+            if self.extra.get("approved_at"):
+                dt = wx.DateTime()
+                dt.ParseISODate(str(self.extra["approved_at"]))
+                self.approved_picker.SetValue(
+                    dt if dt.IsValid() else wx.DefaultDateTime
+                )
             else:
-                ctrl.SetValue(derivation.get(name, ""))
+                self.approved_picker.SetValue(wx.DefaultDateTime)
+            self.notes_ctrl.ChangeValue(self.extra.get("notes", ""))
+            self._refresh_attachments()
+            self.current_path = Path(path) if path else None
+            self.mtime = mtime
+            self._refresh_labels_display()
+            derivation = data.get("derivation", {})
+            for name, ctrl in self.derivation_fields.items():
+                if name == "assumptions":
+                    ctrl.ChangeValue("\n".join(derivation.get(name, [])))
+                else:
+                    ctrl.ChangeValue(derivation.get(name, ""))
         self._auto_resize_all()
         self._on_id_change()
 
     def clone(self, new_id: int) -> None:
-        self.fields["id"].SetValue(str(new_id))
-        self.current_path = None
-        self.mtime = None
-        self.original_id = None
-        self.derived_from = []
-        self.derived_list.Set([])
-        self.verifies = []
-        self.verifies_list.Set([])
-        self.relates = []
-        self.relates_list.Set([])
-        self.parent = None
-        self._refresh_parent_display()
-        for ctrl in self.derivation_fields.values():
-            ctrl.SetValue("")
+        with self._bulk_update():
+            self.fields["id"].ChangeValue(str(new_id))
+            self.current_path = None
+            self.mtime = None
+            self.original_id = None
+            self.derived_from = []
+            self.derived_list.Set([])
+            self.verifies = []
+            self.verifies_list.Set([])
+            self.relates = []
+            self.relates_list.Set([])
+            self.parent = None
+            self._refresh_parent_display()
+            for ctrl in self.derivation_fields.values():
+                ctrl.ChangeValue("")
+            self._refresh_labels_display()
         self._auto_resize_all()
-        self._refresh_labels_display()
+        self._on_id_change()
 
     # data helpers -----------------------------------------------------
     def get_data(self) -> Requirement:
@@ -715,7 +736,7 @@ class EditorPanel(ScrolledPanel):
                 pass
         links_list.append({"source_id": src_id, "source_revision": revision, "suspect": False})
         list_ctrl.Append(f"{src_id} (r{revision})")
-        id_ctrl.SetValue("")
+        id_ctrl.ChangeValue("")
 
     def _on_remove_link_generic(self, attr: str) -> None:
         _, list_ctrl, links_list = self._link_widgets(attr)
@@ -751,7 +772,7 @@ class EditorPanel(ScrolledPanel):
             except Exception:
                 pass
         self.parent = {"source_id": src_id, "source_revision": revision, "suspect": False}
-        self.parent_id.SetValue("")
+        self.parent_id.ChangeValue("")
         self._refresh_parent_display()
 
     def _on_clear_parent(self, _event: wx.CommandEvent) -> None:
@@ -775,6 +796,8 @@ class EditorPanel(ScrolledPanel):
         self._on_add_derived_callback(req)
 
     def _on_id_change(self, _event: wx.CommandEvent | None = None) -> None:
+        if self._suspend_events:
+            return
         ctrl = self.fields["id"]
         ctrl.SetBackgroundColour(wx.NullColour)
         if not self.directory:
@@ -803,7 +826,7 @@ class EditorPanel(ScrolledPanel):
 
     def _on_save_button(self, _evt: wx.Event) -> None:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.fields["modified_at"].SetValue(now)
+        self.fields["modified_at"].ChangeValue(now)
         if self._on_save_callback:
             self._on_save_callback()
 

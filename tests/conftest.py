@@ -5,22 +5,6 @@ import sys
 import time
 from pathlib import Path
 
-
-def _load_dotenv() -> None:
-    """Load variables from the project's `.env` file if present."""
-    env_path = Path(__file__).resolve().parents[1] / ".env"
-    if not env_path.exists():
-        return
-    for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        key, _, value = line.partition("=")
-        os.environ.setdefault(key, value)
-
-
-_load_dotenv()
-
 # Ensure project root is on sys.path for imports
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -33,11 +17,10 @@ import socket
 
 @pytest.fixture(autouse=True)
 def _mock_openrouter(monkeypatch):
-    """Подменить OpenAI на мок, если не запрошен реальный OpenRouter."""
-    if not os.environ.get("OPENROUTER_REAL"):
-        from tests.llm_utils import make_openai_mock
+    """Подменить OpenAI на мок, исключив реальные сетевые вызовы."""
+    from tests.llm_utils import make_openai_mock
 
-        monkeypatch.setattr("openai.OpenAI", make_openai_mock({}))
+    monkeypatch.setattr("openai.OpenAI", make_openai_mock({}))
 
 
 @pytest.fixture(autouse=True)

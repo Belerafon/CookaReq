@@ -25,7 +25,7 @@ An optional log console is shown at the bottom of the window. Interface settings
 
 ## Command-Line Interface
 
-The CLI lives in the `app.cli` module. Example usage:
+The CLI lives in the `app/cli` package. Example usage:
 
 ```bash
 python3 -m app.cli <command> [arguments]

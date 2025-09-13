@@ -2,8 +2,6 @@ import json
 import logging
 from pathlib import Path
 
-import wx
-
 from app.log import logger
 from app.mcp.client import MCPClient
 from app.mcp.server import JsonlHandler, start_server, stop_server
@@ -21,7 +19,7 @@ def test_check_tools_success(tmp_path: Path) -> None:
         settings = settings_with_mcp(
             "127.0.0.1", port, str(tmp_path), "", tmp_path=tmp_path, fmt="toml"
         )
-        client = MCPClient(settings.mcp)
+        client = MCPClient(settings.mcp, confirm=lambda _m: True)
         log_file = tmp_path / "log.jsonl"
         handler = JsonlHandler(str(log_file))
         logger.addHandler(handler)
@@ -53,7 +51,7 @@ def test_check_tools_unauthorized(tmp_path: Path) -> None:
         settings = settings_with_mcp(
             "127.0.0.1", port, str(tmp_path), "wrong", tmp_path=tmp_path
         )
-        client = MCPClient(settings.mcp)
+        client = MCPClient(settings.mcp, confirm=lambda _m: True)
         result = client.check_tools()
         assert result["code"] == "UNAUTHORIZED"
     finally:
@@ -62,15 +60,14 @@ def test_check_tools_unauthorized(tmp_path: Path) -> None:
 
 def test_call_tool_delete_requires_confirmation(monkeypatch) -> None:
     settings = MCPSettings(host="127.0.0.1", port=0, base_path="", require_token=False, token="")
-    client = MCPClient(settings)
 
-    shown = {"called": False}
+    called = {"msg": None}
 
-    def fake_box(*_a, **_k) -> int:
-        shown["called"] = True
-        return wx.NO
+    def confirm(msg: str) -> bool:
+        called["msg"] = msg
+        return False
 
-    monkeypatch.setattr(wx, "MessageBox", fake_box)
+    client = MCPClient(settings, confirm=confirm)
 
     class DummyConn:
         def __init__(self, *a, **k):  # pragma: no cover - should not be used
@@ -80,14 +77,13 @@ def test_call_tool_delete_requires_confirmation(monkeypatch) -> None:
 
     res = client._call_tool("delete_requirement", {"req_id": 1, "rev": 1})
     assert res["error"]["code"] == "CANCELLED"
-    assert shown["called"] is True
+    assert called["msg"] is not None
 
 
 def test_call_tool_delete_confirm_yes(monkeypatch) -> None:
     settings = MCPSettings(host="127.0.0.1", port=0, base_path="", require_token=False, token="")
-    client = MCPClient(settings)
 
-    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
+    client = MCPClient(settings, confirm=lambda _m: True)
 
     events: list[tuple[str, dict | None]] = []
 

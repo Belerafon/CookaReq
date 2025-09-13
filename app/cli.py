@@ -11,6 +11,9 @@ from .core import model, requirements as req_ops
 from .log import configure_logging
 from .settings import AppSettings, load_app_settings
 from .agent import LocalAgent
+from .confirm import confirm, set_confirm, auto_confirm
+
+set_confirm(auto_confirm)
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -53,7 +56,7 @@ def cmd_show(args: argparse.Namespace) -> None:
 def cmd_check(args: argparse.Namespace) -> None:
     """Verify LLM and MCP connectivity using loaded settings."""
 
-    agent = LocalAgent(settings=args.app_settings)
+    agent = LocalAgent(settings=args.app_settings, confirm=confirm)
     results: dict[str, object] = {}
     if args.llm or not (args.llm or args.mcp):
         results["llm"] = agent.check_llm()

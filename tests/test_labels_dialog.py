@@ -76,13 +76,12 @@ def test_labels_dialog_deletes_selected():
     app.Destroy()
 
 
-def test_labels_dialog_clear_all(monkeypatch):
+def test_labels_dialog_clear_all():
     wx = pytest.importorskip("wx")
     app = wx.App()
     from app.ui.labels_dialog import LabelsDialog
 
     dlg = LabelsDialog(None, [Label("a", "#111111")])
-    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
     dlg._on_clear_all(None)
     assert dlg.get_labels() == []
     dlg.Destroy()
@@ -221,12 +220,13 @@ def test_main_frame_manage_labels_deletes_used(monkeypatch, tmp_path):
 
     calls = {}
 
-    def fake_message(msg, *args, **kwargs):
+    def fake_confirm(msg: str) -> bool:
         calls["msg"] = msg
-        return wx.YES
+        return True
 
     monkeypatch.setattr(main_frame_mod, "LabelsDialog", DummyLabelsDialog)
-    monkeypatch.setattr(wx, "MessageBox", fake_message)
+    from app import confirm as confirm_mod
+    confirm_mod.set_confirm(fake_confirm)
 
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, frame.manage_labels_id)
     frame.ProcessEvent(evt)

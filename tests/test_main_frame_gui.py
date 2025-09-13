@@ -95,7 +95,7 @@ def test_main_frame_run_command_menu(monkeypatch):
             called["destroy"] = True
 
     class DummyAgent:
-        def __init__(self, settings):
+        def __init__(self, settings, confirm):
             called["agent"] = True
 
     import app.ui.main_frame as main_frame
@@ -124,7 +124,7 @@ def test_main_frame_run_command_history_persists(monkeypatch, tmp_path):
     monkeypatch.setattr(cmd, "_default_history_path", lambda: history_file)
 
     class DummyAgent:
-        def __init__(self, settings=None):
+        def __init__(self, settings=None, confirm=None):
             pass
         def run_command(self, text):
             return {"ok": 1}

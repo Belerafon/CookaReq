@@ -18,7 +18,7 @@ def test_run_command_list_logs(tmp_path: Path) -> None:
         settings = settings_with_mcp(
             "127.0.0.1", port, str(tmp_path), "", tmp_path=tmp_path
         )
-        client = LocalAgent(settings=settings)
+        client = LocalAgent(settings=settings, confirm=lambda _m: True)
         log_file = tmp_path / "cmd.jsonl"
         handler = JsonlHandler(str(log_file))
         logger.addHandler(handler)
@@ -46,7 +46,7 @@ def test_run_command_error_logs(tmp_path: Path) -> None:
         settings = settings_with_mcp(
             "127.0.0.1", port, str(tmp_path), "", tmp_path=tmp_path
         )
-        client = LocalAgent(settings=settings)
+        client = LocalAgent(settings=settings, confirm=lambda _m: True)
         log_file = tmp_path / "err.jsonl"
         handler = JsonlHandler(str(log_file))
         logger.addHandler(handler)

@@ -4,9 +4,8 @@ import json
 
 import time
 from http.client import HTTPConnection
-from typing import Any, Mapping
+from typing import Any, Mapping, Callable
 
-import wx
 from app.i18n import _
 from app.telemetry import log_event
 from app.mcp.utils import ErrorCode, mcp_error, sanitize
@@ -16,8 +15,9 @@ from app.settings import MCPSettings
 class MCPClient:
     """Simple HTTP client for the MCP server."""
 
-    def __init__(self, settings: MCPSettings) -> None:
+    def __init__(self, settings: MCPSettings, *, confirm: Callable[[str], bool]) -> None:
         self.settings = settings
+        self._confirm = confirm
 
     # ------------------------------------------------------------------
     def check_tools(self) -> dict[str, Any]:
@@ -80,8 +80,7 @@ class MCPClient:
                 msg = _("Delete requirement?")
             else:
                 msg = _("Update requirement?")
-            res = wx.MessageBox(msg, _("Confirm"), style=wx.YES_NO | wx.ICON_WARNING)
-            confirmed = res == wx.YES
+            confirmed = self._confirm(msg)
             log_event("CONFIRM_RESULT", {"tool": name, "confirmed": confirmed})
             if not confirmed:
                 err = mcp_error("CANCELLED", _("Cancelled by user"))["error"]

@@ -8,6 +8,7 @@ from .log import configure_logging
 from .config import ConfigManager
 from .ui.requirement_model import RequirementModel
 from . import i18n
+from .confirm import set_confirm, wx_confirm
 
 
 APP_NAME = "CookaReq"
@@ -35,6 +36,7 @@ def main() -> None:
     """Run wx application with the main frame."""
     configure_logging()
     app = wx.App()
+    set_confirm(wx_confirm)
     config = ConfigManager(APP_NAME)
     language = config.get_language()
     app.locale = init_locale(language)

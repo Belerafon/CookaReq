@@ -215,7 +215,7 @@ class SettingsDialog(wx.Dialog):
         self._llm_status.SetLabel(label)
 
     def _on_check_tools(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
-        client = MCPClient(settings=self._current_settings())
+        client = MCPClient(settings=self._current_settings(), confirm=lambda _m: True)
         result = client.check_tools()
         label = _("ok") if result.get("ok") else _("error")
         self._tools_status.SetLabel(label)

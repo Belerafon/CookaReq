@@ -2,8 +2,6 @@ import json
 import logging
 from pathlib import Path
 
-import wx
-
 from app.log import logger
 from app.agent import LocalAgent
 from app.mcp.server import JsonlHandler, start_server, stop_server
@@ -20,7 +18,7 @@ def test_create_and_delete_requirement_via_llm(tmp_path: Path, monkeypatch) -> N
         settings = settings_with_mcp(
             "127.0.0.1", port, str(tmp_path), "", tmp_path=tmp_path
         )
-        client = LocalAgent(settings=settings)
+        client = LocalAgent(settings=settings, confirm=lambda _m: True)
         log_file = tmp_path / "integration.jsonl"
         handler = JsonlHandler(str(log_file))
         logger.addHandler(handler)
@@ -38,7 +36,6 @@ def test_create_and_delete_requirement_via_llm(tmp_path: Path, monkeypatch) -> N
             assert data["title"] == "LLM test"
             assert data["owner"] == "alice"
             rev = data["revision"]
-            monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
             text_delete = f"Delete requirement 10 with revision {rev}. I confirm the deletion."
             delete_result = client.run_command(text_delete)
             assert delete_result["id"] == 10

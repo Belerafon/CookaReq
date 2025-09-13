@@ -87,7 +87,7 @@ def test_cli_check_uses_agent(tmp_path, monkeypatch, capsys):
     called: dict[str, object] = {}
 
     class DummyAgent:
-        def __init__(self, settings):
+        def __init__(self, settings, confirm):
             called["settings"] = settings
 
         def check_llm(self):

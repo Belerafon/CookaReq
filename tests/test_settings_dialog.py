@@ -195,7 +195,10 @@ def test_llm_agent_checks(monkeypatch):
             return {"ok": True}
 
     monkeypatch.setattr("app.ui.settings_dialog.LLMClient", lambda *, settings: DummyLLM(settings=settings))
-    monkeypatch.setattr("app.ui.settings_dialog.MCPClient", lambda *, settings: DummyMCP(settings=settings))
+    monkeypatch.setattr(
+        "app.ui.settings_dialog.MCPClient",
+        lambda *, settings, confirm: DummyMCP(settings=settings),
+    )
 
     dlg = SettingsDialog(
         None,

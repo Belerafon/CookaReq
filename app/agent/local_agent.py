@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from app.llm.client import LLMClient
 from app.mcp.client import MCPClient
 from app.mcp.utils import ErrorCode, mcp_error
 from app.settings import AppSettings
 from app.telemetry import log_event
+from app.confirm import confirm as default_confirm
 
 
 class LocalAgent:
@@ -20,12 +21,15 @@ class LocalAgent:
         settings: AppSettings | None = None,
         llm: LLMClient | None = None,
         mcp: MCPClient | None = None,
+        confirm: Callable[[str], bool] | None = None,
     ) -> None:
         if settings is not None:
+            if confirm is None:
+                confirm = default_confirm
             if llm is None:
                 llm = LLMClient(settings.llm)
             if mcp is None:
-                mcp = MCPClient(settings.mcp)
+                mcp = MCPClient(settings.mcp, confirm=confirm)
         if llm is None or mcp is None:
             raise TypeError("settings or clients must be provided")
         self._llm = llm

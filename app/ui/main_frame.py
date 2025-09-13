@@ -18,6 +18,7 @@ from app.core.labels import Label
 from app.mcp.controller import MCPController
 from app.settings import AppSettings, LLMSettings, MCPSettings
 from app.agent import LocalAgent
+from app.confirm import confirm
 from .list_panel import ListPanel
 from .editor_panel import EditorPanel
 from .settings_dialog import SettingsDialog
@@ -231,7 +232,7 @@ class MainFrame(wx.Frame):
 
     def on_run_command(self, event: wx.Event) -> None:
         settings = AppSettings(llm=self.llm_settings, mcp=self.mcp_settings)
-        agent = LocalAgent(settings=settings)
+        agent = LocalAgent(settings=settings, confirm=confirm)
         dlg = CommandDialog(self, agent=agent)
         dlg.ShowModal()
         dlg.Destroy()
@@ -298,10 +299,7 @@ class MainFrame(wx.Frame):
                 msg = _(
                     "Labels in use will be removed from requirements:\n%s\nContinue?"
                 ) % "\n".join(lines)
-                res = wx.MessageBox(
-                    msg, _("Confirm"), style=wx.YES_NO | wx.ICON_WARNING
-                )
-                if res != wx.YES:
+                if not confirm(msg):
                     dlg.Destroy()
                     return
                 self.labels_controller.update_labels(

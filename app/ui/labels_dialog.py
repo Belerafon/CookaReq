@@ -1,6 +1,7 @@
 """Dialog for managing label colors."""
 
 from app.i18n import _
+from app.confirm import confirm
 
 import wx
 
@@ -140,12 +141,7 @@ class LabelsDialog(wx.Dialog):
         self.color_picker.Disable()
 
     def _on_clear_all(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
-        res = wx.MessageBox(
-            _("Remove all labels?"),
-            _("Confirm"),
-            style=wx.YES_NO | wx.ICON_WARNING,
-        )
-        if res == wx.YES:
+        if confirm(_("Remove all labels?")):
             self._labels.clear()
             self._populate()
             self.color_picker.Disable()

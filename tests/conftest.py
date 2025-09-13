@@ -23,6 +23,7 @@ _load_dotenv()
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import pytest
+from app.confirm import set_confirm, auto_confirm
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -42,6 +43,12 @@ def _virtual_display():
         yield
     finally:
         display.stop()
+
+
+@pytest.fixture(autouse=True)
+def _auto_confirm():
+    set_confirm(auto_confirm)
+    yield
 
 
 @pytest.hookimpl(tryfirst=True)

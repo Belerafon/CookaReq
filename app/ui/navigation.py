@@ -6,6 +6,8 @@ from ..i18n import _
 from pathlib import Path
 from typing import Callable, Dict
 
+from . import locale
+
 import wx
 
 from ..config import ConfigManager
@@ -80,7 +82,8 @@ class Navigation:
         columns_menu = wx.Menu()
         self._column_items.clear()
         for field in self.available_fields:
-            item = columns_menu.AppendCheckItem(wx.ID_ANY, field)
+            label = locale.field_label(field)
+            item = columns_menu.AppendCheckItem(wx.ID_ANY, label)
             item.Check(field in self.selected_fields)
             self.frame.Bind(wx.EVT_MENU, self.on_toggle_column, item)
             self._column_items[item.GetId()] = field

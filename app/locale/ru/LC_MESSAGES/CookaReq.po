@@ -321,13 +321,16 @@ msgid "Derivation Graph"
 msgstr "Граф выводов"
 
 msgid "Derive"
-msgstr "Вывести"
+msgstr "Создать производное"
 
 msgid "Derived from"
 msgstr "Получено из"
 
 msgid "Derived only"
 msgstr "Только производные"
+
+msgid "Derived count"
+msgstr "Количество производных"
 
 msgid "File"
 msgstr "Файл"
@@ -430,7 +433,7 @@ msgid "Run"
 msgstr "Запустить"
 
 msgid "Run Agent Command\tCtrl+K"
-msgstr "Запустить команду агента\tCtrl+K"
+msgstr "Выполнить команду агента\tCtrl+K"
 
 msgid "Select attachment"
 msgstr "Выберите вложение"

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Tuple, Mapping
 
 import wx
 from openai import OpenAI
 
 from app.log import logger
+from .spec import SYSTEM_PROMPT, TOOLS
 
 
 @dataclass
@@ -68,3 +70,50 @@ class LLMClient:
         response_entry = {"event": "LLM_RESPONSE", "ok": True}
         logger.info("LLM_RESPONSE", extra={"json": response_entry})
         return {"ok": True}
+
+    # ------------------------------------------------------------------
+    def parse_command(self, text: str) -> Tuple[str, Mapping[str, Any]]:
+        """Use the LLM to turn *text* into an MCP tool call.
+
+        The model is instructed to choose exactly one of the predefined tools
+        and provide JSON arguments for it via function calling.  Temperature is
+        set to ``0`` to keep the output deterministic.
+        """
+
+        request_entry = {
+            "event": "LLM_REQUEST",
+            "api_base": self.settings.api_base,
+            "model": self.settings.model,
+            "prompt": text,
+        }
+        logger.info("LLM_REQUEST", extra={"json": request_entry})
+
+        try:
+            completion = self._client.chat.completions.create(
+                model=self.settings.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": text},
+                ],
+                tools=TOOLS,
+                tool_choice="required",
+                temperature=0,
+            )
+            message = completion.choices[0].message
+            tool_call = message.tool_calls[0]
+            name = tool_call.function.name
+            arguments = json.loads(tool_call.function.arguments or "{}")
+            response_entry = {
+                "event": "LLM_RESPONSE",
+                "tool": name,
+                "arguments": arguments,
+            }
+            logger.info("LLM_RESPONSE", extra={"json": response_entry})
+            return name, arguments
+        except Exception as exc:  # pragma: no cover - network errors
+            response_entry = {
+                "event": "LLM_RESPONSE",
+                "error": {"type": type(exc).__name__, "message": str(exc)},
+            }
+            logger.info("LLM_RESPONSE", extra={"json": response_entry})
+            raise

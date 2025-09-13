@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+
 import time
 from dataclasses import dataclass
+
 from http.client import HTTPConnection
 from typing import Any, Mapping
 
@@ -10,26 +12,7 @@ import wx
 
 from app.telemetry import log_event
 from app.mcp.utils import ErrorCode, mcp_error, sanitize
-
-
-@dataclass
-class MCPSettings:
-    """Settings for connecting to the MCP server."""
-
-    host: str
-    port: int
-    base_path: str
-    token: str
-
-    @classmethod
-    def from_config(cls, cfg: wx.Config) -> "MCPSettings":
-        """Load settings from ``wx.Config`` instance."""
-        return cls(
-            host=cfg.Read("mcp_host", "127.0.0.1"),
-            port=cfg.ReadInt("mcp_port", 8000),
-            base_path=cfg.Read("mcp_base_path", ""),
-            token=cfg.Read("mcp_token", ""),
-        )
+from app.mcp.settings import MCPSettings
 
 
 class MCPClient:
@@ -54,7 +37,7 @@ class MCPClient:
             "host": self.settings.host,
             "port": self.settings.port,
             "base_path": self.settings.base_path,
-            "token": self.settings.token,
+            "token": self.settings.token if self.settings.require_token else "",
         }
         start = time.monotonic()
         log_event(
@@ -69,7 +52,7 @@ class MCPClient:
                     {"name": "list_requirements", "arguments": {"per_page": 1}}
                 )
                 headers = {"Content-Type": "application/json"}
-                if self.settings.token:
+                if self.settings.require_token and self.settings.token:
                     headers["Authorization"] = f"Bearer {self.settings.token}"
                 conn.request("POST", path, body=payload, headers=headers)
                 resp = conn.getresponse()
@@ -104,7 +87,7 @@ class MCPClient:
             try:
                 payload = json.dumps({"name": name, "arguments": dict(arguments)})
                 headers = {"Content-Type": "application/json"}
-                if self.settings.token:
+                if self.settings.require_token and self.settings.token:
                     headers["Authorization"] = f"Bearer {self.settings.token}"
                 conn.request("POST", "/mcp", body=payload, headers=headers)
                 resp = conn.getresponse()

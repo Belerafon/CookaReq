@@ -16,12 +16,21 @@ def cfg_from_env(app_name: str) -> wx.Config:
     return cfg
 
 
-def cfg_with_mcp(host: str, port: int, base_path: str, token: str, *, app_name: str) -> wx.Config:
+def cfg_with_mcp(
+    host: str,
+    port: int,
+    base_path: str,
+    token: str,
+    *,
+    app_name: str,
+    require_token: bool = False,
+) -> wx.Config:
     """Return wx.Config with both MCP and LLM settings."""
     cfg = cfg_from_env(app_name)
     cfg.Write("mcp_host", host)
     cfg.WriteInt("mcp_port", port)
     cfg.Write("mcp_base_path", base_path)
+    cfg.WriteBool("mcp_require_token", require_token)
     cfg.Write("mcp_token", token)
     cfg.Flush()
     return cfg

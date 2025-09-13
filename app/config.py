@@ -74,17 +74,21 @@ class ConfigManager:
 
     # ------------------------------------------------------------------
     # MCP server settings
-    def get_mcp_settings(self) -> tuple[str, int, str, str]:
+    def get_mcp_settings(self) -> tuple[str, int, str, bool, str]:
         host = self._cfg.Read("mcp_host", "127.0.0.1")
         port = self._cfg.ReadInt("mcp_port", 8000)
         base_path = self._cfg.Read("mcp_base_path", "")
+        require_token = self._cfg.ReadBool("mcp_require_token", False)
         token = self._cfg.Read("mcp_token", "")
-        return host, port, base_path, token
+        return host, port, base_path, require_token, token
 
-    def set_mcp_settings(self, host: str, port: int, base_path: str, token: str) -> None:
+    def set_mcp_settings(
+        self, host: str, port: int, base_path: str, require_token: bool, token: str
+    ) -> None:
         self._cfg.Write("mcp_host", host)
         self._cfg.WriteInt("mcp_port", port)
         self._cfg.Write("mcp_base_path", base_path)
+        self._cfg.WriteBool("mcp_require_token", require_token)
         self._cfg.Write("mcp_token", token)
         self._cfg.Flush()
 

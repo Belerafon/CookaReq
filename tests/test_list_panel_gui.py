@@ -26,9 +26,8 @@ def _req(id: int, title: str, **kwargs) -> Requirement:
     return Requirement(**base)
 
 
-def test_list_panel_real_widgets():
+def test_list_panel_real_widgets(wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     import app.ui.list_panel as list_panel
     importlib.reload(list_panel)
     frame = wx.Frame(None)
@@ -50,12 +49,10 @@ def test_list_panel_real_widgets():
     assert panel.list.IsShown()
 
     frame.Destroy()
-    app.Destroy()
 
 
-def test_list_panel_context_menu_calls_handlers(monkeypatch):
+def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     import app.ui.list_panel as list_panel
     importlib.reload(list_panel)
     frame = wx.Frame(None)
@@ -94,12 +91,10 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch):
     assert reqs[0].version == "2"
 
     frame.Destroy()
-    app.Destroy()
 
 
-def test_list_panel_context_menu_via_event(monkeypatch):
+def test_list_panel_context_menu_via_event(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     import app.ui.list_panel as list_panel
     importlib.reload(list_panel)
     frame = wx.Frame(None)
@@ -111,7 +106,7 @@ def test_list_panel_context_menu_via_event(monkeypatch):
     frame.GetSizer().Add(panel, 1, wx.EXPAND)
     frame.Layout()
     frame.Show()
-    app.Yield()
+    wx_app.Yield()
 
     called: dict[str, tuple[int, int | None]] = {}
 
@@ -129,12 +124,10 @@ def test_list_panel_context_menu_via_event(monkeypatch):
 
     assert called.get("args") == (0, None)
     frame.Destroy()
-    app.Destroy()
 
 
-def test_bulk_edit_updates_selected_items(monkeypatch):
+def test_bulk_edit_updates_selected_items(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     import app.ui.list_panel as list_panel
     importlib.reload(list_panel)
     frame = wx.Frame(None)
@@ -158,12 +151,10 @@ def test_bulk_edit_updates_selected_items(monkeypatch):
     assert [r.version for r in reqs] == ["2", "2"]
     assert [r.type for r in reqs] == [RequirementType.CONSTRAINT, RequirementType.CONSTRAINT]
     frame.Destroy()
-    app.Destroy()
 
 
-def test_recalc_derived_map_updates_count():
+def test_recalc_derived_map_updates_count(wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     import app.ui.list_panel as list_panel
     importlib.reload(list_panel)
     frame = wx.Frame(None)
@@ -178,4 +169,3 @@ def test_recalc_derived_map_updates_count():
     panel.recalc_derived_map([req1, req2])
     assert panel.list.GetItem(0, 1).GetText() == "0"
     frame.Destroy()
-    app.Destroy()

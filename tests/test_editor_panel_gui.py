@@ -7,13 +7,12 @@ from app.core.labels import Label
 
 def _make_panel():
     wx = pytest.importorskip("wx")
-    _app = wx.App()
     frame = wx.Frame(None)
     from app.ui.editor_panel import EditorPanel
     return EditorPanel(frame)
 
 
-def test_editor_new_requirement_resets(tmp_path):
+def test_editor_new_requirement_resets(tmp_path, wx_app):
     panel = _make_panel()
     data = {
         "id": 1,
@@ -47,7 +46,7 @@ def test_editor_new_requirement_resets(tmp_path):
     assert defaults.units is None
 
 
-def test_editor_add_attachment_included():
+def test_editor_add_attachment_included(wx_app):
     panel = _make_panel()
     panel.new_requirement()
     panel.add_attachment("file.txt", "note")
@@ -56,7 +55,7 @@ def test_editor_add_attachment_included():
     assert [asdict(a) for a in data.attachments] == [{"path": "file.txt", "note": "note"}]
 
 
-def test_id_field_highlight_on_duplicate(tmp_path):
+def test_id_field_highlight_on_duplicate(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.core import store
 
@@ -88,7 +87,7 @@ def test_id_field_highlight_on_duplicate(tmp_path):
     assert panel.fields["id"].GetBackgroundColour() == default
 
 
-def test_editor_load_populates_fields(tmp_path):
+def test_editor_load_populates_fields(tmp_path, wx_app):
     panel = _make_panel()
     data = {
         "id": 1,
@@ -135,7 +134,7 @@ def test_editor_load_populates_fields(tmp_path):
     assert panel.mtime == 42.0
 
 
-def test_editor_clone_resets_path_and_mtime(tmp_path):
+def test_editor_clone_resets_path_and_mtime(tmp_path, wx_app):
     panel = _make_panel()
     panel.load({"id": 1}, path=tmp_path / "old.json", mtime=1.0)
     panel.clone(2)
@@ -144,7 +143,7 @@ def test_editor_clone_resets_path_and_mtime(tmp_path):
     assert panel.mtime is None
 
 
-def test_editor_save_and_delete_roundtrip(tmp_path):
+def test_editor_save_and_delete_roundtrip(tmp_path, wx_app):
     import json
 
     panel = _make_panel()
@@ -166,7 +165,7 @@ def test_editor_save_and_delete_roundtrip(tmp_path):
     assert panel.mtime is None
     assert not saved_path.exists()
 
-def test_editor_toggle_derived_link_updates_data(tmp_path):
+def test_editor_toggle_derived_link_updates_data(tmp_path, wx_app):
     panel = _make_panel()
     data = {
         "id": 2,
@@ -179,7 +178,7 @@ def test_editor_toggle_derived_link_updates_data(tmp_path):
     assert result.derived_from[0].suspect is True
 
 
-def test_editor_loads_links(tmp_path):
+def test_editor_loads_links(tmp_path, wx_app):
     panel = _make_panel()
     data = {
         "id": 5,
@@ -196,7 +195,7 @@ def test_editor_loads_links(tmp_path):
     assert result.links.relates and result.links.relates[0].source_id == 3
 
 
-def test_multiline_fields_resize_dynamically():
+def test_multiline_fields_resize_dynamically(wx_app):
     panel = _make_panel()
     wx = pytest.importorskip("wx")
     panel.new_requirement()
@@ -216,7 +215,7 @@ def test_multiline_fields_resize_dynamically():
     assert shrunk < grown
     assert shrunk >= line_h * 2
 
-def test_rationale_autosizes_without_affecting_statement():
+def test_rationale_autosizes_without_affecting_statement(wx_app):
     panel = _make_panel()
     wx = pytest.importorskip("wx")
     panel.new_requirement()

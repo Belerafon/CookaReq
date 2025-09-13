@@ -8,7 +8,6 @@ from app.core.labels import Label
 
 def _make_panel():
     wx = pytest.importorskip("wx")
-    _app = wx.App()
     frame = wx.Frame(None)
     from app.ui.editor_panel import EditorPanel
     return EditorPanel(frame)
@@ -29,7 +28,7 @@ def _base_data():
     }
 
 
-def test_editor_save_and_delete(tmp_path):
+def test_editor_save_and_delete(tmp_path, wx_app):
     panel = _make_panel()
     panel.new_requirement()
     panel.fields["id"].SetValue("1")
@@ -67,7 +66,7 @@ def test_editor_save_and_delete(tmp_path):
     assert not path.exists()
 
 
-def test_editor_clone(tmp_path):
+def test_editor_clone(tmp_path, wx_app):
     from app.core import store
 
     orig_path = store.save(tmp_path, _base_data())
@@ -84,7 +83,7 @@ def test_editor_clone(tmp_path):
     assert data["title"] == orig_data["title"]
 
 
-def test_get_data_requires_valid_id():
+def test_get_data_requires_valid_id(wx_app):
     panel = _make_panel()
     panel.new_requirement()
     with pytest.raises(ValueError):
@@ -100,7 +99,7 @@ def test_get_data_requires_valid_id():
     assert data.id == 10
 
 
-def test_enum_localization_roundtrip():
+def test_enum_localization_roundtrip(wx_app):
     wx = pytest.importorskip("wx")
     from app.ui import locale
 
@@ -140,7 +139,7 @@ def test_enum_localization_roundtrip():
     assert data.verification == Verification.DEMONSTRATION
 
 
-def test_labels_selection_and_update():
+def test_labels_selection_and_update(wx_app):
     panel = _make_panel()
     panel.update_labels_list([Label("ui", "#ff0000"), Label("backend", "#00ff00")])
     panel.new_requirement()
@@ -155,7 +154,7 @@ def test_labels_selection_and_update():
     assert panel.extra["labels"] == []
 
 
-def test_loading_requirement_without_labels_clears_display():
+def test_loading_requirement_without_labels_clears_display(wx_app):
     panel = _make_panel()
     panel.update_labels_list([Label("ui", "#ff0000")])
     panel.load({"id": 1, "labels": ["ui"]})

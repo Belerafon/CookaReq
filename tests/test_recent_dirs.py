@@ -1,9 +1,8 @@
 import importlib
 import pytest
 
-def test_recent_dirs_history(tmp_path):
+def test_recent_dirs_history(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     import app.ui.list_panel as list_panel
     import app.ui.main_frame as main_frame
     importlib.reload(list_panel)
@@ -23,4 +22,3 @@ def test_recent_dirs_history(tmp_path):
     assert items == frame.recent_dirs
 
     frame.Destroy()
-    app.Destroy()

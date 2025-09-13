@@ -27,8 +27,7 @@ class DummyListPanel:
 
 
 @pytest.mark.parametrize("log_shown", [True, False])
-def test_save_and_restore_layout(tmp_path, log_shown):
-    app = wx.App()
+def test_save_and_restore_layout(tmp_path, log_shown, wx_app):
     cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
 
     frame = wx.Frame(None)
@@ -78,8 +77,7 @@ def test_save_and_restore_layout(tmp_path, log_shown):
         assert not new_log.IsShown()
 
 
-def test_app_settings_round_trip(tmp_path):
-    app = wx.App()
+def test_app_settings_round_trip(tmp_path, wx_app):
     cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
 
     app_settings = AppSettings(
@@ -101,8 +99,7 @@ def test_app_settings_round_trip(tmp_path):
     assert loaded == app_settings
 
 
-def test_sort_settings_round_trip(tmp_path):
-    app = wx.App()
+def test_sort_settings_round_trip(tmp_path, wx_app):
     cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
 
     cfg.set_sort_settings(3, False)
@@ -111,8 +108,7 @@ def test_sort_settings_round_trip(tmp_path):
     assert cfg.ReadBool("sort_ascending") is False
 
 
-def test_restore_layout_without_show(tmp_path):
-    app = wx.App()
+def test_restore_layout_without_show(tmp_path, wx_app):
     cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
 
     # Save initial layout with a known sash position

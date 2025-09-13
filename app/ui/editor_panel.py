@@ -9,7 +9,6 @@ from ..i18n import _
 
 import wx
 import wx.adv
-from wx.lib.dialogs import ScrolledMessageDialog
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from ..core import requirements as req_ops
@@ -935,6 +934,16 @@ class EditorPanel(ScrolledPanel):
         return btn
 
     def _show_help(self, message: str) -> None:
-        dlg = ScrolledMessageDialog(self, message, _("Hint"))
+        dlg = wx.Dialog(self, title=_("Hint"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        text = wx.TextCtrl(
+            dlg,
+            value=message,
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_NONE,
+        )
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(text, 1, wx.EXPAND | wx.ALL, 10)
+        dlg.SetSizerAndFit(sizer)
+        dlg.SetSize((500, 300))
+        wx.CallAfter(dlg.SetFocus)
         dlg.ShowModal()
         dlg.Destroy()

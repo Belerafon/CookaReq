@@ -3,6 +3,22 @@ import sys
 import time
 from pathlib import Path
 
+
+def _load_dotenv() -> None:
+    """Load variables from the project's `.env` file if present."""
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key, value)
+
+
+_load_dotenv()
+
 # Ensure project root is on sys.path for imports
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 

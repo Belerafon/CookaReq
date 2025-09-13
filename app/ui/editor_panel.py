@@ -74,43 +74,100 @@ class EditorPanel(ScrolledPanel):
 
         help_texts = {
             "id": _(
-                "The 'Requirement ID' field must contain a unique integer without prefixes. "
-                "It is used to reference the requirement in documentation and tests."
+                "The 'Requirement ID' is a unique integer used as the stable anchor for a requirement. "
+                "Teams refer to it in traceability matrices, change requests and test reports to ensure everyone talks about the same item. "
+                "Once the identifier appears in external documents it should not be changed to avoid broken references."
             ),
             "title": _(
-                "Short descriptive title displayed in lists. Helps to quickly understand the requirement."
+                "A concise human-readable summary shown in lists and diagrams. "
+                "It lets stakeholders skim large sets of requirements and quickly find relevant topics. "
+                "Use clear keywords so search and sorting produce meaningful results."
             ),
             "statement": _(
-                "Full description of what the system must do or which constraints exist."
+                "The full requirement statement describing what the system must do or the constraint it imposes. "
+                "This wording becomes the authoritative baseline for implementation and contractual obligations. "
+                "Detailed phrasing here prevents ambiguity during design and review."
             ),
             "acceptance": _(
-                "Describe how to verify the requirement. Can be scenarios or measurable criteria."
+                "Acceptance criteria explain how to verify that the requirement is satisfied. "
+                "They may include test scenarios, measurable thresholds or review checklists. "
+                "Well-defined criteria let QA teams plan tests and give product owners a clear basis for acceptance."
             ),
-            "conditions": _("Conditions of execution and modes for the requirement."),
-            "trace_up": _("Related higher level requirements."),
-            "trace_down": _("Related lower level requirements."),
-            "version": _("Current requirement version."),
-            "modified_at": _("Date of last change (set automatically)."),
+            "conditions": _(
+                "Operating conditions and modes under which the requirement applies. "
+                "Describe environments, performance ranges or user roles that influence validity. "
+                "Such context helps engineers design correctly and testers reproduce the right setup."
+            ),
+            "trace_up": _(
+                "Links to higher-level requirements or stakeholder needs. "
+                "Upward traceability shows why this requirement exists and simplifies impact analysis when parents change. "
+                "Use it to prove coverage of system objectives."
+            ),
+            "trace_down": _(
+                "References to lower-level derived requirements, design elements or test cases. "
+                "Downward traceability reveals how the requirement will be implemented and verified. "
+                "It supports audits and helps detect missing implementation pieces."
+            ),
+            "version": _(
+                "Sequential version number for change control. "
+                "Increase it whenever the requirement text changes to keep a revision history. "
+                "Versioning enables baselining and comparison of snapshots during reviews."
+            ),
+            "modified_at": _(
+                "Date and time of the last edit. "
+                "The value is filled automatically and aids audit trails. "
+                "Reviewers can sort by this field to focus on recently modified items."
+            ),
             "owner": _(
-                "Person or team responsible for the requirement. Provide a name or role."
+                "Person or team responsible for the requirement. "
+                "The owner coordinates discussions, approves updates and answers questions from other stakeholders. "
+                "Assigning ownership clarifies accountability and speeds up decisions."
             ),
             "source": _(
-                "Source of the requirement: document, customer request or regulation."
+                "Origin of the requirement such as a customer request, regulation or design document. "
+                "Recording the source explains why the requirement exists and where to look for additional context. "
+                "This trace is essential when validating compliance or revisiting negotiations."
             ),
-            "type": _("Choose requirement type: functional, constraint, interface, etc."),
+            "type": _(
+                "Classification of the requirement: functional, constraint, interface or quality attribute. "
+                "Types help filter large sets, assign specialists and apply different review processes. "
+                "Consistent categorization improves reporting and reuse."
+            ),
             "status": _(
-                "Current processing status: draft, in review, approved, etc."
+                "Lifecycle state like draft, in review, approved or retired. "
+                "The status communicates readiness and controls workflow gates. "
+                "Dashboards and metrics rely on it to show project progress."
             ),
             "priority": _(
-                "Importance of the requirement. High priority is implemented earlier."
+                "Relative importance or urgency of the requirement. "
+                "High-priority items drive planning and resource allocation. "
+                "Use priority to focus effort on the capabilities that deliver most value."
             ),
             "verification": _(
-                "Method of verification: inspection, analysis, demonstration, test."
+                "Preferred method to prove compliance: inspection, analysis, demonstration or test. "
+                "Selecting a method early guides preparation of verification activities and needed tools. "
+                "It also clarifies expectations for acceptance."
             ),
-            "rationale": _("Reasoning for the derivation."),
-            "assumptions": _("Assumptions used during derivation."),
-            "method": _("Derivation method."),
-            "margin": _("Applied margin."),
+            "rationale": _(
+                "Explanation of why the requirement exists or how it was derived. "
+                "Capturing rationale preserves design intent and helps future maintainers understand trade-offs. "
+                "This background is valuable during change discussions or audits."
+            ),
+            "assumptions": _(
+                "Assumptions made while formulating the requirement, such as available technologies or expected user behavior. "
+                "Listing assumptions exposes risks and clarifies the context that might change. "
+                "Revisit them regularly to ensure the requirement remains valid."
+            ),
+            "method": _(
+                "Technique used to derive the requirement, for example decomposition, modeling or stakeholder interviews. "
+                "Knowing the derivation method helps reviewers assess validity and reproduce the reasoning if needed. "
+                "It documents the path from source to requirement."
+            ),
+            "margin": _(
+                "Safety or performance margin applied during derivation. "
+                "Record extra capacity or tolerance added to cover uncertainties. "
+                "Tracking margins keeps risk decisions transparent and supports future recalculations."
+            ),
         }
 
         def make_help_button(message: str) -> wx.Button:

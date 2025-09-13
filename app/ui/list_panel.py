@@ -175,21 +175,13 @@ class ListPanel(wx.Panel):
         self.list.ClearColumns()
         self.list.AppendTextColumn(_("Title"), 0)
         for idx, field in enumerate(self.columns, start=1):
-
+            label = locale.field_label(field)
             if field == "labels":
                 self.renderer = LabelBadgeRenderer(self)
-                col = dv.DataViewColumn(_("Labels"), self.renderer, idx)
+                col = dv.DataViewColumn(label, self.renderer, idx)
                 self.list.AppendColumn(col)
             else:
-                self.list.AppendTextColumn(field, idx)
-
-            self.list.InsertColumn(idx, locale.field_label(field))
-        ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
-        try:  # remove mixin's default binding and use our own
-            self.list.Unbind(wx.EVT_LIST_COL_CLICK)
-        except Exception:  # pragma: no cover - Unbind may not exist
-            pass
-        self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
+                self.list.AppendTextColumn(label, idx)
 
 
     def load_column_widths(self, config: wx.Config) -> None:

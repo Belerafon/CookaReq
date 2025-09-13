@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import threading
-import datetime
 from typing import Mapping, Optional
 
 from fastapi import FastAPI, Request
@@ -21,6 +20,7 @@ import uvicorn
 from mcp.server.fastmcp import FastMCP
 
 from ..log import JsonlHandler, configure_logging, logger
+from ..util.time import utc_now_iso
 from .utils import ErrorCode, mcp_error, sanitize
 from . import tools_read, tools_write
 
@@ -66,7 +66,7 @@ def _log_request(request: Request, status: int) -> None:
     headers = sanitize(dict(request.headers))
     query = sanitize(dict(request.query_params))
     entry = {
-        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+        "timestamp": utc_now_iso(),
         "method": request.method,
         "path": request.url.path,
         "query": query,

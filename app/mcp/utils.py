@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import datetime
 from enum import Enum
 from typing import Any, Mapping
 
 from ..log import logger
 from ..telemetry import sanitize
+from ..util.time import utc_now_iso
 
 
 def log_tool(
@@ -36,7 +36,7 @@ def log_tool(
     """
 
     entry = {
-        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+        "timestamp": utc_now_iso(),
         "tool": tool,
         "params": sanitize(params),
     }

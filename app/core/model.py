@@ -5,6 +5,8 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import List, Optional, Any
 
+from ..util.time import normalize_timestamp
+
 
 class RequirementType(str, Enum):
     REQUIREMENT = "requirement"
@@ -141,12 +143,16 @@ def requirement_from_dict(data: dict[str, Any]) -> Requirement:
         trace_up=data.get("trace_up", ""),
         trace_down=data.get("trace_down", ""),
         version=data.get("version", ""),
-        modified_at=data.get("modified_at", ""),
+        modified_at=normalize_timestamp(data.get("modified_at")),
         units=units,
         labels=list(data.get("labels", [])),
         attachments=attachments,
         revision=data.get("revision", 1),
-        approved_at=data.get("approved_at"),
+        approved_at=(
+            normalize_timestamp(data.get("approved_at"))
+            if data.get("approved_at")
+            else None
+        ),
         notes=data.get("notes", ""),
         parent=parent,
         derived_from=derived_from,

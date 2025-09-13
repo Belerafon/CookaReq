@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence, Tuple
-from datetime import datetime
 
 from .model import Requirement, requirement_from_dict, Status
 from .labels import Label
@@ -23,15 +22,10 @@ from .store import (
     load_labels as store_load_labels,
     save_labels as store_save_labels,
 )
+from ..util.time import local_now_str, normalize_timestamp
 
 # Re-export searchable fields for UI components
 SEARCHABLE_FIELDS = core_search.SEARCHABLE_FIELDS
-
-
-def _current_timestamp() -> str:
-    """Return current time in unified string format."""
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
 
 def load_all(directory: str | Path) -> list[Requirement]:
     """Load all requirements from *directory*.
@@ -110,7 +104,9 @@ def save_requirement(
         obj = data
     else:
         obj = requirement_from_dict(dict(data))
-    obj.modified_at = modified_at or _current_timestamp()
+    obj.modified_at = (
+        normalize_timestamp(modified_at) if modified_at else local_now_str()
+    )
     return save(directory, obj, mtime=mtime)
 
 

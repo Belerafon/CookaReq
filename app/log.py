@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import datetime
 import json
 import logging
 from typing import Any
+
+from .util.time import utc_now_iso
 
 logger = logging.getLogger("cookareq")
 
@@ -22,7 +23,7 @@ class JsonlHandler(logging.Handler):
         if data is None:
             data = {"message": record.getMessage(), "level": record.levelname}
         if "timestamp" not in data:
-            data["timestamp"] = datetime.datetime.now(datetime.UTC).isoformat()
+            data["timestamp"] = utc_now_iso()
         with open(self.filename, "a", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False)
             fh.write("\n")

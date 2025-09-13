@@ -1,12 +1,13 @@
 """Tests for application icon handling."""
 
-import wx
+import pytest
 
 from app.ui.main_frame import MainFrame
 
 
 def test_main_frame_loads_multiple_icon_sizes(wx_app):
     """Main frame should expose all icon sizes for taskbar usage."""
+    wx = pytest.importorskip("wx")
     frame = MainFrame(None)
     try:
         bundle = frame.GetIcons()

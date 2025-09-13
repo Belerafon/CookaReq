@@ -26,6 +26,7 @@ from ..core.model import (
 )
 from . import locale
 from .label_selection_dialog import LabelSelectionDialog
+from .helpers import create_help_static_box
 
 
 class EditorPanel(ScrolledPanel):
@@ -155,12 +156,49 @@ class EditorPanel(ScrolledPanel):
                 "Listing assumptions exposes risks and clarifies the context that might change. "
                 "Revisit them regularly to ensure the requirement remains valid."
             ),
+            "attachments": _(
+                "Supplementary files that give additional context like diagrams, logs or calculations. "
+                "Attachments travel with the requirement so reviewers and implementers see the same supporting evidence. "
+                "Keep file notes concise to explain relevance."
+            ),
+            "approved_at": _(
+                "Date when the requirement was formally accepted by stakeholders. "
+                "Recording the approval moment is useful for audits and for tracking baselines. "
+                "Leave empty while the requirement is still under discussion."
+            ),
+            "notes": _(
+                "Free-form remarks that do not fit other fields. "
+                "Use notes to capture review feedback, open questions or implementation hints. "
+                "Unlike acceptance criteria they are not part of the requirement contract."
+            ),
+            "labels": _(
+                "Tags that categorize the requirement. "
+                "Consistent labeling enables powerful filtering and helps group related items. "
+                "Use shared presets to avoid typos and duplicates."
+            ),
+            "parent": _(
+                "Reference to the immediate higher-level requirement. "
+                "Establishing parenthood keeps the traceability chain intact and simplifies impact analysis. "
+                "Clear links are essential during audits and design reviews."
+            ),
+            "verifies": _(
+                "Links to requirements that this one verifies or tests. "
+                "Use it to show downward traceability towards implementation or validation artifacts. "
+                "Mark suspect links when changes might invalidate verification."
+            ),
+            "relates": _(
+                "Associations with requirements touching the same topic. "
+                "Related links help discover dependencies and avoid conflicting decisions. "
+                "They are informational and do not imply hierarchy."
+            ),
+            "derived_from": _(
+                "Source requirements from which this one was derived. "
+                "Capturing derivation clarifies reasoning and lets teams propagate changes upstream. "
+                "Keep suspect flag to signal when the parent requirement has changed."
+            ),
         }
 
-        def make_help_button(message: str) -> wx.Button:
-            btn = wx.Button(self, label="?", style=wx.BU_EXACTFIT)
-            btn.Bind(wx.EVT_BUTTON, lambda _evt, msg=message: self._show_help(msg))
-            return btn
+        self._help_texts = help_texts
 
         sizer = wx.BoxSizer(wx.VERTICAL)
 
@@ -175,7 +213,7 @@ class EditorPanel(ScrolledPanel):
             ("source", True),
         ]:
             label = wx.StaticText(self, label=labels[name])
-            help_btn = make_help_button(help_texts[name])
+            help_btn = self._make_help_button(self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -196,7 +234,7 @@ class EditorPanel(ScrolledPanel):
         def add_text_field(name: str) -> None:
             container = wx.BoxSizer(wx.VERTICAL)
             label = wx.StaticText(self, label=labels[name])
-            help_btn = make_help_button(help_texts[name])
+            help_btn = self._make_help_button(self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -212,7 +250,7 @@ class EditorPanel(ScrolledPanel):
             codes = getattr(locale, name.upper()).keys()
             choices = [locale.code_to_label(name, code) for code in codes]
             choice = wx.Choice(self, choices=choices)
-            help_btn = make_help_button(help_texts[name])
+            help_btn = self._make_help_button(self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(choice, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -243,8 +281,9 @@ class EditorPanel(ScrolledPanel):
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
 
         # attachments section --------------------------------------------
-        a_box = wx.StaticBox(self, label=_("Attachments"))
-        a_sizer = wx.StaticBoxSizer(a_box, wx.VERTICAL)
+        a_box, a_sizer = create_help_static_box(
+            self, _("Attachments"), self._help_texts["attachments"], self._show_help
+        )
         self.attachments_list = wx.ListCtrl(
             a_box, style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL
         )
@@ -262,24 +301,35 @@ class EditorPanel(ScrolledPanel):
         sizer.Add(a_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # approval date and notes ---------------------------------------
+        container = wx.BoxSizer(wx.VERTICAL)
         row = wx.BoxSizer(wx.HORIZONTAL)
         label = wx.StaticText(self, label=_("Approved at"))
+        help_btn = self._make_help_button(self._help_texts["approved_at"])
+        row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+        row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        container.Add(row, 0, wx.ALL, 5)
         self.approved_picker = wx.adv.DatePickerCtrl(
             self, style=wx.adv.DP_ALLOWNONE
         )
-        row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-        row.Add(self.approved_picker, 0, wx.ALIGN_CENTER_VERTICAL)
-        sizer.Add(row, 0, wx.ALL, 5)
+        container.Add(self.approved_picker, 0, wx.ALL, 5)
+        sizer.Add(container, 0, wx.ALL, 5)
 
+        container = wx.BoxSizer(wx.VERTICAL)
+        row = wx.BoxSizer(wx.HORIZONTAL)
         label = wx.StaticText(self, label=_("Notes"))
-        sizer.Add(label, 0, wx.ALL, 5)
+        help_btn = self._make_help_button(self._help_texts["notes"])
+        row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+        row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        container.Add(row, 0, wx.ALL, 5)
         self.notes_ctrl = wx.TextCtrl(self, style=wx.TE_MULTILINE)
         self._bind_autosize(self.notes_ctrl)
-        sizer.Add(self.notes_ctrl, 0, wx.EXPAND | wx.ALL, 5)
+        container.Add(self.notes_ctrl, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(container, 0, wx.EXPAND | wx.ALL, 5)
 
         # labels section -------------------------------------------------
-        box = wx.StaticBox(self, label=_("Labels"))
-        box_sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
+        box, box_sizer = create_help_static_box(
+            self, _("Labels"), self._help_texts["labels"], self._show_help
+        )
         self.labels_panel = wx.Panel(box)
         self.labels_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
         self.labels_panel.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)
@@ -289,8 +339,9 @@ class EditorPanel(ScrolledPanel):
         self.parent: dict[str, Any] | None = None
 
         # parent section -------------------------------------------------
-        pr_box = wx.StaticBox(self, label=_("Parent"))
-        pr_sizer = wx.StaticBoxSizer(pr_box, wx.VERTICAL)
+        pr_box, pr_sizer = create_help_static_box(
+            self, _("Parent"), self._help_texts["parent"], self._show_help
+        )
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.parent_id = wx.TextCtrl(pr_box)
         row.Add(self.parent_id, 1, wx.EXPAND | wx.RIGHT, 5)
@@ -306,16 +357,20 @@ class EditorPanel(ScrolledPanel):
         sizer.Add(pr_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # verifies section ----------------------------------------------
-        ver_sizer = self._create_links_section(_("Verifies"), "verifies")
+        ver_sizer = self._create_links_section(
+            _("Verifies"), "verifies", help_key="verifies"
+        )
         sizer.Add(ver_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # relates section -----------------------------------------------
-        rel_sizer = self._create_links_section(_("Relates"), "relates")
+        rel_sizer = self._create_links_section(
+            _("Relates"), "relates", help_key="relates"
+        )
         sizer.Add(rel_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # derived from section -------------------------------------------
         df_sizer = self._create_links_section(
-            _("Derived from"), "derived_from", id_name="derived_id", list_name="derived_list"
+            _("Derived from"), "derived_from", help_key="derived_from", id_name="derived_id", list_name="derived_list"
         )
         sizer.Add(df_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
@@ -325,7 +380,11 @@ class EditorPanel(ScrolledPanel):
             ("assumptions", True),
         ]:
             label = wx.StaticText(self, label=labels[name])
-            sizer.Add(label, 0, wx.ALL, 5)
+            help_btn = self._make_help_button(self._help_texts[name])
+            row = wx.BoxSizer(wx.HORIZONTAL)
+            row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+            row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+            sizer.Add(row, 0, wx.ALL, 5)
             style = wx.TE_MULTILINE if multiline else 0
             ctrl = wx.TextCtrl(self, style=style)
             if multiline:
@@ -404,10 +463,17 @@ class EditorPanel(ScrolledPanel):
             self._suspend_events = False
 
     def _create_links_section(
-        self, label: str, attr: str, *, id_name: str | None = None, list_name: str | None = None
+        self,
+        label: str,
+        attr: str,
+        *,
+        help_key: str,
+        id_name: str | None = None,
+        list_name: str | None = None,
     ) -> wx.StaticBoxSizer:
-        box = wx.StaticBox(self, label=label)
-        sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
+        box, sizer = create_help_static_box(
+            self, label, self._help_texts[help_key], self._show_help
+        )
         row = wx.BoxSizer(wx.HORIZONTAL)
         id_ctrl = wx.TextCtrl(box)
         row.Add(id_ctrl, 1, wx.EXPAND | wx.RIGHT, 5)
@@ -858,6 +924,11 @@ class EditorPanel(ScrolledPanel):
             self.attachments_list.SetItem(idx, 1, note)
 
     # helpers ----------------------------------------------------------
+    def _make_help_button(self, message: str, parent: wx.Window | None = None) -> wx.Button:
+        btn = wx.Button(parent or self, label="?", style=wx.BU_EXACTFIT)
+        btn.Bind(wx.EVT_BUTTON, lambda _evt, msg=message: self._show_help(msg))
+        return btn
+
     def _show_help(self, message: str) -> None:
         dlg = ScrolledMessageDialog(self, message, _("Hint"))
         dlg.ShowModal()

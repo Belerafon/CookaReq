@@ -391,8 +391,8 @@ class MainFrame(wx.Frame):
         else:
             self.selected_fields.append(field)
         self.panel.set_columns(self.selected_fields)
-        self.panel.load_column_widths(self.config.wx)
-        self.panel.load_column_order(self.config.wx)
+        self.panel.load_column_widths(self.config)
+        self.panel.load_column_order(self.config)
         self.config.set_columns(self.selected_fields)
 
     def on_toggle_log_console(self, event: wx.CommandEvent) -> None:

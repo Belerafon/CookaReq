@@ -89,6 +89,22 @@ class ConfigManager:
         self._cfg.Flush()
 
     # ------------------------------------------------------------------
+    # LLM client settings
+    def get_llm_settings(self) -> tuple[str, str, str, int]:
+        api_base = self._cfg.Read("llm_api_base", "")
+        model = self._cfg.Read("llm_model", "")
+        api_key = self._cfg.Read("llm_api_key", "")
+        timeout = self._cfg.ReadInt("llm_timeout", 60)
+        return api_base, model, api_key, timeout
+
+    def set_llm_settings(self, api_base: str, model: str, api_key: str, timeout: int) -> None:
+        self._cfg.Write("llm_api_base", api_base)
+        self._cfg.Write("llm_model", model)
+        self._cfg.Write("llm_api_key", api_key)
+        self._cfg.WriteInt("llm_timeout", timeout)
+        self._cfg.Flush()
+
+    # ------------------------------------------------------------------
     # sort settings
     def get_sort_settings(self) -> tuple[int, bool]:
         column = self._cfg.ReadInt("sort_column", -1)

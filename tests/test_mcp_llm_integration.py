@@ -5,7 +5,7 @@ from pathlib import Path
 import wx
 
 from app.log import logger
-from app.mcp.client import MCPClient
+from app.agent import LocalAgent
 from app.mcp.server import JsonlHandler, start_server, stop_server
 from tests.llm_utils import cfg_with_mcp
 from tests.mcp_utils import _wait_until_ready
@@ -18,7 +18,7 @@ def test_create_and_delete_requirement_via_llm(tmp_path: Path, monkeypatch) -> N
     try:
         _wait_until_ready(port)
         cfg = cfg_with_mcp("127.0.0.1", port, str(tmp_path), "", app_name="CookaReq-LLM-Int")
-        client = MCPClient(cfg)
+        client = LocalAgent(cfg)
         log_file = tmp_path / "integration.jsonl"
         handler = JsonlHandler(str(log_file))
         logger.addHandler(handler)

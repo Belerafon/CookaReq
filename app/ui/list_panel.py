@@ -77,9 +77,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         wx.Panel.__init__(self, parent)
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
+        orient = getattr(wx, "HORIZONTAL", 0)
+        right = getattr(wx, "RIGHT", 0)
+        align_center = getattr(wx, "ALIGN_CENTER_VERTICAL", 0)
+        btn_row = wx.BoxSizer(orient)
         self.filter_btn = wx.Button(self, label=_("Filters"))
+        self.reset_btn = wx.Button(self, label=_("Reset"))
+        self.filter_summary = wx.StaticText(self, label="")
+        btn_row.Add(self.filter_btn, 0, right, 5)
+        btn_row.Add(self.reset_btn, 0, right, 5)
+        btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = ULC.UltimateListCtrl(self, agwStyle=ULC.ULC_REPORT)
-        self._label_choices: list[str] = []
+        self._labels: list[Label] = []
         self._label_colors: dict[str, str] = {}
         self.current_filters: dict = {}
         ColumnSorterMixin.__init__(self, 1)
@@ -92,12 +101,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._sort_column = -1
         self._sort_ascending = True
         self._setup_columns()
-        sizer.Add(self.filter_btn, 0, wx.ALL, 5)
+        sizer.Add(btn_row, 0, wx.ALL, 5)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         self.SetSizer(sizer)
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
         self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
         self.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter)
+        self.reset_btn.Bind(wx.EVT_BUTTON, lambda evt: self.reset_filters())
 
 # ColumnSorterMixin requirement
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
@@ -226,6 +236,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.model.set_has_derived(self.current_filters.get("has_derived", False))
         self.model.set_suspect_only(self.current_filters.get("suspect_only", False))
         self._refresh()
+        self._update_filter_summary()
 
     def set_label_filter(self, labels: List[str]) -> None:
         self.apply_filters({"labels": labels})
@@ -238,16 +249,48 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def update_labels_list(self, labels: list[Label]) -> None:
         """Update available labels for the filter dialog and renderer."""
+        self._labels = list(labels)
         self._label_colors = {lbl.name: lbl.color for lbl in labels}
-        self._label_choices = sorted(self._label_colors)
 
     def _on_filter(self, event):  # pragma: no cover - simple event binding
-        dlg = FilterDialog(self, labels=self._label_choices, values=self.current_filters)
+        dlg = FilterDialog(self, labels=self._labels, values=self.current_filters)
         if dlg.ShowModal() == wx.ID_OK:
             self.apply_filters(dlg.get_filters())
         dlg.Destroy()
         if hasattr(event, "Skip"):
             event.Skip()
+
+    def reset_filters(self) -> None:
+        """Clear all applied filters and update UI."""
+        self.current_filters = {}
+        self.apply_filters({})
+
+    def _update_filter_summary(self) -> None:
+        """Update text describing currently active filters."""
+        parts: list[str] = []
+        if self.current_filters.get("query"):
+            parts.append(_("Query") + f": {self.current_filters['query']}")
+        labels = self.current_filters.get("labels") or []
+        if labels:
+            parts.append(_("Labels") + ": " + ", ".join(labels))
+        status = self.current_filters.get("status")
+        if status:
+            parts.append(_("Status") + f": {locale.STATUS.get(status, status)}")
+        if self.current_filters.get("is_derived"):
+            parts.append(_("Derived only"))
+        if self.current_filters.get("has_derived"):
+            parts.append(_("Has derived"))
+        if self.current_filters.get("suspect_only"):
+            parts.append(_("Suspect only"))
+        field_queries = self.current_filters.get("field_queries", {})
+        for field, value in field_queries.items():
+            if value:
+                parts.append(f"{locale.field_label(field)}: {value}")
+        summary = "; ".join(parts)
+        if hasattr(self.filter_summary, "SetLabel"):
+            self.filter_summary.SetLabel(summary)
+        else:  # pragma: no cover - test stub
+            self.filter_summary.label = summary
 
     def _refresh(self) -> None:
         """Reload list control from the model."""

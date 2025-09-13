@@ -265,7 +265,12 @@ def test_list_panel_has_filter_and_list(monkeypatch):
 
     sizer = panel.GetSizer()
     children = [child.GetWindow() for child in sizer.GetChildren()]
-    assert children == [panel.filter_btn, panel.list]
+    assert len(children) == 2
+    btn_row = children[0]
+    assert isinstance(btn_row, wx_stub.BoxSizer)
+    inner = [child.GetWindow() for child in btn_row.GetChildren()]
+    assert inner == [panel.filter_btn, panel.reset_btn, panel.filter_summary]
+    assert children[1] is panel.list
 
 
 def test_column_click_sorts(monkeypatch):

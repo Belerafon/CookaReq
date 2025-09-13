@@ -261,20 +261,37 @@ class EditorPanel(ScrolledPanel):
         box_sizer.Add(self.labels_panel, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(box_sizer, 0, wx.EXPAND | wx.ALL, 5)
         self._label_defs: list[Label] = []
+        self.parent: dict[str, Any] | None = None
+
+        # parent section -------------------------------------------------
+        pr_box = wx.StaticBox(self, label=_("Parent"))
+        pr_sizer = wx.StaticBoxSizer(pr_box, wx.VERTICAL)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.parent_id = wx.TextCtrl(pr_box)
+        row.Add(self.parent_id, 1, wx.EXPAND | wx.RIGHT, 5)
+        set_parent_btn = wx.Button(pr_box, label=_("Set"))
+        set_parent_btn.Bind(wx.EVT_BUTTON, self._on_set_parent)
+        row.Add(set_parent_btn, 0, wx.RIGHT, 5)
+        clear_parent_btn = wx.Button(pr_box, label=_("Clear"))
+        clear_parent_btn.Bind(wx.EVT_BUTTON, self._on_clear_parent)
+        row.Add(clear_parent_btn, 0)
+        pr_sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
+        self.parent_display = wx.StaticText(pr_box, label=_("(none)"))
+        pr_sizer.Add(self.parent_display, 0, wx.ALL, 5)
+        sizer.Add(pr_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
+        # verifies section ----------------------------------------------
+        ver_sizer = self._create_links_section(_("Verifies"), "verifies")
+        sizer.Add(ver_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
+        # relates section -----------------------------------------------
+        rel_sizer = self._create_links_section(_("Relates"), "relates")
+        sizer.Add(rel_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # derived from section -------------------------------------------
-        df_box = wx.StaticBox(self, label=_("Derived from"))
-        df_sizer = wx.StaticBoxSizer(df_box, wx.VERTICAL)
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        self.derived_id = wx.TextCtrl(df_box)
-        row.Add(self.derived_id, 1, wx.EXPAND | wx.RIGHT, 5)
-        add_link_btn = wx.Button(df_box, label=_("Add"))
-        add_link_btn.Bind(wx.EVT_BUTTON, self._on_add_link)
-        row.Add(add_link_btn, 0)
-        df_sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
-        self.derived_list = wx.CheckListBox(df_box, choices=[])
-        self.derived_list.Bind(wx.EVT_CHECKLISTBOX, self._on_link_toggle)
-        df_sizer.Add(self.derived_list, 1, wx.EXPAND | wx.ALL, 5)
+        df_sizer = self._create_links_section(
+            _("Derived from"), "derived_from", id_name="derived_id", list_name="derived_list"
+        )
         sizer.Add(df_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # derivation details ---------------------------------------------
@@ -320,6 +337,7 @@ class EditorPanel(ScrolledPanel):
         self._app = wx.GetApp()
         self._refresh_labels_display()
         self._refresh_attachments()
+        self._refresh_parent_display()
 
     def _bind_autosize(self, ctrl: wx.TextCtrl) -> None:
         """Register multiline text control for dynamic height."""
@@ -349,6 +367,36 @@ class EditorPanel(ScrolledPanel):
         for ctrl in self._autosize_fields:
             self._auto_resize_text(ctrl)
 
+    def _create_links_section(
+        self, label: str, attr: str, *, id_name: str | None = None, list_name: str | None = None
+    ) -> wx.StaticBoxSizer:
+        box = wx.StaticBox(self, label=label)
+        sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        id_ctrl = wx.TextCtrl(box)
+        row.Add(id_ctrl, 1, wx.EXPAND | wx.RIGHT, 5)
+        add_btn = wx.Button(box, label=_("Add"))
+        add_btn.Bind(wx.EVT_BUTTON, lambda _evt, a=attr: self._on_add_link_generic(a))
+        row.Add(add_btn, 0, wx.RIGHT, 5)
+        remove_btn = wx.Button(box, label=_("Remove"))
+        remove_btn.Bind(wx.EVT_BUTTON, lambda _evt, a=attr: self._on_remove_link_generic(a))
+        row.Add(remove_btn, 0)
+        sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
+        lst = wx.CheckListBox(box, choices=[])
+        lst.Bind(wx.EVT_CHECKLISTBOX, lambda _evt, a=attr: self._toggle_links(a))
+        sizer.Add(lst, 1, wx.EXPAND | wx.ALL, 5)
+        id_attr = id_name or f"{attr}_id"
+        list_attr = list_name or f"{attr}_list"
+        setattr(self, id_attr, id_ctrl)
+        setattr(self, list_attr, lst)
+        setattr(self, attr, [])
+        return sizer
+
+    def _link_widgets(self, attr: str):
+        id_attr = "derived_id" if attr == "derived_from" else f"{attr}_id"
+        list_attr = "derived_list" if attr == "derived_from" else f"{attr}_list"
+        return getattr(self, id_attr), getattr(self, list_attr), getattr(self, attr)
+
     # basic operations -------------------------------------------------
     def set_directory(self, directory: str | Path | None) -> None:
         """Set working directory for ID validation."""
@@ -368,6 +416,9 @@ class EditorPanel(ScrolledPanel):
             choice.SetStringSelection(defaults[name])
         self.attachments = []
         self.derived_from = []
+        self.verifies = []
+        self.relates = []
+        self.parent = None
         self.current_path = None
         self.mtime = None
         self.original_id = None
@@ -384,6 +435,11 @@ class EditorPanel(ScrolledPanel):
         self._refresh_attachments()
         self.derived_list.Set([])
         self.derived_id.SetValue("")
+        self.verifies_list.Set([])
+        self.verifies_id.SetValue("")
+        self.relates_list.Set([])
+        self.relates_id.SetValue("")
+        self._refresh_parent_display()
         for ctrl in self.derivation_fields.values():
             ctrl.SetValue("")
         self._auto_resize_all()
@@ -408,6 +464,21 @@ class EditorPanel(ScrolledPanel):
         for i, link in enumerate(self.derived_from):
             self.derived_list.Check(i, link.get("suspect", False))
         self.derived_id.SetValue("")
+        links = data.get("links", {})
+        self.verifies = [dict(l) for l in links.get("verifies", [])]
+        items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.verifies]
+        self.verifies_list.Set(items)
+        for i, link in enumerate(self.verifies):
+            self.verifies_list.Check(i, link.get("suspect", False))
+        self.verifies_id.SetValue("")
+        self.relates = [dict(l) for l in links.get("relates", [])]
+        items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.relates]
+        self.relates_list.Set(items)
+        for i, link in enumerate(self.relates):
+            self.relates_list.Check(i, link.get("suspect", False))
+        self.relates_id.SetValue("")
+        self.parent = dict(data.get("parent", {})) or None
+        self._refresh_parent_display()
         for name, choice in self.enums.items():
             mapping = getattr(locale, name.upper())
             code = data.get(name, next(iter(mapping)))
@@ -450,6 +521,12 @@ class EditorPanel(ScrolledPanel):
         self.original_id = None
         self.derived_from = []
         self.derived_list.Set([])
+        self.verifies = []
+        self.verifies_list.Set([])
+        self.relates = []
+        self.relates_list.Set([])
+        self.parent = None
+        self._refresh_parent_display()
         for ctrl in self.derivation_fields.values():
             ctrl.SetValue("")
         self._auto_resize_all()
@@ -490,6 +567,13 @@ class EditorPanel(ScrolledPanel):
             "revision": self.extra.get("revision", 1),
             "derived_from": list(self.derived_from),
         }
+        if self.parent:
+            data["parent"] = dict(self.parent)
+        if self.verifies or self.relates:
+            data["links"] = {
+                "verifies": list(self.verifies),
+                "relates": list(self.relates),
+            }
         qty = self.units_fields["quantity"].GetValue().strip()
         nom = self.units_fields["nominal"].GetValue().strip()
         tol = self.units_fields["tolerance"].GetValue().strip()
@@ -612,9 +696,10 @@ class EditorPanel(ScrolledPanel):
         if idx != -1:
             del self.attachments[idx]
             self._refresh_attachments()
-
-    def _on_add_link(self, _event: wx.CommandEvent) -> None:
-        value = self.derived_id.GetValue().strip()
+    # generic link handlers -------------------------------------------
+    def _on_add_link_generic(self, attr: str) -> None:
+        id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
+        value = id_ctrl.GetValue().strip()
         if not value:
             return
         try:
@@ -628,15 +713,57 @@ class EditorPanel(ScrolledPanel):
                 revision = req.revision or 1
             except Exception:
                 pass
-        self.derived_from.append(
-            {"source_id": src_id, "source_revision": revision, "suspect": False}
-        )
-        self.derived_list.Append(f"{src_id} (r{revision})")
-        self.derived_id.SetValue("")
+        links_list.append({"source_id": src_id, "source_revision": revision, "suspect": False})
+        list_ctrl.Append(f"{src_id} (r{revision})")
+        id_ctrl.SetValue("")
+
+    def _on_remove_link_generic(self, attr: str) -> None:
+        _, list_ctrl, links_list = self._link_widgets(attr)
+        idx = list_ctrl.GetFirstSelected() if hasattr(list_ctrl, "GetFirstSelected") else getattr(list_ctrl, "GetSelection", lambda: -1)()
+        if idx != -1:
+            del links_list[idx]
+            list_ctrl.Delete(idx)
+
+    def _toggle_links(self, attr: str) -> None:
+        _, list_ctrl, links_list = self._link_widgets(attr)
+        for i, link in enumerate(links_list):
+            link["suspect"] = list_ctrl.IsChecked(i)
+
+    def _on_add_link(self, _event: wx.CommandEvent) -> None:
+        self._on_add_link_generic("derived_from")
 
     def _on_link_toggle(self, _event: wx.CommandEvent) -> None:
-        for i, link in enumerate(self.derived_from):
-            link["suspect"] = self.derived_list.IsChecked(i)
+        self._toggle_links("derived_from")
+
+    def _on_set_parent(self, _event: wx.CommandEvent) -> None:
+        value = self.parent_id.GetValue().strip()
+        if not value:
+            return
+        try:
+            src_id = int(value)
+        except ValueError:
+            return
+        revision = 1
+        if self.directory:
+            try:
+                req = req_ops.get_requirement(self.directory, src_id)
+                revision = req.revision or 1
+            except Exception:
+                pass
+        self.parent = {"source_id": src_id, "source_revision": revision, "suspect": False}
+        self.parent_id.SetValue("")
+        self._refresh_parent_display()
+
+    def _on_clear_parent(self, _event: wx.CommandEvent) -> None:
+        self.parent = None
+        self._refresh_parent_display()
+
+    def _refresh_parent_display(self) -> None:
+        if self.parent:
+            txt = f"{self.parent['source_id']} (r{self.parent['source_revision']})"
+        else:
+            txt = _("(none)")
+        self.parent_display.SetLabel(txt)
 
     def _on_add_derived_button(self, _evt: wx.Event) -> None:
         if not self._on_add_derived_callback:

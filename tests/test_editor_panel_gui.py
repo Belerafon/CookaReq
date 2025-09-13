@@ -179,6 +179,23 @@ def test_editor_toggle_derived_link_updates_data(tmp_path):
     assert result.derived_from[0].suspect is True
 
 
+def test_editor_loads_links(tmp_path):
+    panel = _make_panel()
+    data = {
+        "id": 5,
+        "parent": {"source_id": 1, "source_revision": 1, "suspect": False},
+        "links": {
+            "verifies": [{"source_id": 2, "source_revision": 1, "suspect": False}],
+            "relates": [{"source_id": 3, "source_revision": 1, "suspect": False}],
+        },
+    }
+    panel.load(data, path=tmp_path / "req.json", mtime=0.0)
+    result = panel.get_data()
+    assert result.parent is not None and result.parent.source_id == 1
+    assert result.links.verifies and result.links.verifies[0].source_id == 2
+    assert result.links.relates and result.links.relates[0].source_id == 3
+
+
 def test_multiline_fields_resize_dynamically():
     panel = _make_panel()
     wx = pytest.importorskip("wx")

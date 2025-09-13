@@ -23,6 +23,7 @@ class RequirementModel:
         self._is_derived: bool = False
         self._has_derived: bool = False
         self._suspect_only: bool = False
+        self._status: str | None = None
         self._sort_field: str | None = None
         self._sort_ascending: bool = True
 
@@ -82,6 +83,10 @@ class RequirementModel:
         self._suspect_only = value
         self._refresh()
 
+    def set_status(self, status: str | None) -> None:
+        self._status = status
+        self._refresh()
+
     def set_field_queries(self, queries: dict[str, str]) -> None:
         """Set per-field text filters."""
         self._field_queries = queries
@@ -95,8 +100,9 @@ class RequirementModel:
 
     # helpers ---------------------------------------------------------
     def _refresh(self) -> None:
+        base = req_ops.filter_by_status(self._all, self._status)
         self._visible = req_ops.search_loaded(
-            self._all,
+            base,
             labels=self._labels,
             query=self._query,
             fields=self._fields,

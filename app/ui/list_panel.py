@@ -216,6 +216,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         fields = self.current_filters.get("fields")
         self.model.set_search_query(self.current_filters.get("query", ""), fields)
         self.model.set_field_queries(self.current_filters.get("field_queries", {}))
+        self.model.set_status(self.current_filters.get("status"))
         self.model.set_is_derived(self.current_filters.get("is_derived", False))
         self.model.set_has_derived(self.current_filters.get("has_derived", False))
         self.model.set_suspect_only(self.current_filters.get("suspect_only", False))
@@ -271,6 +272,28 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     value = ", ".join(texts)
                     self.list.SetStringItem(index, col, value)
                     continue
+                if field in {"verifies", "relates"}:
+                    links = getattr(getattr(req, "links", None), field, [])
+                    texts: list[str] = []
+                    for link in links:
+                        txt = str(getattr(link, "source_id", ""))
+                        if getattr(link, "suspect", False):
+                            txt = f"!{txt}"
+                            suspect_row = True
+                        texts.append(txt)
+                    value = ", ".join(texts)
+                    self.list.SetStringItem(index, col, value)
+                    continue
+                if field == "parent":
+                    link = getattr(req, "parent", None)
+                    value = ""
+                    if link:
+                        value = str(getattr(link, "source_id", ""))
+                        if getattr(link, "suspect", False):
+                            value = f"!{value}"
+                            suspect_row = True
+                    self.list.SetStringItem(index, col, value)
+                    continue
                 if field == "derived_count":
                     count = len(self.derived_map.get(req.id, []))
                     self.list.SetStringItem(index, col, str(count))
@@ -291,7 +314,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     continue
                 value = getattr(req, field, "")
                 if isinstance(value, Enum):
-                    value = value.value
+                    value = locale.code_to_label(field, value.value)
                 if field == "labels" and isinstance(value, list):
                     item = ULC.UltimateListItem()
                     item.SetId(index)

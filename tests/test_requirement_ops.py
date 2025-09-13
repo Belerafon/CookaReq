@@ -191,3 +191,21 @@ def test_link_requirements_types(tmp_path: Path) -> None:
     data, _ = load(tmp_path / filename_for(6))
     assert data["links"]["relates"] == [{"source_id": 5, "source_revision": 1, "suspect": False}]
     assert data["revision"] == 2
+
+
+def test_patch_parent_and_links_forbidden(tmp_path: Path) -> None:
+    create_requirement(tmp_path, _base_req(1))
+    create_requirement(tmp_path, _base_req(2))
+    link_requirements(tmp_path, source_id=1, derived_id=2, link_type="parent", rev=1)
+    err = patch_requirement(
+        tmp_path, 2, [{"op": "replace", "path": "/parent", "value": None}], rev=2
+    )
+    assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
+
+    create_requirement(tmp_path, _base_req(3))
+    create_requirement(tmp_path, _base_req(4))
+    link_requirements(tmp_path, source_id=3, derived_id=4, link_type="verifies", rev=1)
+    err = patch_requirement(
+        tmp_path, 4, [{"op": "replace", "path": "/links", "value": {}}], rev=2
+    )
+    assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR

@@ -14,7 +14,7 @@ def test_command_dialog_shows_result_and_saves_history(tmp_path):
             return "tool", {"a": 1}
 
     class DummyMCP:
-        def _call_tool(self, name, arguments):
+        def call_tool(self, name, arguments):
             return {"value": 42}
 
     agent = LocalAgent(llm=DummyLLM(), mcp=DummyMCP())
@@ -51,7 +51,7 @@ def test_command_dialog_shows_error(tmp_path):
             return "tool", {}
 
     class DummyMCP:
-        def _call_tool(self, name, arguments):
+        def call_tool(self, name, arguments):
             return {"error": {"code": "FAIL", "message": "bad"}}
 
     agent = LocalAgent(llm=DummyLLM(), mcp=DummyMCP())

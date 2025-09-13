@@ -75,7 +75,7 @@ def test_call_tool_delete_requires_confirmation(monkeypatch) -> None:
 
     monkeypatch.setattr("app.mcp.client.HTTPConnection", DummyConn)
 
-    res = client._call_tool("delete_requirement", {"req_id": 1, "rev": 1})
+    res = client.call_tool("delete_requirement", {"req_id": 1, "rev": 1})
     assert res["error"]["code"] == "CANCELLED"
     assert called["msg"] is not None
 
@@ -120,7 +120,7 @@ def test_call_tool_delete_confirm_yes(monkeypatch) -> None:
 
     monkeypatch.setattr("app.mcp.client.HTTPConnection", factory)
 
-    res = client._call_tool("delete_requirement", {})
+    res = client.call_tool("delete_requirement", {})
     assert res == {}
     assert conns and conns[0].requested is True
     assert ("CONFIRM", {"tool": "delete_requirement"}) in events

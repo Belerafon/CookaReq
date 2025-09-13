@@ -12,8 +12,13 @@ from app.settings import LLMSettings, MCPSettings, AppSettings, UISettings
 class ConfigManager:
     """Wrapper around :class:`wx.Config` with typed helpers."""
 
-    def __init__(self, app_name: str = "CookaReq") -> None:
-        self._cfg = wx.Config(appName=app_name)
+    def __init__(self, app_name: str = "CookaReq", path: Path | str | None = None) -> None:
+        if path is None:
+            self._cfg = wx.Config(appName=app_name)
+        else:
+            p = Path(path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            self._cfg = wx.FileConfig(appName=app_name, localFilename=str(p))
 
     # ------------------------------------------------------------------
     # basic ``wx.Config`` API

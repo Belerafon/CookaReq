@@ -127,13 +127,21 @@ class SettingsDialog(wx.Dialog):
         self._token.Enable(require_token)
 
         self._mcp = MCPController()
-        start_stop_label = _("Stop MCP") if self._mcp.is_running() else _("Start MCP")
-        self._start_stop = wx.Button(mcp, label=start_stop_label)
+        self._start = wx.Button(mcp, label=_("Start MCP"))
+        self._stop = wx.Button(mcp, label=_("Stop MCP"))
         self._check = wx.Button(mcp, label=_("Check MCP"))
-        self._status = wx.StaticText(mcp, label=_("not running"))
+        self._status = wx.StaticText(mcp)
+        help_txt = wx.StaticText(
+            mcp,
+            label=_(
+                "MCP is a local server providing tools for requirement management."
+            ),
+        )
+        help_txt.Wrap(300)
 
         self._require_token.Bind(wx.EVT_CHECKBOX, self._on_toggle_token)
-        self._start_stop.Bind(wx.EVT_BUTTON, self._on_start_stop)
+        self._start.Bind(wx.EVT_BUTTON, self._on_start)
+        self._stop.Bind(wx.EVT_BUTTON, self._on_stop)
         self._check.Bind(wx.EVT_BUTTON, self._on_check)
 
         mcp_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -155,11 +163,14 @@ class SettingsDialog(wx.Dialog):
         token_sz.Add(self._token, 1, wx.ALIGN_CENTER_VERTICAL)
         mcp_sizer.Add(token_sz, 0, wx.ALL | wx.EXPAND, 5)
         btn_sz = wx.BoxSizer(wx.HORIZONTAL)
-        btn_sz.Add(self._start_stop, 0, wx.RIGHT, 5)
+        btn_sz.Add(self._start, 0, wx.RIGHT, 5)
+        btn_sz.Add(self._stop, 0, wx.RIGHT, 5)
         btn_sz.Add(self._check, 0)
         mcp_sizer.Add(btn_sz, 0, wx.ALL, 5)
         mcp_sizer.Add(self._status, 0, wx.ALL, 5)
+        mcp_sizer.Add(help_txt, 0, wx.ALL | wx.EXPAND, 5)
         mcp.SetSizer(mcp_sizer)
+        self._update_mcp_controls()
 
         # Notebook --------------------------------------------------------
         nb.AddPage(general, _("General"))
@@ -177,9 +188,12 @@ class SettingsDialog(wx.Dialog):
     def _on_toggle_token(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._token.Enable(self._require_token.GetValue())
 
-    def _update_start_stop_label(self) -> None:
-        label = _("Stop MCP") if self._mcp.is_running() else _("Start MCP")
-        self._start_stop.SetLabel(label)
+    def _update_mcp_controls(self) -> None:
+        running = self._mcp.is_running()
+        self._start.Enable(not running)
+        self._stop.Enable(running)
+        status = _("running") if running else _("not running")
+        self._status.SetLabel(f"{_('Status')}: {status}")
 
     def _current_llm_settings(self) -> LLMSettings:
         return LLMSettings(
@@ -198,15 +212,14 @@ class SettingsDialog(wx.Dialog):
             token=self._token.GetValue(),
         )
 
-    def _on_start_stop(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_start(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
         settings = self._current_settings()
-        if self._mcp.is_running():
-            self._mcp.stop()
-            self._status.SetLabel(_("not running"))
-        else:
-            self._mcp.start(settings)
-            self._status.SetLabel(_("not running"))
-        self._update_start_stop_label()
+        self._mcp.start(settings)
+        self._update_mcp_controls()
+
+    def _on_stop(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+        self._mcp.stop()
+        self._update_mcp_controls()
 
     def _on_check_llm(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
         client = LLMClient(settings=self._current_llm_settings())
@@ -222,12 +235,11 @@ class SettingsDialog(wx.Dialog):
 
     def _on_check(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
         status = self._mcp.check(self._current_settings())
-        mapping = {
-            MCPStatus.NOT_RUNNING: _("not running"),
-            MCPStatus.READY: _("ready"),
-            MCPStatus.ERROR: _("error"),
-        }
-        self._status.SetLabel(mapping[status])
+        running = status != MCPStatus.NOT_RUNNING
+        self._start.Enable(not running)
+        self._stop.Enable(running)
+        label = _("running") if running else _("not running")
+        self._status.SetLabel(f"{_('Status')}: {label}")
 
     # ------------------------------------------------------------------
     def get_values(self) -> tuple[

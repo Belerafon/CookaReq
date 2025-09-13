@@ -473,6 +473,12 @@ msgstr "check only MCP"
 msgid "not running"
 msgstr "not running"
 
+msgid "running"
+msgstr "running"
+
+msgid "MCP is a local server providing tools for requirement management."
+msgstr "MCP is a local server providing tools for requirement management."
+
 msgid "path to JSON/TOML settings"
 msgstr "path to JSON/TOML settings"
 

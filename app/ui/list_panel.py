@@ -172,10 +172,20 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             img_id = self._image_list.Add(bmp)
             self._label_images[key] = img_id
         self.list.SetStringItem(index, col, "")
-        try:  # pragma: no cover - method may not exist in stubs
-            self.list.SetItemColumnImage(index, col, img_id)
-        except Exception:
-            pass
+        if hasattr(wx, "ListItem"):
+            item = wx.ListItem()
+            item.SetId(index)
+            item.SetColumn(col)
+            item.SetImage(img_id)
+            try:  # pragma: no cover - platform dependent
+                self.list.SetItem(item)
+            except Exception:
+                pass
+        else:  # pragma: no cover - stub fallback
+            try:
+                self.list.SetItemColumnImage(index, col, img_id)
+            except Exception:
+                pass
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""

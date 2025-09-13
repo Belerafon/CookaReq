@@ -2,11 +2,11 @@
 
 from gettext import gettext as _
 from importlib import resources
-from http.client import HTTPConnection
 
 import wx
 
-from app.mcp.server import is_running, start_server, stop_server
+from app.mcp.controller import MCPController, MCPStatus
+from app.mcp.settings import MCPSettings
 
 
 def available_translations() -> list[tuple[str, str]]:
@@ -76,7 +76,8 @@ class SettingsDialog(wx.Dialog):
         self._token = wx.TextCtrl(mcp, value=token)
         self._token.Enable(require_token)
 
-        start_stop_label = _("Stop MCP") if is_running() else _("Start MCP")
+        self._mcp = MCPController()
+        start_stop_label = _("Stop MCP") if self._mcp.is_running() else _("Start MCP")
         self._start_stop = wx.Button(mcp, label=start_stop_label)
         self._check = wx.Button(mcp, label=_("Check MCP"))
         self._status = wx.StaticText(mcp, label=_("not running"))
@@ -126,42 +127,36 @@ class SettingsDialog(wx.Dialog):
         self._token.Enable(self._require_token.GetValue())
 
     def _update_start_stop_label(self) -> None:
-        label = _("Stop MCP") if is_running() else _("Start MCP")
+        label = _("Stop MCP") if self._mcp.is_running() else _("Start MCP")
         self._start_stop.SetLabel(label)
 
+    def _current_settings(self) -> MCPSettings:
+        return MCPSettings(
+            host=self._host.GetValue(),
+            port=self._port.GetValue(),
+            base_path=self._base_path.GetValue(),
+            require_token=self._require_token.GetValue(),
+            token=self._token.GetValue(),
+        )
+
     def _on_start_stop(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
-        if is_running():
-            stop_server()
+        settings = self._current_settings()
+        if self._mcp.is_running():
+            self._mcp.stop()
             self._status.SetLabel(_("not running"))
         else:
-            token = self._token.GetValue() if self._require_token.GetValue() else ""
-            start_server(
-                self._host.GetValue(),
-                self._port.GetValue(),
-                self._base_path.GetValue(),
-                token,
-            )
+            self._mcp.start(settings)
             self._status.SetLabel(_("not running"))
         self._update_start_stop_label()
 
     def _on_check(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
-        headers = {}
-        if self._require_token.GetValue() and self._token.GetValue():
-            headers["Authorization"] = f"Bearer {self._token.GetValue()}"
-        try:
-            conn = HTTPConnection(self._host.GetValue(), self._port.GetValue(), timeout=2)
-            try:
-                conn.request("GET", "/health", headers=headers)
-                resp = conn.getresponse()
-                resp.read()
-                if resp.status == 200:
-                    self._status.SetLabel(_("ready"))
-                else:
-                    self._status.SetLabel(_("error"))
-            finally:
-                conn.close()
-        except Exception:
-            self._status.SetLabel(_("not running"))
+        status = self._mcp.check(self._current_settings())
+        mapping = {
+            MCPStatus.NOT_RUNNING: _("not running"),
+            MCPStatus.READY: _("ready"),
+            MCPStatus.ERROR: _("error"),
+        }
+        self._status.SetLabel(mapping[status])
 
     # ------------------------------------------------------------------
     def get_values(self) -> tuple[bool, bool, str, str, int, str, bool, str]:

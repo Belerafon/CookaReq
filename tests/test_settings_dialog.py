@@ -37,24 +37,29 @@ def test_mcp_start_stop_server(monkeypatch):
     _app = wx.App()
     from gettext import gettext as _
     from app.ui.settings_dialog import SettingsDialog
+    from app.mcp.controller import MCPStatus
 
-    state = {"running": False}
-    calls: list[tuple] = []
+    class FakeMCP:
+        def __init__(self) -> None:
+            self.calls: list[tuple] = []
+            self.running = False
 
-    def fake_is_running():
-        return state["running"]
+        def is_running(self) -> bool:
+            return self.running
 
-    def fake_start_server(host, port, base_path, token):
-        calls.append(("start", host, port, base_path, token))
-        state["running"] = True
+        def start(self, settings):
+            self.calls.append(("start", settings))
+            self.running = True
 
-    def fake_stop_server():
-        calls.append(("stop",))
-        state["running"] = False
+        def stop(self):
+            self.calls.append(("stop",))
+            self.running = False
 
-    monkeypatch.setattr("app.ui.settings_dialog.is_running", fake_is_running)
-    monkeypatch.setattr("app.ui.settings_dialog.start_server", fake_start_server)
-    monkeypatch.setattr("app.ui.settings_dialog.stop_server", fake_stop_server)
+        def check(self, settings):
+            return MCPStatus.NOT_RUNNING
+
+    fake = FakeMCP()
+    monkeypatch.setattr("app.ui.settings_dialog.MCPController", lambda: fake)
 
     dlg = SettingsDialog(
         None,
@@ -71,11 +76,19 @@ def test_mcp_start_stop_server(monkeypatch):
     assert dlg._start_stop.GetLabel() == _("Start MCP")
 
     dlg._on_start_stop(wx.CommandEvent())
-    assert calls == [("start", "localhost", 8123, "/tmp", "")]
+    assert fake.calls[0][0] == "start"
+    settings = fake.calls[0][1]
+    assert (settings.host, settings.port, settings.base_path, settings.require_token, settings.token) == (
+        "localhost",
+        8123,
+        "/tmp",
+        False,
+        "",
+    )
     assert dlg._start_stop.GetLabel() == _("Stop MCP")
 
     dlg._on_start_stop(wx.CommandEvent())
-    assert calls[-1] == ("stop",)
+    assert fake.calls[-1] == ("stop",)
     assert dlg._start_stop.GetLabel() == _("Start MCP")
 
     dlg.Destroy()
@@ -86,35 +99,26 @@ def test_mcp_check_status(monkeypatch):
     _app = wx.App()
     from gettext import gettext as _
     from app.ui.settings_dialog import SettingsDialog
+    from app.mcp.controller import MCPStatus
 
-    requests: list[dict] = []
+    class DummyMCP:
+        def __init__(self):
+            self.state = MCPStatus.READY
 
-    class FakeResponse:
-        def __init__(self, status: int) -> None:
-            self.status = status
+        def is_running(self):
+            return False
 
-        def read(self) -> None:  # pragma: no cover - no data
-            return None
+        def start(self, settings):
+            pass
 
-    class FakeConnection:
-        def __init__(self, host, port, timeout=2) -> None:
-            self.host = host
-            self.port = port
-            self.timeout = timeout
+        def stop(self):
+            pass
 
-        def request(self, method, path, headers=None):
-            requests.append(headers or {})
+        def check(self, settings):
+            return self.state
 
-        def getresponse(self):
-            return FakeResponse(200)
-
-        def close(self) -> None:  # pragma: no cover - nothing to close
-            return None
-
-    monkeypatch.setattr(
-        "app.ui.settings_dialog.HTTPConnection",
-        lambda host, port, timeout=2: FakeConnection(host, port, timeout),
-    )
+    dummy = DummyMCP()
+    monkeypatch.setattr("app.ui.settings_dialog.MCPController", lambda: dummy)
 
     dlg = SettingsDialog(
         None,
@@ -128,25 +132,15 @@ def test_mcp_check_status(monkeypatch):
         token="abc",
     )
 
+    dummy.state = MCPStatus.READY
     dlg._on_check(wx.CommandEvent())
     assert dlg._status.GetLabel() == _("ready")
-    assert requests[0]["Authorization"] == "Bearer abc"
 
-    class BadConnection(FakeConnection):
-        def getresponse(self):
-            return FakeResponse(500)
-
-    monkeypatch.setattr(
-        "app.ui.settings_dialog.HTTPConnection",
-        lambda host, port, timeout=2: BadConnection(host, port, timeout),
-    )
+    dummy.state = MCPStatus.ERROR
     dlg._on_check(wx.CommandEvent())
     assert dlg._status.GetLabel() == _("error")
 
-    def ErrorConnection(host, port, timeout=2):
-        raise OSError("fail")
-
-    monkeypatch.setattr("app.ui.settings_dialog.HTTPConnection", ErrorConnection)
+    dummy.state = MCPStatus.NOT_RUNNING
     dlg._on_check(wx.CommandEvent())
     assert dlg._status.GetLabel() == _("not running")
 

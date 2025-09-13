@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from http.client import HTTPConnection
 from typing import Any, Mapping
 
@@ -9,28 +8,7 @@ import wx
 
 from app.log import logger
 from app.mcp.utils import ErrorCode, mcp_error, sanitize
-
-
-@dataclass
-class MCPSettings:
-    """Settings for connecting to the MCP server."""
-
-    host: str
-    port: int
-    base_path: str
-    require_token: bool
-    token: str
-
-    @classmethod
-    def from_config(cls, cfg: wx.Config) -> "MCPSettings":
-        """Load settings from ``wx.Config`` instance."""
-        return cls(
-            host=cfg.Read("mcp_host", "127.0.0.1"),
-            port=cfg.ReadInt("mcp_port", 8000),
-            base_path=cfg.Read("mcp_base_path", ""),
-            require_token=cfg.ReadBool("mcp_require_token", False),
-            token=cfg.Read("mcp_token", ""),
-        )
+from app.mcp.settings import MCPSettings
 
 
 class MCPClient:

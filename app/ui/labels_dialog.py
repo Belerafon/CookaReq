@@ -5,6 +5,7 @@ from app.i18n import _
 import wx
 
 from app.core.labels import Label, PRESET_SETS, PRESET_SET_TITLES
+from app.config import ConfigManager
 
 
 class LabelsDialog(wx.Dialog):
@@ -15,9 +16,10 @@ class LabelsDialog(wx.Dialog):
         super().__init__(parent, title=_("Labels"), style=style)
         # copy labels to avoid modifying caller until OK
         self._labels: list[Label] = [Label(l.name, l.color) for l in labels]
-        self._config = (
-            parent.config if hasattr(parent, "config") else wx.Config(appName="CookaReq")
-        )
+        cfg = getattr(parent, "config", None)
+        if cfg is None:
+            cfg = ConfigManager()
+        self._config = cfg
 
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.list.InsertColumn(0, _("Name"))

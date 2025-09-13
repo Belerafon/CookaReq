@@ -15,10 +15,28 @@ class ConfigManager:
     def __init__(self, app_name: str = "CookaReq") -> None:
         self._cfg = wx.Config(appName=app_name)
 
-    @property
-    def wx(self) -> wx.Config:  # pragma: no cover - simple property
-        """Expose underlying ``wx.Config`` for low-level operations."""
-        return self._cfg
+    # ------------------------------------------------------------------
+    # basic ``wx.Config`` API
+    def Read(self, key: str, default: str = "") -> str:
+        return self._cfg.Read(key, default)
+
+    def ReadInt(self, key: str, default: int = 0) -> int:
+        return self._cfg.ReadInt(key, default)
+
+    def ReadBool(self, key: str, default: bool = False) -> bool:
+        return self._cfg.ReadBool(key, default)
+
+    def Write(self, key: str, value: str) -> None:
+        self._cfg.Write(key, value)
+
+    def WriteInt(self, key: str, value: int) -> None:
+        self._cfg.WriteInt(key, value)
+
+    def WriteBool(self, key: str, value: bool) -> None:
+        self._cfg.WriteBool(key, value)
+
+    def Flush(self) -> None:  # pragma: no cover - simple wrapper
+        self._cfg.Flush()
 
     # ------------------------------------------------------------------
     # columns
@@ -198,8 +216,8 @@ class ConfigManager:
         client_w = frame.GetClientSize().width
         sash = max(100, min(sash, max(client_w - 100, 100)))
         splitter.SetSashPosition(sash)
-        panel.load_column_widths(self._cfg)
-        panel.load_column_order(self._cfg)
+        panel.load_column_widths(self)
+        panel.load_column_order(self)
         log_shown = self._cfg.ReadBool("log_shown", False)
         log_sash = self._cfg.ReadInt("log_sash", frame.GetClientSize().height - 150)
         if log_shown:
@@ -233,6 +251,6 @@ class ConfigManager:
             self._cfg.WriteInt("log_sash", main_splitter.GetSashPosition())
         else:
             self._cfg.WriteBool("log_shown", False)
-        panel.save_column_widths(self._cfg)
-        panel.save_column_order(self._cfg)
-        self._cfg.Flush()
+        panel.save_column_widths(self)
+        panel.save_column_order(self)
+        self.Flush()

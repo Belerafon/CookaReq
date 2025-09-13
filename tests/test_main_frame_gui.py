@@ -3,9 +3,8 @@ import pytest
 import logging
 
 
-def test_main_frame_open_folder(monkeypatch, tmp_path):
+def test_main_frame_open_folder(monkeypatch, tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
 
     called = {}
 
@@ -37,12 +36,10 @@ def test_main_frame_open_folder(monkeypatch, tmp_path):
     assert isinstance(frame.panel, list_panel.ListPanel)
 
     frame.Destroy()
-    app.Destroy()
 
 
-def test_main_frame_open_folder_toolbar(monkeypatch, tmp_path):
+def test_main_frame_open_folder_toolbar(monkeypatch, tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
 
     called = {}
 
@@ -77,12 +74,10 @@ def test_main_frame_open_folder_toolbar(monkeypatch, tmp_path):
     assert isinstance(frame.panel, list_panel.ListPanel)
 
     frame.Destroy()
-    app.Destroy()
 
 
-def test_main_frame_run_command_menu(monkeypatch):
+def test_main_frame_run_command_menu(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
 
     called = {}
 
@@ -109,12 +104,10 @@ def test_main_frame_run_command_menu(monkeypatch):
 
     assert called == {"agent": True, "init": True, "show": True, "destroy": True}
     frame.Destroy()
-    app.Destroy()
 
 
-def test_main_frame_run_command_history_persists(monkeypatch, tmp_path):
+def test_main_frame_run_command_history_persists(monkeypatch, tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     import importlib
     import json
 
@@ -151,12 +144,10 @@ def test_main_frame_run_command_history_persists(monkeypatch, tmp_path):
     assert data[0]["command"] == "cmd"
 
     frame.Destroy()
-    app.Destroy()
 
 
-def test_log_handler_not_duplicated(tmp_path):
+def test_log_handler_not_duplicated(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
 
     import app.ui.main_frame as main_frame
 
@@ -170,7 +161,7 @@ def test_log_handler_not_duplicated(tmp_path):
         sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 1
     )
     frame1.Close()
-    app.Yield()
+    wx_app.Yield()
     assert (
         sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 0
     )
@@ -180,15 +171,15 @@ def test_log_handler_not_duplicated(tmp_path):
         sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 1
     )
     frame2.Close()
-    app.Yield()
+    wx_app.Yield()
     assert (
         sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 0
     )
 
-    app.Destroy()
+    # wx_app fixture handles cleanup
 
 
-def test_main_frame_loads_requirements(monkeypatch, tmp_path):
+def test_main_frame_loads_requirements(monkeypatch, tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.core.store import save
 
@@ -205,8 +196,6 @@ def test_main_frame_loads_requirements(monkeypatch, tmp_path):
         "revision": 1,
     }
     save(tmp_path, data)
-
-    app = wx.App()
 
     class DummyDirDialog:
         def __init__(self, parent, message):
@@ -237,10 +226,9 @@ def test_main_frame_loads_requirements(monkeypatch, tmp_path):
     assert frame.panel.list.GetItemText(0) == data["title"]
 
     frame.Destroy()
-    app.Destroy()
 
 
-def test_main_frame_select_opens_editor(monkeypatch, tmp_path):
+def test_main_frame_select_opens_editor(monkeypatch, tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.core.store import save
     import importlib
@@ -258,8 +246,6 @@ def test_main_frame_select_opens_editor(monkeypatch, tmp_path):
         "revision": 1,
     }
     save(tmp_path, data)
-
-    app = wx.App()
 
     class DummyDirDialog:
         def __init__(self, parent, message):
@@ -288,13 +274,12 @@ def test_main_frame_select_opens_editor(monkeypatch, tmp_path):
 
     list_ctrl = frame.panel.list
     list_ctrl.Select(0)
-    app.Yield()
+    wx_app.Yield()
 
     assert frame.editor.IsShown()
     assert frame.editor.fields["id"].GetValue() == str(data["id"])
 
     frame.Destroy()
-    app.Destroy()
 
 
 def _sample_requirement():
@@ -314,7 +299,6 @@ def _sample_requirement():
 
 def _prepare_frame(monkeypatch, tmp_path):
     wx = pytest.importorskip("wx")
-    app = wx.App()
 
     class DummyDirDialog:
         def __init__(self, parent, message):
@@ -340,10 +324,10 @@ def _prepare_frame(monkeypatch, tmp_path):
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, wx.ID_OPEN)
     frame.ProcessEvent(evt)
 
-    return wx, app, frame
+    return wx, frame
 
 
-def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path):
+def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path, wx_app):
     from app.core.store import save
     from app import i18n
     from app.main import APP_NAME, LOCALE_DIR
@@ -353,7 +337,7 @@ def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path):
     data = _sample_requirement()
     save(tmp_path, data)
 
-    wx, app, frame = _prepare_frame(monkeypatch, tmp_path)
+    wx, frame = _prepare_frame(monkeypatch, tmp_path)
 
     frame.on_clone_requirement(frame.model.get_all()[0].id)
 
@@ -364,11 +348,10 @@ def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path):
     assert len(frame.model.get_all()) == 2
 
     frame.Destroy()
-    app.Destroy()
 
 
-def test_main_frame_new_requirement_button(monkeypatch, tmp_path):
-    wx, app, frame = _prepare_frame(monkeypatch, tmp_path)
+def test_main_frame_new_requirement_button(monkeypatch, tmp_path, wx_app):
+    wx, frame = _prepare_frame(monkeypatch, tmp_path)
 
     # emulate toolbar event for new requirement
     evt = wx.CommandEvent(wx.EVT_TOOL.typeId, wx.ID_NEW)
@@ -379,16 +362,15 @@ def test_main_frame_new_requirement_button(monkeypatch, tmp_path):
     assert frame.editor.fields["id"].GetValue() == str(frame.model.get_all()[0].id)
 
     frame.Destroy()
-    app.Destroy()
 
 
-def test_main_frame_delete_requirement_removes_file(monkeypatch, tmp_path):
+def test_main_frame_delete_requirement_removes_file(monkeypatch, tmp_path, wx_app):
     from app.core.store import save
 
     data = _sample_requirement()
     path = save(tmp_path, data)
 
-    wx, app, frame = _prepare_frame(monkeypatch, tmp_path)
+    wx, frame = _prepare_frame(monkeypatch, tmp_path)
 
     assert path.exists()
     assert frame.panel.list.GetItemCount() == 1
@@ -399,15 +381,14 @@ def test_main_frame_delete_requirement_removes_file(monkeypatch, tmp_path):
     assert not path.exists()
 
     frame.Destroy()
-    app.Destroy()
 
 
-def test_main_frame_select_any_column_updates_editor(monkeypatch, tmp_path):
+def test_main_frame_select_any_column_updates_editor(monkeypatch, tmp_path, wx_app):
     from app.core.store import save
 
     save(tmp_path, _sample_requirement())
 
-    wx, app, frame = _prepare_frame(monkeypatch, tmp_path)
+    wx, frame = _prepare_frame(monkeypatch, tmp_path)
 
     # Add an extra column so clicks on it should still update the editor
     frame.panel.set_columns(["id"])
@@ -428,4 +409,3 @@ def test_main_frame_select_any_column_updates_editor(monkeypatch, tmp_path):
     assert frame.editor.fields["title"].GetValue() == "Title"
 
     frame.Destroy()
-    app.Destroy()

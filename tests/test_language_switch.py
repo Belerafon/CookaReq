@@ -3,9 +3,8 @@ import importlib
 import pytest
 
 
-def test_switch_to_russian_updates_ui(monkeypatch):
+def test_switch_to_russian_updates_ui(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     import app.ui.main_frame as main_frame
     importlib.reload(main_frame)
 
@@ -53,4 +52,3 @@ def test_switch_to_russian_updates_ui(monkeypatch):
     from app import i18n
     # restore default language for subsequent tests
     i18n.install(main_mod.APP_NAME, main_mod.LOCALE_DIR, ["en"])
-    app.Destroy()

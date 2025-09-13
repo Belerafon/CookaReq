@@ -6,9 +6,8 @@ import pytest
 from app.core.labels import Label
 
 
-def test_labels_dialog_changes_color():
+def test_labels_dialog_changes_color(wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     from app.ui.labels_dialog import LabelsDialog
 
     dlg = LabelsDialog(None, [Label("ui", "#ff0000")])
@@ -27,12 +26,10 @@ def test_labels_dialog_changes_color():
     img = dlg.list.GetImageList(wx.IMAGE_LIST_SMALL).GetBitmap(img_idx).ConvertToImage()
     assert (img.GetRed(0, 0), img.GetGreen(0, 0), img.GetBlue(0, 0)) == (0, 255, 0)
     dlg.Destroy()
-    app.Destroy()
 
 
-def test_labels_dialog_displays_color_rect():
+def test_labels_dialog_displays_color_rect(wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     from app.ui.labels_dialog import LabelsDialog
 
     dlg = LabelsDialog(None, [Label("ui", "#ff0000")])
@@ -41,12 +38,10 @@ def test_labels_dialog_displays_color_rect():
     img = dlg.list.GetImageList(wx.IMAGE_LIST_SMALL).GetBitmap(img_idx).ConvertToImage()
     assert (img.GetRed(0, 0), img.GetGreen(0, 0), img.GetBlue(0, 0)) == (255, 0, 0)
     dlg.Destroy()
-    app.Destroy()
 
 
-def test_labels_dialog_adds_presets():
+def test_labels_dialog_adds_presets(wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     from app.ui.labels_dialog import LabelsDialog
     from app.core.labels import PRESET_SETS
 
@@ -58,12 +53,10 @@ def test_labels_dialog_adds_presets():
     dlg._on_add_preset_set("basic")
     assert len(dlg.get_labels()) == len(PRESET_SETS["basic"])
     dlg.Destroy()
-    app.Destroy()
 
 
-def test_labels_dialog_deletes_selected():
+def test_labels_dialog_deletes_selected(wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     from app.ui.labels_dialog import LabelsDialog
 
     dlg = LabelsDialog(None, [Label("a", "#111111"), Label("b", "#222222"), Label("c", "#333333")])
@@ -73,24 +66,20 @@ def test_labels_dialog_deletes_selected():
     names = [l.name for l in dlg.get_labels()]
     assert names == ["b"]
     dlg.Destroy()
-    app.Destroy()
 
 
-def test_labels_dialog_clear_all():
+def test_labels_dialog_clear_all(wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     from app.ui.labels_dialog import LabelsDialog
 
     dlg = LabelsDialog(None, [Label("a", "#111111")])
     dlg._on_clear_all(None)
     assert dlg.get_labels() == []
     dlg.Destroy()
-    app.Destroy()
 
 
-def test_labels_dialog_renames_selected(monkeypatch):
+def test_labels_dialog_renames_selected(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     from app.ui.labels_dialog import LabelsDialog
 
     dlg = LabelsDialog(None, [Label("old", "#111111")])
@@ -113,7 +102,6 @@ def test_labels_dialog_renames_selected(monkeypatch):
     dlg._on_rename_selected(None)
     assert dlg.get_labels()[0].name == "new"
     dlg.Destroy()
-    app.Destroy()
 
 
 def _prepare_frame(monkeypatch, tmp_path):
@@ -135,7 +123,6 @@ def _prepare_frame(monkeypatch, tmp_path):
     save(tmp_path, data)
 
     wx = pytest.importorskip("wx")
-    app = wx.App()
 
     class DummyDirDialog:
         def __init__(self, parent, message):
@@ -161,11 +148,11 @@ def _prepare_frame(monkeypatch, tmp_path):
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, wx.ID_OPEN)
     frame.ProcessEvent(evt)
 
-    return wx, app, frame, main_frame
+    return wx, frame, main_frame
 
 
-def test_main_frame_manage_labels_saves(monkeypatch, tmp_path):
-    wx, app, frame, main_frame_mod = _prepare_frame(monkeypatch, tmp_path)
+def test_main_frame_manage_labels_saves(monkeypatch, tmp_path, wx_app):
+    wx, frame, main_frame_mod = _prepare_frame(monkeypatch, tmp_path)
 
     class DummyLabelsDialog:
         def __init__(self, parent, labels):
@@ -201,11 +188,10 @@ def test_main_frame_manage_labels_saves(monkeypatch, tmp_path):
     assert ("panel", ["ui"]) in captured
 
     frame.Destroy()
-    app.Destroy()
 
 
-def test_main_frame_manage_labels_deletes_used(monkeypatch, tmp_path):
-    wx, app, frame, main_frame_mod = _prepare_frame(monkeypatch, tmp_path)
+def test_main_frame_manage_labels_deletes_used(monkeypatch, tmp_path, wx_app):
+    wx, frame, main_frame_mod = _prepare_frame(monkeypatch, tmp_path)
 
     class DummyLabelsDialog:
         def __init__(self, parent, labels):
@@ -241,4 +227,3 @@ def test_main_frame_manage_labels_deletes_used(monkeypatch, tmp_path):
     assert req.labels == []
 
     frame.Destroy()
-    app.Destroy()

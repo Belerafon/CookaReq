@@ -12,12 +12,11 @@ import app.ui.command_dialog as cmd
 
 
 
-def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch) -> None:
+def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch, wx_app) -> None:
     wx = pytest.importorskip("wx")
     port = 8155
     stop_server()
     start_server(port=port, base_path=str(tmp_path))
-    app = wx.App()
     try:
         _wait_until_ready(port)
         settings = settings_from_env(tmp_path)
@@ -61,5 +60,4 @@ def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch) -> 
         finally:
             frame.Destroy()
     finally:
-        app.Destroy()
         stop_server()

@@ -11,9 +11,8 @@ def test_available_translations_contains_locales():
     assert {"en", "ru"}.issubset(codes)
 
 
-def test_settings_dialog_returns_language():
+def test_settings_dialog_returns_language(wx_app):
     wx = pytest.importorskip("wx")
-    _app = wx.App()
     from app.ui.settings_dialog import SettingsDialog
 
     dlg = SettingsDialog(
@@ -49,9 +48,8 @@ def test_settings_dialog_returns_language():
     dlg.Destroy()
 
 
-def test_mcp_start_stop_server(monkeypatch):
+def test_mcp_start_stop_server(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    _app = wx.App()
     from app.ui.settings_dialog import SettingsDialog
     import app.ui.settings_dialog as sd
     from app.mcp.controller import MCPStatus
@@ -117,9 +115,8 @@ def test_mcp_start_stop_server(monkeypatch):
     dlg.Destroy()
 
 
-def test_mcp_check_status(monkeypatch):
+def test_mcp_check_status(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    _app = wx.App()
     from app.ui.settings_dialog import SettingsDialog
     import app.ui.settings_dialog as sd
     from app.mcp.controller import MCPStatus
@@ -174,9 +171,8 @@ def test_mcp_check_status(monkeypatch):
     dlg.Destroy()
 
 
-def test_llm_agent_checks(monkeypatch):
+def test_llm_agent_checks(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    _app = wx.App()
     from app.ui.settings_dialog import SettingsDialog
     import app.ui.settings_dialog as sd
 

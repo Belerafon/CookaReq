@@ -20,9 +20,8 @@ def _create_requirement(directory):
     store.save(directory, data)
 
 
-def test_sync_labels_preserves_unused(monkeypatch, tmp_path):
+def test_sync_labels_preserves_unused(monkeypatch, tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     store.save_labels(tmp_path, PRESET_SETS["basic"])
     _create_requirement(tmp_path)
     from app.ui.main_frame import MainFrame
@@ -30,4 +29,3 @@ def test_sync_labels_preserves_unused(monkeypatch, tmp_path):
     frame._load_directory(tmp_path)
     assert {l.name for l in frame.labels} == {l.name for l in PRESET_SETS["basic"]}
     frame.Destroy()
-    app.Destroy()

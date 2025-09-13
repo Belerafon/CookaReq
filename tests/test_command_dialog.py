@@ -4,9 +4,8 @@ import pytest
 from app.agent.local_agent import LocalAgent
 
 
-def test_command_dialog_shows_result_and_saves_history(tmp_path):
+def test_command_dialog_shows_result_and_saves_history(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     from app.ui.command_dialog import CommandDialog
 
     class DummyLLM:
@@ -38,12 +37,10 @@ def test_command_dialog_shows_result_and_saves_history(tmp_path):
     assert json.loads(dlg.output.GetValue()) == {"value": 42}
 
     dlg.Destroy()
-    app.Destroy()
 
 
-def test_command_dialog_shows_error(tmp_path):
+def test_command_dialog_shows_error(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     from app.ui.command_dialog import CommandDialog
 
     class DummyLLM:
@@ -62,12 +59,10 @@ def test_command_dialog_shows_error(tmp_path):
     assert "FAIL" in dlg.output.GetValue()
     assert dlg.history[0].tokens == len("run".split()) + len(dlg.output.GetValue().split())
     dlg.Destroy()
-    app.Destroy()
 
 
-def test_command_dialog_persists_between_instances(tmp_path):
+def test_command_dialog_persists_between_instances(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     from app.ui.command_dialog import CommandDialog
 
     class DummyAgent:
@@ -86,12 +81,10 @@ def test_command_dialog_persists_between_instances(tmp_path):
     assert dlg2.history[0].command == "hello"
     assert json.loads(dlg2.history[0].response)["echo"] == "hello"
     dlg2.Destroy()
-    app.Destroy()
 
 
-def test_command_dialog_handles_invalid_history(tmp_path):
+def test_command_dialog_handles_invalid_history(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    app = wx.App()
     from app.ui.command_dialog import CommandDialog
 
     bad_file = tmp_path / "history.json"
@@ -104,4 +97,3 @@ def test_command_dialog_handles_invalid_history(tmp_path):
     dlg = CommandDialog(None, agent=DummyAgent(), history_path=bad_file)
     assert dlg.history == []
     dlg.Destroy()
-    app.Destroy()

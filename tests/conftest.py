@@ -51,6 +51,14 @@ def _auto_confirm():
     yield
 
 
+@pytest.fixture(scope="session")
+def wx_app():
+    wx = pytest.importorskip("wx")
+    app = wx.App()
+    yield app
+    app.Destroy()
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session):
     session.config._start_time = time.time()

@@ -24,6 +24,9 @@ def test_requirement_defaults():
     assert req.revision == 1
     assert req.labels == []
     assert req.attachments == []
+    assert req.units is None
+    assert req.approved_at is None
+    assert req.notes == ""
     assert req.conditions == ""
     assert req.trace_up == ""
     assert req.trace_down == ""

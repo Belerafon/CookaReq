@@ -36,6 +36,10 @@ def sample(req_id: int = 1) -> dict:
         "source": "spec",
         "verification": "analysis",
         "revision": 1,
+        "units": {"quantity": "kg", "nominal": 1.0, "tolerance": 0.1},
+        "attachments": [{"path": "a.txt", "note": "n"}],
+        "approved_at": "2025-01-01",
+        "notes": "note",
     }
 
 

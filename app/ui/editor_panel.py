@@ -8,6 +8,7 @@ from typing import Any, Callable
 from gettext import gettext as _
 
 import wx
+import wx.adv
 from wx.lib.dialogs import ScrolledMessageDialog
 from wx.lib.scrolledpanel import ScrolledPanel
 
@@ -40,6 +41,7 @@ class EditorPanel(ScrolledPanel):
         self.fields: dict[str, wx.TextCtrl] = {}
         self.enums: dict[str, wx.Choice] = {}
         self.derivation_fields: dict[str, wx.TextCtrl] = {}
+        self.units_fields: dict[str, wx.TextCtrl] = {}
         self._autosize_fields: list[wx.TextCtrl] = []
         self._on_save_callback = on_save
         self._on_add_derived_callback = on_add_derived
@@ -196,6 +198,60 @@ class EditorPanel(ScrolledPanel):
 
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
 
+        # units section --------------------------------------------------
+        u_box = wx.StaticBox(self, label=_("Units"))
+        u_sizer = wx.StaticBoxSizer(u_box, wx.VERTICAL)
+        u_grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
+        u_grid.AddGrowableCol(1, 1)
+        unit_labels = {
+            "quantity": _("Quantity"),
+            "nominal": _("Nominal"),
+            "tolerance": _("Tolerance"),
+        }
+        for name in ("quantity", "nominal", "tolerance"):
+            lbl = wx.StaticText(u_box, label=unit_labels[name])
+            ctrl = wx.TextCtrl(u_box)
+            u_grid.Add(lbl, 0, wx.ALIGN_CENTER_VERTICAL)
+            u_grid.Add(ctrl, 1, wx.EXPAND)
+            self.units_fields[name] = ctrl
+        u_sizer.Add(u_grid, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(u_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
+        # attachments section --------------------------------------------
+        a_box = wx.StaticBox(self, label=_("Attachments"))
+        a_sizer = wx.StaticBoxSizer(a_box, wx.VERTICAL)
+        self.attachments_list = wx.ListCtrl(
+            a_box, style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL
+        )
+        self.attachments_list.InsertColumn(0, _("File"))
+        self.attachments_list.InsertColumn(1, _("Note"))
+        btn_row = wx.BoxSizer(wx.HORIZONTAL)
+        add_btn = wx.Button(a_box, label=_("Add"))
+        remove_btn = wx.Button(a_box, label=_("Remove"))
+        add_btn.Bind(wx.EVT_BUTTON, self._on_add_attachment)
+        remove_btn.Bind(wx.EVT_BUTTON, self._on_remove_attachment)
+        btn_row.Add(add_btn, 0)
+        btn_row.Add(remove_btn, 0, wx.LEFT, 5)
+        a_sizer.Add(self.attachments_list, 0, wx.EXPAND | wx.ALL, 5)
+        a_sizer.Add(btn_row, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
+        sizer.Add(a_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
+        # approval date and notes ---------------------------------------
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        label = wx.StaticText(self, label=_("Approved at"))
+        self.approved_picker = wx.adv.DatePickerCtrl(
+            self, style=wx.adv.DP_ALLOWNONE
+        )
+        row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        row.Add(self.approved_picker, 0, wx.ALIGN_CENTER_VERTICAL)
+        sizer.Add(row, 0, wx.ALL, 5)
+
+        label = wx.StaticText(self, label=_("Notes"))
+        sizer.Add(label, 0, wx.ALL, 5)
+        self.notes_ctrl = wx.TextCtrl(self, style=wx.TE_MULTILINE)
+        self._bind_autosize(self.notes_ctrl)
+        sizer.Add(self.notes_ctrl, 0, wx.EXPAND | wx.ALL, 5)
+
         # labels section -------------------------------------------------
         box = wx.StaticBox(self, label=_("Labels"))
         box_sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
@@ -263,6 +319,7 @@ class EditorPanel(ScrolledPanel):
         self.mtime: float | None = None
         self._app = wx.GetApp()
         self._refresh_labels_display()
+        self._refresh_attachments()
 
     def _bind_autosize(self, ctrl: wx.TextCtrl) -> None:
         """Register multiline text control for dynamic height."""
@@ -320,6 +377,11 @@ class EditorPanel(ScrolledPanel):
             "approved_at": None,
             "notes": "",
         })
+        for ctrl in self.units_fields.values():
+            ctrl.SetValue("")
+        self.approved_picker.SetValue(wx.DefaultDateTime)
+        self.notes_ctrl.SetValue("")
+        self._refresh_attachments()
         self.derived_list.Set([])
         self.derived_id.SetValue("")
         for ctrl in self.derivation_fields.values():
@@ -357,6 +419,17 @@ class EditorPanel(ScrolledPanel):
             "approved_at": data.get("approved_at"),
             "notes": data.get("notes", ""),
         }
+        units = data.get("units") or {}
+        for name, ctrl in self.units_fields.items():
+            ctrl.SetValue(str(units.get(name, "")))
+        if self.extra.get("approved_at"):
+            dt = wx.DateTime()
+            dt.ParseISODate(str(self.extra["approved_at"]))
+            self.approved_picker.SetValue(dt if dt.IsValid() else wx.DefaultDateTime)
+        else:
+            self.approved_picker.SetValue(wx.DefaultDateTime)
+        self.notes_ctrl.SetValue(self.extra.get("notes", ""))
+        self._refresh_attachments()
         self.current_path = Path(path) if path else None
         self.mtime = mtime
         self.original_id = data.get("id")
@@ -415,11 +488,37 @@ class EditorPanel(ScrolledPanel):
             "labels": list(self.extra.get("labels", [])),
             "attachments": list(self.attachments),
             "revision": self.extra.get("revision", 1),
-            "approved_at": self.extra.get("approved_at"),
-            "notes": self.extra.get("notes", ""),
             "derived_from": list(self.derived_from),
         }
+        qty = self.units_fields["quantity"].GetValue().strip()
+        nom = self.units_fields["nominal"].GetValue().strip()
+        tol = self.units_fields["tolerance"].GetValue().strip()
+        if qty or nom or tol:
+            if not qty or not nom:
+                raise ValueError(_("Units require quantity and nominal"))
+            try:
+                nominal = float(nom)
+            except ValueError as exc:
+                raise ValueError(_("Nominal must be a number")) from exc
+            tolerance = None
+            if tol:
+                try:
+                    tolerance = float(tol)
+                except ValueError as exc:
+                    raise ValueError(_("Tolerance must be a number")) from exc
+            data["units"] = {
+                "quantity": qty,
+                "nominal": nominal,
+                "tolerance": tolerance,
+            }
+        dt = self.approved_picker.GetValue()
+        approved_at = dt.FormatISODate() if dt.IsValid() else None
+        data["approved_at"] = approved_at
+        notes = self.notes_ctrl.GetValue()
+        data["notes"] = notes
         self.extra["labels"] = data["labels"]
+        self.extra["approved_at"] = approved_at
+        self.extra["notes"] = notes
         if any(
             ctrl.GetValue().strip() for ctrl in self.derivation_fields.values()
         ):
@@ -486,6 +585,33 @@ class EditorPanel(ScrolledPanel):
         if dlg.ShowModal() == wx.ID_OK:
             self.apply_label_selection(dlg.get_selected())
         dlg.Destroy()
+
+    def _refresh_attachments(self) -> None:
+        self.attachments_list.DeleteAllItems()
+        for att in self.attachments:
+            idx = self.attachments_list.InsertItem(self.attachments_list.GetItemCount(), att.get("path", ""))
+            self.attachments_list.SetItem(idx, 1, att.get("note", ""))
+
+    def _on_add_attachment(self, _event: wx.CommandEvent) -> None:
+        dlg = wx.FileDialog(self, _("Select attachment"), style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            return
+        path = dlg.GetPath()
+        dlg.Destroy()
+        note = ""
+        ndlg = wx.TextEntryDialog(self, _("Note"), "")
+        if ndlg.ShowModal() == wx.ID_OK:
+            note = ndlg.GetValue()
+        ndlg.Destroy()
+        self.attachments.append({"path": path, "note": note})
+        self._refresh_attachments()
+
+    def _on_remove_attachment(self, _event: wx.CommandEvent) -> None:
+        idx = self.attachments_list.GetFirstSelected()
+        if idx != -1:
+            del self.attachments[idx]
+            self._refresh_attachments()
 
     def _on_add_link(self, _event: wx.CommandEvent) -> None:
         value = self.derived_id.GetValue().strip()
@@ -573,6 +699,9 @@ class EditorPanel(ScrolledPanel):
 
     def add_attachment(self, path: str, note: str = "") -> None:
         self.attachments.append({"path": path, "note": note})
+        if hasattr(self, "attachments_list"):
+            idx = self.attachments_list.InsertItem(self.attachments_list.GetItemCount(), path)
+            self.attachments_list.SetItem(idx, 1, note)
 
     # helpers ----------------------------------------------------------
     def _show_help(self, message: str) -> None:

@@ -40,12 +40,10 @@ def test_list_panel_real_widgets(wx_app):
     frame.GetSizer().Add(panel, 1, wx.EXPAND)
     frame.Layout()
 
-    from wx.lib.agw import ultimatelistctrl as ULC
-
     assert panel in frame.GetChildren()
     assert isinstance(panel.filter_btn, wx.Button)
     assert isinstance(panel.reset_btn, wx.BitmapButton)
-    assert isinstance(panel.list, ULC.UltimateListCtrl)
+    assert isinstance(panel.list, wx.ListCtrl)
     assert panel.filter_btn.GetParent() is panel
     assert panel.reset_btn.GetParent() is panel
     assert panel.list.GetParent() is panel

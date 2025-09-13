@@ -121,6 +121,7 @@ def _build_wx_stub():
             self._items = []
             self._data = []
             self._cols = []
+            self._imagelist = None
         def InsertColumn(self, col, heading):
             if col >= len(self._cols):
                 self._cols.extend([None] * (col - len(self._cols) + 1))
@@ -150,6 +151,12 @@ def _build_wx_stub():
             return -1, 0
         def HitTestSubItem(self, pt):
             return -1, 0, -1
+        def SetItemColumnImage(self, index, col, img):
+            pass
+        def SetImageList(self, il, which):
+            self._imagelist = il
+        def GetImageList(self, which):
+            return self._imagelist
 
     class UltimateListItem:
         def __init__(self):
@@ -184,6 +191,13 @@ def _build_wx_stub():
         # kept for compatibility if needed elsewhere
         pass
 
+    class ImageList:
+        def __init__(self, width, height):
+            self._images = []
+        def Add(self, bmp):
+            self._images.append(bmp)
+            return len(self._images) - 1
+
     class BoxSizer:
         def __init__(self, orient):
             self._children = []
@@ -214,6 +228,7 @@ def _build_wx_stub():
         CheckListBox=CheckListBox,
         StaticText=StaticText,
         ListCtrl=ListCtrl,
+        ImageList=ImageList,
         BoxSizer=BoxSizer,
         Window=Window,
         VERTICAL=0,
@@ -231,6 +246,7 @@ def _build_wx_stub():
         EVT_LIST_COL_CLICK=object(),
         EVT_TEXT=object(),
         EVT_CHECKBOX=object(),
+        IMAGE_LIST_SMALL=0,
         Config=Config,
         ContextMenuEvent=types.SimpleNamespace,
         ArtProvider=ArtProvider,
@@ -289,7 +305,7 @@ def test_list_panel_has_filter_and_list(monkeypatch):
 
     assert isinstance(panel.filter_btn, wx_stub.Button)
     assert isinstance(panel.reset_btn, wx_stub.BitmapButton)
-    assert isinstance(panel.list, ulc.UltimateListCtrl)
+    assert isinstance(panel.list, wx_stub.ListCtrl)
     assert panel.filter_btn.GetParent() is panel
     assert panel.reset_btn.GetParent() is panel
     assert panel.list.GetParent() is panel
@@ -469,7 +485,7 @@ def test_apply_status_filter(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
 
-def test_labels_column_renders_joined(monkeypatch):
+def test_labels_column_renders_badges(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -486,17 +502,22 @@ def test_labels_column_renders_joined(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
 
-    captured: list[object] = []
-    panel.list.SetItem = lambda item: captured.append(item)
+    texts: list[tuple[int, int, str]] = []
+    images: list[tuple[int, int, int]] = []
+    panel.list.SetStringItem = lambda idx, col, text: texts.append((idx, col, text))
+    panel.list.SetItemColumnImage = lambda idx, col, img: images.append((idx, col, img))
+    dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
+    calls: list[list[str]] = []
+    monkeypatch.setattr(panel, "_create_label_bitmap", lambda names: calls.append(names) or dummy)
+    monkeypatch.setattr(panel, "_ensure_image_list_size", lambda w, h: None)
+    panel._image_list = wx_stub.ImageList(1, 1)
     panel.set_requirements([
         _req(1, "A", labels=["ui", "backend"]),
     ])
 
-    item = next((i for i in captured if i.GetColumn() == 1), None)
-    assert item is not None
-    renderer = item.GetCustomRenderer()
-    assert renderer is not None
-    assert renderer.labels == ["ui", "backend"]
+    assert calls == [["ui", "backend"]]
+    assert (0, 1, "") in texts
+    assert images == [(0, 1, 0)]
 
 
 def test_labels_column_uses_colors(monkeypatch):
@@ -517,13 +538,15 @@ def test_labels_column_uses_colors(monkeypatch):
     panel.update_labels_list([Label("ui", "#123456")])
     panel.set_columns(["labels"])
 
-    captured: list[object] = []
-    panel.list.SetItem = lambda item: captured.append(item)
+    dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
+    def fake_bitmap(names):
+        assert panel._label_color(names[0]) == "#123456"
+        return dummy
+    monkeypatch.setattr(panel, "_create_label_bitmap", fake_bitmap)
+    monkeypatch.setattr(panel, "_ensure_image_list_size", lambda w, h: None)
+    panel._image_list = wx_stub.ImageList(1, 1)
+    panel.list.SetItemColumnImage = lambda idx, col, img: None
     panel.set_requirements([_req(1, "A", labels=["ui"])])
-
-    item = next((i for i in captured if i.GetColumn() == 1), None)
-    renderer = item.GetCustomRenderer()
-    assert renderer.colors["ui"] == "#123456"
 
 
 def test_sort_by_labels(monkeypatch):
@@ -542,6 +565,10 @@ def test_sort_by_labels(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
+    dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
+    monkeypatch.setattr(panel, "_create_label_bitmap", lambda names: dummy)
+    monkeypatch.setattr(panel, "_ensure_image_list_size", lambda w, h: None)
+    panel._image_list = wx_stub.ImageList(1, 1)
     panel.set_requirements([
         _req(1, "A", labels=["beta"]),
         _req(2, "B", labels=["alpha"]),
@@ -567,6 +594,10 @@ def test_sort_by_multiple_labels(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
+    dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
+    monkeypatch.setattr(panel, "_create_label_bitmap", lambda names: dummy)
+    monkeypatch.setattr(panel, "_ensure_image_list_size", lambda w, h: None)
+    panel._image_list = wx_stub.ImageList(1, 1)
     panel.set_requirements([
         _req(1, "A", labels=["alpha", "zeta"]),
         _req(2, "B", labels=["alpha", "beta"]),

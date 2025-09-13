@@ -1,61 +1,23 @@
 """Panel displaying requirements list and simple filters."""
 
+from __future__ import annotations
+
 from ..i18n import _
 
 import wx
-from wx.lib.agw import ultimatelistctrl as ULC
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
 from typing import Callable, List, Sequence, TYPE_CHECKING
 from enum import Enum
 
 from ..core.model import Priority, RequirementType, Status, Verification, Requirement
-from ..core.labels import Label
+from ..core.labels import Label, _color_from_name
 from .requirement_model import RequirementModel
 from .filter_dialog import FilterDialog
 from . import locale
 
 if TYPE_CHECKING:  # pragma: no cover
     from wx import ListEvent, ContextMenuEvent
-
-
-class _LabelsRenderer:
-    """Simple renderer drawing labels as filled rectangles with text."""
-
-    PADDING_X = 2
-    PADDING_Y = 1
-    GAP = 3
-
-    def __init__(self, labels: list[str], colors: dict[str, str]):
-        self.labels = labels
-        self.colors = colors
-
-    def DrawSubItem(self, dc, rect, _line, _highlighted, _enabled):  # pragma: no cover - GUI
-        x = rect.x + self.GAP
-        dc.SetPen(wx.TRANSPARENT_PEN)
-        for text in self.labels:
-            tw, th = dc.GetTextExtent(text)
-            w = tw + self.PADDING_X * 2
-            h = th + self.PADDING_Y * 2
-            y = rect.y + (rect.height - h) // 2
-            colour = self.colors.get(text, "#dcdcdc")
-            dc.SetBrush(wx.Brush(wx.Colour(colour)))
-            dc.DrawRectangle(x, y, w, h)
-            dc.DrawText(text, x + self.PADDING_X, y + self.PADDING_Y)
-            x += w + self.GAP
-
-    def GetLineHeight(self):  # pragma: no cover - GUI
-        dc = wx.ScreenDC()
-        _, h = dc.GetTextExtent("Hg")
-        return h + self.PADDING_Y * 2
-
-    def GetSubItemWidth(self):  # pragma: no cover - GUI
-        dc = wx.ScreenDC()
-        width = self.GAP
-        for text in self.labels:
-            tw, _ = dc.GetTextExtent(text)
-            width += tw + self.PADDING_X * 2 + self.GAP
-        return width
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):
@@ -98,10 +60,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         btn_row.Add(self.filter_btn, 0, right, 5)
         btn_row.Add(self.reset_btn, 0, right, 5)
         btn_row.Add(self.filter_summary, 0, align_center, 0)
-        self.list = ULC.UltimateListCtrl(self, agwStyle=ULC.ULC_REPORT)
+        self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
         self._labels: list[Label] = []
-        self._label_colors: dict[str, str] = {}
         self.current_filters: dict = {}
+        self._image_list: wx.ImageList | None = None
+        self._label_images: dict[tuple[str, ...], int] = {}
         ColumnSorterMixin.__init__(self, 1)
         self.columns: List[str] = []
         self._on_clone = on_clone
@@ -111,9 +74,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.derived_map: dict[int, List[int]] = {}
         self._sort_column = -1
         self._sort_ascending = True
-        self._drag_start_col: int | None = None
-        self._drag_start_x = 0
-        self._dragging = False
         self._setup_columns()
         sizer.Add(btn_row, 0, wx.ALL, 5)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
@@ -145,6 +105,78 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if on_derive is not None:
             self._on_derive = on_derive
 
+    # label rendering -------------------------------------------------
+    def _label_color(self, name: str) -> str:
+        for lbl in self._labels:
+            if lbl.name == name:
+                return lbl.color
+        return _color_from_name(name)
+
+    def _ensure_image_list_size(self, width: int, height: int) -> None:
+        if self._image_list is None:
+            self._image_list = wx.ImageList(width or 1, height or 1)
+            self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
+            return
+        cur_w, cur_h = self._image_list.GetSize()  # pragma: no cover - simple accessors
+        if width <= cur_w and height <= cur_h:
+            return
+        new_list = wx.ImageList(max(width, cur_w), max(height, cur_h))
+        count = self._image_list.GetImageCount()
+        for idx in range(count):  # pragma: no cover - trivial loop
+            bmp = self._image_list.GetBitmap(idx)
+            new_list.Add(bmp)
+        self._image_list = new_list
+        self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
+
+    def _create_label_bitmap(self, names: list[str]) -> wx.Bitmap:
+        padding_x, padding_y, gap = 4, 2, 2
+        font = self.list.GetFont()
+        dc = wx.MemoryDC()
+        dc.SelectObject(wx.Bitmap(1, 1))
+        dc.SetFont(font)
+        widths: list[int] = []
+        height = 0
+        for name in names:
+            w, h = dc.GetTextExtent(name)
+            widths.append(w)
+            height = max(height, h)
+        height += padding_y * 2
+        total = sum(w + padding_x * 2 for w in widths) + gap * (len(names) - 1)
+        bmp = wx.Bitmap(total or 1, height or 1)
+        dc.SelectObject(bmp)
+        dc.SetBackground(wx.Brush(self.list.GetBackgroundColour()))
+        dc.Clear()
+        x = 0
+        for name, w in zip(names, widths):
+            color_hex = self._label_color(name)
+            colour = wx.Colour(color_hex)
+            dc.SetBrush(wx.Brush(colour))
+            dc.SetPen(wx.Pen(colour))
+            box_w = w + padding_x * 2
+            dc.DrawRectangle(x, 0, box_w, height)
+            dc.SetTextForeground(wx.BLACK)
+            dc.DrawText(name, x + padding_x, padding_y)
+            x += box_w + gap
+        dc.SelectObject(wx.NullBitmap)
+        return bmp
+
+    def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
+        if not labels:
+            self.list.SetStringItem(index, col, "")
+            return
+        key = tuple(labels)
+        img_id = self._label_images.get(key)
+        if img_id is None:
+            bmp = self._create_label_bitmap(labels)
+            self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
+            img_id = self._image_list.Add(bmp)
+            self._label_images[key] = img_id
+        self.list.SetStringItem(index, col, "")
+        try:  # pragma: no cover - method may not exist in stubs
+            self.list.SetItemColumnImage(index, col, img_id)
+        except Exception:
+            pass
+
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""
         self.list.ClearAll()
@@ -157,7 +189,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         except Exception:  # pragma: no cover - Unbind may not exist
             pass
         self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
-        self._bind_column_dragging()
 
     # Columns ---------------------------------------------------------
     def load_column_widths(self, config: wx.Config) -> None:
@@ -182,21 +213,34 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         value = config.Read("col_order", "")
         if not value:
             return
-        names = [n for n in value.split(",") if n and n != "title"]
-        ordered: list[str] = []
+        names = [n for n in value.split(",") if n]
+        order: List[int] = []
         for name in names:
-            if name in self.columns:
-                ordered.append(name)
-        for name in self.columns:
-            if name not in ordered:
-                ordered.append(name)
-        self.columns = ordered
-        self._setup_columns()
-        self._refresh()
+            if name == "title":
+                order.append(0)
+            elif name in self.columns:
+                order.append(self.columns.index(name) + 1)
+        count = self.list.GetColumnCount()
+        for idx in range(count):
+            if idx not in order:
+                order.append(idx)
+        try:  # pragma: no cover - depends on GUI backend
+            self.list.SetColumnsOrder(order)
+        except Exception:
+            pass
 
     def save_column_order(self, config: wx.Config) -> None:
         """Persist current column ordering to config."""
-        names: list[str] = ["title"] + list(self.columns)
+        try:  # pragma: no cover - depends on GUI backend
+            order = self.list.GetColumnsOrder()
+        except Exception:
+            return
+        names: List[str] = []
+        for idx in order:
+            if idx == 0:
+                names.append("title")
+            elif 1 <= idx <= len(self.columns):
+                names.append(self.columns[idx - 1])
         config.Write("col_order", ",".join(names))
 
     def reorder_columns(self, from_col: int, to_col: int) -> None:
@@ -209,59 +253,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.columns = fields
         self._setup_columns()
         self._refresh()
-
-    # header drag ----------------------------------------------------
-    def _bind_column_dragging(self) -> None:
-        header = getattr(self.list, "_headerWin", None)
-        if not header:
-            return
-        header.Bind(wx.EVT_LEFT_DOWN, self._on_header_left_down)
-        header.Bind(wx.EVT_LEFT_UP, self._on_header_left_up)
-        header.Bind(wx.EVT_MOTION, self._on_header_motion)
-
-    def _header_hit_test(self, x: int) -> int | None:
-        try:
-            x, _ = self.list.CalcUnscrolledPosition(x, 0)
-        except Exception:
-            pass
-        xpos = 0
-        count = self.list.GetColumnCount()
-        for col in range(count):
-            try:
-                width = self.list.GetColumnWidth(col)
-            except Exception:
-                width = 0
-            if x < xpos + width:
-                return col
-            xpos += width
-        return None
-
-    def _on_header_left_down(self, event):  # pragma: no cover - GUI event
-        self._drag_start_x = event.GetX()
-        self._drag_start_col = self._header_hit_test(event.GetX())
-        self._dragging = True
-        event.Skip()
-
-    def _on_header_motion(self, event):  # pragma: no cover - GUI event
-        if not self._dragging:
-            event.Skip()
-            return
-        event.Skip()
-
-    def _on_header_left_up(self, event):  # pragma: no cover - GUI event
-        if self._dragging:
-            if abs(event.GetX() - self._drag_start_x) > 5:
-                target = self._header_hit_test(event.GetX())
-                if (
-                    target is not None
-                    and self._drag_start_col is not None
-                    and target != self._drag_start_col
-                ):
-                    self.reorder_columns(self._drag_start_col, target)
-                    self._dragging = False
-                    return
-        self._dragging = False
-        event.Skip()
 
     def set_columns(self, fields: List[str]) -> None:
         """Set additional columns (beyond Title) to display.
@@ -315,9 +306,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.apply_filters(filters)
 
     def update_labels_list(self, labels: list[Label]) -> None:
-        """Update available labels for the filter dialog and renderer."""
+        """Update available labels for the filter dialog."""
         self._labels = list(labels)
-        self._label_colors = {lbl.name: lbl.color for lbl in labels}
 
     def _on_filter(self, event):  # pragma: no cover - simple event binding
         dlg = FilterDialog(self, labels=self._labels, values=self.current_filters)
@@ -452,12 +442,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
                 if field == "labels" and isinstance(value, list):
-                    item = ULC.UltimateListItem()
-                    item.SetId(index)
-                    item.SetColumn(col)
-                    item.SetText("")
-                    item.SetCustomRenderer(_LabelsRenderer(value, self._label_colors))
-                    self.list.SetItem(item)
+                    self._set_label_image(index, col, value)
                     continue
                 self.list.SetStringItem(index, col, str(value))
             if suspect_row and hasattr(self.list, "SetItemTextColour"):
@@ -522,6 +507,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         pt = self.list.ScreenToClient(pos)
         if hasattr(self.list, "HitTestSubItem"):
             index, _, col = self.list.HitTestSubItem(pt)
+            if col == -1:
+                col = None
         else:  # pragma: no cover - fallback for older wx
             index, _ = self.list.HitTest(pt)
             col = None

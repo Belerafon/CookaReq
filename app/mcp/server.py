@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 import uvicorn
 from mcp.server.fastmcp import FastMCP
 
-from app.log import configure_logging, logger
+from app.log import JsonlHandler, configure_logging, logger
 from app.mcp.utils import ErrorCode, mcp_error, sanitize
 from app.mcp import tools_read, tools_write
 
@@ -34,23 +34,6 @@ app.state.log_dir = "."
 
 _TEXT_LOG_NAME = "server.log"
 _JSONL_LOG_NAME = "server.jsonl"
-class JsonlHandler(logging.Handler):
-    """Write log records as JSON lines."""
-
-    def __init__(self, filename: str) -> None:
-        super().__init__(level=logging.INFO)
-        self.filename = filename
-
-    def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - simple IO
-        data = getattr(record, "json", None)
-        if data is None:
-            data = {
-                "message": record.getMessage(),
-                "level": record.levelname,
-            }
-        with open(self.filename, "a", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False)
-            fh.write("\n")
 
 
 def _configure_request_logging(log_dir: str) -> None:

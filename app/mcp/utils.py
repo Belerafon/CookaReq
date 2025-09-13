@@ -7,28 +7,7 @@ from enum import Enum
 from typing import Any, Mapping
 
 from app.log import logger
-
-# Common keys that may contain sensitive information and should be redacted
-SENSITIVE_KEYS = {
-    "authorization",
-    "token",
-    "secret",
-    "password",
-    "api_key",
-    "cookie",
-}
-
-
-def sanitize(data: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a copy of *data* with sensitive keys redacted."""
-
-    sanitized: dict[str, Any] = {}
-    for key, value in data.items():
-        if key.lower() in SENSITIVE_KEYS:
-            sanitized[key] = "***"
-        else:
-            sanitized[key] = value
-    return sanitized
+from app.telemetry import sanitize
 
 
 def log_tool(

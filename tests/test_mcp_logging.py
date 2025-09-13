@@ -33,5 +33,5 @@ def test_request_logged_and_token_masked():
         entry = json.loads(line)
         headers = entry["headers"]
         auth = headers.get("Authorization") or headers.get("authorization")
-        assert auth == "***"
+        assert auth == "[REDACTED]"
         assert "secret" not in json.dumps(entry)

@@ -78,3 +78,31 @@ def test_cli_settings_flag(tmp_path, monkeypatch, capsys):
     main(["--settings", str(settings_file), "list", str(req_dir)])
     capsys.readouterr()
     assert called["path"] == str(settings_file)
+
+
+def test_cli_check_uses_agent(tmp_path, monkeypatch, capsys):
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text("{}")
+
+    called: dict[str, object] = {}
+
+    class DummyAgent:
+        def __init__(self, settings):
+            called["settings"] = settings
+
+        def check_llm(self):
+            called["llm"] = True
+            return {"status": "ok"}
+
+        def check_tools(self):
+            called["mcp"] = True
+            return {"status": "ok"}
+
+    from app import cli as cli_mod
+
+    monkeypatch.setattr(cli_mod, "LocalAgent", DummyAgent)
+
+    main(["--settings", str(settings_file), "check"])
+    captured = capsys.readouterr().out
+    assert called["llm"] and called["mcp"]
+    assert "llm" in captured and "mcp" in captured

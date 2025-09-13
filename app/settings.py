@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+"""Typed application settings with Pydantic validation."""
+
 from pathlib import Path
 import json
 import tomllib
+from pydantic import BaseModel, ValidationError, Field
 
 
-@dataclass
-class LLMSettings:
+class LLMSettings(BaseModel):
     """Settings for connecting to an LLM service."""
 
     api_base: str = ""
@@ -16,8 +17,7 @@ class LLMSettings:
     timeout: int = 60
 
 
-@dataclass
-class MCPSettings:
+class MCPSettings(BaseModel):
     """Settings for configuring the MCP server and client."""
 
     host: str = "127.0.0.1"
@@ -27,12 +27,11 @@ class MCPSettings:
     token: str = ""
 
 
-@dataclass
-class UISettings:
+class UISettings(BaseModel):
     """Settings related to the graphical user interface."""
 
-    columns: list[str] = field(default_factory=list)
-    recent_dirs: list[str] = field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
+    recent_dirs: list[str] = Field(default_factory=list)
     auto_open_last: bool = False
     remember_sort: bool = False
     language: str | None = None
@@ -40,28 +39,24 @@ class UISettings:
     sort_ascending: bool = True
 
 
-@dataclass
-class AppSettings:
+class AppSettings(BaseModel):
     """Aggregate settings for the application."""
 
-    llm: LLMSettings = field(default_factory=LLMSettings)
-    mcp: MCPSettings = field(default_factory=MCPSettings)
-    ui: UISettings = field(default_factory=UISettings)
+    llm: LLMSettings = Field(default_factory=LLMSettings)
+    mcp: MCPSettings = Field(default_factory=MCPSettings)
+    ui: UISettings = Field(default_factory=UISettings)
 
     def to_dict(self) -> dict:
-        return {
-            "llm": asdict(self.llm),
-            "mcp": asdict(self.mcp),
-            "ui": asdict(self.ui),
-        }
+        """Return settings as a plain dictionary."""
+        return self.model_dump()
 
 
 def load_app_settings(path: str | Path) -> AppSettings:
-    """Load :class:`AppSettings` from *path*.
+    """Load :class:`AppSettings` from *path* with validation.
 
-    The file must contain ``llm`` and/or ``mcp`` sections.  Format is detected
-    by extension: ``.toml`` uses :mod:`tomllib`, everything else is treated as
-    JSON.
+    Format is detected by file extension: ``.toml`` uses :mod:`tomllib`,
+    everything else is treated as JSON.  Any validation errors are wrapped into
+    :class:`ValueError` with a human-friendly message.
     """
 
     p = Path(path)
@@ -70,11 +65,7 @@ def load_app_settings(path: str | Path) -> AppSettings:
             data = tomllib.load(fh)
         else:
             data = json.load(fh)
-    llm_data = data.get("llm", {})
-    mcp_data = data.get("mcp", {})
-    ui_data = data.get("ui", {})
-    return AppSettings(
-        llm=LLMSettings(**llm_data),
-        mcp=MCPSettings(**mcp_data),
-        ui=UISettings(**ui_data),
-    )
+    try:
+        return AppSettings.model_validate(data)
+    except ValidationError as exc:  # pragma: no cover - exercised via tests
+        raise ValueError(str(exc)) from exc

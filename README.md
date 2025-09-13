@@ -36,6 +36,7 @@ Available commands:
 - `list <dir>` — print the list of requirements; supports `--labels`, `--query`, and `--fields` for filtering
 - `add <dir> <file>` — add a requirement from a JSON file
 - `edit <dir> <file>` — update an existing requirement with data from a file
+- `delete <dir> <id>` — remove a requirement by id
 - `show <dir> <id>` — display the full contents of a requirement as JSON
 
 ## MCP Integration

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import atexit
 from pathlib import Path
 from app import i18n
@@ -54,6 +55,18 @@ def cmd_edit(args: argparse.Namespace, repo: RequirementRepository) -> None:
     print(path)
 
 
+def cmd_delete(args: argparse.Namespace, repo: RequirementRepository) -> None:
+    """Delete requirement with *id* from *directory*."""
+    try:
+        # Ensure requirement exists to report errors for invalid ids
+        repo.get(args.directory, args.id)
+    except FileNotFoundError:
+        print(f"requirement {args.id} not found", file=sys.stderr)
+        return
+    repo.delete(args.directory, args.id)
+    print("deleted")
+
+
 def cmd_show(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """Show detailed JSON for requirement with *id*."""
     req = repo.get(args.directory, args.id)
@@ -97,6 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_edit.add_argument("directory", help=_("requirements directory"))
     p_edit.add_argument("file", help=_("JSON file with updated requirement"))
     p_edit.set_defaults(func=cmd_edit)
+
+    p_delete = sub.add_parser("delete", help=_("delete requirement"))
+    p_delete.add_argument("directory", help=_("requirements directory"))
+    p_delete.add_argument("id", type=int, help=_("requirement id"))
+    p_delete.set_defaults(func=cmd_delete)
 
     p_show = sub.add_parser("show", help=_("show requirement details"))
     p_show.add_argument("directory", help=_("requirements directory"))

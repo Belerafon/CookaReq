@@ -6,7 +6,9 @@ import json
 import time
 from typing import Any, Tuple, Mapping
 
-from openai import OpenAI
+# ``OpenAI`` импортируется динамически в конструкторе, чтобы тесты могли
+# подменять ``openai.OpenAI`` до первого использования и тем самым избежать
+# реальных сетевых запросов.
 
 from app.telemetry import log_event
 from app.settings import LLMSettings
@@ -17,8 +19,10 @@ class LLMClient:
     """High-level client for LLM operations."""
 
     def __init__(self, settings: LLMSettings) -> None:
+        import openai
+
         self.settings = settings
-        self._client = OpenAI(
+        self._client = openai.OpenAI(
             base_url=self.settings.api_base or None,
             api_key=self.settings.api_key or None,
             timeout=self.settings.timeout,

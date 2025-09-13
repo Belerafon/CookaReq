@@ -1,5 +1,3 @@
-import wx
-
 from app.config import ConfigManager
 
 

@@ -24,25 +24,18 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import pytest
 from app.confirm import set_confirm, auto_confirm
+from app.mcp.server import start_server, stop_server, app as mcp_app
+from tests.mcp_utils import _wait_until_ready
+import socket
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _virtual_display():
-    # Skip virtual display on Windows or if DISPLAY is set
-    if os.name == 'nt' or os.environ.get("DISPLAY"):
-        yield
-        return
-    try:
-        from pyvirtualdisplay import Display
-    except Exception:
-        yield
-        return
-    display = Display(visible=False, size=(1280, 800))
-    display.start()
-    try:
-        yield
-    finally:
-        display.stop()
+@pytest.fixture(autouse=True)
+def _mock_openrouter(monkeypatch):
+    """Подменить OpenAI на мок, если не запрошен реальный OpenRouter."""
+    if not os.environ.get("OPENROUTER_REAL"):
+        from tests.llm_utils import make_openai_mock
+
+        monkeypatch.setattr("openai.OpenAI", make_openai_mock({}))
 
 
 @pytest.fixture(autouse=True)
@@ -53,10 +46,40 @@ def _auto_confirm():
 
 @pytest.fixture(scope="session")
 def wx_app():
+    display = None
+    if os.name != "nt" and not os.environ.get("DISPLAY"):
+        try:
+            from pyvirtualdisplay import Display
+        except Exception:
+            Display = None
+        if Display is not None:
+            display = Display(visible=False, size=(1280, 800))
+            display.start()
     wx = pytest.importorskip("wx")
     app = wx.App()
     yield app
     app.Destroy()
+    if display is not None:
+        display.stop()
+
+
+def _get_free_port() -> int:
+    s = socket.socket()
+    try:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+    finally:
+        s.close()
+
+
+@pytest.fixture(scope="module")
+def mcp_server():
+    port = _get_free_port()
+    stop_server()
+    start_server(port=port, base_path="")
+    _wait_until_ready(port)
+    yield port
+    stop_server()
 
 
 @pytest.hookimpl(tryfirst=True)

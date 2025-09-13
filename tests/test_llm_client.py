@@ -27,5 +27,7 @@ def test_check_llm(tmp_path: Path) -> None:
     entries = [json.loads(line) for line in log_file.read_text().splitlines()]
     req = next(e for e in entries if e.get("event") == "LLM_REQUEST")
     res = next(e for e in entries if e.get("event") == "LLM_RESPONSE")
-    assert req["api_key"] == "[REDACTED]"
-    assert res["ok"] is True
+    assert req["payload"]["api_key"] == "[REDACTED]"
+    assert res["payload"]["ok"] is True
+    assert "timestamp" in req and "size_bytes" in req
+    assert "duration_ms" in res

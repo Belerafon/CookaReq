@@ -45,8 +45,9 @@ def test_check_tools_success(tmp_path: Path) -> None:
         entries = [json.loads(line) for line in lines]
         call = next(e for e in entries if e.get("event") == "TOOL_CALL")
         res = next(e for e in entries if e.get("event") == "TOOL_RESULT")
-        assert call["params"]["token"] == "***"
-        assert res["ok"] is True
+        assert call["payload"]["params"]["token"] == "[REDACTED]"
+        assert res["payload"]["ok"] is True
+        assert "duration_ms" in res
     finally:
         stop_server()
 

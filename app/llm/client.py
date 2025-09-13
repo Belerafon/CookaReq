@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, Tuple, Mapping
 
 import wx
 from openai import OpenAI
 
-from app.log import logger
+from app.telemetry import log_event
 from .spec import SYSTEM_PROMPT, TOOLS
 
 
@@ -47,28 +48,29 @@ class LLMClient:
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
         """Perform a minimal request to verify connectivity."""
-        request_entry = {
-            "event": "LLM_REQUEST",
+        payload = {
             "api_base": self.settings.api_base,
             "model": self.settings.model,
-            "api_key": "[REDACTED]",
+            "api_key": self.settings.api_key,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
         }
-        logger.info("LLM_REQUEST", extra={"json": request_entry})
+        start = time.monotonic()
+        log_event("LLM_REQUEST", payload)
         try:
             self._client.chat.completions.create(
                 model=self.settings.model,
-                messages=[{"role": "user", "content": "ping"}],
-                max_tokens=1,
+                messages=payload["messages"],
+                max_tokens=payload["max_tokens"],
             )
         except Exception as exc:  # pragma: no cover - network errors
-            response_entry = {
-                "event": "LLM_RESPONSE",
-                "error": {"type": type(exc).__name__, "message": str(exc)},
-            }
-            logger.info("LLM_RESPONSE", extra={"json": response_entry})
-            return {"ok": False, "error": response_entry["error"]}
-        response_entry = {"event": "LLM_RESPONSE", "ok": True}
-        logger.info("LLM_RESPONSE", extra={"json": response_entry})
+            log_event(
+                "LLM_RESPONSE",
+                {"error": {"type": type(exc).__name__, "message": str(exc)}},
+                start_time=start,
+            )
+            return {"ok": False, "error": {"type": type(exc).__name__, "message": str(exc)}}
+        log_event("LLM_RESPONSE", {"ok": True}, start_time=start)
         return {"ok": True}
 
     # ------------------------------------------------------------------
@@ -80,22 +82,26 @@ class LLMClient:
         set to ``0`` to keep the output deterministic.
         """
 
-        request_entry = {
-            "event": "LLM_REQUEST",
+        payload = {
             "api_base": self.settings.api_base,
             "model": self.settings.model,
-            "prompt": text,
+            "api_key": self.settings.api_key,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": text},
+            ],
+            "tools": TOOLS,
+            "tool_choice": "required",
+            "temperature": 0,
         }
-        logger.info("LLM_REQUEST", extra={"json": request_entry})
+        start = time.monotonic()
+        log_event("LLM_REQUEST", payload)
 
         try:
             completion = self._client.chat.completions.create(
                 model=self.settings.model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": text},
-                ],
-                tools=TOOLS,
+                messages=payload["messages"],
+                tools=payload["tools"],
                 tool_choice="required",
                 temperature=0,
             )
@@ -103,17 +109,12 @@ class LLMClient:
             tool_call = message.tool_calls[0]
             name = tool_call.function.name
             arguments = json.loads(tool_call.function.arguments or "{}")
-            response_entry = {
-                "event": "LLM_RESPONSE",
-                "tool": name,
-                "arguments": arguments,
-            }
-            logger.info("LLM_RESPONSE", extra={"json": response_entry})
+            log_event("LLM_RESPONSE", {"tool": name, "arguments": arguments}, start_time=start)
             return name, arguments
         except Exception as exc:  # pragma: no cover - network errors
-            response_entry = {
-                "event": "LLM_RESPONSE",
-                "error": {"type": type(exc).__name__, "message": str(exc)},
-            }
-            logger.info("LLM_RESPONSE", extra={"json": response_entry})
+            log_event(
+                "LLM_RESPONSE",
+                {"error": {"type": type(exc).__name__, "message": str(exc)}},
+                start_time=start,
+            )
             raise

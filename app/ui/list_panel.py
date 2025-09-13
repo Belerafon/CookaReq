@@ -82,7 +82,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         align_center = getattr(wx, "ALIGN_CENTER_VERTICAL", 0)
         btn_row = wx.BoxSizer(orient)
         self.filter_btn = wx.Button(self, label=_("Filters"))
-        self.reset_btn = wx.Button(self, label=_("Reset"))
+        bmp = wx.ArtProvider.GetBitmap(
+            getattr(wx, "ART_CLOSE", "wxART_CLOSE"),
+            getattr(wx, "ART_BUTTON", "wxART_BUTTON"),
+            (16, 16),
+        )
+        self.reset_btn = wx.BitmapButton(
+            self,
+            bitmap=bmp,
+            style=getattr(wx, "BU_EXACTFIT", 0),
+        )
+        self.reset_btn.SetToolTip(_("Clear filters"))
+        self.reset_btn.Hide()
         self.filter_summary = wx.StaticText(self, label="")
         btn_row.Add(self.filter_btn, 0, right, 5)
         btn_row.Add(self.reset_btn, 0, right, 5)
@@ -292,6 +303,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.model.set_suspect_only(self.current_filters.get("suspect_only", False))
         self._refresh()
         self._update_filter_summary()
+        self._toggle_reset_button()
 
     def set_label_filter(self, labels: List[str]) -> None:
         self.apply_filters({"labels": labels})
@@ -346,6 +358,39 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self.filter_summary.SetLabel(summary)
         else:  # pragma: no cover - test stub
             self.filter_summary.label = summary
+
+    def _has_active_filters(self) -> bool:
+        """Return ``True`` if any filters are currently applied."""
+        if self.current_filters.get("query"):
+            return True
+        if self.current_filters.get("labels"):
+            return True
+        if self.current_filters.get("status"):
+            return True
+        if self.current_filters.get("is_derived"):
+            return True
+        if self.current_filters.get("has_derived"):
+            return True
+        if self.current_filters.get("suspect_only"):
+            return True
+        field_queries = self.current_filters.get("field_queries", {})
+        if any(v for v in field_queries.values()):
+            return True
+        return False
+
+    def _toggle_reset_button(self) -> None:
+        """Show or hide the reset button based on active filters."""
+        if self._has_active_filters():
+            if hasattr(self.reset_btn, "Show"):
+                self.reset_btn.Show()
+        else:
+            if hasattr(self.reset_btn, "Hide"):
+                self.reset_btn.Hide()
+        if hasattr(self, "Layout"):
+            try:
+                self.Layout()
+            except Exception:  # pragma: no cover - some stubs lack Layout
+                pass
 
     def _refresh(self) -> None:
         """Reload list control from the model."""

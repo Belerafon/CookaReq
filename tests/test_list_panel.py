@@ -13,10 +13,20 @@ def _build_wx_stub():
         def __init__(self, parent=None):
             self._parent = parent
             self._bindings = {}
+            self._shown = True
+            self._tooltip = None
         def GetParent(self):
             return self._parent
         def Bind(self, event, handler):
             self._bindings[event] = handler
+        def Show(self, show=True):
+            self._shown = bool(show)
+        def Hide(self):
+            self._shown = False
+        def IsShown(self):
+            return self._shown
+        def SetToolTip(self, tip):
+            self._tooltip = tip
 
         # helper for tests
         def get_bound_handler(self, event):
@@ -61,6 +71,16 @@ def _build_wx_stub():
             self._label = label
         def GetLabel(self):
             return self._label
+
+    class BitmapButton(Button):
+        def __init__(self, parent=None, bitmap=None, style=0):
+            super().__init__(parent)
+            self._bitmap = bitmap
+
+    class ArtProvider:
+        @staticmethod
+        def GetBitmap(*args, **kwargs):
+            return object()
 
     class Dialog(Window):
         def __init__(self, parent=None, title=""):
@@ -189,6 +209,7 @@ def _build_wx_stub():
         ComboCtrl=ComboCtrl,
         CheckBox=CheckBox,
         Button=Button,
+        BitmapButton=BitmapButton,
         Dialog=Dialog,
         CheckListBox=CheckListBox,
         StaticText=StaticText,
@@ -198,6 +219,9 @@ def _build_wx_stub():
         VERTICAL=0,
         EXPAND=0,
         ALL=0,
+        BU_EXACTFIT=0,
+        ART_CLOSE="close",
+        ART_BUTTON="button",
         OK=1,
         CANCEL=2,
         EVT_BUTTON=object(),
@@ -209,6 +233,7 @@ def _build_wx_stub():
         EVT_CHECKBOX=object(),
         Config=Config,
         ContextMenuEvent=types.SimpleNamespace,
+        ArtProvider=ArtProvider,
     )
     class ColumnSorterMixin:
         def __init__(self, *args, **kwargs):
@@ -263,9 +288,12 @@ def test_list_panel_has_filter_and_list(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
 
     assert isinstance(panel.filter_btn, wx_stub.Button)
+    assert isinstance(panel.reset_btn, wx_stub.BitmapButton)
     assert isinstance(panel.list, ulc.UltimateListCtrl)
     assert panel.filter_btn.GetParent() is panel
+    assert panel.reset_btn.GetParent() is panel
     assert panel.list.GetParent() is panel
+    assert not panel.reset_btn.IsShown()
 
     sizer = panel.GetSizer()
     children = [child.GetWindow() for child in sizer.GetChildren()]
@@ -391,6 +419,28 @@ def test_apply_filters(monkeypatch):
 
     panel.apply_filters({"labels": [], "field_queries": {"owner": "bob"}})
     assert [r.id for r in panel.model.get_visible()] == [2]
+
+
+def test_reset_button_visibility(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    assert not panel.reset_btn.IsShown()
+    panel.set_search_query("X")
+    assert panel.reset_btn.IsShown()
+    panel.reset_filters()
+    assert not panel.reset_btn.IsShown()
 
 
 def test_apply_status_filter(monkeypatch):

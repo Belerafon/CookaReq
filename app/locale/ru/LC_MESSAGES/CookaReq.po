@@ -338,6 +338,9 @@ msgstr "Файл"
 msgid "Filters"
 msgstr "Фильтры"
 
+msgid "Clear filters"
+msgstr "Убрать фильтры"
+
 msgid "General"
 msgstr "Общее"
 

@@ -44,12 +44,31 @@ def test_list_panel_real_widgets(wx_app):
 
     assert panel in frame.GetChildren()
     assert isinstance(panel.filter_btn, wx.Button)
+    assert isinstance(panel.reset_btn, wx.BitmapButton)
     assert isinstance(panel.list, ULC.UltimateListCtrl)
     assert panel.filter_btn.GetParent() is panel
+    assert panel.reset_btn.GetParent() is panel
     assert panel.list.GetParent() is panel
     assert panel.filter_btn.IsShown()
     assert panel.list.IsShown()
+    assert not panel.reset_btn.IsShown()
 
+    frame.Destroy()
+
+
+def test_reset_button_visibility_gui(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_search_query("T")
+    wx_app.Yield()
+    assert panel.reset_btn.IsShown()
+    panel.reset_filters()
+    wx_app.Yield()
+    assert not panel.reset_btn.IsShown()
     frame.Destroy()
 
 

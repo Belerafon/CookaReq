@@ -225,14 +225,21 @@ class ConfigManager:
             frame.SetPosition((x, y))
         else:
             frame.Centre()
+        # Ensure layout calculations are performed even if the frame is not shown yet
+        frame.SendSizeEvent()
+        wx.Yield()
+        client_size = frame.GetClientSize()
+        if client_size.width <= 1 or client_size.height <= 1:
+            client_size = wx.Size(w, h)
+        main_splitter.SetSize(client_size)
+        splitter.SetSize(client_size)
         sash = self._cfg.ReadInt("sash_pos", 300)
-        client_w = frame.GetClientSize().width
-        sash = max(100, min(sash, max(client_w - 100, 100)))
+        sash = max(100, min(sash, max(client_size.width - 100, 100)))
         splitter.SetSashPosition(sash)
         panel.load_column_widths(self)
         panel.load_column_order(self)
         log_shown = self._cfg.ReadBool("log_shown", False)
-        log_sash = self._cfg.ReadInt("log_sash", frame.GetClientSize().height - 150)
+        log_sash = self._cfg.ReadInt("log_sash", client_size.height - 150)
         if log_shown:
             log_console.Show()
             main_splitter.SplitHorizontally(splitter, log_console, log_sash)

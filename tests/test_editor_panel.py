@@ -38,6 +38,14 @@ def test_editor_save_and_delete(tmp_path):
     panel.fields["owner"].SetValue("owner")
     panel.fields["source"].SetValue("src")
     panel.fields["acceptance"].SetValue("Acc")
+    panel.units_fields["quantity"].SetValue("kg")
+    panel.units_fields["nominal"].SetValue("1.0")
+    panel.units_fields["tolerance"].SetValue("0.1")
+    wx = pytest.importorskip("wx")
+    dt = wx.DateTime()
+    dt.ParseISODate("2025-01-01")
+    panel.approved_picker.SetValue(dt)
+    panel.notes_ctrl.SetValue("Note")
 
     attachments_dir = tmp_path / "attachments"
     attachments_dir.mkdir()
@@ -51,6 +59,9 @@ def test_editor_save_and_delete(tmp_path):
     data, _ = store.load(path)
     assert data["id"] == 1
     assert data["attachments"][0]["path"] == f"attachments{os.sep}{att.name}"
+    assert data["units"] == {"quantity": "kg", "nominal": 1.0, "tolerance": 0.1}
+    assert data["approved_at"] == "2025-01-01"
+    assert data["notes"] == "Note"
 
     panel.delete()
     assert not path.exists()

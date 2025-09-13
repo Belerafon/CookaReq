@@ -23,6 +23,10 @@ def _base_req(req_id: int) -> dict:
         "priority": "medium",
         "source": "spec",
         "verification": "analysis",
+        "units": {"quantity": "kg", "nominal": 1.0, "tolerance": 0.1},
+        "attachments": [{"path": "a.txt", "note": "n"}],
+        "approved_at": "2025-01-01",
+        "notes": "note",
         "labels": [],
         "revision": 1,
     }
@@ -39,6 +43,10 @@ def test_create_patch_delete(tmp_path: Path):
     data, _ = load(path)
     assert data["title"] == "New"
     assert data["revision"] == 2
+    assert data["units"] == {"quantity": "kg", "nominal": 1.0, "tolerance": 0.1}
+    assert data["attachments"] == [{"path": "a.txt", "note": "n"}]
+    assert data["approved_at"] == "2025-01-01"
+    assert data["notes"] == "note"
 
     # conflicting revision
     err = patch_requirement(tmp_path, 1, [{"op": "replace", "path": "/title", "value": "Other"}], rev=1)

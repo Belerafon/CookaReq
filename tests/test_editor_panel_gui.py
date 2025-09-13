@@ -20,6 +20,7 @@ def test_editor_new_requirement_resets(tmp_path):
         "title": "T",
         "statement": "S",
         "attachments": [{"path": "a.txt", "note": "n"}],
+        "units": {"quantity": "kg", "nominal": 1.0, "tolerance": 0.1},
         "labels": ["L1"],
         "revision": 5,
         "approved_at": "2025-01-01",
@@ -29,6 +30,7 @@ def test_editor_new_requirement_resets(tmp_path):
     panel.new_requirement()
 
     assert all(ctrl.GetValue() == "" for ctrl in panel.fields.values())
+    assert all(ctrl.GetValue() == "" for ctrl in panel.units_fields.values())
     panel.fields["id"].SetValue("1")
     defaults = panel.get_data()
     assert defaults.type == RequirementType.REQUIREMENT
@@ -42,6 +44,7 @@ def test_editor_new_requirement_resets(tmp_path):
     assert defaults.revision == 1
     assert defaults.approved_at is None
     assert defaults.notes == ""
+    assert defaults.units is None
 
 
 def test_editor_add_attachment_included():
@@ -103,6 +106,7 @@ def test_editor_load_populates_fields(tmp_path):
         "revision": 2,
         "approved_at": "2025-01-02",
         "notes": "Note",
+        "units": {"quantity": "kg", "nominal": 2.0, "tolerance": 0.5},
     }
     path = tmp_path / "req.json"
     panel.update_labels_list([Label("L", "#000000")])
@@ -124,6 +128,9 @@ def test_editor_load_populates_fields(tmp_path):
     assert result.revision == data["revision"]
     assert result.approved_at == data["approved_at"]
     assert result.notes == data["notes"]
+    assert result.units.quantity == "kg"
+    assert result.units.nominal == 2.0
+    assert result.units.tolerance == 0.5
     assert panel.current_path == path
     assert panel.mtime == 42.0
 

@@ -275,6 +275,20 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     count = len(self.derived_map.get(req.id, []))
                     self.list.SetStringItem(index, col, str(count))
                     continue
+                if field == "attachments":
+                    value = ", ".join(getattr(a, "path", "") for a in getattr(req, "attachments", []))
+                    self.list.SetStringItem(index, col, value)
+                    continue
+                if field == "units":
+                    u = getattr(req, "units", None)
+                    if u:
+                        value = f"{u.quantity} {u.nominal}"
+                        if getattr(u, "tolerance", None) is not None:
+                            value += f" ±{u.tolerance}"
+                    else:
+                        value = ""
+                    self.list.SetStringItem(index, col, value)
+                    continue
                 value = getattr(req, field, "")
                 if isinstance(value, Enum):
                     value = value.value

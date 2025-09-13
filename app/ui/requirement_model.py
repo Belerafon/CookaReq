@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import List, Sequence
 from enum import Enum
+from dataclasses import asdict, is_dataclass
 
 from app.core import requirements as req_ops
 from app.core.model import Requirement
@@ -122,6 +123,10 @@ class RequirementModel:
                     return 0
             if self._sort_field == "labels" and isinstance(value, list):
                 return "|".join(value)
+            if isinstance(value, list):
+                return "|".join(str(v) for v in value)
+            if is_dataclass(value):
+                return str(asdict(value))
             return value
 
         self._visible.sort(key=get_value, reverse=not self._sort_ascending)

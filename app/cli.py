@@ -28,7 +28,11 @@ set_confirm(auto_confirm)
 def cmd_list(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """List requirements in directory, optionally filtered."""
     reqs = repo.search(
-        args.directory, labels=args.labels, query=args.query, fields=args.fields
+        args.directory,
+        labels=args.labels,
+        query=args.query,
+        fields=args.fields,
+        status=args.status,
     )
     for r in reqs:
         print(f"{r.id}: {r.title}")
@@ -117,6 +121,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_list.add_argument("--labels", nargs="*", default=[], help=_("filter by labels"))
     p_list.add_argument("--query", help=_("text search query"))
     p_list.add_argument("--fields", nargs="*", help=_("fields for text search"))
+    p_list.add_argument("--status", help=_("filter by status"))
     p_list.set_defaults(func=cmd_list)
 
     p_add = sub.add_parser("add", help=_("add requirement from JSON file"))

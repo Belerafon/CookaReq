@@ -181,6 +181,22 @@ def test_log_handler_not_duplicated(tmp_path, wx_app):
     # wx_app fixture handles cleanup
 
 
+def test_log_console_shows_label(wx_app):
+    wx = pytest.importorskip("wx")
+    from app.i18n import _
+    import app.ui.main_frame as main_frame
+
+    frame = main_frame.MainFrame(None)
+    frame.navigation.log_menu_item.Check(True)
+    frame.on_toggle_log_console(wx.CommandEvent(wx.EVT_MENU.typeId))
+    wx_app.Yield()
+
+    assert frame.log_label.GetLabel() == _("Error Console")
+    assert frame.log_label.GetPosition().y < frame.log_console.GetPosition().y
+
+    frame.Destroy()
+
+
 def test_main_frame_loads_requirements(monkeypatch, tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.core.store import save

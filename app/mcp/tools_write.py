@@ -6,7 +6,6 @@ from typing import Any, Mapping
 
 import jsonpatch
 import jsonschema
-
 from app.core.schema import SCHEMA
 from app.core.model import requirement_from_dict, requirement_to_dict
 from app.core.store import (
@@ -16,7 +15,7 @@ from app.core.store import (
     filename_for,
     ConflictError,
 )
-from app.mcp.utils import ErrorCode, mcp_error
+from app.mcp.utils import ErrorCode, log_tool, mcp_error
 
 # Fields that must not be modified directly through patching
 UNPATCHABLE_FIELDS = {"id", "revision", "derived_from", "parent", "links"}
@@ -73,18 +72,25 @@ def create_requirement(directory: str | Path, data: Mapping[str, Any]) -> dict:
     The revision is initialised to ``1`` regardless of provided value. Returns
     the created requirement as a dictionary.
     """
+    params = {"directory": str(directory), "data": data}
     req = dict(data)
     req["revision"] = 1
     try:
         obj = requirement_from_dict(req)
         save(directory, obj)
     except ConflictError as exc:
-        return mcp_error(ErrorCode.CONFLICT, str(exc))
+        return log_tool(
+            "create_requirement", params, mcp_error(ErrorCode.CONFLICT, str(exc))
+        )
     except (ValueError, KeyError) as exc:
-        return mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))
+        return log_tool(
+            "create_requirement", params, mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))
+        )
     except Exception as exc:  # pragma: no cover - defensive
-        return mcp_error(ErrorCode.INTERNAL, str(exc))
-    return requirement_to_dict(obj)
+        return log_tool(
+            "create_requirement", params, mcp_error(ErrorCode.INTERNAL, str(exc))
+        )
+    return log_tool("create_requirement", params, requirement_to_dict(obj))
 
 
 def patch_requirement(
@@ -100,18 +106,39 @@ def patch_requirement(
     ``rev`` must match the current revision. ``id`` and other service fields are
     immutable. Returns the updated requirement as a dictionary.
     """
+    params = {
+        "directory": str(directory),
+        "req_id": req_id,
+        "patch": patch,
+        "rev": rev,
+    }
     try:
         data, mtime = _load_requirement(directory, req_id)
     except FileNotFoundError:
-        return mcp_error(ErrorCode.NOT_FOUND, f"requirement {req_id} not found")
+        return log_tool(
+            "patch_requirement",
+            params,
+            mcp_error(ErrorCode.NOT_FOUND, f"requirement {req_id} not found"),
+        )
     current = data.get("revision")
     if current != rev:
-        return mcp_error(ErrorCode.CONFLICT, f"revision mismatch: expected {rev}, have {current}")
+        return log_tool(
+            "patch_requirement",
+            params,
+            mcp_error(
+                ErrorCode.CONFLICT,
+                f"revision mismatch: expected {rev}, have {current}",
+            ),
+        )
 
     try:
         jsonschema.validate(patch, PATCH_SCHEMA)
     except jsonschema.ValidationError as exc:
-        return mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))
+        return log_tool(
+            "patch_requirement",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+        )
 
     for op in patch:
         for key in ("path", "from"):
@@ -119,44 +146,86 @@ def patch_requirement(
                 continue
             target = op[key].lstrip("/").split("/", 1)[0]
             if target in UNPATCHABLE_FIELDS:
-                return mcp_error(ErrorCode.VALIDATION_ERROR, f"field is read-only: {target}")
+                return log_tool(
+                    "patch_requirement",
+                    params,
+                    mcp_error(
+                        ErrorCode.VALIDATION_ERROR,
+                        f"field is read-only: {target}",
+                    ),
+                )
             if target and target not in KNOWN_FIELDS:
-                return mcp_error(ErrorCode.VALIDATION_ERROR, f"unknown field: {target}")
+                return log_tool(
+                    "patch_requirement",
+                    params,
+                    mcp_error(
+                        ErrorCode.VALIDATION_ERROR,
+                        f"unknown field: {target}",
+                    ),
+                )
 
     try:
         data = jsonpatch.apply_patch(data, patch, in_place=False)
     except jsonpatch.JsonPatchException as exc:
-        return mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))
+        return log_tool(
+            "patch_requirement",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+        )
 
     data["revision"] = current + 1
     try:
         obj = requirement_from_dict(data)
         save(directory, obj, mtime=mtime)
     except ConflictError as exc:
-        return mcp_error(ErrorCode.CONFLICT, str(exc))
+        return log_tool(
+            "patch_requirement", params, mcp_error(ErrorCode.CONFLICT, str(exc))
+        )
     except (ValueError, KeyError) as exc:
-        return mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))
+        return log_tool(
+            "patch_requirement", params, mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))
+        )
     except Exception as exc:  # pragma: no cover - defensive
-        return mcp_error(ErrorCode.INTERNAL, str(exc))
-    return requirement_to_dict(obj)
+        return log_tool(
+            "patch_requirement", params, mcp_error(ErrorCode.INTERNAL, str(exc))
+        )
+    return log_tool("patch_requirement", params, requirement_to_dict(obj))
 
 
 def delete_requirement(directory: str | Path, req_id: int, *, rev: int) -> dict | None:
     """Delete requirement ``req_id`` from ``directory`` if ``rev`` matches."""
+    params = {"directory": str(directory), "req_id": req_id, "rev": rev}
     try:
         data, _ = _load_requirement(directory, req_id)
     except FileNotFoundError:
-        return mcp_error(ErrorCode.NOT_FOUND, f"requirement {req_id} not found")
+        return log_tool(
+            "delete_requirement",
+            params,
+            mcp_error(ErrorCode.NOT_FOUND, f"requirement {req_id} not found"),
+        )
     current = data.get("revision")
     if current != rev:
-        return mcp_error(ErrorCode.CONFLICT, f"revision mismatch: expected {rev}, have {current}")
+        return log_tool(
+            "delete_requirement",
+            params,
+            mcp_error(
+                ErrorCode.CONFLICT,
+                f"revision mismatch: expected {rev}, have {current}",
+            ),
+        )
     try:
         delete_file(directory, req_id)
     except FileNotFoundError:
-        return mcp_error(ErrorCode.NOT_FOUND, f"requirement {req_id} not found")
+        return log_tool(
+            "delete_requirement",
+            params,
+            mcp_error(ErrorCode.NOT_FOUND, f"requirement {req_id} not found"),
+        )
     except Exception as exc:  # pragma: no cover - defensive
-        return mcp_error(ErrorCode.INTERNAL, str(exc))
-    return {"id": req_id}
+        return log_tool(
+            "delete_requirement", params, mcp_error(ErrorCode.INTERNAL, str(exc))
+        )
+    return log_tool("delete_requirement", params, {"id": req_id})
 
 
 def link_requirements(
@@ -173,22 +242,48 @@ def link_requirements(
     the current revision of the source requirement. Returns the updated derived
     requirement as a dictionary.
     """
+    params = {
+        "directory": str(directory),
+        "source_id": source_id,
+        "derived_id": derived_id,
+        "link_type": link_type,
+        "rev": rev,
+    }
     try:
         src_data, _ = _load_requirement(directory, source_id)
     except FileNotFoundError:
-        return mcp_error(ErrorCode.NOT_FOUND, f"requirement {source_id} not found")
+        return log_tool(
+            "link_requirements",
+            params,
+            mcp_error(ErrorCode.NOT_FOUND, f"requirement {source_id} not found"),
+        )
     src_revision = src_data.get("revision", 1)
 
     try:
         data, mtime = _load_requirement(directory, derived_id)
     except FileNotFoundError:
-        return mcp_error(ErrorCode.NOT_FOUND, f"requirement {derived_id} not found")
+        return log_tool(
+            "link_requirements",
+            params,
+            mcp_error(ErrorCode.NOT_FOUND, f"requirement {derived_id} not found"),
+        )
     current = data.get("revision")
     if current != rev:
-        return mcp_error(ErrorCode.CONFLICT, f"revision mismatch: expected {rev}, have {current}")
+        return log_tool(
+            "link_requirements",
+            params,
+            mcp_error(
+                ErrorCode.CONFLICT,
+                f"revision mismatch: expected {rev}, have {current}",
+            ),
+        )
 
     if link_type not in {"parent", "derived_from", "verifies", "relates"}:
-        return mcp_error(ErrorCode.VALIDATION_ERROR, f"invalid link_type: {link_type}")
+        return log_tool(
+            "link_requirements",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, f"invalid link_type: {link_type}"),
+        )
 
     link = {"source_id": source_id, "source_revision": src_revision, "suspect": False}
     if link_type == "parent":
@@ -208,9 +303,15 @@ def link_requirements(
         obj = requirement_from_dict(data)
         save(directory, obj, mtime=mtime)
     except ConflictError as exc:
-        return mcp_error(ErrorCode.CONFLICT, str(exc))
+        return log_tool(
+            "link_requirements", params, mcp_error(ErrorCode.CONFLICT, str(exc))
+        )
     except (ValueError, KeyError) as exc:
-        return mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))
+        return log_tool(
+            "link_requirements", params, mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))
+        )
     except Exception as exc:  # pragma: no cover - defensive
-        return mcp_error(ErrorCode.INTERNAL, str(exc))
-    return requirement_to_dict(obj)
+        return log_tool(
+            "link_requirements", params, mcp_error(ErrorCode.INTERNAL, str(exc))
+        )
+    return log_tool("link_requirements", params, requirement_to_dict(obj))

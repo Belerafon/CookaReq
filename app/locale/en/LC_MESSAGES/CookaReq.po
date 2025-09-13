@@ -479,8 +479,8 @@ msgstr "not running"
 msgid "running"
 msgstr "running"
 
-msgid "MCP is a local server providing tools for requirement management."
-msgstr "MCP is a local server providing tools for requirement management."
+msgid "MCP is a local server providing tools for requirement management used by agents and the LLM."
+msgstr "MCP is a local server providing tools for requirement management used by agents and the LLM."
 
 msgid "path to JSON/TOML settings"
 msgstr "path to JSON/TOML settings"

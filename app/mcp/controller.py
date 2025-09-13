@@ -3,8 +3,8 @@ from __future__ import annotations
 from enum import Enum
 from http.client import HTTPConnection
 
-from app.mcp.server import start_server, stop_server, is_running as server_is_running
-from app.settings import MCPSettings
+from .server import start_server, stop_server, is_running as server_is_running
+from ..settings import MCPSettings
 
 
 class MCPStatus(str, Enum):

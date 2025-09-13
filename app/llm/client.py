@@ -10,8 +10,8 @@ from typing import Any, Tuple, Mapping
 # подменять ``openai.OpenAI`` до первого использования и тем самым избежать
 # реальных сетевых запросов.
 
-from app.telemetry import log_event
-from app.settings import LLMSettings
+from ..telemetry import log_event
+from ..settings import LLMSettings
 from .spec import SYSTEM_PROMPT, TOOLS
 
 

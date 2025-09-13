@@ -6,10 +6,10 @@ import time
 from http.client import HTTPConnection
 from typing import Any, Mapping, Callable
 
-from app.i18n import _
-from app.telemetry import log_event
-from app.mcp.utils import ErrorCode, mcp_error, sanitize
-from app.settings import MCPSettings
+from ..i18n import _
+from ..telemetry import log_event
+from .utils import ErrorCode, mcp_error, sanitize
+from ..settings import MCPSettings
 
 
 class MCPClient:

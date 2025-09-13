@@ -7,7 +7,7 @@ from typing import Protocol
 
 import wx
 
-from app.settings import LLMSettings, MCPSettings, AppSettings, UISettings
+from .settings import LLMSettings, MCPSettings, AppSettings, UISettings
 
 
 class ListPanelLike(Protocol):

@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List
 
-from app.config import ConfigManager
-from app.core import requirements as req_ops
-from app.core.labels import Label
-from app.log import logger
+from ...config import ConfigManager
+from ...core import requirements as req_ops
+from ...core.labels import Label
+from ...log import logger
 
 
 class LabelsController:

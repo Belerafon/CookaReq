@@ -6,11 +6,11 @@ from typing import Any, Mapping
 
 import jsonpatch
 import jsonschema
-from app.core.schema import SCHEMA
-from app.core.model import requirement_from_dict, requirement_to_dict
-from app.core.store import ConflictError
-from app.core import requirements as req_ops
-from app.mcp.utils import ErrorCode, log_tool, mcp_error
+from ..core.schema import SCHEMA
+from ..core.model import requirement_from_dict, requirement_to_dict
+from ..core.store import ConflictError
+from ..core import requirements as req_ops
+from .utils import ErrorCode, log_tool, mcp_error
 
 # Fields that must not be modified directly through patching
 UNPATCHABLE_FIELDS = {"id", "revision", "derived_from", "parent", "links"}

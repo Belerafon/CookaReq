@@ -20,9 +20,9 @@ from fastapi.responses import JSONResponse
 import uvicorn
 from mcp.server.fastmcp import FastMCP
 
-from app.log import JsonlHandler, configure_logging, logger
-from app.mcp.utils import ErrorCode, mcp_error, sanitize
-from app.mcp import tools_read, tools_write
+from ..log import JsonlHandler, configure_logging, logger
+from .utils import ErrorCode, mcp_error, sanitize
+from . import tools_read, tools_write
 
 # Dedicated logger for MCP request logging so global handlers remain untouched
 request_logger = logger.getChild("mcp.requests")

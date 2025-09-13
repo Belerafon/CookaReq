@@ -5,8 +5,8 @@ import os
 import sys
 import atexit
 from pathlib import Path
-from app import i18n
-from app.i18n import _
+from . import i18n
+from .i18n import _
 
 import argparse
 import json

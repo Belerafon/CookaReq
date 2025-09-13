@@ -4,12 +4,12 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Dict
 
-from app.i18n import _
+from ...i18n import _
 
-from app.config import ConfigManager
-from app.core.model import Requirement
-from app.core.repository import RequirementRepository, FileRequirementRepository
-from app.log import logger
+from ...config import ConfigManager
+from ...core.model import Requirement
+from ...core.repository import RequirementRepository, FileRequirementRepository
+from ...log import logger
 
 
 class RequirementsController:

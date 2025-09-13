@@ -1,6 +1,6 @@
 """Panel displaying requirements list and simple filters."""
 
-from app.i18n import _
+from ..i18n import _
 
 import wx
 from wx.lib.agw import ultimatelistctrl as ULC
@@ -9,8 +9,8 @@ from wx.lib.mixins.listctrl import ColumnSorterMixin
 from typing import Callable, List, Sequence, TYPE_CHECKING
 from enum import Enum
 
-from app.core.model import Priority, RequirementType, Status, Verification, Requirement
-from app.core.labels import Label
+from ..core.model import Priority, RequirementType, Status, Verification, Requirement
+from ..core.labels import Label
 from .requirement_model import RequirementModel
 from .filter_dialog import FilterDialog
 from . import locale

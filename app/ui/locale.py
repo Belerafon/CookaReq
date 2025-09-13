@@ -1,9 +1,9 @@
 """Localization helpers for enumerated fields using gettext."""
 
-from app.i18n import _
+from ..i18n import _
 from enum import Enum
 
-from app.core.model import RequirementType, Status, Priority, Verification
+from ..core.model import RequirementType, Status, Priority, Verification
 
 
 def _enum_label(e: Enum) -> str:

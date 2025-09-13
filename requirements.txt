@@ -8,3 +8,4 @@ mcp
 jsonpatch
 openai
 pydantic
+polib>=1.2

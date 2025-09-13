@@ -27,6 +27,37 @@ EN_LABELS = {
     "verification": VERIFICATION,
 }
 
+# Human-readable labels for requirement fields
+FIELD_LABELS = {
+    "id": _("Requirement ID (number)"),
+    "title": _("Short title"),
+    "statement": _("Requirement text"),
+    "acceptance": _("Acceptance criteria"),
+    "conditions": _("Conditions"),
+    "trace_up": _("Trace up"),
+    "trace_down": _("Trace down"),
+    "version": _("Requirement version"),
+    "modified_at": _("Modified at"),
+    "owner": _("Owner"),
+    "source": _("Source"),
+    "type": _("Requirement type"),
+    "status": _("Status"),
+    "priority": _("Priority"),
+    "verification": _("Verification method"),
+    "rationale": _("Rationale"),
+    "assumptions": _("Assumptions"),
+    "labels": _("Labels"),
+    "derived_count": _("Derived count"),
+}
+
+
+def field_label(name: str) -> str:
+    """Return localized label for requirement field name."""
+    label = FIELD_LABELS.get(name)
+    if label is not None:
+        return label
+    return _(name.replace("_", " ").capitalize())
+
 
 def code_to_label(category: str, code: str) -> str:
     """Return localized label for given code."""

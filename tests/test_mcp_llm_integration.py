@@ -2,6 +2,8 @@ import json
 import logging
 from pathlib import Path
 
+import wx
+
 from app.log import logger
 from app.mcp.client import MCPClient
 from app.mcp.server import JsonlHandler, start_server, stop_server
@@ -9,7 +11,7 @@ from tests.llm_utils import cfg_with_mcp
 from tests.mcp_utils import _wait_until_ready
 
 
-def test_create_and_delete_requirement_via_llm(tmp_path: Path) -> None:
+def test_create_and_delete_requirement_via_llm(tmp_path: Path, monkeypatch) -> None:
     port = 8142
     stop_server()
     start_server(port=port, base_path=str(tmp_path))
@@ -34,6 +36,7 @@ def test_create_and_delete_requirement_via_llm(tmp_path: Path) -> None:
             assert data["title"] == "LLM test"
             assert data["owner"] == "alice"
             rev = data["revision"]
+            monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
             text_delete = f"Delete requirement 10 with revision {rev}. I confirm the deletion."
             delete_result = client.run_command(text_delete)
             assert delete_result["id"] == 10

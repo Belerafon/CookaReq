@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 import wx
 
+from gettext import gettext as _
 from app.telemetry import log_event
 from app.mcp.utils import ErrorCode, mcp_error, sanitize
 from app.mcp.settings import MCPSettings
@@ -85,6 +86,20 @@ class MCPClient:
     # ------------------------------------------------------------------
     def _call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Invoke *name* tool with *arguments* on the MCP server."""
+
+        if name in {"delete_requirement", "patch_requirement"}:
+            log_event("CONFIRM", {"tool": name})
+            if name == "delete_requirement":
+                msg = _("Delete requirement?")
+            else:
+                msg = _("Update requirement?")
+            res = wx.MessageBox(msg, _("Confirm"), style=wx.YES_NO | wx.ICON_WARNING)
+            confirmed = res == wx.YES
+            log_event("CONFIRM_RESULT", {"tool": name, "confirmed": confirmed})
+            if not confirmed:
+                err = mcp_error("CANCELLED", _("Cancelled by user"))["error"]
+                log_event("CANCELLED", {"tool": name})
+                return {"error": err}
 
         log_event(
             "TOOL_CALL",

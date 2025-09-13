@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List, Sequence
 from enum import Enum
 
-from app.core import search as core_search
+from app.core import requirements as req_ops
 from app.core.model import Requirement
 
 
@@ -94,7 +94,7 @@ class RequirementModel:
 
     # helpers ---------------------------------------------------------
     def _refresh(self) -> None:
-        self._visible = core_search.search(
+        self._visible = req_ops.search_loaded(
             self._all,
             labels=self._labels,
             query=self._query,

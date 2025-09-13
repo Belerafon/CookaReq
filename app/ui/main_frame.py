@@ -12,7 +12,7 @@ import wx
 from app.log import logger
 
 from app.config import ConfigManager
-from app.core import store
+from app.core import requirements as req_ops
 from app.core.model import Requirement, DerivationLink
 from app.core.labels import Label
 from app.mcp.controller import MCPController
@@ -370,7 +370,7 @@ class MainFrame(wx.Frame):
             return
         try:
             self.editor.save(self.current_dir)
-        except store.ConflictError:  # pragma: no cover - GUI event
+        except req_ops.ConflictError:  # pragma: no cover - GUI event
             wx.MessageBox(
                 _("File was modified on disk. Save cancelled."),
                 _("Error"),

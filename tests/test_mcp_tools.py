@@ -44,7 +44,7 @@ def test_list_requirements_errors(tmp_path: Path, monkeypatch) -> None:
     def not_found(_):  # noqa: ANN001
         raise FileNotFoundError
 
-    monkeypatch.setattr("app.mcp.tools_read._load_all", not_found)
+    monkeypatch.setattr("app.core.requirements.load_all", not_found)
     err = list_requirements(tmp_path / "missing")
     assert err["error"]["code"] == ErrorCode.NOT_FOUND
 
@@ -52,7 +52,7 @@ def test_list_requirements_errors(tmp_path: Path, monkeypatch) -> None:
     def boom(_):  # noqa: ANN001
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("app.mcp.tools_read._load_all", boom)
+    monkeypatch.setattr("app.core.requirements.load_all", boom)
     err = list_requirements(tmp_path)
     assert err["error"]["code"] == ErrorCode.INTERNAL
 
@@ -72,7 +72,7 @@ def test_get_requirement_errors(tmp_path: Path, monkeypatch) -> None:
     def boom(*args, **kwargs):  # noqa: ANN001, ANN002
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("app.mcp.tools_read.store.load", boom)
+    monkeypatch.setattr("app.core.requirements.load_requirement", boom)
     err = get_requirement(tmp_path, 1)
     assert err["error"]["code"] == ErrorCode.INTERNAL
 
@@ -93,13 +93,13 @@ def test_search_requirements_errors(tmp_path: Path, monkeypatch) -> None:
     def not_found(_):  # noqa: ANN001
         raise FileNotFoundError
 
-    monkeypatch.setattr("app.mcp.tools_read._load_all", not_found)
+    monkeypatch.setattr("app.core.requirements.load_all", not_found)
     err = search_requirements(tmp_path / "nope", query="login")
     assert err["error"]["code"] == ErrorCode.NOT_FOUND
 
     def boom(_):  # noqa: ANN001
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("app.mcp.tools_read._load_all", boom)
+    monkeypatch.setattr("app.core.requirements.load_all", boom)
     err = search_requirements(tmp_path)
     assert err["error"]["code"] == ErrorCode.INTERNAL

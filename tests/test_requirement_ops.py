@@ -85,7 +85,7 @@ def test_create_requirement_errors(tmp_path: Path, monkeypatch) -> None:
     def conflict(*args, **kwargs):  # noqa: ANN001, ANN002
         raise ConflictError("exists")
 
-    monkeypatch.setattr(tools_write, "save", conflict)
+    monkeypatch.setattr("app.core.requirements.save_requirement", conflict)
     err = create_requirement(tmp_path, _base_req(1))
     assert err["error"]["code"] == ErrorCode.CONFLICT
 
@@ -95,7 +95,7 @@ def test_create_requirement_errors(tmp_path: Path, monkeypatch) -> None:
     def boom(*args, **kwargs):  # noqa: ANN001, ANN002
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(tools_write, "save", boom)
+    monkeypatch.setattr("app.core.requirements.save_requirement", boom)
     err = create_requirement(tmp_path, _base_req(3))
     assert err["error"]["code"] == ErrorCode.INTERNAL
 
@@ -114,7 +114,7 @@ def test_patch_requirement_errors(tmp_path: Path, monkeypatch) -> None:
     def boom(*args, **kwargs):  # noqa: ANN001, ANN002
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(tools_write, "save", boom)
+    monkeypatch.setattr("app.core.requirements.save_requirement", boom)
     err = patch_requirement(tmp_path, 1, [{"op": "replace", "path": "/title", "value": "X"}], rev=1)
     assert err["error"]["code"] == ErrorCode.INTERNAL
 
@@ -128,7 +128,7 @@ def test_delete_requirement_errors(tmp_path: Path, monkeypatch) -> None:
     def boom(*args, **kwargs):  # noqa: ANN001, ANN002
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(tools_write, "delete_file", boom)
+    monkeypatch.setattr("app.core.requirements.delete_requirement", boom)
     err = delete_requirement(tmp_path, 1, rev=1)
     assert err["error"]["code"] == ErrorCode.INTERNAL
 
@@ -157,7 +157,7 @@ def test_link_requirements_errors(tmp_path: Path, monkeypatch) -> None:
     def boom(*args, **kwargs):  # noqa: ANN001, ANN002
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(tools_write, "save", boom)
+    monkeypatch.setattr("app.core.requirements.save_requirement", boom)
     err = link_requirements(tmp_path, source_id=1, derived_id=2, link_type="derived_from", rev=1)
     assert err["error"]["code"] == ErrorCode.INTERNAL
 

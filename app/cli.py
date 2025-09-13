@@ -7,27 +7,17 @@ import argparse
 import json
 from pathlib import Path
 
-from .core import store, search, model
+from .core import model, requirements as req_ops
 from .log import configure_logging
 from .settings import AppSettings, load_app_settings
 from .agent import LocalAgent
 
 
-def _load_all(directory: str | Path) -> list[model.Requirement]:
-    """Load all requirements from *directory*."""
-    reqs: list[model.Requirement] = []
-    for path in Path(directory).glob("*.json"):
-        if path.name == store.LABELS_FILENAME:
-            continue
-        data, _ = store.load(path)
-        reqs.append(model.Requirement(**data))
-    return reqs
-
-
 def cmd_list(args: argparse.Namespace) -> None:
     """List requirements in directory, optionally filtered."""
-    reqs = _load_all(args.directory)
-    reqs = search.search(reqs, labels=args.labels, query=args.query, fields=args.fields)
+    reqs = req_ops.search_requirements(
+        args.directory, labels=args.labels, query=args.query, fields=args.fields
+    )
     for r in reqs:
         print(f"{r.id}: {r.title}")
 
@@ -36,7 +26,7 @@ def cmd_add(args: argparse.Namespace) -> None:
     """Add requirement from JSON file to directory."""
     with open(args.file, "r", encoding="utf-8") as fh:
         data = json.load(fh)
-    path = store.save(args.directory, data)
+    path = req_ops.save_requirement(args.directory, data)
     print(path)
 
 
@@ -44,20 +34,19 @@ def cmd_edit(args: argparse.Namespace) -> None:
     """Edit existing requirement using data from JSON file."""
     with open(args.file, "r", encoding="utf-8") as fh:
         data = json.load(fh)
-    fname = store.filename_for(data["id"])
-    target = Path(args.directory) / fname
     mtime = None
-    if target.exists():
-        _, mtime = store.load(target)
-    path = store.save(args.directory, data, mtime=mtime)
+    try:
+        _, mtime = req_ops.load_requirement(args.directory, data["id"])
+    except FileNotFoundError:
+        pass
+    path = req_ops.save_requirement(args.directory, data, mtime=mtime)
     print(path)
 
 
 def cmd_show(args: argparse.Namespace) -> None:
     """Show detailed JSON for requirement with *id*."""
-    fname = store.filename_for(args.id)
-    path = Path(args.directory) / fname
-    data, _ = store.load(path)
+    req = req_ops.get_requirement(args.directory, args.id)
+    data = model.requirement_to_dict(req)
     print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
 
 

@@ -7,8 +7,8 @@ from typing import Dict
 from gettext import gettext as _
 
 from app.config import ConfigManager
-from app.core import store
-from app.core.model import Requirement, requirement_from_dict
+from app.core import requirements as req_ops
+from app.core.model import Requirement
 from app.log import logger
 
 
@@ -24,19 +24,11 @@ class RequirementsController:
     def load_directory(self) -> Dict[int, list[int]]:
         """Load requirements from ``directory`` and return derivation map."""
         self.config.add_recent_dir(self.directory)
-        items: list[Requirement] = []
-        store.clear_index(self.directory)
-        for fp in self.directory.glob("*.json"):
-            if fp.name == store.LABELS_FILENAME:
-                continue
-            try:
-                data, _ = store.load(fp)
-                req = requirement_from_dict(data)
-                items.append(req)
-                store.add_to_index(self.directory, req.id)
-            except Exception as exc:
-                logger.warning("Failed to load %s: %s", fp, exc)
-                continue
+        try:
+            items = req_ops.load_all(self.directory)
+        except Exception as exc:
+            logger.warning("Failed to load directory %s: %s", self.directory, exc)
+            items = []
         derived_map: Dict[int, list[int]] = {}
         for req in items:
             for link in getattr(req, "derived_from", []):
@@ -73,7 +65,7 @@ class RequirementsController:
             return False
         self.model.delete(req_id)
         try:
-            store.delete(self.directory, req.id)
+            req_ops.delete_requirement(self.directory, req.id)
         except Exception:
             pass
         return True

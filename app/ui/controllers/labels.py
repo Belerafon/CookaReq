@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from app.config import ConfigManager
-from app.core import store
+from app.core import requirements as req_ops
 from app.core.labels import Label
 from app.log import logger
 
@@ -19,7 +19,7 @@ class LabelsController:
         self.labels: List[Label] = []
 
     def load_labels(self) -> List[Label]:
-        self.labels = store.load_labels(self.directory)
+        self.labels = req_ops.load_labels(self.directory)
         return self.labels
 
     def sync_labels(self) -> List[str]:
@@ -31,7 +31,7 @@ class LabelsController:
         all_names = sorted(existing_colors.keys() | used_names)
         self.labels = [Label(name=n, color=existing_colors.get(n, "#ffffff")) for n in all_names]
         try:
-            store.save_labels(self.directory, self.labels)
+            req_ops.save_labels(self.directory, self.labels)
         except Exception as exc:
             logger.warning("Failed to save labels: %s", exc)
         return [lbl.name for lbl in self.labels]
@@ -64,12 +64,12 @@ class LabelsController:
                 req.labels = [l for l in req.labels if l not in removed_set]
                 if before != req.labels:
                     try:
-                        store.save(self.directory, req)
+                        req_ops.save_requirement(self.directory, req)
                     except Exception as exc:
                         logger.warning("Failed to save %s: %s", req.id, exc)
         self.labels = new_labels
         try:
-            store.save_labels(self.directory, self.labels)
+            req_ops.save_labels(self.directory, self.labels)
         except Exception as exc:
             logger.warning("Failed to save labels: %s", exc)
         return {}

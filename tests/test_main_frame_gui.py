@@ -201,8 +201,8 @@ def test_main_frame_loads_requirements(monkeypatch, tmp_path, wx_app):
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, wx.ID_OPEN)
     frame.ProcessEvent(evt)
 
-    assert frame.panel.dvc_model.GetRowCount() == 1
-    assert frame.panel.model.get_visible()[0].title == data["title"]
+    assert frame.panel.list.GetItemCount() == 1
+    assert frame.panel.list.GetItemText(0) == data["title"]
 
     frame.Destroy()
 
@@ -251,7 +251,10 @@ def test_main_frame_select_opens_editor(monkeypatch, tmp_path, wx_app):
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, wx.ID_OPEN)
     frame.ProcessEvent(evt)
 
-    frame.on_requirement_selected(type("E", (), {"GetRow": lambda self: 0})())
+    list_ctrl = frame.panel.list
+    list_ctrl.Select(0)
+    wx_app.Yield()
+
     assert frame.editor.IsShown()
     assert frame.editor.fields["id"].GetValue() == str(data["id"])
 
@@ -349,11 +352,11 @@ def test_main_frame_delete_requirement_removes_file(monkeypatch, tmp_path, wx_ap
     wx, frame = _prepare_frame(monkeypatch, tmp_path)
 
     assert path.exists()
-    assert frame.panel.dvc_model.GetRowCount() == 1
+    assert frame.panel.list.GetItemCount() == 1
 
     frame.on_delete_requirement(frame.model.get_all()[0].id)
 
-    assert frame.panel.dvc_model.GetRowCount() == 0
+    assert frame.panel.list.GetItemCount() == 0
     assert not path.exists()
 
     frame.Destroy()
@@ -371,7 +374,10 @@ def test_main_frame_select_any_column_updates_editor(monkeypatch, tmp_path, wx_a
     frame.panel.set_requirements(frame.model.get_all())
 
     class DummyEvent:
-        def GetRow(self):
+        def GetData(self):
+            return 0
+
+        def GetIndex(self):
             return 0
 
     frame.editor.Hide()

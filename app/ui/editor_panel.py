@@ -1,7 +1,6 @@
 """Requirement editor panel."""
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 from contextlib import contextmanager
@@ -45,6 +44,7 @@ class EditorPanel(ScrolledPanel):
         self.units_fields: dict[str, wx.TextCtrl] = {}
         self._autosize_fields: list[wx.TextCtrl] = []
         self._suspend_events = False
+        self.original_modified_at = ""
         self._on_save_callback = on_save
         self._on_add_derived_callback = on_add_derived
         self.directory: Path | None = None
@@ -158,8 +158,6 @@ class EditorPanel(ScrolledPanel):
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
             container.Add(row, 0, wx.ALL, 5)
             ctrl = wx.TextCtrl(self)
-            if name == "modified_at":
-                ctrl.SetEditable(False)
             self.fields[name] = ctrl
             container.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
             grid.Add(container, 1, wx.EXPAND)
@@ -459,6 +457,7 @@ class EditorPanel(ScrolledPanel):
             for ctrl in self.derivation_fields.values():
                 ctrl.ChangeValue("")
             self._refresh_labels_display()
+        self.original_modified_at = ""
         self._auto_resize_all()
         self._on_id_change()
 
@@ -530,12 +529,14 @@ class EditorPanel(ScrolledPanel):
                     ctrl.ChangeValue("\n".join(derivation.get(name, [])))
                 else:
                     ctrl.ChangeValue(derivation.get(name, ""))
+        self.original_modified_at = self.fields["modified_at"].GetValue()
         self._auto_resize_all()
         self._on_id_change()
 
     def clone(self, new_id: int) -> None:
         with self._bulk_update():
             self.fields["id"].ChangeValue(str(new_id))
+            self.fields["modified_at"].ChangeValue("")
             self.current_path = None
             self.mtime = None
             self.original_id = None
@@ -550,6 +551,7 @@ class EditorPanel(ScrolledPanel):
             for ctrl in self.derivation_fields.values():
                 ctrl.ChangeValue("")
             self._refresh_labels_display()
+        self.original_modified_at = ""
         self._auto_resize_all()
         self._on_id_change()
 
@@ -825,14 +827,21 @@ class EditorPanel(ScrolledPanel):
         ctrl.Refresh()
 
     def _on_save_button(self, _evt: wx.Event) -> None:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.fields["modified_at"].ChangeValue(now)
         if self._on_save_callback:
             self._on_save_callback()
 
     def save(self, directory: str | Path) -> Path:
         req = self.get_data()
-        path = req_ops.save_requirement(directory, req, mtime=self.mtime)
+        mod = (
+            req.modified_at
+            if req.modified_at and req.modified_at != self.original_modified_at
+            else None
+        )
+        path = req_ops.save_requirement(
+            directory, req, mtime=self.mtime, modified_at=mod
+        )
+        self.fields["modified_at"].ChangeValue(req.modified_at)
+        self.original_modified_at = req.modified_at
         self.current_path = path
         self.mtime = path.stat().st_mtime
         self.directory = Path(directory)

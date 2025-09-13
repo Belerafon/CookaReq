@@ -79,3 +79,22 @@ def test_save_conflict_detection(tmp_path: Path):
     path.write_text(json.dumps(loaded))
     with pytest.raises(ConflictError):
         repo.save(tmp_path, data, mtime=mtime)
+
+
+def test_save_updates_modified_at(tmp_path: Path):
+    repo = FileRequirementRepository()
+    data = sample(1)
+    data["modified_at"] = "2020-01-01 00:00:00"
+    repo.save(tmp_path, data)
+    saved = repo.get(tmp_path, 1)
+    assert saved.modified_at != ""
+    assert saved.modified_at != data["modified_at"]
+
+
+def test_save_respects_explicit_modified_at(tmp_path: Path):
+    repo = FileRequirementRepository()
+    data = sample(1)
+    ts = "2022-02-03 04:05:06"
+    repo.save(tmp_path, data, modified_at=ts)
+    saved = repo.get(tmp_path, 1)
+    assert saved.modified_at == ts

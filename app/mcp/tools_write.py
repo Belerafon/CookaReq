@@ -66,7 +66,7 @@ def create_requirement(directory: str | Path, data: Mapping[str, Any]) -> dict:
     req["revision"] = 1
     try:
         obj = requirement_from_dict(req)
-        req_ops.save_requirement(directory, obj)
+        req_ops.save_requirement(directory, obj, modified_at=obj.modified_at or None)
     except ConflictError as exc:
         return log_tool(
             "create_requirement", params, mcp_error(ErrorCode.CONFLICT, str(exc))
@@ -165,7 +165,12 @@ def patch_requirement(
     data["revision"] = current + 1
     try:
         obj = requirement_from_dict(data)
-        req_ops.save_requirement(directory, obj, mtime=mtime)
+        mod = None
+        for op in patch:
+            if op.get("path") == "/modified_at" and op.get("op") in {"add", "replace"}:
+                mod = data.get("modified_at")
+                break
+        req_ops.save_requirement(directory, obj, mtime=mtime, modified_at=mod)
     except ConflictError as exc:
         return log_tool(
             "patch_requirement", params, mcp_error(ErrorCode.CONFLICT, str(exc))

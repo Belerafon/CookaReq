@@ -51,7 +51,7 @@ def cmd_add(args: argparse.Namespace, repo: RequirementRepository) -> None:
     except ValueError as exc:
         print(_("Invalid requirement data: {error}").format(error=exc))
         return
-    path = repo.save(args.directory, obj)
+    path = repo.save(args.directory, obj, modified_at=args.modified_at)
     print(path)
 
 
@@ -73,7 +73,7 @@ def cmd_edit(args: argparse.Namespace, repo: RequirementRepository) -> None:
         mtime = repo.load(args.directory, obj.id)[1]
     except FileNotFoundError:
         pass
-    path = repo.save(args.directory, obj, mtime=mtime)
+    path = repo.save(args.directory, obj, mtime=mtime, modified_at=args.modified_at)
     print(path)
 
 
@@ -87,6 +87,19 @@ def cmd_delete(args: argparse.Namespace, repo: RequirementRepository) -> None:
         return
     repo.delete(args.directory, args.id)
     print("deleted")
+
+
+def cmd_clone(args: argparse.Namespace, repo: RequirementRepository) -> None:
+    """Clone requirement ``source_id`` to ``new_id`` in *directory*."""
+    try:
+        req = repo.get(args.directory, args.source_id)
+    except FileNotFoundError:
+        print(f"requirement {args.source_id} not found", file=sys.stderr)
+        return
+    req.id = args.new_id
+    req.revision = 1
+    path = repo.save(args.directory, req, modified_at=args.modified_at)
+    print(path)
 
 
 def cmd_show(args: argparse.Namespace, repo: RequirementRepository) -> None:
@@ -127,11 +140,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_add = sub.add_parser("add", help=_("add requirement from JSON file"))
     p_add.add_argument("directory", help=_("requirements directory"))
     p_add.add_argument("file", help=_("JSON file with requirement"))
+    p_add.add_argument("--modified-at", help=_("explicit modified timestamp"))
     p_add.set_defaults(func=cmd_add)
 
     p_edit = sub.add_parser("edit", help=_("edit requirement from JSON file"))
     p_edit.add_argument("directory", help=_("requirements directory"))
     p_edit.add_argument("file", help=_("JSON file with updated requirement"))
+    p_edit.add_argument("--modified-at", help=_("explicit modified timestamp"))
     p_edit.set_defaults(func=cmd_edit)
 
     p_delete = sub.add_parser("delete", help=_("delete requirement"))
@@ -143,6 +158,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_show.add_argument("directory", help=_("requirements directory"))
     p_show.add_argument("id", type=int, help=_("requirement id"))
     p_show.set_defaults(func=cmd_show)
+
+    p_clone = sub.add_parser("clone", help=_("clone requirement"))
+    p_clone.add_argument("directory", help=_("requirements directory"))
+    p_clone.add_argument("source_id", type=int, help=_("source requirement id"))
+    p_clone.add_argument("new_id", type=int, help=_("new requirement id"))
+    p_clone.add_argument("--modified-at", help=_("explicit modified timestamp"))
+    p_clone.set_defaults(func=cmd_clone)
 
     p_check = sub.add_parser("check", help=_("verify LLM and MCP settings"))
     p_check.add_argument("--llm", action="store_true", help=_("check only LLM"))

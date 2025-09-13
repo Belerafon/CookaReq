@@ -38,6 +38,7 @@ class RequirementRepository(Protocol):
         data: Mapping | Requirement,
         *,
         mtime: float | None = None,
+        modified_at: str | None = None,
     ) -> Path:
         """Persist requirement data in *directory* and return resulting path."""
 
@@ -76,8 +77,11 @@ class FileRequirementRepository(RequirementRepository):
         data: Mapping | Requirement,
         *,
         mtime: float | None = None,
+        modified_at: str | None = None,
     ) -> Path:  # type: ignore[override]
-        return req_ops.save_requirement(directory, data, mtime=mtime)
+        return req_ops.save_requirement(
+            directory, data, mtime=mtime, modified_at=modified_at
+        )
 
     def delete(self, directory: str | Path, req_id: int) -> None:  # type: ignore[override]
         req_ops.delete_requirement(directory, req_id)

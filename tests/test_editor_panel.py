@@ -83,6 +83,21 @@ def test_editor_clone(tmp_path, wx_app):
     assert data["title"] == orig_data["title"]
 
 
+def test_editor_custom_modified_at(tmp_path, wx_app):
+    panel = _make_panel()
+    panel.new_requirement()
+    panel.fields["id"].SetValue("1")
+    panel.fields["title"].SetValue("T")
+    panel.fields["statement"].SetValue("S")
+    ts = "2022-02-03 04:05:06"
+    panel.fields["modified_at"].SetValue(ts)
+    path = panel.save(tmp_path)
+    from app.core import store
+
+    data, _ = store.load(path)
+    assert data["modified_at"] == ts
+
+
 def test_get_data_requires_valid_id(wx_app):
     panel = _make_panel()
     panel.new_requirement()

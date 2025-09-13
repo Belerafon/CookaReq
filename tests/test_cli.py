@@ -20,6 +20,7 @@ def sample() -> dict:
         "source": "spec",
         "verification": "analysis",
         "revision": 1,
+        "modified_at": "",
     }
 
 
@@ -56,6 +57,23 @@ def test_cli_show(tmp_path, capsys):
     assert loaded["id"] == 1
 
 
+def test_cli_clone(tmp_path, capsys):
+    original = sample() | {"revision": 5, "modified_at": "2020-01-01 00:00:00"}
+    save(tmp_path, original)
+    run_cli(["clone", str(tmp_path), "1", "2"])
+    capsys.readouterr()
+    run_cli(["show", str(tmp_path), "2"])
+    cloned = json.loads(capsys.readouterr().out)
+    assert cloned["id"] == 2
+    assert cloned["revision"] == 1
+    assert cloned["modified_at"] != ""
+    assert cloned["modified_at"] != original["modified_at"]
+    run_cli(["show", str(tmp_path), "1"])
+    source = json.loads(capsys.readouterr().out)
+    assert source["revision"] == 5
+    assert source["modified_at"] == original["modified_at"]
+
+
 def test_cli_edit(tmp_path, capsys):
     data = sample()
     save(tmp_path, data)
@@ -70,6 +88,22 @@ def test_cli_edit(tmp_path, capsys):
     captured = capsys.readouterr().out
     loaded = json.loads(captured)
     assert loaded["title"] == "New title"
+
+
+def test_cli_edit_custom_modified_at(tmp_path, capsys):
+    data = sample()
+    save(tmp_path, data)
+    updated = data | {"title": "New"}
+    src = tmp_path / "src"
+    src.mkdir()
+    file = src / "upd.json"
+    file.write_text(json.dumps(updated))
+    ts = "2023-03-04 05:06:07"
+    run_cli(["edit", str(tmp_path), str(file), "--modified-at", ts])
+    capsys.readouterr()
+    run_cli(["show", str(tmp_path), "1"])
+    loaded = json.loads(capsys.readouterr().out)
+    assert loaded["modified_at"] == ts
 
 
 def test_cli_delete(tmp_path, capsys):

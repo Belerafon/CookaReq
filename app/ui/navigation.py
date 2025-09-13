@@ -1,4 +1,4 @@
-"""Menu bar and toolbar handling for the main frame."""
+"""Menu bar handling for the main frame."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from ..config import ConfigManager
 
 
 class Navigation:
-    """Encapsulate menu bar and toolbar construction."""
+    """Encapsulate menu bar construction."""
 
     def __init__(
         self,
@@ -47,7 +47,6 @@ class Navigation:
         self._recent_items: Dict[int, Path] = {}
         self._column_items: Dict[int, str] = {}
         self.menu_bar = wx.MenuBar()
-        self.toolbar: wx.ToolBar | None = None
         self.log_menu_item: wx.MenuItem | None = None
         self.recent_menu = wx.Menu()
         self.recent_menu_item: wx.MenuItem | None = None
@@ -57,18 +56,19 @@ class Navigation:
     # ------------------------------------------------------------------
     def _build(self) -> None:
         self._create_menu()
-        self._create_toolbar()
 
     def _create_menu(self) -> None:
         menu_bar = wx.MenuBar()
         file_menu = wx.Menu()
         open_item = file_menu.Append(wx.ID_OPEN, _("&Open Folder\tCtrl+O"))
+        new_item = file_menu.Append(wx.ID_NEW, _("&New Requirement\tCtrl+N"))
         self.recent_menu = wx.Menu()
         self.recent_menu_item = file_menu.AppendSubMenu(self.recent_menu, _("Open &Recent"))
         settings_item = file_menu.Append(wx.ID_PREFERENCES, _("Settings"))
         labels_item = file_menu.Append(wx.ID_ANY, _("Manage Labels"))
         exit_item = file_menu.Append(wx.ID_EXIT, _("E&xit"))
         self.frame.Bind(wx.EVT_MENU, self.on_open_folder, open_item)
+        self.frame.Bind(wx.EVT_MENU, self.on_new_requirement, new_item)
         self.frame.Bind(wx.EVT_MENU, self.on_open_settings, settings_item)
         self.frame.Bind(wx.EVT_MENU, self.on_manage_labels, labels_item)
         self.frame.Bind(wx.EVT_MENU, lambda evt: self.frame.Close(), exit_item)
@@ -99,15 +99,6 @@ class Navigation:
         self.menu_bar = menu_bar
         self.frame.SetMenuBar(self.menu_bar)
 
-    def _create_toolbar(self) -> None:
-        toolbar = self.frame.CreateToolBar()
-        open_tool = toolbar.AddTool(wx.ID_OPEN, _("Open"), wx.ArtProvider.GetBitmap(wx.ART_FOLDER_OPEN))
-        new_tool = toolbar.AddTool(wx.ID_NEW, _("New"), wx.ArtProvider.GetBitmap(wx.ART_NEW))
-        self.frame.Bind(wx.EVT_TOOL, self.on_open_folder, open_tool)
-        self.frame.Bind(wx.EVT_TOOL, self.on_new_requirement, new_tool)
-        toolbar.Realize()
-        self.toolbar = toolbar
-
     def _rebuild_recent_menu(self) -> None:
         for item in list(self.recent_menu.GetMenuItems()):
             self.recent_menu.Delete(item)
@@ -122,11 +113,9 @@ class Navigation:
     # ------------------------------------------------------------------
     # public API
     def rebuild(self, selected_fields: list[str]) -> None:
-        """Rebuild menu and toolbar, typically after language change."""
+        """Rebuild menu, typically after language change."""
         self.selected_fields = selected_fields
         self.frame.SetMenuBar(None)
-        if self.toolbar is not None:
-            self.toolbar.Destroy()
         self._build()
 
     def update_recent_menu(self) -> None:

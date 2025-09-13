@@ -4,7 +4,7 @@ from enum import Enum
 from http.client import HTTPConnection
 
 from app.mcp.server import start_server, stop_server, is_running as server_is_running
-from app.mcp.settings import MCPSettings
+from app.settings import MCPSettings
 
 
 class MCPStatus(str, Enum):

@@ -3,33 +3,20 @@ from __future__ import annotations
 import json
 
 import time
-from dataclasses import dataclass
-
 from http.client import HTTPConnection
 from typing import Any, Mapping
 
 import wx
-
 from gettext import gettext as _
 from app.telemetry import log_event
 from app.mcp.utils import ErrorCode, mcp_error, sanitize
-from app.mcp.settings import MCPSettings
+from app.settings import MCPSettings
 
 
 class MCPClient:
     """Simple HTTP client for the MCP server."""
 
-    def __init__(
-        self,
-        cfg: wx.Config | None = None,
-        *,
-        settings: MCPSettings | None = None,
-    ) -> None:
-        self._cfg = cfg
-        if settings is None:
-            if cfg is None:
-                raise TypeError("cfg or settings must be provided")
-            settings = MCPSettings.from_config(cfg)
+    def __init__(self, settings: MCPSettings) -> None:
         self.settings = settings
 
     # ------------------------------------------------------------------

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .core import store, search, model
 from .log import configure_logging
+from .settings import AppSettings, load_app_settings
 
 
 def _load_all(directory: str | Path) -> list[model.Requirement]:
@@ -61,6 +62,10 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=_("CookaReq CLI"))
+    parser.add_argument(
+        "--settings",
+        help=_("path to JSON/TOML settings"),
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_list = sub.add_parser("list", help=_("list requirements"))
@@ -92,6 +97,10 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
     args = parser.parse_args(argv)
+    settings = AppSettings()
+    if args.settings:
+        settings = load_app_settings(args.settings)
+    args.app_settings = settings
     args.func(args)
     return 0
 

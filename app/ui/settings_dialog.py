@@ -5,10 +5,10 @@ from importlib import resources
 
 import wx
 
-from app.llm.client import LLMClient, LLMSettings
+from app.llm.client import LLMClient
 from app.mcp.client import MCPClient
 from app.mcp.controller import MCPController, MCPStatus
-from app.mcp.settings import MCPSettings
+from app.settings import LLMSettings, MCPSettings
 
 
 def available_translations() -> list[tuple[str, str]]:

@@ -2,17 +2,15 @@ import json
 import logging
 from pathlib import Path
 
-import wx
-
 from app.log import logger
 from app.llm.client import LLMClient
 from app.mcp.server import JsonlHandler
-from tests.llm_utils import cfg_from_env
+from tests.llm_utils import settings_from_env
 
 
 def test_check_llm(tmp_path: Path) -> None:
-    cfg = cfg_from_env("CookaReq-LLM-Test")
-    client = LLMClient(cfg)
+    settings = settings_from_env(tmp_path)
+    client = LLMClient(settings.llm)
     log_file = tmp_path / "llm.jsonl"
     handler = JsonlHandler(str(log_file))
     logger.addHandler(handler)

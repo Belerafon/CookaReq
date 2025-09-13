@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.cli import main
 from app.core.store import save
+from app.settings import AppSettings
 
 
 def sample() -> dict:
@@ -53,3 +54,27 @@ def test_cli_edit(tmp_path, capsys):
     captured = capsys.readouterr().out
     loaded = json.loads(captured)
     assert loaded["title"] == "New title"
+
+
+def test_cli_settings_flag(tmp_path, monkeypatch, capsys):
+    req_dir = tmp_path / "reqs"
+    req_dir.mkdir()
+    data = sample()
+    save(req_dir, data)
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text("{}")
+
+    called = {}
+
+    def fake_loader(path):
+        called["path"] = path
+        return AppSettings()
+
+    from app import cli as cli_mod
+
+    monkeypatch.setattr(cli_mod, "load_app_settings", fake_loader)
+    monkeypatch.setattr(cli_mod, "AppSettings", AppSettings)
+
+    main(["--settings", str(settings_file), "list", str(req_dir)])
+    capsys.readouterr()
+    assert called["path"] == str(settings_file)

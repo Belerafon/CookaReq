@@ -7,19 +7,9 @@ import wx
 from app.log import logger
 from app.mcp.client import MCPClient
 from app.mcp.server import JsonlHandler, start_server, stop_server
+from app.settings import MCPSettings
+from tests.llm_utils import settings_with_mcp
 from tests.mcp_utils import _wait_until_ready
-
-
-def _cfg_with_settings(host: str, port: int, base_path: str, token: str) -> wx.Config:
-    app = wx.App()
-    cfg = wx.Config(appName="CookaReq-Test", style=wx.CONFIG_USE_LOCAL_FILE)
-    cfg.Write("mcp_host", host)
-    cfg.WriteInt("mcp_port", port)
-    cfg.Write("mcp_base_path", base_path)
-    cfg.Write("mcp_token", token)
-    cfg.Flush()
-    app.Destroy()
-    return cfg
 
 
 def test_check_tools_success(tmp_path: Path) -> None:
@@ -28,8 +18,10 @@ def test_check_tools_success(tmp_path: Path) -> None:
     start_server(port=port, base_path=str(tmp_path))
     try:
         _wait_until_ready(port)
-        cfg = _cfg_with_settings("127.0.0.1", port, str(tmp_path), "")
-        client = MCPClient(cfg)
+        settings = settings_with_mcp(
+            "127.0.0.1", port, str(tmp_path), "", tmp_path=tmp_path, fmt="toml"
+        )
+        client = MCPClient(settings.mcp)
         log_file = tmp_path / "log.jsonl"
         handler = JsonlHandler(str(log_file))
         logger.addHandler(handler)
@@ -58,8 +50,10 @@ def test_check_tools_unauthorized(tmp_path: Path) -> None:
     start_server(port=port, base_path=str(tmp_path), token="secret")
     try:
         _wait_until_ready(port)
-        cfg = _cfg_with_settings("127.0.0.1", port, str(tmp_path), "wrong")
-        client = MCPClient(cfg)
+        settings = settings_with_mcp(
+            "127.0.0.1", port, str(tmp_path), "wrong", tmp_path=tmp_path
+        )
+        client = MCPClient(settings.mcp)
         result = client.check_tools()
         assert result["code"] == "UNAUTHORIZED"
     finally:
@@ -67,8 +61,8 @@ def test_check_tools_unauthorized(tmp_path: Path) -> None:
 
 
 def test_call_tool_delete_requires_confirmation(monkeypatch) -> None:
-    cfg = _cfg_with_settings("127.0.0.1", 0, "", "")
-    client = MCPClient(cfg)
+    settings = MCPSettings(host="127.0.0.1", port=0, base_path="", require_token=False, token="")
+    client = MCPClient(settings)
 
     shown = {"called": False}
 
@@ -90,8 +84,8 @@ def test_call_tool_delete_requires_confirmation(monkeypatch) -> None:
 
 
 def test_call_tool_delete_confirm_yes(monkeypatch) -> None:
-    cfg = _cfg_with_settings("127.0.0.1", 0, "", "")
-    client = MCPClient(cfg)
+    settings = MCPSettings(host="127.0.0.1", port=0, base_path="", require_token=False, token="")
+    client = MCPClient(settings)
 
     monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
 

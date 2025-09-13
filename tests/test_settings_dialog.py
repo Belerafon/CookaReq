@@ -54,7 +54,7 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.settings_dialog import SettingsDialog
     import app.ui.settings_dialog as sd
-    from app.mcp.controller import MCPStatus
+    from app.mcp.controller import MCPStatus, MCPCheckResult
 
     class FakeMCP:
         def __init__(self) -> None:
@@ -73,7 +73,7 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
             self.running = False
 
         def check(self, settings):
-            return MCPStatus.NOT_RUNNING
+            return MCPCheckResult(MCPStatus.NOT_RUNNING, "")
 
     fake = FakeMCP()
     monkeypatch.setattr("app.ui.settings_dialog.MCPController", lambda: fake)
@@ -125,7 +125,7 @@ def test_mcp_check_status(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.settings_dialog import SettingsDialog
     import app.ui.settings_dialog as sd
-    from app.mcp.controller import MCPStatus
+    from app.mcp.controller import MCPStatus, MCPCheckResult
 
     class DummyMCP:
         def __init__(self):
@@ -141,7 +141,7 @@ def test_mcp_check_status(monkeypatch, wx_app):
             pass
 
         def check(self, settings):
-            return self.state
+            return MCPCheckResult(self.state, f"{self.state.value}")
 
     dummy = DummyMCP()
     monkeypatch.setattr("app.ui.settings_dialog.MCPController", lambda: dummy)
@@ -167,7 +167,9 @@ def test_mcp_check_status(monkeypatch, wx_app):
     dummy.state = MCPStatus.READY
     dlg._on_check(wx.CommandEvent())
     assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('ready')}"
-    assert messages[-1] == (f"{sd._('Status')}: {sd._('ready')}", sd._("Check MCP"))
+    msg, caption = messages[-1]
+    assert msg.startswith(f"{sd._('Status')}: {sd._('ready')}")
+    assert caption == sd._("Check MCP")
 
     dummy.state = MCPStatus.ERROR
     dlg._on_check(wx.CommandEvent())

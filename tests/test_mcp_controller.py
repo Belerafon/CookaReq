@@ -39,7 +39,9 @@ def test_controller_check(monkeypatch):
     settings = MCPSettings(
         host="localhost", port=8123, base_path="/tmp", require_token=True, token="abc"
     )
-    assert ctrl.check(settings) is MCPStatus.READY
+    res = ctrl.check(settings)
+    assert res.status is MCPStatus.READY
+    assert "GET /health" in res.message and "200" in res.message
     assert requests[0]["Authorization"] == "Bearer abc"
 
     class BadConnection(FakeConnection):
@@ -50,13 +52,17 @@ def test_controller_check(monkeypatch):
         "app.mcp.controller.HTTPConnection",
         lambda host, port, timeout=2: BadConnection(host, port, timeout),
     )
-    assert ctrl.check(settings) is MCPStatus.ERROR
+    res = ctrl.check(settings)
+    assert res.status is MCPStatus.ERROR
+    assert "500" in res.message
 
     def ErrorConnection(host, port, timeout=2):
         raise OSError("fail")
 
     monkeypatch.setattr("app.mcp.controller.HTTPConnection", ErrorConnection)
-    assert ctrl.check(settings) is MCPStatus.NOT_RUNNING
+    res = ctrl.check(settings)
+    assert res.status is MCPStatus.NOT_RUNNING
+    assert "fail" in res.message
 
 
 def test_controller_start_stop(monkeypatch):

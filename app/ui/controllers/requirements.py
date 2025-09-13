@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Dict
 
-from gettext import gettext as _
+from app.i18n import _
 
 from app.config import ConfigManager
 from app.core import requirements as req_ops

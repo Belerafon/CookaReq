@@ -1,13 +1,10 @@
 import importlib
-from pathlib import Path
 
 import pytest
 
 
 def test_switch_to_russian_updates_ui(monkeypatch):
     wx = pytest.importorskip("wx")
-    from compile_translations import compile_all
-    compile_all(Path("app/locale"))
     app = wx.App()
     import app.ui.main_frame as main_frame
     importlib.reload(main_frame)
@@ -16,13 +13,10 @@ def test_switch_to_russian_updates_ui(monkeypatch):
     assert frame.GetMenuBar().GetMenu(0).GetTitle() == "&File"
 
     import app.main as main_mod
+    from app import i18n
 
     def fake_init_locale(language):
-        import gettext
-        from app.main import APP_NAME, LOCALE_DIR
-        gettext.bindtextdomain(APP_NAME, LOCALE_DIR)
-        gettext.textdomain(APP_NAME)
-        gettext.translation(APP_NAME, LOCALE_DIR, languages=[language], fallback=True).install()
+        i18n.install(main_mod.APP_NAME, main_mod.LOCALE_DIR, [language])
         return None
 
     monkeypatch.setattr(main_mod, "init_locale", fake_init_locale)
@@ -56,4 +50,7 @@ def test_switch_to_russian_updates_ui(monkeypatch):
     assert frame.GetMenuBar().GetMenu(0).GetTitle() == "&Файл"
 
     frame.Destroy()
+    from app import i18n
+    # restore default language for subsequent tests
+    i18n.install(main_mod.APP_NAME, main_mod.LOCALE_DIR, ["en"])
     app.Destroy()

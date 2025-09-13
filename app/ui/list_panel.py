@@ -1,6 +1,6 @@
 """Panel displaying requirements list and simple filters."""
 
-from gettext import gettext as _
+from app.i18n import _
 
 import wx
 from wx.lib.agw import ultimatelistctrl as ULC

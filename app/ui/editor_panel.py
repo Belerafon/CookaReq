@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from gettext import gettext as _
+from app.i18n import _
 
 import wx
 import wx.adv

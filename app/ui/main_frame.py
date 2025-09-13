@@ -1,6 +1,6 @@
 """Main application window."""
 
-from gettext import gettext as _
+from app.i18n import _
 
 import logging
 from importlib import resources
@@ -238,26 +238,10 @@ class MainFrame(wx.Frame):
 
     def _apply_language(self) -> None:
         """Reinitialize locale and rebuild UI after language change."""
-        from app.main import init_locale, APP_NAME, LOCALE_DIR
-        import gettext, sys
+        from app.main import init_locale
 
         app = wx.GetApp()
         app.locale = init_locale(self.language)
-
-        trans = gettext.translation(
-            APP_NAME, LOCALE_DIR, languages=[self.language], fallback=True
-        )
-        trans.install()
-        for mod in [
-            sys.modules.get("app.ui.main_frame"),
-            sys.modules.get("app.ui.list_panel"),
-            sys.modules.get("app.ui.editor_panel"),
-            sys.modules.get("app.ui.settings_dialog"),
-            sys.modules.get("app.ui.labels_dialog"),
-            sys.modules.get("app.ui.navigation"),
-        ]:
-            if mod and hasattr(mod, "_"):
-                mod._ = trans.gettext
 
         # Rebuild menus and toolbar with new translations
         self.navigation.rebuild(self.selected_fields)

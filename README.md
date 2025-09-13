@@ -12,7 +12,7 @@ CookaReq is a desktop application built with wxPython for managing requirements 
 - Support for attachments and user-defined labels
 - Error log that can be hidden or shown
 - Remembers window size, selected columns, sorting, and recently opened folders
-- Interface localization via `gettext`
+- Interface localization via text `.po` files
 
 ## Graphical Interface
 
@@ -70,7 +70,8 @@ Each requirement is stored in its own `<id>.json` file and contains the followin
 
 ## Localization
 
-The interface uses `gettext`. If the corresponding `.mo` files are available, the language is selected automatically based on system settings.
+Translations are stored as plain text `.po` files and loaded at runtime, so no
+compilation to binary `.mo` catalogs is required.
 
 ## Development
 

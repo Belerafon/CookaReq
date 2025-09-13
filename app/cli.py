@@ -1,7 +1,7 @@
 """Command-line interface for CookaReq."""
 from __future__ import annotations
 
-from gettext import gettext as _
+from app.i18n import _
 
 import argparse
 import json

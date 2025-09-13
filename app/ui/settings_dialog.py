@@ -1,6 +1,6 @@
 """Dialog for application settings with MCP controls."""
 
-from gettext import gettext as _
+from app.i18n import _
 from importlib import resources
 
 import wx

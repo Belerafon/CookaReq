@@ -1,6 +1,6 @@
 """Localization helpers for enumerated fields using gettext."""
 
-from gettext import gettext as _
+from app.i18n import _
 from enum import Enum
 
 from app.core.model import RequirementType, Status, Priority, Verification

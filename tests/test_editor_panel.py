@@ -1,6 +1,6 @@
 import os
 import pytest
-from gettext import gettext as _
+from app.i18n import _
 
 from app.core.model import RequirementType, Status, Priority, Verification
 from app.core.labels import Label

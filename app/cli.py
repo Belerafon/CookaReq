@@ -5,9 +5,8 @@ from app.i18n import _
 
 import argparse
 import json
-from pathlib import Path
-
-from .core import model, requirements as req_ops
+from .core import model
+from .core.repository import RequirementRepository, FileRequirementRepository
 from .log import configure_logging
 from .settings import AppSettings, load_app_settings
 from .agent import LocalAgent
@@ -16,44 +15,44 @@ from .confirm import confirm, set_confirm, auto_confirm
 set_confirm(auto_confirm)
 
 
-def cmd_list(args: argparse.Namespace) -> None:
+def cmd_list(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """List requirements in directory, optionally filtered."""
-    reqs = req_ops.search_requirements(
+    reqs = repo.search(
         args.directory, labels=args.labels, query=args.query, fields=args.fields
     )
     for r in reqs:
         print(f"{r.id}: {r.title}")
 
 
-def cmd_add(args: argparse.Namespace) -> None:
+def cmd_add(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """Add requirement from JSON file to directory."""
     with open(args.file, "r", encoding="utf-8") as fh:
         data = json.load(fh)
-    path = req_ops.save_requirement(args.directory, data)
+    path = repo.save(args.directory, data)
     print(path)
 
 
-def cmd_edit(args: argparse.Namespace) -> None:
+def cmd_edit(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """Edit existing requirement using data from JSON file."""
     with open(args.file, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     mtime = None
     try:
-        _, mtime = req_ops.load_requirement(args.directory, data["id"])
+        _, mtime = repo.load(args.directory, data["id"])
     except FileNotFoundError:
         pass
-    path = req_ops.save_requirement(args.directory, data, mtime=mtime)
+    path = repo.save(args.directory, data, mtime=mtime)
     print(path)
 
 
-def cmd_show(args: argparse.Namespace) -> None:
+def cmd_show(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """Show detailed JSON for requirement with *id*."""
-    req = req_ops.get_requirement(args.directory, args.id)
+    req = repo.get(args.directory, args.id)
     data = model.requirement_to_dict(req)
     print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
 
 
-def cmd_check(args: argparse.Namespace) -> None:
+def cmd_check(args: argparse.Namespace, _repo: RequirementRepository) -> None:
     """Verify LLM and MCP connectivity using loaded settings."""
 
     agent = LocalAgent(settings=args.app_settings, confirm=confirm)
@@ -103,7 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    repo: RequirementRepository | None = None,
+) -> int:
+    """CLI entry point."""
     configure_logging()
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -111,7 +114,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.settings:
         settings = load_app_settings(args.settings)
     args.app_settings = settings
-    args.func(args)
+    repository = repo or FileRequirementRepository()
+    args.func(args, repository)
     return 0
 
 

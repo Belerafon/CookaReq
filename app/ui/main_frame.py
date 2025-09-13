@@ -27,6 +27,7 @@ from .labels_dialog import LabelsDialog
 from .navigation import Navigation
 from .command_dialog import CommandDialog
 from .controllers import RequirementsController, LabelsController
+from app.core.repository import FileRequirementRepository
 
 
 class WxLogHandler(logging.Handler):
@@ -330,7 +331,10 @@ class MainFrame(wx.Frame):
 
     def _load_directory(self, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""
-        self.req_controller = RequirementsController(self.config, self.model, path)
+        repo = FileRequirementRepository()
+        self.req_controller = RequirementsController(
+            self.config, self.model, path, repo
+        )
         self.labels_controller = LabelsController(self.config, self.model, path)
         self.labels_controller.load_labels()
         derived_map = self.req_controller.load_directory()

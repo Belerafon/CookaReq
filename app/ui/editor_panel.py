@@ -290,12 +290,12 @@ class EditorPanel(ScrolledPanel):
         self.attachments_list.InsertColumn(0, _("File"))
         self.attachments_list.InsertColumn(1, _("Note"))
         btn_row = wx.BoxSizer(wx.HORIZONTAL)
-        add_btn = wx.Button(a_box, label=_("Add"))
-        remove_btn = wx.Button(a_box, label=_("Remove"))
-        add_btn.Bind(wx.EVT_BUTTON, self._on_add_attachment)
-        remove_btn.Bind(wx.EVT_BUTTON, self._on_remove_attachment)
-        btn_row.Add(add_btn, 0)
-        btn_row.Add(remove_btn, 0, wx.LEFT, 5)
+        self.add_attachment_btn = wx.Button(a_box, label=_("Add"))
+        self.remove_attachment_btn = wx.Button(a_box, label=_("Remove"))
+        self.add_attachment_btn.Bind(wx.EVT_BUTTON, self._on_add_attachment)
+        self.remove_attachment_btn.Bind(wx.EVT_BUTTON, self._on_remove_attachment)
+        btn_row.Add(self.add_attachment_btn, 0)
+        btn_row.Add(self.remove_attachment_btn, 0, wx.LEFT, 5)
         a_sizer.Add(self.attachments_list, 0, wx.EXPAND | wx.ALL, 5)
         a_sizer.Add(btn_row, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
         sizer.Add(a_sizer, 0, wx.EXPAND | wx.ALL, 5)
@@ -510,7 +510,9 @@ class EditorPanel(ScrolledPanel):
         sizer.Add(lst, 1, wx.EXPAND | wx.ALL, 5)
         # по умолчанию список и кнопка удаления скрыты
         lst.Hide()
+        sizer.Show(lst, False)
         remove_btn.Hide()
+        row.Show(remove_btn, False)
         id_attr = id_name or f"{attr}_id"
         list_attr = list_name or f"{attr}_list"
         setattr(self, id_attr, id_ctrl)
@@ -530,8 +532,16 @@ class EditorPanel(ScrolledPanel):
         remove_btn = getattr(self, f"{attr}_remove", None)
         visible = bool(links_list)
         list_ctrl.Show(visible)
+        sizer = list_ctrl.GetContainingSizer()
+        if sizer:
+            sizer.Show(list_ctrl, visible)
+            sizer.Layout()
         if remove_btn:
             remove_btn.Show(visible)
+            btn_sizer = remove_btn.GetContainingSizer()
+            if btn_sizer:
+                btn_sizer.Show(remove_btn, visible)
+                btn_sizer.Layout()
         box = list_ctrl.GetParent()
         box.Layout()
         self.Layout()
@@ -803,8 +813,23 @@ class EditorPanel(ScrolledPanel):
     def _refresh_attachments(self) -> None:
         self.attachments_list.DeleteAllItems()
         for att in self.attachments:
-            idx = self.attachments_list.InsertItem(self.attachments_list.GetItemCount(), att.get("path", ""))
+            idx = self.attachments_list.InsertItem(
+                self.attachments_list.GetItemCount(), att.get("path", "")
+            )
             self.attachments_list.SetItem(idx, 1, att.get("note", ""))
+        visible = bool(self.attachments)
+        self.attachments_list.Show(visible)
+        sizer = self.attachments_list.GetContainingSizer()
+        if sizer:
+            sizer.Show(self.attachments_list, visible)
+            sizer.Layout()
+        self.remove_attachment_btn.Enable(visible)
+        self.remove_attachment_btn.Show(visible)
+        btn_sizer = self.remove_attachment_btn.GetContainingSizer()
+        if btn_sizer:
+            btn_sizer.Show(self.remove_attachment_btn, visible)
+            btn_sizer.Layout()
+        self.Layout()
 
     def _on_add_attachment(self, _event: wx.CommandEvent) -> None:
         dlg = wx.FileDialog(self, _("Select attachment"), style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)

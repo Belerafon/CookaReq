@@ -45,7 +45,8 @@ def test_main_frame_editor_multiline_fields_have_size(tmp_path, monkeypatch, wx_
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, wx.ID_OPEN)
     frame.ProcessEvent(evt)
     frame.Show()
-    frame.on_requirement_selected(type("E", (), {"GetRow": lambda self: 0})())
+    frame.panel.list.Select(0)
+    wx_app.Yield()
 
     for name in ["statement", "acceptance", "conditions", "trace_up", "trace_down", "source"]:
         assert frame.editor.fields[name].GetSize().GetHeight() > 0

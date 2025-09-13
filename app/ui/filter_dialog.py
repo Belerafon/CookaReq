@@ -8,16 +8,23 @@ import wx
 
 from ..core import requirements as req_ops
 from ..core.model import Status
+from ..core.labels import Label
 from . import locale
 
 
 class FilterDialog(wx.Dialog):
     """Dialog allowing to configure various filters."""
 
-    def __init__(self, parent: wx.Window, *, labels: list[str], values: Dict | None = None) -> None:
+    def __init__(
+        self,
+        parent: wx.Window,
+        *,
+        labels: list[Label],
+        values: Dict | None = None,
+    ) -> None:
         title = _("Filters")
         super().__init__(parent, title=title)
-        self._labels = labels
+        self._labels = list(labels)
         self._build_ui(values or {})
 
     def _build_ui(self, values: Dict) -> None:
@@ -32,7 +39,7 @@ class FilterDialog(wx.Dialog):
         # Per-field queries
         self.field_controls: Dict[str, wx.TextCtrl] = {}
         for field in sorted(req_ops.SEARCHABLE_FIELDS):
-            sizer.Add(wx.StaticText(self, label=field.title()), 0, wx.ALL, 5)
+            sizer.Add(wx.StaticText(self, label=locale.field_label(field)), 0, wx.ALL, 5)
             ctrl = wx.TextCtrl(self)
             ctrl.SetValue(values.get("field_queries", {}).get(field, ""))
             self.field_controls[field] = ctrl
@@ -40,10 +47,19 @@ class FilterDialog(wx.Dialog):
 
         # Labels
         sizer.Add(wx.StaticText(self, label=_("Labels")), 0, wx.ALL, 5)
-        self.labels_box = wx.CheckListBox(self, choices=self._labels)
+        choices = [lbl.name for lbl in self._labels]
+        self.labels_box = wx.CheckListBox(self, choices=choices)
+        for i, lbl in enumerate(self._labels):
+            try:
+                colour = wx.Colour(lbl.color)
+                self.labels_box.SetItemBackgroundColour(i, colour)
+                self.labels_box.SetItemForegroundColour(i, wx.BLACK)
+            except Exception:  # pragma: no cover - platform dependent
+                pass
         for lbl in values.get("labels", []):
-            if lbl in self._labels:
-                idx = self._labels.index(lbl)
+            names = [l.name for l in self._labels]
+            if lbl in names:
+                idx = names.index(lbl)
                 self.labels_box.Check(idx)
         sizer.Add(self.labels_box, 0, wx.EXPAND | wx.ALL, 5)
 
@@ -75,13 +91,21 @@ class FilterDialog(wx.Dialog):
         self.suspect_only.SetValue(values.get("suspect_only", False))
         sizer.Add(self.suspect_only, 0, wx.ALL, 5)
 
-        btns = self.CreateButtonSizer(wx.OK | wx.CANCEL)
+        btns = wx.StdDialogButtonSizer()
+        self.reset_btn = wx.Button(self, wx.ID_RESET, label=_("Reset"))
+        ok_btn = wx.Button(self, wx.ID_OK)
+        cancel_btn = wx.Button(self, wx.ID_CANCEL)
+        btns.AddButton(self.reset_btn)
+        btns.AddButton(ok_btn)
+        btns.AddButton(cancel_btn)
+        btns.Realize()
         sizer.Add(btns, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
+        self.reset_btn.Bind(wx.EVT_BUTTON, self._on_reset)
         self.SetSizerAndFit(sizer)
 
     def get_filters(self) -> Dict:
         """Return chosen filters as a dict."""
-        labels = [self._labels[i] for i in range(self.labels_box.GetCount()) if self.labels_box.IsChecked(i)]
+        labels = [self._labels[i].name for i in range(self.labels_box.GetCount()) if self.labels_box.IsChecked(i)]
         field_queries = {field: ctrl.GetValue() for field, ctrl in self.field_controls.items() if ctrl.GetValue()}
         return {
             "query": self.any_query.GetValue(),
@@ -94,3 +118,16 @@ class FilterDialog(wx.Dialog):
             "suspect_only": self.suspect_only.GetValue(),
             "field_queries": field_queries,
         }
+
+    def _on_reset(self, _event: wx.Event) -> None:  # pragma: no cover - simple GUI action
+        """Clear all controls to default state."""
+        self.any_query.SetValue("")
+        for ctrl in self.field_controls.values():
+            ctrl.SetValue("")
+        for i in range(self.labels_box.GetCount()):
+            self.labels_box.Check(i, False)
+        self.match_any.SetValue(False)
+        self.status_choice.SetSelection(0)
+        self.is_derived.SetValue(False)
+        self.has_derived.SetValue(False)
+        self.suspect_only.SetValue(False)

@@ -266,6 +266,11 @@ _uvicorn_server: Optional[uvicorn.Server] = None
 _server_thread: Optional[threading.Thread] = None
 
 
+def is_running() -> bool:
+    """Return ``True`` if the MCP server is currently running."""
+    return _uvicorn_server is not None
+
+
 def start_server(
     host: str = "127.0.0.1",
     port: int = 8000,

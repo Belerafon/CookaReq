@@ -40,6 +40,7 @@ def test_switch_to_russian_updates_ui(monkeypatch):
                 frame.mcp_host,
                 frame.mcp_port,
                 frame.mcp_base_path,
+                frame.mcp_require_token,
                 frame.mcp_token,
             )
         def Destroy(self):

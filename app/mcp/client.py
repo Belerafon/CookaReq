@@ -18,6 +18,7 @@ class MCPSettings:
     host: str
     port: int
     base_path: str
+    require_token: bool
     token: str
 
     @classmethod
@@ -27,6 +28,7 @@ class MCPSettings:
             host=cfg.Read("mcp_host", "127.0.0.1"),
             port=cfg.ReadInt("mcp_port", 8000),
             base_path=cfg.Read("mcp_base_path", ""),
+            require_token=cfg.ReadBool("mcp_require_token", False),
             token=cfg.Read("mcp_token", ""),
         )
 
@@ -53,7 +55,7 @@ class MCPClient:
             "host": self.settings.host,
             "port": self.settings.port,
             "base_path": self.settings.base_path,
-            "token": self.settings.token,
+            "token": self.settings.token if self.settings.require_token else "",
         }
         logger.info(
             "TOOL_CALL",
@@ -73,7 +75,7 @@ class MCPClient:
                     {"name": "list_requirements", "arguments": {"per_page": 1}}
                 )
                 headers = {"Content-Type": "application/json"}
-                if self.settings.token:
+                if self.settings.require_token and self.settings.token:
                     headers["Authorization"] = f"Bearer {self.settings.token}"
                 conn.request("POST", path, body=payload, headers=headers)
                 resp = conn.getresponse()
@@ -121,7 +123,7 @@ class MCPClient:
             try:
                 payload = json.dumps({"name": name, "arguments": dict(arguments)})
                 headers = {"Content-Type": "application/json"}
-                if self.settings.token:
+                if self.settings.require_token and self.settings.token:
                     headers["Authorization"] = f"Bearer {self.settings.token}"
                 conn.request("POST", "/mcp", body=payload, headers=headers)
                 resp = conn.getresponse()

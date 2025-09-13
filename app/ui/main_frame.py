@@ -8,6 +8,7 @@ from pathlib import Path
 from dataclasses import fields, replace
 
 import wx
+import wx.dataview as dv
 
 from ..log import logger
 
@@ -151,7 +152,7 @@ class MainFrame(wx.Frame):
         self.SetSizer(sizer)
         self._load_layout()
         self.current_dir: Path | None = None
-        self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
+        self.panel.list.Bind(dv.EVT_DATAVIEW_SELECTION_CHANGED, self.on_requirement_selected)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         if self.auto_open_last and self.recent_dirs:
             path = Path(self.recent_dirs[0])
@@ -278,7 +279,7 @@ class MainFrame(wx.Frame):
             on_derive=self.on_derive_requirement,
         )
         self.panel.set_columns(self.selected_fields)
-        self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
+        self.panel.list.Bind(dv.EVT_DATAVIEW_SELECTION_CHANGED, self.on_requirement_selected)
 
         self.editor = EditorPanel(
             self.splitter,
@@ -369,17 +370,18 @@ class MainFrame(wx.Frame):
 
     # recent directories -------------------------------------------------
 
-    def on_requirement_selected(self, event: wx.ListEvent) -> None:
-        index = event.GetIndex()
-        if index == wx.NOT_FOUND:
+    def on_requirement_selected(self, event) -> None:
+        index = getattr(event, "GetRow", lambda: -1)()
+        if index == -1 or index == wx.NOT_FOUND:
             return
-        req_id = self.panel.list.GetItemData(index)
-        req = self.model.get_by_id(req_id)
-        if req:
-            self.editor.load(req)
-            self.editor.Show()
-            self.editor.Layout()
-            self.splitter.UpdateSize()
+        items = self.model.get_visible()
+        if index >= len(items):
+            return
+        req = items[index]
+        self.editor.load(req)
+        self.editor.Show()
+        self.editor.Layout()
+        self.splitter.UpdateSize()
 
     def _on_editor_save(self) -> None:
         if not self.current_dir:

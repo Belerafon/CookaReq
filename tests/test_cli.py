@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from app.core.store import save
 from app.settings import AppSettings
-from app.cli import main
+from app.cli.main import main
 
 
 def sample() -> dict:
@@ -25,7 +27,7 @@ def sample() -> dict:
 
 
 def run_cli(argv: list[str]):
-    from app.cli import main
+    from app.cli.main import main
     return main(argv)
 
 
@@ -138,8 +140,7 @@ def test_cli_settings_flag(tmp_path, monkeypatch, capsys):
         called["path"] = path
         return AppSettings()
 
-    from app import cli as cli_mod
-
+    import app.cli.main as cli_mod
     monkeypatch.setattr(cli_mod, "load_app_settings", fake_loader)
     monkeypatch.setattr(cli_mod, "AppSettings", AppSettings)
 
@@ -166,7 +167,7 @@ def test_cli_check_uses_agent(tmp_path, monkeypatch, capsys):
             called["mcp"] = True
             return {"status": "ok"}
 
-    from app import cli as cli_mod
+    import app.cli.commands as cli_mod
 
     monkeypatch.setattr(cli_mod, "LocalAgent", DummyAgent)
 
@@ -228,3 +229,17 @@ def test_cli_edit_invalid_data(tmp_path, capsys):
     run_cli(["show", str(req_dir), "1"])
     loaded = json.loads(capsys.readouterr().out)
     assert loaded["status"] == data["status"]
+
+
+def test_cli_module_entrypoint(tmp_path):
+    data = sample()
+    save(tmp_path, data)
+    repo_root = Path(__file__).resolve().parents[1]
+    proc = subprocess.run(
+        [sys.executable, "-m", "app.cli", "list", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+    )
+    assert proc.returncode == 0
+    assert "1" in proc.stdout

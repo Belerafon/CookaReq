@@ -177,6 +177,10 @@ def _build_wx_stub():
             return default
         def WriteInt(self, key, value):
             pass
+        def Read(self, key, default=""):
+            return default
+        def Write(self, key, value):
+            pass
 
     wx_mod = types.SimpleNamespace(
         Panel=Panel,
@@ -578,3 +582,24 @@ def test_sort_method_and_callback(monkeypatch):
     panel.sort(1, False)
     assert [r.id for r in panel.model.get_visible()] == [2, 1]
     assert calls[-1] == (1, False)
+
+
+def test_reorder_columns(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["id", "status", "priority"])
+    panel.reorder_columns(1, 3)
+    assert panel.columns == ["status", "priority", "id"]
+    assert panel.list._cols == ["Title", "status", "priority", "id"]

@@ -100,6 +100,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.derived_map: dict[int, List[int]] = {}
         self._sort_column = -1
         self._sort_ascending = True
+        self._drag_start_col: int | None = None
+        self._drag_start_x = 0
+        self._dragging = False
         self._setup_columns()
         sizer.Add(btn_row, 0, wx.ALL, 5)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
@@ -143,6 +146,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         except Exception:  # pragma: no cover - Unbind may not exist
             pass
         self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
+        self._bind_column_dragging()
 
     # Columns ---------------------------------------------------------
     def load_column_widths(self, config: wx.Config) -> None:
@@ -167,35 +171,86 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         value = config.Read("col_order", "")
         if not value:
             return
-        names = [n for n in value.split(",") if n]
-        order: List[int] = []
+        names = [n for n in value.split(",") if n and n != "title"]
+        ordered: list[str] = []
         for name in names:
-            if name == "title":
-                order.append(0)
-            elif name in self.columns:
-                order.append(self.columns.index(name) + 1)
-        count = self.list.GetColumnCount()
-        for idx in range(count):
-            if idx not in order:
-                order.append(idx)
-        try:  # pragma: no cover - depends on GUI backend
-            self.list.SetColumnsOrder(order)
-        except Exception:
-            pass
+            if name in self.columns:
+                ordered.append(name)
+        for name in self.columns:
+            if name not in ordered:
+                ordered.append(name)
+        self.columns = ordered
+        self._setup_columns()
+        self._refresh()
 
     def save_column_order(self, config: wx.Config) -> None:
         """Persist current column ordering to config."""
-        try:  # pragma: no cover - depends on GUI backend
-            order = self.list.GetColumnsOrder()
-        except Exception:
-            return
-        names: List[str] = []
-        for idx in order:
-            if idx == 0:
-                names.append("title")
-            elif 1 <= idx <= len(self.columns):
-                names.append(self.columns[idx - 1])
+        names: list[str] = ["title"] + list(self.columns)
         config.Write("col_order", ",".join(names))
+
+    def reorder_columns(self, from_col: int, to_col: int) -> None:
+        """Move column from ``from_col`` index to ``to_col`` index."""
+        if from_col == to_col or from_col <= 0 or to_col <= 0:
+            return
+        fields = list(self.columns)
+        field = fields.pop(from_col - 1)
+        fields.insert(to_col - 1, field)
+        self.columns = fields
+        self._setup_columns()
+        self._refresh()
+
+    # header drag ----------------------------------------------------
+    def _bind_column_dragging(self) -> None:
+        header = getattr(self.list, "_headerWin", None)
+        if not header:
+            return
+        header.Bind(wx.EVT_LEFT_DOWN, self._on_header_left_down)
+        header.Bind(wx.EVT_LEFT_UP, self._on_header_left_up)
+        header.Bind(wx.EVT_MOTION, self._on_header_motion)
+
+    def _header_hit_test(self, x: int) -> int | None:
+        try:
+            x, _ = self.list.CalcUnscrolledPosition(x, 0)
+        except Exception:
+            pass
+        xpos = 0
+        count = self.list.GetColumnCount()
+        for col in range(count):
+            try:
+                width = self.list.GetColumnWidth(col)
+            except Exception:
+                width = 0
+            if x < xpos + width:
+                return col
+            xpos += width
+        return None
+
+    def _on_header_left_down(self, event):  # pragma: no cover - GUI event
+        self._drag_start_x = event.GetX()
+        self._drag_start_col = self._header_hit_test(event.GetX())
+        self._dragging = True
+        event.Skip()
+
+    def _on_header_motion(self, event):  # pragma: no cover - GUI event
+        if not self._dragging:
+            event.Skip()
+            return
+        event.Skip()
+
+    def _on_header_left_up(self, event):  # pragma: no cover - GUI event
+        if self._dragging:
+            if abs(event.GetX() - self._drag_start_x) > 5:
+                target = self._header_hit_test(event.GetX())
+                if (
+                    target is not None
+                    and self._drag_start_col is not None
+                    and target != self._drag_start_col
+                ):
+                    self.reorder_columns(self._drag_start_col, target)
+                    self._dragging = False
+                    return
+        self._dragging = False
+        event.Skip()
 
     def set_columns(self, fields: List[str]) -> None:
         """Set additional columns (beyond Title) to display.

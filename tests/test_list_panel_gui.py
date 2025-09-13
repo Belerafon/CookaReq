@@ -171,3 +171,17 @@ def test_recalc_derived_map_updates_count(wx_app):
     panel.recalc_derived_map([req1, req2])
     assert panel.list.GetItem(0, 1).GetText() == "0"
     frame.Destroy()
+
+
+def test_reorder_columns_gui(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["id", "status"])
+    panel.reorder_columns(1, 2)
+    assert panel.columns == ["status", "id"]
+    assert panel.list.GetColumn(1).GetText() == "status"
+    frame.Destroy()

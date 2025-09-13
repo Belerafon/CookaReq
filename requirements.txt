@@ -7,3 +7,4 @@ uvicorn
 mcp
 jsonpatch
 openai
+pydantic

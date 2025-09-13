@@ -34,7 +34,9 @@ def test_controller_check(monkeypatch):
     )
 
     ctrl = MCPController()
-    settings = MCPSettings("localhost", 8123, "/tmp", True, "abc")
+    settings = MCPSettings(
+        host="localhost", port=8123, base_path="/tmp", require_token=True, token="abc"
+    )
     assert ctrl.check(settings) is MCPStatus.READY
     assert requests[0]["Authorization"] == "Bearer abc"
 
@@ -70,7 +72,7 @@ def test_controller_start_stop(monkeypatch):
     )
 
     ctrl = MCPController()
-    settings = MCPSettings("localhost", 8123, "/tmp", False, "")
+    settings = MCPSettings(host="localhost", port=8123, base_path="/tmp", token="")
     ctrl.start(settings)
     ctrl.stop()
     assert calls == [("start", "localhost", 8123, "/tmp", ""), ("stop",)]

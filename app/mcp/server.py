@@ -21,7 +21,7 @@ import uvicorn
 from mcp.server.fastmcp import FastMCP
 
 from app.log import configure_logging, logger
-from app.mcp.utils import ErrorCode, mcp_error
+from app.mcp.utils import ErrorCode, mcp_error, sanitize
 from app.mcp import tools_read, tools_write
 
 # Public FastAPI application and MCP server instances -----------------------
@@ -34,9 +34,6 @@ app.state.log_dir = "."
 
 _TEXT_LOG_NAME = "server.log"
 _JSONL_LOG_NAME = "server.jsonl"
-_SENSITIVE_KEYS = {"authorization", "token", "secret", "password", "api_key", "cookie"}
-
-
 class JsonlHandler(logging.Handler):
     """Write log records as JSON lines."""
 
@@ -78,13 +75,9 @@ def _configure_request_logging(log_dir: str) -> None:
     logger.addHandler(json_handler)
 
 
-def _sanitize(data: Mapping[str, str]) -> dict[str, str]:
-    return {k: ("***" if k.lower() in _SENSITIVE_KEYS else v) for k, v in data.items()}
-
-
 def _log_request(request: Request, status: int) -> None:
-    headers = _sanitize(dict(request.headers))
-    query = _sanitize(dict(request.query_params))
+    headers = sanitize(dict(request.headers))
+    query = sanitize(dict(request.query_params))
     entry = {
         "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "method": request.method,

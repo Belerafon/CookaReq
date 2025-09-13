@@ -1,7 +1,78 @@
+"""Shared helpers for MCP tools."""
+
 from __future__ import annotations
 
+import datetime
 from enum import Enum
 from typing import Any, Mapping
+
+from app.log import logger
+
+# Common keys that may contain sensitive information and should be redacted
+SENSITIVE_KEYS = {
+    "authorization",
+    "token",
+    "secret",
+    "password",
+    "api_key",
+    "cookie",
+}
+
+
+def sanitize(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a copy of *data* with sensitive keys redacted."""
+
+    sanitized: dict[str, Any] = {}
+    for key, value in data.items():
+        if key.lower() in SENSITIVE_KEYS:
+            sanitized[key] = "***"
+        else:
+            sanitized[key] = value
+    return sanitized
+
+
+def log_tool(
+    tool: str,
+    params: Mapping[str, Any],
+    result: Any,
+    *,
+    max_result_length: int | None = 1000,
+) -> Any:
+    """Log tool invocation in JSONL and return *result*.
+
+    Parameters
+    ----------
+    tool:
+        Name of the tool being invoked.
+    params:
+        Parameters passed to the tool; sensitive keys are redacted.
+    result:
+        Result returned by the tool.  If *max_result_length* is set and the
+        textual representation of the result exceeds this limit it will be
+        truncated with an ellipsis in the log entry.  The original *result* is
+        still returned unmodified.
+    max_result_length:
+        Maximum number of characters from the result to include in the log.
+        ``None`` disables truncation.
+    """
+
+    entry = {
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+        "tool": tool,
+        "params": sanitize(params),
+    }
+    if isinstance(result, dict) and "error" in result:
+        entry["error"] = result["error"]
+    else:
+        entry["result"] = result
+
+    if max_result_length is not None and "result" in entry:
+        res = entry["result"]
+        if isinstance(res, str) and len(res) > max_result_length:
+            entry["result"] = res[:max_result_length] + "..."
+
+    logger.info("tool %s", tool, extra={"json": entry})
+    return result
 
 
 class ErrorCode(str, Enum):

@@ -3,6 +3,7 @@ import types
 import importlib
 
 from app.core.model import Requirement, RequirementType, Status, Priority, Verification
+from app.core.labels import Label
 
 
 def _build_wx_stub():
@@ -435,6 +436,33 @@ def test_labels_column_renders_joined(monkeypatch):
     renderer = item.GetCustomRenderer()
     assert renderer is not None
     assert renderer.labels == ["ui", "backend"]
+
+
+def test_labels_column_uses_colors(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    panel.update_labels_list([Label("ui", "#123456")])
+    panel.set_columns(["labels"])
+
+    captured: list[object] = []
+    panel.list.SetItem = lambda item: captured.append(item)
+    panel.set_requirements([_req(1, "A", labels=["ui"])])
+
+    item = next((i for i in captured if i.GetColumn() == 1), None)
+    renderer = item.GetCustomRenderer()
+    assert renderer.colors["ui"] == "#123456"
 
 
 def test_sort_by_labels(monkeypatch):

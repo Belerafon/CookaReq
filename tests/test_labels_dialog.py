@@ -186,7 +186,9 @@ def test_main_frame_manage_labels_saves(monkeypatch, tmp_path):
     frame.editor.update_labels_list = lambda labels: captured.append(
         ("editor", [l.name for l in labels])
     )
-    frame.panel.update_labels_list = lambda labels: captured.append(("panel", labels))
+    frame.panel.update_labels_list = lambda labels: captured.append(
+        ("panel", [l.name for l in labels])
+    )
 
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, frame.manage_labels_id)
     frame.ProcessEvent(evt)

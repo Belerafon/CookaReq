@@ -307,9 +307,8 @@ class MainFrame(wx.Frame):
                     new_labels, remove_from_requirements=True
                 )
                 self.panel.refresh()
-            names = self.labels_controller.get_label_names()
             self.editor.update_labels_list(self.labels_controller.labels)
-            self.panel.update_labels_list(names)
+            self.panel.update_labels_list(self.labels_controller.labels)
         dlg.Destroy()
 
     def on_show_derivation_graph(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
@@ -346,9 +345,9 @@ class MainFrame(wx.Frame):
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
         self.editor.Hide()
-        names = self.labels_controller.sync_labels()
+        self.labels_controller.sync_labels()
         self.editor.update_labels_list(self.labels_controller.labels)
-        self.panel.update_labels_list(names)
+        self.panel.update_labels_list(self.labels_controller.labels)
 
     # recent directories -------------------------------------------------
 
@@ -383,9 +382,9 @@ class MainFrame(wx.Frame):
         self.model.update(data)
         self.panel.recalc_derived_map(self.model.get_all())
         if self.labels_controller:
-            names = self.labels_controller.sync_labels()
+            self.labels_controller.sync_labels()
             self.editor.update_labels_list(self.labels_controller.labels)
-            self.panel.update_labels_list(names)
+            self.panel.update_labels_list(self.labels_controller.labels)
 
     def on_toggle_column(self, event: wx.CommandEvent) -> None:
         field = self.navigation.get_field_for_id(event.GetId())
@@ -512,6 +511,6 @@ class MainFrame(wx.Frame):
         self.panel.refresh()
         self.editor.Hide()
         self.splitter.UpdateSize()
-        names = self.labels_controller.sync_labels()
+        self.labels_controller.sync_labels()
         self.editor.update_labels_list(self.labels_controller.labels)
-        self.panel.update_labels_list(names)
+        self.panel.update_labels_list(self.labels_controller.labels)

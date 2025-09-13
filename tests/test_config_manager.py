@@ -1,3 +1,5 @@
+"""Tests for config manager."""
+
 import pytest
 
 from app.config import ConfigManager

@@ -1,3 +1,5 @@
+"""Tests for i18n."""
+
 from app import i18n
 
 

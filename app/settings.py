@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Typed application settings with Pydantic validation."""
+
+from __future__ import annotations
 
 from pathlib import Path
 import json

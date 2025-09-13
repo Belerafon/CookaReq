@@ -1,3 +1,5 @@
+"""Tests for labels."""
+
 from app.core.labels import Label, add_label, get_label, update_label, delete_label
 from app.core import store
 from pathlib import Path

@@ -1,3 +1,5 @@
+"""Tests for tool logging."""
+
 import json
 from pathlib import Path
 

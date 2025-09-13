@@ -1,3 +1,5 @@
+"""Tests for mcp server."""
+
 import json
 
 from app.mcp.server import start_server, stop_server

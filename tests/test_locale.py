@@ -1,3 +1,5 @@
+"""Tests for locale."""
+
 import pytest
 from app.i18n import _, install
 

@@ -1,3 +1,5 @@
+"""Controller for label persistence and synchronization."""
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,3 +1,5 @@
+"""HTTP client for interacting with the MCP server."""
+
 from __future__ import annotations
 
 import json
@@ -126,4 +128,3 @@ class MCPClient:
         """Backward compatible wrapper for :meth:`call_tool`."""
 
         return self.call_tool(name, arguments)
-

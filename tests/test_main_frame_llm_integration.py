@@ -1,3 +1,5 @@
+"""Tests for main frame llm integration."""
+
 import json
 import os
 from pathlib import Path

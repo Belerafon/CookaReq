@@ -1,3 +1,5 @@
+"""Tests for list panel."""
+
 import sys
 import types
 import importlib
@@ -571,5 +573,3 @@ def test_sort_method_and_callback(monkeypatch):
     panel.sort(1, False)
     assert [r.id for r in panel.model.get_visible()] == [2, 1]
     assert calls[-1] == (1, False)
-
-

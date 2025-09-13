@@ -1,3 +1,5 @@
+"""Tests for hashing."""
+
 from app.util.hashing import id_to_hash
 
 

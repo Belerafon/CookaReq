@@ -1,3 +1,5 @@
+"""Tests for config manager proxies."""
+
 from app.config import ConfigManager
 
 

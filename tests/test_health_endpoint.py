@@ -1,3 +1,5 @@
+"""Tests for health endpoint."""
+
 def test_health_endpoint_returns_ok():
     from app.mcp.server import app
     from fastapi.testclient import TestClient

@@ -1,3 +1,5 @@
+"""Tests for list panel gui."""
+
 import importlib
 import pytest
 from app.core.model import (

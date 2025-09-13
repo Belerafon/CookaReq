@@ -1,3 +1,5 @@
+"""Tests for editor panel."""
+
 import os
 import pytest
 from app.i18n import _
@@ -179,4 +181,3 @@ def test_loading_requirement_without_labels_clears_display(wx_app):
     children = panel.labels_panel.GetChildren()
     assert len(children) == 1
     assert children[0].GetLabel() == _("(none)")
-

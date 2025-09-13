@@ -1,3 +1,5 @@
+"""Tests for mcp controller."""
+
 import pytest
 
 def test_controller_check(monkeypatch):

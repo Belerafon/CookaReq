@@ -1,3 +1,5 @@
+"""Tests for requirement model."""
+
 import pytest
 from app.ui.requirement_model import RequirementModel
 from app.core.model import Requirement, RequirementType, Status, Priority, Verification

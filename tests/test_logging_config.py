@@ -1,3 +1,5 @@
+"""Tests for logging config."""
+
 import logging
 import pytest
 

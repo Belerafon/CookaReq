@@ -1,3 +1,5 @@
+"""Tests for mcp text commands."""
+
 import json
 import logging
 import os
@@ -68,4 +70,3 @@ def test_run_command_error_logs(tmp_path: Path, monkeypatch, mcp_server) -> None
     entries = [json.loads(line) for line in log_file.read_text().splitlines()]
     events = {e.get("event") for e in entries}
     assert {"LLM_REQUEST", "LLM_RESPONSE", "TOOL_CALL", "TOOL_RESULT", "ERROR"} <= events
-

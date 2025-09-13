@@ -1,3 +1,5 @@
+"""Tests for mcp tools."""
+
 from pathlib import Path
 
 from app.core import store

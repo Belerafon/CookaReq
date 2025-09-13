@@ -39,5 +39,5 @@ def test_log_tool_sanitizes_and_truncates(tmp_path: Path) -> None:
         logger.setLevel(prev_level)
         logger.removeHandler(handler)
     data = json.loads(log_file.read_text().splitlines()[0])
-    assert data["params"]["token"] == "***"
+    assert data["params"]["token"] == "[REDACTED]"
     assert data["result"] == "xxxxxxxxxx..."

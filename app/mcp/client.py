@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from http.client import HTTPConnection
 from typing import Any, Mapping
 
 import wx
 
-from app.log import logger
+from app.telemetry import log_event
 from app.mcp.utils import ErrorCode, mcp_error, sanitize
 
 
@@ -55,15 +56,10 @@ class MCPClient:
             "base_path": self.settings.base_path,
             "token": self.settings.token,
         }
-        logger.info(
+        start = time.monotonic()
+        log_event(
             "TOOL_CALL",
-            extra={
-                "json": {
-                    "event": "TOOL_CALL",
-                    "tool": "list_requirements",
-                    "params": sanitize(params),
-                }
-            },
+            {"tool": "list_requirements", "params": sanitize(params)},
         )
         try:
             conn = HTTPConnection(self.settings.host, self.settings.port, timeout=5)
@@ -82,40 +78,27 @@ class MCPClient:
                 conn.close()
             data = json.loads(body or "{}")
             if resp.status == 200 and "error" not in data:
-                logger.info(
-                    "TOOL_RESULT", extra={"json": {"event": "TOOL_RESULT", "ok": True}}
-                )
+                log_event("TOOL_RESULT", {"ok": True}, start_time=start)
                 return {"ok": True}
             err = data.get("error")
             if not err:
                 err = {"code": str(resp.status), "message": data.get("message", "")}
-            logger.info(
-                "TOOL_RESULT",
-                extra={"json": {"event": "TOOL_RESULT", "error": err}},
-            )
+            log_event("TOOL_RESULT", {"error": err}, start_time=start)
             return err
         except Exception as exc:  # pragma: no cover - network errors
             err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
-            logger.info(
-                "TOOL_RESULT",
-                extra={"json": {"event": "TOOL_RESULT", "error": err}},
-            )
+            log_event("TOOL_RESULT", {"error": err}, start_time=start)
             return err
 
     # ------------------------------------------------------------------
     def _call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Invoke *name* tool with *arguments* on the MCP server."""
 
-        logger.info(
+        log_event(
             "TOOL_CALL",
-            extra={
-                "json": {
-                    "event": "TOOL_CALL",
-                    "tool": name,
-                    "params": sanitize(dict(arguments)),
-                }
-            },
+            {"tool": name, "params": sanitize(dict(arguments))},
         )
+        start = time.monotonic()
         try:
             conn = HTTPConnection(self.settings.host, self.settings.port, timeout=5)
             try:
@@ -130,28 +113,19 @@ class MCPClient:
                 conn.close()
             data = json.loads(body or "{}")
             if resp.status == 200 and "error" not in data:
-                logger.info(
-                    "TOOL_RESULT",
-                    extra={"json": {"event": "TOOL_RESULT", "result": data}},
-                )
-                logger.info("DONE", extra={"json": {"event": "DONE"}})
+                log_event("TOOL_RESULT", {"result": data}, start_time=start)
+                log_event("DONE")
                 return data
             err = data.get("error")
             if not err:
                 err = {"code": str(resp.status), "message": data.get("message", "")}
-            logger.info(
-                "TOOL_RESULT",
-                extra={"json": {"event": "TOOL_RESULT", "error": err}},
-            )
-            logger.info("ERROR", extra={"json": {"event": "ERROR", "error": err}})
+            log_event("TOOL_RESULT", {"error": err}, start_time=start)
+            log_event("ERROR", {"error": err})
             return {"error": err}
         except Exception as exc:  # pragma: no cover - network errors
             err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
-            logger.info(
-                "TOOL_RESULT",
-                extra={"json": {"event": "TOOL_RESULT", "error": err}},
-            )
-            logger.info("ERROR", extra={"json": {"event": "ERROR", "error": err}})
+            log_event("TOOL_RESULT", {"error": err}, start_time=start)
+            log_event("ERROR", {"error": err})
             return {"error": err}
 
     # ------------------------------------------------------------------
@@ -164,7 +138,7 @@ class MCPClient:
             name, arguments = LLMClient(self._cfg).parse_command(text)
         except Exception as exc:
             err = mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))["error"]
-            logger.info("ERROR", extra={"json": {"event": "ERROR", "error": err}})
+            log_event("ERROR", {"error": err})
             return {"error": err}
         return self._call_tool(name, arguments)
 

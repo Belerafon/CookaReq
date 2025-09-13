@@ -332,6 +332,9 @@ msgstr "File"
 msgid "Filters"
 msgstr "Filters"
 
+msgid "Clear filters"
+msgstr "Clear filters"
+
 msgid "General"
 msgstr "General"
 

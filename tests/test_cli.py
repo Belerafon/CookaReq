@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.cli import main
 from app.core.store import save
 from app.settings import AppSettings
 
@@ -23,10 +22,15 @@ def sample() -> dict:
     }
 
 
+def run_cli(argv: list[str]):
+    from app.cli import main
+    return main(argv)
+
+
 def test_cli_list(tmp_path, capsys):
     data = sample()
     save(tmp_path, data)
-    main(["list", str(tmp_path)])
+    run_cli(["list", str(tmp_path)])
     captured = capsys.readouterr().out
     assert "1" in captured
 
@@ -34,7 +38,7 @@ def test_cli_list(tmp_path, capsys):
 def test_cli_show(tmp_path, capsys):
     data = sample()
     save(tmp_path, data)
-    main(["show", str(tmp_path), "1"])
+    run_cli(["show", str(tmp_path), "1"])
     captured = capsys.readouterr().out
     loaded = json.loads(captured)
     assert loaded["id"] == 1
@@ -48,9 +52,9 @@ def test_cli_edit(tmp_path, capsys):
     src.mkdir()
     file = src / "upd.json"
     file.write_text(json.dumps(updated))
-    main(["edit", str(tmp_path), str(file)])
+    run_cli(["edit", str(tmp_path), str(file)])
     capsys.readouterr()
-    main(["show", str(tmp_path), "1"])
+    run_cli(["show", str(tmp_path), "1"])
     captured = capsys.readouterr().out
     loaded = json.loads(captured)
     assert loaded["title"] == "New title"
@@ -75,7 +79,7 @@ def test_cli_settings_flag(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli_mod, "load_app_settings", fake_loader)
     monkeypatch.setattr(cli_mod, "AppSettings", AppSettings)
 
-    main(["--settings", str(settings_file), "list", str(req_dir)])
+    run_cli(["--settings", str(settings_file), "list", str(req_dir)])
     capsys.readouterr()
     assert called["path"] == str(settings_file)
 
@@ -102,7 +106,61 @@ def test_cli_check_uses_agent(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(cli_mod, "LocalAgent", DummyAgent)
 
-    main(["--settings", str(settings_file), "check"])
+    run_cli(["--settings", str(settings_file), "check"])
     captured = capsys.readouterr().out
     assert called["llm"] and called["mcp"]
     assert "llm" in captured and "mcp" in captured
+
+
+def test_cli_add_invalid_json(tmp_path, capsys):
+    req_dir = tmp_path / "reqs"
+    req_dir.mkdir()
+    file = tmp_path / "bad.json"
+    file.write_text("{")
+    run_cli(["add", str(req_dir), str(file)])
+    captured = capsys.readouterr().out
+    assert "Invalid JSON" in captured
+    assert list(req_dir.iterdir()) == []
+
+
+def test_cli_edit_invalid_json(tmp_path, capsys):
+    req_dir = tmp_path / "reqs"
+    req_dir.mkdir()
+    data = sample()
+    save(req_dir, data)
+    file = tmp_path / "bad.json"
+    file.write_text("{")
+    run_cli(["edit", str(req_dir), str(file)])
+    captured = capsys.readouterr().out
+    assert "Invalid JSON" in captured
+    run_cli(["show", str(req_dir), "1"])
+    loaded = json.loads(capsys.readouterr().out)
+    assert loaded["title"] == data["title"]
+
+
+def test_cli_add_invalid_data(tmp_path, capsys):
+    req_dir = tmp_path / "reqs"
+    req_dir.mkdir()
+    bad = sample() | {"status": "invalid"}
+    file = tmp_path / "bad.json"
+    file.write_text(json.dumps(bad))
+    run_cli(["add", str(req_dir), str(file)])
+    captured = capsys.readouterr().out
+    assert "Invalid requirement data" in captured
+    assert list(req_dir.iterdir()) == []
+
+
+def test_cli_edit_invalid_data(tmp_path, capsys):
+    req_dir = tmp_path / "reqs"
+    req_dir.mkdir()
+    data = sample()
+    save(req_dir, data)
+    bad = data | {"status": "invalid"}
+    file = tmp_path / "bad.json"
+    file.write_text(json.dumps(bad))
+    run_cli(["edit", str(req_dir), str(file)])
+    captured = capsys.readouterr().out
+    assert "Invalid requirement data" in captured
+    run_cli(["show", str(req_dir), "1"])
+    loaded = json.loads(capsys.readouterr().out)
+    assert loaded["status"] == data["status"]

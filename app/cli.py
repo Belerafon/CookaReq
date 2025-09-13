@@ -35,22 +35,40 @@ def cmd_list(args: argparse.Namespace, repo: RequirementRepository) -> None:
 
 def cmd_add(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """Add requirement from JSON file to directory."""
-    with open(args.file, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
-    path = repo.save(args.directory, data)
+    try:
+        with open(args.file, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except json.JSONDecodeError as exc:
+        print(_("Invalid JSON file: {error}").format(error=exc))
+        return
+    try:
+        obj = model.requirement_from_dict(data)
+    except ValueError as exc:
+        print(_("Invalid requirement data: {error}").format(error=exc))
+        return
+    path = repo.save(args.directory, obj)
     print(path)
 
 
 def cmd_edit(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """Edit existing requirement using data from JSON file."""
-    with open(args.file, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
+    try:
+        with open(args.file, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except json.JSONDecodeError as exc:
+        print(_("Invalid JSON file: {error}").format(error=exc))
+        return
+    try:
+        obj = model.requirement_from_dict(data)
+    except ValueError as exc:
+        print(_("Invalid requirement data: {error}").format(error=exc))
+        return
     mtime = None
     try:
-        _, mtime = repo.load(args.directory, data["id"])
+        mtime = repo.load(args.directory, obj.id)[1]
     except FileNotFoundError:
         pass
-    path = repo.save(args.directory, data, mtime=mtime)
+    path = repo.save(args.directory, obj, mtime=mtime)
     print(path)
 
 

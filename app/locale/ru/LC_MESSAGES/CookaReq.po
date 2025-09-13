@@ -298,3 +298,254 @@ msgstr "показать детали требования"
 
 msgid "requirement id"
 msgstr "идентификатор требования"
+
+# Added missing translations
+msgid "&Tools"
+msgstr "&Инструменты"
+
+msgid "(Derived)"
+msgstr "(производное)"
+
+msgid "(any)"
+msgstr "(любое)"
+
+msgid "(none)"
+msgstr "(нет)"
+
+msgid "Add"
+msgstr "Добавить"
+
+msgid "Add derived"
+msgstr "Добавить производное"
+
+msgid "Add presets"
+msgstr "Добавить пресеты"
+
+msgid "Agent Command"
+msgstr "Команда агента"
+
+msgid "Any field contains"
+msgstr "Любое поле содержит"
+
+msgid "Applied margin."
+msgstr "Применённый запас."
+
+msgid "Approved at"
+msgstr "Утверждено"
+
+msgid "Assumptions"
+msgstr "Допущения"
+
+msgid "Assumptions used during derivation."
+msgstr "Допущения, использованные при выводе."
+
+msgid "Attachments"
+msgstr "Вложения"
+
+msgid "Cancelled by user"
+msgstr "Отменено пользователем"
+
+msgid "Check MCP"
+msgstr "Проверить MCP"
+
+msgid "Clear"
+msgstr "Очистить"
+
+msgid "Clear all"
+msgstr "Очистить всё"
+
+msgid "Columns"
+msgstr "Колонки"
+
+msgid "Confirm"
+msgstr "Подтвердить"
+
+msgid "Delete requirement?"
+msgstr "Удалить требование?"
+
+msgid "Derivation Graph"
+msgstr "Граф выводов"
+
+msgid "Derivation method."
+msgstr "Метод вывода."
+
+msgid "Derive"
+msgstr "Вывести"
+
+msgid "Derived from"
+msgstr "Получено из"
+
+msgid "Derived only"
+msgstr "Только производные"
+
+msgid "File"
+msgstr "Файл"
+
+msgid "Filters"
+msgstr "Фильтры"
+
+msgid "General"
+msgstr "Общее"
+
+msgid "Graphviz 'dot' executable not found."
+msgstr "Не найден исполняемый файл Graphviz 'dot'."
+
+msgid "Has derived"
+msgstr "Имеет производные"
+
+msgid "Host"
+msgstr "Хост"
+
+msgid "Install networkx and graphviz to view the derivation graph."
+msgstr "Установите networkx и graphviz для просмотра графа выводов."
+
+msgid "Label already exists"
+msgstr "Метка уже существует"
+
+msgid "Labels"
+msgstr "Метки"
+
+msgid "Labels in use will be removed from requirements:\n%s\nContinue?"
+msgstr "Используемые метки будут удалены из требований:\n%s\nПродолжить?"
+
+msgid "MCP"
+msgstr "MCP"
+
+msgid "Manage Labels"
+msgstr "Управление метками"
+
+msgid "Margin"
+msgstr "Запас"
+
+msgid "Match any labels"
+msgstr "Совпадает с любой меткой"
+
+msgid "Method"
+msgstr "Метод"
+
+msgid "Name"
+msgstr "Имя"
+
+msgid "New name"
+msgstr "Новое имя"
+
+msgid "No Data"
+msgstr "Нет данных"
+
+msgid "No derivation links found."
+msgstr "Связи вывода не найдены."
+
+msgid "No requirements loaded"
+msgstr "Требования не загружены"
+
+msgid "Nominal"
+msgstr "Номинал"
+
+msgid "Nominal must be a number"
+msgstr "Номинал должен быть числом"
+
+msgid "Note"
+msgstr "Примечание"
+
+msgid "Notes"
+msgstr "Примечания"
+
+msgid "Parent"
+msgstr "Родитель"
+
+msgid "Path"
+msgstr "Путь"
+
+msgid "Port"
+msgstr "Порт"
+
+msgid "Quantity"
+msgstr "Количество"
+
+msgid "Rationale"
+msgstr "Обоснование"
+
+msgid "Reasoning for the derivation."
+msgstr "Обоснование вывода."
+
+msgid "Relates"
+msgstr "Связи"
+
+msgid "Remove"
+msgstr "Удалить"
+
+msgid "Remove all labels?"
+msgstr "Удалить все метки?"
+
+msgid "Rename"
+msgstr "Переименовать"
+
+msgid "Require token"
+msgstr "Требуется токен"
+
+msgid "Run"
+msgstr "Запустить"
+
+msgid "Run Agent Command\tCtrl+K"
+msgstr "Запустить команду агента\tCtrl+K"
+
+msgid "Select attachment"
+msgstr "Выберите вложение"
+
+msgid "Select requirements folder first"
+msgstr "Сначала выберите папку требований"
+
+msgid "Set"
+msgstr "Установить"
+
+msgid "Show Derivation Graph"
+msgstr "Показать граф выводов"
+
+msgid "Start MCP"
+msgstr "Запустить MCP"
+
+msgid "Stop MCP"
+msgstr "Остановить MCP"
+
+msgid "Suspect only"
+msgstr "Только подозрительные"
+
+msgid "Token"
+msgstr "Токен"
+
+msgid "Tolerance"
+msgstr "Допуск"
+
+msgid "Tolerance must be a number"
+msgstr "Допуск должен быть числом"
+
+msgid "Units"
+msgstr "Единицы"
+
+msgid "Units require quantity and nominal"
+msgstr "Для единиц требуются количество и номинал"
+
+msgid "Update requirement?"
+msgstr "Обновить требование?"
+
+msgid "Verifies"
+msgstr "Проверяет"
+
+msgid "check only LLM"
+msgstr "проверить только LLM"
+
+msgid "check only MCP"
+msgstr "проверить только MCP"
+
+msgid "not running"
+msgstr "не запущен"
+
+msgid "path to JSON/TOML settings"
+msgstr "путь к настройкам JSON/TOML"
+
+msgid "ready"
+msgstr "готов"
+
+msgid "verify LLM and MCP settings"
+msgstr "проверить настройки LLM и MCP"
+

@@ -307,3 +307,254 @@ msgstr "show requirement details"
 
 msgid "text search query"
 msgstr "text search query"
+
+# Added missing translations
+msgid "&Tools"
+msgstr "&Tools"
+
+msgid "(Derived)"
+msgstr "(Derived)"
+
+msgid "(any)"
+msgstr "(any)"
+
+msgid "(none)"
+msgstr "(none)"
+
+msgid "Add"
+msgstr "Add"
+
+msgid "Add derived"
+msgstr "Add derived"
+
+msgid "Add presets"
+msgstr "Add presets"
+
+msgid "Agent Command"
+msgstr "Agent Command"
+
+msgid "Any field contains"
+msgstr "Any field contains"
+
+msgid "Applied margin."
+msgstr "Applied margin."
+
+msgid "Approved at"
+msgstr "Approved at"
+
+msgid "Assumptions"
+msgstr "Assumptions"
+
+msgid "Assumptions used during derivation."
+msgstr "Assumptions used during derivation."
+
+msgid "Attachments"
+msgstr "Attachments"
+
+msgid "Cancelled by user"
+msgstr "Cancelled by user"
+
+msgid "Check MCP"
+msgstr "Check MCP"
+
+msgid "Clear"
+msgstr "Clear"
+
+msgid "Clear all"
+msgstr "Clear all"
+
+msgid "Columns"
+msgstr "Columns"
+
+msgid "Confirm"
+msgstr "Confirm"
+
+msgid "Delete requirement?"
+msgstr "Delete requirement?"
+
+msgid "Derivation Graph"
+msgstr "Derivation Graph"
+
+msgid "Derivation method."
+msgstr "Derivation method."
+
+msgid "Derive"
+msgstr "Derive"
+
+msgid "Derived from"
+msgstr "Derived from"
+
+msgid "Derived only"
+msgstr "Derived only"
+
+msgid "File"
+msgstr "File"
+
+msgid "Filters"
+msgstr "Filters"
+
+msgid "General"
+msgstr "General"
+
+msgid "Graphviz 'dot' executable not found."
+msgstr "Graphviz 'dot' executable not found."
+
+msgid "Has derived"
+msgstr "Has derived"
+
+msgid "Host"
+msgstr "Host"
+
+msgid "Install networkx and graphviz to view the derivation graph."
+msgstr "Install networkx and graphviz to view the derivation graph."
+
+msgid "Label already exists"
+msgstr "Label already exists"
+
+msgid "Labels"
+msgstr "Labels"
+
+msgid "Labels in use will be removed from requirements:\n%s\nContinue?"
+msgstr "Labels in use will be removed from requirements:\n%s\nContinue?"
+
+msgid "MCP"
+msgstr "MCP"
+
+msgid "Manage Labels"
+msgstr "Manage Labels"
+
+msgid "Margin"
+msgstr "Margin"
+
+msgid "Match any labels"
+msgstr "Match any labels"
+
+msgid "Method"
+msgstr "Method"
+
+msgid "Name"
+msgstr "Name"
+
+msgid "New name"
+msgstr "New name"
+
+msgid "No Data"
+msgstr "No Data"
+
+msgid "No derivation links found."
+msgstr "No derivation links found."
+
+msgid "No requirements loaded"
+msgstr "No requirements loaded"
+
+msgid "Nominal"
+msgstr "Nominal"
+
+msgid "Nominal must be a number"
+msgstr "Nominal must be a number"
+
+msgid "Note"
+msgstr "Note"
+
+msgid "Notes"
+msgstr "Notes"
+
+msgid "Parent"
+msgstr "Parent"
+
+msgid "Path"
+msgstr "Path"
+
+msgid "Port"
+msgstr "Port"
+
+msgid "Quantity"
+msgstr "Quantity"
+
+msgid "Rationale"
+msgstr "Rationale"
+
+msgid "Reasoning for the derivation."
+msgstr "Reasoning for the derivation."
+
+msgid "Relates"
+msgstr "Relates"
+
+msgid "Remove"
+msgstr "Remove"
+
+msgid "Remove all labels?"
+msgstr "Remove all labels?"
+
+msgid "Rename"
+msgstr "Rename"
+
+msgid "Require token"
+msgstr "Require token"
+
+msgid "Run"
+msgstr "Run"
+
+msgid "Run Agent Command\tCtrl+K"
+msgstr "Run Agent Command\tCtrl+K"
+
+msgid "Select attachment"
+msgstr "Select attachment"
+
+msgid "Select requirements folder first"
+msgstr "Select requirements folder first"
+
+msgid "Set"
+msgstr "Set"
+
+msgid "Show Derivation Graph"
+msgstr "Show Derivation Graph"
+
+msgid "Start MCP"
+msgstr "Start MCP"
+
+msgid "Stop MCP"
+msgstr "Stop MCP"
+
+msgid "Suspect only"
+msgstr "Suspect only"
+
+msgid "Token"
+msgstr "Token"
+
+msgid "Tolerance"
+msgstr "Tolerance"
+
+msgid "Tolerance must be a number"
+msgstr "Tolerance must be a number"
+
+msgid "Units"
+msgstr "Units"
+
+msgid "Units require quantity and nominal"
+msgstr "Units require quantity and nominal"
+
+msgid "Update requirement?"
+msgstr "Update requirement?"
+
+msgid "Verifies"
+msgstr "Verifies"
+
+msgid "check only LLM"
+msgstr "check only LLM"
+
+msgid "check only MCP"
+msgstr "check only MCP"
+
+msgid "not running"
+msgstr "not running"
+
+msgid "path to JSON/TOML settings"
+msgstr "path to JSON/TOML settings"
+
+msgid "ready"
+msgstr "ready"
+
+msgid "verify LLM and MCP settings"
+msgstr "verify LLM and MCP settings"
+

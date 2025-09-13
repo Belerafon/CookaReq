@@ -1,13 +1,13 @@
 """Dialog for configuring requirement filters."""
 from __future__ import annotations
 
-from app.i18n import _
+from ..i18n import _
 from typing import Dict
 
 import wx
 
-from app.core import requirements as req_ops
-from app.core.model import Status
+from ..core import requirements as req_ops
+from ..core.model import Status
 from . import locale
 
 

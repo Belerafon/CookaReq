@@ -1,6 +1,6 @@
 """Main application window."""
 
-from app.i18n import _
+from ..i18n import _
 
 import logging
 from importlib import resources
@@ -9,16 +9,16 @@ from dataclasses import fields, replace
 
 import wx
 
-from app.log import logger
+from ..log import logger
 
-from app.config import ConfigManager
-from app.core import requirements as req_ops
-from app.core.model import Requirement, DerivationLink
-from app.core.labels import Label
-from app.mcp.controller import MCPController
-from app.settings import AppSettings, LLMSettings, MCPSettings
-from app.agent import LocalAgent
-from app.confirm import confirm
+from ..config import ConfigManager
+from ..core import requirements as req_ops
+from ..core.model import Requirement, DerivationLink
+from ..core.labels import Label
+from ..mcp.controller import MCPController
+from ..settings import AppSettings, LLMSettings, MCPSettings
+from ..agent import LocalAgent
+from ..confirm import confirm
 from .list_panel import ListPanel
 from .editor_panel import EditorPanel
 from .settings_dialog import SettingsDialog
@@ -27,7 +27,7 @@ from .labels_dialog import LabelsDialog
 from .navigation import Navigation
 from .command_dialog import CommandDialog
 from .controllers import RequirementsController, LabelsController
-from app.core.repository import FileRequirementRepository
+from ..core.repository import FileRequirementRepository
 
 
 class WxLogHandler(logging.Handler):
@@ -240,7 +240,7 @@ class MainFrame(wx.Frame):
 
     def _apply_language(self) -> None:
         """Reinitialize locale and rebuild UI after language change."""
-        from app.main import init_locale
+        from ..main import init_locale
 
         app = wx.GetApp()
         app.locale = init_locale(self.language)

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from app.i18n import _
+from ..i18n import _
 from pathlib import Path
 from typing import Callable, Dict
 
 import wx
 
-from app.config import ConfigManager
+from ..config import ConfigManager
 
 
 class Navigation:

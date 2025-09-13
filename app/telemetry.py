@@ -5,7 +5,7 @@ import json
 import time
 from typing import Any, Mapping
 
-from app.log import logger
+from .log import logger
 
 # Keys that should be redacted when logging
 SENSITIVE_KEYS = {

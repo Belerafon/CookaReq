@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from app.i18n import _
+from ..i18n import _
 
 import wx
 
-from app.agent import LocalAgent
+from ..agent import LocalAgent
 
 
 @dataclass

@@ -5,16 +5,16 @@ from pathlib import Path
 from typing import Any, Callable
 from contextlib import contextmanager
 
-from app.i18n import _
+from ..i18n import _
 
 import wx
 import wx.adv
 from wx.lib.dialogs import ScrolledMessageDialog
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from app.core import requirements as req_ops
-from app.core.labels import Label
-from app.core.model import (
+from ..core import requirements as req_ops
+from ..core.labels import Label
+from ..core.model import (
     Requirement,
     RequirementType,
     Status,

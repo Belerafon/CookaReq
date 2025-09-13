@@ -4,9 +4,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
-from app.core import requirements as req_ops
-from app.core.model import Requirement, requirement_to_dict
-from app.mcp.utils import ErrorCode, log_tool, mcp_error
+from ..core import requirements as req_ops
+from ..core.model import Requirement, requirement_to_dict
+from .utils import ErrorCode, log_tool, mcp_error
 
 
 def _paginate(requirements: Sequence[Requirement], page: int, per_page: int) -> dict:

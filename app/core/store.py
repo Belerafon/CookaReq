@@ -5,7 +5,7 @@ from dataclasses import asdict, is_dataclass
 import json
 from pathlib import Path
 
-from app.log import logger
+from ..log import logger
 
 from .validate import validate
 from .labels import Label

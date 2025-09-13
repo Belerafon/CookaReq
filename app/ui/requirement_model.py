@@ -5,8 +5,8 @@ from typing import List, Sequence
 from enum import Enum
 from dataclasses import asdict, is_dataclass
 
-from app.core import requirements as req_ops
-from app.core.model import Requirement
+from ..core import requirements as req_ops
+from ..core.model import Requirement
 
 
 class RequirementModel:

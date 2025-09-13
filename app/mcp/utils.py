@@ -6,8 +6,8 @@ import datetime
 from enum import Enum
 from typing import Any, Mapping
 
-from app.log import logger
-from app.telemetry import sanitize
+from ..log import logger
+from ..telemetry import sanitize
 
 
 def log_tool(

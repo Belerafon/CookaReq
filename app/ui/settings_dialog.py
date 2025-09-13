@@ -1,14 +1,14 @@
 """Dialog for application settings with MCP controls."""
 
-from app.i18n import _
+from ..i18n import _
 from importlib import resources
 
 import wx
 
-from app.llm.client import LLMClient
-from app.mcp.client import MCPClient
-from app.mcp.controller import MCPController, MCPStatus
-from app.settings import LLMSettings, MCPSettings
+from ..llm.client import LLMClient
+from ..mcp.client import MCPClient
+from ..mcp.controller import MCPController, MCPStatus
+from ..settings import LLMSettings, MCPSettings
 
 
 def available_translations() -> list[tuple[str, str]]:

@@ -110,7 +110,7 @@ def list_requirements(
     page: int = 1,
     per_page: int = 50,
     status: str | None = None,
-    tags: list[str] | None = None,
+    labels: list[str] | None = None,
 ) -> dict:
     """List requirements using the configured base directory."""
     directory = app.state.base_path
@@ -119,7 +119,7 @@ def list_requirements(
         page=page,
         per_page=per_page,
         status=status,
-        tags=tags,
+        labels=labels,
     )
 
 
@@ -134,7 +134,7 @@ def get_requirement(req_id: int) -> dict:
 def search_requirements(
     *,
     query: str | None = None,
-    tags: list[str] | None = None,
+    labels: list[str] | None = None,
     status: str | None = None,
     page: int = 1,
     per_page: int = 50,
@@ -144,7 +144,7 @@ def search_requirements(
     return tools_read.search_requirements(
         directory,
         query=query,
-        tags=tags,
+        labels=labels,
         status=status,
         page=page,
         per_page=per_page,

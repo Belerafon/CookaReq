@@ -54,7 +54,7 @@ def list_requirements(
     page: int = 1,
     per_page: int = 50,
     status: str | None = None,
-    tags: Sequence[str] | None = None,
+    labels: Sequence[str] | None = None,
 ) -> dict:
     """Return requirements from ``directory`` with optional filters."""
     params = {
@@ -62,7 +62,7 @@ def list_requirements(
         "page": page,
         "per_page": per_page,
         "status": status,
-        "tags": list(tags) if tags else None,
+        "labels": list(labels) if labels else None,
     }
     try:
         reqs = _load_all(directory)
@@ -77,8 +77,8 @@ def list_requirements(
             "list_requirements", params, mcp_error(ErrorCode.INTERNAL, str(exc))
         )
     reqs = _filter_status(reqs, status)
-    if tags:
-        reqs = core_search.filter_by_labels(reqs, list(tags))
+    if labels:
+        reqs = core_search.filter_by_labels(reqs, list(labels))
     return log_tool("list_requirements", params, _paginate(reqs, page, per_page))
 
 
@@ -106,7 +106,7 @@ def search_requirements(
     directory: str | Path,
     *,
     query: str | None = None,
-    tags: Sequence[str] | None = None,
+    labels: Sequence[str] | None = None,
     status: str | None = None,
     page: int = 1,
     per_page: int = 50,
@@ -115,7 +115,7 @@ def search_requirements(
     params = {
         "directory": str(directory),
         "query": query,
-        "tags": list(tags) if tags else None,
+        "labels": list(labels) if labels else None,
         "status": status,
         "page": page,
         "per_page": per_page,
@@ -133,5 +133,5 @@ def search_requirements(
             "search_requirements", params, mcp_error(ErrorCode.INTERNAL, str(exc))
         )
     reqs = _filter_status(reqs, status)
-    reqs = core_search.search(reqs, labels=list(tags or []), query=query)
+    reqs = core_search.search(reqs, labels=list(labels or []), query=query)
     return log_tool("search_requirements", params, _paginate(reqs, page, per_page))

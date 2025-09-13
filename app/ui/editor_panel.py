@@ -340,6 +340,9 @@ class EditorPanel(ScrolledPanel):
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.labels_panel = wx.Panel(box)
         self.labels_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
+        # ограничиваем высоту меток одной строкой
+        line_height = self.GetCharHeight() + 6
+        self.labels_panel.SetMinSize((-1, line_height))
         self.labels_panel.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)
         row.Add(self.labels_panel, 1, wx.EXPAND | wx.RIGHT, 5)
         edit_labels_btn = wx.Button(box, label=_("Edit..."))
@@ -505,10 +508,14 @@ class EditorPanel(ScrolledPanel):
         lst = wx.CheckListBox(box, choices=[])
         lst.Bind(wx.EVT_CHECKLISTBOX, lambda _evt, a=attr: self._toggle_links(a))
         sizer.Add(lst, 1, wx.EXPAND | wx.ALL, 5)
+        # по умолчанию список и кнопка удаления скрыты
+        lst.Hide()
+        remove_btn.Hide()
         id_attr = id_name or f"{attr}_id"
         list_attr = list_name or f"{attr}_list"
         setattr(self, id_attr, id_ctrl)
         setattr(self, list_attr, lst)
+        setattr(self, f"{attr}_remove", remove_btn)
         setattr(self, attr, [])
         return sizer
 
@@ -516,6 +523,18 @@ class EditorPanel(ScrolledPanel):
         id_attr = "derived_id" if attr == "derived_from" else f"{attr}_id"
         list_attr = "derived_list" if attr == "derived_from" else f"{attr}_list"
         return getattr(self, id_attr), getattr(self, list_attr), getattr(self, attr)
+
+    def _refresh_links_visibility(self, attr: str) -> None:
+        """Show list and remove button only when links exist."""
+        _, list_ctrl, links_list = self._link_widgets(attr)
+        remove_btn = getattr(self, f"{attr}_remove", None)
+        visible = bool(links_list)
+        list_ctrl.Show(visible)
+        if remove_btn:
+            remove_btn.Show(visible)
+        box = list_ctrl.GetParent()
+        box.Layout()
+        self.Layout()
 
     # basic operations -------------------------------------------------
     def set_directory(self, directory: str | Path | None) -> None:
@@ -558,6 +577,9 @@ class EditorPanel(ScrolledPanel):
             self.verifies_id.ChangeValue("")
             self.relates_list.Set([])
             self.relates_id.ChangeValue("")
+            self._refresh_links_visibility("derived_from")
+            self._refresh_links_visibility("verifies")
+            self._refresh_links_visibility("relates")
             self._refresh_parent_display()
             for ctrl in self.derivation_fields.values():
                 ctrl.ChangeValue("")
@@ -586,6 +608,7 @@ class EditorPanel(ScrolledPanel):
             for i, link in enumerate(self.derived_from):
                 self.derived_list.Check(i, link.get("suspect", False))
             self.derived_id.ChangeValue("")
+            self._refresh_links_visibility("derived_from")
             links = data.get("links", {})
             self.verifies = [dict(l) for l in links.get("verifies", [])]
             items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.verifies]
@@ -593,12 +616,14 @@ class EditorPanel(ScrolledPanel):
             for i, link in enumerate(self.verifies):
                 self.verifies_list.Check(i, link.get("suspect", False))
             self.verifies_id.ChangeValue("")
+            self._refresh_links_visibility("verifies")
             self.relates = [dict(l) for l in links.get("relates", [])]
             items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.relates]
             self.relates_list.Set(items)
             for i, link in enumerate(self.relates):
                 self.relates_list.Check(i, link.get("suspect", False))
             self.relates_id.ChangeValue("")
+            self._refresh_links_visibility("relates")
             self.parent = dict(data.get("parent", {})) or None
             self._refresh_parent_display()
             for name, choice in self.enums.items():
@@ -648,6 +673,9 @@ class EditorPanel(ScrolledPanel):
             self.verifies_list.Set([])
             self.relates = []
             self.relates_list.Set([])
+            self._refresh_links_visibility("derived_from")
+            self._refresh_links_visibility("verifies")
+            self._refresh_links_visibility("relates")
             self.parent = None
             self._refresh_parent_display()
             for ctrl in self.derivation_fields.values():
@@ -818,6 +846,7 @@ class EditorPanel(ScrolledPanel):
         links_list.append({"source_id": src_id, "source_revision": revision, "suspect": False})
         list_ctrl.Append(f"{src_id} (r{revision})")
         id_ctrl.ChangeValue("")
+        self._refresh_links_visibility(attr)
 
     def _on_remove_link_generic(self, attr: str) -> None:
         _, list_ctrl, links_list = self._link_widgets(attr)
@@ -825,6 +854,7 @@ class EditorPanel(ScrolledPanel):
         if idx != -1:
             del links_list[idx]
             list_ctrl.Delete(idx)
+        self._refresh_links_visibility(attr)
 
     def _toggle_links(self, attr: str) -> None:
         _, list_ctrl, links_list = self._link_widgets(attr)

@@ -1,6 +1,10 @@
 """Command-line interface for CookaReq."""
 from __future__ import annotations
 
+import os
+import atexit
+from pathlib import Path
+from app import i18n
 from app.i18n import _
 
 import argparse
@@ -11,6 +15,11 @@ from .log import configure_logging
 from .settings import AppSettings, load_app_settings
 from .agent import LocalAgent
 from .confirm import confirm, set_confirm, auto_confirm
+
+APP_NAME = "CookaReq"
+LOCALE_DIR = os.path.join(os.path.dirname(__file__), "locale")
+MISSING_PATH = Path(LOCALE_DIR) / "missing.po"
+atexit.register(i18n.flush_missing, MISSING_PATH)
 
 set_confirm(auto_confirm)
 

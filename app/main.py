@@ -1,6 +1,8 @@
 """Application entry point for CookaReq."""
 
 import os
+import atexit
+from pathlib import Path
 import wx
 
 from .ui.main_frame import MainFrame
@@ -13,6 +15,8 @@ from .confirm import set_confirm, wx_confirm
 
 APP_NAME = "CookaReq"
 LOCALE_DIR = os.path.join(os.path.dirname(__file__), "locale")
+MISSING_PATH = Path(LOCALE_DIR) / "missing.po"
+atexit.register(i18n.flush_missing, MISSING_PATH)
 
 
 def init_locale(language: str | None = None) -> wx.Locale:

@@ -94,25 +94,29 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         token="",
     )
 
-    import app.ui.settings_dialog as sd
+    assert dlg._start.IsEnabled()
+    assert not dlg._stop.IsEnabled()
+    assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('not running')}"
 
-    assert dlg._start_stop.GetLabel() == sd._("Start MCP")
-
-    dlg._on_start_stop(wx.CommandEvent())
+    dlg._on_start(wx.CommandEvent())
     assert fake.calls[0][0] == "start"
     settings = fake.calls[0][1]
-    assert (settings.host, settings.port, settings.base_path, settings.require_token, settings.token) == (
-        "localhost",
-        8123,
-        "/tmp",
-        False,
-        "",
-    )
-    assert dlg._start_stop.GetLabel() == sd._("Stop MCP")
+    assert (
+        settings.host,
+        settings.port,
+        settings.base_path,
+        settings.require_token,
+        settings.token,
+    ) == ("localhost", 8123, "/tmp", False, "")
+    assert not dlg._start.IsEnabled()
+    assert dlg._stop.IsEnabled()
+    assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('running')}"
 
-    dlg._on_start_stop(wx.CommandEvent())
+    dlg._on_stop(wx.CommandEvent())
     assert fake.calls[-1] == ("stop",)
-    assert dlg._start_stop.GetLabel() == sd._("Start MCP")
+    assert dlg._start.IsEnabled()
+    assert not dlg._stop.IsEnabled()
+    assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('not running')}"
 
     dlg.Destroy()
 
@@ -160,15 +164,15 @@ def test_mcp_check_status(monkeypatch, wx_app):
 
     dummy.state = MCPStatus.READY
     dlg._on_check(wx.CommandEvent())
-    assert dlg._status.GetLabel() == sd._("ready")
+    assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('running')}"
 
     dummy.state = MCPStatus.ERROR
     dlg._on_check(wx.CommandEvent())
-    assert dlg._status.GetLabel() == sd._("error")
+    assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('running')}"
 
     dummy.state = MCPStatus.NOT_RUNNING
     dlg._on_check(wx.CommandEvent())
-    assert dlg._status.GetLabel() == sd._("not running")
+    assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('not running')}"
 
     dlg.Destroy()
 

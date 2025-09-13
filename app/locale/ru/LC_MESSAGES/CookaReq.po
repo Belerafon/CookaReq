@@ -140,7 +140,7 @@ msgid "Requirement type"
 msgstr "Тип требования"
 
 msgid "Status"
-msgstr "Текущий статус"
+msgstr "Статус"
 
 msgid "Priority"
 msgstr "Приоритет исполнения"
@@ -321,13 +321,16 @@ msgid "Derivation Graph"
 msgstr "Граф выводов"
 
 msgid "Derive"
-msgstr "Вывести"
+msgstr "Создать производное"
 
 msgid "Derived from"
 msgstr "Получено из"
 
 msgid "Derived only"
 msgstr "Только производные"
+
+msgid "Derived count"
+msgstr "Количество производных"
 
 msgid "File"
 msgstr "Файл"
@@ -430,7 +433,7 @@ msgid "Run"
 msgstr "Запустить"
 
 msgid "Run Agent Command\tCtrl+K"
-msgstr "Запустить команду агента\tCtrl+K"
+msgstr "Выполнить команду агента\tCtrl+K"
 
 msgid "Select attachment"
 msgstr "Выберите вложение"
@@ -472,6 +475,12 @@ msgstr "проверить только MCP"
 
 msgid "not running"
 msgstr "не запущен"
+
+msgid "running"
+msgstr "запущен"
+
+msgid "MCP is a local server providing tools for requirement management."
+msgstr "MCP — локальный сервер, который предоставляет инструменты для управления требованиями."
 
 msgid "path to JSON/TOML settings"
 msgstr "путь к настройкам JSON/TOML"

@@ -242,7 +242,14 @@ class MainFrame(wx.Frame):
 
     def on_run_command(self, event: wx.Event) -> None:
         settings = AppSettings(llm=self.llm_settings, mcp=self.mcp_settings)
-        agent = LocalAgent(settings=settings, confirm=confirm)
+        try:
+            agent = LocalAgent(settings=settings, confirm=confirm)
+        except ValueError as exc:
+            wx.MessageBox(str(exc), _("Warning"), style=wx.ICON_WARNING)
+            return
+        except Exception as exc:
+            wx.MessageBox(str(exc), _("Error"), style=wx.ICON_ERROR)
+            return
         dlg = CommandDialog(self, agent=agent)
         dlg.ShowModal()
         dlg.Destroy()

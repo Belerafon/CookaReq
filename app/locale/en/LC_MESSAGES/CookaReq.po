@@ -323,6 +323,9 @@ msgstr "Derived from"
 msgid "Derived only"
 msgstr "Derived only"
 
+msgid "Derived count"
+msgstr "Derived count"
+
 msgid "File"
 msgstr "File"
 
@@ -469,6 +472,12 @@ msgstr "check only MCP"
 
 msgid "not running"
 msgstr "not running"
+
+msgid "running"
+msgstr "running"
+
+msgid "MCP is a local server providing tools for requirement management."
+msgstr "MCP is a local server providing tools for requirement management."
 
 msgid "path to JSON/TOML settings"
 msgstr "path to JSON/TOML settings"

@@ -175,12 +175,22 @@ class ListPanel(wx.Panel):
         self.list.ClearColumns()
         self.list.AppendTextColumn(_("Title"), 0)
         for idx, field in enumerate(self.columns, start=1):
+
             if field == "labels":
                 self.renderer = LabelBadgeRenderer(self)
                 col = dv.DataViewColumn(_("Labels"), self.renderer, idx)
                 self.list.AppendColumn(col)
             else:
                 self.list.AppendTextColumn(field, idx)
+
+            self.list.InsertColumn(idx, locale.field_label(field))
+        ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
+        try:  # remove mixin's default binding and use our own
+            self.list.Unbind(wx.EVT_LIST_COL_CLICK)
+        except Exception:  # pragma: no cover - Unbind may not exist
+            pass
+        self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
+
 
     def load_column_widths(self, config: wx.Config) -> None:
         count = self.list.GetColumnCount()
@@ -387,7 +397,8 @@ class ListPanel(wx.Panel):
         }
         if field in enum_map:
             choices = [locale.code_to_label(field, e.value) for e in enum_map[field]]
-            dlg = wx.SingleChoiceDialog(self, _("Select {field}").format(field=field), _("Edit"), choices)
+            label = locale.field_label(field)
+            dlg = wx.SingleChoiceDialog(self, _("Select {field}").format(field=label), _("Edit"), choices)
             if dlg.ShowModal() == wx.ID_OK:
                 label = dlg.GetStringSelection()
                 code = locale.label_to_code(field, label)
@@ -396,7 +407,8 @@ class ListPanel(wx.Panel):
                 value = None
             dlg.Destroy()
             return value
-        dlg = wx.TextEntryDialog(self, _("New value for {field}").format(field=field), _("Edit"))
+        label = locale.field_label(field)
+        dlg = wx.TextEntryDialog(self, _("New value for {field}").format(field=label), _("Edit"))
         if dlg.ShowModal() == wx.ID_OK:
             value = dlg.GetValue()
         else:

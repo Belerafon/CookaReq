@@ -49,25 +49,26 @@ class EditorPanel(ScrolledPanel):
         self.directory: Path | None = None
         self.original_id: int | None = None
 
-        labels = {
-            "id": _("Requirement ID (number)"),
-            "title": _("Short title"),
-            "statement": _("Requirement text"),
-            "acceptance": _("Acceptance criteria"),
-            "conditions": _("Conditions"),
-            "trace_up": _("Trace up"),
-            "trace_down": _("Trace down"),
-            "version": _("Requirement version"),
-            "modified_at": _("Modified at"),
-            "owner": _("Owner"),
-            "source": _("Source"),
-            "type": _("Requirement type"),
-            "status": _("Status"),
-            "priority": _("Priority"),
-            "verification": _("Verification method"),
-            "rationale": _("Rationale"),
-            "assumptions": _("Assumptions"),
-        }
+        field_names = [
+            "id",
+            "title",
+            "statement",
+            "acceptance",
+            "conditions",
+            "trace_up",
+            "trace_down",
+            "version",
+            "modified_at",
+            "owner",
+            "source",
+            "type",
+            "status",
+            "priority",
+            "verification",
+            "rationale",
+            "assumptions",
+        ]
+        labels = {name: locale.field_label(name) for name in field_names}
 
         help_texts = {
             "id": _(

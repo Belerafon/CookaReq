@@ -262,7 +262,7 @@ def is_running() -> bool:
 
 def start_server(
     host: str = "127.0.0.1",
-    port: int = 8000,
+    port: int = 59362,
     base_path: str = "",
     token: str = "",
 ) -> None:

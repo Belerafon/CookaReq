@@ -109,7 +109,7 @@ class ConfigManager:
     def get_mcp_settings(self) -> MCPSettings:
         return MCPSettings(
             host=self._cfg.Read("mcp_host", "127.0.0.1"),
-            port=self._cfg.ReadInt("mcp_port", 8000),
+            port=self._cfg.ReadInt("mcp_port", 59362),
             base_path=self._cfg.Read("mcp_base_path", ""),
             require_token=self._cfg.ReadBool("mcp_require_token", False),
             token=self._cfg.Read("mcp_token", ""),

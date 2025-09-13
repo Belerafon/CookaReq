@@ -21,7 +21,7 @@ class MCPSettings(BaseModel):
     """Settings for configuring the MCP server and client."""
 
     host: str = "127.0.0.1"
-    port: int = 8000
+    port: int = 59362
     base_path: str = ""
     require_token: bool = False
     token: str = ""

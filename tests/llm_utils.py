@@ -1,7 +1,6 @@
 """Utilities for LLM-related tests."""
 
 import json
-import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -63,9 +62,8 @@ def make_openai_mock(responses: dict[str, tuple[str, dict] | Exception]):
     return FakeOpenAI
 
 
-def settings_from_env(tmp_path: Path) -> AppSettings:
-    """Write LLM settings to a JSON file and load them."""
-    api_key = os.environ.get("OPEN_ROUTER", "")
+def settings_with_llm(tmp_path: Path, *, api_key: str = "dummy") -> AppSettings:
+    """Persist LLM settings with *api_key* to a file and load them."""
     data = {
         "llm": {
             "api_base": "https://openrouter.ai/api/v1",
@@ -88,13 +86,13 @@ def settings_with_mcp(
     tmp_path: Path,
     require_token: bool = False,
     fmt: str = "json",
+    api_key: str = "dummy",
 ) -> AppSettings:
     """Return settings for LLM and MCP, persisted to a file.
 
     ``fmt`` controls the file format (``"json"`` or ``"toml"``).
     """
 
-    api_key = os.environ.get("OPEN_ROUTER", "")
     settings = {
         "llm": {
             "api_base": "https://openrouter.ai/api/v1",

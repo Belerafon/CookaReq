@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 from pathlib import Path
 
 from app.log import logger
@@ -17,14 +16,13 @@ def test_run_command_list_logs(tmp_path: Path, monkeypatch, mcp_server) -> None:
     settings = settings_with_mcp(
         "127.0.0.1", port, str(tmp_path), "", tmp_path=tmp_path
     )
-    if not os.environ.get("OPENROUTER_REAL"):
-        # Мокаем OpenAI, чтобы исключить внешние вызовы.
-        monkeypatch.setattr(
-            "openai.OpenAI",
-            make_openai_mock(
-                {"list requirements per page 1": ("list_requirements", {"per_page": 1})}
-            ),
-        )
+    # Мокаем OpenAI, чтобы исключить внешние вызовы.
+    monkeypatch.setattr(
+        "openai.OpenAI",
+        make_openai_mock(
+            {"list requirements per page 1": ("list_requirements", {"per_page": 1})}
+        ),
+    )
     client = LocalAgent(settings=settings, confirm=lambda _m: True)
     log_file = tmp_path / "cmd.jsonl"
     handler = JsonlHandler(str(log_file))
@@ -49,12 +47,11 @@ def test_run_command_error_logs(tmp_path: Path, monkeypatch, mcp_server) -> None
     settings = settings_with_mcp(
         "127.0.0.1", port, str(tmp_path), "", tmp_path=tmp_path
     )
-    if not os.environ.get("OPENROUTER_REAL"):
-        # Установите OPENROUTER_REAL=1 для интеграционного теста с API.
-        monkeypatch.setattr(
-            "openai.OpenAI",
-            make_openai_mock({"get requirement 1": ("get_requirement", {"req_id": 1})}),
-        )
+    # Мокаем OpenAI, чтобы исключить внешние вызовы.
+    monkeypatch.setattr(
+        "openai.OpenAI",
+        make_openai_mock({"get requirement 1": ("get_requirement", {"req_id": 1})}),
+    )
     client = LocalAgent(settings=settings, confirm=lambda _m: True)
     log_file = tmp_path / "err.jsonl"
     handler = JsonlHandler(str(log_file))

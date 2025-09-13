@@ -22,9 +22,12 @@ class LLMClient:
         import openai
 
         self.settings = settings
+        api_key = self.settings.api_key
+        if not api_key:
+            raise ValueError("LLM API key is not configured")
         self._client = openai.OpenAI(
             base_url=self.settings.api_base or None,
-            api_key=self.settings.api_key or None,
+            api_key=api_key,
             timeout=self.settings.timeout,
         )
 

@@ -1,11 +1,12 @@
 import pytest
-from gettext import gettext as _
+from app.i18n import _, install
 
 from app.ui import locale
 from app.core import model
 
 
 def test_round_trip():
+    install("CookaReq", "app/locale", ["en"])
     for category, mapping in locale.EN_LABELS.items():
         for code, label in mapping.items():
             assert locale.code_to_label(category, code) == label
@@ -31,5 +32,6 @@ def _enum_label(e):
     ],
 )
 def test_localizations_match_enums(enum_cls, mapping):
+    install("CookaReq", "app/locale", ["en"])
     expected = {e.value: _(_enum_label(e)) for e in enum_cls}
     assert mapping == expected

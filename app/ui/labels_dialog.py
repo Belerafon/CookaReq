@@ -1,6 +1,6 @@
 """Dialog for managing label colors."""
 
-from gettext import gettext as _
+from app.i18n import _
 
 import wx
 

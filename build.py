@@ -10,13 +10,9 @@ import sys
 
 import PyInstaller.__main__  # type: ignore
 
-from compile_translations import compile_all
-
 
 def main() -> None:
     root = Path(__file__).resolve().parent
-    # Ensure localisation files are compiled before packaging
-    compile_all(root / "app" / "locale")
     script = root / "app" / "main.py"
     icon = root / "app" / "resources" / "app.ico"
     args: list[str] = [

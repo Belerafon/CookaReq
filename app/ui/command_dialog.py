@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from gettext import gettext as _
+from app.i18n import _
 
 import wx
 

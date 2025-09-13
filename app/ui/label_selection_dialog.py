@@ -1,5 +1,5 @@
 """Dialog for selecting labels with color icons."""
-from gettext import gettext as _
+from app.i18n import _
 
 import wx
 from wx.lib.mixins.listctrl import CheckListCtrlMixin

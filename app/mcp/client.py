@@ -7,7 +7,7 @@ from http.client import HTTPConnection
 from typing import Any, Mapping
 
 import wx
-from gettext import gettext as _
+from app.i18n import _
 from app.telemetry import log_event
 from app.mcp.utils import ErrorCode, mcp_error, sanitize
 from app.settings import MCPSettings

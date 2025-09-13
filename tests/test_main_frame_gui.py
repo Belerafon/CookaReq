@@ -345,6 +345,10 @@ def _prepare_frame(monkeypatch, tmp_path):
 
 def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path):
     from app.core.store import save
+    from app import i18n
+    from app.main import APP_NAME, LOCALE_DIR
+
+    i18n.install(APP_NAME, LOCALE_DIR, ["en"])
 
     data = _sample_requirement()
     save(tmp_path, data)

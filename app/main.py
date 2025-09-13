@@ -1,13 +1,13 @@
 """Application entry point for CookaReq."""
 
 import os
-import gettext
 import wx
 
 from .ui.main_frame import MainFrame
 from .log import configure_logging
 from .config import ConfigManager
 from .ui.requirement_model import RequirementModel
+from . import i18n
 
 
 APP_NAME = "CookaReq"
@@ -15,7 +15,7 @@ LOCALE_DIR = os.path.join(os.path.dirname(__file__), "locale")
 
 
 def init_locale(language: str | None = None) -> wx.Locale:
-    """Initialize wx and gettext locales."""
+    """Initialize wx locale and load translations."""
     wx.Locale.AddCatalogLookupPathPrefix(LOCALE_DIR)
     if language and hasattr(wx.Locale, "FindLanguageInfo"):
         info = wx.Locale.FindLanguageInfo(language)
@@ -26,10 +26,8 @@ def init_locale(language: str | None = None) -> wx.Locale:
     else:
         locale = wx.Locale(wx.LANGUAGE_DEFAULT)
     locale.AddCatalog(APP_NAME)
-    gettext.bindtextdomain(APP_NAME, LOCALE_DIR)
-    gettext.textdomain(APP_NAME)
-    codes = [language] if language else None
-    gettext.translation(APP_NAME, LOCALE_DIR, languages=codes, fallback=True).install()
+    codes = [language] if language else [locale.GetName().split("_")[0]]
+    i18n.install(APP_NAME, LOCALE_DIR, codes)
     return locale
 
 

@@ -7,7 +7,7 @@ packages are missing, a friendly message is shown instead of the graph.
 
 from __future__ import annotations
 
-from gettext import gettext as _
+from app.i18n import _
 import io
 from typing import Sequence
 

@@ -1,7 +1,7 @@
 """Dialog for configuring requirement filters."""
 from __future__ import annotations
 
-from gettext import gettext as _
+from app.i18n import _
 from typing import Dict
 
 import wx

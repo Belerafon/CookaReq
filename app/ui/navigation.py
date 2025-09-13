@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from gettext import gettext as _
+from app.i18n import _
 from pathlib import Path
 from typing import Callable, Dict
 

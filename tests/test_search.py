@@ -13,6 +13,7 @@ from app.core.search import (
     search,
     search_text,
 )
+from app.core.requirements import filter_by_status
 
 
 def sample_requirements():
@@ -127,5 +128,13 @@ def test_field_queries():
     assert [r.id for r in found] == [1]
     found = search(reqs, field_queries={"title": "report", "owner": "carol"})
     assert [r.id for r in found] == [3]
+
+
+def test_filter_by_status_function():
+    reqs = sample_requirements()
+    reqs[1].status = Status.APPROVED
+    filtered = filter_by_status(reqs, "approved")
+    assert [r.id for r in filtered] == [2]
+    assert filter_by_status(reqs, None) == reqs
 
 

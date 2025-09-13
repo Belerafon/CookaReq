@@ -7,6 +7,8 @@ from typing import Dict
 import wx
 
 from app.core import requirements as req_ops
+from app.core.model import Status
+from . import locale
 
 
 class FilterDialog(wx.Dialog):
@@ -49,6 +51,17 @@ class FilterDialog(wx.Dialog):
         self.match_any.SetValue(values.get("match_any", False))
         sizer.Add(self.match_any, 0, wx.ALL, 5)
 
+        # Status filter
+        sizer.Add(wx.StaticText(self, label=_("Status")), 0, wx.ALL, 5)
+        self._status_values = [s.value for s in Status]
+        status_choices = [_("(any)")] + [locale.STATUS[v] for v in self._status_values]
+        self.status_choice = wx.Choice(self, choices=status_choices)
+        selected = 0
+        if values.get("status") in self._status_values:
+            selected = self._status_values.index(values["status"]) + 1
+        self.status_choice.SetSelection(selected)
+        sizer.Add(self.status_choice, 0, wx.EXPAND | wx.ALL, 5)
+
         # Derived filters
         self.is_derived = wx.CheckBox(self, label=_("Derived only"))
         self.is_derived.SetValue(values.get("is_derived", False))
@@ -74,6 +87,8 @@ class FilterDialog(wx.Dialog):
             "query": self.any_query.GetValue(),
             "labels": labels,
             "match_any": self.match_any.GetValue(),
+            "status": (self._status_values[self.status_choice.GetSelection() - 1]
+                        if self.status_choice.GetSelection() > 0 else None),
             "is_derived": self.is_derived.GetValue(),
             "has_derived": self.has_derived.GetValue(),
             "suspect_only": self.suspect_only.GetValue(),

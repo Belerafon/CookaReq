@@ -381,6 +381,32 @@ def test_apply_filters(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [2]
 
 
+def test_apply_status_filter(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    panel.set_requirements([
+        _req(1, "A", status=Status.DRAFT),
+        _req(2, "B", status=Status.APPROVED),
+    ])
+
+    panel.apply_filters({"status": "approved"})
+    assert [r.id for r in panel.model.get_visible()] == [2]
+    panel.apply_filters({"status": None})
+    assert [r.id for r in panel.model.get_visible()] == [1, 2]
+
+
 def test_labels_column_renders_joined(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)

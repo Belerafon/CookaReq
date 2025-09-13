@@ -330,10 +330,15 @@ class EditorPanel(ScrolledPanel):
         box, box_sizer = create_help_static_box(
             self, _("Labels"), self._help_texts["labels"], self._show_help
         )
+        row = wx.BoxSizer(wx.HORIZONTAL)
         self.labels_panel = wx.Panel(box)
         self.labels_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
         self.labels_panel.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)
-        box_sizer.Add(self.labels_panel, 0, wx.EXPAND | wx.ALL, 5)
+        row.Add(self.labels_panel, 1, wx.EXPAND | wx.RIGHT, 5)
+        edit_labels_btn = wx.Button(box, label=_("Edit..."))
+        edit_labels_btn.Bind(wx.EVT_BUTTON, self._on_labels_click)
+        row.Add(edit_labels_btn, 0)
+        box_sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(box_sizer, 0, wx.EXPAND | wx.ALL, 5)
         self._label_defs: list[Label] = []
         self.parent: dict[str, Any] | None = None

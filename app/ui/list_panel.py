@@ -10,6 +10,7 @@ from typing import Callable, List, Sequence, TYPE_CHECKING
 from enum import Enum
 
 from app.core.model import Priority, RequirementType, Status, Verification, Requirement
+from app.core.labels import Label
 from .requirement_model import RequirementModel
 from .filter_dialog import FilterDialog
 from . import locale
@@ -25,8 +26,9 @@ class _LabelsRenderer:
     PADDING_Y = 1
     GAP = 3
 
-    def __init__(self, labels: list[str]):
+    def __init__(self, labels: list[str], colors: dict[str, str]):
         self.labels = labels
+        self.colors = colors
 
     def DrawSubItem(self, dc, rect, _line, _highlighted, _enabled):  # pragma: no cover - GUI
         x = rect.x + self.GAP
@@ -36,7 +38,8 @@ class _LabelsRenderer:
             w = tw + self.PADDING_X * 2
             h = th + self.PADDING_Y * 2
             y = rect.y + (rect.height - h) // 2
-            dc.SetBrush(wx.Brush(wx.Colour(220, 220, 220)))
+            colour = self.colors.get(text, "#dcdcdc")
+            dc.SetBrush(wx.Brush(wx.Colour(colour)))
             dc.DrawRectangle(x, y, w, h)
             dc.DrawText(text, x + self.PADDING_X, y + self.PADDING_Y)
             x += w + self.GAP
@@ -77,6 +80,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.filter_btn = wx.Button(self, label=_("Filters"))
         self.list = ULC.UltimateListCtrl(self, agwStyle=ULC.ULC_REPORT)
         self._label_choices: list[str] = []
+        self._label_colors: dict[str, str] = {}
         self.current_filters: dict = {}
         ColumnSorterMixin.__init__(self, 1)
         self.columns: List[str] = []
@@ -231,12 +235,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             filters["fields"] = list(fields)
         self.apply_filters(filters)
 
-    def update_labels_list(self, labels: list[str]) -> None:
-        """Update available labels for the filter dialog."""
-        seen: dict[str, None] = {}
-        for lbl in labels:
-            seen.setdefault(lbl, None)
-        self._label_choices = list(seen.keys())
+    def update_labels_list(self, labels: list[Label]) -> None:
+        """Update available labels for the filter dialog and renderer."""
+        self._label_colors = {lbl.name: lbl.color for lbl in labels}
+        self._label_choices = sorted(self._label_colors)
 
     def _on_filter(self, event):  # pragma: no cover - simple event binding
         dlg = FilterDialog(self, labels=self._label_choices, values=self.current_filters)
@@ -320,7 +322,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     item.SetId(index)
                     item.SetColumn(col)
                     item.SetText("")
-                    item.SetCustomRenderer(_LabelsRenderer(value))
+                    item.SetCustomRenderer(_LabelsRenderer(value, self._label_colors))
                     self.list.SetItem(item)
                     continue
                 self.list.SetStringItem(index, col, str(value))

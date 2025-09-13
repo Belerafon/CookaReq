@@ -20,16 +20,25 @@ SENSITIVE_KEYS = {
 REDACTED = "[REDACTED]"
 
 
-def sanitize(data: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a copy of *data* with sensitive keys replaced by ``[REDACTED]``."""
+def _sanitize_value(value: Any) -> Any:
+    """Recursively sanitize ``value``."""
 
-    sanitized: dict[str, Any] = {}
-    for key, value in data.items():
-        if key.lower() in SENSITIVE_KEYS:
-            sanitized[key] = REDACTED
-        else:
-            sanitized[key] = value
-    return sanitized
+    if isinstance(value, Mapping):
+        return {
+            k: (REDACTED if k.lower() in SENSITIVE_KEYS else _sanitize_value(v))
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_sanitize_value(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_value(v) for v in value)
+    return value
+
+
+def sanitize(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a deep copy of *data* with sensitive keys replaced by ``[REDACTED]``."""
+
+    return _sanitize_value(dict(data))
 
 
 def log_event(

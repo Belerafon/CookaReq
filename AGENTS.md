@@ -27,22 +27,26 @@
 - `app/config.py` — обёртка над `wx.Config` с typed‑хелперами.
 
 #### Бизнес-логика (`app/core`)
-- `model.py` — dataclass `Requirement`.
+- `model.py` — dataclass `Requirement` и перечисления статусов.
 - `schema.py` — JSON Schema для требований.
 - `validate.py` — проверка бизнес-правил (уникальность id, обязательные поля).
-- `store.py` — чтение/запись JSON, генерация имён по идентификатору.
-- `search.py` — фильтрация по меткам и текстовый поиск.
+- `labels.py` — предустановленные наборы меток и CRUD-операции в памяти.
+- `store.py` — низкоуровневое чтение/запись JSON и генерация имён по идентификатору.
+- `requirements.py` — высокоуровневые операции загрузки, поиска и сохранения.
+- `repository.py` — интерфейс `RequirementRepository` и файловая реализация.
+- `search.py` — фильтрация по меткам, статусу и текстовый поиск.
 
-#### Сервисы
-- `app/agent/local_agent.py` — комбинирует LLM и MCP клиенты, предоставляя высокоуровневые операции.
+#### Сервисы и инфраструктура
+- `app/agent/local_agent.py` — комбинирует LLM и MCP-клиенты, предоставляя высокоуровневые операции.
 - `app/llm` — интеграция с LLM: `LLMClient` и описание схемы инструментов (`spec.py`).
-- `app/mcp` — HTTP‑сервер/клиент MCP и набор инструментов: `server.py`, `tools_read.py`, `tools_write.py`, `client.py`, `utils.py`.
+- `app/mcp` — HTTP‑сервер/клиент MCP и набор инструментов:
+  `server.py`, `tools_read.py`, `tools_write.py`, `client.py`, `utils.py`.
+- `app/mcp/controller.py` — запуск и мониторинг MCP‑сервера.
+- `app/log.py` — настройка логирования и JSONL‑обработчик.
 - `app/telemetry.py` — единая точка логирования с редактированием чувствительных данных.
-
-#### Контроллеры
-- `app/mcp/controller.py` — запуск/остановка MCP‑сервера и проверка его состояния.
-- `app/ui/controllers/requirements.py` — загрузка и CRUD‑операции над требованиями.
-- `app/ui/controllers/labels.py` — управление метками и синхронизация с требованиями.
+- `app/confirm.py` — регистрация и вызов функций подтверждения действий.
+- `app/i18n.py` — загрузка переводов из `.po`‑файлов.
+- `app/resources/` — статические файлы (иконки и пр.).
 
 #### Пользовательский интерфейс (`app/ui`)
 - `main_frame.py` — основное окно, меню, выбор папки.
@@ -50,11 +54,20 @@
 - `editor_panel.py` — форма редактирования требований.
 - `command_dialog.py` — ввод команд для `LocalAgent`.
 - `settings_dialog.py` — редактирование настроек LLM/MCP/UI.
+- `labels_dialog.py` — управление набором меток.
+- `label_selection_dialog.py` — выбор меток из пресетов.
+- `filter_dialog.py` — расширенные фильтры поиска.
+- `derivation_graph.py` — граф отображения зависимых требований.
+- `navigation.py` — навигация по связям требований.
+- `requirement_model.py` — in-memory модель с фильтрацией и сортировкой.
 - `locale.py` — словарь кодов ↔ русский текст.
+- `controllers/requirements.py` — загрузка и CRUD‑операции над требованиями.
+- `controllers/labels.py` — управление метками и синхронизация с требованиями.
 
-#### Утилиты (`app/util`)
-- `hashing.py` — преобразование id в короткий SHA‑256 хэш.
-- `paths.py` — работа с относительными путями.
+#### Утилиты
+- `app/util/hashing.py` — преобразование id в короткий SHA‑256 хэш.
+- `app/util/paths.py` — работа с относительными путями.
+
 
 #### Сборка
 - `build.py` — упаковка проекта через PyInstaller (one-folder).

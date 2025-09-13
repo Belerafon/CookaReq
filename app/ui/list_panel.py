@@ -103,6 +103,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
         return self.list
 
+<<nd-drop-functionality-after-merge
     def GetSortImages(self):  # pragma: no cover - default arrows
         return (-1, -1)
 
@@ -133,6 +134,19 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         except Exception:  # pragma: no cover - Unbind may not exist
             pass
         self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
+    # Columns ---------------------------------------------------------
+    def _setup_columns(self) -> None:
+        self.list.ClearColumns()
+        self.list.AppendTextColumn(_("Title"), 0)
+        for idx, field in enumerate(self.columns, start=1):
+            label = locale.field_label(field)
+            if field == "labels":
+                self.renderer = LabelBadgeRenderer(self)
+                col = dv.DataViewColumn(label, self.renderer, idx)
+                self.list.AppendColumn(col)
+            else:
+                self.list.AppendTextColumn(label, idx)
+
 
     def load_column_widths(self, config: wx.Config) -> None:
         """Restore column widths from config with sane bounds."""

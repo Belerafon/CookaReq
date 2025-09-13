@@ -64,3 +64,74 @@ def test_check_tools_unauthorized(tmp_path: Path) -> None:
         assert result["code"] == "UNAUTHORIZED"
     finally:
         stop_server()
+
+
+def test_call_tool_delete_requires_confirmation(monkeypatch) -> None:
+    cfg = _cfg_with_settings("127.0.0.1", 0, "", "")
+    client = MCPClient(cfg)
+
+    shown = {"called": False}
+
+    def fake_box(*_a, **_k) -> int:
+        shown["called"] = True
+        return wx.NO
+
+    monkeypatch.setattr(wx, "MessageBox", fake_box)
+
+    class DummyConn:
+        def __init__(self, *a, **k):  # pragma: no cover - should not be used
+            raise AssertionError("HTTPConnection should not be created")
+
+    monkeypatch.setattr("app.mcp.client.HTTPConnection", DummyConn)
+
+    res = client._call_tool("delete_requirement", {"req_id": 1, "rev": 1})
+    assert res["error"]["code"] == "CANCELLED"
+    assert shown["called"] is True
+
+
+def test_call_tool_delete_confirm_yes(monkeypatch) -> None:
+    cfg = _cfg_with_settings("127.0.0.1", 0, "", "")
+    client = MCPClient(cfg)
+
+    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
+
+    events: list[tuple[str, dict | None]] = []
+
+    def fake_log(event: str, payload=None, start_time=None) -> None:  # pragma: no cover - helper
+        events.append((event, payload))
+
+    monkeypatch.setattr("app.mcp.client.log_event", fake_log)
+
+    class DummyResp:
+        status = 200
+
+        def read(self) -> bytes:
+            return b"{}"
+
+    class DummyConn:
+        def __init__(self, *a, **k) -> None:
+            self.requested = False
+
+        def request(self, *a, **k) -> None:
+            self.requested = True
+
+        def getresponse(self) -> DummyResp:
+            return DummyResp()
+
+        def close(self) -> None:
+            pass
+
+    conns: list[DummyConn] = []
+
+    def factory(*a, **k) -> DummyConn:  # pragma: no cover - helper
+        conn = DummyConn()
+        conns.append(conn)
+        return conn
+
+    monkeypatch.setattr("app.mcp.client.HTTPConnection", factory)
+
+    res = client._call_tool("delete_requirement", {})
+    assert res == {}
+    assert conns and conns[0].requested is True
+    assert ("CONFIRM", {"tool": "delete_requirement"}) in events
+    assert any(e[0] == "CONFIRM_RESULT" for e in events)

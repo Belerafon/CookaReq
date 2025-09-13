@@ -2,3 +2,33 @@ msgid ""
 msgstr ""
 "Language: en\n"
 "Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "LLM/Agent"
+msgstr "LLM/Agent"
+
+msgid "API base"
+msgstr "API base"
+
+msgid "Model"
+msgstr "Model"
+
+msgid "API key"
+msgstr "API key"
+
+msgid "Timeout"
+msgstr "Timeout"
+
+msgid "Check LLM"
+msgstr "Check LLM"
+
+msgid "Check tools"
+msgstr "Check tools"
+
+msgid "not checked"
+msgstr "not checked"
+
+msgid "ok"
+msgstr "ok"
+
+msgid "error"
+msgstr "error"

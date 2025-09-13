@@ -5,6 +5,8 @@ from importlib import resources
 
 import wx
 
+from app.llm.client import LLMClient, LLMSettings
+from app.mcp.client import MCPClient
 from app.mcp.controller import MCPController, MCPStatus
 from app.mcp.settings import MCPSettings
 
@@ -32,6 +34,10 @@ class SettingsDialog(wx.Dialog):
         open_last: bool,
         remember_sort: bool,
         language: str,
+        api_base: str,
+        model: str,
+        api_key: str,
+        timeout: int,
         host: str,
         port: int,
         base_path: str,
@@ -65,6 +71,50 @@ class SettingsDialog(wx.Dialog):
         lang_sizer.Add(self._language_choice, 1, wx.ALIGN_CENTER_VERTICAL)
         gen_sizer.Add(lang_sizer, 0, wx.ALL | wx.EXPAND, 5)
         general.SetSizer(gen_sizer)
+
+        # LLM/Agent settings ---------------------------------------------
+        llm = wx.Panel(nb)
+        self._api_base = wx.TextCtrl(llm, value=api_base)
+        self._model = wx.TextCtrl(llm, value=model)
+        self._api_key = wx.TextCtrl(llm, value=api_key, style=wx.TE_PASSWORD)
+        self._timeout = wx.SpinCtrl(llm, min=1, max=9999, initial=timeout)
+
+        self._check_llm = wx.Button(llm, label=_("Check LLM"))
+        self._check_tools = wx.Button(llm, label=_("Check tools"))
+        self._llm_status = wx.StaticText(llm, label=_("not checked"))
+        self._tools_status = wx.StaticText(llm, label=_("not checked"))
+
+        self._check_llm.Bind(wx.EVT_BUTTON, self._on_check_llm)
+        self._check_tools.Bind(wx.EVT_BUTTON, self._on_check_tools)
+
+        llm_sizer = wx.BoxSizer(wx.VERTICAL)
+        base_sz = wx.BoxSizer(wx.HORIZONTAL)
+        base_sz.Add(wx.StaticText(llm, label=_("API base")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        base_sz.Add(self._api_base, 1, wx.ALIGN_CENTER_VERTICAL)
+        llm_sizer.Add(base_sz, 0, wx.ALL | wx.EXPAND, 5)
+        model_sz = wx.BoxSizer(wx.HORIZONTAL)
+        model_sz.Add(wx.StaticText(llm, label=_("Model")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        model_sz.Add(self._model, 1, wx.ALIGN_CENTER_VERTICAL)
+        llm_sizer.Add(model_sz, 0, wx.ALL | wx.EXPAND, 5)
+        key_sz = wx.BoxSizer(wx.HORIZONTAL)
+        key_sz.Add(wx.StaticText(llm, label=_("API key")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        key_sz.Add(self._api_key, 1, wx.ALIGN_CENTER_VERTICAL)
+        llm_sizer.Add(key_sz, 0, wx.ALL | wx.EXPAND, 5)
+        timeout_sz = wx.BoxSizer(wx.HORIZONTAL)
+        timeout_sz.Add(wx.StaticText(llm, label=_("Timeout")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        timeout_sz.Add(self._timeout, 1, wx.ALIGN_CENTER_VERTICAL)
+        llm_sizer.Add(timeout_sz, 0, wx.ALL | wx.EXPAND, 5)
+        btn_sz = wx.BoxSizer(wx.HORIZONTAL)
+        llm_btn_sz = wx.BoxSizer(wx.VERTICAL)
+        llm_btn_sz.Add(self._check_llm, 0, wx.BOTTOM, 2)
+        llm_btn_sz.Add(self._llm_status, 0, wx.ALIGN_CENTER)
+        tools_btn_sz = wx.BoxSizer(wx.VERTICAL)
+        tools_btn_sz.Add(self._check_tools, 0, wx.BOTTOM, 2)
+        tools_btn_sz.Add(self._tools_status, 0, wx.ALIGN_CENTER)
+        btn_sz.Add(llm_btn_sz, 0, wx.RIGHT, 5)
+        btn_sz.Add(tools_btn_sz, 0)
+        llm_sizer.Add(btn_sz, 0, wx.ALL, 5)
+        llm.SetSizer(llm_sizer)
 
         # MCP settings ----------------------------------------------------
         mcp = wx.Panel(nb)
@@ -113,6 +163,7 @@ class SettingsDialog(wx.Dialog):
 
         # Notebook --------------------------------------------------------
         nb.AddPage(general, _("General"))
+        nb.AddPage(llm, _("LLM/Agent"))
         nb.AddPage(mcp, _("MCP"))
 
         dlg_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -129,6 +180,14 @@ class SettingsDialog(wx.Dialog):
     def _update_start_stop_label(self) -> None:
         label = _("Stop MCP") if self._mcp.is_running() else _("Start MCP")
         self._start_stop.SetLabel(label)
+
+    def _current_llm_settings(self) -> LLMSettings:
+        return LLMSettings(
+            api_base=self._api_base.GetValue(),
+            model=self._model.GetValue(),
+            api_key=self._api_key.GetValue(),
+            timeout=self._timeout.GetValue(),
+        )
 
     def _current_settings(self) -> MCPSettings:
         return MCPSettings(
@@ -149,6 +208,18 @@ class SettingsDialog(wx.Dialog):
             self._status.SetLabel(_("not running"))
         self._update_start_stop_label()
 
+    def _on_check_llm(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+        client = LLMClient(settings=self._current_llm_settings())
+        result = client.check_llm()
+        label = _("ok") if result.get("ok") else _("error")
+        self._llm_status.SetLabel(label)
+
+    def _on_check_tools(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+        client = MCPClient(settings=self._current_settings())
+        result = client.check_tools()
+        label = _("ok") if result.get("ok") else _("error")
+        self._tools_status.SetLabel(label)
+
     def _on_check(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
         status = self._mcp.check(self._current_settings())
         mapping = {
@@ -159,13 +230,30 @@ class SettingsDialog(wx.Dialog):
         self._status.SetLabel(mapping[status])
 
     # ------------------------------------------------------------------
-    def get_values(self) -> tuple[bool, bool, str, str, int, str, bool, str]:
+    def get_values(self) -> tuple[
+        bool,
+        bool,
+        str,
+        str,
+        str,
+        str,
+        int,
+        str,
+        int,
+        str,
+        bool,
+        str,
+    ]:
         """Return configured options."""
         lang_code = self._languages[self._language_choice.GetSelection()][0]
         return (
             self._open_last.GetValue(),
             self._remember_sort.GetValue(),
             lang_code,
+            self._api_base.GetValue(),
+            self._model.GetValue(),
+            self._api_key.GetValue(),
+            self._timeout.GetValue(),
             self._host.GetValue(),
             self._port.GetValue(),
             self._base_path.GetValue(),

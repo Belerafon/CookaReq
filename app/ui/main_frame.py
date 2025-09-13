@@ -68,6 +68,12 @@ class MainFrame(wx.Frame):
         self.language = self.config.get_language()
         self.sort_column, self.sort_ascending = self.config.get_sort_settings()
         (
+            self.llm_api_base,
+            self.llm_model,
+            self.llm_api_key,
+            self.llm_timeout,
+        ) = self.config.get_llm_settings()
+        (
             self.mcp_host,
             self.mcp_port,
             self.mcp_base_path,
@@ -178,6 +184,10 @@ class MainFrame(wx.Frame):
             open_last=self.auto_open_last,
             remember_sort=self.remember_sort,
             language=self.language,
+            api_base=self.llm_api_base,
+            model=self.llm_model,
+            api_key=self.llm_api_key,
+            timeout=self.llm_timeout,
             host=self.mcp_host,
             port=self.mcp_port,
             base_path=self.mcp_base_path,
@@ -189,6 +199,10 @@ class MainFrame(wx.Frame):
                 self.auto_open_last,
                 self.remember_sort,
                 self.language,
+                api_base,
+                model,
+                api_key,
+                timeout,
                 host,
                 port,
                 base_path,
@@ -202,6 +216,12 @@ class MainFrame(wx.Frame):
                 or require_token != self.mcp_require_token
                 or token != self.mcp_token
             )
+            (
+                self.llm_api_base,
+                self.llm_model,
+                self.llm_api_key,
+                self.llm_timeout,
+            ) = (api_base, model, api_key, timeout)
             self.mcp_host, self.mcp_port, self.mcp_base_path, self.mcp_require_token, self.mcp_token = (
                 host,
                 port,
@@ -212,6 +232,7 @@ class MainFrame(wx.Frame):
             self.config.set_auto_open_last(self.auto_open_last)
             self.config.set_remember_sort(self.remember_sort)
             self.config.set_language(self.language)
+            self.config.set_llm_settings(api_base, model, api_key, timeout)
             self.config.set_mcp_settings(host, port, base_path, require_token, token)
             if changed:
                 self.mcp.stop()

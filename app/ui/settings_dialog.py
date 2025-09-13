@@ -134,7 +134,7 @@ class SettingsDialog(wx.Dialog):
         help_txt = wx.StaticText(
             mcp,
             label=_(
-                "MCP is a local server providing tools for requirement management."
+                "MCP is a local server providing tools for requirement management used by agents and the LLM."
             ),
         )
         help_txt.Wrap(300)
@@ -238,8 +238,15 @@ class SettingsDialog(wx.Dialog):
         running = status != MCPStatus.NOT_RUNNING
         self._start.Enable(not running)
         self._stop.Enable(running)
-        label = _("running") if running else _("not running")
+        label_map = {
+            MCPStatus.READY: _("ready"),
+            MCPStatus.ERROR: _("error"),
+            MCPStatus.NOT_RUNNING: _("not running"),
+        }
+        label = label_map[status]
         self._status.SetLabel(f"{_('Status')}: {label}")
+        self.Layout()
+        wx.MessageBox(f"{_('Status')}: {label}", _("Check MCP"))
 
     # ------------------------------------------------------------------
     def get_values(self) -> tuple[

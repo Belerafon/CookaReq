@@ -145,6 +145,8 @@ def test_mcp_check_status(monkeypatch, wx_app):
 
     dummy = DummyMCP()
     monkeypatch.setattr("app.ui.settings_dialog.MCPController", lambda: dummy)
+    messages: list[tuple[str, str]] = []
+    monkeypatch.setattr("wx.MessageBox", lambda msg, caption, *a, **k: messages.append((msg, caption)))
 
     dlg = SettingsDialog(
         None,
@@ -164,11 +166,12 @@ def test_mcp_check_status(monkeypatch, wx_app):
 
     dummy.state = MCPStatus.READY
     dlg._on_check(wx.CommandEvent())
-    assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('running')}"
+    assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('ready')}"
+    assert messages[-1] == (f"{sd._('Status')}: {sd._('ready')}", sd._("Check MCP"))
 
     dummy.state = MCPStatus.ERROR
     dlg._on_check(wx.CommandEvent())
-    assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('running')}"
+    assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('error')}"
 
     dummy.state = MCPStatus.NOT_RUNNING
     dlg._on_check(wx.CommandEvent())

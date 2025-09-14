@@ -160,19 +160,6 @@ def test_editor_save_and_delete_roundtrip(tmp_path, wx_app):
     assert panel.mtime is None
     assert not saved_path.exists()
 
-def test_editor_toggle_derived_link_updates_data(tmp_path, wx_app):
-    panel = _make_panel()
-    data = {
-        "id": 2,
-        "derived_from": [{"source_id": 1, "source_revision": 1, "suspect": False}],
-    }
-    panel.load(data, path=tmp_path / "req.json", mtime=0.0)
-    panel.derived_list.Check(0, True)
-    panel._on_link_toggle(None)
-    result = panel.get_data()
-    assert result.derived_from[0].suspect is True
-
-
 def test_editor_loads_links(tmp_path, wx_app):
     panel = _make_panel()
     data = {

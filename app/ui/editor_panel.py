@@ -183,8 +183,7 @@ class EditorPanel(ScrolledPanel):
             ),
             "verifies": _(
                 "Links to requirements that this one verifies or tests. "
-                "Use it to show downward traceability towards implementation or validation artifacts. "
-                "Mark suspect links when changes might invalidate verification."
+                "Use it to show downward traceability towards implementation or validation artifacts."
             ),
             "relates": _(
                 "Associations with requirements touching the same topic. "
@@ -193,8 +192,7 @@ class EditorPanel(ScrolledPanel):
             ),
             "derived_from": _(
                 "Source requirements from which this one was derived. "
-                "Capturing derivation clarifies reasoning and lets teams propagate changes upstream. "
-                "Keep suspect flag to signal when the parent requirement has changed."
+                "Capturing derivation clarifies reasoning and lets teams propagate changes upstream."
             ),
         }
 
@@ -509,8 +507,7 @@ class EditorPanel(ScrolledPanel):
         remove_btn.Bind(wx.EVT_BUTTON, lambda _evt, a=attr: self._on_remove_link_generic(a))
         row.Add(remove_btn, 0)
         sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
-        lst = wx.CheckListBox(box, choices=[])
-        lst.Bind(wx.EVT_CHECKLISTBOX, lambda _evt, a=attr: self._toggle_links(a))
+        lst = wx.ListBox(box, choices=[])
         sizer.Add(lst, 1, wx.EXPAND | wx.ALL, 5)
         # по умолчанию список и кнопка удаления скрыты
         lst.Hide()
@@ -624,23 +621,17 @@ class EditorPanel(ScrolledPanel):
             self.derived_from = [dict(link) for link in data.get("derived_from", [])]
             items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.derived_from]
             self.derived_list.Set(items)
-            for i, link in enumerate(self.derived_from):
-                self.derived_list.Check(i, link.get("suspect", False))
             self.derived_id.ChangeValue("")
             self._refresh_links_visibility("derived_from")
             links = data.get("links", {})
             self.verifies = [dict(l) for l in links.get("verifies", [])]
             items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.verifies]
             self.verifies_list.Set(items)
-            for i, link in enumerate(self.verifies):
-                self.verifies_list.Check(i, link.get("suspect", False))
             self.verifies_id.ChangeValue("")
             self._refresh_links_visibility("verifies")
             self.relates = [dict(l) for l in links.get("relates", [])]
             items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.relates]
             self.relates_list.Set(items)
-            for i, link in enumerate(self.relates):
-                self.relates_list.Check(i, link.get("suspect", False))
             self.relates_id.ChangeValue("")
             self._refresh_links_visibility("relates")
             self.parent = dict(data.get("parent", {})) or None
@@ -890,22 +881,18 @@ class EditorPanel(ScrolledPanel):
 
     def _on_remove_link_generic(self, attr: str) -> None:
         _, list_ctrl, links_list = self._link_widgets(attr)
-        idx = list_ctrl.GetFirstSelected() if hasattr(list_ctrl, "GetFirstSelected") else getattr(list_ctrl, "GetSelection", lambda: -1)()
+        idx = (
+            list_ctrl.GetFirstSelected()
+            if hasattr(list_ctrl, "GetFirstSelected")
+            else getattr(list_ctrl, "GetSelection", lambda: -1)()
+        )
         if idx != -1:
             del links_list[idx]
             list_ctrl.Delete(idx)
         self._refresh_links_visibility(attr)
 
-    def _toggle_links(self, attr: str) -> None:
-        _, list_ctrl, links_list = self._link_widgets(attr)
-        for i, link in enumerate(links_list):
-            link["suspect"] = list_ctrl.IsChecked(i)
-
     def _on_add_link(self, _event: wx.CommandEvent) -> None:
         self._on_add_link_generic("derived_from")
-
-    def _on_link_toggle(self, _event: wx.CommandEvent) -> None:
-        self._toggle_links("derived_from")
 
     def _on_set_parent(self, _event: wx.CommandEvent) -> None:
         value = self.parent_id.GetValue().strip()

@@ -25,15 +25,7 @@ from ..core.model import (
 from . import locale
 from .label_selection_dialog import LabelSelectionDialog
 from .helpers import HelpStaticBox, make_help_button, show_help
-
-
-# Mapping of enumerated requirement fields to their Enum classes
-ENUMS = {
-    "type": RequirementType,
-    "status": Status,
-    "priority": Priority,
-    "verification": Verification,
-}
+from .enums import ENUMS
 
 
 class EditorPanel(ScrolledPanel):

@@ -7,9 +7,9 @@ from typing import Dict
 import wx
 
 from ..core import requirements as req_ops
-from ..core.model import Status
 from ..core.labels import Label
 from . import locale
+from .enums import ENUMS
 
 
 class FilterDialog(wx.Dialog):
@@ -69,8 +69,9 @@ class FilterDialog(wx.Dialog):
 
         # Status filter
         sizer.Add(wx.StaticText(self, label=_("Status")), 0, wx.ALL, 5)
-        self._status_values = [s.value for s in Status]
-        status_choices = [_("(any)")] + [locale.STATUS[v] for v in self._status_values]
+        enum_cls = ENUMS["status"]
+        self._status_values = [s.value for s in enum_cls]
+        status_choices = [_("(any)")] + [locale.code_to_label("status", v) for v in self._status_values]
         self.status_choice = wx.Choice(self, choices=status_choices)
         selected = 0
         if values.get("status") in self._status_values:

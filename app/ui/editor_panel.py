@@ -521,6 +521,10 @@ class EditorPanel(ScrolledPanel):
         lst.InsertColumn(1, _("Title"))
         lst.SetColumnWidth(0, wx.LIST_AUTOSIZE_USEHEADER)
         lst.SetColumnWidth(1, wx.LIST_AUTOSIZE_USEHEADER)
+        lst.Bind(
+            wx.EVT_SIZE,
+            lambda evt, lc=lst: (evt.Skip(), self._autosize_link_columns(lc)),
+        )
         sizer.Add(lst, 1, wx.EXPAND | wx.ALL, 5)
         # по умолчанию список и кнопка удаления скрыты
         lst.Hide()
@@ -560,11 +564,18 @@ class EditorPanel(ScrolledPanel):
         box.Layout()
         self.Layout()
         self.FitInside()
+        if visible:
+            self._autosize_link_columns(list_ctrl)
 
     def _autosize_link_columns(self, list_ctrl: wx.ListCtrl) -> None:
         """Adjust column widths for a two-column link list."""
         list_ctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE_USEHEADER)
-        list_ctrl.SetColumnWidth(1, wx.LIST_AUTOSIZE)
+        total = list_ctrl.GetClientSize().width
+        id_width = list_ctrl.GetColumnWidth(0)
+        if total > id_width:
+            list_ctrl.SetColumnWidth(1, total - id_width)
+        else:
+            list_ctrl.SetColumnWidth(1, wx.LIST_AUTOSIZE)
 
     def _rebuild_links_list(self, attr: str) -> None:
         """Repopulate ListCtrl for given link attribute."""
@@ -581,7 +592,6 @@ class EditorPanel(ScrolledPanel):
                     pass
             idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), str(src_id))
             list_ctrl.SetItem(idx, 1, title)
-        self._autosize_link_columns(list_ctrl)
 
     # basic operations -------------------------------------------------
     def set_directory(self, directory: str | Path | None) -> None:
@@ -911,7 +921,6 @@ class EditorPanel(ScrolledPanel):
         links_list.append({"source_id": src_id, "source_revision": revision, "suspect": False})
         idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), str(src_id))
         list_ctrl.SetItem(idx, 1, title)
-        self._autosize_link_columns(list_ctrl)
         id_ctrl.ChangeValue("")
         self._refresh_links_visibility(attr)
 

@@ -17,9 +17,9 @@ def create_help_static_box(
 ) -> tuple[wx.StaticBox, wx.StaticBoxSizer]:
     """Create a ``wx.StaticBox`` with a question button that shows a hint.
 
-    The helper reduces repetitive layout code around ``wx.StaticBox`` by
-    automatically placing a small ``?`` button in the top-right corner.
-    Clicking the button calls ``on_help`` with the provided ``help_text``.
+    The button is anchored in the top‑right corner of the box so it does not
+    consume additional layout space. ``on_help`` is called with ``help_text``
+    when the button is pressed.
 
     Parameters
     ----------
@@ -35,7 +35,7 @@ def create_help_static_box(
     orient: int, optional
         Orientation for ``wx.StaticBoxSizer``; ``wx.VERTICAL`` by default.
     border: int, optional
-        Border width around the help button; default is ``5``.
+        Distance from the box edge to the help button; default is ``5``.
 
     Returns
     -------
@@ -46,8 +46,14 @@ def create_help_static_box(
     sizer = wx.StaticBoxSizer(box, orient)
     btn = wx.Button(box, label="?", style=wx.BU_EXACTFIT)
     btn.Bind(wx.EVT_BUTTON, lambda _evt: on_help(help_text))
-    header = wx.BoxSizer(wx.HORIZONTAL)
-    header.AddStretchSpacer()
-    header.Add(btn, 0)
-    sizer.Add(header, 0, wx.ALIGN_RIGHT | wx.ALL, border)
+
+    def _reposition(_evt: wx.Event | None = None) -> None:
+        """Place the help button in the box's top-right corner."""
+        w, _ = box.GetClientSize()
+        bw, _ = btn.GetSize()
+        btn.SetPosition((w - bw - border, border))
+
+    box.Bind(wx.EVT_SIZE, _reposition)
+    wx.CallAfter(_reposition)
+
     return box, sizer

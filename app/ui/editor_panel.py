@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
@@ -26,6 +27,8 @@ from . import locale
 from .enums import ENUMS
 from .helpers import HelpStaticBox, make_help_button, show_help
 from .label_selection_dialog import LabelSelectionDialog
+
+logger = logging.getLogger(__name__)
 
 
 class EditorPanel(ScrolledPanel):
@@ -607,7 +610,7 @@ class EditorPanel(ScrolledPanel):
                     req = req_ops.get_requirement(self.directory, src_id)
                     title = req.title or ""
                 except Exception:  # pragma: no cover - lookup errors
-                    pass
+                    logger.exception("Failed to load requirement %s", src_id)
             idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), str(src_id))
             list_ctrl.SetItem(idx, 1, title)
 
@@ -964,7 +967,7 @@ class EditorPanel(ScrolledPanel):
                 revision = req.revision or 1
                 title = req.title or ""
             except Exception:  # pragma: no cover - lookup errors
-                pass
+                logger.exception("Failed to load requirement %s", src_id)
         links_list.append(
             {"source_id": src_id, "source_revision": revision, "suspect": False},
         )
@@ -1005,7 +1008,7 @@ class EditorPanel(ScrolledPanel):
                 req = req_ops.get_requirement(self.directory, src_id)
                 revision = req.revision or 1
             except Exception:
-                pass
+                logger.exception("Failed to load requirement %s", src_id)
         self.parent = {
             "source_id": src_id,
             "source_revision": revision,

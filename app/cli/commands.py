@@ -341,7 +341,7 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     add_p.add_argument("prefix", help=_("document prefix"))
     add_p.add_argument("--title", required=True, help=_("item title"))
     add_p.add_argument("--text", required=True, help=_("item text"))
-    add_p.add_argument("--labels", "--tags", dest="labels", help=_("comma-separated labels"))
+    add_p.add_argument("--labels", dest="labels", help=_("comma-separated labels"))
     add_p.set_defaults(func=cmd_item_add)
 
     move_p = sub.add_parser("move", help=_("move item"))
@@ -502,7 +502,7 @@ def add_migrate_arguments(p: argparse.ArgumentParser) -> None:
     to_docs.add_argument("directory", help=_("requirements directory"))
     to_docs.add_argument(
         "--rules",
-        help=_("assignment rules 'tag:key=value->PREFIX;...'"),
+        help=_("assignment rules 'label:key=value->PREFIX;...'"),
     )
     to_docs.add_argument("--default", required=True, help=_("default prefix"))
     to_docs.set_defaults(func=cmd_migrate_to_docs)

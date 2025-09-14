@@ -327,13 +327,13 @@ def delete_item(
             links = data.get("links")
             changed = False
             if isinstance(links, list):
-                new_links = [l for l in links if l != rid]
+                new_links = [link for link in links if link != rid]
                 if len(new_links) != len(links):
                     data["links"] = new_links
                     changed = True
             elif isinstance(links, dict):
                 for key, coll in list(links.items()):
-                    new_coll = [l for l in coll if l != rid]
+                    new_coll = [link for link in coll if link != rid]
                     if len(new_coll) != len(coll):
                         links[key] = new_coll
                         changed = True

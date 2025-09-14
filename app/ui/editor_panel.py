@@ -549,6 +549,7 @@ class EditorPanel(ScrolledPanel):
         box = list_ctrl.GetParent()
         box.Layout()
         self.Layout()
+        self.FitInside()
 
     # basic operations -------------------------------------------------
     def set_directory(self, directory: str | Path | None) -> None:
@@ -842,6 +843,7 @@ class EditorPanel(ScrolledPanel):
             btn_sizer.Show(self.remove_attachment_btn, visible)
             btn_sizer.Layout()
         self.Layout()
+        self.FitInside()
 
     def _on_add_attachment(self, _event: wx.CommandEvent) -> None:
         dlg = wx.FileDialog(self, _("Select attachment"), style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
@@ -872,6 +874,7 @@ class EditorPanel(ScrolledPanel):
         try:
             src_id = int(value)
         except ValueError:
+            wx.MessageBox(_("ID must be a number"), _("Error"), style=wx.ICON_ERROR)
             return
         revision = 1
         if self.directory:

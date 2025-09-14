@@ -130,7 +130,7 @@ items/<RID>.json
     "active":     { "type": "boolean", "default": true },
     "normative":  { "type": "boolean", "default": true },
     "derived":    { "type": "boolean", "default": false },
-    "tags":       { "type": "array", "items": { "type": "string" } },
+    "labels":     { "type": "array", "items": { "type": "string" } },
     "links":      { "type": "array", "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*[0-9]{1,6}$" } },
     "references": {
       "type": "array",
@@ -179,7 +179,7 @@ effective_labels(prefix: str) -> dict[str, LabelDef]  (merge родитель→
 
 core/items.py
 
-class Item: doc_prefix, id, title, text, level, active, normative, derived, tags, links, ...
+class Item: doc_prefix, id, title, text, level, active, normative, derived, labels, links, ...
 
 rid(item) -> str  (формирование по doc_prefix/digits)
 
@@ -212,7 +212,7 @@ index_items(store: ItemStore)
 
 by_rid: dict[str, Item], by_prefix: dict[str, list[Item]]
 
-search(query: str, *, prefix: str|None, tags: list[str]|None) -> list[Item]
+search(query: str, *, prefix: str|None, labels: list[str]|None) -> list[Item]
 
 
 
@@ -237,7 +237,7 @@ doc list
 
 app/cli/item.py:
 
-item add <PREFIX> --title --text [--level] [--tags a,b]
+item add <PREFIX> --title --text [--level] [--labels a,b]
 
 item move <RID> <NEW_PREFIX>
 
@@ -253,7 +253,7 @@ Sidebar Documents: ui/panels/doc_tree.py
 
 List View per Document: ui/panels/doc_list.py
 
-Editor Panel (Item): ui/panels/item_editor.py (Tags, Links)
+Editor Panel (Item): ui/panels/item_editor.py (Labels, Links)
 
 Document Settings Dialog: ui/dialogs/document_settings.py (title/digits/parent/labels)
 
@@ -351,11 +351,15 @@ effective_labels(prefix) делает merge: labels(SYS) ∪ labels(HLR) ∪ lab
 
 links указывают только на элементы документов-предков по цепочке parent.
 
+Ссылки хранятся как отсортированный список без дубликатов. В Doorstop допускается произвольная линковка и проверяется отсутствие циклических зависимостей; у нас ссылки разрешены только вверх по иерархии, поэтому циклы и self-link невозможны, но попытки связать элемент с самим собой следует отклонять.
+
 При сохранении элемента выполняй:
 
 Парс links → проверка формата RID → index.by_rid наличие → проверка parent-цепочки.
 
 Невалидные — блокировать/отклонять с понятной ошибкой.
+
+Экспорт трассировки выполняет генератор `iter_links`, выдающий пары `child parent`. Doorstop строит полноценную матрицу (CSV/HTML); текущий упрощённый формат служит основой для дальнейшего развития.
 
 
 
@@ -519,7 +523,7 @@ cli: add doc create/list, item add/move, link, export trace
 
 gui: documents sidebar and per-document list view
 
-gui: item editor tags/links and document settings
+gui: item editor labels/links and document settings
 
 trace: light matrix view + csv export
 
@@ -536,7 +540,7 @@ tooling: migrate to new documents structure
 
 ## Общие инструкции
 - Работать в основной ветке (без новых веток).
-- **ВНИМАНИЕ: тесты и линтеры временно отключены во время крупного рефакторинга; `pytest` выполнять не нужно.**
+- Запускать `pytest -q`; тесты с маркером `slow` пропускаются.
 - При повторном включении тестов, использующие `wx`, должны запускаться в виртуальном дисплее
   (плагин `pytest-xvfb` или обёртка `xvfb-run -a`).
 - Для сборки и тестов использовать системный Python 3.12.3.
@@ -559,6 +563,7 @@ tooling: migrate to new documents structure
 #### Точка входа
 - `app/main.py` — запуск графического приложения и создание главного окна.
 - `app/cli/main.py` — консольный интерфейс: работа с требованиями и проверка настроек (запуск через `python3 -m app.cli`).
+- `app/cli/commands.py` — обработчики команд `doc`, `item`, `link`, `trace`.
 
 #### Настройки и конфигурация
 - `app/settings.py` — Pydantic‑модели `LLMSettings`, `MCPSettings`, `UISettings` и агрегирующий `AppSettings`.
@@ -573,6 +578,7 @@ tooling: migrate to new documents structure
 - `requirements.py` — высокоуровневые операции загрузки, поиска и сохранения.
 - `repository.py` — интерфейс `RequirementRepository` и файловая реализация.
 - `search.py` — фильтрация по меткам, статусу и текстовый поиск.
+- `doc_store.py` — загрузка документов, генерация идентификаторов и проверка иерархии.
 
 #### Сервисы и инфраструктура
 - `app/agent/local_agent.py` — комбинирует LLM и MCP-клиенты, предоставляя высокоуровневые операции.
@@ -714,3 +720,13 @@ xvfb-run -a python3 script.py
 - 2025-09-16: Добавлены CLI-команды `doc create` и `doc list` для работы с документами.
 - 2025-09-16: Добавлены CLI-команды `item add` и `item move`, расширен `doc_store` (parse_rid, next_item_id).
 - 2025-09-16: На время рефакторинга тесты отключены; `pytest.ini` исключает каталог `tests`.
+- 2025-09-17: Добавлена CLI-команда `link` для связывания требований с проверкой иерархии.
+- 2025-09-17: Реализована CLI-команда `trace` для экспорта light-матрицы трассировки.
+- 2025-09-17: Каталог `tests` возвращён в `pytest.ini`, исправлена потеря переводчика `_` в команде `link`.
+- 2025-09-17: Введена проверка меток при добавлении требований с учётом наследования.
+- 2025-09-18: Проанализирован Doorstop, уточнены правила ссылок и формат трассировки, обновлена архитектура.
+- 2025-09-18: Запрещена self-link при связывании требований, добавлены негативные тесты на ссылки вне иерархии.
+- 2025-09-18: CLI и мигратор перешли с `tags` на `labels`, добавлен аргумент `--labels` (алиас `--tags`).
+- 2025-09-19: Команда `trace` получила экспорт в CSV.
+- 2025-09-19: Команда `trace` получила экспорт в HTML.
+- 2025-09-19: `trace` пишет результат в файл и добавляет минимальный CSS для HTML.

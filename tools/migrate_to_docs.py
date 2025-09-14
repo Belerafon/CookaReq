@@ -8,19 +8,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-RULE_RE = re.compile(r"^tag:([^=]+)=([^->]+)->([A-Z][A-Z0-9_]*)$")
+RULE_RE = re.compile(r"^(?:tag|label):([^=]+)=([^->]+)->([A-Z][A-Z0-9_]*)$")
 
 
 @dataclass
 class Rule:
-    """Mapping from a tag to target document prefix."""
+    """Mapping from a label to target document prefix."""
 
-    tag: str
+    label: str
     target: str
 
 
 def parse_rules(expr: str | None) -> list[Rule]:
-    """Parse rule expression ``tag:key=value->PREFIX;...``."""
+    """Parse rule expression ``label:key=value->PREFIX;...``.
+
+    The legacy prefix ``tag:`` is also accepted for backward compatibility.
+    """
 
     rules: list[Rule] = []
     if not expr:
@@ -33,7 +36,7 @@ def parse_rules(expr: str | None) -> list[Rule]:
         if not m:
             raise ValueError(f"invalid rule: {part}")
         key, value, target = m.groups()
-        rules.append(Rule(tag=f"{key}={value}", target=target))
+        rules.append(Rule(label=f"{key}={value}", target=target))
     return rules
 
 
@@ -41,7 +44,7 @@ def select_prefix(labels: Iterable[str], rules: list[Rule], default: str) -> str
     """Return document prefix based on ``labels`` and ``rules``."""
 
     for rule in rules:
-        if rule.tag in labels:
+        if rule.label in labels:
             return rule.target
     return default
 
@@ -75,7 +78,7 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
             "id": num,
             "title": data.get("title", ""),
             "text": data.get("statement", ""),
-            "tags": [lbl for lbl in labels if not lbl.startswith("doc=")],
+            "labels": [lbl for lbl in labels if not lbl.startswith("doc=")],
         }
         if "revision" in data:
             item["revision"] = data["revision"]

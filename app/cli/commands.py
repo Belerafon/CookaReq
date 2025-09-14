@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import html
 import json
 import sys
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, TextIO
 
 from app.agent import LocalAgent
 from app.confirm import confirm
 from app.core import model
 from app.core.doc_store import (
     Document,
+    is_ancestor,
+    load_documents,
+    iter_links,
     item_path,
     load_document,
     load_item,
@@ -23,6 +28,7 @@ from app.core.doc_store import (
     rid_for,
     save_document,
     save_item,
+    collect_labels,
 )
 from app.core.repository import RequirementRepository
 from app.i18n import _
@@ -214,13 +220,29 @@ def add_doc_arguments(p: argparse.ArgumentParser) -> None:
 def cmd_item_add(args: argparse.Namespace, _repo: RequirementRepository) -> None:
     """Create a new requirement item under a document."""
 
+    docs = load_documents(args.directory)
+    doc = docs.get(args.prefix)
+    if doc is None:
+        sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=args.prefix))
+        return
+    allowed, freeform = collect_labels(args.prefix, docs)
+    labels: list[str] = []
+    if args.labels:
+        labels = [t.strip() for t in args.labels.split(",") if t.strip()]
+        if not freeform:
+            unknown = [lbl for lbl in labels if lbl not in allowed]
+            if unknown:
+                sys.stdout.write(_("unknown label: {name}\n").format(name=unknown[0]))
+                return
     doc_dir = Path(args.directory) / args.prefix
-    doc = load_document(doc_dir)
     item_id = next_item_id(doc_dir, doc)
-    labels = []
-    if args.tags:
-        labels = [t.strip() for t in args.tags.split(",") if t.strip()]
-    data = {"id": item_id, "title": args.title, "text": args.text, "labels": labels, "links": []}
+    data = {
+        "id": item_id,
+        "title": args.title,
+        "text": args.text,
+        "labels": labels,
+        "links": [],
+    }
     save_item(doc_dir, doc, data)
     sys.stdout.write(f"{rid_for(doc, item_id)}\n")
 
@@ -231,7 +253,7 @@ def cmd_item_move(args: argparse.Namespace, _repo: RequirementRepository) -> Non
     prefix, item_id = parse_rid(args.rid)
     src_dir = Path(args.directory) / prefix
     src_doc = load_document(src_dir)
-    data, _ = load_item(src_dir, src_doc, item_id)
+    data, _mtime = load_item(src_dir, src_doc, item_id)
     item_path(src_dir, src_doc, item_id).unlink()
     dst_dir = Path(args.directory) / args.new_prefix
     dst_doc = load_document(dst_dir)
@@ -251,7 +273,7 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     add_p.add_argument("prefix", help=_("document prefix"))
     add_p.add_argument("--title", required=True, help=_("item title"))
     add_p.add_argument("--text", required=True, help=_("item text"))
-    add_p.add_argument("--tags", help=_("comma-separated labels"))
+    add_p.add_argument("--labels", "--tags", dest="labels", help=_("comma-separated labels"))
     add_p.set_defaults(func=cmd_item_add)
 
     move_p = sub.add_parser("move", help=_("move item"))
@@ -259,6 +281,123 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     move_p.add_argument("rid", help=_("requirement identifier"))
     move_p.add_argument("new_prefix", help=_("target document prefix"))
     move_p.set_defaults(func=cmd_item_move)
+
+
+def cmd_link(args: argparse.Namespace, _repo: RequirementRepository) -> None:
+    """Add links from requirement ``rid`` to ``parents``."""
+
+    docs = load_documents(args.directory)
+    try:
+        prefix, item_id = parse_rid(args.rid)
+    except ValueError:
+        sys.stdout.write(_("invalid requirement identifier: {rid}\n").format(rid=args.rid))
+        return
+    doc = docs.get(prefix)
+    if doc is None:
+        sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=prefix))
+        return
+    item_dir = Path(args.directory) / prefix
+    try:
+        data, _mtime = load_item(item_dir, doc, item_id)
+    except FileNotFoundError:
+        sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
+        return
+    for rid in args.parents:
+        if rid == args.rid:
+            sys.stdout.write(_("invalid link target: {rid}\n").format(rid=rid))
+            return
+        try:
+            parent_prefix, parent_id = parse_rid(rid)
+        except ValueError:
+            sys.stdout.write(_("invalid requirement identifier: {rid}\n").format(rid=rid))
+            return
+        if parent_prefix not in docs:
+            sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=parent_prefix))
+            return
+        if not is_ancestor(prefix, parent_prefix, docs):
+            sys.stdout.write(_("invalid link target: {rid}\n").format(rid=rid))
+            return
+        parent_dir = Path(args.directory) / parent_prefix
+        parent_doc = docs[parent_prefix]
+        try:
+            load_item(parent_dir, parent_doc, parent_id)
+        except FileNotFoundError:
+            sys.stdout.write(_("linked item not found: {rid}\n").format(rid=rid))
+            return
+    links = set(data.get("links", []))
+    if args.replace:
+        links.clear()
+    links.update(args.parents)
+    data["links"] = sorted(links)
+    save_item(item_dir, doc, data)
+    sys.stdout.write(f"{args.rid}\n")
+
+
+def add_link_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``link`` command."""
+
+    p.add_argument("directory", help=_("requirements root"))
+    p.add_argument("rid", help=_("requirement identifier"))
+    p.add_argument("parents", nargs="+", help=_("parent requirement identifiers"))
+    p.add_argument(
+        "--replace",
+        action="store_true",
+        help=_("replace existing links instead of adding"),
+    )
+
+
+def cmd_trace(args: argparse.Namespace, _repo: RequirementRepository) -> None:
+    """Export links in the chosen format."""
+
+    links = iter_links(args.directory)
+    out: TextIO
+    close_out = False
+    if args.output:
+        out = open(args.output, "w", encoding="utf-8", newline="")
+        close_out = True
+    else:
+        out = sys.stdout
+    try:
+        if args.format == "csv":
+            writer = csv.writer(out)
+            writer.writerow(["child", "parent"])
+            for child, parent in links:
+                writer.writerow([child, parent])
+        elif args.format == "html":
+            out.write("<!DOCTYPE html>\n<html><head><meta charset='utf-8'>\n")
+            out.write("<style>table{border-collapse:collapse;}"\
+                      "th,td{border:1px solid #ccc;padding:4px;text-align:left;}"\
+                      "</style></head><body>\n<table>\n")
+            out.write("<thead><tr><th>child</th><th>parent</th></tr></thead>\n")
+            out.write("<tbody>\n")
+            for child, parent in links:
+                c = html.escape(child)
+                p = html.escape(parent)
+                out.write(f"<tr><td>{c}</td><td>{p}</td></tr>\n")
+            out.write("</tbody>\n</table>\n</body></html>\n")
+        else:
+            for child, parent in links:
+                out.write(f"{child} {parent}\n")
+    finally:
+        if close_out:
+            out.close()
+
+
+def add_trace_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``trace`` command."""
+
+    p.add_argument("directory", help=_("requirements root"))
+    p.add_argument(
+        "--format",
+        choices=["plain", "csv", "html"],
+        default="plain",
+        help=_("output format"),
+    )
+    p.add_argument(
+        "-o",
+        "--output",
+        help=_("write result to file"),
+    )
 
 
 def cmd_migrate_to_docs(
@@ -317,6 +456,8 @@ COMMANDS: dict[str, Command] = {
     "show": Command(cmd_show, _("show requirement details"), add_show_arguments),
     "doc": Command(lambda args, repo: args.func(args, repo), _("manage documents"), add_doc_arguments),
     "item": Command(lambda args, repo: args.func(args, repo), _("manage items"), add_item_arguments),
+    "link": Command(cmd_link, _("link requirements"), add_link_arguments),
+    "trace": Command(cmd_trace, _("export trace links"), add_trace_arguments),
     "check": Command(cmd_check, _("verify LLM and MCP settings"), add_check_arguments),
     "migrate": Command(lambda args, repo: args.func(args, repo), _("migrate data"), add_migrate_arguments),
 }

@@ -29,7 +29,7 @@ def test_migrate_to_docs_basic(tmp_path: Path):
     write_req(tmp_path / "CR-001.json", r1)
     write_req(tmp_path / "CR-002.json", r2)
 
-    migrate_to_docs(tmp_path, rules="tag:doc=SYS->SYS; tag:doc=HLR->HLR", default="SYS")
+    migrate_to_docs(tmp_path, rules="label:doc=SYS->SYS; label:doc=HLR->HLR", default="SYS")
 
     # original files removed
     assert not (tmp_path / "CR-001.json").exists()
@@ -45,10 +45,10 @@ def test_migrate_to_docs_basic(tmp_path: Path):
     assert sys_data["id"] == 1
     assert sys_data["title"] == "One"
     assert sys_data["text"] == "First"
-    assert sys_data["tags"] == ["alpha"]
+    assert sys_data["labels"] == ["alpha"]
 
     assert hlr_data["id"] == 2
-    assert hlr_data["tags"] == ["beta"]
+    assert hlr_data["labels"] == ["beta"]
 
     doc = json.loads((tmp_path / "SYS" / "document.json").read_text(encoding="utf-8"))
     assert doc["prefix"] == "SYS"

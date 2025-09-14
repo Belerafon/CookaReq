@@ -11,7 +11,7 @@ CookaReq (Cook a requirement) is a wibecoded desktop application built with wxPy
 - Persistent interface state: window size, columns, sorting, recent folders
 - Command dialog for interacting with the built-in LocalAgent (LLM + MCP)
 - Settings dialog for configuring LLM, MCP and UI options
-- Manage label presets and choose colours for custom tags
+- Manage label presets and choose colours for custom labels
 - Command-line utility for batch operations and health checks
 - MCP server exposing requirement tools for external agents
 - Interface localization via text `.po` files
@@ -27,7 +27,7 @@ Additional windows and dialogs:
 
 - **Command dialog** — run LocalAgent commands that combine LLM reasoning with MCP tools.
 - **Settings dialog** — edit LLM/MCP/UI configuration stored in a JSON or TOML file.
-- **Labels dialog** — manage label presets; the **label selection dialog** picks tags from predefined sets with generated colours.
+- **Labels dialog** — manage label presets; the **label selection dialog** picks labels from predefined sets with generated colours.
 - **Filter dialog** — build complex search queries across fields, labels and statuses.
 - **Derivation graph** — visualise "derived-from" links using `networkx` and Graphviz.
 - **Navigation** — jump between linked requirements.
@@ -51,6 +51,8 @@ Available commands:
 - `delete <dir> <id>` — remove a requirement by id
 - `show <dir> <id>` — display the full contents of a requirement as JSON
 - `check` — verify LLM and MCP connectivity according to loaded settings
+- `link <dir> <rid> <parents...>` — link a requirement to ancestors
+- `trace <dir> [--format csv|html] [-o FILE]` — export child-parent links
 
 The `add` and `edit` commands validate the input file before saving. If the JSON is malformed or does not match the requirement schema, an error message is printed and no changes are written to disk. The `check` command uses the same LocalAgent as the GUI to test LLM and MCP access.
 

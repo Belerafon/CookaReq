@@ -137,10 +137,11 @@ def _build_wx_stub():
             return len(self._items)
         def GetColumnCount(self):
             return len(self._cols)
-        def InsertStringItem(self, index, text):
+        def InsertItem(self, index, text):
             self._items.insert(index, text)
             self._data.insert(index, 0)
             return index
+        InsertStringItem = InsertItem
         def SetItem(self, index, col, text):
             pass
         SetStringItem = SetItem

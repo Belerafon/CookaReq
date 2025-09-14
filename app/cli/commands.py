@@ -13,8 +13,20 @@ from typing import Callable
 from app.agent import LocalAgent
 from app.confirm import confirm
 from app.core import model
+from app.core.doc_store import (
+    Document,
+    item_path,
+    load_document,
+    load_item,
+    next_item_id,
+    parse_rid,
+    rid_for,
+    save_document,
+    save_item,
+)
 from app.core.repository import RequirementRepository
 from app.i18n import _
+from tools.migrate_to_docs import migrate_to_docs
 
 
 @dataclass
@@ -158,6 +170,125 @@ def add_show_arguments(p: argparse.ArgumentParser) -> None:
     p.add_argument("id", type=int, help=_("requirement id"))
 
 
+def cmd_doc_create(args: argparse.Namespace, _repo: RequirementRepository) -> None:
+    """Create new document within requirements root."""
+
+    doc = Document(
+        prefix=args.prefix,
+        title=args.title,
+        digits=args.digits,
+        parent=args.parent,
+    )
+    save_document(Path(args.directory) / args.prefix, doc)
+    sys.stdout.write(f"{args.prefix}\n")
+
+
+def cmd_doc_list(args: argparse.Namespace, _repo: RequirementRepository) -> None:
+    """List documents configured under requirements root."""
+
+    root = Path(args.directory)
+    for path in sorted(root.iterdir()):
+        if (path / "document.json").is_file():
+            doc = load_document(path)
+            sys.stdout.write(f"{doc.prefix} {doc.title}\n")
+
+
+def add_doc_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for ``doc`` subcommands."""
+
+    sub = p.add_subparsers(dest="doc_command", required=True)
+
+    create = sub.add_parser("create", help=_("create document"))
+    create.add_argument("directory", help=_("requirements root"))
+    create.add_argument("prefix", help=_("document prefix"))
+    create.add_argument("title", help=_("document title"))
+    create.add_argument("--digits", type=int, default=3, help=_("numeric width"))
+    create.add_argument("--parent", help=_("parent document prefix"))
+    create.set_defaults(func=cmd_doc_create)
+
+    lst = sub.add_parser("list", help=_("list documents"))
+    lst.add_argument("directory", help=_("requirements root"))
+    lst.set_defaults(func=cmd_doc_list)
+
+
+def cmd_item_add(args: argparse.Namespace, _repo: RequirementRepository) -> None:
+    """Create a new requirement item under a document."""
+
+    doc_dir = Path(args.directory) / args.prefix
+    doc = load_document(doc_dir)
+    item_id = next_item_id(doc_dir, doc)
+    labels = []
+    if args.tags:
+        labels = [t.strip() for t in args.tags.split(",") if t.strip()]
+    data = {"id": item_id, "title": args.title, "text": args.text, "labels": labels, "links": []}
+    save_item(doc_dir, doc, data)
+    sys.stdout.write(f"{rid_for(doc, item_id)}\n")
+
+
+def cmd_item_move(args: argparse.Namespace, _repo: RequirementRepository) -> None:
+    """Move existing item ``rid`` to document ``new_prefix``."""
+
+    prefix, item_id = parse_rid(args.rid)
+    src_dir = Path(args.directory) / prefix
+    src_doc = load_document(src_dir)
+    data, _ = load_item(src_dir, src_doc, item_id)
+    item_path(src_dir, src_doc, item_id).unlink()
+    dst_dir = Path(args.directory) / args.new_prefix
+    dst_doc = load_document(dst_dir)
+    new_id = next_item_id(dst_dir, dst_doc)
+    data["id"] = new_id
+    save_item(dst_dir, dst_doc, data)
+    sys.stdout.write(f"{rid_for(dst_doc, new_id)}\n")
+
+
+def add_item_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for ``item`` subcommands."""
+
+    sub = p.add_subparsers(dest="item_command", required=True)
+
+    add_p = sub.add_parser("add", help=_("create new item"))
+    add_p.add_argument("directory", help=_("requirements root"))
+    add_p.add_argument("prefix", help=_("document prefix"))
+    add_p.add_argument("--title", required=True, help=_("item title"))
+    add_p.add_argument("--text", required=True, help=_("item text"))
+    add_p.add_argument("--tags", help=_("comma-separated labels"))
+    add_p.set_defaults(func=cmd_item_add)
+
+    move_p = sub.add_parser("move", help=_("move item"))
+    move_p.add_argument("directory", help=_("requirements root"))
+    move_p.add_argument("rid", help=_("requirement identifier"))
+    move_p.add_argument("new_prefix", help=_("target document prefix"))
+    move_p.set_defaults(func=cmd_item_move)
+
+
+def cmd_migrate_to_docs(
+    args: argparse.Namespace, _repo: RequirementRepository
+) -> None:
+    """Migrate flat requirements to document structure."""
+
+    migrate_to_docs(
+        args.directory,
+        rules=args.rules,
+        default=args.default,
+    )
+
+
+def add_migrate_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``migrate`` command."""
+
+    sub = p.add_subparsers(dest="migrate_command", required=True)
+    to_docs = sub.add_parser(
+        "to-docs", help=_("convert flat requirements to documents"),
+    )
+    to_docs.add_argument("directory", help=_("requirements directory"))
+    to_docs.add_argument(
+        "--rules",
+        help=_("assignment rules 'tag:key=value->PREFIX;...'"),
+    )
+    to_docs.add_argument("--default", required=True, help=_("default prefix"))
+    to_docs.set_defaults(func=cmd_migrate_to_docs)
+
+
 def cmd_check(args: argparse.Namespace, _repo: RequirementRepository) -> None:
     """Verify LLM and MCP connectivity using loaded settings."""
     agent = LocalAgent(settings=args.app_settings, confirm=confirm)
@@ -184,5 +315,8 @@ COMMANDS: dict[str, Command] = {
     "delete": Command(cmd_delete, _("delete requirement"), add_delete_arguments),
     "clone": Command(cmd_clone, _("clone requirement"), add_clone_arguments),
     "show": Command(cmd_show, _("show requirement details"), add_show_arguments),
+    "doc": Command(lambda args, repo: args.func(args, repo), _("manage documents"), add_doc_arguments),
+    "item": Command(lambda args, repo: args.func(args, repo), _("manage items"), add_item_arguments),
     "check": Command(cmd_check, _("verify LLM and MCP settings"), add_check_arguments),
+    "migrate": Command(lambda args, repo: args.func(args, repo), _("migrate data"), add_migrate_arguments),
 }

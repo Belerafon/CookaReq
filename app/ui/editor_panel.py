@@ -553,6 +553,8 @@ class EditorPanel(ScrolledPanel):
         self._on_id_change()
 
     def new_requirement(self) -> None:
+        """Reset UI fields to create a new requirement."""
+
         with self._bulk_update():
             for ctrl in self.fields.values():
                 ctrl.ChangeValue("")
@@ -605,6 +607,8 @@ class EditorPanel(ScrolledPanel):
         path: str | Path | None = None,
         mtime: float | None = None,
     ) -> None:
+        """Populate editor fields from ``data``."""
+
         if isinstance(data, Requirement):
             data = requirement_to_dict(data)
         self.original_id = data.get("id")
@@ -671,6 +675,8 @@ class EditorPanel(ScrolledPanel):
         self._on_id_change()
 
     def clone(self, new_id: int) -> None:
+        """Copy current requirement into a new one with ``new_id``."""
+
         with self._bulk_update():
             self.fields["id"].ChangeValue(str(new_id))
             self.fields["modified_at"].ChangeValue("")
@@ -697,6 +703,8 @@ class EditorPanel(ScrolledPanel):
 
     # data helpers -----------------------------------------------------
     def get_data(self) -> Requirement:
+        """Collect form data into a :class:`Requirement`."""
+
         id_value = self.fields["id"].GetValue().strip()
         if not id_value:
             raise ValueError(_("ID is required"))
@@ -965,6 +973,8 @@ class EditorPanel(ScrolledPanel):
             self._on_save_callback()
 
     def save(self, directory: str | Path) -> Path:
+        """Persist editor contents to ``directory`` and return path."""
+
         req = self.get_data()
         mod = (
             req.modified_at
@@ -984,6 +994,8 @@ class EditorPanel(ScrolledPanel):
         return path
 
     def delete(self) -> None:
+        """Remove currently loaded requirement file if present."""
+
         if self.current_path and self.current_path.exists():
             req_ops.delete_requirement(self.current_path.parent, int(self.current_path.stem))
         self.current_path = None
@@ -991,6 +1003,8 @@ class EditorPanel(ScrolledPanel):
         self.original_id = None
 
     def add_attachment(self, path: str, note: str = "") -> None:
+        """Append attachment with ``path`` and optional ``note``."""
+
         self.attachments.append({"path": path, "note": note})
         if hasattr(self, "attachments_list"):
             idx = self.attachments_list.InsertItem(self.attachments_list.GetItemCount(), path)

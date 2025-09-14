@@ -22,7 +22,11 @@ class FileLabelRepository(LabelRepository):
     """Filesystem-backed label repository."""
 
     def load(self, directory: str | Path) -> list[Label]:  # type: ignore[override]
+        """Load labels from ``directory``."""
+
         return label_store.load_labels(directory)
 
     def save(self, directory: str | Path, labels: list[Label]) -> Path:  # type: ignore[override]
+        """Persist ``labels`` into ``directory`` and return path."""
+
         return label_store.save_labels(directory, labels)

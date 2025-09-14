@@ -9,12 +9,16 @@ from ..util.time import normalize_timestamp
 
 
 class RequirementType(str, Enum):
+    """Enumerate supported requirement categories."""
+
     REQUIREMENT = "requirement"
     CONSTRAINT = "constraint"
     INTERFACE = "interface"
 
 
 class Status(str, Enum):
+    """Enumerate requirement lifecycle states."""
+
     DRAFT = "draft"
     IN_REVIEW = "in_review"
     APPROVED = "approved"
@@ -23,12 +27,16 @@ class Status(str, Enum):
 
 
 class Priority(str, Enum):
+    """Enumerate requirement priority levels."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
 
 
 class Verification(str, Enum):
+    """Enumerate possible verification methods."""
+
     INSPECTION = "inspection"
     ANALYSIS = "analysis"
     DEMONSTRATION = "demonstration"
@@ -37,6 +45,8 @@ class Verification(str, Enum):
 
 @dataclass
 class Attachment:
+    """Represent a file attached to a requirement."""
+
     path: str
     note: str = ""
 
@@ -72,6 +82,8 @@ class Links:
 
 @dataclass
 class Requirement:
+    """Represent a requirement with metadata and trace links."""
+
     id: int
     title: str
     statement: str

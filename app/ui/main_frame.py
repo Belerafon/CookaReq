@@ -40,6 +40,8 @@ class WxLogHandler(logging.Handler):
         self.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 
     def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - GUI side effect
+        """Append formatted ``record`` text to the log console."""
+
         if not wx.GetApp():
             return
         msg = self.format(record)
@@ -160,24 +162,34 @@ class MainFrame(wx.Frame):
 
     @property
     def recent_dirs(self) -> list[str]:
+        """Return directories recently opened by the user."""
+
         return self.config.get_recent_dirs()
 
     @property
     def labels(self) -> list[Label]:
+        """Return currently loaded labels."""
+
         return self.labels_controller.labels if self.labels_controller else []
 
     def on_open_folder(self, event: wx.Event) -> None:
+        """Handle "Open Folder" menu action."""
+
         dlg = wx.DirDialog(self, _("Select requirements folder"))
         if dlg.ShowModal() == wx.ID_OK:
             self._load_directory(Path(dlg.GetPath()))
         dlg.Destroy()
 
     def on_open_recent(self, event: wx.CommandEvent) -> None:
+        """Open a directory selected from the "recent" menu."""
+
         path = self.navigation.get_recent_path(event.GetId())
         if path:
             self._load_directory(path)
 
     def on_open_settings(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+        """Display settings dialog and apply changes."""
+
         dlg = SettingsDialog(
             self,
             open_last=self.auto_open_last,
@@ -240,6 +252,8 @@ class MainFrame(wx.Frame):
         dlg.Destroy()
 
     def on_run_command(self, event: wx.Event) -> None:
+        """Invoke agent command dialog."""
+
         settings = AppSettings(llm=self.llm_settings, mcp=self.mcp_settings)
         try:
             agent = LocalAgent(settings=settings, confirm=confirm)
@@ -302,6 +316,8 @@ class MainFrame(wx.Frame):
         self.Layout()
 
     def on_manage_labels(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+        """Open dialog to manage defined labels."""
+
         if not self.labels_controller:
             return
         dlg = LabelsDialog(self, self.labels_controller.labels)
@@ -370,6 +386,8 @@ class MainFrame(wx.Frame):
     # recent directories -------------------------------------------------
 
     def on_requirement_selected(self, event: wx.ListEvent) -> None:
+        """Load requirement into editor when selected in list."""
+
         index = event.GetIndex()
         if index == wx.NOT_FOUND:
             return
@@ -405,6 +423,8 @@ class MainFrame(wx.Frame):
             self.panel.update_labels_list(self.labels_controller.labels)
 
     def on_toggle_column(self, event: wx.CommandEvent) -> None:
+        """Show or hide column associated with menu item."""
+
         field = self.navigation.get_field_for_id(event.GetId())
         if not field:
             return
@@ -418,6 +438,8 @@ class MainFrame(wx.Frame):
         self.config.set_columns(self.selected_fields)
 
     def on_toggle_log_console(self, event: wx.CommandEvent) -> None:
+        """Toggle visibility of log console panel."""
+
         if self.navigation.log_menu_item.IsChecked():
             sash = self.config.get_log_sash(self.GetClientSize().height - 150)
             self.log_panel.Show()
@@ -460,6 +482,8 @@ class MainFrame(wx.Frame):
 
     # context menu actions -------------------------------------------
     def on_new_requirement(self, event: wx.Event) -> None:
+        """Create and persist a new requirement."""
+
         if not self.req_controller:
             return
         new_id = self.req_controller.generate_new_id()
@@ -472,6 +496,8 @@ class MainFrame(wx.Frame):
         self.splitter.UpdateSize()
 
     def on_clone_requirement(self, req_id: int) -> None:
+        """Clone requirement ``req_id`` and open in editor."""
+
         if not self.req_controller:
             return
         clone = self.req_controller.clone_requirement(req_id)
@@ -501,6 +527,8 @@ class MainFrame(wx.Frame):
         return clone
 
     def on_derive_requirement(self, req_id: int) -> None:
+        """Create a requirement derived from ``req_id`` and open it."""
+
         source = self.model.get_by_id(req_id)
         if not source:
             return
@@ -513,6 +541,8 @@ class MainFrame(wx.Frame):
         self.splitter.UpdateSize()
 
     def on_add_derived_requirement(self, source: Requirement) -> None:
+        """Save requirement derived from ``source`` currently in editor."""
+
         clone = self._create_derived_from(source)
         self.model.add(clone)
         self.panel.add_derived_link(source.id, clone.id)
@@ -522,6 +552,8 @@ class MainFrame(wx.Frame):
         self.splitter.UpdateSize()
 
     def on_delete_requirement(self, req_id: int) -> None:
+        """Delete requirement ``req_id`` and refresh views."""
+
         if not self.req_controller or not self.labels_controller:
             return
         if not self.req_controller.delete_requirement(req_id):

@@ -141,7 +141,9 @@ def cmd_show(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """Show detailed JSON for requirement with *id*."""
     req = repo.get(args.directory, args.id)
     data = model.requirement_to_dict(req)
-    sys.stdout.write(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    sys.stdout.write(
+        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+    )
 
 
 def add_show_arguments(p: argparse.ArgumentParser) -> None:
@@ -158,7 +160,9 @@ def cmd_check(args: argparse.Namespace, _repo: RequirementRepository) -> None:
         results["llm"] = agent.check_llm()
     if args.mcp or not (args.llm or args.mcp):
         results["mcp"] = agent.check_tools()
-    sys.stdout.write(json.dumps(results, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    sys.stdout.write(
+        json.dumps(results, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+    )
 
 
 def add_check_arguments(p: argparse.ArgumentParser) -> None:

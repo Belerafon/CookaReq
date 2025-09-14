@@ -157,7 +157,10 @@ def test_mcp_check_status(monkeypatch, wx_app):
     dummy = DummyMCP()
     monkeypatch.setattr("app.ui.settings_dialog.MCPController", lambda: dummy)
     messages: list[tuple[str, str]] = []
-    monkeypatch.setattr("wx.MessageBox", lambda msg, caption, *a, **k: messages.append((msg, caption)))
+    monkeypatch.setattr(
+        "wx.MessageBox",
+        lambda msg, caption, *a, **k: messages.append((msg, caption)),
+    )
 
     dlg = SettingsDialog(
         None,
@@ -215,7 +218,10 @@ def test_llm_agent_checks(monkeypatch, wx_app):
         def check_tools(self):
             return {"ok": True}
 
-    monkeypatch.setattr("app.ui.settings_dialog.LLMClient", lambda *, settings: DummyLLM(settings=settings))
+    monkeypatch.setattr(
+        "app.ui.settings_dialog.LLMClient",
+        lambda *, settings: DummyLLM(settings=settings),
+    )
     monkeypatch.setattr(
         "app.ui.settings_dialog.MCPClient",
         lambda *, settings, confirm: DummyMCP(settings=settings),

@@ -93,7 +93,13 @@ def test_app_settings_round_trip(tmp_path, wx_app):
             timeout_minutes=42,
             stream=False,
         ),
-        mcp=MCPSettings(host="1.2.3.4", port=9999, base_path="/m", require_token=True, token="t"),
+        mcp=MCPSettings(
+            host="1.2.3.4",
+            port=9999,
+            base_path="/m",
+            require_token=True,
+            token="t",
+        ),
         ui=UISettings(
             columns=["id", "title"],
             recent_dirs=[str(tmp_path / "a"), str(tmp_path / "b")],

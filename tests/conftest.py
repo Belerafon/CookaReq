@@ -23,7 +23,7 @@ def _mock_openrouter(monkeypatch, request):
     if request.node.get_closest_marker("real_llm"):
         if not os.getenv("COOKAREQ_RUN_REAL_LLM_TESTS"):
             pytest.skip(
-                "Set COOKAREQ_RUN_REAL_LLM_TESTS=1 to run tests hitting real LLM"
+                "Set COOKAREQ_RUN_REAL_LLM_TESTS=1 to run tests hitting real LLM",
             )
         return
     from tests.llm_utils import make_openai_mock
@@ -93,5 +93,6 @@ def pytest_terminal_summary(terminalreporter, exitstatus):
     skipped = len(terminalreporter.stats.get("skipped", []))
     duration = time.time() - terminalreporter.config._start_time
     terminalreporter.write_sep(
-        "=", f"{passed} passed, {failed} failed, {skipped} skipped in {duration:.2f}s"
+        "=",
+        f"{passed} passed, {failed} failed, {skipped} skipped in {duration:.2f}s",
     )

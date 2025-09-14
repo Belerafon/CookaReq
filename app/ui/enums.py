@@ -1,4 +1,5 @@
 """Common Enum definitions and label utilities for UI."""
+
 from __future__ import annotations
 
 from enum import Enum
@@ -27,4 +28,6 @@ ENUMS: dict[str, type[Enum]] = {
 
 
 # Pre-generated localized labels for each enumerated field
-LABELS: dict[str, dict[str, str]] = {name: enum_labels(cls) for name, cls in ENUMS.items()}
+LABELS: dict[str, dict[str, str]] = {
+    name: enum_labels(cls) for name, cls in ENUMS.items()
+}

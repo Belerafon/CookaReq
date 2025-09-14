@@ -10,6 +10,7 @@ pytestmark = pytest.mark.gui
 def test_switch_to_russian_updates_ui(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.main_frame as main_frame
+
     importlib.reload(main_frame)
 
     frame = main_frame.MainFrame(None)
@@ -26,8 +27,10 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app):
     class DummySettingsDialog:
         def __init__(self, *args, **kwargs):
             pass
+
         def ShowModal(self):
             return wx.ID_OK
+
         def get_values(self):
             return (
                 frame.auto_open_last,
@@ -46,6 +49,7 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app):
                 frame.mcp_settings.require_token,
                 frame.mcp_settings.token,
             )
+
         def Destroy(self):
             pass
 
@@ -56,5 +60,6 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app):
 
     frame.Destroy()
     from app import i18n
+
     # restore default language for subsequent tests
     i18n.install(main_mod.APP_NAME, main_mod.LOCALE_DIR, ["en"])

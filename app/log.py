@@ -45,4 +45,3 @@ def configure_logging(level: int = logging.INFO) -> None:
 
 
 __all__ = ["JsonlHandler", "configure_logging", "logger"]
-

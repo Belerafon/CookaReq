@@ -1,7 +1,9 @@
 """Tests for health endpoint."""
+
 import pytest
 
 pytestmark = pytest.mark.integration
+
 
 def test_health_endpoint_returns_ok():
     from fastapi.testclient import TestClient

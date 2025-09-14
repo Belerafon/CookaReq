@@ -4,6 +4,7 @@ This script generates a one-folder distribution in the ``dist``
 folder. It requires PyInstaller to be installed in the active
 environment.
 """
+
 import os
 import sys
 from pathlib import Path

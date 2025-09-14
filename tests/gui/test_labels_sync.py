@@ -30,7 +30,10 @@ def test_sync_labels_preserves_unused(monkeypatch, tmp_path, wx_app):
     label_store.save_labels(tmp_path, PRESET_SETS["basic"])
     _create_requirement(tmp_path)
     from app.ui.main_frame import MainFrame
+
     frame = MainFrame(None)
     frame._load_directory(tmp_path)
-    assert {label.name for label in frame.labels} == {label.name for label in PRESET_SETS["basic"]}
+    assert {label.name for label in frame.labels} == {
+        label.name for label in PRESET_SETS["basic"]
+    }
     frame.Destroy()

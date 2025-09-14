@@ -64,7 +64,10 @@ class LLMClient:
                 {"error": {"type": type(exc).__name__, "message": str(exc)}},
                 start_time=start,
             )
-            return {"ok": False, "error": {"type": type(exc).__name__, "message": str(exc)}}
+            return {
+                "ok": False,
+                "error": {"type": type(exc).__name__, "message": str(exc)},
+            }
         log_event("LLM_RESPONSE", {"ok": True}, start_time=start)
         return {"ok": True}
 
@@ -130,5 +133,9 @@ class LLMClient:
             )
             raise
         else:
-            log_event("LLM_RESPONSE", {"tool": name, "arguments": arguments}, start_time=start)
+            log_event(
+                "LLM_RESPONSE",
+                {"tool": name, "arguments": arguments},
+                start_time=start,
+            )
             return name, arguments

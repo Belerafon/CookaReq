@@ -1,4 +1,5 @@
 """JSON file storage for requirements."""
+
 from __future__ import annotations
 
 import json
@@ -188,4 +189,3 @@ def mark_suspects(directory: str | Path, changed_id: int, new_revision: int) -> 
         if changed:
             with fp.open("w", encoding="utf-8") as fh:
                 json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
-

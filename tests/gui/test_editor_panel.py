@@ -15,6 +15,7 @@ def _make_panel():
     wx = pytest.importorskip("wx")
     frame = wx.Frame(None)
     from app.ui.editor_panel import EditorPanel
+
     return EditorPanel(frame)
 
 
@@ -137,12 +138,14 @@ def test_enum_localization_roundtrip(wx_app):
             "status": "approved",
             "priority": "high",
             "verification": "test",
-        }
+        },
     )
     assert panel.enums["type"].GetStringSelection() == locale.TYPE["constraint"]
     assert panel.enums["status"].GetStringSelection() == locale.STATUS["approved"]
     assert panel.enums["priority"].GetStringSelection() == locale.PRIORITY["high"]
-    assert panel.enums["verification"].GetStringSelection() == locale.VERIFICATION["test"]
+    assert (
+        panel.enums["verification"].GetStringSelection() == locale.VERIFICATION["test"]
+    )
 
     panel.enums["type"].SetStringSelection(locale.TYPE["interface"])
     panel.enums["status"].SetStringSelection(locale.STATUS["baselined"])

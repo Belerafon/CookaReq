@@ -41,7 +41,10 @@ def test_sanitize_redacts_nested_sensitive_keys() -> None:
     assert sanitized["list"][1]["Authorization"] == REDACTED
 
 
-def test_log_event_records_size_and_duration_and_sanitizes_payload(tmp_path: Path, monkeypatch) -> None:
+def test_log_event_records_size_and_duration_and_sanitizes_payload(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     log_file = tmp_path / "telemetry.jsonl"
     handler = JsonlHandler(str(log_file))
     logger.addHandler(handler)
@@ -66,7 +69,9 @@ def test_log_event_records_size_and_duration_and_sanitizes_payload(tmp_path: Pat
         "nested": {"password": REDACTED},
         "list": [{"api_key": REDACTED}],
     }
-    expected_size = len(json.dumps(sanitized_payload, ensure_ascii=False).encode("utf-8"))
+    expected_size = len(
+        json.dumps(sanitized_payload, ensure_ascii=False).encode("utf-8"),
+    )
     assert entry["payload"] == sanitized_payload
     log_text = json.dumps(entry)
     assert "secret" not in log_text

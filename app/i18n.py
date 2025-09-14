@@ -5,6 +5,7 @@ avoiding the need for compiled ``.mo`` binaries.  It provides a small subset
 of the ``gettext`` API: ``gettext`` (aliased as ``_``) and ``install`` to set
 the active language.
 """
+
 from __future__ import annotations
 
 import threading
@@ -30,6 +31,7 @@ def _escape(text: str) -> str:
         .replace("\n", "\\n")
         .replace("\t", "\\t")
     )
+
 
 _translations: dict[str, str] = {}
 _missing: set[str] = set()
@@ -124,7 +126,11 @@ def flush_missing(path: Path) -> None:
         _missing.clear()
 
 
-def install(domain: str, localedir: str, languages: Iterable[str] | None = None) -> None:
+def install(
+    domain: str,
+    localedir: str,
+    languages: Iterable[str] | None = None,
+) -> None:
     """Load translations for ``languages`` and make ``gettext`` use them."""
     global _translations
     languages = list(languages or [])

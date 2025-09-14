@@ -50,7 +50,14 @@ def test_main_frame_editor_multiline_fields_have_size(tmp_path, monkeypatch, wx_
     frame.panel.list.Select(0)
     wx_app.Yield()
 
-    for name in ["statement", "acceptance", "conditions", "trace_up", "trace_down", "source"]:
+    for name in [
+        "statement",
+        "acceptance",
+        "conditions",
+        "trace_up",
+        "trace_down",
+        "source",
+    ]:
         assert frame.editor.fields[name].GetSize().GetHeight() > 0
 
     frame.Destroy()

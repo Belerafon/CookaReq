@@ -4,6 +4,7 @@ This module centralizes business logic for loading, searching and
 modifying requirements. It is used by CLI, MCP tools and can be reused by
 GUI components.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -25,6 +26,7 @@ from .store import (
 # Re-export searchable fields for UI components
 SEARCHABLE_FIELDS = core_search.SEARCHABLE_FIELDS
 
+
 def load_all(directory: str | Path) -> list[Requirement]:
     """Load all requirements from *directory*.
 
@@ -41,7 +43,8 @@ def load_all(directory: str | Path) -> list[Requirement]:
 
 
 def filter_by_status(
-    requirements: Iterable[Requirement], status: str | Status | None
+    requirements: Iterable[Requirement],
+    status: str | Status | None,
 ) -> list[Requirement]:
     """Filter ``requirements`` by ``status`` if provided."""
     reqs = list(requirements)
@@ -69,7 +72,12 @@ def search_requirements(
     """
     reqs = load_all(directory)
     reqs = filter_by_status(reqs, status)
-    return core_search.search(reqs, labels=list(labels or []), query=query, fields=fields)
+    return core_search.search(
+        reqs,
+        labels=list(labels or []),
+        query=query,
+        fields=fields,
+    )
 
 
 def load_requirement(directory: str | Path, req_id: int) -> tuple[dict, float]:
@@ -142,7 +150,8 @@ def search_loaded(
 
 
 def load_labels(
-    directory: str | Path, repo: LabelRepository | None = None
+    directory: str | Path,
+    repo: LabelRepository | None = None,
 ) -> list[Label]:
     """Load labels from ``directory`` using ``repo`` if provided."""
     repo = repo or FileLabelRepository()
@@ -150,7 +159,9 @@ def load_labels(
 
 
 def save_labels(
-    directory: str | Path, labels: list[Label], repo: LabelRepository | None = None
+    directory: str | Path,
+    labels: list[Label],
+    repo: LabelRepository | None = None,
 ):
     """Persist ``labels`` into ``directory`` using ``repo`` if provided."""
     repo = repo or FileLabelRepository()

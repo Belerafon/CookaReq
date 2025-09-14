@@ -16,4 +16,3 @@ def test_main_frame_loads_multiple_icon_sizes(wx_app):
         assert bundle.GetIconCount() >= 2
     finally:
         frame.Destroy()
-

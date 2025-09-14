@@ -42,12 +42,12 @@ def make_openai_mock(responses: dict[str, tuple[str, dict] | Exception]):
                                         function=SimpleNamespace(
                                             name=name,
                                             arguments=json.dumps(args),
-                                        )
-                                    )
-                                ]
-                            )
-                        )
-                    ]
+                                        ),
+                                    ),
+                                ],
+                            ),
+                        ),
+                    ],
                 )
             return SimpleNamespace()
 
@@ -73,7 +73,7 @@ def settings_with_llm(tmp_path: Path, *, api_key: str = "dummy") -> AppSettings:
             "max_output_tokens": 0,
             "timeout_minutes": 60,
             "stream": False,
-        }
+        },
     }
     path = tmp_path / "settings.json"
     path.write_text(json.dumps(data))
@@ -118,13 +118,13 @@ def settings_with_mcp(
     if fmt == "toml":
         toml = f"""
 [llm]
-base_url = \"{settings['llm']['base_url']}\"
-model = \"{settings['llm']['model']}\"
-api_key = \"{settings['llm']['api_key']}\"
-max_retries = {settings['llm']['max_retries']}
-max_output_tokens = {settings['llm']['max_output_tokens']}
-timeout_minutes = {settings['llm']['timeout_minutes']}
-stream = {str(settings['llm']['stream']).lower()}
+base_url = \"{settings["llm"]["base_url"]}\"
+model = \"{settings["llm"]["model"]}\"
+api_key = \"{settings["llm"]["api_key"]}\"
+max_retries = {settings["llm"]["max_retries"]}
+max_output_tokens = {settings["llm"]["max_output_tokens"]}
+timeout_minutes = {settings["llm"]["timeout_minutes"]}
+stream = {str(settings["llm"]["stream"]).lower()}
 
 [mcp]
 host = \"{host}\"

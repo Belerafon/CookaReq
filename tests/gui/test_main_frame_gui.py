@@ -16,11 +16,14 @@ def test_main_frame_open_folder(monkeypatch, tmp_path, wx_app):
     class DummyDirDialog:
         def __init__(self, parent, message):
             called["init"] = True
+
         def ShowModal(self):
             called["show"] = True
             return wx.ID_OK
+
         def GetPath(self):
             return str(tmp_path)
+
         def Destroy(self):
             called["destroy"] = True
 
@@ -28,6 +31,7 @@ def test_main_frame_open_folder(monkeypatch, tmp_path, wx_app):
 
     import app.ui.list_panel as list_panel
     import app.ui.main_frame as main_frame
+
     importlib.reload(list_panel)
     importlib.reload(main_frame)
 
@@ -42,6 +46,7 @@ def test_main_frame_open_folder(monkeypatch, tmp_path, wx_app):
 
     frame.Destroy()
 
+
 def test_main_frame_run_command_menu(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
 
@@ -50,8 +55,10 @@ def test_main_frame_run_command_menu(monkeypatch, wx_app):
     class DummyDialog:
         def __init__(self, parent, *, agent, history_path=None):
             called["init"] = True
+
         def ShowModal(self):
             called["show"] = True
+
         def Destroy(self):
             called["destroy"] = True
 
@@ -60,6 +67,7 @@ def test_main_frame_run_command_menu(monkeypatch, wx_app):
             called["agent"] = True
 
     import app.ui.main_frame as main_frame
+
     importlib.reload(main_frame)
     monkeypatch.setattr(main_frame, "CommandDialog", DummyDialog)
     monkeypatch.setattr(main_frame, "LocalAgent", DummyAgent)
@@ -78,6 +86,7 @@ def test_main_frame_run_command_history_persists(monkeypatch, tmp_path, wx_app):
     import json
 
     import app.ui.command_dialog as cmd
+
     importlib.reload(cmd)
     history_file = tmp_path / "history.json"
     monkeypatch.setattr(cmd, "_default_history_path", lambda: history_file)
@@ -85,6 +94,7 @@ def test_main_frame_run_command_history_persists(monkeypatch, tmp_path, wx_app):
     class DummyAgent:
         def __init__(self, settings=None, confirm=None):
             pass
+
         def run_command(self, text):
             return {"ok": 1}
 
@@ -95,6 +105,7 @@ def test_main_frame_run_command_history_persists(monkeypatch, tmp_path, wx_app):
             return wx.ID_OK
 
     import app.ui.main_frame as main_frame
+
     importlib.reload(main_frame)
     monkeypatch.setattr(main_frame, "LocalAgent", DummyAgent)
     monkeypatch.setattr(main_frame, "CommandDialog", AutoDialog)
@@ -123,24 +134,16 @@ def test_log_handler_not_duplicated(tmp_path, wx_app):
             logger.removeHandler(h)
 
     frame1 = main_frame.MainFrame(None)
-    assert (
-        sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 1
-    )
+    assert sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 1
     frame1.Close()
     wx_app.Yield()
-    assert (
-        sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 0
-    )
+    assert sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 0
 
     frame2 = main_frame.MainFrame(None)
-    assert (
-        sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 1
-    )
+    assert sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 1
     frame2.Close()
     wx_app.Yield()
-    assert (
-        sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 0
-    )
+    assert sum(isinstance(h, main_frame.WxLogHandler) for h in logger.handlers) == 0
 
     # wx_app fixture handles cleanup
 
@@ -196,6 +199,7 @@ def test_main_frame_loads_requirements(monkeypatch, tmp_path, wx_app):
 
     import app.ui.list_panel as list_panel
     import app.ui.main_frame as main_frame
+
     importlib.reload(list_panel)
     importlib.reload(main_frame)
 
@@ -247,6 +251,7 @@ def test_main_frame_select_opens_editor(monkeypatch, tmp_path, wx_app):
 
     import app.ui.list_panel as list_panel
     import app.ui.main_frame as main_frame
+
     importlib.reload(list_panel)
     importlib.reload(main_frame)
 
@@ -300,6 +305,7 @@ def _prepare_frame(monkeypatch, tmp_path):
 
     import app.ui.list_panel as list_panel
     import app.ui.main_frame as main_frame
+
     importlib.reload(list_panel)
     importlib.reload(main_frame)
 

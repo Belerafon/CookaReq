@@ -70,7 +70,11 @@ def test_missing_source_id(tmp_path):
 
 
 def test_cycle_detection(tmp_path):
-    write_req(tmp_path, 1, derived_from=[{"source_id": 2, "source_revision": 1, "suspect": False}])
+    write_req(
+        tmp_path,
+        1,
+        derived_from=[{"source_id": 2, "source_revision": 1, "suspect": False}],
+    )
     data = make_valid()
     data["id"] = 2
     data["derived_from"] = [{"source_id": 1, "source_revision": 1, "suspect": False}]

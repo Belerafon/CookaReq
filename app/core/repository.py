@@ -67,7 +67,11 @@ class FileRequirementRepository(RequirementRepository):
         """Search requirements in ``directory`` with optional filters."""
 
         return req_ops.search_requirements(
-            directory, query=query, labels=labels, fields=fields, status=status
+            directory,
+            query=query,
+            labels=labels,
+            fields=fields,
+            status=status,
         )
 
     def load(self, directory: str | Path, req_id: int) -> tuple[dict, float]:  # type: ignore[override]
@@ -91,7 +95,10 @@ class FileRequirementRepository(RequirementRepository):
         """Persist requirement ``data`` to ``directory`` and return path."""
 
         return req_ops.save_requirement(
-            directory, data, mtime=mtime, modified_at=modified_at
+            directory,
+            data,
+            mtime=mtime,
+            modified_at=modified_at,
         )
 
     def delete(self, directory: str | Path, req_id: int) -> None:  # type: ignore[override]

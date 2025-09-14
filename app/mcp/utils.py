@@ -65,7 +65,11 @@ class ErrorCode(str, Enum):
     INTERNAL = "INTERNAL"
 
 
-def mcp_error(code: ErrorCode | str, message: str, details: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def mcp_error(
+    code: ErrorCode | str,
+    message: str,
+    details: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """Return a structured error payload for MCP responses."""
 
     code_str = code.value if isinstance(code, ErrorCode) else str(code)

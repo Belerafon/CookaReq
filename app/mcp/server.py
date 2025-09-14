@@ -52,7 +52,9 @@ def _configure_request_logging(log_dir: str | Path) -> None:
 
     text_path = log_dir_path / _TEXT_LOG_NAME
     text_handler = logging.FileHandler(text_path)
-    text_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    text_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(message)s"),
+    )
     text_handler.cookareq_request = True
     request_logger.addHandler(text_handler)
 
@@ -74,7 +76,11 @@ def _log_request(request: Request, status: int) -> None:
         "status": status,
     }
     request_logger.info(
-        "%s %s -> %s", request.method, request.url.path, status, extra={"json": entry}
+        "%s %s -> %s",
+        request.method,
+        request.url.path,
+        status,
+        extra={"json": entry},
     )
 
 
@@ -100,6 +106,7 @@ async def auth_middleware(request: Request, call_next):
 async def health() -> dict[str, str]:
     """Simple readiness probe used by external tools."""
     return {"status": "ok"}
+
 
 # FastMCP provides the server-side implementation of the MCP protocol.
 # Tools are registered via decorators below and invoked through the custom
@@ -224,7 +231,8 @@ async def call_tool(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # pragma: no cover - defensive
         return JSONResponse(
-            mcp_error(ErrorCode.VALIDATION_ERROR, "invalid json"), status_code=400
+            mcp_error(ErrorCode.VALIDATION_ERROR, "invalid json"),
+            status_code=400,
         )
 
     name = body.get("name")
@@ -246,9 +254,11 @@ async def call_tool(request: Request) -> JSONResponse:
         result = func(**arguments)
     except TypeError as exc:
         return JSONResponse(
-            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)), status_code=400
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+            status_code=400,
         )
     return JSONResponse(result)
+
 
 # Internal state for the background server
 _uvicorn_server: uvicorn.Server | None = None

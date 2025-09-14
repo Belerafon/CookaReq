@@ -1,4 +1,5 @@
 """Label definitions, preset sets and in-memory CRUD helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,45 +28,55 @@ def _preset(names: list[str]) -> list[Label]:
 
 
 PRESET_SETS: dict[str, list[Label]] = {
-    "basic": _preset([
-        "functional",
-        "non-functional",
-        "ui",
-        "performance",
-        "reliability",
-        "safety",
-        "security",
-        "usability",
-        "constraint",
-        "regulatory",
-    ]),
-    "role": _preset([
-        "system",
-        "software",
-        "hardware",
-        "integration",
-        "test",
-    ]),
-    "status": _preset([
-        "draft",
-        "approved",
-        "in-progress",
-        "implemented",
-        "verified",
-        "obsolete",
-    ]),
-    "priority": _preset([
-        "high",
-        "medium",
-        "low",
-    ]),
-    "additional": _preset([
-        "critical",
-        "derived",
-        "untested",
-        "suspect-link",
-        "attachments",
-    ]),
+    "basic": _preset(
+        [
+            "functional",
+            "non-functional",
+            "ui",
+            "performance",
+            "reliability",
+            "safety",
+            "security",
+            "usability",
+            "constraint",
+            "regulatory",
+        ],
+    ),
+    "role": _preset(
+        [
+            "system",
+            "software",
+            "hardware",
+            "integration",
+            "test",
+        ],
+    ),
+    "status": _preset(
+        [
+            "draft",
+            "approved",
+            "in-progress",
+            "implemented",
+            "verified",
+            "obsolete",
+        ],
+    ),
+    "priority": _preset(
+        [
+            "high",
+            "medium",
+            "low",
+        ],
+    ),
+    "additional": _preset(
+        [
+            "critical",
+            "derived",
+            "untested",
+            "suspect-link",
+            "attachments",
+        ],
+    ),
 }
 
 PRESET_SET_TITLES: dict[str, str] = {

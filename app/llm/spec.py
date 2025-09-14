@@ -35,7 +35,7 @@ TOOLS: list[dict[str, Any]] = [
                     "per_page": {
                         "type": "integer",
                         "description": "number of items per page",
-                    }
+                    },
                 },
                 "required": [],
                 "additionalProperties": False,
@@ -93,7 +93,7 @@ TOOLS: list[dict[str, Any]] = [
                                     "requirement",
                                     "constraint",
                                     "interface",
-                                ]
+                                ],
                             },
                             "status": {
                                 "enum": [
@@ -102,11 +102,11 @@ TOOLS: list[dict[str, Any]] = [
                                     "approved",
                                     "baselined",
                                     "retired",
-                                ]
+                                ],
                             },
                             "owner": {"type": "string"},
                             "priority": {
-                                "enum": ["low", "medium", "high"]
+                                "enum": ["low", "medium", "high"],
                             },
                             "source": {"type": "string"},
                             "verification": {
@@ -115,7 +115,7 @@ TOOLS: list[dict[str, Any]] = [
                                     "analysis",
                                     "demonstration",
                                     "test",
-                                ]
+                                ],
                             },
                             "labels": {
                                 "type": "array",
@@ -134,7 +134,7 @@ TOOLS: list[dict[str, Any]] = [
                             "verification",
                         ],
                         "additionalProperties": True,
-                    }
+                    },
                 },
                 "required": ["data"],
                 "additionalProperties": False,
@@ -201,4 +201,3 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
 ]
-

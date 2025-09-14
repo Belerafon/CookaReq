@@ -29,7 +29,11 @@ class ListPanelLike(Protocol):
 class ConfigManager:
     """Wrapper around :class:`wx.Config` with typed helpers."""
 
-    def __init__(self, app_name: str = "CookaReq", path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        app_name: str = "CookaReq",
+        path: Path | str | None = None,
+    ) -> None:
         """Initialize configuration storage.
 
         Parameters
@@ -191,9 +195,7 @@ class ConfigManager:
             model=self._cfg.Read("llm_model", ""),
             api_key=self._cfg.Read("llm_api_key", "") or None,
             max_retries=self._cfg.ReadInt("llm_max_retries", 3),
-            max_output_tokens=(
-                self._cfg.ReadInt("llm_max_output_tokens", 0) or None
-            ),
+            max_output_tokens=(self._cfg.ReadInt("llm_max_output_tokens", 0) or None),
             timeout_minutes=self._cfg.ReadInt("llm_timeout_minutes", 60),
             stream=self._cfg.ReadBool("llm_stream", False),
         )
@@ -206,7 +208,8 @@ class ConfigManager:
         self._cfg.Write("llm_api_key", settings.api_key or "")
         self._cfg.WriteInt("llm_max_retries", settings.max_retries)
         self._cfg.WriteInt(
-            "llm_max_output_tokens", settings.max_output_tokens or 0
+            "llm_max_output_tokens",
+            settings.max_output_tokens or 0,
         )
         self._cfg.WriteInt("llm_timeout_minutes", settings.timeout_minutes)
         self._cfg.WriteBool("llm_stream", settings.stream)

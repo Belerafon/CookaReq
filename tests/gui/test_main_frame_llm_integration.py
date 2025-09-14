@@ -13,12 +13,21 @@ from tests.llm_utils import make_openai_mock, settings_with_llm
 
 pytestmark = [pytest.mark.gui, pytest.mark.integration]
 
-def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch, wx_app, mcp_server) -> None:
+
+def test_main_frame_creates_requirement_via_llm(
+    tmp_path: Path,
+    monkeypatch,
+    wx_app,
+    mcp_server,
+) -> None:
     wx = pytest.importorskip("wx")
     port = mcp_server
     mcp_app.state.base_path = str(tmp_path)
     settings = settings_with_llm(tmp_path)
-    config = main_frame.ConfigManager(app_name="CookaReqTest", path=tmp_path / "cfg.ini")
+    config = main_frame.ConfigManager(
+        app_name="CookaReqTest",
+        path=tmp_path / "cfg.ini",
+    )
     config.set_llm_settings(settings.llm)
     config.set_mcp_settings(
         MCPSettings(
@@ -27,7 +36,7 @@ def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch, wx_
             base_path=str(tmp_path),
             require_token=False,
             token="",
-        )
+        ),
     )
     history_file = tmp_path / "history.json"
     monkeypatch.setattr(cmd, "_default_history_path", lambda: history_file)
@@ -55,10 +64,10 @@ def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch, wx_
                             "priority": "medium",
                             "source": "spec",
                             "verification": "analysis",
-                        }
+                        },
                     },
-                )
-            }
+                ),
+            },
         ),
     )
 
@@ -84,7 +93,10 @@ def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch, wx_
 
 def test_run_command_without_base_url(monkeypatch, tmp_path: Path, wx_app) -> None:
     wx = pytest.importorskip("wx")
-    config = main_frame.ConfigManager(app_name="CookaReqTest", path=tmp_path / "cfg.ini")
+    config = main_frame.ConfigManager(
+        app_name="CookaReqTest",
+        path=tmp_path / "cfg.ini",
+    )
     config.set_llm_settings(LLMSettings(base_url="", model="foo", api_key=None))
     frame = main_frame.MainFrame(None, config=config)
     called: dict[str, str] = {}

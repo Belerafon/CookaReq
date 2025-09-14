@@ -1,3 +1,1 @@
 """Graphical user interface package."""
-
-

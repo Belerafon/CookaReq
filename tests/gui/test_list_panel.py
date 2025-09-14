@@ -18,16 +18,22 @@ def _build_wx_stub():
             self._bindings = {}
             self._shown = True
             self._tooltip = None
+
         def GetParent(self):
             return self._parent
+
         def Bind(self, event, handler):
             self._bindings[event] = handler
+
         def Show(self, show=True):
             self._shown = bool(show)
+
         def Hide(self):
             self._shown = False
+
         def IsShown(self):
             return self._shown
+
         def SetToolTip(self, tip):
             self._tooltip = tip
 
@@ -39,8 +45,10 @@ def _build_wx_stub():
         def __init__(self, parent=None):
             super().__init__(parent)
             self._sizer = None
+
         def SetSizer(self, sizer):
             self._sizer = sizer
+
         def GetSizer(self):
             return self._sizer
 
@@ -48,8 +56,10 @@ def _build_wx_stub():
         def __init__(self, parent=None):
             super().__init__(parent)
             self._value = ""
+
         def SetValue(self, value):
             self._value = value
+
         def GetValue(self):
             return self._value
 
@@ -63,8 +73,10 @@ def _build_wx_stub():
         def __init__(self, parent=None, label=""):
             super().__init__(parent)
             self._value = False
+
         def SetValue(self, value):
             self._value = bool(value)
+
         def GetValue(self):
             return self._value
 
@@ -72,6 +84,7 @@ def _build_wx_stub():
         def __init__(self, parent=None, label=""):
             super().__init__(parent)
             self._label = label
+
         def GetLabel(self):
             return self._label
 
@@ -104,32 +117,44 @@ def _build_wx_stub():
         def __init__(self, width, height):
             self._w = width
             self._h = height
+
         def GetWidth(self):
             return self._w
+
         def GetHeight(self):
             return self._h
 
     class MemoryDC:
         def __init__(self):
             self._bmp = None
+
         def SelectObject(self, bmp):
             self._bmp = bmp
+
         def SetFont(self, font):
             pass
+
         def SetBackground(self, brush):
             pass
+
         def Clear(self):
             pass
+
         def SetBrush(self, brush):
             pass
+
         def SetPen(self, pen):
             pass
+
         def DrawRectangle(self, x, y, w, h):
             pass
+
         def SetTextForeground(self, colour):
             pass
+
         def DrawText(self, text, x, y):
             pass
+
         def GetTextExtent(self, text):
             return (len(text) * 6, 10)
 
@@ -137,12 +162,16 @@ def _build_wx_stub():
         def __init__(self, parent=None, title=""):
             super().__init__(parent)
             self._title = title
+
         def CreateButtonSizer(self, flags):
             return BoxSizer(0)
+
         def SetSizerAndFit(self, sizer):
             self._sizer = sizer
+
         def ShowModal(self):
             return 0
+
         def Destroy(self):
             pass
 
@@ -151,10 +180,13 @@ def _build_wx_stub():
             super().__init__(parent)
             self._choices = choices or []
             self._checked: set[int] = set()
+
         def GetCount(self):
             return len(self._choices)
+
         def IsChecked(self, idx):
             return idx in self._checked
+
         def Check(self, idx, check=True):
             if check:
                 self._checked.add(idx)
@@ -176,10 +208,12 @@ def _build_wx_stub():
             self._col_images = {}
             self._item_images = []
             self._cells = {}
+
         def InsertColumn(self, col, heading):
             if col >= len(self._cols):
                 self._cols.extend([None] * (col - len(self._cols) + 1))
             self._cols[col] = heading
+
         def ClearAll(self):
             self._items.clear()
             self._data.clear()
@@ -187,51 +221,73 @@ def _build_wx_stub():
             self._col_images.clear()
             self._item_images.clear()
             self._cells.clear()
+
         def DeleteAllItems(self):
             self._items.clear()
             self._data.clear()
             self._col_images.clear()
             self._item_images.clear()
             self._cells.clear()
+
         def GetItemCount(self):
             return len(self._items)
+
         def GetColumnCount(self):
             return len(self._cols)
+
         def InsertItem(self, index, text, image=-1):
             self._items.insert(index, text)
             self._data.insert(index, 0)
             self._item_images.insert(index, image)
             return index
+
         InsertStringItem = InsertItem
+
         def SetItem(self, index, col, text, image=-1):
             if col == 0:
                 self._items[index] = text
             self._cells[(index, col)] = text
+
         SetStringItem = SetItem
+
         def SetItemData(self, index, data):
             self._data[index] = data
+
         def GetItemData(self, index):
             return self._data[index]
+
         def HitTest(self, pt):
             return -1, 0
+
         def HitTestSubItem(self, pt):
             return -1, 0, -1
+
         def SetItemColumnImage(self, index, col, img):
             self._col_images[(index, col)] = img
+
         def SetItemImage(self, index, img):
             if index >= len(self._item_images):
                 self._item_images.extend([-1] * (index - len(self._item_images) + 1))
             self._item_images[index] = img
+
         def GetItem(self, index, col=0):
             text = self._items[index] if col == 0 else self._cells.get((index, col), "")
-            img = self._item_images[index] if col == 0 else self._col_images.get((index, col), -1)
+            img = (
+                self._item_images[index]
+                if col == 0
+                else self._col_images.get((index, col), -1)
+            )
             return types.SimpleNamespace(GetText=lambda: text, GetImage=lambda: img)
+
         def GetFont(self):
             return Font()
+
         def GetBackgroundColour(self):
             return Colour("#ffffff")
+
         def SetImageList(self, il, which):
             self._imagelist = il
+
         def GetImageList(self, which):
             return self._imagelist
 
@@ -241,26 +297,35 @@ def _build_wx_stub():
             self._col = 0
             self._text = ""
             self._renderer = None
+
         def SetId(self, value):
             self._id = value
+
         def GetId(self):
             return self._id
+
         def SetColumn(self, value):
             self._col = value
+
         def GetColumn(self):
             return self._col
+
         def SetText(self, text):
             self._text = text
+
         def GetText(self):
             return self._text
+
         def SetCustomRenderer(self, rend):
             self._renderer = rend
+
         def GetCustomRenderer(self):
             return self._renderer
 
     class UltimateListCtrl(_BaseList):
         def __init__(self, parent=None, agw_style=0, **kwargs):
             super().__init__(parent)
+
         def SetItem(self, item):
             pass
 
@@ -273,31 +338,43 @@ def _build_wx_stub():
             self._w = width
             self._h = height
             self._images = []
+
         def Add(self, bmp):
             self._images.append(bmp)
             return len(self._images) - 1
+
         def GetSize(self):
             return self._w, self._h
+
         def GetImageCount(self):
             return len(self._images)
+
         def GetBitmap(self, idx):
             return self._images[idx]
 
     class BoxSizer:
         def __init__(self, orient):
             self._children = []
+
         def Add(self, window, proportion, flag, border):
             self._children.append(window)
+
         def GetChildren(self):
-            return [types.SimpleNamespace(GetWindow=lambda w=child: w) for child in self._children]
+            return [
+                types.SimpleNamespace(GetWindow=lambda w=child: w)
+                for child in self._children
+            ]
 
     class Config:
         def read_int(self, key, default):
             return default
+
         def write_int(self, key, value):
             pass
+
         def read(self, key, default=""):
             return default
+
         def write(self, key, value):
             pass
 
@@ -344,6 +421,7 @@ def _build_wx_stub():
         NullBitmap=object(),
         BLACK=Colour(0, 0, 0),
     )
+
     class ColumnSorterMixin:
         def __init__(self, *args, **kwargs):
             ctrl = self.GetListCtrl()
@@ -424,16 +502,20 @@ def test_column_click_sorts(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["id"])
-    panel.set_requirements([
-        _req(2, "B"),
-        _req(1, "A"),
-    ])
+    panel.set_requirements(
+        [
+            _req(2, "B"),
+            _req(1, "A"),
+        ],
+    )
 
     panel._on_col_click(types.SimpleNamespace(GetColumn=lambda: 0))
     assert [r.id for r in panel.model.get_visible()] == [1, 2]
@@ -455,16 +537,20 @@ def test_column_click_after_set_columns_triggers_sort(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["id"])
-    panel.set_requirements([
-        _req(2, "B"),
-        _req(1, "A"),
-    ])
+    panel.set_requirements(
+        [
+            _req(2, "B"),
+            _req(1, "A"),
+        ],
+    )
 
     handler = panel.list.get_bound_handler(wx_stub.EVT_LIST_COL_CLICK)
     handler(types.SimpleNamespace(GetColumn=lambda: 1))
@@ -481,15 +567,19 @@ def test_search_and_label_filters(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
-    panel.set_requirements([
-        _req(1, "Login", labels=["ui"]),
-        _req(2, "Export", labels=["report"]),
-    ])
+    panel.set_requirements(
+        [
+            _req(1, "Login", labels=["ui"]),
+            _req(2, "Export", labels=["report"]),
+        ],
+    )
 
     panel.set_label_filter(["ui"])
     assert [r.id for r in panel.model.get_visible()] == [1]
@@ -503,7 +593,6 @@ def test_search_and_label_filters(monkeypatch):
     assert panel.model.get_visible() == []
 
 
-
 def test_apply_filters(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
@@ -514,15 +603,19 @@ def test_apply_filters(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
-    panel.set_requirements([
-        _req(1, "Login", labels=["ui"], owner="alice"),
-        _req(2, "Export", labels=["report"], owner="bob"),
-    ])
+    panel.set_requirements(
+        [
+            _req(1, "Login", labels=["ui"], owner="alice"),
+            _req(2, "Export", labels=["report"], owner="bob"),
+        ],
+    )
 
     panel.apply_filters({"labels": ["ui"]})
     assert [r.id for r in panel.model.get_visible()] == [1]
@@ -541,7 +634,9 @@ def test_reset_button_visibility(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
@@ -563,15 +658,19 @@ def test_apply_status_filter(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
-    panel.set_requirements([
-        _req(1, "A", status=Status.DRAFT),
-        _req(2, "B", status=Status.APPROVED),
-    ])
+    panel.set_requirements(
+        [
+            _req(1, "A", status=Status.DRAFT),
+            _req(2, "B", status=Status.APPROVED),
+        ],
+    )
 
     panel.apply_filters({"status": "approved"})
     assert [r.id for r in panel.model.get_visible()] == [2]
@@ -589,15 +688,19 @@ def test_labels_column_uses_imagelist(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
-    panel.set_requirements([
-        _req(1, "A", labels=["ui", "backend"]),
-    ])
+    panel.set_requirements(
+        [
+            _req(1, "A", labels=["ui", "backend"]),
+        ],
+    )
     labels_col = panel.columns.index("labels") + 1
     # В колонке labels должен появиться image-id, а колонка Title остаётся без картинки
     assert panel.list._col_images[(0, labels_col)] >= 0
@@ -614,16 +717,20 @@ def test_sort_by_labels(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
-    panel.set_requirements([
-        _req(1, "A", labels=["beta"]),
-        _req(2, "B", labels=["alpha"]),
-    ])
+    panel.set_requirements(
+        [
+            _req(1, "A", labels=["beta"]),
+            _req(2, "B", labels=["alpha"]),
+        ],
+    )
 
     panel.sort(1, True)
     assert [r.id for r in panel.model.get_visible()] == [2, 1]
@@ -639,16 +746,20 @@ def test_sort_by_multiple_labels(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
-    panel.set_requirements([
-        _req(1, "A", labels=["alpha", "zeta"]),
-        _req(2, "B", labels=["alpha", "beta"]),
-    ])
+    panel.set_requirements(
+        [
+            _req(1, "A", labels=["alpha", "zeta"]),
+            _req(2, "B", labels=["alpha", "beta"]),
+        ],
+    )
 
     panel.sort(1, True)
     assert [r.id for r in panel.model.get_visible()] == [2, 1]
@@ -664,7 +775,9 @@ def test_bulk_edit_updates_requirements(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
@@ -691,17 +804,25 @@ def test_sort_method_and_callback(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
     calls = []
-    panel = list_panel_cls(frame, model=requirement_model_cls(), on_sort_changed=lambda c, a: calls.append((c, a)))
+    panel = list_panel_cls(
+        frame,
+        model=requirement_model_cls(),
+        on_sort_changed=lambda c, a: calls.append((c, a)),
+    )
     panel.set_columns(["id"])
-    panel.set_requirements([
-        _req(2, "B"),
-        _req(1, "A"),
-    ])
+    panel.set_requirements(
+        [
+            _req(2, "B"),
+            _req(1, "A"),
+        ],
+    )
 
     panel.sort(1, True)
     assert [r.id for r in panel.model.get_visible()] == [1, 2]
@@ -722,7 +843,9 @@ def test_reorder_columns(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
     list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)

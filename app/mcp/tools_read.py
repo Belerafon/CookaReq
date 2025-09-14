@@ -1,4 +1,5 @@
 """Utility functions for MCP requirement access."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -43,11 +44,17 @@ def list_requirements(
         return log_tool(
             "list_requirements",
             params,
-            mcp_error(ErrorCode.NOT_FOUND, "directory not found", {"directory": str(directory)}),
+            mcp_error(
+                ErrorCode.NOT_FOUND,
+                "directory not found",
+                {"directory": str(directory)},
+            ),
         )
     except Exception as exc:  # pragma: no cover - defensive
         return log_tool(
-            "list_requirements", params, mcp_error(ErrorCode.INTERNAL, str(exc))
+            "list_requirements",
+            params,
+            mcp_error(ErrorCode.INTERNAL, str(exc)),
         )
     return log_tool("list_requirements", params, _paginate(reqs, page, per_page))
 
@@ -65,7 +72,9 @@ def get_requirement(directory: str | Path, req_id: int) -> dict:
         )
     except Exception as exc:  # pragma: no cover - defensive
         return log_tool(
-            "get_requirement", params, mcp_error(ErrorCode.INTERNAL, str(exc))
+            "get_requirement",
+            params,
+            mcp_error(ErrorCode.INTERNAL, str(exc)),
         )
     return log_tool("get_requirement", params, requirement_to_dict(req))
 
@@ -90,16 +99,25 @@ def search_requirements(
     }
     try:
         reqs = req_ops.search_requirements(
-            directory, query=query, labels=labels, status=status
+            directory,
+            query=query,
+            labels=labels,
+            status=status,
         )
     except FileNotFoundError:
         return log_tool(
             "search_requirements",
             params,
-            mcp_error(ErrorCode.NOT_FOUND, "directory not found", {"directory": str(directory)}),
+            mcp_error(
+                ErrorCode.NOT_FOUND,
+                "directory not found",
+                {"directory": str(directory)},
+            ),
         )
     except Exception as exc:  # pragma: no cover - defensive
         return log_tool(
-            "search_requirements", params, mcp_error(ErrorCode.INTERNAL, str(exc))
+            "search_requirements",
+            params,
+            mcp_error(ErrorCode.INTERNAL, str(exc)),
         )
     return log_tool("search_requirements", params, _paginate(reqs, page, per_page))

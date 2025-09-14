@@ -35,9 +35,11 @@ def _req(req_id: int, title: str, **kwargs) -> Requirement:
 def test_list_panel_real_widgets(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
+
     importlib.reload(list_panel)
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
+
     panel = list_panel.ListPanel(frame, model=RequirementModel())
 
     frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
@@ -61,9 +63,11 @@ def test_list_panel_real_widgets(wx_app):
 def test_reset_button_visibility_gui(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
+
     importlib.reload(list_panel)
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
+
     panel = list_panel.ListPanel(frame, model=RequirementModel())
     panel.set_search_query("T")
     wx_app.Yield()
@@ -77,6 +81,7 @@ def test_reset_button_visibility_gui(wx_app):
 def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
+
     importlib.reload(list_panel)
     frame = wx.Frame(None)
     called: dict[str, int] = {}
@@ -88,7 +93,13 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
         called["delete"] = req_id
 
     from app.ui.requirement_model import RequirementModel
-    panel = list_panel.ListPanel(frame, model=RequirementModel(), on_clone=on_clone, on_delete=on_delete)
+
+    panel = list_panel.ListPanel(
+        frame,
+        model=RequirementModel(),
+        on_clone=on_clone,
+        on_delete=on_delete,
+    )
     panel.set_columns(["version"])
     reqs = [_req(1, "T", version="1")]
     panel.set_requirements(reqs)
@@ -119,9 +130,11 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
 def test_list_panel_context_menu_via_event(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
+
     importlib.reload(list_panel)
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
+
     panel = list_panel.ListPanel(frame, model=RequirementModel())
     panel.set_columns(["version"])
     panel.set_requirements([_req(1, "T", version="1")])
@@ -152,9 +165,11 @@ def test_list_panel_context_menu_via_event(monkeypatch, wx_app):
 def test_bulk_edit_updates_selected_items(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
+
     importlib.reload(list_panel)
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
+
     panel = list_panel.ListPanel(frame, model=RequirementModel())
     panel.set_columns(["version", "type"])
     reqs = [
@@ -172,20 +187,29 @@ def test_bulk_edit_updates_selected_items(monkeypatch, wx_app):
     panel._on_edit_field(1)
     panel._on_edit_field(2)
     assert [r.version for r in reqs] == ["2", "2"]
-    assert [r.type for r in reqs] == [RequirementType.CONSTRAINT, RequirementType.CONSTRAINT]
+    assert [r.type for r in reqs] == [
+        RequirementType.CONSTRAINT,
+        RequirementType.CONSTRAINT,
+    ]
     frame.Destroy()
 
 
 def test_recalc_derived_map_updates_count(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
+
     importlib.reload(list_panel)
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
+
     panel = list_panel.ListPanel(frame, model=RequirementModel())
     panel.set_columns(["derived_count"])
     req1 = _req(1, "S")
-    req2 = _req(2, "D", derived_from=[DerivationLink(source_id=1, source_revision=1, suspect=False)])
+    req2 = _req(
+        2,
+        "D",
+        derived_from=[DerivationLink(source_id=1, source_revision=1, suspect=False)],
+    )
     panel.set_requirements([req1, req2])
     assert panel.list.GetItem(0, 1).GetText() == "1"
     req2.derived_from = []
@@ -197,14 +221,14 @@ def test_recalc_derived_map_updates_count(wx_app):
 def test_reorder_columns_gui(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
+
     importlib.reload(list_panel)
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
+
     panel = list_panel.ListPanel(frame, model=RequirementModel())
     panel.set_columns(["id", "status"])
     panel.reorder_columns(1, 2)
     assert panel.columns == ["status", "id"]
     assert panel.list.GetColumn(1).GetText() == "status"
     frame.Destroy()
-
-

@@ -94,7 +94,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter)
         self.reset_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.reset_filters())
 
-# ColumnSorterMixin requirement
+    # ColumnSorterMixin requirement
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
         """Return internal ``wx.ListCtrl`` for sorting mixin."""
 
@@ -448,7 +448,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetItem(index, col, str(count))
                     continue
                 if field == "attachments":
-                    value = ", ".join(getattr(a, "path", "") for a in getattr(req, "attachments", []))
+                    value = ", ".join(
+                        getattr(a, "path", "") for a in getattr(req, "attachments", [])
+                    )
                     self.list.SetItem(index, col, value)
                     continue
                 value = getattr(req, field, "")
@@ -484,9 +486,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _on_col_click(self, event: ListEvent) -> None:  # pragma: no cover - GUI event
         col = event.GetColumn()
-        ascending = (
-            not self._sort_ascending if col == self._sort_column else True
-        )
+        ascending = not self._sort_ascending if col == self._sort_column else True
         self.sort(col, ascending)
 
     def sort(self, column: int, ascending: bool) -> None:
@@ -514,7 +514,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             col = None
         self._popup_context_menu(event.GetIndex(), col)
 
-    def _on_context_menu(self, event: ContextMenuEvent) -> None:  # pragma: no cover - GUI event
+    def _on_context_menu(
+        self,
+        event: ContextMenuEvent,
+    ) -> None:  # pragma: no cover - GUI event
         pos = event.GetPosition()
         if pos == wx.DefaultPosition:
             pos = wx.GetMousePosition()
@@ -550,13 +553,25 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         edit_item = None
         if field and field != "title":
             edit_item = menu.Append(wx.ID_ANY, _("Edit {field}").format(field=field))
-            menu.Bind(wx.EVT_MENU, lambda _evt, c=column: self._on_edit_field(c), edit_item)
+            menu.Bind(
+                wx.EVT_MENU,
+                lambda _evt, c=column: self._on_edit_field(c),
+                edit_item,
+            )
         if self._on_clone:
             menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_clone(i), clone_item)
         if self._on_delete:
-            menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_delete(i), delete_item)
+            menu.Bind(
+                wx.EVT_MENU,
+                lambda _evt, i=req_id: self._on_delete(i),
+                delete_item,
+            )
         if self._on_derive:
-            menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_derive(i), derive_item)
+            menu.Bind(
+                wx.EVT_MENU,
+                lambda _evt, i=req_id: self._on_derive(i),
+                derive_item,
+            )
         return menu, clone_item, delete_item, edit_item
 
     def _get_selected_indices(self) -> list[int]:
@@ -571,7 +586,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if field in ENUMS:
             enum_cls = ENUMS[field]
             choices = [locale.code_to_label(field, e.value) for e in enum_cls]
-            dlg = wx.SingleChoiceDialog(self, _("Select {field}").format(field=field), _("Edit"), choices)
+            dlg = wx.SingleChoiceDialog(
+                self,
+                _("Select {field}").format(field=field),
+                _("Edit"),
+                choices,
+            )
             if dlg.ShowModal() == wx.ID_OK:
                 label = dlg.GetStringSelection()
                 code = locale.label_to_code(field, label)
@@ -581,7 +601,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             dlg.Destroy()
             return value
         dlg = wx.TextEntryDialog(
-            self, _("New value for {field}").format(field=field), _("Edit")
+            self,
+            _("New value for {field}").format(field=field),
+            _("Edit"),
         )
         value = dlg.GetValue() if dlg.ShowModal() == wx.ID_OK else None
         dlg.Destroy()

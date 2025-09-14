@@ -57,6 +57,39 @@ def test_cli_list_status_filter(tmp_path, capsys):
     assert "1" not in captured
 
 
+def test_cli_list_label_filter(tmp_path, capsys):
+    data1 = sample() | {"labels": ["a"]}
+    data2 = sample() | {"id": 2, "labels": ["b"]}
+    save(tmp_path, data1)
+    save(tmp_path, data2)
+    run_cli(["list", str(tmp_path), "--labels", "a"])
+    captured = capsys.readouterr().out
+    assert "1" in captured
+    assert "2" not in captured
+
+
+def test_cli_list_query_filter(tmp_path, capsys):
+    data1 = sample() | {"title": "Alpha"}
+    data2 = sample() | {"id": 2, "title": "Beta"}
+    save(tmp_path, data1)
+    save(tmp_path, data2)
+    run_cli(["list", str(tmp_path), "--query", "Beta"])
+    captured = capsys.readouterr().out
+    assert "2" in captured
+    assert "1" not in captured
+
+
+def test_cli_list_field_filter(tmp_path, capsys):
+    data1 = sample() | {"title": "Alpha", "statement": "Gamma"}
+    data2 = sample() | {"id": 2, "title": "Gamma", "statement": "Alpha"}
+    save(tmp_path, data1)
+    save(tmp_path, data2)
+    run_cli(["list", str(tmp_path), "--query", "Alpha", "--fields", "title"])
+    captured = capsys.readouterr().out
+    assert "1" in captured
+    assert "2" not in captured
+
+
 def test_cli_show(tmp_path, capsys):
     data = sample()
     save(tmp_path, data)
@@ -81,6 +114,12 @@ def test_cli_clone(tmp_path, capsys):
     source = json.loads(capsys.readouterr().out)
     assert source["revision"] == 5
     assert source["modified_at"] == original["modified_at"]
+
+
+def test_cli_clone_missing_source(tmp_path, capsys):
+    run_cli(["clone", str(tmp_path), "1", "2"])
+    captured = capsys.readouterr().out
+    assert "requirement 1 not found" in captured
 
 
 def test_cli_edit(tmp_path, capsys):
@@ -183,6 +222,84 @@ def test_cli_check_uses_agent(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr().out
     assert called["llm"] and called["mcp"]
     assert "llm" in captured and "mcp" in captured
+
+
+def test_cli_check_llm_only(tmp_path, monkeypatch, capsys):
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text("{}")
+
+    called: dict[str, object] = {}
+
+    class DummyAgent:
+        def __init__(self, settings, confirm):
+            pass
+
+        def check_llm(self):
+            called["llm"] = True
+            return {"status": "ok"}
+
+        def check_tools(self):
+            called["mcp"] = True
+            return {"status": "ok"}
+
+    import app.cli.commands as cli_mod
+
+    monkeypatch.setattr(cli_mod, "LocalAgent", DummyAgent)
+
+    run_cli(["--settings", str(settings_file), "check", "--llm"])
+    captured = capsys.readouterr().out
+    assert called.get("llm") and not called.get("mcp")
+    assert "llm" in captured
+    assert "mcp" not in captured
+
+
+def test_cli_check_mcp_only(tmp_path, monkeypatch, capsys):
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text("{}")
+
+    called: dict[str, object] = {}
+
+    class DummyAgent:
+        def __init__(self, settings, confirm):
+            pass
+
+        def check_llm(self):
+            called["llm"] = True
+            return {"status": "ok"}
+
+        def check_tools(self):
+            called["mcp"] = True
+            return {"status": "ok"}
+
+    import app.cli.commands as cli_mod
+
+    monkeypatch.setattr(cli_mod, "LocalAgent", DummyAgent)
+
+    run_cli(["--settings", str(settings_file), "check", "--mcp"])
+    captured = capsys.readouterr().out
+    assert called.get("mcp") and not called.get("llm")
+    assert "mcp" in captured
+    assert "llm" not in captured
+
+
+def test_cli_add_missing_file(tmp_path):
+    req_dir = tmp_path / "reqs"
+    req_dir.mkdir()
+    missing = req_dir / "missing.json"
+    with pytest.raises(FileNotFoundError) as exc:
+        run_cli(["add", str(req_dir), str(missing)])
+    assert "No such file or directory" in str(exc.value)
+
+
+def test_cli_edit_missing_file(tmp_path):
+    req_dir = tmp_path / "reqs"
+    req_dir.mkdir()
+    data = sample()
+    save(req_dir, data)
+    missing = req_dir / "missing.json"
+    with pytest.raises(FileNotFoundError) as exc:
+        run_cli(["edit", str(req_dir), str(missing)])
+    assert "No such file or directory" in str(exc.value)
 
 
 def test_cli_add_invalid_json(tmp_path, capsys):

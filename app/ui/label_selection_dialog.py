@@ -1,18 +1,22 @@
 """Dialog for selecting labels with color icons."""
 
 import wx
-from wx.lib.mixins.listctrl import CheckListCtrlMixin
+from contextlib import suppress
 
 from ..core.labels import Label
 from ..i18n import _
 
 
-class _CheckListCtrl(wx.ListCtrl, CheckListCtrlMixin):
-    """ListCtrl with checkboxes."""
+class _CheckListCtrl(wx.ListCtrl):
+    """ListCtrl with simple checkbox helpers."""
 
     def __init__(self, parent: wx.Window):
-        wx.ListCtrl.__init__(self, parent, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
-        CheckListCtrlMixin.__init__(self)
+        super().__init__(parent, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
+        with suppress(Exception):
+            self.EnableCheckBoxes(True)
+
+    def GetCheckedItems(self) -> list[int]:
+        return [i for i in range(self.GetItemCount()) if self.IsItemChecked(i)]
 
 
 class LabelSelectionDialog(wx.Dialog):
@@ -23,11 +27,18 @@ class LabelSelectionDialog(wx.Dialog):
         parent: wx.Window | None,
         labels: list[Label],
         selected: list[str],
+        *,
+        allow_freeform: bool = False,
     ):
-        """Initialize dialog listing ``labels`` with ``selected`` prechecked."""
+        """Initialize dialog listing ``labels`` with ``selected`` prechecked.
+
+        When ``allow_freeform`` is ``True`` an additional text field accepts
+        comma-separated custom label names.
+        """
         style = wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
         super().__init__(parent, title=_("Labels"), style=style)
         self._labels = list(labels)
+        self._allow_freeform = allow_freeform
 
         self.list = _CheckListCtrl(self)
         self.list.InsertColumn(0, _("Name"))
@@ -47,6 +58,13 @@ class LabelSelectionDialog(wx.Dialog):
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
+        if self._allow_freeform:
+            lbl = wx.StaticText(self, label=_("Custom labels (comma-separated)"))
+            sizer.Add(lbl, 0, wx.LEFT | wx.RIGHT, 5)
+            self.freeform_ctrl = wx.TextCtrl(self)
+            sizer.Add(self.freeform_ctrl, 0, wx.EXPAND | wx.ALL, 5)
+        else:
+            self.freeform_ctrl = None
         btn_sizer = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
         if btn_sizer:
             sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
@@ -77,5 +95,13 @@ class LabelSelectionDialog(wx.Dialog):
         self._resize_column()
 
     def get_selected(self) -> list[str]:
-        """Return names of checked labels."""
-        return [self._labels[i].name for i in self.list.GetCheckedItems()]
+        """Return names of checked and custom labels."""
+        names = [self._labels[i].name for i in self.list.GetCheckedItems()]
+        if self.freeform_ctrl:
+            extra = [
+                t.strip() for t in self.freeform_ctrl.GetValue().split(",") if t.strip()
+            ]
+            for name in extra:
+                if name not in names:
+                    names.append(name)
+        return names

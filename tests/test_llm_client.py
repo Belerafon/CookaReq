@@ -11,13 +11,24 @@ from app.llm.client import LLMClient
 from app.mcp.server import JsonlHandler
 from tests.llm_utils import make_openai_mock, settings_with_llm
 from app.settings import LLMSettings
+from types import SimpleNamespace
 
 
 def test_missing_api_key_ignores_env(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "dummy")
-    settings = LLMSettings(api_base="https://example", model="foo", api_key="")
-    with pytest.raises(ValueError):
-        LLMClient(settings)
+    captured: dict[str, str | None] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *, base_url, api_key, timeout, max_retries):  # pragma: no cover - simple capture
+            captured["api_key"] = api_key
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **kwargs: SimpleNamespace())
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    settings = LLMSettings(base_url="https://example", model="foo", api_key=None)
+    LLMClient(settings)
+    assert captured["api_key"] is None
 
 
 def test_check_llm(tmp_path: Path, monkeypatch) -> None:

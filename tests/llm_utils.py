@@ -66,10 +66,13 @@ def settings_with_llm(tmp_path: Path, *, api_key: str = "dummy") -> AppSettings:
     """Persist LLM settings with *api_key* to a file and load them."""
     data = {
         "llm": {
-            "api_base": "https://openrouter.ai/api/v1",
+            "base_url": "https://openrouter.ai/api/v1",
             "model": "qwen/qwen3-4b:free",
             "api_key": api_key,
-            "timeout": 60,
+            "max_retries": 3,
+            "max_output_tokens": 0,
+            "timeout_minutes": 60,
+            "stream": False,
         }
     }
     path = tmp_path / "settings.json"
@@ -95,10 +98,13 @@ def settings_with_mcp(
 
     settings = {
         "llm": {
-            "api_base": "https://openrouter.ai/api/v1",
+            "base_url": "https://openrouter.ai/api/v1",
             "model": "qwen/qwen3-4b:free",
             "api_key": api_key,
-            "timeout": 60,
+            "max_retries": 3,
+            "max_output_tokens": 0,
+            "timeout_minutes": 60,
+            "stream": False,
         },
         "mcp": {
             "host": host,
@@ -112,10 +118,13 @@ def settings_with_mcp(
     if fmt == "toml":
         toml = f"""
 [llm]
-api_base = \"{settings['llm']['api_base']}\"
+base_url = \"{settings['llm']['base_url']}\"
 model = \"{settings['llm']['model']}\"
 api_key = \"{settings['llm']['api_key']}\"
-timeout = {settings['llm']['timeout']}
+max_retries = {settings['llm']['max_retries']}
+max_output_tokens = {settings['llm']['max_output_tokens']}
+timeout_minutes = {settings['llm']['timeout_minutes']}
+stream = {str(settings['llm']['stream']).lower()}
 
 [mcp]
 host = \"{host}\"

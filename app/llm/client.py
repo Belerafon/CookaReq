@@ -22,20 +22,20 @@ class LLMClient:
         import openai
 
         self.settings = settings
-        api_key = self.settings.api_key
-        if not api_key:
-            raise ValueError("LLM API key is not configured")
+        if not self.settings.base_url:
+            raise ValueError("LLM base URL is not configured")
         self._client = openai.OpenAI(
-            base_url=self.settings.api_base or None,
-            api_key=api_key,
-            timeout=self.settings.timeout,
+            base_url=self.settings.base_url,
+            api_key=self.settings.api_key or None,
+            timeout=self.settings.timeout_minutes * 60,
+            max_retries=self.settings.max_retries,
         )
 
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
         """Perform a minimal request to verify connectivity."""
         payload = {
-            "api_base": self.settings.api_base,
+            "base_url": self.settings.base_url,
             "model": self.settings.model,
             "api_key": self.settings.api_key,
             "messages": [{"role": "user", "content": "ping"}],
@@ -69,7 +69,7 @@ class LLMClient:
         """
 
         payload = {
-            "api_base": self.settings.api_base,
+            "base_url": self.settings.base_url,
             "model": self.settings.model,
             "api_key": self.settings.api_key,
             "messages": [
@@ -79,6 +79,8 @@ class LLMClient:
             "tools": TOOLS,
             "tool_choice": "required",
             "temperature": 0,
+            "max_output_tokens": self.settings.max_output_tokens,
+            "stream": self.settings.stream,
         }
         start = time.monotonic()
         log_event("LLM_REQUEST", payload)
@@ -90,11 +92,27 @@ class LLMClient:
                 tools=payload["tools"],
                 tool_choice="required",
                 temperature=0,
+                max_output_tokens=self.settings.max_output_tokens or None,
+                stream=self.settings.stream,
             )
-            message = completion.choices[0].message
-            tool_call = message.tool_calls[0]
-            name = tool_call.function.name
-            arguments = json.loads(tool_call.function.arguments or "{}")
+            if self.settings.stream:
+                args_json = ""
+                name = ""
+                for chunk in completion:  # pragma: no cover - network/streaming
+                    delta = chunk.choices[0].delta
+                    tool_calls = getattr(delta, "tool_calls", None)
+                    if tool_calls:
+                        tc = tool_calls[0]
+                        fn = getattr(tc, "function", None)
+                        if fn:
+                            name = getattr(fn, "name", name) or name
+                            args_json += getattr(fn, "arguments", "") or ""
+                arguments = json.loads(args_json or "{}")
+            else:
+                message = completion.choices[0].message
+                tool_call = message.tool_calls[0]
+                name = tool_call.function.name
+                arguments = json.loads(tool_call.function.arguments or "{}")
             log_event("LLM_RESPONSE", {"tool": name, "arguments": arguments}, start_time=start)
             return name, arguments
         except Exception as exc:  # pragma: no cover - network errors

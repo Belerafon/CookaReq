@@ -34,10 +34,13 @@ class SettingsDialog(wx.Dialog):
         open_last: bool,
         remember_sort: bool,
         language: str,
-        api_base: str,
+        base_url: str,
         model: str,
         api_key: str,
-        timeout: int,
+        max_retries: int,
+        max_output_tokens: int,
+        timeout_minutes: int,
+        stream: bool,
         host: str,
         port: int,
         base_path: str,
@@ -74,10 +77,14 @@ class SettingsDialog(wx.Dialog):
 
         # LLM/Agent settings ---------------------------------------------
         llm = wx.Panel(nb)
-        self._api_base = wx.TextCtrl(llm, value=api_base)
+        self._base_url = wx.TextCtrl(llm, value=base_url)
         self._model = wx.TextCtrl(llm, value=model)
         self._api_key = wx.TextCtrl(llm, value=api_key, style=wx.TE_PASSWORD)
-        self._timeout = wx.SpinCtrl(llm, min=1, max=9999, initial=timeout)
+        self._max_retries = wx.SpinCtrl(llm, min=0, max=10, initial=max_retries)
+        self._max_output_tokens = wx.SpinCtrl(llm, min=0, max=500000, initial=max_output_tokens)
+        self._timeout = wx.SpinCtrl(llm, min=1, max=9999, initial=timeout_minutes)
+        self._stream = wx.CheckBox(llm, label=_("Stream"))
+        self._stream.SetValue(stream)
 
         self._check_llm = wx.Button(llm, label=_("Check LLM"))
         self._check_tools = wx.Button(llm, label=_("Check tools"))
@@ -89,8 +96,8 @@ class SettingsDialog(wx.Dialog):
 
         llm_sizer = wx.BoxSizer(wx.VERTICAL)
         base_sz = wx.BoxSizer(wx.HORIZONTAL)
-        base_sz.Add(wx.StaticText(llm, label=_("API base")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-        base_sz.Add(self._api_base, 1, wx.ALIGN_CENTER_VERTICAL)
+        base_sz.Add(wx.StaticText(llm, label=_("Base URL")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        base_sz.Add(self._base_url, 1, wx.ALIGN_CENTER_VERTICAL)
         llm_sizer.Add(base_sz, 0, wx.ALL | wx.EXPAND, 5)
         model_sz = wx.BoxSizer(wx.HORIZONTAL)
         model_sz.Add(wx.StaticText(llm, label=_("Model")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
@@ -100,10 +107,21 @@ class SettingsDialog(wx.Dialog):
         key_sz.Add(wx.StaticText(llm, label=_("API key")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         key_sz.Add(self._api_key, 1, wx.ALIGN_CENTER_VERTICAL)
         llm_sizer.Add(key_sz, 0, wx.ALL | wx.EXPAND, 5)
+        retries_sz = wx.BoxSizer(wx.HORIZONTAL)
+        retries_sz.Add(wx.StaticText(llm, label=_("Max retries")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        retries_sz.Add(self._max_retries, 1, wx.ALIGN_CENTER_VERTICAL)
+        llm_sizer.Add(retries_sz, 0, wx.ALL | wx.EXPAND, 5)
+        tokens_sz = wx.BoxSizer(wx.HORIZONTAL)
+        tokens_sz.Add(wx.StaticText(llm, label=_("Max output tokens")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        tokens_sz.Add(self._max_output_tokens, 1, wx.ALIGN_CENTER_VERTICAL)
+        llm_sizer.Add(tokens_sz, 0, wx.ALL | wx.EXPAND, 5)
         timeout_sz = wx.BoxSizer(wx.HORIZONTAL)
-        timeout_sz.Add(wx.StaticText(llm, label=_("Timeout")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        timeout_sz.Add(wx.StaticText(llm, label=_("Timeout (min)")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         timeout_sz.Add(self._timeout, 1, wx.ALIGN_CENTER_VERTICAL)
         llm_sizer.Add(timeout_sz, 0, wx.ALL | wx.EXPAND, 5)
+        stream_sz = wx.BoxSizer(wx.HORIZONTAL)
+        stream_sz.Add(self._stream, 0, wx.ALIGN_CENTER_VERTICAL)
+        llm_sizer.Add(stream_sz, 0, wx.ALL | wx.EXPAND, 5)
         btn_sz = wx.BoxSizer(wx.HORIZONTAL)
         llm_btn_sz = wx.BoxSizer(wx.VERTICAL)
         llm_btn_sz.Add(self._check_llm, 0, wx.BOTTOM, 2)
@@ -197,10 +215,13 @@ class SettingsDialog(wx.Dialog):
 
     def _current_llm_settings(self) -> LLMSettings:
         return LLMSettings(
-            api_base=self._api_base.GetValue(),
+            base_url=self._base_url.GetValue(),
             model=self._model.GetValue(),
-            api_key=self._api_key.GetValue(),
-            timeout=self._timeout.GetValue(),
+            api_key=self._api_key.GetValue() or None,
+            max_retries=self._max_retries.GetValue(),
+            max_output_tokens=self._max_output_tokens.GetValue() or None,
+            timeout_minutes=self._timeout.GetValue(),
+            stream=self._stream.GetValue(),
         )
 
     def _current_settings(self) -> MCPSettings:
@@ -261,6 +282,9 @@ class SettingsDialog(wx.Dialog):
         str,
         str,
         int,
+        int,
+        int,
+        bool,
         str,
         int,
         str,
@@ -273,10 +297,13 @@ class SettingsDialog(wx.Dialog):
             self._open_last.GetValue(),
             self._remember_sort.GetValue(),
             lang_code,
-            self._api_base.GetValue(),
+            self._base_url.GetValue(),
             self._model.GetValue(),
             self._api_key.GetValue(),
+            self._max_retries.GetValue(),
+            self._max_output_tokens.GetValue(),
             self._timeout.GetValue(),
+            self._stream.GetValue(),
             self._host.GetValue(),
             self._port.GetValue(),
             self._base_path.GetValue(),

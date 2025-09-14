@@ -11,7 +11,7 @@ pytestmark = pytest.mark.gui
 def test_title_column_expands_to_available_width(wx_app, monkeypatch):
     frame = wx.Frame(None)
     panel = EditorPanel(frame)
-    panel.set_directory('dummy')
+    panel.set_directory("dummy")
 
     req = Requirement(
         id=1,
@@ -24,14 +24,14 @@ def test_title_column_expands_to_available_width(wx_app, monkeypatch):
         source="",
         verification=Verification.ANALYSIS,
     )
-    monkeypatch.setattr(req_ops, 'get_requirement', lambda d, i: req)
+    monkeypatch.setattr(req_ops, "get_requirement", lambda d, i: req)
 
     frame.SetClientSize((400, 300))
     frame.Show()
     wx.GetApp().Yield()
 
-    panel.derived_id.SetValue('1')
-    panel._on_add_link_generic('derived_from')
+    panel.derived_id.SetValue("1")
+    panel._on_add_link_generic("derived_from")
 
     panel.derived_list.SendSizeEvent()
     wx.GetApp().Yield()

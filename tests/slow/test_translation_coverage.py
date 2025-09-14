@@ -9,11 +9,11 @@ pytestmark = pytest.mark.slow
 
 
 def test_po_files_have_no_missing_translations():
-    base = Path('app/locale')
+    base = Path("app/locale")
     catalogs = {}
     all_ids = set()
     for lang_dir in base.iterdir():
-        po_path = lang_dir / 'LC_MESSAGES' / 'CookaReq.po'
+        po_path = lang_dir / "LC_MESSAGES" / "CookaReq.po"
         if po_path.exists():
             catalog = polib.pofile(str(po_path))
             catalogs[lang_dir.name] = catalog

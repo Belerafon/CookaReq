@@ -25,8 +25,8 @@ def test_main_runs(monkeypatch):
             pass
 
     class DummyConfig:
-        def __init__(self, appName):
-            self.appName = appName
+        def __init__(self, **kwargs):
+            self.app_name = kwargs.get("appName")
         def Read(self, key):
             return ""
 

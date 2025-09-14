@@ -54,7 +54,7 @@ def test_save_and_restore_layout(tmp_path, log_shown, wx_app):
     cfg.save_layout(frame, splitter, main_splitter, panel)
 
     assert panel.saved_widths and panel.saved_order
-    assert cfg.ReadBool("log_shown") is log_shown
+    assert cfg.read_bool("log_shown") is log_shown
 
     new_frame = wx.Frame(None)
     new_main_splitter = wx.SplitterWindow(new_frame)
@@ -115,8 +115,8 @@ def test_sort_settings_round_trip(tmp_path, wx_app):
 
     cfg.set_sort_settings(3, False)
     assert cfg.get_sort_settings() == (3, False)
-    assert cfg.ReadInt("sort_column") == 3
-    assert cfg.ReadBool("sort_ascending") is False
+    assert cfg.read_int("sort_column") == 3
+    assert cfg.read_bool("sort_ascending") is False
 
 
 def test_restore_layout_without_show(tmp_path, wx_app):

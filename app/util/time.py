@@ -12,7 +12,11 @@ def utc_now_iso() -> str:
 
 def local_now_str() -> str:
     """Return local time in ``YYYY-MM-DD HH:MM:SS`` format."""
-    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return (
+        datetime.datetime.now(datetime.UTC)
+        .astimezone()
+        .strftime("%Y-%m-%d %H:%M:%S")
+    )
 
 
 def normalize_timestamp(value: str | None) -> str:

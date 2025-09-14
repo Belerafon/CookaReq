@@ -180,13 +180,13 @@ class LabelsDialog(wx.Dialog):
         dlg.Destroy()
 
     def _load_layout(self) -> None:
-        w = self._config.ReadInt("labels_w", 300)
-        h = self._config.ReadInt("labels_h", 200)
+        w = self._config.read_int("labels_w", 300)
+        h = self._config.read_int("labels_h", 200)
         w = max(200, min(w, 1000))
         h = max(150, min(h, 800))
         self.SetSize((w, h))
-        x = self._config.ReadInt("labels_x", -1)
-        y = self._config.ReadInt("labels_y", -1)
+        x = self._config.read_int("labels_x", -1)
+        y = self._config.read_int("labels_y", -1)
         if x != -1 and y != -1:
             self.SetPosition((x, y))
             rect = self.GetRect()
@@ -209,11 +209,11 @@ class LabelsDialog(wx.Dialog):
     def _save_layout(self) -> None:
         w, h = self.GetSize()
         x, y = self.GetPosition()
-        self._config.WriteInt("labels_w", w)
-        self._config.WriteInt("labels_h", h)
-        self._config.WriteInt("labels_x", x)
-        self._config.WriteInt("labels_y", y)
-        self._config.Flush()
+        self._config.write_int("labels_w", w)
+        self._config.write_int("labels_h", h)
+        self._config.write_int("labels_x", x)
+        self._config.write_int("labels_y", y)
+        self._config.flush()
 
     def Destroy(self) -> bool:  # pragma: no cover - GUI side effect
         """Save window geometry before closing dialog."""

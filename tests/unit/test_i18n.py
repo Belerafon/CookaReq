@@ -10,13 +10,13 @@ pytestmark = pytest.mark.unit
 def test_parse_po_multiline_and_unfinished(tmp_path):
     po_content = (
         "# comment\n"
-        "msgid \"hello\"\n"
-        "msgstr \"\"\n\n"
-        "msgid \"multi\"\n"
-        "\"id\"\n"
-        "msgstr \"multi\"\n"
-        "\"str\"\n\n"
-        "msgid \"unfinished\"\n"
+        'msgid "hello"\n'
+        'msgstr ""\n\n'
+        'msgid "multi"\n'
+        '"id"\n'
+        'msgstr "multi"\n'
+        '"str"\n\n'
+        'msgid "unfinished"\n'
         "# TODO\n"
     )
     po_path = tmp_path / "sample.po"

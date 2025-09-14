@@ -18,7 +18,7 @@ def test_flush_missing_escape(tmp_path):
     path = tmp_path / "missing.po"
     i18n.flush_missing(path)
     content = path.read_text(encoding="utf-8")
-    assert 'Line\\nBreak\\tTab' in content
+    assert "Line\\nBreak\\tTab" in content
     parsed = i18n._parse_po(path)
     assert "Line\nBreak\tTab" in parsed
     i18n._missing.clear()

@@ -487,6 +487,14 @@ def test_apply_status_filter(monkeypatch):
 
 def test_labels_column_renders_badges(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
+    class ListItem:
+        def SetId(self, idx):
+            self.idx = idx
+        def SetColumn(self, col):
+            self.col = col
+        def SetImage(self, img):
+            self.img = img
+    wx_stub.ListItem = ListItem
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)

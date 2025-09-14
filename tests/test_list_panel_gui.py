@@ -205,7 +205,7 @@ def test_reorder_columns_gui(wx_app):
     frame.Destroy()
 
 
-def test_labels_tracked_without_primary_icon(wx_app):
+def test_label_icon_only_in_label_column_gui(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
     importlib.reload(list_panel)
@@ -216,7 +216,8 @@ def test_labels_tracked_without_primary_icon(wx_app):
     panel.update_labels_list([Label(name="UI", color="#ff0000")])
     panel.set_requirements([_req(1, "T", labels=["UI"])])
     wx_app.Yield()
-    assert panel.list.GetImageList(wx.IMAGE_LIST_SMALL) is None
+    labels_col = panel.columns.index("labels") + 1
+    assert panel.list.GetImageList(wx.IMAGE_LIST_SMALL) is not None
     assert panel.list.GetItem(0, 0).GetImage() == -1
-    assert panel._row_labels[0] == ["UI"]
+    assert panel.list.GetItem(0, labels_col).GetImage() >= 0
     frame.Destroy()

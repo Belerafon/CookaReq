@@ -82,6 +82,54 @@ def _build_wx_stub():
         def GetBitmap(*args, **kwargs):
             return object()
 
+    class Font:
+        pass
+
+    class Colour:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class Brush:
+        def __init__(self, colour):
+            self._colour = colour
+
+    class Pen:
+        def __init__(self, colour):
+            self._colour = colour
+
+    class Bitmap:
+        def __init__(self, width, height):
+            self._w = width
+            self._h = height
+        def GetWidth(self):
+            return self._w
+        def GetHeight(self):
+            return self._h
+
+    class MemoryDC:
+        def __init__(self):
+            self._bmp = None
+        def SelectObject(self, bmp):
+            self._bmp = bmp
+        def SetFont(self, font):
+            pass
+        def SetBackground(self, brush):
+            pass
+        def Clear(self):
+            pass
+        def SetBrush(self, brush):
+            pass
+        def SetPen(self, pen):
+            pass
+        def DrawRectangle(self, x, y, w, h):
+            pass
+        def SetTextForeground(self, colour):
+            pass
+        def DrawText(self, text, x, y):
+            pass
+        def GetTextExtent(self, text):
+            return (len(text) * 6, 10)
+
     class Dialog(Window):
         def __init__(self, parent=None, title=""):
             super().__init__(parent)
@@ -122,6 +170,9 @@ def _build_wx_stub():
             self._data = []
             self._cols = []
             self._imagelist = None
+            self._col_images = {}
+            self._item_images = []
+            self._cells = {}
         def InsertColumn(self, col, heading):
             if col >= len(self._cols):
                 self._cols.extend([None] * (col - len(self._cols) + 1))
@@ -130,9 +181,15 @@ def _build_wx_stub():
             self._items.clear()
             self._data.clear()
             self._cols.clear()
+            self._col_images.clear()
+            self._item_images.clear()
+            self._cells.clear()
         def DeleteAllItems(self):
             self._items.clear()
             self._data.clear()
+            self._col_images.clear()
+            self._item_images.clear()
+            self._cells.clear()
         def GetItemCount(self):
             return len(self._items)
         def GetColumnCount(self):
@@ -140,10 +197,13 @@ def _build_wx_stub():
         def InsertItem(self, index, text, image=-1):
             self._items.insert(index, text)
             self._data.insert(index, 0)
+            self._item_images.insert(index, image)
             return index
         InsertStringItem = InsertItem
         def SetItem(self, index, col, text, image=-1):
-            pass
+            if col == 0:
+                self._items[index] = text
+            self._cells[(index, col)] = text
         SetStringItem = SetItem
         def SetItemData(self, index, data):
             self._data[index] = data
@@ -154,9 +214,19 @@ def _build_wx_stub():
         def HitTestSubItem(self, pt):
             return -1, 0, -1
         def SetItemColumnImage(self, index, col, img):
-            pass
+            self._col_images[(index, col)] = img
         def SetItemImage(self, index, img):
-            pass
+            if index >= len(self._item_images):
+                self._item_images.extend([-1] * (index - len(self._item_images) + 1))
+            self._item_images[index] = img
+        def GetItem(self, index, col=0):
+            text = self._items[index] if col == 0 else self._cells.get((index, col), "")
+            img = self._item_images[index] if col == 0 else self._col_images.get((index, col), -1)
+            return types.SimpleNamespace(GetText=lambda: text, GetImage=lambda: img)
+        def GetFont(self):
+            return Font()
+        def GetBackgroundColour(self):
+            return Colour("#ffffff")
         def SetImageList(self, il, which):
             self._imagelist = il
         def GetImageList(self, which):
@@ -197,10 +267,18 @@ def _build_wx_stub():
 
     class ImageList:
         def __init__(self, width, height):
+            self._w = width
+            self._h = height
             self._images = []
         def Add(self, bmp):
             self._images.append(bmp)
             return len(self._images) - 1
+        def GetSize(self):
+            return self._w, self._h
+        def GetImageCount(self):
+            return len(self._images)
+        def GetBitmap(self, idx):
+            return self._images[idx]
 
     class BoxSizer:
         def __init__(self, orient):
@@ -254,6 +332,14 @@ def _build_wx_stub():
         Config=Config,
         ContextMenuEvent=types.SimpleNamespace,
         ArtProvider=ArtProvider,
+        Font=Font,
+        Colour=Colour,
+        Brush=Brush,
+        Pen=Pen,
+        Bitmap=Bitmap,
+        MemoryDC=MemoryDC,
+        NullBitmap=object(),
+        BLACK=Colour(0, 0, 0),
     )
     class ColumnSorterMixin:
         def __init__(self, *args, **kwargs):
@@ -414,6 +500,33 @@ def test_search_and_label_filters(monkeypatch):
     assert panel.model.get_visible() == []
 
 
+def test_label_icons_only_in_label_column(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["labels", "id"])
+    panel.update_labels_list([Label(name="UI", color="#ff0000")])
+    panel.set_requirements([_req(1, "T", labels=["UI"])])
+
+    labels_col = panel.columns.index("labels") + 1
+    assert panel.list._item_images[0] == -1
+    assert panel.list._col_images[(0, labels_col)] >= 0
+    for col in range(panel.list.GetColumnCount()):
+        if col != labels_col:
+            assert panel.list._col_images.get((0, col), -1) == -1
+
+
 def test_apply_filters(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
@@ -508,8 +621,8 @@ def test_labels_column_stores_labels(monkeypatch):
     panel.set_requirements([
         _req(1, "A", labels=["ui", "backend"]),
     ])
-
-    assert panel._row_labels[0] == ["ui", "backend"]
+    labels_col = panel.columns.index("labels") + 1
+    assert panel.list._col_images[(0, labels_col)] >= 0
 
 
 def test_labels_column_uses_colors(monkeypatch):

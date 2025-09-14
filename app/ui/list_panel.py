@@ -63,9 +63,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
         self._labels: list[Label] = []
         self.current_filters: dict = {}
-        # Cache bitmaps for unique label combinations and store per-row labels
-        self._label_bitmaps: dict[tuple[str, ...], wx.Bitmap] = {}
-        self._row_labels: dict[int, list[str]] = {}
+        self._image_list: wx.ImageList | None = None
+        self._label_images: dict[tuple[str, ...], int] = {}
         ColumnSorterMixin.__init__(self, 1)
         self.columns: List[str] = []
         self._on_clone = on_clone
@@ -81,8 +80,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.SetSizer(sizer)
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
         self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
-        if hasattr(wx, "EVT_PAINT"):
-            self.list.Bind(wx.EVT_PAINT, self._on_paint)
         self.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter)
         self.reset_btn.Bind(wx.EVT_BUTTON, lambda evt: self.reset_filters())
 
@@ -119,6 +116,22 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 return lbl.color
         return _color_from_name(name)
 
+    def _ensure_image_list_size(self, width: int, height: int) -> None:
+        if self._image_list is None:
+            self._image_list = wx.ImageList(width or 1, height or 1)
+            self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
+            return
+        cur_w, cur_h = self._image_list.GetSize()  # pragma: no cover - simple accessors
+        if width <= cur_w and height <= cur_h:
+            return
+        new_list = wx.ImageList(max(width, cur_w), max(height, cur_h))
+        count = self._image_list.GetImageCount()
+        for idx in range(count):  # pragma: no cover - trivial loop
+            bmp = self._image_list.GetBitmap(idx)
+            new_list.Add(bmp)
+        self._image_list = new_list
+        self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
+
     def _create_label_bitmap(self, names: list[str]) -> wx.Bitmap:
         padding_x, padding_y, gap = 4, 2, 2
         font = self.list.GetFont()
@@ -151,39 +164,37 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         dc.SelectObject(wx.NullBitmap)
         return bmp
 
-    def _store_label_data(self, index: int, col: int, labels: list[str]) -> None:
-        """Remember labels for a row and clear cell text."""
+    def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
+        if not labels:
+            self.list.SetItem(index, col, "")
+            return
+        key = tuple(labels)
+        img_id = self._label_images.get(key)
+        if img_id is None:
+            bmp = self._create_label_bitmap(labels)
+            self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
+            img_id = self._image_list.Add(bmp)
+            self._label_images[key] = img_id
         self.list.SetItem(index, col, "")
-        if labels:
-            self._row_labels[index] = labels
-        else:
-            self._row_labels.pop(index, None)
-
-    def _draw_labels(self) -> None:
-        if not self._row_labels:
-            return
-        dc = wx.ClientDC(self.list)
-        first = self.list.GetTopItem()
-        visible = self.list.GetCountPerPage()
-        try:
-            labels_col = self.columns.index("labels") + 1
-        except ValueError:
-            return
-        for row in range(first, min(first + visible + 1, self.list.GetItemCount())):
-            labels = self._row_labels.get(row)
-            if not labels:
-                continue
-            rect = self.list.GetSubItemRect(row, labels_col, wx.LIST_RECT_BOUNDS)
-            bmp = self._label_bitmaps.get(tuple(labels))
-            if bmp is None:
-                bmp = self._create_label_bitmap(labels)
-                self._label_bitmaps[tuple(labels)] = bmp
-            y = rect.y + (rect.height - bmp.GetHeight()) // 2
-            dc.DrawBitmap(bmp, rect.x, y, True)
-
-    def _on_paint(self, event: wx.PaintEvent) -> None:
-        event.Skip()
-        wx.CallAfter(self._draw_labels)
+        if hasattr(self.list, "SetItemColumnImage"):
+            try:
+                self.list.SetItemColumnImage(index, col, img_id)
+                # ensure first column image stays cleared
+                if hasattr(self.list, "SetItemImage"):
+                    self.list.SetItemImage(index, -1)
+            except Exception:  # pragma: no cover - platform dependent
+                pass
+        elif hasattr(wx, "ListItem"):
+            item = wx.ListItem()
+            item.SetId(index)
+            item.SetColumn(col)
+            item.SetImage(img_id)
+            try:  # pragma: no cover - platform dependent
+                self.list.SetItem(item)
+            except Exception:
+                pass
+        else:  # pragma: no cover - stub fallback
+            self.list.SetItem(index, col, ", ".join(labels))
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""
@@ -398,10 +409,21 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Reload list control from the model."""
         items = self.model.get_visible()
         self.list.DeleteAllItems()
-        self._row_labels.clear()
         for req in items:
             title = getattr(req, "title", "")
             index = self.list.InsertItem(self.list.GetItemCount(), title, -1)
+            # Windows ListCtrl may still assign image 0; clear explicitly
+            if hasattr(self.list, "SetItemImage"):
+                try:
+                    self.list.SetItemImage(index, -1)
+                except Exception:
+                    pass
+            if hasattr(self.list, "SetItemColumnImage"):
+                for col in range(self.list.GetColumnCount()):
+                    try:
+                        self.list.SetItemColumnImage(index, col, -1)
+                    except Exception:
+                        pass
             req_id = getattr(req, "id", 0)
             try:
                 self.list.SetItemData(index, int(req_id))
@@ -455,7 +477,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
                 if field == "labels" and isinstance(value, list):
-                    self._store_label_data(index, col, value)
+                    self._set_label_image(index, col, value)
                     continue
                 self.list.SetItem(index, col, str(value))
             if suspect_row and hasattr(self.list, "SetItemTextColour"):
@@ -464,11 +486,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetItemTextColour(index, colour)
                 except Exception:
                     pass
-        if hasattr(self.list, "Refresh"):
-            try:
-                self.list.Refresh()
-            except Exception:
-                pass
 
     def refresh(self) -> None:
         """Public wrapper to reload list control."""

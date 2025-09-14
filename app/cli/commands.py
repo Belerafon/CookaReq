@@ -38,6 +38,7 @@ def cmd_list(args: argparse.Namespace, repo: RequirementRepository) -> None:
 
 
 def add_list_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``list`` command."""
     p.add_argument("directory", help=_("requirements directory"))
     p.add_argument("--labels", nargs="*", default=[], help=_("filter by labels"))
     p.add_argument("--query", help=_("text search query"))
@@ -63,6 +64,7 @@ def cmd_add(args: argparse.Namespace, repo: RequirementRepository) -> None:
 
 
 def add_add_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``add`` command."""
     p.add_argument("directory", help=_("requirements directory"))
     p.add_argument("file", help=_("JSON file with requirement"))
     p.add_argument("--modified-at", help=_("explicit modified timestamp"))
@@ -91,6 +93,7 @@ def cmd_edit(args: argparse.Namespace, repo: RequirementRepository) -> None:
 
 
 def add_edit_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``edit`` command."""
     p.add_argument("directory", help=_("requirements directory"))
     p.add_argument("file", help=_("JSON file with updated requirement"))
     p.add_argument("--modified-at", help=_("explicit modified timestamp"))
@@ -108,6 +111,7 @@ def cmd_delete(args: argparse.Namespace, repo: RequirementRepository) -> None:
 
 
 def add_delete_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``delete`` command."""
     p.add_argument("directory", help=_("requirements directory"))
     p.add_argument("id", type=int, help=_("requirement id"))
 
@@ -126,6 +130,7 @@ def cmd_clone(args: argparse.Namespace, repo: RequirementRepository) -> None:
 
 
 def add_clone_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``clone`` command."""
     p.add_argument("directory", help=_("requirements directory"))
     p.add_argument("source_id", type=int, help=_("source requirement id"))
     p.add_argument("new_id", type=int, help=_("new requirement id"))
@@ -140,6 +145,7 @@ def cmd_show(args: argparse.Namespace, repo: RequirementRepository) -> None:
 
 
 def add_show_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``show`` command."""
     p.add_argument("directory", help=_("requirements directory"))
     p.add_argument("id", type=int, help=_("requirement id"))
 
@@ -156,6 +162,7 @@ def cmd_check(args: argparse.Namespace, _repo: RequirementRepository) -> None:
 
 
 def add_check_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``check`` command."""
     p.add_argument("--llm", action="store_true", help=_("check only LLM"))
     p.add_argument("--mcp", action="store_true", help=_("check only MCP"))
 

@@ -31,6 +31,7 @@ def _auto_confirm():
 
 @pytest.fixture(scope="session")
 def wx_app():
+    """Provide wx.App instance, starting virtual display if needed."""
     display = None
     if os.name != "nt" and not os.environ.get("DISPLAY"):
         try:
@@ -59,6 +60,7 @@ def _get_free_port() -> int:
 
 @pytest.fixture(scope="module")
 def mcp_server():
+    """Run MCP server on a free port for the duration of tests."""
     port = _get_free_port()
     stop_server()
     start_server(port=port, base_path="")
@@ -69,11 +71,13 @@ def mcp_server():
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session):
+    """Store test session start time for summary reporting."""
     session.config._start_time = time.time()
 
 
 @pytest.hookimpl(trylast=True)
 def pytest_terminal_summary(terminalreporter, exitstatus):
+    """Print concise summary including duration at end of test run."""
     passed = len(terminalreporter.stats.get("passed", []))
     failed = len(terminalreporter.stats.get("failed", []))
     skipped = len(terminalreporter.stats.get("skipped", []))

@@ -12,6 +12,7 @@ import PyInstaller.__main__  # type: ignore
 
 
 def main() -> None:
+    """Build project executables using PyInstaller."""
     root = Path(__file__).resolve().parent
     script = root / "app" / "main.py"
     icon = root / "app" / "resources" / "app.ico"

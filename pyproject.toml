@@ -16,7 +16,7 @@ dependencies = [
 dev = ["pytest", "polib", "pydocstyle"]
 
 [tool.pydocstyle]
-select = ["D100", "D101", "D102"]
+select = ["D100", "D101", "D102", "D103"]
 
 [build-system]
 requires = ["setuptools", "wheel"]

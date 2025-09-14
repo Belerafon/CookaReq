@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 
@@ -79,8 +80,6 @@ class RequirementsController:
         if not req:
             return False
         self.model.delete(req_id)
-        try:
+        with suppress(Exception):
             self.repo.delete(self.directory, req.id)
-        except Exception:
-            pass
         return True

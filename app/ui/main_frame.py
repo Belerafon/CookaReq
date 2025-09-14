@@ -529,7 +529,7 @@ class MainFrame(wx.Frame):
         link = DerivationLink(
             source_id=source.id, source_revision=source.revision, suspect=False
         )
-        clone.derived_from = list(source.derived_from) + [link]
+        clone.derived_from = [*source.derived_from, link]
         clone.derivation = None
         return clone
 

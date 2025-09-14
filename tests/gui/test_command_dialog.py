@@ -31,7 +31,7 @@ def test_command_dialog_shows_result_and_saves_history(tmp_path, wx_app):
     assert dlg.history_list.GetCount() == 1
     saved = json.loads(history_file.read_text())
     assert saved[0]["command"] == "run"
-    assert saved[0]["tokens"] == len("run".split()) + len(dlg.output.GetValue().split())
+    assert saved[0]["tokens"] == len(["run"]) + len(dlg.output.GetValue().split())
 
     # clear and reload from history
     dlg._on_clear(None)
@@ -62,7 +62,7 @@ def test_command_dialog_shows_error(tmp_path, wx_app):
     dlg.input.SetValue("run")
     dlg._on_run(None)
     assert "FAIL" in dlg.output.GetValue()
-    assert dlg.history[0].tokens == len("run".split()) + len(dlg.output.GetValue().split())
+    assert dlg.history[0].tokens == len(["run"]) + len(dlg.output.GetValue().split())
     dlg.Destroy()
 
 

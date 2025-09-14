@@ -362,9 +362,9 @@ def _build_wx_stub():
     return wx_mod, mixins_mod, ulc_mod
 
 
-def _req(id: int, title: str, **kwargs) -> Requirement:
+def _req(req_id: int, title: str, **kwargs) -> Requirement:
     base = {
-        "id": id,
+        "id": req_id,
         "title": title,
         "statement": "",
         "type": RequirementType.REQUIREMENT,

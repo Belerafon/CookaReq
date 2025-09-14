@@ -42,5 +42,5 @@ def configure_logging(level: int = logging.INFO) -> None:
     logger.setLevel(level)
 
 
-__all__ = ["logger", "configure_logging", "JsonlHandler"]
+__all__ = ["JsonlHandler", "configure_logging", "logger"]
 

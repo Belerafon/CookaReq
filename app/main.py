@@ -24,10 +24,7 @@ def init_locale(language: str | None = None) -> wx.Locale:
     wx.Locale.AddCatalogLookupPathPrefix(LOCALE_DIR)
     if language and hasattr(wx.Locale, "FindLanguageInfo"):
         info = wx.Locale.FindLanguageInfo(language)
-        if info:
-            locale = wx.Locale(info.Language)
-        else:  # fallback to system default if code is unknown
-            locale = wx.Locale(wx.LANGUAGE_DEFAULT)
+        locale = wx.Locale(info.Language) if info else wx.Locale(wx.LANGUAGE_DEFAULT)
     else:
         locale = wx.Locale(wx.LANGUAGE_DEFAULT)
     locale.AddCatalog(APP_NAME)

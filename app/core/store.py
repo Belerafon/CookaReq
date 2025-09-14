@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from dataclasses import is_dataclass
 from pathlib import Path
 
@@ -135,10 +136,8 @@ def delete(directory: str | Path, req_id: int) -> None:
     """Remove requirement ``req_id`` from ``directory`` and update cache."""
     directory = Path(directory)
     path = directory / filename_for(req_id)
-    try:
+    with suppress(FileNotFoundError):
         path.unlink()
-    except FileNotFoundError:
-        pass
     remove_from_index(directory, req_id)
 
 

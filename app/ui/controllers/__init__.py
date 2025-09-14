@@ -3,4 +3,4 @@
 from .labels import LabelsController
 from .requirements import RequirementsController
 
-__all__ = ["RequirementsController", "LabelsController"]
+__all__ = ["LabelsController", "RequirementsController"]

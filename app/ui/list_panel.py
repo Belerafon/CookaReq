@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from ..i18n import _
 
-import os
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
@@ -19,11 +18,6 @@ from . import locale
 
 if TYPE_CHECKING:  # pragma: no cover
     from wx import ListEvent, ContextMenuEvent
-
-
-# Debug instrumentation for subitem images is enabled by default.
-# Set LIST_PANEL_DEBUG_IMAGES=0 to disable it (used by tests).
-DEBUG_SUBITEM_IMAGES = os.getenv("LIST_PANEL_DEBUG_IMAGES", "1") != "0"
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):
@@ -191,57 +185,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.list.SetItemColumnImage(index, col, img_id)
         if hasattr(self.list, "SetItemImage"):
             try:
-                # Clearing via ``SetItemColumnImage(..., 0, -1)`` proved unreliable
-                # on some platforms (notably Windows) where a subitem image causes
-                # the main column to default to image ``0``. Explicitly reset the
-                # primary image to ``-1`` to avoid unintended icons in "Title".
+                # Some platforms default the primary column image to 0 when any
+                # subitem image is set. Explicitly reset to ``-1`` to avoid stray
+                # icons in the Title column.
                 self.list.SetItemImage(index, -1)
             except Exception:
                 pass
-
-    # temporary instrumentation -------------------------------------
-    def _debug_probe_images(self, index: int) -> None:
-        if not DEBUG_SUBITEM_IMAGES:
-            return
-        colours = [
-            getattr(wx, "RED", wx.Colour(255, 0, 0)),
-            getattr(wx, "GREEN", wx.Colour(0, 255, 0)),
-            getattr(wx, "BLUE", wx.Colour(0, 0, 255)),
-            getattr(wx, "CYAN", wx.Colour(0, 255, 255)),
-            getattr(wx, "MAGENTA", wx.Colour(255, 0, 255)),
-            getattr(wx, "YELLOW", wx.Colour(255, 255, 0)),
-        ]
-        # Some wx ports use ``IMAGE_NONE`` (-2) to denote an empty slot.
-        none_val = getattr(wx, "IMAGE_NONE", -2)
-        for col in range(self.list.GetColumnCount()):
-            item = self.list.GetItem(index, col)
-            existing = item.GetImage()
-            text = item.GetText()
-            if existing not in (-1, none_val):
-                print(f"DEBUG: row {index} col {col} existing {existing}")
-                continue
-            colour = colours[col % len(colours)]
-            key = ("__debug__", str(col))
-            img_id = self._label_images.get(key)
-            if img_id is None:
-                if self._image_list:
-                    width, height = self._image_list.GetSize()
-                else:
-                    width, height = 16, 16
-                bmp = wx.Bitmap(width or 1, height or 1)
-                dc = wx.MemoryDC()
-                dc.SelectObject(bmp)
-                dc.SetBrush(wx.Brush(colour))
-                dc.SetPen(wx.Pen(colour))
-                dc.DrawRectangle(0, 0, width, height)
-                dc.SelectObject(wx.NullBitmap)
-                self._ensure_image_list_size(width, height)
-                img_id = self._image_list.Add(bmp)
-                self._label_images[key] = img_id
-            self.list.SetItem(index, col, text)
-            self.list.SetItemColumnImage(index, col, img_id)
-            actual = self.list.GetItem(index, col).GetImage()
-            print(f"DEBUG: row {index} col {col} -> {img_id} (reported {actual})")
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""
@@ -521,7 +470,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetItemTextColour(index, colour)
                 except Exception:
                     pass
-            self._debug_probe_images(index)
 
     def refresh(self) -> None:
         """Public wrapper to reload list control."""

@@ -208,14 +208,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             key = ("__debug__", str(col))
             img_id = self._label_images.get(key)
             if img_id is None:
-                bmp = wx.Bitmap(16, 16)
+                if self._image_list:
+                    width, height = self._image_list.GetSize()
+                else:
+                    width, height = 16, 16
+                bmp = wx.Bitmap(width or 1, height or 1)
                 dc = wx.MemoryDC()
                 dc.SelectObject(bmp)
                 dc.SetBrush(wx.Brush(colour))
                 dc.SetPen(wx.Pen(colour))
-                dc.DrawRectangle(0, 0, 16, 16)
+                dc.DrawRectangle(0, 0, width, height)
                 dc.SelectObject(wx.NullBitmap)
-                self._ensure_image_list_size(16, 16)
+                self._ensure_image_list_size(width, height)
                 img_id = self._image_list.Add(bmp)
                 self._label_images[key] = img_id
             self.list.SetItem(index, col, text)
@@ -438,7 +442,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.list.DeleteAllItems()
         for req in items:
             title = getattr(req, "title", "")
-            index = self.list.InsertStringItem(self.list.GetItemCount(), title)
+            index = self.list.InsertItem(self.list.GetItemCount(), title, -1)
             req_id = getattr(req, "id", 0)
             try:
                 self.list.SetItemData(index, int(req_id))

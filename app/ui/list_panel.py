@@ -21,7 +21,9 @@ if TYPE_CHECKING:  # pragma: no cover
     from wx import ListEvent, ContextMenuEvent
 
 
-DEBUG_SUBITEM_IMAGES = bool(os.getenv("LIST_PANEL_DEBUG_IMAGES"))
+# Debug instrumentation for subitem images is enabled by default.
+# Set LIST_PANEL_DEBUG_IMAGES=0 to disable it (used by tests).
+DEBUG_SUBITEM_IMAGES = os.getenv("LIST_PANEL_DEBUG_IMAGES", "1") != "0"
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):
@@ -181,7 +183,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
             img_id = self._image_list.Add(bmp)
             self._label_images[key] = img_id
-        self.list.SetItemColumnImage(index, col, img_id)
+        self.list.SetItem(index, col, "", img_id)
 
     # temporary instrumentation -------------------------------------
     def _debug_probe_images(self, index: int) -> None:
@@ -196,6 +198,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             getattr(wx, "YELLOW", wx.Colour(255, 255, 0)),
         ]
         for col in range(self.list.GetColumnCount()):
+            item = self.list.GetItem(index, col)
+            existing = item.GetImage()
+            text = item.GetText()
+            if existing != -1:
+                print(f"DEBUG: row {index} col {col} existing {existing}")
+                continue
             colour = colours[col % len(colours)]
             key = ("__debug__", str(col))
             img_id = self._label_images.get(key)
@@ -209,13 +217,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self._ensure_image_list_size(16, 16)
                 img_id = self._image_list.Add(bmp)
                 self._label_images[key] = img_id
-            self.list.SetItem(index, col, f"c{col}")
-            try:
-                self.list.SetItemColumnImage(index, col, img_id)
-                item = self.list.GetItem(index, col)
-                actual = item.GetImage()
-            except Exception:
-                actual = "?"
+            self.list.SetItem(index, col, text, img_id)
+            actual = self.list.GetItem(index, col).GetImage()
             print(f"DEBUG: row {index} col {col} -> {img_id} (reported {actual})")
 
     def _setup_columns(self) -> None:
@@ -487,10 +490,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
                 if field == "labels" and isinstance(value, list):
-                    if not DEBUG_SUBITEM_IMAGES:
-                        self._set_label_image(index, col, value)
-                    else:
-                        self.list.SetItem(index, col, "")
+                    self._set_label_image(index, col, value)
                     continue
                 self.list.SetItem(index, col, str(value))
             if suspect_row and hasattr(self.list, "SetItemTextColour"):

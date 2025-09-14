@@ -5,6 +5,9 @@ import sys
 import time
 from pathlib import Path
 
+# Disable debug imagery for list panel during tests.
+os.environ.setdefault("LIST_PANEL_DEBUG_IMAGES", "0")
+
 # Ensure project root is on sys.path for imports
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 

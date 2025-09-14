@@ -141,7 +141,7 @@ def _build_wx_stub():
             self._items.insert(index, text)
             self._data.insert(index, 0)
             return index
-        def SetItem(self, index, col, text):
+        def SetItem(self, index, col, text, image=-1):
             pass
         SetStringItem = SetItem
         def SetItemData(self, index, data):
@@ -511,22 +511,21 @@ def test_labels_column_renders_badges(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
 
-    texts: list[tuple[int, int, str]] = []
-    images: list[tuple[int, int, int]] = []
-    panel.list.SetItem = lambda idx, col, text: texts.append((idx, col, text))
-    panel.list.SetItemColumnImage = lambda idx, col, img: images.append((idx, col, img))
+    set_calls: list[tuple[int, int, str, int]] = []
+    def fake_setitem(idx, col, text, img=-1):
+        set_calls.append((idx, col, text, img))
+    panel.list.SetItem = fake_setitem
     dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
-    calls: list[list[str]] = []
-    monkeypatch.setattr(panel, "_create_label_bitmap", lambda names: calls.append(names) or dummy)
+    bitmap_calls: list[list[str]] = []
+    monkeypatch.setattr(panel, "_create_label_bitmap", lambda names: bitmap_calls.append(names) or dummy)
     monkeypatch.setattr(panel, "_ensure_image_list_size", lambda w, h: None)
     panel._image_list = wx_stub.ImageList(1, 1)
     panel.set_requirements([
         _req(1, "A", labels=["ui", "backend"]),
     ])
 
-    assert calls == [["ui", "backend"]]
-    assert (0, 1, "") in texts
-    assert images == [(0, 1, 0)]
+    assert bitmap_calls == [["ui", "backend"]]
+    assert (0, 1, "", 0) in set_calls
 
 
 def test_labels_column_uses_colors(monkeypatch):
@@ -554,7 +553,6 @@ def test_labels_column_uses_colors(monkeypatch):
     monkeypatch.setattr(panel, "_create_label_bitmap", fake_bitmap)
     monkeypatch.setattr(panel, "_ensure_image_list_size", lambda w, h: None)
     panel._image_list = wx_stub.ImageList(1, 1)
-    panel.list.SetItemColumnImage = lambda idx, col, img: None
     panel.set_requirements([_req(1, "A", labels=["ui"])])
 
 

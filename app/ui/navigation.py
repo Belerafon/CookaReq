@@ -65,7 +65,10 @@ class Navigation:
         open_item = file_menu.Append(wx.ID_OPEN, _("&Open Folder\tCtrl+O"))
         new_item = file_menu.Append(wx.ID_NEW, _("&New Requirement\tCtrl+N"))
         self.recent_menu = wx.Menu()
-        self.recent_menu_item = file_menu.AppendSubMenu(self.recent_menu, _("Open &Recent"))
+        self.recent_menu_item = file_menu.AppendSubMenu(
+            self.recent_menu,
+            _("Open &Recent"),
+        )
         settings_item = file_menu.Append(wx.ID_PREFERENCES, _("Settings"))
         labels_item = file_menu.Append(wx.ID_ANY, _("Manage Labels"))
         exit_item = file_menu.Append(wx.ID_EXIT, _("E&xit"))
@@ -88,7 +91,10 @@ class Navigation:
             self.frame.Bind(wx.EVT_MENU, self.on_toggle_column, item)
             self._column_items[item.GetId()] = field
         view_menu.AppendSubMenu(columns_menu, _("Columns"))
-        self.log_menu_item = view_menu.AppendCheckItem(wx.ID_ANY, _("Show Error Console"))
+        self.log_menu_item = view_menu.AppendCheckItem(
+            wx.ID_ANY,
+            _("Show Error Console"),
+        )
         self.frame.Bind(wx.EVT_MENU, self.on_toggle_log_console, self.log_menu_item)
         graph_item = view_menu.Append(wx.ID_ANY, _("Show Derivation Graph"))
         self.frame.Bind(wx.EVT_MENU, self.on_show_derivation_graph, graph_item)

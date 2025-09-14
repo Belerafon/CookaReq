@@ -1,3 +1,1 @@
 """Utility helpers for CookaReq."""
-
-

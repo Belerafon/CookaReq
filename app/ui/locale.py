@@ -1,4 +1,5 @@
 """Localization helpers for requirement fields and enums."""
+
 from __future__ import annotations
 
 from ..i18n import _

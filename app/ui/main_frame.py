@@ -48,7 +48,10 @@ class WxLogHandler(logging.Handler):
         """Redirect log output to ``new_target``."""
         self._target = new_target
 
-    def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - GUI side effect
+    def emit(
+        self,
+        record: logging.LogRecord,
+    ) -> None:  # pragma: no cover - GUI side effect
         """Append formatted ``record`` text to the log console."""
 
         if not wx.GetApp():
@@ -95,7 +98,9 @@ class MainFrame(wx.Frame):
         # platforms can pick the most appropriate resolution. Using
         # ``SetIcons`` with an ``IconBundle`` ensures both the title bar and
         # the taskbar use the custom application icon.
-        with resources.as_file(resources.files("app.resources") / "app.ico") as icon_path:
+        with resources.as_file(
+            resources.files("app.resources") / "app.ico",
+        ) as icon_path:
             icons = wx.IconBundle(str(icon_path), wx.BITMAP_TYPE_ANY)
             self.SetIcons(icons)
         self.navigation = Navigation(
@@ -149,7 +154,10 @@ class MainFrame(wx.Frame):
         log_sizer.Add(self.log_console, 1, wx.EXPAND | wx.ALL, 5)
         self.log_panel.SetSizer(log_sizer)
 
-        existing = next((h for h in logger.handlers if isinstance(h, WxLogHandler)), None)
+        existing = next(
+            (h for h in logger.handlers if isinstance(h, WxLogHandler)),
+            None,
+        )
         if existing:
             self.log_handler = existing
             self.log_handler.target = self.log_console
@@ -197,7 +205,10 @@ class MainFrame(wx.Frame):
         if path:
             self._load_directory(path)
 
-    def on_open_settings(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def on_open_settings(
+        self,
+        _event: wx.Event,
+    ) -> None:  # pragma: no cover - GUI event
         """Display settings dialog and apply changes."""
 
         dlg = SettingsDialog(
@@ -334,7 +345,10 @@ class MainFrame(wx.Frame):
 
         self.Layout()
 
-    def on_manage_labels(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def on_manage_labels(
+        self,
+        _event: wx.Event,
+    ) -> None:  # pragma: no cover - GUI event
         """Open dialog to manage defined labels."""
 
         if not self.labels_controller:
@@ -343,25 +357,30 @@ class MainFrame(wx.Frame):
         if dlg.ShowModal() == wx.ID_OK:
             new_labels = dlg.get_labels()
             used = self.labels_controller.update_labels(
-                new_labels, remove_from_requirements=False
+                new_labels,
+                remove_from_requirements=False,
             )
             if used:
                 lines = [f"{k}: {', '.join(map(str, v))}" for k, v in used.items()]
                 msg = _(
-                    "Labels in use will be removed from requirements:\n%s\nContinue?"
+                    "Labels in use will be removed from requirements:\n%s\nContinue?",
                 ) % "\n".join(lines)
                 if not confirm(msg):
                     dlg.Destroy()
                     return
                 self.labels_controller.update_labels(
-                    new_labels, remove_from_requirements=True
+                    new_labels,
+                    remove_from_requirements=True,
                 )
                 self.panel.refresh()
             self.editor.update_labels_list(self.labels_controller.labels)
             self.panel.update_labels_list(self.labels_controller.labels)
         dlg.Destroy()
 
-    def on_show_derivation_graph(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def on_show_derivation_graph(
+        self,
+        _event: wx.Event,
+    ) -> None:  # pragma: no cover - GUI event
         """Open window displaying requirement derivation graph."""
         if not self.current_dir:
             wx.MessageBox(_("Select requirements folder first"), _("No Data"))
@@ -382,11 +401,17 @@ class MainFrame(wx.Frame):
         """Load requirements from ``path`` and update recent list."""
         repo = FileRequirementRepository()
         self.req_controller = RequirementsController(
-            self.config, self.model, path, repo
+            self.config,
+            self.model,
+            path,
+            repo,
         )
         lbl_repo = FileLabelRepository()
         self.labels_controller = LabelsController(
-            self.config, self.model, path, lbl_repo
+            self.config,
+            self.model,
+            path,
+            lbl_repo,
         )
         self.labels_controller.load_labels()
         derived_map = self.req_controller.load_directory()
@@ -539,7 +564,9 @@ class MainFrame(wx.Frame):
             revision=1,
         )
         link = DerivationLink(
-            source_id=source.id, source_revision=source.revision, suspect=False
+            source_id=source.id,
+            source_revision=source.revision,
+            suspect=False,
         )
         clone.derived_from = [*source.derived_from, link]
         clone.derivation = None

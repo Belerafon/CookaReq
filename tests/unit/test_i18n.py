@@ -29,7 +29,8 @@ def test_install_selects_locale_and_falls_back(tmp_path, monkeypatch):
     fr_dir = tmp_path / "fr" / "LC_MESSAGES"
     fr_dir.mkdir(parents=True)
     (fr_dir / "app.po").write_text(
-        'msgid "hello"\nmsgstr "bonjour"\n', encoding="utf-8"
+        'msgid "hello"\nmsgstr "bonjour"\n',
+        encoding="utf-8",
     )
 
     monkeypatch.setattr(i18n, "_translations", {})

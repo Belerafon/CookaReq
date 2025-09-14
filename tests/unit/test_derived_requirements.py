@@ -13,7 +13,6 @@ from app.core.store import filename_for, load, save
 pytestmark = pytest.mark.unit
 
 
-
 def _base(req_id: int) -> dict:
     return {
         "id": req_id,
@@ -68,7 +67,9 @@ def test_suspect_mark_on_source_revision_change(tmp_path: Path) -> None:
 def test_search_filters_is_and_has_derived() -> None:
     req1 = requirement_from_dict(_base(1))
     derived_data = _base(2)
-    derived_data["derived_from"] = [{"source_id": 1, "source_revision": 1, "suspect": False}]
+    derived_data["derived_from"] = [
+        {"source_id": 1, "source_revision": 1, "suspect": False},
+    ]
     req2 = requirement_from_dict(derived_data)
     reqs: list[Requirement] = [req1, req2]
 

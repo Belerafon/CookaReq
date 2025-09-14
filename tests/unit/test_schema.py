@@ -43,7 +43,7 @@ def test_validate_rejects_bad_enum():
 def test_derived_from_and_derivation_valid():
     data = make_valid()
     data["derived_from"] = [
-        {"source_id": 2, "source_revision": 1, "suspect": True}
+        {"source_id": 2, "source_revision": 1, "suspect": True},
     ]
     data["derivation"] = {
         "rationale": "r",

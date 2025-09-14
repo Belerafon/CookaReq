@@ -15,11 +15,19 @@ from tests.llm_utils import make_openai_mock, settings_with_mcp
 pytestmark = pytest.mark.integration
 
 
-def test_create_and_delete_requirement_via_llm(tmp_path: Path, monkeypatch, mcp_server) -> None:
+def test_create_and_delete_requirement_via_llm(
+    tmp_path: Path,
+    monkeypatch,
+    mcp_server,
+) -> None:
     port = mcp_server
     mcp_app.state.base_path = str(tmp_path)
     settings = settings_with_mcp(
-        "127.0.0.1", port, str(tmp_path), "", tmp_path=tmp_path
+        "127.0.0.1",
+        port,
+        str(tmp_path),
+        "",
+        tmp_path=tmp_path,
     )
     responses = {}
     monkeypatch.setattr("openai.OpenAI", make_openai_mock(responses))
@@ -49,7 +57,7 @@ def test_create_and_delete_requirement_via_llm(tmp_path: Path, monkeypatch, mcp_
                     "source": "spec",
                     "verification": "analysis",
                     "labels": ["llm", "automation"],
-                }
+                },
             },
         )
         client.run_command(text_create)
@@ -58,7 +66,9 @@ def test_create_and_delete_requirement_via_llm(tmp_path: Path, monkeypatch, mcp_
         assert data["title"] == "LLM test"
         assert data["owner"] == "alice"
         rev = data["revision"]
-        text_delete = f"Delete requirement 10 with revision {rev}. I confirm the deletion."
+        text_delete = (
+            f"Delete requirement 10 with revision {rev}. I confirm the deletion."
+        )
         responses[text_delete] = (
             "delete_requirement",
             {"req_id": 10, "rev": rev},

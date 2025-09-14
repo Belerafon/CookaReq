@@ -52,7 +52,9 @@ def test_labels_dialog_adds_presets(wx_app):
     dlg = LabelsDialog(None, [])
     dlg._on_add_preset_set("basic")
     labels = dlg.get_labels()
-    assert {label.name for label in labels} == {label.name for label in PRESET_SETS["basic"]}
+    assert {label.name for label in labels} == {
+        label.name for label in PRESET_SETS["basic"]
+    }
     # calling again should not duplicate
     dlg._on_add_preset_set("basic")
     assert len(dlg.get_labels()) == len(PRESET_SETS["basic"])
@@ -63,7 +65,10 @@ def test_labels_dialog_deletes_selected(wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.labels_dialog import LabelsDialog
 
-    dlg = LabelsDialog(None, [Label("a", "#111111"), Label("b", "#222222"), Label("c", "#333333")])
+    dlg = LabelsDialog(
+        None,
+        [Label("a", "#111111"), Label("b", "#222222"), Label("c", "#333333")],
+    )
     dlg.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
     dlg.list.SetItemState(2, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
     dlg._on_delete_selected(None)
@@ -145,6 +150,7 @@ def _prepare_frame(monkeypatch, tmp_path):
 
     import app.ui.list_panel as list_panel
     import app.ui.main_frame as main_frame
+
     importlib.reload(list_panel)
     importlib.reload(main_frame)
 
@@ -175,10 +181,10 @@ def test_main_frame_manage_labels_saves(monkeypatch, tmp_path, wx_app):
 
     captured: list[tuple[str, list[str]]] = []
     frame.editor.update_labels_list = lambda labels: captured.append(
-        ("editor", [label.name for label in labels])
+        ("editor", [label.name for label in labels]),
     )
     frame.panel.update_labels_list = lambda labels: captured.append(
-        ("panel", [label.name for label in labels])
+        ("panel", [label.name for label in labels]),
     )
 
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, frame.manage_labels_id)
@@ -218,6 +224,7 @@ def test_main_frame_manage_labels_deletes_used(monkeypatch, tmp_path, wx_app):
 
     monkeypatch.setattr(main_frame_mod, "LabelsDialog", DummyLabelsDialog)
     from app import confirm as confirm_mod
+
     confirm_mod.set_confirm(fake_confirm)
 
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, frame.manage_labels_id)
@@ -225,6 +232,7 @@ def test_main_frame_manage_labels_deletes_used(monkeypatch, tmp_path, wx_app):
 
     assert calls
     from app.core import store
+
     data, _ = store.load(tmp_path / "1.json")
     assert data["labels"] == []
     req = frame.model.get_all()[0]

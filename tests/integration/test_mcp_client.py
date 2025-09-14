@@ -23,7 +23,12 @@ def test_check_tools_success(tmp_path: Path) -> None:
     try:
         _wait_until_ready(port)
         settings = settings_with_mcp(
-            "127.0.0.1", port, str(tmp_path), "", tmp_path=tmp_path, fmt="toml"
+            "127.0.0.1",
+            port,
+            str(tmp_path),
+            "",
+            tmp_path=tmp_path,
+            fmt="toml",
         )
         client = MCPClient(settings.mcp, confirm=lambda _m: True)
         log_file = tmp_path / "log.jsonl"
@@ -55,7 +60,11 @@ def test_check_tools_unauthorized(tmp_path: Path) -> None:
     try:
         _wait_until_ready(port)
         settings = settings_with_mcp(
-            "127.0.0.1", port, str(tmp_path), "wrong", tmp_path=tmp_path
+            "127.0.0.1",
+            port,
+            str(tmp_path),
+            "wrong",
+            tmp_path=tmp_path,
         )
         client = MCPClient(settings.mcp, confirm=lambda _m: True)
         result = client.check_tools()
@@ -65,7 +74,13 @@ def test_check_tools_unauthorized(tmp_path: Path) -> None:
 
 
 def test_call_tool_delete_requires_confirmation(monkeypatch) -> None:
-    settings = MCPSettings(host="127.0.0.1", port=0, base_path="", require_token=False, token="")
+    settings = MCPSettings(
+        host="127.0.0.1",
+        port=0,
+        base_path="",
+        require_token=False,
+        token="",
+    )
 
     called = {"msg": None}
 
@@ -87,13 +102,23 @@ def test_call_tool_delete_requires_confirmation(monkeypatch) -> None:
 
 
 def test_call_tool_delete_confirm_yes(monkeypatch) -> None:
-    settings = MCPSettings(host="127.0.0.1", port=0, base_path="", require_token=False, token="")
+    settings = MCPSettings(
+        host="127.0.0.1",
+        port=0,
+        base_path="",
+        require_token=False,
+        token="",
+    )
 
     client = MCPClient(settings, confirm=lambda _m: True)
 
     events: list[tuple[str, dict | None]] = []
 
-    def fake_log(event: str, payload=None, start_time=None) -> None:  # pragma: no cover - helper
+    def fake_log(
+        event: str,
+        payload=None,
+        start_time=None,
+    ) -> None:  # pragma: no cover - helper
         events.append((event, payload))
 
     monkeypatch.setattr("app.mcp.client.log_event", fake_log)

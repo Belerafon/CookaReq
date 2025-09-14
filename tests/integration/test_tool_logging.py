@@ -13,6 +13,7 @@ from app.mcp.utils import log_tool
 
 pytestmark = pytest.mark.integration
 
+
 def test_tool_logging(tmp_path: Path) -> None:
     log_file = tmp_path / "server.jsonl"
     handler = JsonlHandler(str(log_file))

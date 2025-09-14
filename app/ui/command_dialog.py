@@ -52,7 +52,8 @@ class CommandDialog(wx.Dialog):
 
         self.input = wx.TextCtrl(self, style=wx.TE_PROCESS_ENTER)
         self.output = wx.TextCtrl(
-            self, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.HSCROLL
+            self,
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.HSCROLL,
         )
         self.history_list = wx.ListBox(self)
         self.history_list.Bind(wx.EVT_LISTBOX, self._on_select_history)
@@ -136,4 +137,9 @@ class CommandDialog(wx.Dialog):
     def _save_history(self) -> None:
         self._history_path.parent.mkdir(parents=True, exist_ok=True)
         with self._history_path.open("w", encoding="utf-8") as fh:
-            json.dump([asdict(h) for h in self.history], fh, ensure_ascii=False, indent=2)
+            json.dump(
+                [asdict(h) for h in self.history],
+                fh,
+                ensure_ascii=False,
+                indent=2,
+            )

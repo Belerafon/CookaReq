@@ -1,4 +1,5 @@
 """Label repository interface and implementations."""
+
 from __future__ import annotations
 
 from pathlib import Path

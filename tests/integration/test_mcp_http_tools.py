@@ -39,7 +39,12 @@ def _prepare(tmp_path: Path) -> None:
 def _call_tool(port: int, name: str, arguments: dict | None = None):
     conn = HTTPConnection("127.0.0.1", port)
     payload = json.dumps({"name": name, "arguments": arguments or {}})
-    conn.request("POST", "/mcp", body=payload, headers={"Content-Type": "application/json"})
+    conn.request(
+        "POST",
+        "/mcp",
+        body=payload,
+        headers={"Content-Type": "application/json"},
+    )
     resp = conn.getresponse()
     body = json.loads(resp.read().decode())
     conn.close()
@@ -59,6 +64,7 @@ def test_list_requirements_via_http(tmp_path: Path) -> None:
         assert ids == {1, 2}
     finally:
         stop_server()
+
 
 def test_get_requirement_via_http(tmp_path: Path) -> None:
     _prepare(tmp_path)
@@ -130,7 +136,11 @@ def test_patch_requirement_via_http(tmp_path: Path) -> None:
         status, body = _call_tool(
             port,
             "patch_requirement",
-            {"req_id": 1, "patch": [{"op": "replace", "path": "/title", "value": "A2"}], "rev": 1},
+            {
+                "req_id": 1,
+                "patch": [{"op": "replace", "path": "/title", "value": "A2"}],
+                "rev": 1,
+            },
         )
         assert status == 200
         assert body["title"] == "A2"
@@ -162,9 +172,15 @@ def test_link_requirements_via_http(tmp_path: Path) -> None:
     start_server(port=port, base_path=str(tmp_path))
     try:
         _wait_until_ready(port)
-        status, body = _call_tool(port, "link_requirements", {"source_id": 1, "derived_id": 2, "link_type": "derived_from", "rev": 1})
+        status, body = _call_tool(
+            port,
+            "link_requirements",
+            {"source_id": 1, "derived_id": 2, "link_type": "derived_from", "rev": 1},
+        )
         assert status == 200
         assert body["revision"] == 2
-        assert body["derived_from"] == [{"source_id": 1, "source_revision": 1, "suspect": False}]
+        assert body["derived_from"] == [
+            {"source_id": 1, "source_revision": 1, "suspect": False},
+        ]
     finally:
         stop_server()

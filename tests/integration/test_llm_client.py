@@ -21,10 +21,17 @@ def test_missing_api_key_ignores_env(monkeypatch):
     captured: dict[str, str | None] = {}
 
     class FakeOpenAI:
-        def __init__(self, *, base_url, api_key, timeout, max_retries):  # pragma: no cover - simple capture
+        def __init__(
+            self,
+            *,
+            base_url,
+            api_key,
+            timeout,
+            max_retries,
+        ):  # pragma: no cover - simple capture
             captured["api_key"] = api_key
             self.chat = SimpleNamespace(
-                completions=SimpleNamespace(create=lambda **kwargs: SimpleNamespace())
+                completions=SimpleNamespace(create=lambda **kwargs: SimpleNamespace()),
             )
 
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
@@ -36,7 +43,8 @@ def test_missing_api_key_ignores_env(monkeypatch):
 def test_check_llm(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
     monkeypatch.setattr(
-        "openai.OpenAI", make_openai_mock({"ping": ("noop", {})})
+        "openai.OpenAI",
+        make_openai_mock({"ping": ("noop", {})}),
     )
     client = LLMClient(settings.llm)
     log_file = tmp_path / "llm.jsonl"

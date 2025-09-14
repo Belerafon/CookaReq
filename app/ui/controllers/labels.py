@@ -41,7 +41,10 @@ class LabelsController:
         existing_colors = {lbl.name: lbl.color for lbl in self.labels}
         used_names = {label for req in self.model.get_all() for label in req.labels}
         all_names = sorted(existing_colors.keys() | used_names)
-        self.labels = [Label(name=name, color=existing_colors.get(name, "#ffffff")) for name in all_names]
+        self.labels = [
+            Label(name=name, color=existing_colors.get(name, "#ffffff"))
+            for name in all_names
+        ]
         try:
             req_ops.save_labels(self.directory, self.labels, repo=self.repo)
         except Exception as exc:
@@ -49,7 +52,9 @@ class LabelsController:
         return [lbl.name for lbl in self.labels]
 
     def update_labels(
-        self, new_labels: list[Label], remove_from_requirements: bool
+        self,
+        new_labels: list[Label],
+        remove_from_requirements: bool,
     ) -> dict[str, list[int]]:
         """Update labels and optionally strip removed ones from requirements.
 

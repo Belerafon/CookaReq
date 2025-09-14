@@ -53,7 +53,7 @@ def test_requirement_derivation_conversion():
         "source": "spec",
         "verification": "analysis",
         "derived_from": [
-            {"source_id": 2, "source_revision": 3, "suspect": True}
+            {"source_id": 2, "source_revision": 3, "suspect": True},
         ],
         "derivation": {
             "rationale": "r",

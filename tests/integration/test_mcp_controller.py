@@ -4,6 +4,7 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
+
 def test_controller_check(monkeypatch):
     from app.mcp.controller import MCPController, MCPStatus
     from app.settings import MCPSettings
@@ -39,7 +40,11 @@ def test_controller_check(monkeypatch):
 
     ctrl = MCPController()
     settings = MCPSettings(
-        host="localhost", port=8123, base_path="/tmp", require_token=True, token="abc"
+        host="localhost",
+        port=8123,
+        base_path="/tmp",
+        require_token=True,
+        token="abc",
     )
     res = ctrl.check(settings)
     assert res.status is MCPStatus.READY
@@ -75,10 +80,13 @@ def test_controller_start_stop(monkeypatch):
 
     monkeypatch.setattr(
         "app.mcp.controller.start_server",
-        lambda host, port, base_path, token: calls.append(("start", host, port, base_path, token)),
+        lambda host, port, base_path, token: calls.append(
+            ("start", host, port, base_path, token),
+        ),
     )
     monkeypatch.setattr(
-        "app.mcp.controller.stop_server", lambda: calls.append(("stop",))
+        "app.mcp.controller.stop_server",
+        lambda: calls.append(("stop",)),
     )
 
     ctrl = MCPController()

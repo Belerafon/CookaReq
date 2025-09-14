@@ -1,4 +1,5 @@
 """Dialog for configuring requirement filters."""
+
 from __future__ import annotations
 
 import wx
@@ -46,7 +47,12 @@ class FilterDialog(wx.Dialog):
         # Per-field queries
         self.field_controls: dict[str, wx.TextCtrl] = {}
         for field in sorted(req_ops.SEARCHABLE_FIELDS):
-            sizer.Add(wx.StaticText(self, label=locale.field_label(field)), 0, wx.ALL, 5)
+            sizer.Add(
+                wx.StaticText(self, label=locale.field_label(field)),
+                0,
+                wx.ALL,
+                5,
+            )
             ctrl = wx.TextCtrl(self)
             ctrl.SetValue(values.get("field_queries", {}).get(field, ""))
             self.field_controls[field] = ctrl
@@ -76,7 +82,9 @@ class FilterDialog(wx.Dialog):
         sizer.Add(wx.StaticText(self, label=_("Status")), 0, wx.ALL, 5)
         enum_cls = ENUMS["status"]
         self._status_values = [s.value for s in enum_cls]
-        status_choices = [_("(any)")] + [locale.code_to_label("status", v) for v in self._status_values]
+        status_choices = [_("(any)")] + [
+            locale.code_to_label("status", v) for v in self._status_values
+        ]
         self.status_choice = wx.Choice(self, choices=status_choices)
         selected = 0
         if values.get("status") in self._status_values:
@@ -111,14 +119,25 @@ class FilterDialog(wx.Dialog):
 
     def get_filters(self) -> dict:
         """Return chosen filters as a dict."""
-        labels = [self._labels[i].name for i in range(self.labels_box.GetCount()) if self.labels_box.IsChecked(i)]
-        field_queries = {field: ctrl.GetValue() for field, ctrl in self.field_controls.items() if ctrl.GetValue()}
+        labels = [
+            self._labels[i].name
+            for i in range(self.labels_box.GetCount())
+            if self.labels_box.IsChecked(i)
+        ]
+        field_queries = {
+            field: ctrl.GetValue()
+            for field, ctrl in self.field_controls.items()
+            if ctrl.GetValue()
+        }
         return {
             "query": self.any_query.GetValue(),
             "labels": labels,
             "match_any": self.match_any.GetValue(),
-            "status": (self._status_values[self.status_choice.GetSelection() - 1]
-                        if self.status_choice.GetSelection() > 0 else None),
+            "status": (
+                self._status_values[self.status_choice.GetSelection() - 1]
+                if self.status_choice.GetSelection() > 0
+                else None
+            ),
             "is_derived": self.is_derived.GetValue(),
             "has_derived": self.has_derived.GetValue(),
             "suspect_only": self.suspect_only.GetValue(),

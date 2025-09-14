@@ -14,6 +14,7 @@ def _make_panel():
     wx = pytest.importorskip("wx")
     frame = wx.Frame(None)
     from app.ui.editor_panel import EditorPanel
+
     return EditorPanel(frame)
 
 
@@ -54,7 +55,9 @@ def test_editor_add_attachment_included(wx_app):
     panel.add_attachment("file.txt", "note")
     panel.fields["id"].SetValue("1")
     data = panel.get_data()
-    assert [asdict(a) for a in data.attachments] == [{"path": "file.txt", "note": "note"}]
+    assert [asdict(a) for a in data.attachments] == [
+        {"path": "file.txt", "note": "note"},
+    ]
 
 
 def test_id_field_highlight_on_duplicate(tmp_path, wx_app):
@@ -163,6 +166,7 @@ def test_editor_save_and_delete_roundtrip(tmp_path, wx_app):
     assert panel.mtime is None
     assert not saved_path.exists()
 
+
 def test_editor_loads_links(tmp_path, wx_app):
     panel = _make_panel()
     data = {
@@ -199,6 +203,7 @@ def test_multiline_fields_resize_dynamically(wx_app):
     shrunk = ctrl.GetSize().height
     assert shrunk < grown
     assert shrunk >= line_h * 2
+
 
 def test_rationale_autosizes_without_affecting_statement(wx_app):
     panel = _make_panel()

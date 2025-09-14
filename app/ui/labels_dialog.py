@@ -96,7 +96,10 @@ class LabelsDialog(wx.Dialog):
         self.color_picker.SetColour(colour)
         self.color_picker.Enable()
 
-    def _on_color_changed(self, event: wx.ColourPickerEvent) -> None:  # pragma: no cover - GUI event
+    def _on_color_changed(
+        self,
+        event: wx.ColourPickerEvent,
+    ) -> None:  # pragma: no cover - GUI event
         idx = self.list.GetFirstSelected()
         if idx == -1:
             return
@@ -123,7 +126,10 @@ class LabelsDialog(wx.Dialog):
         if added:
             self._populate()
 
-    def _on_show_presets_menu(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_show_presets_menu(
+        self,
+        _event: wx.Event,
+    ) -> None:  # pragma: no cover - GUI event
         menu = wx.Menu()
         for key, title in PRESET_SET_TITLES.items():
             item = menu.Append(wx.ID_ANY, _(title))
@@ -131,7 +137,10 @@ class LabelsDialog(wx.Dialog):
         self.PopupMenu(menu)
         menu.Destroy()
 
-    def _on_delete_selected(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_delete_selected(
+        self,
+        _event: wx.Event,
+    ) -> None:  # pragma: no cover - GUI event
         indices = self._get_selected_indices()
         if not indices:
             return
@@ -160,7 +169,10 @@ class LabelsDialog(wx.Dialog):
     def _on_list_size(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._resize_column()
 
-    def _on_rename_selected(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_rename_selected(
+        self,
+        _event: wx.Event,
+    ) -> None:  # pragma: no cover - GUI event
         idx = self.list.GetFirstSelected()
         if idx == -1:
             return
@@ -173,7 +185,11 @@ class LabelsDialog(wx.Dialog):
                 return
             existing = {lbl.name for i, lbl in enumerate(self._labels) if i != idx}
             if new_name in existing:
-                wx.MessageBox(_("Label already exists"), _("Error"), style=wx.ICON_ERROR)
+                wx.MessageBox(
+                    _("Label already exists"),
+                    _("Error"),
+                    style=wx.ICON_ERROR,
+                )
             else:
                 self._labels[idx].name = new_name
                 self.list.SetItem(idx, 0, new_name)

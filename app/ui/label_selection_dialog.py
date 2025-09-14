@@ -1,4 +1,5 @@
 """Dialog for selecting labels with color icons."""
+
 import wx
 from wx.lib.mixins.listctrl import CheckListCtrlMixin
 
@@ -17,7 +18,12 @@ class _CheckListCtrl(wx.ListCtrl, CheckListCtrlMixin):
 class LabelSelectionDialog(wx.Dialog):
     """Dialog allowing to choose labels while displaying their colors."""
 
-    def __init__(self, parent: wx.Window | None, labels: list[Label], selected: list[str]):
+    def __init__(
+        self,
+        parent: wx.Window | None,
+        labels: list[Label],
+        selected: list[str],
+    ):
         """Initialize dialog listing ``labels`` with ``selected`` prechecked."""
         style = wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
         super().__init__(parent, title=_("Labels"), style=style)

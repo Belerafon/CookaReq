@@ -1,4 +1,5 @@
 """JSON file storage for label data."""
+
 from __future__ import annotations
 
 import json
@@ -42,5 +43,11 @@ def save_labels(directory: str | Path, labels: list[Label]) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / LABELS_FILENAME
     with path.open("w", encoding="utf-8") as fh:
-        json.dump([asdict(lbl) for lbl in labels], fh, ensure_ascii=False, indent=2, sort_keys=True)
+        json.dump(
+            [asdict(lbl) for lbl in labels],
+            fh,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
     return path

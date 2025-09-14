@@ -34,6 +34,7 @@ def sample() -> dict:
 
 def run_cli(argv: list[str]):
     from app.cli.main import main
+
     return main(argv)
 
 
@@ -147,6 +148,7 @@ def test_cli_settings_flag(tmp_path, monkeypatch, capsys):
         return AppSettings()
 
     import app.cli.main as cli_mod
+
     monkeypatch.setattr(cli_mod, "load_app_settings", fake_loader)
     monkeypatch.setattr(cli_mod, "AppSettings", AppSettings)
 

@@ -19,7 +19,6 @@ class MCPStatus(str, Enum):
     ERROR = "error"
 
 
-
 @dataclass
 class MCPCheckResult:
     """Detailed result of :meth:`MCPController.check`."""

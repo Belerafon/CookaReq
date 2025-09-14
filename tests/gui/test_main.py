@@ -14,19 +14,23 @@ def test_main_runs(monkeypatch):
     class DummyApp:
         def __init__(self):
             self.loop_ran = False
+
         def MainLoop(self):
             self.loop_ran = True
 
     dummy_app = DummyApp()
+
     class DummyLocale:
         def __init__(self, lang):
             self.lang = lang
+
         def AddCatalog(self, name):
             pass
 
     class DummyConfig:
         def __init__(self, **kwargs):
             self.app_name = kwargs.get("appName")
+
         def Read(self, key):
             return ""
 
@@ -49,12 +53,18 @@ def test_main_runs(monkeypatch):
         def __init__(self, parent):
             self.parent = parent
             DummyFrame.instances.append(self)
+
         def Show(self):
             DummyFrame.shown = True
 
-    monkeypatch.setitem(sys.modules, "app.ui.main_frame", types.SimpleNamespace(MainFrame=DummyFrame))
+    monkeypatch.setitem(
+        sys.modules,
+        "app.ui.main_frame",
+        types.SimpleNamespace(MainFrame=DummyFrame),
+    )
 
     import app.main as main_module
+
     importlib.reload(main_module)
 
     main_module.main()

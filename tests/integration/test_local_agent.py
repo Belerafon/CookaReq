@@ -36,7 +36,6 @@ class DummyLLM:
         return "some_tool", {}
 
 
-
 def test_check_llm_and_check_tools_propagate_errors():
     agent = LocalAgent(llm=FailingLLM(), mcp=FailingMCP())
     with pytest.raises(RuntimeError, match="llm failure"):

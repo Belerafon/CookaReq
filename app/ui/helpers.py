@@ -1,4 +1,5 @@
 """Common helper widgets and functions for UI components."""
+
 from __future__ import annotations
 
 from typing import Callable
@@ -109,7 +110,11 @@ def show_help(parent: wx.Window, message: str, *, title: str | None = None) -> N
         Optional dialog title; defaults to ``"Hint"``.
     """
 
-    dlg = wx.Dialog(parent, title=title or _("Hint"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+    dlg = wx.Dialog(
+        parent,
+        title=title or _("Hint"),
+        style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+    )
     text = wx.TextCtrl(dlg, value=message, style=wx.TE_MULTILINE | wx.TE_READONLY)
     sizer = wx.BoxSizer(wx.VERTICAL)
     sizer.Add(text, 1, wx.ALL | wx.EXPAND, 10)

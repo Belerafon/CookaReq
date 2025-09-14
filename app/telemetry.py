@@ -67,7 +67,9 @@ def log_event(
     if payload:
         sanitized = sanitize(dict(payload))
         data["payload"] = sanitized
-        data["size_bytes"] = len(json.dumps(sanitized, ensure_ascii=False).encode("utf-8"))
+        data["size_bytes"] = len(
+            json.dumps(sanitized, ensure_ascii=False).encode("utf-8"),
+        )
     else:
         data["payload"] = {}
         data["size_bytes"] = 0

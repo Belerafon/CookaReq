@@ -1,4 +1,5 @@
 """Requirement editor panel."""
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -74,125 +75,125 @@ class EditorPanel(ScrolledPanel):
             "id": _(
                 "The 'Requirement ID' is a unique integer used as the stable anchor for a requirement. "
                 "Teams refer to it in traceability matrices, change requests and test reports to ensure everyone talks about the same item. "
-                "Once the identifier appears in external documents it should not be changed to avoid broken references."
+                "Once the identifier appears in external documents it should not be changed to avoid broken references.",
             ),
             "title": _(
                 "A concise human-readable summary shown in lists and diagrams. "
                 "It lets stakeholders skim large sets of requirements and quickly find relevant topics. "
-                "Use clear keywords so search and sorting produce meaningful results."
+                "Use clear keywords so search and sorting produce meaningful results.",
             ),
             "statement": _(
                 "The full requirement statement describing what the system must do or the constraint it imposes. "
                 "This wording becomes the authoritative baseline for implementation and contractual obligations. "
-                "Detailed phrasing here prevents ambiguity during design and review."
+                "Detailed phrasing here prevents ambiguity during design and review.",
             ),
             "acceptance": _(
                 "Acceptance criteria explain how to verify that the requirement is satisfied. "
                 "They may include test scenarios, measurable thresholds or review checklists. "
-                "Well-defined criteria let QA teams plan tests and give product owners a clear basis for acceptance."
+                "Well-defined criteria let QA teams plan tests and give product owners a clear basis for acceptance.",
             ),
             "conditions": _(
                 "Operating conditions and modes under which the requirement applies. "
                 "Describe environments, performance ranges or user roles that influence validity. "
-                "Such context helps engineers design correctly and testers reproduce the right setup."
+                "Such context helps engineers design correctly and testers reproduce the right setup.",
             ),
             "trace_up": _(
                 "Links to higher-level requirements or stakeholder needs. "
                 "Upward traceability shows why this requirement exists and simplifies impact analysis when parents change. "
-                "Use it to prove coverage of system objectives."
+                "Use it to prove coverage of system objectives.",
             ),
             "trace_down": _(
                 "References to lower-level derived requirements, design elements or test cases. "
                 "Downward traceability reveals how the requirement will be implemented and verified. "
-                "It supports audits and helps detect missing implementation pieces."
+                "It supports audits and helps detect missing implementation pieces.",
             ),
             "version": _(
                 "Sequential version number for change control. "
                 "Increase it whenever the requirement text changes to keep a revision history. "
-                "Versioning enables baselining and comparison of snapshots during reviews."
+                "Versioning enables baselining and comparison of snapshots during reviews.",
             ),
             "modified_at": _(
                 "Date and time of the last edit. "
                 "The value is filled automatically and aids audit trails. "
-                "Reviewers can sort by this field to focus on recently modified items."
+                "Reviewers can sort by this field to focus on recently modified items.",
             ),
             "owner": _(
                 "Person or team responsible for the requirement. "
                 "The owner coordinates discussions, approves updates and answers questions from other stakeholders. "
-                "Assigning ownership clarifies accountability and speeds up decisions."
+                "Assigning ownership clarifies accountability and speeds up decisions.",
             ),
             "source": _(
                 "Origin of the requirement such as a customer request, regulation or design document. "
                 "Recording the source explains why the requirement exists and where to look for additional context. "
-                "This trace is essential when validating compliance or revisiting negotiations."
+                "This trace is essential when validating compliance or revisiting negotiations.",
             ),
             "type": _(
                 "Classification of the requirement: functional, constraint, interface or quality attribute. "
                 "Types help filter large sets, assign specialists and apply different review processes. "
-                "Consistent categorization improves reporting and reuse."
+                "Consistent categorization improves reporting and reuse.",
             ),
             "status": _(
                 "Lifecycle state like draft, in review, approved or retired. "
                 "The status communicates readiness and controls workflow gates. "
-                "Dashboards and metrics rely on it to show project progress."
+                "Dashboards and metrics rely on it to show project progress.",
             ),
             "priority": _(
                 "Relative importance or urgency of the requirement. "
                 "High-priority items drive planning and resource allocation. "
-                "Use priority to focus effort on the capabilities that deliver most value."
+                "Use priority to focus effort on the capabilities that deliver most value.",
             ),
             "verification": _(
                 "Preferred method to prove compliance: inspection, analysis, demonstration or test. "
                 "Selecting a method early guides preparation of verification activities and needed tools. "
-                "It also clarifies expectations for acceptance."
+                "It also clarifies expectations for acceptance.",
             ),
             "rationale": _(
                 "Explanation of why the requirement exists or how it was derived. "
                 "Capturing rationale preserves design intent and helps future maintainers understand trade-offs. "
-                "This background is valuable during change discussions or audits."
+                "This background is valuable during change discussions or audits.",
             ),
             "assumptions": _(
                 "Assumptions made while formulating the requirement, such as available technologies or expected user behavior. "
                 "Listing assumptions exposes risks and clarifies the context that might change. "
-                "Revisit them regularly to ensure the requirement remains valid."
+                "Revisit them regularly to ensure the requirement remains valid.",
             ),
             "attachments": _(
                 "Supplementary files that give additional context like diagrams, logs or calculations. "
                 "Attachments travel with the requirement so reviewers and implementers see the same supporting evidence. "
-                "Keep file notes concise to explain relevance."
+                "Keep file notes concise to explain relevance.",
             ),
             "approved_at": _(
                 "Date when the requirement was formally accepted by stakeholders. "
                 "Recording the approval moment is useful for audits and for tracking baselines. "
-                "Leave empty while the requirement is still under discussion."
+                "Leave empty while the requirement is still under discussion.",
             ),
             "notes": _(
                 "Free-form remarks that do not fit other fields. "
                 "Use notes to capture review feedback, open questions or implementation hints. "
-                "Unlike acceptance criteria they are not part of the requirement contract."
+                "Unlike acceptance criteria they are not part of the requirement contract.",
             ),
             "labels": _(
                 "Tags that categorize the requirement. "
                 "Consistent labeling enables powerful filtering and helps group related items. "
-                "Use shared presets to avoid typos and duplicates."
+                "Use shared presets to avoid typos and duplicates.",
             ),
             "parent": _(
                 "Reference to the immediate higher-level requirement. "
                 "Establishing parenthood keeps the traceability chain intact and simplifies impact analysis. "
-                "Clear links are essential during audits and design reviews."
+                "Clear links are essential during audits and design reviews.",
             ),
             "verifies": _(
                 "Links to requirements that this one verifies or tests. "
-                "Use it to show downward traceability towards implementation or validation artifacts."
+                "Use it to show downward traceability towards implementation or validation artifacts.",
             ),
             "relates": _(
                 "Associations with requirements touching the same topic. "
                 "Related links help discover dependencies and avoid conflicting decisions. "
-                "They are informational and do not imply hierarchy."
+                "They are informational and do not imply hierarchy.",
             ),
             "derived_from": _(
                 "Source requirements from which this one was derived. "
-                "Capturing derivation clarifies reasoning and lets teams propagate changes upstream."
+                "Capturing derivation clarifies reasoning and lets teams propagate changes upstream.",
             ),
         }
 
@@ -280,11 +281,15 @@ class EditorPanel(ScrolledPanel):
 
         # attachments section --------------------------------------------
         a_sizer = HelpStaticBox(
-            self, _("Attachments"), self._help_texts["attachments"], lambda msg: show_help(self, msg)
+            self,
+            _("Attachments"),
+            self._help_texts["attachments"],
+            lambda msg: show_help(self, msg),
         )
         a_box = a_sizer.GetStaticBox()
         self.attachments_list = wx.ListCtrl(
-            a_box, style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL
+            a_box,
+            style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL,
         )
         self.attachments_list.InsertColumn(0, _("File"))
         self.attachments_list.InsertColumn(1, _("Note"))
@@ -308,7 +313,8 @@ class EditorPanel(ScrolledPanel):
         row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         container.Add(row, 0, wx.ALL, 5)
         self.approved_picker = wx.adv.DatePickerCtrl(
-            self, style=wx.adv.DP_ALLOWNONE
+            self,
+            style=wx.adv.DP_ALLOWNONE,
         )
         container.Add(self.approved_picker, 0, wx.ALL, 5)
         sizer.Add(container, 0, wx.ALL, 5)
@@ -334,7 +340,10 @@ class EditorPanel(ScrolledPanel):
 
         # labels section -------------------------------------------------
         box_sizer = HelpStaticBox(
-            self, _("Labels"), self._help_texts["labels"], lambda msg: show_help(self, msg)
+            self,
+            _("Labels"),
+            self._help_texts["labels"],
+            lambda msg: show_help(self, msg),
         )
         box = box_sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -355,7 +364,10 @@ class EditorPanel(ScrolledPanel):
 
         # parent section -------------------------------------------------
         pr_sizer = HelpStaticBox(
-            self, _("Parent"), self._help_texts["parent"], lambda msg: show_help(self, msg)
+            self,
+            _("Parent"),
+            self._help_texts["parent"],
+            lambda msg: show_help(self, msg),
         )
         pr_box = pr_sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -502,7 +514,10 @@ class EditorPanel(ScrolledPanel):
         list_name: str | None = None,
     ) -> wx.StaticBoxSizer:
         sizer = HelpStaticBox(
-            self, label, self._help_texts[help_key], lambda msg: show_help(self, msg)
+            self,
+            label,
+            self._help_texts[help_key],
+            lambda msg: show_help(self, msg),
         )
         box = sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -513,7 +528,10 @@ class EditorPanel(ScrolledPanel):
         add_btn.Bind(wx.EVT_BUTTON, lambda _evt, a=attr: self._on_add_link_generic(a))
         row.Add(add_btn, 0, wx.RIGHT, 5)
         remove_btn = wx.Button(box, label=_("Remove"))
-        remove_btn.Bind(wx.EVT_BUTTON, lambda _evt, a=attr: self._on_remove_link_generic(a))
+        remove_btn.Bind(
+            wx.EVT_BUTTON,
+            lambda _evt, a=attr: self._on_remove_link_generic(a),
+        )
         row.Add(remove_btn, 0)
         sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
         lst = wx.ListCtrl(box, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
@@ -609,7 +627,10 @@ class EditorPanel(ScrolledPanel):
                 "type": locale.code_to_label("type", RequirementType.REQUIREMENT.value),
                 "status": locale.code_to_label("status", Status.DRAFT.value),
                 "priority": locale.code_to_label("priority", Priority.MEDIUM.value),
-                "verification": locale.code_to_label("verification", Verification.ANALYSIS.value),
+                "verification": locale.code_to_label(
+                    "verification",
+                    Verification.ANALYSIS.value,
+                ),
             }
             for name, choice in self.enums.items():
                 choice.SetStringSelection(defaults[name])
@@ -621,12 +642,14 @@ class EditorPanel(ScrolledPanel):
             self.current_path = None
             self.mtime = None
             self.original_id = None
-            self.extra.update({
-                "labels": [],
-                "revision": 1,
-                "approved_at": None,
-                "notes": "",
-            })
+            self.extra.update(
+                {
+                    "labels": [],
+                    "revision": 1,
+                    "approved_at": None,
+                    "notes": "",
+                },
+            )
             self.approved_picker.SetValue(wx.DefaultDateTime)
             self.notes_ctrl.ChangeValue("")
             self._refresh_attachments()
@@ -694,7 +717,7 @@ class EditorPanel(ScrolledPanel):
                 dt = wx.DateTime()
                 dt.ParseISODate(str(self.extra["approved_at"]))
                 self.approved_picker.SetValue(
-                    dt if dt.IsValid() else wx.DefaultDateTime
+                    dt if dt.IsValid() else wx.DefaultDateTime,
                 )
             else:
                 self.approved_picker.SetValue(wx.DefaultDateTime)
@@ -758,13 +781,23 @@ class EditorPanel(ScrolledPanel):
             "id": req_id,
             "title": self.fields["title"].GetValue(),
             "statement": self.fields["statement"].GetValue(),
-            "type": locale.label_to_code("type", self.enums["type"].GetStringSelection()),
-            "status": locale.label_to_code("status", self.enums["status"].GetStringSelection()),
+            "type": locale.label_to_code(
+                "type",
+                self.enums["type"].GetStringSelection(),
+            ),
+            "status": locale.label_to_code(
+                "status",
+                self.enums["status"].GetStringSelection(),
+            ),
             "owner": self.fields["owner"].GetValue(),
-            "priority": locale.label_to_code("priority", self.enums["priority"].GetStringSelection()),
+            "priority": locale.label_to_code(
+                "priority",
+                self.enums["priority"].GetStringSelection(),
+            ),
             "source": self.fields["source"].GetValue(),
             "verification": locale.label_to_code(
-                "verification", self.enums["verification"].GetStringSelection()
+                "verification",
+                self.enums["verification"].GetStringSelection(),
             ),
             "acceptance": self.fields["acceptance"].GetValue(),
             "conditions": self.fields["conditions"].GetValue(),
@@ -792,9 +825,7 @@ class EditorPanel(ScrolledPanel):
         self.extra["labels"] = data["labels"]
         self.extra["approved_at"] = approved_at
         self.extra["notes"] = notes
-        if any(
-            ctrl.GetValue().strip() for ctrl in self.derivation_fields.values()
-        ):
+        if any(ctrl.GetValue().strip() for ctrl in self.derivation_fields.values()):
             assumptions = [
                 s.strip()
                 for s in self.derivation_fields["assumptions"].GetValue().splitlines()
@@ -839,7 +870,11 @@ class EditorPanel(ScrolledPanel):
         else:
             for i, name in enumerate(labels):
                 lbl_def = next(
-                    (label_def for label_def in self._label_defs if label_def.name == name),
+                    (
+                        label_def
+                        for label_def in self._label_defs
+                        if label_def.name == name
+                    ),
                     None,
                 )
                 color = lbl_def.color if lbl_def else "#cccccc"
@@ -866,7 +901,8 @@ class EditorPanel(ScrolledPanel):
         self.attachments_list.DeleteAllItems()
         for att in self.attachments:
             idx = self.attachments_list.InsertItem(
-                self.attachments_list.GetItemCount(), att.get("path", "")
+                self.attachments_list.GetItemCount(),
+                att.get("path", ""),
             )
             self.attachments_list.SetItem(idx, 1, att.get("note", ""))
         visible = bool(self.attachments)
@@ -885,7 +921,11 @@ class EditorPanel(ScrolledPanel):
         self.FitInside()
 
     def _on_add_attachment(self, _event: wx.CommandEvent) -> None:
-        dlg = wx.FileDialog(self, _("Select attachment"), style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        dlg = wx.FileDialog(
+            self,
+            _("Select attachment"),
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+        )
         if dlg.ShowModal() != wx.ID_OK:
             dlg.Destroy()
             return
@@ -904,6 +944,7 @@ class EditorPanel(ScrolledPanel):
         if idx != -1:
             del self.attachments[idx]
             self._refresh_attachments()
+
     # generic link handlers -------------------------------------------
     def _on_add_link_generic(self, attr: str) -> None:
         id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
@@ -924,7 +965,9 @@ class EditorPanel(ScrolledPanel):
                 title = req.title or ""
             except Exception:  # pragma: no cover - lookup errors
                 pass
-        links_list.append({"source_id": src_id, "source_revision": revision, "suspect": False})
+        links_list.append(
+            {"source_id": src_id, "source_revision": revision, "suspect": False},
+        )
         idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), str(src_id))
         list_ctrl.SetItem(idx, 1, title)
         id_ctrl.ChangeValue("")
@@ -963,7 +1006,11 @@ class EditorPanel(ScrolledPanel):
                 revision = req.revision or 1
             except Exception:
                 pass
-        self.parent = {"source_id": src_id, "source_revision": revision, "suspect": False}
+        self.parent = {
+            "source_id": src_id,
+            "source_revision": revision,
+            "suspect": False,
+        }
         self.parent_id.ChangeValue("")
         self._refresh_parent_display()
 
@@ -1032,7 +1079,10 @@ class EditorPanel(ScrolledPanel):
             else None
         )
         path = req_ops.save_requirement(
-            directory, req, mtime=self.mtime, modified_at=mod
+            directory,
+            req,
+            mtime=self.mtime,
+            modified_at=mod,
         )
         self.fields["modified_at"].ChangeValue(req.modified_at)
         self.original_modified_at = req.modified_at
@@ -1047,7 +1097,10 @@ class EditorPanel(ScrolledPanel):
         """Remove currently loaded requirement file if present."""
 
         if self.current_path and self.current_path.exists():
-            req_ops.delete_requirement(self.current_path.parent, int(self.current_path.stem))
+            req_ops.delete_requirement(
+                self.current_path.parent,
+                int(self.current_path.stem),
+            )
         self.current_path = None
         self.mtime = None
         self.original_id = None
@@ -1057,6 +1110,8 @@ class EditorPanel(ScrolledPanel):
 
         self.attachments.append({"path": path, "note": note})
         if hasattr(self, "attachments_list"):
-            idx = self.attachments_list.InsertItem(self.attachments_list.GetItemCount(), path)
+            idx = self.attachments_list.InsertItem(
+                self.attachments_list.GetItemCount(),
+                path,
+            )
             self.attachments_list.SetItem(idx, 1, note)
-

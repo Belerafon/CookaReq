@@ -17,7 +17,12 @@ from .utils import ErrorCode, mcp_error, sanitize
 class MCPClient:
     """Simple HTTP client for the MCP server."""
 
-    def __init__(self, settings: MCPSettings, *, confirm: Callable[[str], bool]) -> None:
+    def __init__(
+        self,
+        settings: MCPSettings,
+        *,
+        confirm: Callable[[str], bool],
+    ) -> None:
         """Initialize client with MCP ``settings`` and confirmation callback."""
         self.settings = settings
         self._confirm = confirm
@@ -49,7 +54,7 @@ class MCPClient:
             try:
                 path = "/mcp"
                 payload = json.dumps(
-                    {"name": "list_requirements", "arguments": {"per_page": 1}}
+                    {"name": "list_requirements", "arguments": {"per_page": 1}},
                 )
                 headers = {"Content-Type": "application/json"}
                 if self.settings.require_token and self.settings.token:

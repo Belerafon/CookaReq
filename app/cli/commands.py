@@ -234,7 +234,7 @@ def cmd_item_move(args: argparse.Namespace, _repo: RequirementRepository) -> Non
     prefix, item_id = parse_rid(args.rid)
     src_dir = Path(args.directory) / prefix
     src_doc = load_document(src_dir)
-    data, _ = load_item(src_dir, src_doc, item_id)
+    data, _mtime = load_item(src_dir, src_doc, item_id)
     item_path(src_dir, src_doc, item_id).unlink()
     dst_dir = Path(args.directory) / args.new_prefix
     dst_doc = load_document(dst_dir)
@@ -279,7 +279,7 @@ def cmd_link(args: argparse.Namespace, _repo: RequirementRepository) -> None:
         return
     item_dir = Path(args.directory) / prefix
     try:
-        data, _ = load_item(item_dir, doc, item_id)
+        data, _mtime = load_item(item_dir, doc, item_id)
     except FileNotFoundError:
         sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
         return

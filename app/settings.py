@@ -5,16 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import tomllib
-from pydantic import BaseModel, ValidationError, Field
+from pydantic import BaseModel, ValidationError, Field, ConfigDict
 
 
 class LLMSettings(BaseModel):
     """Settings for connecting to an LLM service."""
 
-    api_base: str = ""
+    model_config = ConfigDict(populate_by_name=True)
+
+    base_url: str = Field("", alias="api_base")
     model: str = ""
-    api_key: str = ""
-    timeout: int = 60
+    api_key: str | None = None
+    max_retries: int = 3
+    max_output_tokens: int | None = None
+    timeout_minutes: int = 60
+    stream: bool = False
 
 
 class MCPSettings(BaseModel):

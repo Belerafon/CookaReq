@@ -178,19 +178,29 @@ class ConfigManager:
         """Return stored LLM client settings."""
 
         return LLMSettings(
-            api_base=self._cfg.Read("llm_api_base", ""),
+            base_url=self._cfg.Read("llm_base_url", self._cfg.Read("llm_api_base", "")),
             model=self._cfg.Read("llm_model", ""),
-            api_key=self._cfg.Read("llm_api_key", ""),
-            timeout=self._cfg.ReadInt("llm_timeout", 60),
+            api_key=self._cfg.Read("llm_api_key", "") or None,
+            max_retries=self._cfg.ReadInt("llm_max_retries", 3),
+            max_output_tokens=(
+                self._cfg.ReadInt("llm_max_output_tokens", 0) or None
+            ),
+            timeout_minutes=self._cfg.ReadInt("llm_timeout_minutes", 60),
+            stream=self._cfg.ReadBool("llm_stream", False),
         )
 
     def set_llm_settings(self, settings: LLMSettings) -> None:
         """Persist LLM client settings."""
 
-        self._cfg.Write("llm_api_base", settings.api_base)
+        self._cfg.Write("llm_base_url", settings.base_url)
         self._cfg.Write("llm_model", settings.model)
-        self._cfg.Write("llm_api_key", settings.api_key)
-        self._cfg.WriteInt("llm_timeout", settings.timeout)
+        self._cfg.Write("llm_api_key", settings.api_key or "")
+        self._cfg.WriteInt("llm_max_retries", settings.max_retries)
+        self._cfg.WriteInt(
+            "llm_max_output_tokens", settings.max_output_tokens or 0
+        )
+        self._cfg.WriteInt("llm_timeout_minutes", settings.timeout_minutes)
+        self._cfg.WriteBool("llm_stream", settings.stream)
         self._cfg.Flush()
 
     # ------------------------------------------------------------------

@@ -82,7 +82,15 @@ def test_app_settings_round_trip(tmp_path, wx_app):
     cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
 
     app_settings = AppSettings(
-        llm=LLMSettings(api_base="http://api", model="gpt", api_key="k", timeout=42),
+        llm=LLMSettings(
+            base_url="http://api",
+            model="gpt",
+            api_key="k",
+            max_retries=2,
+            max_output_tokens=100,
+            timeout_minutes=42,
+            stream=False,
+        ),
         mcp=MCPSettings(host="1.2.3.4", port=9999, base_path="/m", require_token=True, token="t"),
         ui=UISettings(
             columns=["id", "title"],

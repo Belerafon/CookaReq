@@ -80,11 +80,10 @@ def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch, wx_
         frame.Destroy()
 
 
-def test_run_command_without_api_key(monkeypatch, tmp_path: Path, wx_app) -> None:
+def test_run_command_without_base_url(monkeypatch, tmp_path: Path, wx_app) -> None:
     wx = pytest.importorskip("wx")
-    monkeypatch.setenv("OPENAI_API_KEY", "dummy")
     config = main_frame.ConfigManager(app_name="CookaReqTest", path=tmp_path / "cfg.ini")
-    config.set_llm_settings(LLMSettings(api_base="https://example", model="foo", api_key=""))
+    config.set_llm_settings(LLMSettings(base_url="", model="foo", api_key=None))
     frame = main_frame.MainFrame(None, config=config)
     called: dict[str, str] = {}
 
@@ -98,4 +97,4 @@ def test_run_command_without_api_key(monkeypatch, tmp_path: Path, wx_app) -> Non
         frame.ProcessEvent(evt)
     finally:
         frame.Destroy()
-    assert "API key" in called["msg"]
+    assert "base URL" in called["msg"]

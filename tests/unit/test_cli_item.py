@@ -49,3 +49,100 @@ def test_item_add_and_move(tmp_path, capsys):
     assert data2["id"] == 1
     assert data2["title"] == "Login"
 
+
+@pytest.mark.unit
+def test_item_delete_removes_links(tmp_path, capsys):
+    repo = FileRequirementRepository()
+
+    doc_sys = Document(prefix="SYS", title="System", digits=3)
+    doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
+    save_document(tmp_path / "SYS", doc_sys)
+    save_document(tmp_path / "HLR", doc_hlr)
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path), prefix="SYS", title="S", text="", labels=None
+    )
+    commands.cmd_item_add(add_args, repo)
+    add_args2 = argparse.Namespace(
+        directory=str(tmp_path), prefix="HLR", title="H", text="", labels=None
+    )
+    commands.cmd_item_add(add_args2, repo)
+    # link child to parent
+    link_args = argparse.Namespace(
+        directory=str(tmp_path), rid="HLR01", parents=["SYS001"], replace=False
+    )
+    commands.cmd_link(link_args, repo)
+    capsys.readouterr()
+
+    del_args = argparse.Namespace(directory=str(tmp_path), rid="SYS001")
+    commands.cmd_item_delete(del_args, repo)
+    out = capsys.readouterr().out.strip()
+    assert out == "SYS001"
+
+    assert not (tmp_path / "SYS" / "items" / "SYS001.json").exists()
+    data = json.loads((tmp_path / "HLR" / "items" / "HLR01.json").read_text())
+    assert data.get("links") == []
+
+
+@pytest.mark.unit
+def test_item_delete_dry_run_lists_links(tmp_path, capsys):
+    repo = FileRequirementRepository()
+
+    doc_sys = Document(prefix="SYS", title="System", digits=3)
+    doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
+    save_document(tmp_path / "SYS", doc_sys)
+    save_document(tmp_path / "HLR", doc_hlr)
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path), prefix="SYS", title="S", text="", labels=None
+    )
+    commands.cmd_item_add(add_args, repo)
+    add_args2 = argparse.Namespace(
+        directory=str(tmp_path), prefix="HLR", title="H", text="", labels=None
+    )
+    commands.cmd_item_add(add_args2, repo)
+    link_args = argparse.Namespace(
+        directory=str(tmp_path), rid="HLR01", parents=["SYS001"], replace=False
+    )
+    commands.cmd_link(link_args, repo)
+    capsys.readouterr()
+
+    del_args = argparse.Namespace(directory=str(tmp_path), rid="SYS001", dry_run=True)
+    commands.cmd_item_delete(del_args, repo)
+    out = capsys.readouterr().out.splitlines()
+    assert out == ["SYS001", "HLR01"]
+    # nothing removed or updated
+    assert (tmp_path / "SYS" / "items" / "SYS001.json").exists()
+    data = json.loads((tmp_path / "HLR" / "items" / "HLR01.json").read_text())
+    assert data.get("links") == ["SYS001"]
+
+
+def test_item_delete_requires_confirmation(tmp_path, capsys):
+    repo = FileRequirementRepository()
+
+    doc_sys = Document(prefix="SYS", title="System", digits=3)
+    save_document(tmp_path / "SYS", doc_sys)
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path), prefix="SYS", title="S", text="", labels=None
+    )
+    commands.cmd_item_add(add_args, repo)
+    _ = capsys.readouterr()
+
+    from app.confirm import set_confirm
+
+    messages: list[str] = []
+
+    def fake_confirm(msg: str) -> bool:
+        messages.append(msg)
+        return False
+
+    set_confirm(fake_confirm)
+
+    del_args = argparse.Namespace(directory=str(tmp_path), rid="SYS001")
+    commands.cmd_item_delete(del_args, repo)
+    out = capsys.readouterr().out.strip()
+    assert out == "aborted"
+    assert (tmp_path / "SYS" / "items" / "SYS001.json").exists()
+    assert messages and "SYS001" in messages[0]
+

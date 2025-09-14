@@ -11,9 +11,10 @@ from ...core.doc_store import (
     list_item_ids,
     load_item,
     save_item,
-    item_path,
     rid_for,
     next_item_id as doc_next_item_id,
+    delete_document as doc_delete_document,
+    delete_item,
 )
 from ...core.model import Requirement, requirement_from_dict, requirement_to_dict
 from ...core.labels import Label, _color_from_name
@@ -111,11 +112,20 @@ class DocumentsController:
         doc = self.documents.get(prefix)
         if not doc:
             return False
-        path = item_path(self.root / prefix, doc, req_id)
-        if path.exists():
-            path.unlink()
-        self.model.delete(req_id)
-        return True
+        rid = rid_for(doc, req_id)
+        removed = delete_item(self.root, rid, self.documents)
+        if removed:
+            self.model.delete(req_id)
+        return removed
+
+    def delete_document(self, prefix: str) -> bool:
+        """Remove document ``prefix`` and its descendants."""
+
+        removed = doc_delete_document(self.root, prefix, self.documents)
+        if removed:
+            self.load_documents()
+            self.model.set_requirements([])
+        return removed
 
     # ------------------------------------------------------------------
     def iter_links(self) -> Iterable[Tuple[str, str]]:

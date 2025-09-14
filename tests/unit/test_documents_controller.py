@@ -9,6 +9,7 @@ from app.core.doc_store import (
     LabelDef,
     save_document,
     save_item,
+    load_item,
 )
 from app.core.model import (
     Requirement,
@@ -104,3 +105,50 @@ def test_iter_links(tmp_path: Path):
     controller.load_documents()
     links = list(controller.iter_links())
     assert ("HLR001", "SYS001") in links
+
+
+def test_delete_requirement_removes_links(tmp_path: Path):
+    sys_doc = Document(prefix="SYS", title="System", digits=3)
+    hlr_doc = Document(prefix="HLR", title="High", digits=3, parent="SYS")
+    sys_dir = tmp_path / "SYS"
+    hlr_dir = tmp_path / "HLR"
+    save_document(sys_dir, sys_doc)
+    save_document(hlr_dir, hlr_doc)
+    save_item(sys_dir, sys_doc, requirement_to_dict(_req(1)))
+    data = requirement_to_dict(_req(1))
+    data["links"] = ["SYS001"]
+    save_item(hlr_dir, hlr_doc, data)
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    controller.delete_requirement("SYS", 1)
+    assert not (sys_dir / "items" / "SYS001.json").exists()
+    data2, _ = load_item(hlr_dir, hlr_doc, 1)
+    assert data2.get("links") == []
+
+
+def test_delete_document_recursively(tmp_path: Path):
+    sys_doc = Document(prefix="SYS", title="System", digits=3)
+    hlr_doc = Document(prefix="HLR", title="High", digits=3, parent="SYS")
+    llr_doc = Document(prefix="LLR", title="Low", digits=3, parent="HLR")
+    sys_dir = tmp_path / "SYS"
+    hlr_dir = tmp_path / "HLR"
+    llr_dir = tmp_path / "LLR"
+    save_document(sys_dir, sys_doc)
+    save_document(hlr_dir, hlr_doc)
+    save_document(llr_dir, llr_doc)
+    save_item(sys_dir, sys_doc, requirement_to_dict(_req(1)))
+    save_item(hlr_dir, hlr_doc, requirement_to_dict(_req(1)))
+    save_item(llr_dir, llr_doc, requirement_to_dict(_req(1)))
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    controller.load_items("LLR")
+    assert model.get_all()
+    removed = controller.delete_document("HLR")
+    assert removed is True
+    assert "HLR" not in controller.documents
+    assert "LLR" not in controller.documents
+    assert not hlr_dir.exists()
+    assert not llr_dir.exists()
+    assert model.get_all() == []

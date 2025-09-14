@@ -59,6 +59,11 @@ class MCPClient:
                 body = resp.read().decode()
             finally:
                 conn.close()
+        except Exception as exc:  # pragma: no cover - network errors
+            err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
+            log_event("TOOL_RESULT", {"error": err}, start_time=start)
+            return err
+        else:
             data = json.loads(body or "{}")
             if resp.status == 200 and "error" not in data:
                 log_event("TOOL_RESULT", {"ok": True}, start_time=start)
@@ -66,10 +71,6 @@ class MCPClient:
             err = data.get("error")
             if not err:
                 err = {"code": str(resp.status), "message": data.get("message", "")}
-            log_event("TOOL_RESULT", {"error": err}, start_time=start)
-            return err
-        except Exception as exc:  # pragma: no cover - network errors
-            err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
             return err
 
@@ -107,6 +108,12 @@ class MCPClient:
                 body = resp.read().decode()
             finally:
                 conn.close()
+        except Exception as exc:  # pragma: no cover - network errors
+            err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
+            log_event("TOOL_RESULT", {"error": err}, start_time=start)
+            log_event("ERROR", {"error": err})
+            return {"error": err}
+        else:
             data = json.loads(body or "{}")
             if resp.status == 200 and "error" not in data:
                 log_event("TOOL_RESULT", {"result": data}, start_time=start)
@@ -115,11 +122,6 @@ class MCPClient:
             err = data.get("error")
             if not err:
                 err = {"code": str(resp.status), "message": data.get("message", "")}
-            log_event("TOOL_RESULT", {"error": err}, start_time=start)
-            log_event("ERROR", {"error": err})
-            return {"error": err}
-        except Exception as exc:  # pragma: no cover - network errors
-            err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
             log_event("ERROR", {"error": err})
             return {"error": err}

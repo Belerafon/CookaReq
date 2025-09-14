@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from .util.time import utc_now_iso
@@ -14,9 +15,9 @@ logger = logging.getLogger("cookareq")
 class JsonlHandler(logging.Handler):
     """Write log records as JSON lines with timestamps."""
 
-    def __init__(self, filename: str) -> None:
+    def __init__(self, filename: Path | str) -> None:
         super().__init__(level=logging.INFO)
-        self.filename = filename
+        self.filename = Path(filename)
 
     def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - simple IO
         """Serialize ``record`` to JSONL with a timestamp."""
@@ -26,7 +27,7 @@ class JsonlHandler(logging.Handler):
             data = {"message": record.getMessage(), "level": record.levelname}
         if "timestamp" not in data:
             data["timestamp"] = utc_now_iso()
-        with open(self.filename, "a", encoding="utf-8") as fh:
+        with self.filename.open("a", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False)
             fh.write("\n")
 

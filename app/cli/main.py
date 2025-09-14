@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import os
 from pathlib import Path
 
 from app import i18n
@@ -17,8 +16,8 @@ from app.settings import AppSettings, load_app_settings
 from .commands import COMMANDS
 
 APP_NAME = "CookaReq"
-LOCALE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "locale"))
-MISSING_PATH = Path(LOCALE_DIR) / "missing.po"
+LOCALE_DIR = Path(__file__).resolve().parent.parent / "locale"
+MISSING_PATH = LOCALE_DIR / "missing.po"
 atexit.register(i18n.flush_missing, MISSING_PATH)
 
 set_confirm(auto_confirm)

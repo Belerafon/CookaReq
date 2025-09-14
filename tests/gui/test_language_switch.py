@@ -20,7 +20,6 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app):
 
     def fake_init_locale(language):
         i18n.install(main_mod.APP_NAME, main_mod.LOCALE_DIR, [language])
-        return None
 
     monkeypatch.setattr(main_mod, "init_locale", fake_init_locale)
 

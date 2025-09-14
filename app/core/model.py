@@ -123,8 +123,8 @@ def requirement_from_dict(data: dict[str, Any]) -> Requirement:
     derived_from = [RequirementLink(**d) for d in data.get("derived_from", [])]
     links_data = data.get("links", {})
     links = Links(
-        verifies=[RequirementLink(**l) for l in links_data.get("verifies", [])],
-        relates=[RequirementLink(**l) for l in links_data.get("relates", [])],
+        verifies=[RequirementLink(**link_data) for link_data in links_data.get("verifies", [])],
+        relates=[RequirementLink(**link_data) for link_data in links_data.get("relates", [])],
     )
     derivation_data = data.get("derivation")
     derivation = DerivationInfo(**derivation_data) if derivation_data else None

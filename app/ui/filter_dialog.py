@@ -57,7 +57,7 @@ class FilterDialog(wx.Dialog):
             except Exception:  # pragma: no cover - platform dependent
                 pass
         for lbl in values.get("labels", []):
-            names = [l.name for l in self._labels]
+            names = [label_obj.name for label_obj in self._labels]
             if lbl in names:
                 idx = names.index(lbl)
                 self.labels_box.Check(idx)

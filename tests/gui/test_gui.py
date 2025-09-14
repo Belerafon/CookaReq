@@ -6,7 +6,7 @@ pytestmark = pytest.mark.gui
 
 
 def test_gui_imports(wx_app):
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
     from app.main import main
     from app.ui.main_frame import MainFrame
     from app.ui.list_panel import ListPanel

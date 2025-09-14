@@ -44,7 +44,7 @@ def test_command_dialog_shows_result_and_saves_history(tmp_path, wx_app):
 
 
 def test_command_dialog_shows_error(tmp_path, wx_app):
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
     from app.ui.command_dialog import CommandDialog
 
     class DummyLLM:
@@ -66,7 +66,7 @@ def test_command_dialog_shows_error(tmp_path, wx_app):
 
 
 def test_command_dialog_persists_between_instances(tmp_path, wx_app):
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
     from app.ui.command_dialog import CommandDialog
 
     class DummyAgent:
@@ -88,7 +88,7 @@ def test_command_dialog_persists_between_instances(tmp_path, wx_app):
 
 
 def test_command_dialog_handles_invalid_history(tmp_path, wx_app):
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
     from app.ui.command_dialog import CommandDialog
 
     bad_file = tmp_path / "history.json"

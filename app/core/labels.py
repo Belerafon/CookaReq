@@ -80,7 +80,7 @@ PRESET_SET_TITLES: Dict[str, str] = {
 
 def add_label(labels: List[Label], label: Label) -> None:
     """Add ``label`` to ``labels`` ensuring unique names."""
-    if any(l.name == label.name for l in labels):
+    if any(existing.name == label.name for existing in labels):
         raise ValueError(f"label exists: {label.name}")
     labels.append(label)
 

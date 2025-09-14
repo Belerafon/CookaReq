@@ -16,7 +16,7 @@ class LabelsDialog(wx.Dialog):
         style = wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
         super().__init__(parent, title=_("Labels"), style=style)
         # copy labels to avoid modifying caller until OK
-        self._labels: list[Label] = [Label(l.name, l.color) for l in labels]
+        self._labels: list[Label] = [Label(lbl.name, lbl.color) for lbl in labels]
         cfg = getattr(parent, "config", None)
         if cfg is None:
             cfg = ConfigManager()
@@ -171,7 +171,7 @@ class LabelsDialog(wx.Dialog):
             if not new_name:
                 dlg.Destroy()
                 return
-            existing = {l.name for i, l in enumerate(self._labels) if i != idx}
+            existing = {lbl.name for i, lbl in enumerate(self._labels) if i != idx}
             if new_name in existing:
                 wx.MessageBox(_("Label already exists"), _("Error"), style=wx.ICON_ERROR)
             else:
@@ -196,12 +196,12 @@ class LabelsDialog(wx.Dialog):
                     visible = True
                     break
             if not visible:
-                if parent := self.GetParent():
+                if self.GetParent():
                     self.CentreOnParent()
                 else:
                     self.Centre()
         else:
-            if parent := self.GetParent():
+            if self.GetParent():
                 self.CentreOnParent()
             else:
                 self.Centre()

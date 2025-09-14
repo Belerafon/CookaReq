@@ -6,7 +6,7 @@ pytestmark = [pytest.mark.gui, pytest.mark.integration]
 
 
 def test_available_translations_contains_locales():
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
     from app.ui.settings_dialog import available_translations
 
     langs = available_translations()
@@ -16,7 +16,7 @@ def test_available_translations_contains_locales():
 
 
 def test_settings_dialog_returns_language(wx_app):
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
     from app.ui.settings_dialog import SettingsDialog
 
     dlg = SettingsDialog(

@@ -39,9 +39,9 @@ class LabelsController:
         if not self.directory:
             return []
         existing_colors = {lbl.name: lbl.color for lbl in self.labels}
-        used_names = {l for req in self.model.get_all() for l in req.labels}
+        used_names = {label for req in self.model.get_all() for label in req.labels}
         all_names = sorted(existing_colors.keys() | used_names)
-        self.labels = [Label(name=n, color=existing_colors.get(n, "#ffffff")) for n in all_names]
+        self.labels = [Label(name=name, color=existing_colors.get(name, "#ffffff")) for name in all_names]
         try:
             req_ops.save_labels(self.directory, self.labels, repo=self.repo)
         except Exception as exc:
@@ -73,7 +73,7 @@ class LabelsController:
         if remove_from_requirements:
             for req in self.model.get_all():
                 before = list(req.labels)
-                req.labels = [l for l in req.labels if l not in removed_set]
+                req.labels = [label for label in req.labels if label not in removed_set]
                 if before != req.labels:
                     try:
                         req_ops.save_requirement(self.directory, req)

@@ -668,11 +668,11 @@ class EditorPanel(ScrolledPanel):
             self.derived_id.ChangeValue("")
             self._refresh_links_visibility("derived_from")
             links = data.get("links", {})
-            self.verifies = [dict(l) for l in links.get("verifies", [])]
+            self.verifies = [dict(link) for link in links.get("verifies", [])]
             self._rebuild_links_list("verifies")
             self.verifies_id.ChangeValue("")
             self._refresh_links_visibility("verifies")
-            self.relates = [dict(l) for l in links.get("relates", [])]
+            self.relates = [dict(link) for link in links.get("relates", [])]
             self._rebuild_links_list("relates")
             self.relates_id.ChangeValue("")
             self._refresh_links_visibility("relates")
@@ -811,14 +811,16 @@ class EditorPanel(ScrolledPanel):
         """Update available labels and reapply selection."""
         self._label_defs = list(labels)
         current = [
-            lbl for lbl in self.extra.get("labels", []) if any(l.name == lbl for l in labels)
+            lbl
+            for lbl in self.extra.get("labels", [])
+            if any(label.name == lbl for label in labels)
         ]
         self.extra["labels"] = current
         self._refresh_labels_display()
 
     def apply_label_selection(self, labels: list[str]) -> None:
         """Apply selected ``labels`` to requirement and refresh display."""
-        available = {l.name for l in self._label_defs}
+        available = {label.name for label in self._label_defs}
         self.extra["labels"] = [lbl for lbl in labels if lbl in available]
         self._refresh_labels_display()
 
@@ -836,7 +838,10 @@ class EditorPanel(ScrolledPanel):
             sizer.Add(placeholder, 0)
         else:
             for i, name in enumerate(labels):
-                lbl_def = next((l for l in self._label_defs if l.name == name), None)
+                lbl_def = next(
+                    (label_def for label_def in self._label_defs if label_def.name == name),
+                    None,
+                )
                 color = lbl_def.color if lbl_def else "#cccccc"
                 txt = wx.StaticText(self.labels_panel, label=name)
                 txt.SetBackgroundColour(color)

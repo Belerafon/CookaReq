@@ -6,7 +6,7 @@ import pytest
 pytestmark = pytest.mark.gui
 
 def test_recent_dirs_history(tmp_path, wx_app):
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
     import app.ui.main_frame as main_frame
     importlib.reload(list_panel)

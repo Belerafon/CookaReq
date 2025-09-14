@@ -29,6 +29,8 @@ class LabelsController:
         self.labels: List[Label] = []
 
     def load_labels(self) -> List[Label]:
+        """Load labels from configured repository."""
+
         self.labels = req_ops.load_labels(self.directory, repo=self.repo)
         return self.labels
 
@@ -85,4 +87,6 @@ class LabelsController:
         return {}
 
     def get_label_names(self) -> List[str]:
+        """Return list of current label names."""
+
         return [lbl.name for lbl in self.labels]

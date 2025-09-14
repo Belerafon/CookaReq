@@ -34,10 +34,14 @@ class RequirementModel:
         self._refresh()
 
     def add(self, requirement: Requirement) -> None:
+        """Append ``requirement`` to the model."""
+
         self._all.append(requirement)
         self._refresh()
 
     def update(self, requirement: Requirement) -> None:
+        """Replace existing requirement with same id or append new."""
+
         rid = requirement.id
         for i, req in enumerate(self._all):
             if req.id == rid:
@@ -48,10 +52,14 @@ class RequirementModel:
         self._refresh()
 
     def delete(self, req_id: int) -> None:
+        """Remove requirement with ``req_id``."""
+
         self._all = [r for r in self._all if r.id != req_id]
         self._refresh()
 
     def get_by_id(self, req_id: int) -> Requirement | None:
+        """Return requirement with ``req_id`` or ``None``."""
+
         for req in self._all:
             if req.id == req_id:
                 return req
@@ -59,31 +67,45 @@ class RequirementModel:
 
     # filtering -------------------------------------------------------
     def set_label_filter(self, labels: List[str]) -> None:
+        """Filter visible requirements by ``labels``."""
+
         self._labels = labels
         self._refresh()
 
     def set_label_match_all(self, match_all: bool) -> None:
+        """Require all selected labels when ``match_all`` is ``True``."""
+
         self._labels_match_all = match_all
         self._refresh()
 
     def set_search_query(self, query: str, fields: Sequence[str] | None = None) -> None:
+        """Set free-text ``query`` and optional fields to search."""
+
         self._query = query
         self._fields = fields
         self._refresh()
 
     def set_is_derived(self, value: bool) -> None:
+        """Filter to requirements that are themselves derived."""
+
         self._is_derived = value
         self._refresh()
 
     def set_has_derived(self, value: bool) -> None:
+        """Filter to requirements that have derived children."""
+
         self._has_derived = value
         self._refresh()
 
     def set_suspect_only(self, value: bool) -> None:
+        """Restrict to requirements marked as suspect."""
+
         self._suspect_only = value
         self._refresh()
 
     def set_status(self, status: str | None) -> None:
+        """Filter requirements by status code."""
+
         self._status = status
         self._refresh()
 
@@ -94,6 +116,8 @@ class RequirementModel:
 
     # sorting ---------------------------------------------------------
     def sort(self, field: str, ascending: bool = True) -> None:
+        """Sort visible requirements by ``field``."""
+
         self._sort_field = field
         self._sort_ascending = ascending
         self._apply_sort()
@@ -139,7 +163,11 @@ class RequirementModel:
 
     # access ----------------------------------------------------------
     def get_visible(self) -> List[Requirement]:
+        """Return currently visible requirements."""
+
         return list(self._visible)
 
     def get_all(self) -> List[Requirement]:
+        """Return all requirements managed by the model."""
+
         return list(self._all)

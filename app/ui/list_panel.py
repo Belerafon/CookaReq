@@ -85,9 +85,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
 # ColumnSorterMixin requirement
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
+        """Return internal ``wx.ListCtrl`` for sorting mixin."""
+
         return self.list
 
     def GetSortImages(self):  # pragma: no cover - default arrows
+        """Return image ids for sort arrows (unused)."""
+
         return (-1, -1)
 
     def set_handlers(
@@ -307,9 +311,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._toggle_reset_button()
 
     def set_label_filter(self, labels: List[str]) -> None:
+        """Apply label filter to the model."""
+
         self.apply_filters({"labels": labels})
 
     def set_search_query(self, query: str, fields: Sequence[str] | None = None) -> None:
+        """Apply text ``query`` with optional field restriction."""
+
         filters = {"query": query}
         if fields is not None:
             filters["fields"] = list(fields)
@@ -467,9 +475,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._refresh()
 
     def add_derived_link(self, source_id: int, derived_id: int) -> None:
+        """Record that ``derived_id`` is derived from ``source_id``."""
+
         self.derived_map.setdefault(source_id, []).append(derived_id)
 
     def recalc_derived_map(self, requirements: list[Requirement]) -> None:
+        """Rebuild derived requirements map from ``requirements``."""
+
         derived_map: dict[int, List[int]] = {}
         for req in requirements:
             for link in getattr(req, "derived_from", []):

@@ -50,6 +50,8 @@ class FileRequirementRepository(RequirementRepository):
     """Filesystem-backed requirement repository."""
 
     def load_all(self, directory: str | Path) -> list[Requirement]:  # type: ignore[override]
+        """Load all requirements from ``directory``."""
+
         return req_ops.load_all(directory)
 
     def search(
@@ -61,14 +63,20 @@ class FileRequirementRepository(RequirementRepository):
         fields: Sequence[str] | None = None,
         status: str | None = None,
     ) -> list[Requirement]:  # type: ignore[override]
+        """Search requirements in ``directory`` with optional filters."""
+
         return req_ops.search_requirements(
             directory, query=query, labels=labels, fields=fields, status=status
         )
 
     def load(self, directory: str | Path, req_id: int) -> tuple[dict, float]:  # type: ignore[override]
+        """Load raw requirement data and mtime for ``req_id``."""
+
         return req_ops.load_requirement(directory, req_id)
 
     def get(self, directory: str | Path, req_id: int) -> Requirement:  # type: ignore[override]
+        """Return :class:`Requirement` identified by ``req_id``."""
+
         return req_ops.get_requirement(directory, req_id)
 
     def save(
@@ -79,9 +87,13 @@ class FileRequirementRepository(RequirementRepository):
         mtime: float | None = None,
         modified_at: str | None = None,
     ) -> Path:  # type: ignore[override]
+        """Persist requirement ``data`` to ``directory`` and return path."""
+
         return req_ops.save_requirement(
             directory, data, mtime=mtime, modified_at=modified_at
         )
 
     def delete(self, directory: str | Path, req_id: int) -> None:  # type: ignore[override]
+        """Remove requirement ``req_id`` from ``directory``."""
+
         req_ops.delete_requirement(directory, req_id)

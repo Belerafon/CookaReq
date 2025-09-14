@@ -19,6 +19,8 @@ class JsonlHandler(logging.Handler):
         self.filename = filename
 
     def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - simple IO
+        """Serialize ``record`` to JSONL with a timestamp."""
+
         data: Any = getattr(record, "json", None)
         if data is None:
             data = {"message": record.getMessage(), "level": record.levelname}

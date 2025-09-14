@@ -47,13 +47,19 @@ class RequirementsController:
 
     # requirement creation -------------------------------------------
     def generate_new_id(self) -> int:
+        """Return a free requirement identifier."""
+
         existing = {req.id for req in self.model.get_all()}
         return max(existing, default=0) + 1
 
     def add_requirement(self, requirement: Requirement) -> None:
+        """Add ``requirement`` to the model."""
+
         self.model.add(requirement)
 
     def clone_requirement(self, req_id: int) -> Requirement | None:
+        """Return a copy of requirement ``req_id`` with a new id."""
+
         source = self.model.get_by_id(req_id)
         if not source:
             return None
@@ -69,6 +75,8 @@ class RequirementsController:
         return clone
 
     def delete_requirement(self, req_id: int) -> bool:
+        """Delete requirement ``req_id`` from model and storage."""
+
         req = self.model.get_by_id(req_id)
         if not req:
             return False

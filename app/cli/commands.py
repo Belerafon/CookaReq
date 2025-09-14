@@ -17,6 +17,8 @@ from app.i18n import _
 
 @dataclass
 class Command:
+    """Describe a CLI command and its argument handler."""
+
     func: Callable[[argparse.Namespace, RequirementRepository], None]
     help: str
     add_arguments: Callable[[argparse.ArgumentParser], None]

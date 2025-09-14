@@ -10,11 +10,12 @@ from wx.lib.mixins.listctrl import ColumnSorterMixin
 from typing import Callable, List, Sequence, TYPE_CHECKING
 from enum import Enum
 
-from ..core.model import Priority, RequirementType, Status, Verification, Requirement
+from ..core.model import Requirement
 from ..core.labels import Label, _color_from_name
 from .requirement_model import RequirementModel
 from .filter_dialog import FilterDialog
 from . import locale
+from .enums import ENUMS
 
 if TYPE_CHECKING:  # pragma: no cover
     from wx import ListEvent, ContextMenuEvent
@@ -347,7 +348,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             parts.append(_("Labels") + ": " + ", ".join(labels))
         status = self.current_filters.get("status")
         if status:
-            parts.append(_("Status") + f": {locale.STATUS.get(status, status)}")
+            parts.append(_("Status") + f": {locale.code_to_label('status', status)}")
         if self.current_filters.get("is_derived"):
             parts.append(_("Derived only"))
         if self.current_filters.get("has_derived"):
@@ -579,19 +580,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         return indices
 
     def _prompt_value(self, field: str) -> object | None:
-        enum_map = {
-            "type": RequirementType,
-            "status": Status,
-            "priority": Priority,
-            "verification": Verification,
-        }
-        if field in enum_map:
-            choices = [locale.code_to_label(field, e.value) for e in enum_map[field]]
+        if field in ENUMS:
+            enum_cls = ENUMS[field]
+            choices = [locale.code_to_label(field, e.value) for e in enum_cls]
             dlg = wx.SingleChoiceDialog(self, _("Select {field}").format(field=field), _("Edit"), choices)
             if dlg.ShowModal() == wx.ID_OK:
                 label = dlg.GetStringSelection()
                 code = locale.label_to_code(field, label)
-                value = enum_map[field](code)
+                value = enum_cls(code)
             else:
                 value = None
             dlg.Destroy()
@@ -618,5 +614,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             req = items[idx]
             setattr(req, field, value)
             self.model.update(req)
-            display = value.value if isinstance(value, Enum) else value
+            if isinstance(value, Enum):
+                display = (
+                    locale.code_to_label(field, value.value)
+                    if field in ENUMS
+                    else value.value
+                )
+            else:
+                display = value
             self.list.SetItem(idx, column, str(display))

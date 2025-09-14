@@ -169,6 +169,5 @@ def requirement_to_dict(req: Requirement) -> dict[str, Any]:
         value = data.get(key)
         if isinstance(value, Enum):
             data[key] = value.value
-    data = {k: v for k, v in data.items() if v is not None}
-    return data
+    return {k: v for k, v in data.items() if v is not None}
 

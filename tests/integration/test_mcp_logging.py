@@ -1,7 +1,7 @@
 """Tests for mcp logging."""
 
 import json
-import os
+from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
@@ -15,6 +15,7 @@ pytestmark = pytest.mark.integration
 def test_request_logged_and_token_masked():
     port = 8124
     with TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
         stop_server()
         start_server(port=port, base_path=tmp, token="secret")
         try:
@@ -24,17 +25,17 @@ def test_request_logged_and_token_masked():
         finally:
             stop_server()
 
-        log_path = os.path.join(tmp, "server.log")
-        jsonl_path = os.path.join(tmp, "server.jsonl")
-        assert os.path.exists(log_path)
-        assert os.path.exists(jsonl_path)
+        log_path = tmp_path / "server.log"
+        jsonl_path = tmp_path / "server.jsonl"
+        assert log_path.exists()
+        assert jsonl_path.exists()
 
-        with open(log_path, encoding="utf-8") as fh:
+        with log_path.open(encoding="utf-8") as fh:
             content = fh.read()
         assert "GET /health" in content
         assert "secret" not in content
 
-        with open(jsonl_path, encoding="utf-8") as fh:
+        with jsonl_path.open(encoding="utf-8") as fh:
             line = fh.readline()
         entry = json.loads(line)
         headers = entry["headers"]

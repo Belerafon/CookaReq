@@ -1,7 +1,6 @@
 """Application entry point for CookaReq."""
 
 import atexit
-import os
 from pathlib import Path
 
 import wx
@@ -14,14 +13,14 @@ from .ui.main_frame import MainFrame
 from .ui.requirement_model import RequirementModel
 
 APP_NAME = "CookaReq"
-LOCALE_DIR = os.path.join(os.path.dirname(__file__), "locale")
-MISSING_PATH = Path(LOCALE_DIR) / "missing.po"
+LOCALE_DIR = Path(__file__).resolve().parent / "locale"
+MISSING_PATH = LOCALE_DIR / "missing.po"
 atexit.register(i18n.flush_missing, MISSING_PATH)
 
 
 def init_locale(language: str | None = None) -> wx.Locale:
     """Initialize wx locale and load translations."""
-    wx.Locale.AddCatalogLookupPathPrefix(LOCALE_DIR)
+    wx.Locale.AddCatalogLookupPathPrefix(str(LOCALE_DIR))
     if language and hasattr(wx.Locale, "FindLanguageInfo"):
         info = wx.Locale.FindLanguageInfo(language)
         locale = wx.Locale(info.Language) if info else wx.Locale(wx.LANGUAGE_DEFAULT)

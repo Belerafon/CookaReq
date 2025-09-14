@@ -9,9 +9,9 @@ loop remains responsive.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from collections.abc import Mapping
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -38,7 +38,7 @@ _TEXT_LOG_NAME = "server.log"
 _JSONL_LOG_NAME = "server.jsonl"
 
 
-def _configure_request_logging(log_dir: str) -> None:
+def _configure_request_logging(log_dir: str | Path) -> None:
     """Attach file handlers for request logging without mutating the global logger."""
     configure_logging()
     # Remove previous request handlers if any from the dedicated logger
@@ -47,15 +47,16 @@ def _configure_request_logging(log_dir: str) -> None:
             request_logger.removeHandler(h)
             h.close()
 
-    os.makedirs(log_dir, exist_ok=True)
+    log_dir_path = Path(log_dir)
+    log_dir_path.mkdir(parents=True, exist_ok=True)
 
-    text_path = os.path.join(log_dir, _TEXT_LOG_NAME)
+    text_path = log_dir_path / _TEXT_LOG_NAME
     text_handler = logging.FileHandler(text_path)
     text_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     text_handler._cookareq_request = True
     request_logger.addHandler(text_handler)
 
-    json_path = os.path.join(log_dir, _JSONL_LOG_NAME)
+    json_path = log_dir_path / _JSONL_LOG_NAME
     json_handler = JsonlHandler(json_path)
     json_handler._cookareq_request = True
     request_logger.addHandler(json_handler)

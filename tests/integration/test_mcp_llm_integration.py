@@ -50,7 +50,7 @@ def test_create_and_delete_requirement_via_llm(tmp_path: Path, monkeypatch, mcp_
                 }
             },
         )
-        create_result = client.run_command(text_create)
+        client.run_command(text_create)
         path = tmp_path / "10.json"
         data = json.loads(path.read_text())
         assert data["title"] == "LLM test"

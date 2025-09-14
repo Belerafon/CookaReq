@@ -112,7 +112,7 @@ def test_main_frame_run_command_history_persists(monkeypatch, tmp_path, wx_app):
 
 
 def test_log_handler_not_duplicated(tmp_path, wx_app):
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
 
     import app.ui.main_frame as main_frame
 

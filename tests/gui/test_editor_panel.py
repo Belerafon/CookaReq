@@ -115,7 +115,7 @@ def test_get_data_requires_valid_id(wx_app):
 
 
 def test_enum_localization_roundtrip(wx_app):
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
     from app.ui import locale
 
     panel = _make_panel()

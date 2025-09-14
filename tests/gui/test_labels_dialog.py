@@ -45,14 +45,14 @@ def test_labels_dialog_displays_color_rect(wx_app):
 
 
 def test_labels_dialog_adds_presets(wx_app):
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
     from app.ui.labels_dialog import LabelsDialog
     from app.core.labels import PRESET_SETS
 
     dlg = LabelsDialog(None, [])
     dlg._on_add_preset_set("basic")
     labels = dlg.get_labels()
-    assert {l.name for l in labels} == {l.name for l in PRESET_SETS["basic"]}
+    assert {label.name for label in labels} == {label.name for label in PRESET_SETS["basic"]}
     # calling again should not duplicate
     dlg._on_add_preset_set("basic")
     assert len(dlg.get_labels()) == len(PRESET_SETS["basic"])
@@ -67,13 +67,13 @@ def test_labels_dialog_deletes_selected(wx_app):
     dlg.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
     dlg.list.SetItemState(2, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
     dlg._on_delete_selected(None)
-    names = [l.name for l in dlg.get_labels()]
+    names = [label.name for label in dlg.get_labels()]
     assert names == ["b"]
     dlg.Destroy()
 
 
 def test_labels_dialog_clear_all(wx_app):
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
     from app.ui.labels_dialog import LabelsDialog
 
     dlg = LabelsDialog(None, [Label("a", "#111111")])
@@ -160,7 +160,7 @@ def test_main_frame_manage_labels_saves(monkeypatch, tmp_path, wx_app):
 
     class DummyLabelsDialog:
         def __init__(self, parent, labels):
-            self._labels = [Label(l.name, "#123456") for l in labels]
+            self._labels = [Label(label.name, "#123456") for label in labels]
 
         def ShowModal(self):
             return wx.ID_OK
@@ -175,10 +175,10 @@ def test_main_frame_manage_labels_saves(monkeypatch, tmp_path, wx_app):
 
     captured: list[tuple[str, list[str]]] = []
     frame.editor.update_labels_list = lambda labels: captured.append(
-        ("editor", [l.name for l in labels])
+        ("editor", [label.name for label in labels])
     )
     frame.panel.update_labels_list = lambda labels: captured.append(
-        ("panel", [l.name for l in labels])
+        ("panel", [label.name for label in labels])
     )
 
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, frame.manage_labels_id)

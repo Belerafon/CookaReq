@@ -277,12 +277,12 @@ def link_requirements(
     if link_type == "parent":
         data["parent"] = link
     elif link_type == "derived_from":
-        links = [l for l in data.get("derived_from", []) if l.get("source_id") != source_id]
+        links = [item for item in data.get("derived_from", []) if item.get("source_id") != source_id]
         links.append(link)
         data["derived_from"] = links
     else:
         links_obj = data.get("links", {})
-        lst = [l for l in links_obj.get(link_type, []) if l.get("source_id") != source_id]
+        lst = [item for item in links_obj.get(link_type, []) if item.get("source_id") != source_id]
         lst.append(link)
         links_obj[link_type] = lst
         data["links"] = links_obj

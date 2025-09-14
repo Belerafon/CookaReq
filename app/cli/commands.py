@@ -15,6 +15,9 @@ from app.confirm import confirm
 from app.core import model
 from app.core.doc_store import (
     Document,
+    is_ancestor,
+    load_documents,
+    iter_links,
     item_path,
     load_document,
     load_item,
@@ -261,6 +264,79 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     move_p.set_defaults(func=cmd_item_move)
 
 
+def cmd_link(args: argparse.Namespace, _repo: RequirementRepository) -> None:
+    """Add links from requirement ``rid`` to ``parents``."""
+
+    docs = load_documents(args.directory)
+    try:
+        prefix, item_id = parse_rid(args.rid)
+    except ValueError:
+        sys.stdout.write(_("invalid requirement identifier: {rid}\n").format(rid=args.rid))
+        return
+    doc = docs.get(prefix)
+    if doc is None:
+        sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=prefix))
+        return
+    item_dir = Path(args.directory) / prefix
+    try:
+        data, _ = load_item(item_dir, doc, item_id)
+    except FileNotFoundError:
+        sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
+        return
+    for rid in args.parents:
+        try:
+            parent_prefix, parent_id = parse_rid(rid)
+        except ValueError:
+            sys.stdout.write(_("invalid requirement identifier: {rid}\n").format(rid=rid))
+            return
+        if parent_prefix not in docs:
+            sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=parent_prefix))
+            return
+        if not is_ancestor(prefix, parent_prefix, docs):
+            sys.stdout.write(_("invalid link target: {rid}\n").format(rid=rid))
+            return
+        parent_dir = Path(args.directory) / parent_prefix
+        parent_doc = docs[parent_prefix]
+        try:
+            load_item(parent_dir, parent_doc, parent_id)
+        except FileNotFoundError:
+            sys.stdout.write(_("linked item not found: {rid}\n").format(rid=rid))
+            return
+    links = set(data.get("links", []))
+    if args.replace:
+        links.clear()
+    links.update(args.parents)
+    data["links"] = sorted(links)
+    save_item(item_dir, doc, data)
+    sys.stdout.write(f"{args.rid}\n")
+
+
+def add_link_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``link`` command."""
+
+    p.add_argument("directory", help=_("requirements root"))
+    p.add_argument("rid", help=_("requirement identifier"))
+    p.add_argument("parents", nargs="+", help=_("parent requirement identifiers"))
+    p.add_argument(
+        "--replace",
+        action="store_true",
+        help=_("replace existing links instead of adding"),
+    )
+
+
+def cmd_trace(args: argparse.Namespace, _repo: RequirementRepository) -> None:
+    """Export links as child-parent pairs."""
+
+    for child, parent in iter_links(args.directory):
+        sys.stdout.write(f"{child} {parent}\n")
+
+
+def add_trace_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``trace`` command."""
+
+    p.add_argument("directory", help=_("requirements root"))
+
+
 def cmd_migrate_to_docs(
     args: argparse.Namespace, _repo: RequirementRepository
 ) -> None:
@@ -317,6 +393,8 @@ COMMANDS: dict[str, Command] = {
     "show": Command(cmd_show, _("show requirement details"), add_show_arguments),
     "doc": Command(lambda args, repo: args.func(args, repo), _("manage documents"), add_doc_arguments),
     "item": Command(lambda args, repo: args.func(args, repo), _("manage items"), add_item_arguments),
+    "link": Command(cmd_link, _("link requirements"), add_link_arguments),
+    "trace": Command(cmd_trace, _("export trace links"), add_trace_arguments),
     "check": Command(cmd_check, _("verify LLM and MCP settings"), add_check_arguments),
     "migrate": Command(lambda args, repo: args.func(args, repo), _("migrate data"), add_migrate_arguments),
 }

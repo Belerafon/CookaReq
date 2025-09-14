@@ -4,7 +4,7 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Mapping
 
 
 @dataclass
@@ -83,6 +83,38 @@ def save_document(directory: str | Path, doc: Document) -> Path:
     return path
 
 
+def load_documents(root: str | Path) -> dict[str, Document]:
+    """Load all document configurations under ``root``.
+
+    Returns mapping of document prefix to :class:`Document` instance.
+    Missing directories yield an empty mapping.
+    """
+
+    root_path = Path(root)
+    docs: dict[str, Document] = {}
+    if not root_path.is_dir():
+        return docs
+    for path in root_path.iterdir():
+        doc_file = path / "document.json"
+        if doc_file.is_file():
+            doc = load_document(path)
+            docs[doc.prefix] = doc
+    return docs
+
+
+def is_ancestor(
+    child_prefix: str, ancestor_prefix: str, docs: Mapping[str, Document]
+) -> bool:
+    """Return ``True`` if ``ancestor_prefix`` is an ancestor of ``child_prefix``."""
+
+    current = docs.get(child_prefix)
+    while current and current.parent:
+        if current.parent == ancestor_prefix:
+            return True
+        current = docs.get(current.parent)
+    return False
+
+
 def rid_for(doc: Document, item_id: int) -> str:
     """Return requirement identifier for ``item_id`` within ``doc``."""
 
@@ -147,3 +179,17 @@ def next_item_id(directory: str | Path, doc: Document) -> int:
 
     ids = list_item_ids(directory, doc)
     return max(ids, default=0) + 1
+
+
+def iter_links(root: str | Path) -> Iterable[tuple[str, str]]:
+    """Yield pairs of (child_rid, parent_rid) for all links under ``root``."""
+
+    docs = load_documents(root)
+    for prefix in sorted(docs):
+        doc = docs[prefix]
+        directory = Path(root) / prefix
+        for item_id in sorted(list_item_ids(directory, doc)):
+            data, _ = load_item(directory, doc, item_id)
+            rid = rid_for(doc, item_id)
+            for parent in sorted(data.get("links", [])):
+                yield rid, parent

@@ -1,7 +1,7 @@
+import pytest
 import wx
 
 from app.ui.helpers import HelpStaticBox
-import pytest
 
 pytestmark = pytest.mark.gui
 

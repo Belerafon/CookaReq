@@ -1,15 +1,15 @@
 """Dialog for application settings with MCP controls."""
 
-from ..i18n import _
 from importlib import resources
 
 import wx
 
-from .helpers import make_help_button
+from ..i18n import _
 from ..llm.client import LLMClient
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
 from ..settings import LLMSettings, MCPSettings
+from .helpers import make_help_button
 
 LLM_HELP: dict[str, str] = {
     "base_url": _(

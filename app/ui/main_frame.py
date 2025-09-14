@@ -1,34 +1,32 @@
 """Main application window."""
 
-from ..i18n import _
-
 import logging
+from dataclasses import fields, replace
 from importlib import resources
 from pathlib import Path
-from dataclasses import fields, replace
 
 import wx
 
-from ..log import logger
-
+from ..agent import LocalAgent
 from ..config import ConfigManager
+from ..confirm import confirm
 from ..core import requirements as req_ops
-from ..core.model import Requirement, DerivationLink
+from ..core.label_repository import FileLabelRepository
 from ..core.labels import Label
+from ..core.model import DerivationLink, Requirement
+from ..core.repository import FileRequirementRepository
+from ..i18n import _
+from ..log import logger
 from ..mcp.controller import MCPController
 from ..settings import AppSettings, LLMSettings, MCPSettings
-from ..agent import LocalAgent
-from ..confirm import confirm
-from .list_panel import ListPanel
-from .editor_panel import EditorPanel
-from .settings_dialog import SettingsDialog
-from .requirement_model import RequirementModel
-from .labels_dialog import LabelsDialog
-from .navigation import Navigation
 from .command_dialog import CommandDialog
-from .controllers import RequirementsController, LabelsController
-from ..core.repository import FileRequirementRepository
-from ..core.label_repository import FileLabelRepository
+from .controllers import LabelsController, RequirementsController
+from .editor_panel import EditorPanel
+from .labels_dialog import LabelsDialog
+from .list_panel import ListPanel
+from .navigation import Navigation
+from .requirement_model import RequirementModel
+from .settings_dialog import SettingsDialog
 
 
 class WxLogHandler(logging.Handler):

@@ -1,6 +1,7 @@
 """Tests for command dialog."""
 
 import json
+
 import pytest
 
 from app.agent.local_agent import LocalAgent

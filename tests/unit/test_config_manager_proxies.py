@@ -1,7 +1,8 @@
 """Tests for config manager proxies."""
 
-from app.config import ConfigManager
 import pytest
+
+from app.config import ConfigManager
 
 pytestmark = pytest.mark.unit
 

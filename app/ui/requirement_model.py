@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from enum import Enum
 from dataclasses import asdict, is_dataclass
+from enum import Enum
 
 from ..core import requirements as req_ops
 from ..core.model import Requirement

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import Enum
 from typing import Any
-from collections.abc import Mapping
 
 from ..log import logger
 from ..telemetry import sanitize

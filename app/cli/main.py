@@ -8,11 +8,11 @@ import os
 from pathlib import Path
 
 from app import i18n
+from app.confirm import auto_confirm, set_confirm
+from app.core.repository import FileRequirementRepository, RequirementRepository
 from app.i18n import _
-from app.core.repository import RequirementRepository, FileRequirementRepository
 from app.log import configure_logging
 from app.settings import AppSettings, load_app_settings
-from app.confirm import set_confirm, auto_confirm
 
 from .commands import COMMANDS
 

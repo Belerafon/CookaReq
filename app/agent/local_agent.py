@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from ..confirm import confirm as default_confirm
 from ..llm.client import LLMClient
 from ..mcp.client import MCPClient
 from ..mcp.utils import ErrorCode, mcp_error
 from ..settings import AppSettings
 from ..telemetry import log_event
-from ..confirm import confirm as default_confirm
 
 
 class LocalAgent:

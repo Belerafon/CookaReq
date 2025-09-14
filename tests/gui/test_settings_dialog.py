@@ -60,9 +60,9 @@ def test_settings_dialog_returns_language(wx_app):
 
 def test_mcp_start_stop_server(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    from app.ui.settings_dialog import SettingsDialog
     import app.ui.settings_dialog as sd
-    from app.mcp.controller import MCPStatus, MCPCheckResult
+    from app.mcp.controller import MCPCheckResult, MCPStatus
+    from app.ui.settings_dialog import SettingsDialog
 
     class FakeMCP:
         def __init__(self) -> None:
@@ -134,9 +134,9 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
 
 def test_mcp_check_status(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    from app.ui.settings_dialog import SettingsDialog
     import app.ui.settings_dialog as sd
-    from app.mcp.controller import MCPStatus, MCPCheckResult
+    from app.mcp.controller import MCPCheckResult, MCPStatus
+    from app.ui.settings_dialog import SettingsDialog
 
     class DummyMCP:
         def __init__(self):
@@ -198,8 +198,8 @@ def test_mcp_check_status(monkeypatch, wx_app):
 
 def test_llm_agent_checks(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    from app.ui.settings_dialog import SettingsDialog
     import app.ui.settings_dialog as sd
+    from app.ui.settings_dialog import SettingsDialog
 
     class DummyLLM:
         def __init__(self, *, settings):
@@ -251,8 +251,8 @@ def test_llm_agent_checks(monkeypatch, wx_app):
 
 def test_settings_help_buttons(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
-    from app.ui.settings_dialog import SettingsDialog, LLM_HELP, MCP_HELP
     from app.ui import helpers
+    from app.ui.settings_dialog import LLM_HELP, MCP_HELP, SettingsDialog
 
     shown: list[str] = []
     monkeypatch.setattr(helpers, "show_help", lambda parent, msg: shown.append(msg))

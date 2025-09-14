@@ -1,8 +1,9 @@
-import wx
-from app.ui.editor_panel import EditorPanel
-from app.core.model import Requirement, RequirementType, Status, Priority, Verification
-from app.core import requirements as req_ops
 import pytest
+import wx
+
+from app.core import requirements as req_ops
+from app.core.model import Priority, Requirement, RequirementType, Status, Verification
+from app.ui.editor_panel import EditorPanel
 
 pytestmark = pytest.mark.gui
 

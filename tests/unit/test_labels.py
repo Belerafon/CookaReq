@@ -1,10 +1,12 @@
 """Tests for labels."""
 
-from app.core.labels import Label, add_label, get_label, update_label, delete_label
+from pathlib import Path
+
+import pytest
+
 from app.core import label_store
 from app.core.label_repository import FileLabelRepository
-from pathlib import Path
-import pytest
+from app.core.labels import Label, add_label, delete_label, get_label, update_label
 
 pytestmark = pytest.mark.unit
 

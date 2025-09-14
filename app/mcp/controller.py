@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from enum import Enum
 from http.client import HTTPConnection
 
-from .server import start_server, stop_server, is_running as server_is_running
 from ..settings import MCPSettings
+from .server import is_running as server_is_running
+from .server import start_server, stop_server
 
 
 class MCPStatus(str, Enum):

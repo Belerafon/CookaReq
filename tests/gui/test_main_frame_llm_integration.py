@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from app.mcp.server import app as mcp_app
-from app.settings import MCPSettings, LLMSettings
-from tests.llm_utils import make_openai_mock, settings_with_llm
-import app.ui.main_frame as main_frame
 import app.ui.command_dialog as cmd
+import app.ui.main_frame as main_frame
+from app.mcp.server import app as mcp_app
+from app.settings import LLMSettings, MCPSettings
+from tests.llm_utils import make_openai_mock, settings_with_llm
 
 pytestmark = [pytest.mark.gui, pytest.mark.integration]
 

@@ -1,7 +1,7 @@
 """In-memory search helpers for requirements."""
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 
 from .model import Requirement
 
@@ -14,7 +14,7 @@ SEARCHABLE_FIELDS = {
     "owner",
     "notes",
 }
- 
+
 def filter_by_labels(
     requirements: Iterable[Requirement],
     labels: Sequence[str],

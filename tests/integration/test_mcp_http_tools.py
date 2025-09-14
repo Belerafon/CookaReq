@@ -6,10 +6,11 @@ import json
 from http.client import HTTPConnection
 from pathlib import Path
 
-from app.mcp.server import start_server, stop_server
-from app.core import store
-from tests.mcp_utils import _wait_until_ready
 import pytest
+
+from app.core import store
+from app.mcp.server import start_server, stop_server
+from tests.mcp_utils import _wait_until_ready
 
 pytestmark = pytest.mark.integration
 

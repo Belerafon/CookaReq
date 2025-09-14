@@ -1,8 +1,8 @@
 """Utility functions for MCP requirement access."""
 from __future__ import annotations
 
-from pathlib import Path
 from collections.abc import Sequence
+from pathlib import Path
 
 from ..core import requirements as req_ops
 from ..core.model import Requirement, requirement_to_dict

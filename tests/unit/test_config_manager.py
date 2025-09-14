@@ -3,7 +3,7 @@
 import pytest
 
 from app.config import ConfigManager
-from app.settings import LLMSettings, MCPSettings, UISettings, AppSettings
+from app.settings import AppSettings, LLMSettings, MCPSettings, UISettings
 
 pytestmark = pytest.mark.unit
 

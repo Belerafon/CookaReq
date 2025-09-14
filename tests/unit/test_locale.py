@@ -1,10 +1,10 @@
 """Tests for locale."""
 
 import pytest
-from app.i18n import _, install
 
-from app.ui import locale
 from app.core import model
+from app.i18n import _, install
+from app.ui import locale
 
 pytestmark = pytest.mark.unit
 

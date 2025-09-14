@@ -1,10 +1,9 @@
 """Dialog for selecting labels with color icons."""
-from ..i18n import _
-
 import wx
 from wx.lib.mixins.listctrl import CheckListCtrlMixin
 
 from ..core.labels import Label
+from ..i18n import _
 
 
 class _CheckListCtrl(wx.ListCtrl, CheckListCtrlMixin):

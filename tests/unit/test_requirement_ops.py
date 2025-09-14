@@ -1,17 +1,18 @@
 """Tests for requirement ops."""
 
-import pytest
 from pathlib import Path
 
+import pytest
+
 import app.mcp.tools_write as tools_write
+from app.core.store import filename_for, load
 from app.mcp.tools_write import (
     create_requirement,
-    patch_requirement,
     delete_requirement,
     link_requirements,
+    patch_requirement,
 )
 from app.mcp.utils import ErrorCode
-from app.core.store import load, filename_for
 
 pytestmark = pytest.mark.unit
 

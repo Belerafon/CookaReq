@@ -2,9 +2,10 @@
 
 import json
 
+import pytest
+
 from app.mcp.server import start_server, stop_server
 from tests.mcp_utils import _request, _wait_until_ready
-import pytest
 
 pytestmark = pytest.mark.integration
 

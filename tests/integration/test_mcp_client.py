@@ -4,13 +4,14 @@ import json
 import logging
 from pathlib import Path
 
+import pytest
+
 from app.log import logger
 from app.mcp.client import MCPClient
 from app.mcp.server import JsonlHandler, start_server, stop_server
 from app.settings import MCPSettings
 from tests.llm_utils import settings_with_mcp
 from tests.mcp_utils import _wait_until_ready
-import pytest
 
 pytestmark = pytest.mark.integration
 

@@ -4,11 +4,13 @@ import json
 import logging
 from pathlib import Path
 
-from app.log import logger
-from app.agent import LocalAgent
-from app.mcp.server import JsonlHandler, app as mcp_app
-from tests.llm_utils import make_openai_mock, settings_with_mcp
 import pytest
+
+from app.agent import LocalAgent
+from app.log import logger
+from app.mcp.server import JsonlHandler
+from app.mcp.server import app as mcp_app
+from tests.llm_utils import make_openai_mock, settings_with_mcp
 
 pytestmark = pytest.mark.integration
 

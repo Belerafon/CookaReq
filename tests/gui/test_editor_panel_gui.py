@@ -1,10 +1,11 @@
 """Tests for editor panel gui."""
 
-import pytest
 from dataclasses import asdict
 
-from app.core.model import RequirementType, Status, Priority, Verification
+import pytest
+
 from app.core.labels import Label
+from app.core.model import Priority, RequirementType, Status, Verification
 
 pytestmark = pytest.mark.gui
 

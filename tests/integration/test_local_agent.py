@@ -4,8 +4,8 @@ import pytest
 
 from app.agent import local_agent as la
 from app.agent.local_agent import LocalAgent
-from app.settings import AppSettings
 from app.mcp.utils import ErrorCode
+from app.settings import AppSettings
 
 pytestmark = pytest.mark.integration
 

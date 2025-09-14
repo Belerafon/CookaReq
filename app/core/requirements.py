@@ -6,21 +6,21 @@ GUI components.
 """
 from __future__ import annotations
 
-from pathlib import Path
 from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
 
-from .model import Requirement, requirement_from_dict, Status
-from .labels import Label
+from ..util.time import local_now_str, normalize_timestamp
 from . import search as core_search
+from .label_repository import FileLabelRepository, LabelRepository
+from .labels import Label
+from .model import Requirement, Status, requirement_from_dict
 from .store import (
+    delete,
+    filename_for,
     load,
     load_index,
-    filename_for,
     save,
-    delete,
 )
-from .label_repository import LabelRepository, FileLabelRepository
-from ..util.time import local_now_str, normalize_timestamp
 
 # Re-export searchable fields for UI components
 SEARCHABLE_FIELDS = core_search.SEARCHABLE_FIELDS

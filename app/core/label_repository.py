@@ -4,8 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from .labels import Label
 from . import label_store
+from .labels import Label
 
 
 class LabelRepository(Protocol):

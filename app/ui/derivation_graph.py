@@ -7,13 +7,13 @@ packages are missing, a friendly message is shown instead of the graph.
 
 from __future__ import annotations
 
-from ..i18n import _
 import io
 from collections.abc import Sequence
 
 import wx
 
 from ..core.model import Requirement
+from ..i18n import _
 
 
 class DerivationGraphFrame(wx.Frame):

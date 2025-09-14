@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any
 from collections.abc import Mapping
+from typing import Any
+
+from ..settings import LLMSettings
 
 # ``OpenAI`` импортируется динамически в конструкторе, чтобы тесты могли
 # подменять ``openai.OpenAI`` до первого использования и тем самым избежать
 # реальных сетевых запросов.
-
 from ..telemetry import log_event
-from ..settings import LLMSettings
 from .spec import SYSTEM_PROMPT, TOOLS
 
 # When the backend does not require authentication, the official OpenAI client

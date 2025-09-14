@@ -1,31 +1,33 @@
 """Tests for list panel gui."""
 
 import importlib
+
 import pytest
+
 from app.core.model import (
+    DerivationLink,
+    Priority,
     Requirement,
     RequirementType,
     Status,
-    Priority,
     Verification,
-    DerivationLink,
 )
 
 pytestmark = pytest.mark.gui
 
 
 def _req(id: int, title: str, **kwargs) -> Requirement:
-    base = dict(
-        id=id,
-        title=title,
-        statement="",
-        type=RequirementType.REQUIREMENT,
-        status=Status.DRAFT,
-        owner="",
-        priority=Priority.MEDIUM,
-        source="",
-        verification=Verification.ANALYSIS,
-    )
+    base = {
+        "id": id,
+        "title": title,
+        "statement": "",
+        "type": RequirementType.REQUIREMENT,
+        "status": Status.DRAFT,
+        "owner": "",
+        "priority": Priority.MEDIUM,
+        "source": "",
+        "verification": Verification.ANALYSIS,
+    }
     base.update(kwargs)
     return Requirement(**base)
 

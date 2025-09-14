@@ -191,11 +191,30 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self.list.SetItemImage(index, -1)
 
     def _setup_columns(self) -> None:
-        """Configure list control columns based on selected fields."""
+        """Configure list control columns based on selected fields.
+
+        ``wx.ListCtrl`` на Windows всегда резервирует место под иконку в
+        первой физической колонке. Чтобы убрать отступ у текста в ``Title``,
+        мы размещаем ``labels`` на позиции 0. Альтернативный обходной путь —
+        добавить скрытую служебную колонку перед ``Title``.
+        """  # noqa: RUF002
         self.list.ClearAll()
-        self.list.InsertColumn(0, _("Title"))
-        for idx, field in enumerate(self.columns, start=1):
+        self._field_order: list[str] = []
+        include_labels = "labels" in self.columns
+        if include_labels:
+            self.list.InsertColumn(0, _("Labels"))
+            self._field_order.append("labels")
+            self.list.InsertColumn(1, _("Title"))
+            self._field_order.append("title")
+        else:
+            self.list.InsertColumn(0, _("Title"))
+            self._field_order.append("title")
+        for field in self.columns:
+            if field == "labels":
+                continue
+            idx = self.list.GetColumnCount()
             self.list.InsertColumn(idx, field)
+            self._field_order.append(field)
         ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
         with suppress(Exception):  # remove mixin's default binding and use our own
             self.list.Unbind(wx.EVT_LIST_COL_CLICK)
@@ -225,12 +244,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if not value:
             return
         names = [n for n in value.split(",") if n]
-        order: list[int] = []
-        for name in names:
-            if name == "title":
-                order.append(0)
-            elif name in self.columns:
-                order.append(self.columns.index(name) + 1)
+        order = [self._field_order.index(n) for n in names if n in self._field_order]
         count = self.list.GetColumnCount()
         for idx in range(count):
             if idx not in order:
@@ -244,22 +258,21 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             order = self.list.GetColumnsOrder()
         except Exception:
             return
-        names: list[str] = []
-        for idx in order:
-            if idx == 0:
-                names.append("title")
-            elif 1 <= idx <= len(self.columns):
-                names.append(self.columns[idx - 1])
+        names = [self._field_order[idx] for idx in order if idx < len(self._field_order)]
         config.write("col_order", ",".join(names))
 
     def reorder_columns(self, from_col: int, to_col: int) -> None:
         """Move column from ``from_col`` index to ``to_col`` index."""
-        if from_col == to_col or from_col <= 0 or to_col <= 0:
+        offset = 2 if "labels" in self.columns else 1
+        if from_col == to_col or from_col < offset or to_col < offset:
             return
-        fields = list(self.columns)
-        field = fields.pop(from_col - 1)
-        fields.insert(to_col - 1, field)
-        self.columns = fields
+        fields = [f for f in self.columns if f != "labels"]
+        field = fields.pop(from_col - offset)
+        fields.insert(to_col - offset, field)
+        if "labels" in self.columns:
+            self.columns = ["labels", *fields]
+        else:
+            self.columns = fields
         self._setup_columns()
         self._refresh()
 
@@ -396,8 +409,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         items = self.model.get_visible()
         self.list.DeleteAllItems()
         for req in items:
-            title = getattr(req, "title", "")
-            index = self.list.InsertItem(self.list.GetItemCount(), title, -1)
+            index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
             # Windows ListCtrl may still assign image 0; clear explicitly
             if hasattr(self.list, "SetItemImage"):
                 with suppress(Exception):
@@ -408,7 +420,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             except Exception:
                 self.list.SetItemData(index, 0)
             suspect_row = False
-            for col, field in enumerate(self.columns, start=1):
+            for col, field in enumerate(self._field_order):
+                if field == "title":
+                    self.list.SetItem(index, col, getattr(req, "title", ""))
+                    continue
+                if field == "labels":
+                    value = getattr(req, "labels", [])
+                    self._set_label_image(index, col, value)
+                    continue
                 if field == "derived_from":
                     links = getattr(req, "derived_from", [])
                     texts: list[str] = []
@@ -456,9 +475,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 value = getattr(req, field, "")
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
-                if field == "labels" and isinstance(value, list):
-                    self._set_label_image(index, col, value)
-                    continue
                 self.list.SetItem(index, col, str(value))
             if suspect_row and hasattr(self.list, "SetItemTextColour"):
                 with suppress(Exception):
@@ -493,8 +509,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Sort list by ``column`` with ``ascending`` order."""
         self._sort_column = column
         self._sort_ascending = ascending
-        field = "title" if column == 0 else self.columns[column - 1]
-        self.model.sort(field, ascending)
+        if column < len(self._field_order):
+            field = self._field_order[column]
+            self.model.sort(field, ascending)
         self._refresh()
         if self._on_sort_changed:
             self._on_sort_changed(self._sort_column, self._sort_ascending)
@@ -535,13 +552,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._popup_context_menu(index, col)
 
     def _field_from_column(self, col: int | None) -> str | None:
-        if col is None or col < 0:
+        if col is None or col < 0 or col >= len(self._field_order):
             return None
-        if col == 0:
-            return "title"
-        if 1 <= col <= len(self.columns):
-            return self.columns[col - 1]
-        return None
+        return self._field_order[col]
 
     def _create_context_menu(self, index: int, column: int | None):
         menu = wx.Menu()

@@ -10,7 +10,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import pytest
 from app.confirm import set_confirm, auto_confirm
-from app.mcp.server import start_server, stop_server, app as mcp_app
+from app.mcp.server import start_server, stop_server
 from tests.mcp_utils import _wait_until_ready
 import socket
 

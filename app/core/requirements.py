@@ -18,7 +18,6 @@ from .store import (
     filename_for,
     save,
     delete,
-    ConflictError,
 )
 from .label_repository import LabelRepository, FileLabelRepository
 from ..util.time import local_now_str, normalize_timestamp

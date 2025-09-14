@@ -1,6 +1,5 @@
 """Tests for i18n escape."""
 
-from pathlib import Path
 from app import i18n
 import pytest
 

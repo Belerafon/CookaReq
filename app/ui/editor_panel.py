@@ -13,16 +13,7 @@ from wx.lib.scrolledpanel import ScrolledPanel
 
 from ..core import requirements as req_ops
 from ..core.labels import Label
-from ..core.model import (
-    Requirement,
-    RequirementType,
-    Status,
-    Priority,
-    Verification,
-    Attachment,
-    requirement_from_dict,
-    requirement_to_dict,
-)
+from ..core.model import Requirement, requirement_from_dict, requirement_to_dict
 from . import locale
 from .label_selection_dialog import LabelSelectionDialog
 from .helpers import HelpStaticBox, make_help_button, show_help

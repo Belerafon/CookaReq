@@ -461,7 +461,6 @@ class EditorPanel(ScrolledPanel):
         }
         self.current_path: Path | None = None
         self.mtime: float | None = None
-        self._app = wx.GetApp()
         self._refresh_labels_display()
         self._refresh_attachments()
         self._refresh_parent_display()
@@ -990,9 +989,6 @@ class EditorPanel(ScrolledPanel):
             else:
                 list_ctrl.Delete(idx)
         self._refresh_links_visibility(attr)
-
-    def _on_add_link(self, _event: wx.CommandEvent) -> None:
-        self._on_add_link_generic("derived_from")
 
     def _on_set_parent(self, _event: wx.CommandEvent) -> None:
         value = self.parent_id.GetValue().strip()

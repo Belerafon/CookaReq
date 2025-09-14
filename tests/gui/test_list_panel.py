@@ -696,15 +696,18 @@ def test_labels_column_uses_imagelist(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
-    panel.set_requirements(
-        [
-            _req(1, "A", labels=["ui", "backend"]),
-        ],
-    )
+    panel.set_requirements([
+        _req(1, "A", labels=["ui", "backend"]),
+    ])
     labels_col = panel._field_order.index("labels")
-    # labels column should get an image id while Title stays without one
-    assert panel.list._col_images[(0, labels_col)] >= 0
-    assert panel.list._item_images[0] == -1
+    title_col = panel._field_order.index("title")
+    # labels column uses main image slot when placed at index 0
+    if labels_col == 0:
+        assert panel.list._item_images[0] >= 0
+        assert panel.list._col_images.get((0, title_col), -1) == -1
+    else:
+        assert panel.list._col_images[(0, labels_col)] >= 0
+        assert panel.list._item_images[0] == -1
 
 
 def test_sort_by_labels(monkeypatch):

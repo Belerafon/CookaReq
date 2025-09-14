@@ -176,6 +176,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
         if not labels:
             self.list.SetItem(index, col, "")
+            if hasattr(self.list, "SetItemImage") and col == 0:
+                with suppress(Exception):
+                    self.list.SetItemImage(index, -1)
             return
         key = tuple(labels)
         img_id = self._label_images.get(key)
@@ -184,11 +187,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
             img_id = self._image_list.Add(bmp)
             self._label_images[key] = img_id
-        self.list.SetItem(index, col, "")
-        self.list.SetItemColumnImage(index, col, img_id)
-        if hasattr(self.list, "SetItemImage"):
-            with suppress(Exception):
-                self.list.SetItemImage(index, -1)
+        if col == 0:
+            # Column 0 uses the main item image slot
+            self.list.SetItem(index, col, "")
+            if hasattr(self.list, "SetItemImage"):
+                with suppress(Exception):
+                    self.list.SetItemImage(index, img_id)
+        else:
+            self.list.SetItem(index, col, "")
+            self.list.SetItemColumnImage(index, col, img_id)
+            if hasattr(self.list, "SetItemImage"):
+                with suppress(Exception):
+                    self.list.SetItemImage(index, -1)
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields.

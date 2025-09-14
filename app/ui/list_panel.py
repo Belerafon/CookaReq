@@ -61,6 +61,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         btn_row.Add(self.reset_btn, 0, right, 5)
         btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
+        if hasattr(self.list, "SetExtraStyle"):
+            self.list.SetExtraStyle(self.list.GetExtraStyle() | getattr(wx, "LC_EX_SUBITEMIMAGES", 0))
         self._labels: list[Label] = []
         self.current_filters: dict = {}
         self._image_list: wx.ImageList | None = None
@@ -175,12 +177,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
             img_id = self._image_list.Add(bmp)
             self._label_images[key] = img_id
-        try:
-            self.list.SetItemColumnImage(index, col, img_id)
-        except Exception:  # pragma: no cover - platform dependent
-            # If column images are unsupported, fall back to plain text so
-            # labels remain readable rather than appearing in the wrong column.
-            self.list.SetItem(index, col, ", ".join(labels))
+        self.list.SetItemColumnImage(index, col, img_id)
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""

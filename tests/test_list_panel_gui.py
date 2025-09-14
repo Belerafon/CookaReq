@@ -221,3 +221,14 @@ def test_labels_render_in_correct_column(wx_app):
     assert item_title.GetImage() == -1
     assert item_labels.GetImage() != -1
     frame.Destroy()
+
+
+def test_enables_subitem_image_style(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    monkeypatch.setattr(wx, "LC_EX_SUBITEMIMAGES", 0x200, raising=False)
+    import app.ui.list_panel as list_panel
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    panel = list_panel.ListPanel(frame)
+    assert panel.list.GetExtraStyle() & wx.LC_EX_SUBITEMIMAGES
+    frame.Destroy()

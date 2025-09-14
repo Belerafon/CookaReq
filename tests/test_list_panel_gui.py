@@ -10,6 +10,7 @@ from app.core.model import (
     Verification,
     DerivationLink,
 )
+from app.core.labels import Label
 
 
 def _req(id: int, title: str, **kwargs) -> Requirement:
@@ -201,4 +202,22 @@ def test_reorder_columns_gui(wx_app):
     panel.reorder_columns(1, 2)
     assert panel.columns == ["status", "id"]
     assert panel.list.GetColumn(1).GetText() == "status"
+    frame.Destroy()
+
+
+def test_labels_render_in_correct_column(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["labels"])
+    panel.update_labels_list([Label(name="UI", color="#ff0000")])
+    panel.set_requirements([_req(1, "T", labels=["UI"])])
+    wx_app.Yield()
+    item_title = panel.list.GetItem(0, 0)
+    item_labels = panel.list.GetItem(0, 1)
+    assert item_title.GetImage() == -1
+    assert item_labels.GetImage() != -1
     frame.Destroy()

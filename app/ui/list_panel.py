@@ -165,8 +165,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         return bmp
 
     def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
+        self.list.SetItem(index, col, "")
         if not labels:
-            self.list.SetItem(index, col, "")
             return
         key = tuple(labels)
         img_id = self._label_images.get(key)
@@ -175,22 +175,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
             img_id = self._image_list.Add(bmp)
             self._label_images[key] = img_id
-        self.list.SetItem(index, col, "")
-        if hasattr(self.list, "SetItemColumnImage"):
-            try:
-                self.list.SetItemColumnImage(index, col, img_id)
-            except Exception:  # pragma: no cover - platform dependent
-                pass
-        elif hasattr(wx, "ListItem"):
-            item = wx.ListItem()
-            item.SetId(index)
-            item.SetColumn(col)
-            item.SetImage(img_id)
-            try:  # pragma: no cover - platform dependent
-                self.list.SetItem(item)
-            except Exception:
-                pass
-        else:  # pragma: no cover - stub fallback
+        try:
+            self.list.SetItemColumnImage(index, col, img_id)
+        except Exception:  # pragma: no cover - platform dependent
+            # If column images are unsupported, fall back to plain text so
+            # labels remain readable rather than appearing in the wrong column.
             self.list.SetItem(index, col, ", ".join(labels))
 
     def _setup_columns(self) -> None:

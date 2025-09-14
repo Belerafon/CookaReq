@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha1
+from hashlib import sha256
 
 
 @dataclass(slots=True)
@@ -16,7 +16,7 @@ class Label:
 
 def _color_from_name(name: str) -> str:
     """Generate a stable pastel color from ``name``."""
-    digest = sha1(name.encode("utf-8")).hexdigest()
+    digest = sha256(name.encode("utf-8")).hexdigest()
     r = (int(digest[0:2], 16) + 0xAA) // 2
     g = (int(digest[2:4], 16) + 0xAA) // 2
     b = (int(digest[4:6], 16) + 0xAA) // 2

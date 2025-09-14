@@ -54,12 +54,13 @@ select = [
     "Q",
     "SLF",
     "TRY",
+    "S",
 ]
 
 ignore = ["RUF001", "RUF003", "TRY003"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*" = ["ARG001", "ARG002", "ARG003", "ARG004", "ARG005", "N802", "SLF001"]
+"tests/**/*" = ["ARG001", "ARG002", "ARG003", "ARG004", "ARG005", "N802", "SLF001", "S"]
 "app/ui/helpers.py" = ["N802", "N803"]
 "app/ui/list_panel.py" = ["N802"]
 "app/ui/labels_dialog.py" = ["N802"]

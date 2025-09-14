@@ -4,7 +4,10 @@ CookaReq (Cook a requirement) is a wibecoded desktop application built with wxPy
 
 ## Features
 
-- Store requirements as independent `id.json` files with revision tracking
+- Organize requirements into hierarchical documents. Each document stores
+  its configuration in `document.json` and individual items as
+  `items/<RID>.json` files. File names combine the document prefix with a
+  padded numeric identifier (RID) and revisions are tracked per item.
 - Search by text, status and labels with advanced filters
 - Create, clone, edit and delete requirements; attach files and manage user labels
 - Navigate links between requirements and visualise derivation graphs
@@ -68,29 +71,48 @@ CookaReq includes an MCP server that exposes requirement tools to external agent
 
 ## Requirements Repository
 
-Requirements are stored as separate `<id>.json` files in a directory. The repository layer offers high-level operations for loading, searching, saving and deleting requirements, managing label sets and navigating links. Advanced search parameters allow filtering by status, label combinations, field-specific queries and derived relationships.
+Requirements live in a hierarchical document tree under the `requirements/` directory:
+
+```
+requirements/
+  SYS/
+    document.json
+    items/
+      SYS001.json
+  HLR/
+    document.json
+    items/
+      HLR001.json
+```
+
+The repository layer loads and saves items, manages label presets defined by each document and resolves links across documents. Advanced search parameters allow filtering by status, label combinations, field-specific queries and derived relationships.
 
 ### File Format
 
-Each requirement file contains the following fields:
+Each document file (`document.json`) includes:
 
-- `id` *(int)* — unique identifier
+- `prefix` *(str)* — document identifier (e.g. `SYS`)
+- `title` *(str)* — human-readable name
+- `digits` *(int)* — width of numeric identifier padding
+- `parent` *(str|null)* — parent document prefix or `null`
+- `labels` *(object)* — label definitions and an `allowFreeform` flag
+- `attributes` *(object)* — additional metadata
+
+Each requirement item (`items/<RID>.json`) includes:
+
+- `id` *(int)* — numeric identifier unique within the document
 - `title` *(str)* — short name
-- `statement` *(str)* — requirement statement
-- `type` *(str)* — one of: `requirement`, `constraint`, `interface`
+- `text` *(str)* — requirement statement
+- `type` *(str)* — `requirement`, `constraint`, `interface`
 - `status` *(str)* — `draft`, `in_review`, `approved`, `baselined`, `retired`
 - `owner` *(str)* — responsible person
 - `priority` *(str)* — `low`, `medium`, `high`
 - `source` *(str)* — origin of the requirement
-- `verification` *(str)* — `inspection`, `analysis`, `demonstration`, `test`
-- `acceptance` *(str, optional)* — acceptance criteria
-- `conditions` *(str)* — conditions
-- `trace_up` *(str)* and `trace_down` *(str)* — traceability links
-- `version` *(str)* and `modified_at` *(str)* — version and date of modification
-- `labels` *(list[str])* — custom labels from preset sets or user-defined
+- `verification` *(str)* — method of verification
+- `labels` *(list[str])* — labels including inherited ones
+- `links` *(list[str])* — parent requirement IDs
 - `attachments` *(list[obj])* — attachments `{path, note}`
 - `revision` *(int)* — revision number (starting at 1)
-- `approved_at` *(str, optional)* — approval date
 - `notes` *(str)* — additional comments
 
 ## Localization
@@ -100,7 +122,8 @@ compilation to binary `.mo` catalogs is required.
 
 ## Development
 
-> **Note**: tests and linters are temporarily disabled during a major refactor.
+Run the full test suite with `pytest -q`. GUI tests are executed headless via
+`pytest-xvfb`, so no display server is required.
 
 ## License
 

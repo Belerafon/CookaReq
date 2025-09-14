@@ -1,0 +1,14 @@
+{
+  "id": 1,
+  "title": "Графический интерфейс пользователя",
+  "text": "Система должна предоставлять графический интерфейс с главным окном, списком требований и панелями редактора с русской локализацией.",
+  "labels": ["gui"],
+  "owner": "Team",
+  "priority": "low",
+  "revision": 1,
+  "source": "architecture",
+  "status": "approved",
+  "type": "requirement",
+  "verification": "analysis",
+  "links": ["SYS001"]
+}

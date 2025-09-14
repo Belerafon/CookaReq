@@ -1,0 +1,14 @@
+{
+  "id": 3,
+  "title": "Командный интерфейс",
+  "text": "Система должна предоставлять CLI для перечисления, добавления, правки и отображения требований, хранящихся в каталоге.",
+  "labels": ["cli"],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "status": "approved",
+  "type": "requirement",
+  "verification": "test",
+  "links": []
+}

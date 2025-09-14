@@ -1,0 +1,14 @@
+{
+  "id": 2,
+  "title": "Сборка через PyInstaller",
+  "text": "Система должна включать скрипт сборки PyInstaller для создания одно-папочного дистрибутива.",
+  "labels": ["build"],
+  "owner": "Team",
+  "priority": "low",
+  "revision": 1,
+  "source": "architecture",
+  "status": "approved",
+  "type": "requirement",
+  "verification": "analysis",
+  "links": ["HLR002"]
+}

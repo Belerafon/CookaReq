@@ -13,10 +13,27 @@ from wx.lib.scrolledpanel import ScrolledPanel
 
 from ..core import requirements as req_ops
 from ..core.labels import Label
-from ..core.model import Requirement, requirement_from_dict, requirement_to_dict
+from ..core.model import (
+    Requirement,
+    RequirementType,
+    Status,
+    Priority,
+    Verification,
+    requirement_from_dict,
+    requirement_to_dict,
+)
 from . import locale
 from .label_selection_dialog import LabelSelectionDialog
 from .helpers import HelpStaticBox, make_help_button, show_help
+
+
+# Mapping of enumerated requirement fields to their Enum classes
+ENUMS = {
+    "type": RequirementType,
+    "status": Status,
+    "priority": Priority,
+    "verification": Verification,
+}
 
 
 class EditorPanel(ScrolledPanel):
@@ -236,8 +253,8 @@ class EditorPanel(ScrolledPanel):
         def add_enum_field(name: str) -> None:
             container = wx.BoxSizer(wx.VERTICAL)
             label = wx.StaticText(self, label=labels[name])
-            codes = getattr(locale, name.upper()).keys()
-            choices = [locale.code_to_label(name, code) for code in codes]
+            enum_cls = ENUMS[name]
+            choices = [locale.code_to_label(name, e.value) for e in enum_cls]
             choice = wx.Choice(self, choices=choices)
             help_btn = make_help_button(self, self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
@@ -597,10 +614,10 @@ class EditorPanel(ScrolledPanel):
             for ctrl in self.fields.values():
                 ctrl.ChangeValue("")
             defaults = {
-                "type": locale.code_to_label("type", "requirement"),
-                "status": locale.code_to_label("status", "draft"),
-                "priority": locale.code_to_label("priority", "medium"),
-                "verification": locale.code_to_label("verification", "analysis"),
+                "type": locale.code_to_label("type", RequirementType.REQUIREMENT.value),
+                "status": locale.code_to_label("status", Status.DRAFT.value),
+                "priority": locale.code_to_label("priority", Priority.MEDIUM.value),
+                "verification": locale.code_to_label("verification", Verification.ANALYSIS.value),
             }
             for name, choice in self.enums.items():
                 choice.SetStringSelection(defaults[name])
@@ -670,8 +687,9 @@ class EditorPanel(ScrolledPanel):
             self.parent = dict(data.get("parent", {})) or None
             self._refresh_parent_display()
             for name, choice in self.enums.items():
-                mapping = getattr(locale, name.upper())
-                code = data.get(name, next(iter(mapping)))
+                enum_cls = ENUMS[name]
+                default_code = next(iter(enum_cls)).value
+                code = data.get(name, default_code)
                 choice.SetStringSelection(locale.code_to_label(name, code))
             labels = data.get("labels")
             self.extra = {

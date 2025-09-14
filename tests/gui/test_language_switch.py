@@ -59,7 +59,5 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app):
     assert frame.GetMenuBar().GetMenu(0).GetTitle() == "&Файл"
 
     frame.Destroy()
-    from app import i18n
-
     # restore default language for subsequent tests
     i18n.install(main_mod.APP_NAME, main_mod.LOCALE_DIR, ["en"])

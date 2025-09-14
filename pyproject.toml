@@ -13,11 +13,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Tests and linters are temporarily disabled during a major refactor
-dev = ["polib"]
-
-# Linter configurations temporarily disabled during a major refactor
+dev = [
+    "pytest",
+    "pytest-xvfb",
+    "ruff",
+    "polib",
+]
 
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+extend-exclude = ["dist"]

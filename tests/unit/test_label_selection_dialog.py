@@ -1,5 +1,4 @@
 import pytest
-import wx
 
 from app.ui.label_selection_dialog import LabelSelectionDialog
 from app.core.labels import Label

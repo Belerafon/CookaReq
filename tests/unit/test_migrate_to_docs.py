@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.migrate_to_docs import migrate_to_docs
+from tools.migrate_to_docs import migrate_to_docs, parse_rules
 
 pytestmark = pytest.mark.unit
 
@@ -79,3 +79,8 @@ def test_migrate_to_docs_links(tmp_path: Path):
         (tmp_path / "SYS" / "items" / "SYS002.json").read_text(encoding="utf-8")
     )
     assert data["links"] == ["SYS001", "EXT-9"]
+
+
+def test_parse_rules_reject_tag_prefix():
+    with pytest.raises(ValueError):
+        parse_rules("tag:doc=SYS->SYS")

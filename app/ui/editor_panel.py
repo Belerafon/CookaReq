@@ -178,7 +178,7 @@ class EditorPanel(ScrolledPanel):
                 "Unlike acceptance criteria they are not part of the requirement contract.",
             ),
             "labels": _(
-                "Tags that categorize the requirement. "
+                "Labels that categorize the requirement. "
                 "Consistent labeling enables powerful filtering and helps group related items. "
                 "Use shared presets to avoid typos and duplicates.",
             ),

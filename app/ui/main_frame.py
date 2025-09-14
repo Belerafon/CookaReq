@@ -14,6 +14,7 @@ from ..core.label_repository import FileLabelRepository
 from ..core.labels import Label
 from ..core.model import DerivationLink, Requirement
 from ..core.doc_store import iter_links as doc_iter_links
+from ..core.store import ConflictError
 from ..core.repository import FileRequirementRepository
 from ..i18n import _
 from ..log import logger
@@ -532,7 +533,7 @@ class MainFrame(wx.Frame):
                 )
             else:
                 self.editor.save(self.current_dir)
-        except req_ops.ConflictError:  # pragma: no cover - GUI event
+        except ConflictError:  # pragma: no cover - GUI event
             wx.MessageBox(
                 _("File was modified on disk. Save cancelled."),
                 _("Error"),

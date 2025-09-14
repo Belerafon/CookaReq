@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List
 
-RULE_RE = re.compile(r"^(?:tag|label):([^=]+)=([^->]+)->([A-Z][A-Z0-9_]*)$")
+RULE_RE = re.compile(r"^label:([^=]+)=([^->]+)->([A-Z][A-Z0-9_]*)$")
 
 
 @dataclass
@@ -20,10 +20,7 @@ class Rule:
 
 
 def parse_rules(expr: str | None) -> list[Rule]:
-    """Parse rule expression ``label:key=value->PREFIX;...``.
-
-    The legacy prefix ``tag:`` is also accepted for backward compatibility.
-    """
+    """Parse rule expression ``label:key=value->PREFIX;...``."""
 
     rules: list[Rule] = []
     if not expr:
@@ -105,7 +102,7 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
             ],
         }
         if info["links"]:
-            item["links"] = [id_map.get(l, l) for l in info["links"]]
+            item["links"] = [id_map.get(link, link) for link in info["links"]]
         if "revision" in info["data"]:
             item["revision"] = info["data"]["revision"]
         items.append((info["prefix"], info["rid"], item, info["fp"]))

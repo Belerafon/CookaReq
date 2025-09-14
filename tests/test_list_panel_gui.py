@@ -202,3 +202,5 @@ def test_reorder_columns_gui(wx_app):
     assert panel.columns == ["status", "id"]
     assert panel.list.GetColumn(1).GetText() == "status"
     frame.Destroy()
+
+

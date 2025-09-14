@@ -61,6 +61,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         btn_row.Add(self.reset_btn, 0, right, 5)
         btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
+        if hasattr(self.list, "SetExtraStyle"):
+            extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
+            if extra:
+                try:
+                    self.list.SetExtraStyle(self.list.GetExtraStyle() | extra)
+                except Exception:  # pragma: no cover - backend quirks
+                    pass
         self._labels: list[Label] = []
         self.current_filters: dict = {}
         self._image_list: wx.ImageList | None = None
@@ -109,7 +116,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if on_derive is not None:
             self._on_derive = on_derive
 
-    # label rendering -------------------------------------------------
     def _label_color(self, name: str) -> str:
         for lbl in self._labels:
             if lbl.name == name:
@@ -121,12 +127,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._image_list = wx.ImageList(width or 1, height or 1)
             self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
             return
-        cur_w, cur_h = self._image_list.GetSize()  # pragma: no cover - simple accessors
+        cur_w, cur_h = self._image_list.GetSize()
         if width <= cur_w and height <= cur_h:
             return
         new_list = wx.ImageList(max(width, cur_w), max(height, cur_h))
         count = self._image_list.GetImageCount()
-        for idx in range(count):  # pragma: no cover - trivial loop
+        for idx in range(count):
             bmp = self._image_list.GetBitmap(idx)
             new_list.Add(bmp)
         self._image_list = new_list
@@ -152,8 +158,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         dc.Clear()
         x = 0
         for name, w in zip(names, widths):
-            color_hex = self._label_color(name)
-            colour = wx.Colour(color_hex)
+            colour = wx.Colour(self._label_color(name))
             dc.SetBrush(wx.Brush(colour))
             dc.SetPen(wx.Pen(colour))
             box_w = w + padding_x * 2
@@ -176,22 +181,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             img_id = self._image_list.Add(bmp)
             self._label_images[key] = img_id
         self.list.SetItem(index, col, "")
-        if hasattr(self.list, "SetItemColumnImage"):
+        self.list.SetItemColumnImage(index, col, img_id)
+        if hasattr(self.list, "SetItemImage"):
             try:
-                self.list.SetItemColumnImage(index, col, img_id)
-            except Exception:  # pragma: no cover - platform dependent
-                pass
-        elif hasattr(wx, "ListItem"):
-            item = wx.ListItem()
-            item.SetId(index)
-            item.SetColumn(col)
-            item.SetImage(img_id)
-            try:  # pragma: no cover - platform dependent
-                self.list.SetItem(item)
+                self.list.SetItemImage(index, -1)
             except Exception:
                 pass
-        else:  # pragma: no cover - stub fallback
-            self.list.SetItem(index, col, ", ".join(labels))
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""
@@ -408,7 +403,17 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.list.DeleteAllItems()
         for req in items:
             title = getattr(req, "title", "")
+<<< codex/fix-labels-display-in-requirements-list-grgjfv
+            index = self.list.InsertItem(self.list.GetItemCount(), title, -1)
+            # Windows ListCtrl may still assign image 0; clear explicitly
+            if hasattr(self.list, "SetItemImage"):
+                try:
+                    self.list.SetItemImage(index, -1)
+                except Exception:
+                    pass
+=====
             index = self.list.InsertItem(self.list.GetItemCount(), title)
+>>>>> main
             req_id = getattr(req, "id", 0)
             try:
                 self.list.SetItemData(index, int(req_id))

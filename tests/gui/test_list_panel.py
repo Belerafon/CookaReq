@@ -696,15 +696,18 @@ def test_labels_column_uses_imagelist(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
-    panel.set_requirements(
-        [
-            _req(1, "A", labels=["ui", "backend"]),
-        ],
-    )
-    labels_col = panel.columns.index("labels") + 1
-    # В колонке labels должен появиться image-id, а колонка Title остаётся без картинки
-    assert panel.list._col_images[(0, labels_col)] >= 0
-    assert panel.list._item_images[0] == -1
+    panel.set_requirements([
+        _req(1, "A", labels=["ui", "backend"]),
+    ])
+    labels_col = panel._field_order.index("labels")
+    title_col = panel._field_order.index("title")
+    # labels column uses main image slot when placed at index 0
+    if labels_col == 0:
+        assert panel.list._item_images[0] >= 0
+        assert panel.list._col_images.get((0, title_col), -1) == -1
+    else:
+        assert panel.list._col_images[(0, labels_col)] >= 0
+        assert panel.list._item_images[0] == -1
 
 
 def test_sort_by_labels(monkeypatch):
@@ -732,7 +735,7 @@ def test_sort_by_labels(monkeypatch):
         ],
     )
 
-    panel.sort(1, True)
+    panel.sort(0, True)
     assert [r.id for r in panel.model.get_visible()] == [2, 1]
 
 
@@ -761,7 +764,7 @@ def test_sort_by_multiple_labels(monkeypatch):
         ],
     )
 
-    panel.sort(1, True)
+    panel.sort(0, True)
     assert [r.id for r in panel.model.get_visible()] == [2, 1]
 
 

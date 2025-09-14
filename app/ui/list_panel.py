@@ -175,6 +175,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
         self.list.SetItem(index, col, "")
         if not labels:
+            # Ensure the title column stays icon-free even when no label image
+            if hasattr(self.list, "SetItemColumnImage"):
+                self.list.SetItemColumnImage(index, 0, -1)
             return
         key = tuple(labels)
         img_id = self._label_images.get(key)
@@ -183,7 +186,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
             img_id = self._image_list.Add(bmp)
             self._label_images[key] = img_id
+        # ``SetItemColumnImage`` on some platforms implicitly assigns ``IMAGE_NONE``
+        # to the main column. Reset it to ``-1`` so "Title" does not reserve
+        # space for an icon.
         self.list.SetItemColumnImage(index, col, img_id)
+        self.list.SetItemColumnImage(index, 0, -1)
 
     # temporary instrumentation -------------------------------------
     def _debug_probe_images(self, index: int) -> None:
@@ -197,11 +204,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             getattr(wx, "MAGENTA", wx.Colour(255, 0, 255)),
             getattr(wx, "YELLOW", wx.Colour(255, 255, 0)),
         ]
+        # Some wx ports use ``IMAGE_NONE`` (-2) to denote an empty slot.
+        none_val = getattr(wx, "IMAGE_NONE", -2)
         for col in range(self.list.GetColumnCount()):
             item = self.list.GetItem(index, col)
             existing = item.GetImage()
             text = item.GetText()
-            if existing != -1:
+            if existing not in (-1, none_val):
                 print(f"DEBUG: row {index} col {col} existing {existing}")
                 continue
             colour = colours[col % len(colours)]

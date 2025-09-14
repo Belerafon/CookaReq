@@ -205,34 +205,7 @@ def test_reorder_columns_gui(wx_app):
     frame.Destroy()
 
 
-def test_labels_render_in_correct_column(wx_app):
-    wx = pytest.importorskip("wx")
-    import app.ui.list_panel as list_panel
-    importlib.reload(list_panel)
-    frame = wx.Frame(None)
-    from app.ui.requirement_model import RequirementModel
-    panel = list_panel.ListPanel(frame, model=RequirementModel())
-    panel.set_columns(["labels"])
-    panel.update_labels_list([Label(name="UI", color="#ff0000")])
-    orig = panel.list.SetItemColumnImage
-
-    def buggy_setcolimg(idx, col, img):
-        res = orig(idx, col, img)
-        if col != 0:
-            panel.list.SetItemImage(idx, 0)
-        return res
-
-    panel.list.SetItemColumnImage = buggy_setcolimg
-    panel.set_requirements([_req(1, "T", labels=["UI"])])
-    wx_app.Yield()
-    item_title = panel.list.GetItem(0, 0)
-    item_labels = panel.list.GetItem(0, 1)
-    assert item_title.GetImage() == -1
-    assert item_labels.GetImage() != -1
-    frame.Destroy()
-
-
-def test_label_images_follow_reorder(wx_app):
+def test_labels_tracked_without_primary_icon(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
     importlib.reload(list_panel)
@@ -243,24 +216,7 @@ def test_label_images_follow_reorder(wx_app):
     panel.update_labels_list([Label(name="UI", color="#ff0000")])
     panel.set_requirements([_req(1, "T", labels=["UI"])])
     wx_app.Yield()
-    if hasattr(panel.list, "SetColumnsOrder"):
-        try:
-            panel.list.SetColumnsOrder([1, 0])
-        except NotImplementedError:
-            frame.Destroy()
-            return
-        wx_app.Yield()
-        assert panel.list.GetItem(0, 0).GetImage() != -1
-        assert panel.list.GetItem(0, 1).GetImage() == -1
-    frame.Destroy()
-
-
-def test_enables_subitem_image_style(monkeypatch, wx_app):
-    wx = pytest.importorskip("wx")
-    monkeypatch.setattr(wx, "LC_EX_SUBITEMIMAGES", 0x200, raising=False)
-    import app.ui.list_panel as list_panel
-    importlib.reload(list_panel)
-    frame = wx.Frame(None)
-    panel = list_panel.ListPanel(frame)
-    assert panel.list.GetExtraStyle() & wx.LC_EX_SUBITEMIMAGES
+    assert panel.list.GetImageList(wx.IMAGE_LIST_SMALL) is None
+    assert panel.list.GetItem(0, 0).GetImage() == -1
+    assert panel._row_labels[0] == ["UI"]
     frame.Destroy()

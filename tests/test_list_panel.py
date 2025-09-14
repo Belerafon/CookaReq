@@ -489,16 +489,8 @@ def test_apply_status_filter(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
 
-def test_labels_column_renders_badges(monkeypatch):
+def test_labels_column_stores_labels(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
-    class ListItem:
-        def SetId(self, idx):
-            self.idx = idx
-        def SetColumn(self, col):
-            self.col = col
-        def SetImage(self, img):
-            self.img = img
-    wx_stub.ListItem = ListItem
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
     monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
@@ -513,22 +505,11 @@ def test_labels_column_renders_badges(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
-
-    img_calls: list[tuple[int, int, int]] = []
-    def fake_setcolimg(idx, col, img):
-        img_calls.append((idx, col, img))
-    panel.list.SetItemColumnImage = fake_setcolimg
-    dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
-    bitmap_calls: list[list[str]] = []
-    monkeypatch.setattr(panel, "_create_label_bitmap", lambda names: bitmap_calls.append(names) or dummy)
-    monkeypatch.setattr(panel, "_ensure_image_list_size", lambda w, h: None)
-    panel._image_list = wx_stub.ImageList(1, 1)
     panel.set_requirements([
         _req(1, "A", labels=["ui", "backend"]),
     ])
 
-    assert bitmap_calls == [["ui", "backend"]]
-    assert (0, 1, 0) in img_calls
+    assert panel._row_labels[0] == ["ui", "backend"]
 
 
 def test_labels_column_uses_colors(monkeypatch):
@@ -549,13 +530,7 @@ def test_labels_column_uses_colors(monkeypatch):
     panel.update_labels_list([Label("ui", "#123456")])
     panel.set_columns(["labels"])
 
-    dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
-    def fake_bitmap(names):
-        assert panel._label_color(names[0]) == "#123456"
-        return dummy
-    monkeypatch.setattr(panel, "_create_label_bitmap", fake_bitmap)
-    monkeypatch.setattr(panel, "_ensure_image_list_size", lambda w, h: None)
-    panel._image_list = wx_stub.ImageList(1, 1)
+    assert panel._label_color("ui") == "#123456"
     panel.set_requirements([_req(1, "A", labels=["ui"])])
 
 
@@ -575,10 +550,6 @@ def test_sort_by_labels(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
-    dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
-    monkeypatch.setattr(panel, "_create_label_bitmap", lambda names: dummy)
-    monkeypatch.setattr(panel, "_ensure_image_list_size", lambda w, h: None)
-    panel._image_list = wx_stub.ImageList(1, 1)
     panel.set_requirements([
         _req(1, "A", labels=["beta"]),
         _req(2, "B", labels=["alpha"]),
@@ -604,10 +575,6 @@ def test_sort_by_multiple_labels(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
-    dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
-    monkeypatch.setattr(panel, "_create_label_bitmap", lambda names: dummy)
-    monkeypatch.setattr(panel, "_ensure_image_list_size", lambda w, h: None)
-    panel._image_list = wx_stub.ImageList(1, 1)
     panel.set_requirements([
         _req(1, "A", labels=["alpha", "zeta"]),
         _req(2, "B", labels=["alpha", "beta"]),

@@ -408,7 +408,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.list.DeleteAllItems()
         for req in items:
             title = getattr(req, "title", "")
-            index = self.list.InsertStringItem(self.list.GetItemCount(), title)
+            index = self.list.InsertItem(self.list.GetItemCount(), title)
             req_id = getattr(req, "id", 0)
             try:
                 self.list.SetItemData(index, int(req_id))

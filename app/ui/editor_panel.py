@@ -1001,9 +1001,11 @@ class EditorPanel(ScrolledPanel):
             return
         try:
             req_id = int(value)
-            if req_id <= 0:
-                raise ValueError
-        except Exception:
+        except (TypeError, ValueError):
+            ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
+            ctrl.Refresh()
+            return
+        if req_id <= 0:
             ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
             ctrl.Refresh()
             return

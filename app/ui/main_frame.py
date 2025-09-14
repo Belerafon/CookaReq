@@ -38,6 +38,16 @@ class WxLogHandler(logging.Handler):
         self._target = target
         self.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 
+    @property
+    def target(self) -> wx.TextCtrl:
+        """Current ``wx.TextCtrl`` receiving log output."""
+        return self._target
+
+    @target.setter
+    def target(self, new_target: wx.TextCtrl) -> None:
+        """Redirect log output to ``new_target``."""
+        self._target = new_target
+
     def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - GUI side effect
         """Append formatted ``record`` text to the log console."""
 
@@ -142,7 +152,7 @@ class MainFrame(wx.Frame):
         existing = next((h for h in logger.handlers if isinstance(h, WxLogHandler)), None)
         if existing:
             self.log_handler = existing
-            self.log_handler._target = self.log_console
+            self.log_handler.target = self.log_console
         else:
             self.log_handler = WxLogHandler(self.log_console)
             self.log_handler.setLevel(logging.WARNING)

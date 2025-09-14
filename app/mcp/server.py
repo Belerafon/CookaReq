@@ -43,7 +43,7 @@ def _configure_request_logging(log_dir: str | Path) -> None:
     configure_logging()
     # Remove previous request handlers if any from the dedicated logger
     for h in list(request_logger.handlers):
-        if getattr(h, "_cookareq_request", False):
+        if getattr(h, "cookareq_request", False):
             request_logger.removeHandler(h)
             h.close()
 
@@ -53,12 +53,12 @@ def _configure_request_logging(log_dir: str | Path) -> None:
     text_path = log_dir_path / _TEXT_LOG_NAME
     text_handler = logging.FileHandler(text_path)
     text_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-    text_handler._cookareq_request = True
+    text_handler.cookareq_request = True
     request_logger.addHandler(text_handler)
 
     json_path = log_dir_path / _JSONL_LOG_NAME
     json_handler = JsonlHandler(json_path)
-    json_handler._cookareq_request = True
+    json_handler.cookareq_request = True
     request_logger.addHandler(json_handler)
 
 
@@ -312,6 +312,6 @@ def stop_server() -> None:
     _server_thread = None
 
     for h in list(request_logger.handlers):
-        if getattr(h, "_cookareq_request", False):
+        if getattr(h, "cookareq_request", False):
             request_logger.removeHandler(h)
             h.close()

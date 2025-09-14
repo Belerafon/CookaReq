@@ -122,8 +122,6 @@ class LLMClient:
                 tool_call = message.tool_calls[0]
                 name = tool_call.function.name
                 arguments = json.loads(tool_call.function.arguments or "{}")
-            log_event("LLM_RESPONSE", {"tool": name, "arguments": arguments}, start_time=start)
-            return name, arguments
         except Exception as exc:  # pragma: no cover - network errors
             log_event(
                 "LLM_RESPONSE",
@@ -131,3 +129,6 @@ class LLMClient:
                 start_time=start,
             )
             raise
+        else:
+            log_event("LLM_RESPONSE", {"tool": name, "arguments": arguments}, start_time=start)
+            return name, arguments

@@ -17,6 +17,7 @@ def _wait_until_ready(port, headers=None):
     for _ in range(50):
         try:
             _request(port, headers=headers)
-            return
         except ConnectionRefusedError:
             time.sleep(0.1)
+        else:
+            return

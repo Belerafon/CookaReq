@@ -16,9 +16,9 @@ from app.core.model import (
 pytestmark = pytest.mark.gui
 
 
-def _req(id: int, title: str, **kwargs) -> Requirement:
+def _req(req_id: int, title: str, **kwargs) -> Requirement:
     base = {
-        "id": id,
+        "id": req_id,
         "title": title,
         "statement": "",
         "type": RequirementType.REQUIREMENT,

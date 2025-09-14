@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Callable
 
@@ -84,10 +85,8 @@ def cmd_edit(args: argparse.Namespace, repo: RequirementRepository) -> None:
         print(_("Invalid requirement data: {error}").format(error=exc))
         return
     mtime = None
-    try:
+    with suppress(FileNotFoundError):
         mtime = repo.load(args.directory, obj.id)[1]
-    except FileNotFoundError:
-        pass
     path = repo.save(args.directory, obj, mtime=mtime, modified_at=args.modified_at)
     print(path)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -65,10 +66,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if hasattr(self.list, "SetExtraStyle"):
             extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
             if extra:
-                try:
+                with suppress(Exception):  # pragma: no cover - backend quirks
                     self.list.SetExtraStyle(self.list.GetExtraStyle() | extra)
-                except Exception:  # pragma: no cover - backend quirks
-                    pass
         self._labels: list[Label] = []
         self.current_filters: dict = {}
         self._image_list: wx.ImageList | None = None
@@ -184,10 +183,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.list.SetItem(index, col, "")
         self.list.SetItemColumnImage(index, col, img_id)
         if hasattr(self.list, "SetItemImage"):
-            try:
+            with suppress(Exception):
                 self.list.SetItemImage(index, -1)
-            except Exception:
-                pass
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""
@@ -196,10 +193,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         for idx, field in enumerate(self.columns, start=1):
             self.list.InsertColumn(idx, field)
         ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
-        try:  # remove mixin's default binding and use our own
+        with suppress(Exception):  # remove mixin's default binding and use our own
             self.list.Unbind(wx.EVT_LIST_COL_CLICK)
-        except Exception:  # pragma: no cover - Unbind may not exist
-            pass
         self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
 
     # Columns ---------------------------------------------------------
@@ -236,10 +231,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         for idx in range(count):
             if idx not in order:
                 order.append(idx)
-        try:  # pragma: no cover - depends on GUI backend
+        with suppress(Exception):  # pragma: no cover - depends on GUI backend
             self.list.SetColumnsOrder(order)
-        except Exception:
-            pass
 
     def save_column_order(self, config: wx.Config) -> None:
         """Persist current column ordering to config."""
@@ -380,9 +373,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if self.current_filters.get("suspect_only"):
             return True
         field_queries = self.current_filters.get("field_queries", {})
-        if any(v for v in field_queries.values()):
-            return True
-        return False
+        return bool(any(field_queries.values()))
 
     def _toggle_reset_button(self) -> None:
         """Show or hide the reset button based on active filters."""
@@ -393,10 +384,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if hasattr(self.reset_btn, "Hide"):
                 self.reset_btn.Hide()
         if hasattr(self, "Layout"):
-            try:
+            with suppress(Exception):  # pragma: no cover - some stubs lack Layout
                 self.Layout()
-            except Exception:  # pragma: no cover - some stubs lack Layout
-                pass
 
     def _refresh(self) -> None:
         """Reload list control from the model."""
@@ -407,10 +396,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             index = self.list.InsertItem(self.list.GetItemCount(), title, -1)
             # Windows ListCtrl may still assign image 0; clear explicitly
             if hasattr(self.list, "SetItemImage"):
-                try:
+                with suppress(Exception):
                     self.list.SetItemImage(index, -1)
-                except Exception:
-                    pass
             req_id = getattr(req, "id", 0)
             try:
                 self.list.SetItemData(index, int(req_id))
@@ -468,11 +455,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     continue
                 self.list.SetItem(index, col, str(value))
             if suspect_row and hasattr(self.list, "SetItemTextColour"):
-                try:
+                with suppress(Exception):
                     colour = getattr(wx, "RED", None) or wx.Colour(255, 0, 0)
                     self.list.SetItemTextColour(index, colour)
-                except Exception:
-                    pass
 
     def refresh(self) -> None:
         """Public wrapper to reload list control."""
@@ -495,10 +480,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _on_col_click(self, event: ListEvent) -> None:  # pragma: no cover - GUI event
         col = event.GetColumn()
-        if col == self._sort_column:
-            ascending = not self._sort_ascending
-        else:
-            ascending = True
+        ascending = (
+            not self._sort_ascending if col == self._sort_column else True
+        )
         self.sort(col, ascending)
 
     def sort(self, column: int, ascending: bool) -> None:
@@ -592,11 +576,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 value = None
             dlg.Destroy()
             return value
-        dlg = wx.TextEntryDialog(self, _("New value for {field}").format(field=field), _("Edit"))
-        if dlg.ShowModal() == wx.ID_OK:
-            value = dlg.GetValue()
-        else:
-            value = None
+        dlg = wx.TextEntryDialog(
+            self, _("New value for {field}").format(field=field), _("Edit")
+        )
+        value = dlg.GetValue() if dlg.ShowModal() == wx.ID_OK else None
         dlg.Destroy()
         return value
 

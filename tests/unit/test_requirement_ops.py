@@ -93,7 +93,7 @@ def test_link_requirements(tmp_path: Path):
 def test_create_requirement_errors(tmp_path: Path, monkeypatch) -> None:
     from app.core.store import ConflictError
 
-    def conflict(*args, **kwargs):  # noqa: ANN001, ANN002
+    def conflict(*args, **kwargs):
         raise ConflictError("exists")
 
     monkeypatch.setattr("app.core.requirements.save_requirement", conflict)
@@ -103,7 +103,7 @@ def test_create_requirement_errors(tmp_path: Path, monkeypatch) -> None:
     err = create_requirement(tmp_path, {"id": 2})
     assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
 
-    def boom(*args, **kwargs):  # noqa: ANN001, ANN002
+    def boom(*args, **kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr("app.core.requirements.save_requirement", boom)
@@ -122,7 +122,7 @@ def test_patch_requirement_errors(tmp_path: Path, monkeypatch) -> None:
     err = patch_requirement(tmp_path, 1, [{"path": "/title", "value": "Y"}], rev=1)
     assert err["error"]["code"] == ErrorCode.VALIDATION_ERROR
 
-    def boom(*args, **kwargs):  # noqa: ANN001, ANN002
+    def boom(*args, **kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr("app.core.requirements.save_requirement", boom)
@@ -136,7 +136,7 @@ def test_delete_requirement_errors(tmp_path: Path, monkeypatch) -> None:
 
     create_requirement(tmp_path, _base_req(1))
 
-    def boom(*args, **kwargs):  # noqa: ANN001, ANN002
+    def boom(*args, **kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr("app.core.requirements.delete_requirement", boom)
@@ -155,7 +155,7 @@ def test_link_requirements_errors(tmp_path: Path, monkeypatch) -> None:
     err = link_requirements(tmp_path, source_id=1, derived_id=3, link_type="derived_from", rev=1)
     assert err["error"]["code"] == ErrorCode.NOT_FOUND
 
-    def val_err(*args, **kwargs):  # noqa: ANN001, ANN002
+    def val_err(*args, **kwargs):
         raise ValueError("bad")
 
     orig = tools_write.requirement_from_dict
@@ -165,7 +165,7 @@ def test_link_requirements_errors(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr(tools_write, "requirement_from_dict", orig)
 
-    def boom(*args, **kwargs):  # noqa: ANN001, ANN002
+    def boom(*args, **kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr("app.core.requirements.save_requirement", boom)

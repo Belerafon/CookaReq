@@ -320,7 +320,7 @@ def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path, wx_app
     data = _sample_requirement()
     save(tmp_path, data)
 
-    wx, frame = _prepare_frame(monkeypatch, tmp_path)
+    _wx, frame = _prepare_frame(monkeypatch, tmp_path)
 
     frame.on_clone_requirement(frame.model.get_all()[0].id)
 
@@ -353,7 +353,7 @@ def test_main_frame_delete_requirement_removes_file(monkeypatch, tmp_path, wx_ap
     data = _sample_requirement()
     path = save(tmp_path, data)
 
-    wx, frame = _prepare_frame(monkeypatch, tmp_path)
+    _wx, frame = _prepare_frame(monkeypatch, tmp_path)
 
     assert path.exists()
     assert frame.panel.list.GetItemCount() == 1
@@ -371,7 +371,7 @@ def test_main_frame_select_any_column_updates_editor(monkeypatch, tmp_path, wx_a
 
     save(tmp_path, _sample_requirement())
 
-    wx, frame = _prepare_frame(monkeypatch, tmp_path)
+    _wx, frame = _prepare_frame(monkeypatch, tmp_path)
 
     # Add an extra column so clicks on it should still update the editor
     frame.panel.set_columns(["id"])

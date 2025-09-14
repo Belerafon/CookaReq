@@ -3,6 +3,7 @@
 import importlib
 import sys
 import types
+from typing import ClassVar
 
 import pytest
 
@@ -42,7 +43,7 @@ def test_main_runs(monkeypatch):
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
 
     class DummyFrame:
-        instances = []
+        instances: ClassVar[list] = []
         shown = False
 
         def __init__(self, parent):

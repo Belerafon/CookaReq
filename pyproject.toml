@@ -40,7 +40,12 @@ select = [
     "I",
     "W",
     "C4",
+    "A",
+    "SIM",
+    "RUF",
 ]
+
+ignore = ["RUF001", "RUF003"]
 
 [build-system]
 requires = ["setuptools", "wheel"]

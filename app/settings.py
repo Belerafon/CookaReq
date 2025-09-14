@@ -67,10 +67,7 @@ def load_app_settings(path: str | Path) -> AppSettings:
 
     p = Path(path)
     with p.open("rb") as fh:
-        if p.suffix.lower() == ".toml":
-            data = tomllib.load(fh)
-        else:
-            data = json.load(fh)
+        data = tomllib.load(fh) if p.suffix.lower() == ".toml" else json.load(fh)
     try:
         return AppSettings.model_validate(data)
     except ValidationError as exc:  # pragma: no cover - exercised via tests

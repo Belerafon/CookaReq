@@ -8,9 +8,9 @@ from app.ui.requirement_model import RequirementModel
 pytestmark = pytest.mark.unit
 
 
-def _req(id: int, status: Status) -> Requirement:
+def _req(req_id: int, status: Status) -> Requirement:
     return Requirement(
-        id=id,
+        id=req_id,
         title="T",
         statement="S",
         type=RequirementType.REQUIREMENT,

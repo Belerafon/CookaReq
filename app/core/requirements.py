@@ -98,10 +98,7 @@ def save_requirement(
     modified_at: str | None = None,
 ):
     """Persist ``data`` as requirement in ``directory`` and return file path."""
-    if isinstance(data, Requirement):
-        obj = data
-    else:
-        obj = requirement_from_dict(dict(data))
+    obj = data if isinstance(data, Requirement) else requirement_from_dict(dict(data))
     obj.modified_at = (
         normalize_timestamp(modified_at) if modified_at else local_now_str()
     )

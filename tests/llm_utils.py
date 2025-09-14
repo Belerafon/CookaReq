@@ -26,7 +26,7 @@ def make_openai_mock(responses: dict[str, tuple[str, dict] | Exception]):
     """
 
     class _Completions:
-        def create(self, *, model, messages, tools=None, **kwargs):  # noqa: D401
+        def create(self, *, model, messages, tools=None, **kwargs):
             user_msg = messages[-1]["content"]
             result = responses.get(user_msg, ("noop", {}))
             if isinstance(result, Exception):

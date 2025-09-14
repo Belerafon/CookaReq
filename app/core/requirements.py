@@ -7,7 +7,7 @@ GUI components.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence, Tuple
+from collections.abc import Iterable, Mapping, Sequence
 
 from .model import Requirement, requirement_from_dict, Status
 from .labels import Label
@@ -72,7 +72,7 @@ def search_requirements(
     return core_search.search(reqs, labels=list(labels or []), query=query, fields=fields)
 
 
-def load_requirement(directory: str | Path, req_id: int) -> Tuple[dict, float]:
+def load_requirement(directory: str | Path, req_id: int) -> tuple[dict, float]:
     """Return raw requirement data and mtime for ``req_id``.
 
     Raises :class:`FileNotFoundError` when either the directory or file does not

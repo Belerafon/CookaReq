@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from typing import Mapping, Optional
+from collections.abc import Mapping
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -250,8 +250,8 @@ async def call_tool(request: Request) -> JSONResponse:
     return JSONResponse(result)
 
 # Internal state for the background server
-_uvicorn_server: Optional[uvicorn.Server] = None
-_server_thread: Optional[threading.Thread] = None
+_uvicorn_server: uvicorn.Server | None = None
+_server_thread: threading.Thread | None = None
 
 
 def is_running() -> bool:

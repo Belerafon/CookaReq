@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha1
-from typing import Dict, List
 
 
 @dataclass(slots=True)
@@ -23,11 +22,11 @@ def _color_from_name(name: str) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
-def _preset(names: List[str]) -> List[Label]:
+def _preset(names: list[str]) -> list[Label]:
     return [Label(n, _color_from_name(n)) for n in names]
 
 
-PRESET_SETS: Dict[str, List[Label]] = {
+PRESET_SETS: dict[str, list[Label]] = {
     "basic": _preset([
         "functional",
         "non-functional",
@@ -69,7 +68,7 @@ PRESET_SETS: Dict[str, List[Label]] = {
     ]),
 }
 
-PRESET_SET_TITLES: Dict[str, str] = {
+PRESET_SET_TITLES: dict[str, str] = {
     "basic": "Basic",
     "role": "By role",
     "status": "By status",
@@ -78,14 +77,14 @@ PRESET_SET_TITLES: Dict[str, str] = {
 }
 
 
-def add_label(labels: List[Label], label: Label) -> None:
+def add_label(labels: list[Label], label: Label) -> None:
     """Add ``label`` to ``labels`` ensuring unique names."""
     if any(existing.name == label.name for existing in labels):
         raise ValueError(f"label exists: {label.name}")
     labels.append(label)
 
 
-def get_label(labels: List[Label], name: str) -> Label | None:
+def get_label(labels: list[Label], name: str) -> Label | None:
     """Return label with ``name`` or ``None`` if absent."""
     for lbl in labels:
         if lbl.name == name:
@@ -93,7 +92,7 @@ def get_label(labels: List[Label], name: str) -> Label | None:
     return None
 
 
-def update_label(labels: List[Label], label: Label) -> None:
+def update_label(labels: list[Label], label: Label) -> None:
     """Replace existing label with same name as ``label``.
 
     Raises
@@ -108,7 +107,7 @@ def update_label(labels: List[Label], label: Label) -> None:
     raise KeyError(f"label not found: {label.name}")
 
 
-def delete_label(labels: List[Label], name: str) -> None:
+def delete_label(labels: list[Label], name: str) -> None:
     """Remove label with ``name`` from ``labels``.
 
     Raises

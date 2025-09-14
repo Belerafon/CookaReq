@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from ..i18n import _
 import io
-from typing import Sequence
+from collections.abc import Sequence
 
 import wx
 

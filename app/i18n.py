@@ -8,7 +8,7 @@ the active language.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from collections.abc import Iterable
 import threading
 
 
@@ -106,7 +106,7 @@ def flush_missing(path: Path) -> None:
         existing: set[str] = set()
         if path.exists():
             existing = set(_parse_po(path))
-            with path.open("r", encoding="utf-8") as f:
+            with path.open(encoding="utf-8") as f:
                 lines = f.readlines()
         else:
             lines = []

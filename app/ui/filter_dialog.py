@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from ..i18n import _
-from typing import Dict
 
 import wx
 
@@ -20,14 +19,14 @@ class FilterDialog(wx.Dialog):
         parent: wx.Window,
         *,
         labels: list[Label],
-        values: Dict | None = None,
+        values: dict | None = None,
     ) -> None:
         title = _("Filters")
         super().__init__(parent, title=title)
         self._labels = list(labels)
         self._build_ui(values or {})
 
-    def _build_ui(self, values: Dict) -> None:
+    def _build_ui(self, values: dict) -> None:
         sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Global query across all searchable fields
@@ -37,7 +36,7 @@ class FilterDialog(wx.Dialog):
         sizer.Add(self.any_query, 0, wx.EXPAND | wx.ALL, 5)
 
         # Per-field queries
-        self.field_controls: Dict[str, wx.TextCtrl] = {}
+        self.field_controls: dict[str, wx.TextCtrl] = {}
         for field in sorted(req_ops.SEARCHABLE_FIELDS):
             sizer.Add(wx.StaticText(self, label=locale.field_label(field)), 0, wx.ALL, 5)
             ctrl = wx.TextCtrl(self)
@@ -104,7 +103,7 @@ class FilterDialog(wx.Dialog):
         self.clear_btn.Bind(wx.EVT_BUTTON, self._on_clear)
         self.SetSizerAndFit(sizer)
 
-    def get_filters(self) -> Dict:
+    def get_filters(self) -> dict:
         """Return chosen filters as a dict."""
         labels = [self._labels[i].name for i in range(self.labels_box.GetCount()) if self.labels_box.IsChecked(i)]
         field_queries = {field: ctrl.GetValue() for field, ctrl in self.field_controls.items() if ctrl.GetValue()}

@@ -49,7 +49,7 @@ def add_list_arguments(p: argparse.ArgumentParser) -> None:
 def cmd_add(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """Add requirement from JSON file to directory."""
     try:
-        with open(args.file, "r", encoding="utf-8") as fh:
+        with open(args.file, encoding="utf-8") as fh:
             data = json.load(fh)
     except json.JSONDecodeError as exc:
         print(_("Invalid JSON file: {error}").format(error=exc))
@@ -73,7 +73,7 @@ def add_add_arguments(p: argparse.ArgumentParser) -> None:
 def cmd_edit(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """Edit existing requirement using data from JSON file."""
     try:
-        with open(args.file, "r", encoding="utf-8") as fh:
+        with open(args.file, encoding="utf-8") as fh:
             data = json.load(fh)
     except json.JSONDecodeError as exc:
         print(_("Invalid JSON file: {error}").format(error=exc))

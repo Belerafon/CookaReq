@@ -27,7 +27,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E9", "E741", "F63", "F7", "F82", "F401", "F841"]
+select = ["E9", "E741", "F63", "F7", "F82", "F401", "F841", "B", "UP"]
 
 [build-system]
 requires = ["setuptools", "wheel"]

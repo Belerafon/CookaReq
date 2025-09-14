@@ -7,7 +7,8 @@ from ..i18n import _
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
-from typing import Callable, List, Sequence, TYPE_CHECKING
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING
 from enum import Enum
 
 from ..core.model import Requirement
@@ -74,12 +75,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._image_list: wx.ImageList | None = None
         self._label_images: dict[tuple[str, ...], int] = {}
         ColumnSorterMixin.__init__(self, 1)
-        self.columns: List[str] = []
+        self.columns: list[str] = []
         self._on_clone = on_clone
         self._on_delete = on_delete
         self._on_sort_changed = on_sort_changed
         self._on_derive = on_derive
-        self.derived_map: dict[int, List[int]] = {}
+        self.derived_map: dict[int, list[int]] = {}
         self._sort_column = -1
         self._sort_ascending = True
         self._setup_columns()
@@ -226,7 +227,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if not value:
             return
         names = [n for n in value.split(",") if n]
-        order: List[int] = []
+        order: list[int] = []
         for name in names:
             if name == "title":
                 order.append(0)
@@ -247,7 +248,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             order = self.list.GetColumnsOrder()
         except Exception:
             return
-        names: List[str] = []
+        names: list[str] = []
         for idx in order:
             if idx == 0:
                 names.append("title")
@@ -266,7 +267,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._setup_columns()
         self._refresh()
 
-    def set_columns(self, fields: List[str]) -> None:
+    def set_columns(self, fields: list[str]) -> None:
         """Set additional columns (beyond Title) to display.
 
         ``labels`` is treated specially and rendered as a comma-separated list.
@@ -279,7 +280,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def set_requirements(
         self,
         requirements: list,
-        derived_map: dict[int, List[int]] | None = None,
+        derived_map: dict[int, list[int]] | None = None,
     ) -> None:
         """Populate list control with requirement data via model."""
         self.model.set_requirements(requirements)
@@ -308,7 +309,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._update_filter_summary()
         self._toggle_reset_button()
 
-    def set_label_filter(self, labels: List[str]) -> None:
+    def set_label_filter(self, labels: list[str]) -> None:
         """Apply label filter to the model."""
 
         self.apply_filters({"labels": labels})
@@ -486,14 +487,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def recalc_derived_map(self, requirements: list[Requirement]) -> None:
         """Rebuild derived requirements map from ``requirements``."""
 
-        derived_map: dict[int, List[int]] = {}
+        derived_map: dict[int, list[int]] = {}
         for req in requirements:
             for link in getattr(req, "derived_from", []):
                 derived_map.setdefault(link.source_id, []).append(req.id)
         self.derived_map = derived_map
         self._refresh()
 
-    def _on_col_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event
+    def _on_col_click(self, event: ListEvent) -> None:  # pragma: no cover - GUI event
         col = event.GetColumn()
         if col == self._sort_column:
             ascending = not self._sort_ascending
@@ -517,7 +518,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.PopupMenu(menu)
         menu.Destroy()
 
-    def _on_right_click(self, event: "ListEvent") -> None:  # pragma: no cover - GUI event
+    def _on_right_click(self, event: ListEvent) -> None:  # pragma: no cover - GUI event
         x, y = event.GetPoint()
         if hasattr(self.list, "HitTestSubItem"):
             _, _, col = self.list.HitTestSubItem((x, y))
@@ -526,7 +527,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             col = None
         self._popup_context_menu(event.GetIndex(), col)
 
-    def _on_context_menu(self, event: "ContextMenuEvent") -> None:  # pragma: no cover - GUI event
+    def _on_context_menu(self, event: ContextMenuEvent) -> None:  # pragma: no cover - GUI event
         pos = event.GetPosition()
         if pos == wx.DefaultPosition:
             pos = wx.GetMousePosition()
@@ -571,8 +572,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             menu.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_derive(i), derive_item)
         return menu, clone_item, delete_item, edit_item
 
-    def _get_selected_indices(self) -> List[int]:
-        indices: List[int] = []
+    def _get_selected_indices(self) -> list[int]:
+        indices: list[int] = []
         idx = self.list.GetFirstSelected()
         while idx != -1:
             indices.append(idx)

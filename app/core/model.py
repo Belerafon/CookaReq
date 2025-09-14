@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from enum import Enum
-from typing import List, Optional, Any
+from typing import Any
 
 from ..util.time import normalize_timestamp
 
@@ -69,15 +69,15 @@ class DerivationInfo:
     """Details describing how the requirement was derived."""
 
     rationale: str
-    assumptions: List[str]
+    assumptions: list[str]
 
 
 @dataclass
 class Links:
     """Grouping for miscellaneous requirement links."""
 
-    verifies: List[RequirementLink] = field(default_factory=list)
-    relates: List[RequirementLink] = field(default_factory=list)
+    verifies: list[RequirementLink] = field(default_factory=list)
+    relates: list[RequirementLink] = field(default_factory=list)
 
 
 @dataclass
@@ -93,21 +93,21 @@ class Requirement:
     priority: Priority
     source: str
     verification: Verification
-    acceptance: Optional[str] = None
+    acceptance: str | None = None
     conditions: str = ""
     trace_up: str = ""
     trace_down: str = ""
     version: str = ""
     modified_at: str = ""
-    labels: List[str] = field(default_factory=list)
-    attachments: List[Attachment] = field(default_factory=list)
+    labels: list[str] = field(default_factory=list)
+    attachments: list[Attachment] = field(default_factory=list)
     revision: int = 1
-    approved_at: Optional[str] = None
+    approved_at: str | None = None
     notes: str = ""
     parent: RequirementLink | None = None
-    derived_from: List[RequirementLink] = field(default_factory=list)
+    derived_from: list[RequirementLink] = field(default_factory=list)
     links: Links = field(default_factory=Links)
-    derivation: Optional[DerivationInfo] = None
+    derivation: DerivationInfo | None = None
 
 
 def requirement_from_dict(data: dict[str, Any]) -> Requirement:

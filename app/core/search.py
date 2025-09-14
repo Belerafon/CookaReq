@@ -1,7 +1,7 @@
 """In-memory search helpers for requirements."""
 from __future__ import annotations
 
-from typing import Iterable, List, Sequence, Mapping
+from collections.abc import Iterable, Sequence, Mapping
 
 from .model import Requirement
 
@@ -20,7 +20,7 @@ def filter_by_labels(
     labels: Sequence[str],
     *,
     match_all: bool = True,
-) -> List[Requirement]:
+) -> list[Requirement]:
     """Return requirements matching ``labels``.
 
     By default all ``labels`` must be present in a requirement. When
@@ -40,7 +40,7 @@ def search_text(
     requirements: Iterable[Requirement],
     query: str,
     fields: Sequence[str],
-) -> List[Requirement]:
+) -> list[Requirement]:
     """Perform case-insensitive text search over selected fields.
 
     ``fields`` outside of :data:`SEARCHABLE_FIELDS` are ignored. If no ``fields``
@@ -53,7 +53,7 @@ def search_text(
     if not fields:
         return reqs
     q = query.lower()
-    result: List[Requirement] = []
+    result: list[Requirement] = []
     for r in reqs:
         for field in fields:
             value = getattr(r, field, None)
@@ -66,7 +66,7 @@ def search_text(
 def filter_text_fields(
     requirements: Iterable[Requirement],
     queries: Mapping[str, str],
-) -> List[Requirement]:
+) -> list[Requirement]:
     """Filter requirements by individual field queries.
 
     ``queries`` maps field names to case-insensitive substrings that must be
@@ -90,7 +90,7 @@ def filter_is_derived(
     requirements: Iterable[Requirement],
     *,
     suspect_only: bool = False,
-) -> List[Requirement]:
+) -> list[Requirement]:
     """Return only requirements that are derived from others.
 
     When ``suspect_only`` is ``True`` keep only requirements that have at least
@@ -108,7 +108,7 @@ def filter_has_derived(
     all_requirements: Iterable[Requirement],
     *,
     suspect_only: bool = False,
-) -> List[Requirement]:
+) -> list[Requirement]:
     """Return requirements that act as sources for derivations.
 
     ``all_requirements`` is used to inspect derivation links from every
@@ -119,12 +119,12 @@ def filter_has_derived(
     """
 
     reqs = list(requirements)
-    sources: dict[int, List[bool]] = {}
+    sources: dict[int, list[bool]] = {}
     for req in all_requirements:
         for link in req.derived_from:
             sources.setdefault(link.source_id, []).append(link.suspect)
 
-    result: List[Requirement] = []
+    result: list[Requirement] = []
     for req in reqs:
         flags = sources.get(req.id, [])
         if not flags:
@@ -146,7 +146,7 @@ def search(
     has_derived: bool = False,
     suspect_only: bool = False,
     field_queries: Mapping[str, str] | None = None,
-) -> List[Requirement]:
+) -> list[Requirement]:
     """Filter requirements by ``labels`` and ``query`` across ``fields``.
 
     ``fields`` defaults to :data:`SEARCHABLE_FIELDS` when ``query`` is provided.

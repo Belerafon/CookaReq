@@ -15,7 +15,7 @@ LABELS_FILENAME = "labels.json"
 def _read_json(path: Path) -> object:
     """Read JSON from *path* and raise :class:`ValueError` on invalid content."""
     try:
-        with path.open("r", encoding="utf-8") as fh:
+        with path.open(encoding="utf-8") as fh:
             return json.load(fh)
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in {path}: {exc}") from exc

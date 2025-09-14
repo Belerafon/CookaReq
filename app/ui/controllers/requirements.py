@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Dict
 
 from ...i18n import _
 
@@ -30,7 +29,7 @@ class RequirementsController:
         self.repo = repository or FileRequirementRepository()
 
     # loading ---------------------------------------------------------
-    def load_directory(self) -> Dict[int, list[int]]:
+    def load_directory(self) -> dict[int, list[int]]:
         """Load requirements from ``directory`` and return derivation map."""
         self.config.add_recent_dir(self.directory)
         try:
@@ -38,7 +37,7 @@ class RequirementsController:
         except Exception as exc:
             logger.warning("Failed to load directory %s: %s", self.directory, exc)
             items = []
-        derived_map: Dict[int, list[int]] = {}
+        derived_map: dict[int, list[int]] = {}
         for req in items:
             for link in getattr(req, "derived_from", []):
                 derived_map.setdefault(link.source_id, []).append(req.id)

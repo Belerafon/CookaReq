@@ -28,12 +28,12 @@ def test_request_logged_and_token_masked():
         assert os.path.exists(log_path)
         assert os.path.exists(jsonl_path)
 
-        with open(log_path, "r", encoding="utf-8") as fh:
+        with open(log_path, encoding="utf-8") as fh:
             content = fh.read()
         assert "GET /health" in content
         assert "secret" not in content
 
-        with open(jsonl_path, "r", encoding="utf-8") as fh:
+        with open(jsonl_path, encoding="utf-8") as fh:
             line = fh.readline()
         entry = json.loads(line)
         headers = entry["headers"]

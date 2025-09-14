@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List
 
 from ...config import ConfigManager
 from ...core import requirements as req_ops
@@ -26,15 +25,15 @@ class LabelsController:
         self.model = model
         self.directory = directory
         self.repo = repository or FileLabelRepository()
-        self.labels: List[Label] = []
+        self.labels: list[Label] = []
 
-    def load_labels(self) -> List[Label]:
+    def load_labels(self) -> list[Label]:
         """Load labels from configured repository."""
 
         self.labels = req_ops.load_labels(self.directory, repo=self.repo)
         return self.labels
 
-    def sync_labels(self) -> List[str]:
+    def sync_labels(self) -> list[str]:
         """Synchronize labels file with labels used by requirements."""
         if not self.directory:
             return []
@@ -49,8 +48,8 @@ class LabelsController:
         return [lbl.name for lbl in self.labels]
 
     def update_labels(
-        self, new_labels: List[Label], remove_from_requirements: bool
-    ) -> Dict[str, List[int]]:
+        self, new_labels: list[Label], remove_from_requirements: bool
+    ) -> dict[str, list[int]]:
         """Update labels and optionally strip removed ones from requirements.
 
         Returns a mapping of removed label name -> requirement ids using it.
@@ -61,7 +60,7 @@ class LabelsController:
         old_names = {lbl.name for lbl in self.labels}
         new_names = {lbl.name for lbl in new_labels}
         removed = old_names - new_names
-        used: Dict[str, List[int]] = {}
+        used: dict[str, list[int]] = {}
         if removed:
             for lbl in removed:
                 ids = [req.id for req in self.model.get_all() if lbl in req.labels]
@@ -86,7 +85,7 @@ class LabelsController:
             logger.warning("Failed to save labels: %s", exc)
         return {}
 
-    def get_label_names(self) -> List[str]:
+    def get_label_names(self) -> list[str]:
         """Return list of current label names."""
 
         return [lbl.name for lbl in self.labels]

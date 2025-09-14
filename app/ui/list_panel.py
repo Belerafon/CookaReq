@@ -175,22 +175,19 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
             img_id = self._image_list.Add(bmp)
             self._label_images[key] = img_id
+        # ensure column is cleared before setting image
         self.list.SetStringItem(index, col, "")
         if hasattr(self.list, "SetItemColumnImage"):
             try:
                 self.list.SetItemColumnImage(index, col, img_id)
+                return
             except Exception:  # pragma: no cover - platform dependent
                 pass
-        elif hasattr(wx, "ListItem"):
-            item = wx.ListItem()
-            item.SetId(index)
-            item.SetColumn(col)
-            item.SetImage(img_id)
-            try:  # pragma: no cover - platform dependent
-                self.list.SetItem(item)
-            except Exception:
-                pass
-        else:  # pragma: no cover - stub fallback
+        try:
+            # wx.ListCtrl allows images in arbitrary columns via SetItem
+            self.list.SetItem(index, col, "", img_id)
+        except Exception:
+            # fallback: render labels as plain text
             self.list.SetStringItem(index, col, ", ".join(labels))
 
     def _setup_columns(self) -> None:

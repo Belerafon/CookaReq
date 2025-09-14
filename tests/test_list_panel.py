@@ -557,6 +557,44 @@ def test_labels_column_uses_colors(monkeypatch):
     panel.set_requirements([_req(1, "A", labels=["ui"])])
 
 
+def test_labels_column_without_setitemcolumnimage(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
+    ListPanel = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["labels"])
+
+    dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
+    monkeypatch.setattr(panel, "_create_label_bitmap", lambda names: dummy)
+    monkeypatch.setattr(panel, "_ensure_image_list_size", lambda w, h: None)
+    panel._image_list = wx_stub.ImageList(1, 1)
+
+    # simulate absence of SetItemColumnImage
+    base_cls = type(panel.list).__mro__[1]
+    monkeypatch.delattr(base_cls, "SetItemColumnImage", raising=False)
+    calls: list[tuple[int, int, str, int]] = []
+
+    def fake_setitem(index, col, text, imageId=-1):
+        calls.append((index, col, text, imageId))
+
+    panel.list.SetItem = fake_setitem
+    panel.list.SetStringItem = lambda idx, col, text: None
+
+    panel.set_requirements([_req(1, "A", labels=["ui"])])
+
+    assert calls == [(0, 1, "", 0)]
+
+
 def test_sort_by_labels(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)

@@ -91,16 +91,16 @@ class FilterDialog(wx.Dialog):
         self.suspect_only.SetValue(values.get("suspect_only", False))
         sizer.Add(self.suspect_only, 0, wx.ALL, 5)
 
-        btns = wx.StdDialogButtonSizer()
-        self.reset_btn = wx.Button(self, wx.ID_RESET, label=_("Reset"))
+        btns = wx.BoxSizer(wx.HORIZONTAL)
+        btns.AddStretchSpacer()
+        self.clear_btn = wx.Button(self, label=_("Clear filters"))
         ok_btn = wx.Button(self, wx.ID_OK)
         cancel_btn = wx.Button(self, wx.ID_CANCEL)
-        btns.AddButton(self.reset_btn)
-        btns.AddButton(ok_btn)
-        btns.AddButton(cancel_btn)
-        btns.Realize()
-        sizer.Add(btns, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
-        self.reset_btn.Bind(wx.EVT_BUTTON, self._on_reset)
+        btns.Add(self.clear_btn, 0, wx.RIGHT, 5)
+        btns.Add(ok_btn, 0, wx.RIGHT, 5)
+        btns.Add(cancel_btn, 0)
+        sizer.Add(btns, 0, wx.EXPAND | wx.ALL, 5)
+        self.clear_btn.Bind(wx.EVT_BUTTON, self._on_clear)
         self.SetSizerAndFit(sizer)
 
     def get_filters(self) -> Dict:
@@ -119,7 +119,7 @@ class FilterDialog(wx.Dialog):
             "field_queries": field_queries,
         }
 
-    def _on_reset(self, _event: wx.Event) -> None:  # pragma: no cover - simple GUI action
+    def _on_clear(self, _event: wx.Event) -> None:
         """Clear all controls to default state."""
         self.any_query.SetValue("")
         for ctrl in self.field_controls.values():

@@ -25,7 +25,7 @@ from ..core.model import (
 )
 from . import locale
 from .label_selection_dialog import LabelSelectionDialog
-from .helpers import HelpStaticBox
+from .helpers import HelpStaticBox, make_help_button, show_help
 
 
 class EditorPanel(ScrolledPanel):
@@ -211,7 +211,7 @@ class EditorPanel(ScrolledPanel):
             ("source", True),
         ]:
             label = wx.StaticText(self, label=labels[name])
-            help_btn = self._make_help_button(self._help_texts[name])
+            help_btn = make_help_button(self, self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -232,7 +232,7 @@ class EditorPanel(ScrolledPanel):
         def add_text_field(name: str) -> None:
             container = wx.BoxSizer(wx.VERTICAL)
             label = wx.StaticText(self, label=labels[name])
-            help_btn = self._make_help_button(self._help_texts[name])
+            help_btn = make_help_button(self, self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -248,7 +248,7 @@ class EditorPanel(ScrolledPanel):
             codes = getattr(locale, name.upper()).keys()
             choices = [locale.code_to_label(name, code) for code in codes]
             choice = wx.Choice(self, choices=choices)
-            help_btn = self._make_help_button(self._help_texts[name])
+            help_btn = make_help_button(self, self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(choice, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -280,7 +280,7 @@ class EditorPanel(ScrolledPanel):
 
         # attachments section --------------------------------------------
         a_sizer = HelpStaticBox(
-            self, _("Attachments"), self._help_texts["attachments"], self._show_help
+            self, _("Attachments"), self._help_texts["attachments"], lambda msg: show_help(self, msg)
         )
         a_box = a_sizer.GetStaticBox()
         self.attachments_list = wx.ListCtrl(
@@ -303,7 +303,7 @@ class EditorPanel(ScrolledPanel):
         container = wx.BoxSizer(wx.VERTICAL)
         row = wx.BoxSizer(wx.HORIZONTAL)
         label = wx.StaticText(self, label=_("Approved at"))
-        help_btn = self._make_help_button(self._help_texts["approved_at"])
+        help_btn = make_help_button(self, self._help_texts["approved_at"])
         row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
         row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         container.Add(row, 0, wx.ALL, 5)
@@ -316,7 +316,7 @@ class EditorPanel(ScrolledPanel):
         container = wx.BoxSizer(wx.VERTICAL)
         row = wx.BoxSizer(wx.HORIZONTAL)
         label = wx.StaticText(self, label=_("Notes"))
-        help_btn = self._make_help_button(self._help_texts["notes"])
+        help_btn = make_help_button(self, self._help_texts["notes"])
         row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
         row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         container.Add(row, 0, wx.ALL, 5)
@@ -334,7 +334,7 @@ class EditorPanel(ScrolledPanel):
 
         # labels section -------------------------------------------------
         box_sizer = HelpStaticBox(
-            self, _("Labels"), self._help_texts["labels"], self._show_help
+            self, _("Labels"), self._help_texts["labels"], lambda msg: show_help(self, msg)
         )
         box = box_sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -355,7 +355,7 @@ class EditorPanel(ScrolledPanel):
 
         # parent section -------------------------------------------------
         pr_sizer = HelpStaticBox(
-            self, _("Parent"), self._help_texts["parent"], self._show_help
+            self, _("Parent"), self._help_texts["parent"], lambda msg: show_help(self, msg)
         )
         pr_box = pr_sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -411,7 +411,7 @@ class EditorPanel(ScrolledPanel):
             ("assumptions", True),
         ]:
             label = wx.StaticText(deriv_box, label=labels[name])
-            help_btn = self._make_help_button(self._help_texts[name])
+            help_btn = make_help_button(self, self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -502,7 +502,7 @@ class EditorPanel(ScrolledPanel):
         list_name: str | None = None,
     ) -> wx.StaticBoxSizer:
         sizer = HelpStaticBox(
-            self, label, self._help_texts[help_key], self._show_help
+            self, label, self._help_texts[help_key], lambda msg: show_help(self, msg)
         )
         box = sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -1052,23 +1052,3 @@ class EditorPanel(ScrolledPanel):
             idx = self.attachments_list.InsertItem(self.attachments_list.GetItemCount(), path)
             self.attachments_list.SetItem(idx, 1, note)
 
-    # helpers ----------------------------------------------------------
-    def _make_help_button(self, message: str, parent: wx.Window | None = None) -> wx.Button:
-        btn = wx.Button(parent or self, label="?", style=wx.BU_EXACTFIT)
-        btn.Bind(wx.EVT_BUTTON, lambda _evt, msg=message: self._show_help(msg))
-        return btn
-
-    def _show_help(self, message: str) -> None:
-        dlg = wx.Dialog(self, title=_("Hint"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        text = wx.TextCtrl(
-            dlg,
-            value=message,
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_NONE,
-        )
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(text, 1, wx.EXPAND | wx.ALL, 10)
-        dlg.SetSizerAndFit(sizer)
-        dlg.SetSize((500, 300))
-        wx.CallAfter(dlg.SetFocus)
-        dlg.ShowModal()
-        dlg.Destroy()

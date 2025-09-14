@@ -5,6 +5,8 @@ from typing import Callable
 
 import wx
 
+from ..i18n import _
+
 
 class HelpStaticBox(wx.StaticBoxSizer):
     """A ``wx.StaticBoxSizer`` with a built-in help button.
@@ -91,3 +93,36 @@ class HelpStaticBox(wx.StaticBoxSizer):
             row = self._wrap_first(item, flag)
             return super().Insert(index, row, proportion, flag, border, userData)
         return super().Insert(index + 1, item, proportion, flag, border, userData)
+
+
+def show_help(parent: wx.Window, message: str, *, title: str | None = None) -> None:
+    """Display a modal dialog with ``message``.
+
+    Parameters
+    ----------
+    parent:
+        Parent window for the dialog.
+    message:
+        Help text to show.
+    title:
+        Optional dialog title; defaults to ``"Hint"``.
+    """
+
+    dlg = wx.Dialog(parent, title=title or _("Hint"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+    text = wx.TextCtrl(dlg, value=message, style=wx.TE_MULTILINE | wx.TE_READONLY)
+    sizer = wx.BoxSizer(wx.VERTICAL)
+    sizer.Add(text, 1, wx.ALL | wx.EXPAND, 10)
+    btns = dlg.CreateStdDialogButtonSizer(wx.OK)
+    if btns:
+        sizer.Add(btns, 0, wx.ALL | wx.ALIGN_CENTER, 5)
+    dlg.SetSizerAndFit(sizer)
+    dlg.ShowModal()
+    dlg.Destroy()
+
+
+def make_help_button(parent: wx.Window, message: str) -> wx.Button:
+    """Return a small question-mark button displaying ``message`` when clicked."""
+
+    btn = wx.Button(parent, label="?", style=wx.BU_EXACTFIT)
+    btn.Bind(wx.EVT_BUTTON, lambda _evt: show_help(parent, message))
+    return btn

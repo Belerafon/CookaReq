@@ -183,7 +183,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
             img_id = self._image_list.Add(bmp)
             self._label_images[key] = img_id
-        self.list.SetItem(index, col, "", img_id)
+        self.list.SetItemColumnImage(index, col, img_id)
 
     # temporary instrumentation -------------------------------------
     def _debug_probe_images(self, index: int) -> None:
@@ -209,7 +209,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             img_id = self._label_images.get(key)
             if img_id is None:
                 bmp = wx.Bitmap(16, 16)
-                dc = wx.MemoryDC(bmp)
+                dc = wx.MemoryDC()
+                dc.SelectObject(bmp)
                 dc.SetBrush(wx.Brush(colour))
                 dc.SetPen(wx.Pen(colour))
                 dc.DrawRectangle(0, 0, 16, 16)
@@ -217,7 +218,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self._ensure_image_list_size(16, 16)
                 img_id = self._image_list.Add(bmp)
                 self._label_images[key] = img_id
-            self.list.SetItem(index, col, text, img_id)
+            self.list.SetItem(index, col, text)
+            self.list.SetItemColumnImage(index, col, img_id)
             actual = self.list.GetItem(index, col).GetImage()
             print(f"DEBUG: row {index} col {col} -> {img_id} (reported {actual})")
 

@@ -223,6 +223,29 @@ def test_labels_render_in_correct_column(wx_app):
     frame.Destroy()
 
 
+def test_label_images_follow_reorder(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["labels"])
+    panel.update_labels_list([Label(name="UI", color="#ff0000")])
+    panel.set_requirements([_req(1, "T", labels=["UI"])])
+    wx_app.Yield()
+    if hasattr(panel.list, "SetColumnsOrder"):
+        try:
+            panel.list.SetColumnsOrder([1, 0])
+        except NotImplementedError:
+            frame.Destroy()
+            return
+        wx_app.Yield()
+        assert panel.list.GetItem(0, 0).GetImage() != -1
+        assert panel.list.GetItem(0, 1).GetImage() == -1
+    frame.Destroy()
+
+
 def test_enables_subitem_image_style(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     monkeypatch.setattr(wx, "LC_EX_SUBITEMIMAGES", 0x200, raising=False)

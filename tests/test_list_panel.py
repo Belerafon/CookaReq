@@ -511,10 +511,10 @@ def test_labels_column_renders_badges(monkeypatch):
     panel = ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
 
-    set_calls: list[tuple[int, int, str, int]] = []
-    def fake_setitem(idx, col, text, img=-1):
-        set_calls.append((idx, col, text, img))
-    panel.list.SetItem = fake_setitem
+    img_calls: list[tuple[int, int, int]] = []
+    def fake_setcolimg(idx, col, img):
+        img_calls.append((idx, col, img))
+    panel.list.SetItemColumnImage = fake_setcolimg
     dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
     bitmap_calls: list[list[str]] = []
     monkeypatch.setattr(panel, "_create_label_bitmap", lambda names: bitmap_calls.append(names) or dummy)
@@ -525,7 +525,7 @@ def test_labels_column_renders_badges(monkeypatch):
     ])
 
     assert bitmap_calls == [["ui", "backend"]]
-    assert (0, 1, "", 0) in set_calls
+    assert (0, 1, 0) in img_calls
 
 
 def test_labels_column_uses_colors(monkeypatch):

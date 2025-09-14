@@ -12,16 +12,22 @@ CookaReq (Cook a requirement) is a wibecoded desktop application built with wxPy
 - Command dialog for interacting with the built-in LocalAgent (LLM + MCP)
 - Settings dialog for configuring LLM, MCP and UI options
 - Manage label presets and choose colours for custom labels
+- Display document hierarchy in a tree and switch between documents
+ - Editor and requirement list respect labels inherited from the selected document and
+   allow free-form entries when any parent document permits them
 - Command-line utility for batch operations and health checks
 - MCP server exposing requirement tools for external agents
 - Interface localization via text `.po` files
 
 ## Graphical Interface
 
-The main window is divided into two parts:
+The main window is divided into three panes:
 
-1. **Requirement list** — a table with customizable columns. Supports sorting, label filters, text search and an extended filter dialog. The context menu lets you create new requirements, clone existing ones and delete entries.
-2. **Editor** — a form with the fields of a requirement model. It appears when creating or editing a record and allows saving changes to a file.
+1. **Document tree** — shows documents with their parent–child relationships.
+2. **Requirement list** — a table with customizable columns. Supports sorting, label filters, text search and an extended filter dialog. The context menu lets you create new requirements, clone existing ones and delete entries.
+3. **Editor** — a form with the fields of a requirement model. It appears when creating or editing a record and allows saving changes to a file.
+
+Selecting a document updates the requirement list and editor with the items and label presets defined for that document and its ancestors. If any document in the chain enables free-form labels, the selection dialog accepts additional custom names.
 
 Additional windows and dialogs:
 
@@ -52,7 +58,7 @@ Available commands:
 - `show <dir> <id>` — display the full contents of a requirement as JSON
 - `check` — verify LLM and MCP connectivity according to loaded settings
 - `link <dir> <rid> <parents...>` — link a requirement to ancestors
-- `trace <dir> [--format csv|html] [-o FILE]` — export child-parent links
+- `trace <dir> [--format csv|html] [-o FILE]` — export child-parent links; creates parent directories for `FILE`
 
 The `add` and `edit` commands validate the input file before saving. If the JSON is malformed or does not match the requirement schema, an error message is printed and no changes are written to disk. The `check` command uses the same LocalAgent as the GUI to test LLM and MCP access.
 

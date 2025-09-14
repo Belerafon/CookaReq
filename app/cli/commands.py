@@ -353,7 +353,9 @@ def cmd_trace(args: argparse.Namespace, _repo: RequirementRepository) -> None:
     out: TextIO
     close_out = False
     if args.output:
-        out = open(args.output, "w", encoding="utf-8", newline="")
+        out_path = Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out = out_path.open("w", encoding="utf-8", newline="")
         close_out = True
     else:
         out = sys.stdout

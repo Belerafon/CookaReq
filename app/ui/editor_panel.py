@@ -12,6 +12,7 @@ import wx.adv
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from ..core import requirements as req_ops
+from ..core.doc_store import Document, save_item
 from ..core.labels import Label
 from ..core.model import (
     Priority,
@@ -22,6 +23,7 @@ from ..core.model import (
     requirement_from_dict,
     requirement_to_dict,
 )
+from ..util.time import local_now_str, normalize_timestamp
 from ..i18n import _
 from . import locale
 from .enums import ENUMS
@@ -363,6 +365,7 @@ class EditorPanel(ScrolledPanel):
         box_sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
         links_grid.Add(box_sizer, 0, wx.EXPAND | wx.ALL, 5)
         self._label_defs: list[Label] = []
+        self._labels_allow_freeform = False
         self.parent: dict[str, Any] | None = None
 
         # parent section -------------------------------------------------
@@ -840,21 +843,29 @@ class EditorPanel(ScrolledPanel):
         return requirement_from_dict(data)
 
     # labels helpers ---------------------------------------------------
-    def update_labels_list(self, labels: list[Label]) -> None:
-        """Update available labels and reapply selection."""
+    def update_labels_list(self, labels: list[Label], allow_freeform: bool = False) -> None:
+        """Update available labels, free-form policy and reapply selection."""
         self._label_defs = list(labels)
+        self._labels_allow_freeform = allow_freeform
         current = [
             lbl
             for lbl in self.extra.get("labels", [])
-            if any(label.name == lbl for label in labels)
+            if allow_freeform or any(label.name == lbl for label in labels)
         ]
         self.extra["labels"] = current
         self._refresh_labels_display()
 
     def apply_label_selection(self, labels: list[str]) -> None:
         """Apply selected ``labels`` to requirement and refresh display."""
-        available = {label.name for label in self._label_defs}
-        self.extra["labels"] = [lbl for lbl in labels if lbl in available]
+        if self._labels_allow_freeform:
+            cleaned: list[str] = []
+            for lbl in labels:
+                if lbl and lbl not in cleaned:
+                    cleaned.append(lbl)
+            self.extra["labels"] = cleaned
+        else:
+            available = {label.name for label in self._label_defs}
+            self.extra["labels"] = [lbl for lbl in labels if lbl in available]
         self._refresh_labels_display()
 
     def _refresh_labels_display(self) -> None:
@@ -891,10 +902,15 @@ class EditorPanel(ScrolledPanel):
         self.labels_panel.Layout()
 
     def _on_labels_click(self, _event: wx.Event) -> None:
-        if not self._label_defs:
+        if not self._label_defs and not self._labels_allow_freeform:
             return
         selected = self.extra.get("labels", [])
-        dlg = LabelSelectionDialog(self, self._label_defs, selected)
+        dlg = LabelSelectionDialog(
+            self,
+            self._label_defs,
+            selected,
+            allow_freeform=self._labels_allow_freeform,
+        )
         if dlg.ShowModal() == wx.ID_OK:
             self.apply_label_selection(dlg.get_selected())
         dlg.Destroy()
@@ -1068,7 +1084,7 @@ class EditorPanel(ScrolledPanel):
         if self._on_save_callback:
             self._on_save_callback()
 
-    def save(self, directory: str | Path) -> Path:
+    def save(self, directory: str | Path, *, doc: Document | None = None) -> Path:
         """Persist editor contents to ``directory`` and return path."""
 
         req = self.get_data()
@@ -1077,12 +1093,17 @@ class EditorPanel(ScrolledPanel):
             if req.modified_at and req.modified_at != self.original_modified_at
             else None
         )
-        path = req_ops.save_requirement(
-            directory,
-            req,
-            mtime=self.mtime,
-            modified_at=mod,
-        )
+        if doc:
+            req.modified_at = normalize_timestamp(mod) if mod else local_now_str()
+            data = requirement_to_dict(req)
+            path = save_item(directory, doc, data)
+        else:
+            path = req_ops.save_requirement(
+                directory,
+                req,
+                mtime=self.mtime,
+                modified_at=mod,
+            )
         self.fields["modified_at"].ChangeValue(req.modified_at)
         self.original_modified_at = req.modified_at
         self.current_path = path

@@ -6,7 +6,8 @@ import json
 
 import time
 from http.client import HTTPConnection
-from typing import Any, Mapping, Callable
+from typing import Any
+from collections.abc import Mapping, Callable
 
 from ..i18n import _
 from ..telemetry import log_event

@@ -13,16 +13,16 @@ from .settings import LLMSettings, MCPSettings, AppSettings, UISettings
 class ListPanelLike(Protocol):
     """Protocol for panels persisting column layout state."""
 
-    def load_column_widths(self, cfg: "ConfigManager") -> None:
+    def load_column_widths(self, cfg: ConfigManager) -> None:
         """Restore column widths from *cfg*."""
 
-    def load_column_order(self, cfg: "ConfigManager") -> None:
+    def load_column_order(self, cfg: ConfigManager) -> None:
         """Restore column order from *cfg*."""
 
-    def save_column_widths(self, cfg: "ConfigManager") -> None:
+    def save_column_widths(self, cfg: ConfigManager) -> None:
         """Persist current column widths to *cfg*."""
 
-    def save_column_order(self, cfg: "ConfigManager") -> None:
+    def save_column_order(self, cfg: ConfigManager) -> None:
         """Persist current column order to *cfg*."""
 
 

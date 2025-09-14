@@ -23,4 +23,4 @@ def test_id_to_hash_invalid_length():
     except ValueError:
         pass
     else:
-        assert False, "ValueError not raised"
+        pytest.fail("ValueError not raised")

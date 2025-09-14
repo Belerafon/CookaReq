@@ -1,7 +1,7 @@
 """Model managing requirements data with filtering and sorting."""
 from __future__ import annotations
 
-from typing import List, Sequence
+from collections.abc import Sequence
 from enum import Enum
 from dataclasses import asdict, is_dataclass
 
@@ -13,9 +13,9 @@ class RequirementModel:
     """Maintain requirement data and apply filters/sorting."""
 
     def __init__(self) -> None:
-        self._all: List[Requirement] = []
-        self._visible: List[Requirement] = []
-        self._labels: List[str] = []
+        self._all: list[Requirement] = []
+        self._visible: list[Requirement] = []
+        self._labels: list[str] = []
         self._labels_match_all: bool = True
         self._query: str = ""
         self._fields: Sequence[str] | None = None
@@ -28,7 +28,7 @@ class RequirementModel:
         self._sort_ascending: bool = True
 
     # data management -------------------------------------------------
-    def set_requirements(self, requirements: List[Requirement]) -> None:
+    def set_requirements(self, requirements: list[Requirement]) -> None:
         """Replace all requirements."""
         self._all = list(requirements)
         self._refresh()
@@ -66,7 +66,7 @@ class RequirementModel:
         return None
 
     # filtering -------------------------------------------------------
-    def set_label_filter(self, labels: List[str]) -> None:
+    def set_label_filter(self, labels: list[str]) -> None:
         """Filter visible requirements by ``labels``."""
 
         self._labels = labels
@@ -162,12 +162,12 @@ class RequirementModel:
         self._visible.sort(key=get_value, reverse=not self._sort_ascending)
 
     # access ----------------------------------------------------------
-    def get_visible(self) -> List[Requirement]:
+    def get_visible(self) -> list[Requirement]:
         """Return currently visible requirements."""
 
         return list(self._visible)
 
-    def get_all(self) -> List[Requirement]:
+    def get_all(self) -> list[Requirement]:
         """Return all requirements managed by the model."""
 
         return list(self._all)

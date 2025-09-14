@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Tuple, Mapping
+from typing import Any
+from collections.abc import Mapping
 
 # ``OpenAI`` импортируется динамически в конструкторе, чтобы тесты могли
 # подменять ``openai.OpenAI`` до первого использования и тем самым избежать
@@ -67,7 +68,7 @@ class LLMClient:
         return {"ok": True}
 
     # ------------------------------------------------------------------
-    def parse_command(self, text: str) -> Tuple[str, Mapping[str, Any]]:
+    def parse_command(self, text: str) -> tuple[str, Mapping[str, Any]]:
         """Use the LLM to turn *text* into an MCP tool call.
 
         The model is instructed to choose exactly one of the predefined tools

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..i18n import _
 from pathlib import Path
-from typing import Callable, Dict
+from collections.abc import Callable
 
 from . import locale
 
@@ -46,8 +46,8 @@ class Navigation:
         self.on_show_derivation_graph = on_show_derivation_graph
         self.on_new_requirement = on_new_requirement
         self.on_run_command = on_run_command
-        self._recent_items: Dict[int, Path] = {}
-        self._column_items: Dict[int, str] = {}
+        self._recent_items: dict[int, Path] = {}
+        self._column_items: dict[int, str] = {}
         self.menu_bar = wx.MenuBar()
         self.log_menu_item: wx.MenuItem | None = None
         self.recent_menu = wx.Menu()

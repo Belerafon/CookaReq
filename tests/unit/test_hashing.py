@@ -1,7 +1,8 @@
 """Tests for hashing."""
 
-from app.util.hashing import id_to_hash
 import pytest
+
+from app.util.hashing import id_to_hash
 
 pytestmark = pytest.mark.unit
 

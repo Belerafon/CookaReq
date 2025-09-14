@@ -1,5 +1,7 @@
 """Tests for model."""
 
+import pytest
+
 from app.core.model import (
     Priority,
     Requirement,
@@ -9,7 +11,6 @@ from app.core.model import (
     requirement_from_dict,
     requirement_to_dict,
 )
-import pytest
 
 pytestmark = pytest.mark.unit
 

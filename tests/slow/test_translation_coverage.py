@@ -1,7 +1,8 @@
 """Tests for translation coverage."""
 
-import polib
 from pathlib import Path
+
+import polib
 import pytest
 
 pytestmark = pytest.mark.slow

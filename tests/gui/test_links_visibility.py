@@ -1,6 +1,7 @@
-import wx
-from app.ui.editor_panel import EditorPanel
 import pytest
+import wx
+
+from app.ui.editor_panel import EditorPanel
 
 pytestmark = pytest.mark.gui
 

@@ -7,9 +7,9 @@ the active language.
 """
 from __future__ import annotations
 
-from pathlib import Path
-from collections.abc import Iterable
 import threading
+from collections.abc import Iterable
+from pathlib import Path
 
 
 def _unescape(text: str) -> str:

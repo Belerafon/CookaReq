@@ -2,24 +2,23 @@
 
 from __future__ import annotations
 
-from ..i18n import _
+from collections.abc import Callable, Sequence
+from enum import Enum
+from typing import TYPE_CHECKING
 
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
-from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING
-from enum import Enum
-
-from ..core.model import Requirement
 from ..core.labels import Label, _color_from_name
-from .requirement_model import RequirementModel
-from .filter_dialog import FilterDialog
+from ..core.model import Requirement
+from ..i18n import _
 from . import locale
 from .enums import ENUMS
+from .filter_dialog import FilterDialog
+from .requirement_model import RequirementModel
 
 if TYPE_CHECKING:  # pragma: no cover
-    from wx import ListEvent, ContextMenuEvent
+    from wx import ContextMenuEvent, ListEvent
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):

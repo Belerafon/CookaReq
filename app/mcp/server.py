@@ -13,15 +13,15 @@ import os
 import threading
 from collections.abc import Mapping
 
+import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-import uvicorn
 from mcp.server.fastmcp import FastMCP
 
 from ..log import JsonlHandler, configure_logging, logger
 from ..util.time import utc_now_iso
-from .utils import ErrorCode, mcp_error, sanitize
 from . import tools_read, tools_write
+from .utils import ErrorCode, mcp_error, sanitize
 
 # Dedicated logger for MCP request logging so global handlers remain untouched
 request_logger = logger.getChild("mcp.requests")

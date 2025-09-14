@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Protocol
 
-from .model import Requirement
 from . import requirements as req_ops
+from .model import Requirement
 
 
 class RequirementRepository(Protocol):

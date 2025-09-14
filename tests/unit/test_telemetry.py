@@ -4,10 +4,11 @@ import json
 import logging
 from pathlib import Path
 
+import pytest
+
 import app.telemetry as telemetry
 from app.log import JsonlHandler, logger
 from app.telemetry import REDACTED, log_event, sanitize
-import pytest
 
 pytestmark = pytest.mark.unit
 

@@ -1,15 +1,15 @@
 """Tests for tool logging."""
 
 import json
+import logging
 from pathlib import Path
 
-import logging
+import pytest
 
 from app.log import logger
 from app.mcp.server import JsonlHandler
 from app.mcp.tools_read import list_requirements
 from app.mcp.utils import log_tool
-import pytest
 
 pytestmark = pytest.mark.integration
 

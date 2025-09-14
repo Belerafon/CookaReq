@@ -1,6 +1,7 @@
 """Tests for logging config."""
 
 import logging
+
 import pytest
 
 from app.log import configure_logging, logger

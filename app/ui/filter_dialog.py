@@ -1,12 +1,11 @@
 """Dialog for configuring requirement filters."""
 from __future__ import annotations
 
-from ..i18n import _
-
 import wx
 
 from ..core import requirements as req_ops
 from ..core.labels import Label
+from ..i18n import _
 from . import locale
 from .enums import ENUMS
 

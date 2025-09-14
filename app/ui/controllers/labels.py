@@ -6,8 +6,8 @@ from pathlib import Path
 
 from ...config import ConfigManager
 from ...core import requirements as req_ops
+from ...core.label_repository import FileLabelRepository, LabelRepository
 from ...core.labels import Label
-from ...core.label_repository import LabelRepository, FileLabelRepository
 from ...log import logger
 
 

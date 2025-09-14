@@ -7,10 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from app.cli.main import main
 from app.core.store import save
 from app.settings import AppSettings
-from app.cli.main import main
-import pytest
 
 pytestmark = pytest.mark.integration
 

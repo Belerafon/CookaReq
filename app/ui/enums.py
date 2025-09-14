@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from enum import Enum
 
+from ..core.model import Priority, RequirementType, Status, Verification
 from ..i18n import _
-from ..core.model import RequirementType, Status, Priority, Verification
 
 
 def _enum_label(e: Enum) -> str:

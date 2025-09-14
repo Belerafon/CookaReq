@@ -8,10 +8,10 @@ import sys
 from dataclasses import dataclass
 from typing import Callable
 
-from app.core import model
-from app.core.repository import RequirementRepository
 from app.agent import LocalAgent
 from app.confirm import confirm
+from app.core import model
+from app.core.repository import RequirementRepository
 from app.i18n import _
 
 

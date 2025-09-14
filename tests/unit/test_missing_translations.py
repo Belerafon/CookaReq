@@ -1,8 +1,10 @@
 """Tests for missing translations."""
 
 import threading
-from app import i18n
+
 import pytest
+
+from app import i18n
 
 pytestmark = pytest.mark.unit
 

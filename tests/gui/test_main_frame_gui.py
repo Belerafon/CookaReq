@@ -1,8 +1,9 @@
 """Tests for main frame gui."""
 
 import importlib
-import pytest
 import logging
+
+import pytest
 
 pytestmark = pytest.mark.gui
 
@@ -146,8 +147,8 @@ def test_log_handler_not_duplicated(tmp_path, wx_app):
 
 def test_log_console_shows_label(wx_app):
     wx = pytest.importorskip("wx")
-    from app.i18n import _
     import app.ui.main_frame as main_frame
+    from app.i18n import _
 
     frame = main_frame.MainFrame(None)
     frame.navigation.log_menu_item.Check(True)
@@ -211,8 +212,9 @@ def test_main_frame_loads_requirements(monkeypatch, tmp_path, wx_app):
 
 def test_main_frame_select_opens_editor(monkeypatch, tmp_path, wx_app):
     wx = pytest.importorskip("wx")
-    from app.core.store import save
     import importlib
+
+    from app.core.store import save
 
     data = {
         "id": 1,
@@ -309,8 +311,8 @@ def _prepare_frame(monkeypatch, tmp_path):
 
 
 def test_main_frame_clone_requirement_creates_copy(monkeypatch, tmp_path, wx_app):
-    from app.core.store import save
     from app import i18n
+    from app.core.store import save
     from app.main import APP_NAME, LOCALE_DIR
 
     i18n.install(APP_NAME, LOCALE_DIR, ["en"])

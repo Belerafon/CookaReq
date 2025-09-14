@@ -1,6 +1,7 @@
 """Tests for recent dirs."""
 
 import importlib
+
 import pytest
 
 pytestmark = pytest.mark.gui

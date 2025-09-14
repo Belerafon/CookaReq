@@ -1,13 +1,16 @@
 """Tests for search."""
 
+import pytest
+
 from app.core.model import (
+    DerivationLink,
     Priority,
     Requirement,
     RequirementType,
     Status,
     Verification,
-    DerivationLink,
 )
+from app.core.requirements import filter_by_status
 from app.core.search import (
     filter_by_labels,
     filter_has_derived,
@@ -15,8 +18,6 @@ from app.core.search import (
     search,
     search_text,
 )
-from app.core.requirements import filter_by_status
-import pytest
 
 pytestmark = pytest.mark.unit
 

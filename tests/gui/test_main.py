@@ -1,8 +1,9 @@
 """Tests for main."""
 
+import importlib
 import sys
 import types
-import importlib
+
 import pytest
 
 pytestmark = pytest.mark.gui

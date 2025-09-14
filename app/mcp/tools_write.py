@@ -1,16 +1,17 @@
 """Requirement mutation utilities for MCP server."""
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
-from collections.abc import Mapping
 
 import jsonpatch
 import jsonschema
-from ..core.schema import SCHEMA
-from ..core.model import requirement_from_dict, requirement_to_dict
-from ..core.store import ConflictError
+
 from ..core import requirements as req_ops
+from ..core.model import requirement_from_dict, requirement_to_dict
+from ..core.schema import SCHEMA
+from ..core.store import ConflictError
 from .utils import ErrorCode, log_tool, mcp_error
 
 # Fields that must not be modified directly through patching

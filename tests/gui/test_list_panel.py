@@ -1,11 +1,12 @@
 """Tests for list panel."""
 
+import importlib
 import sys
 import types
-import importlib
 
-from app.core.model import Requirement, RequirementType, Status, Priority, Verification
 import pytest
+
+from app.core.model import Priority, Requirement, RequirementType, Status, Verification
 
 pytestmark = pytest.mark.gui
 
@@ -362,17 +363,17 @@ def _build_wx_stub():
 
 
 def _req(id: int, title: str, **kwargs) -> Requirement:
-    base = dict(
-        id=id,
-        title=title,
-        statement="",
-        type=RequirementType.REQUIREMENT,
-        status=Status.DRAFT,
-        owner="",
-        priority=Priority.MEDIUM,
-        source="",
-        verification=Verification.ANALYSIS,
-    )
+    base = {
+        "id": id,
+        "title": title,
+        "statement": "",
+        "type": RequirementType.REQUIREMENT,
+        "status": Status.DRAFT,
+        "owner": "",
+        "priority": Priority.MEDIUM,
+        "source": "",
+        "verification": Verification.ANALYSIS,
+    }
     base.update(kwargs)
     return Requirement(**base)
 

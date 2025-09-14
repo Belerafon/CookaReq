@@ -5,11 +5,10 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from ...i18n import _
-
 from ...config import ConfigManager
 from ...core.model import Requirement
-from ...core.repository import RequirementRepository, FileRequirementRepository
+from ...core.repository import FileRequirementRepository, RequirementRepository
+from ...i18n import _
 from ...log import logger
 
 

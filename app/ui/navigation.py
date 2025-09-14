@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from ..i18n import _
-from pathlib import Path
 from collections.abc import Callable
-
-from . import locale
+from pathlib import Path
 
 import wx
 
 from ..config import ConfigManager
+from ..i18n import _
+from . import locale
 
 
 class Navigation:

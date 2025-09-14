@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from pathlib import Path
+
 import tomllib
-from pydantic import BaseModel, ValidationError, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class LLMSettings(BaseModel):

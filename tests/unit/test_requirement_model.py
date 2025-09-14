@@ -1,8 +1,9 @@
 """Tests for requirement model."""
 
 import pytest
+
+from app.core.model import Priority, Requirement, RequirementType, Status, Verification
 from app.ui.requirement_model import RequirementModel
-from app.core.model import Requirement, RequirementType, Status, Priority, Verification
 
 pytestmark = pytest.mark.unit
 

@@ -17,11 +17,11 @@ from app.core.model import (
 )
 from app.core.store import (
     ConflictError,
+    _scan_ids,
+    delete,
     filename_for,
     load,
     save,
-    delete,
-    _scan_ids,
 )
 
 pytestmark = pytest.mark.unit
@@ -81,7 +81,7 @@ def test_scan_ids_skips_invalid_and_labels(tmp_path: Path):
 def test_save_accepts_dataclass(tmp_path: Path):
     req = Requirement(
         id=10,
-        title="Dataclass", 
+        title="Dataclass",
         statement="Save dataclass",
         type=RequirementType.REQUIREMENT,
         status=Status.DRAFT,

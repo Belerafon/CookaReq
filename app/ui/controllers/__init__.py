@@ -1,6 +1,6 @@
 """Controller classes for user interface operations."""
 
-from .requirements import RequirementsController
 from .labels import LabelsController
+from .requirements import RequirementsController
 
 __all__ = ["RequirementsController", "LabelsController"]

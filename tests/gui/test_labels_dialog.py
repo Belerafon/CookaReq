@@ -46,8 +46,8 @@ def test_labels_dialog_displays_color_rect(wx_app):
 
 def test_labels_dialog_adds_presets(wx_app):
     pytest.importorskip("wx")
-    from app.ui.labels_dialog import LabelsDialog
     from app.core.labels import PRESET_SETS
+    from app.ui.labels_dialog import LabelsDialog
 
     dlg = LabelsDialog(None, [])
     dlg._on_add_preset_set("basic")

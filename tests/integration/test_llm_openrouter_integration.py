@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.llm_utils import settings_with_llm
 from app.llm.client import LLMClient
+from tests.llm_utils import settings_with_llm
 
 pytestmark = pytest.mark.integration
 

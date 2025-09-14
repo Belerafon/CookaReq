@@ -4,11 +4,13 @@ import json
 import logging
 from pathlib import Path
 
-from app.log import logger
-from app.agent import LocalAgent
-from app.mcp.server import JsonlHandler, app as mcp_app
-from tests.llm_utils import make_openai_mock, settings_with_mcp
 import pytest
+
+from app.agent import LocalAgent
+from app.log import logger
+from app.mcp.server import JsonlHandler
+from app.mcp.server import app as mcp_app
+from tests.llm_utils import make_openai_mock, settings_with_mcp
 
 pytestmark = pytest.mark.integration
 
@@ -41,7 +43,7 @@ def test_run_command_list_logs(tmp_path: Path, monkeypatch, mcp_server) -> None:
     entries = [json.loads(line) for line in log_file.read_text().splitlines()]
     events = {e.get("event") for e in entries}
     assert {"LLM_REQUEST", "LLM_RESPONSE", "TOOL_CALL", "TOOL_RESULT", "DONE"} <= events
-    
+
 
 
 def test_run_command_error_logs(tmp_path: Path, monkeypatch, mcp_server) -> None:

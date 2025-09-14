@@ -1,6 +1,7 @@
 """Tests for validate."""
 
 import json
+
 import pytest
 
 from app.core.store import load_index

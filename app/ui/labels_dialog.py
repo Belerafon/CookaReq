@@ -1,12 +1,11 @@
 """Dialog for managing label colors."""
 
-from ..i18n import _
-from ..confirm import confirm
-
 import wx
 
-from ..core.labels import Label, PRESET_SETS, PRESET_SET_TITLES
 from ..config import ConfigManager
+from ..confirm import confirm
+from ..core.labels import PRESET_SET_TITLES, PRESET_SETS, Label
+from ..i18n import _
 
 
 class LabelsDialog(wx.Dialog):

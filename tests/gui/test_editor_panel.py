@@ -1,11 +1,12 @@
 """Tests for editor panel."""
 
 import os
-import pytest
-from app.i18n import _
 
-from app.core.model import RequirementType, Status, Priority, Verification
+import pytest
+
 from app.core.labels import Label
+from app.core.model import Priority, RequirementType, Status, Verification
+from app.i18n import _
 
 pytestmark = pytest.mark.gui
 

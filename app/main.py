@@ -1,17 +1,17 @@
 """Application entry point for CookaReq."""
 
-import os
 import atexit
+import os
 from pathlib import Path
+
 import wx
 
-from .ui.main_frame import MainFrame
-from .log import configure_logging
-from .config import ConfigManager
-from .ui.requirement_model import RequirementModel
 from . import i18n
+from .config import ConfigManager
 from .confirm import set_confirm, wx_confirm
-
+from .log import configure_logging
+from .ui.main_frame import MainFrame
+from .ui.requirement_model import RequirementModel
 
 APP_NAME = "CookaReq"
 LOCALE_DIR = os.path.join(os.path.dirname(__file__), "locale")

@@ -24,6 +24,7 @@ def confirm(message: str) -> bool:
 def wx_confirm(message: str) -> bool:
     """GUI confirmation dialog using wxWidgets."""
     import wx  # type: ignore
+
     from .i18n import _
 
     return (

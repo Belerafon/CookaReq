@@ -1,11 +1,9 @@
 """Requirement editor panel."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
-from contextlib import contextmanager
-
-from ..i18n import _
 
 import wx
 import wx.adv
@@ -14,18 +12,19 @@ from wx.lib.scrolledpanel import ScrolledPanel
 from ..core import requirements as req_ops
 from ..core.labels import Label
 from ..core.model import (
+    Priority,
     Requirement,
     RequirementType,
     Status,
-    Priority,
     Verification,
     requirement_from_dict,
     requirement_to_dict,
 )
+from ..i18n import _
 from . import locale
-from .label_selection_dialog import LabelSelectionDialog
-from .helpers import HelpStaticBox, make_help_button, show_help
 from .enums import ENUMS
+from .helpers import HelpStaticBox, make_help_button, show_help
+from .label_selection_dialog import LabelSelectionDialog
 
 
 class EditorPanel(ScrolledPanel):

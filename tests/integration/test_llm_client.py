@@ -3,15 +3,15 @@
 import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from app.llm.client import NO_API_KEY, LLMClient
 from app.log import logger
-from app.llm.client import LLMClient, NO_API_KEY
 from app.mcp.server import JsonlHandler
-from tests.llm_utils import make_openai_mock, settings_with_llm
 from app.settings import LLMSettings
-from types import SimpleNamespace
+from tests.llm_utils import make_openai_mock, settings_with_llm
 
 pytestmark = pytest.mark.integration
 

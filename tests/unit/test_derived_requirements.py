@@ -1,12 +1,14 @@
 """Tests for derived requirements."""
 
 from __future__ import annotations
+
 from pathlib import Path
 
-from app.core.store import save, load, filename_for
+import pytest
+
 from app.core.model import Requirement, requirement_from_dict
 from app.core.search import search
-import pytest
+from app.core.store import filename_for, load, save
 
 pytestmark = pytest.mark.unit
 

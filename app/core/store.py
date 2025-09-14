@@ -1,15 +1,14 @@
 """JSON file storage for requirements."""
 from __future__ import annotations
 
-from dataclasses import is_dataclass
 import json
+from dataclasses import is_dataclass
 from pathlib import Path
 
 from ..log import logger
-
-from .validate import validate
-from .model import requirement_to_dict
 from .label_store import LABELS_FILENAME
+from .model import requirement_to_dict
+from .validate import validate
 
 # in-memory cache of requirement ids per directory
 _ID_CACHE: dict[Path, set[int]] = {}

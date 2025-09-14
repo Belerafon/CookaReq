@@ -8,11 +8,13 @@ from pathlib import Path
 # Ensure project root is on sys.path for imports
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+import socket
+
 import pytest
-from app.confirm import set_confirm, auto_confirm
+
+from app.confirm import auto_confirm, set_confirm
 from app.mcp.server import start_server, stop_server
 from tests.mcp_utils import _wait_until_ready
-import socket
 
 
 @pytest.fixture(autouse=True)

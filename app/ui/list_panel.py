@@ -193,11 +193,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields.
 
-        ``wx.ListCtrl`` на Windows всегда резервирует место под иконку в
-        первой физической колонке. Чтобы убрать отступ у текста в ``Title``,
-        мы размещаем ``labels`` на позиции 0. Альтернативный обходной путь —
-        добавить скрытую служебную колонку перед ``Title``.
-        """  # noqa: RUF002
+        On Windows ``wx.ListCtrl`` always reserves space for an image in the
+        first physical column. Placing ``labels`` at index 0 removes the extra
+        padding before ``Title``. Another workaround is to insert a hidden
+        dummy column before ``Title``.
+        """
         self.list.ClearAll()
         self._field_order: list[str] = []
         include_labels = "labels" in self.columns

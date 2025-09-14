@@ -702,7 +702,7 @@ def test_labels_column_uses_imagelist(monkeypatch):
         ],
     )
     labels_col = panel._field_order.index("labels")
-    # В колонке labels должен появиться image-id, а колонка Title остаётся без картинки
+    # labels column should get an image id while Title stays without one
     assert panel.list._col_images[(0, labels_col)] >= 0
     assert panel.list._item_images[0] == -1
 

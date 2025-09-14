@@ -5,6 +5,8 @@ import pytest
 from app.config import ConfigManager
 from app.settings import LLMSettings, MCPSettings, UISettings, AppSettings
 
+pytestmark = pytest.mark.unit
+
 
 class DummyListPanel:
     def __init__(self):

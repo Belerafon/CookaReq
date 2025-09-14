@@ -2,6 +2,9 @@ import wx
 from app.ui.editor_panel import EditorPanel
 from app.core.model import Requirement, RequirementType, Status, Priority, Verification
 from app.core import requirements as req_ops
+import pytest
+
+pytestmark = pytest.mark.gui
 
 
 def test_added_link_shows_id_and_title(wx_app, monkeypatch):

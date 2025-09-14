@@ -9,6 +9,9 @@ from app.core.model import (
     requirement_from_dict,
     requirement_to_dict,
 )
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 def test_requirement_defaults():

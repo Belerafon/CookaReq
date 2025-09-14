@@ -10,6 +10,9 @@ from pathlib import Path
 from app.core.store import save
 from app.settings import AppSettings
 from app.cli.main import main
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 def sample() -> dict:

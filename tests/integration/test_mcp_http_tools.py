@@ -9,6 +9,9 @@ from pathlib import Path
 from app.mcp.server import start_server, stop_server
 from app.core import store
 from tests.mcp_utils import _wait_until_ready
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 def _sample(req_id: int, title: str, labels: list[str] | None = None) -> dict:

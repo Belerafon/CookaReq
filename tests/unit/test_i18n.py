@@ -1,6 +1,9 @@
 """Tests for i18n."""
 
 from app import i18n
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 def test_parse_po_multiline_and_unfinished(tmp_path):

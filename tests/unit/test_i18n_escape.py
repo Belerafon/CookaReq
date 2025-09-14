@@ -2,6 +2,9 @@
 
 from pathlib import Path
 from app import i18n
+import pytest
+
+pytestmark = pytest.mark.unit
 
 def test_parse_po_unescape(tmp_path):
     po = tmp_path / "sample.po"

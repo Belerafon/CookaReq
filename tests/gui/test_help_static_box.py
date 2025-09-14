@@ -1,6 +1,9 @@
 import wx
 
 from app.ui.helpers import HelpStaticBox
+import pytest
+
+pytestmark = pytest.mark.gui
 
 
 def _noop(msg: str) -> None:  # pragma: no cover - placeholder callback

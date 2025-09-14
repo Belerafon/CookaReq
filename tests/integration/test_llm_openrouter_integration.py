@@ -6,6 +6,8 @@ import pytest
 from tests.llm_utils import settings_with_llm
 from app.llm.client import LLMClient
 
+pytestmark = pytest.mark.integration
+
 
 def _load_openrouter_key() -> str | None:
     key = os.getenv("OPEN_ROUTER")

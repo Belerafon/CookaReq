@@ -2,6 +2,9 @@
 
 import polib
 from pathlib import Path
+import pytest
+
+pytestmark = pytest.mark.slow
 
 
 def test_po_files_have_no_missing_translations():

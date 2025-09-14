@@ -1,5 +1,8 @@
 import wx
 from app.ui.editor_panel import EditorPanel
+import pytest
+
+pytestmark = pytest.mark.gui
 
 
 def test_links_list_becomes_visible(wx_app, monkeypatch):

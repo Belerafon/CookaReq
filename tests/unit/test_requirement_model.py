@@ -4,6 +4,8 @@ import pytest
 from app.ui.requirement_model import RequirementModel
 from app.core.model import Requirement, RequirementType, Status, Priority, Verification
 
+pytestmark = pytest.mark.unit
+
 
 def _req(id: int, status: Status) -> Requirement:
     return Requirement(

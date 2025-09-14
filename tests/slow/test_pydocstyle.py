@@ -1,5 +1,8 @@
 import subprocess
 import sys
+import pytest
+
+pytestmark = pytest.mark.slow
 
 def test_pydocstyle_conformance():
     """Ensure docstring conventions are respected."""

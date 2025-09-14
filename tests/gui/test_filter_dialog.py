@@ -1,5 +1,8 @@
 from app.core.labels import Label
 from app.ui.filter_dialog import FilterDialog
+import pytest
+
+pytestmark = pytest.mark.gui
 
 
 def _make_dialog(wx_app):

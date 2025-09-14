@@ -6,6 +6,8 @@ import pytest
 
 from app.util.paths import ensure_relative
 
+pytestmark = pytest.mark.unit
+
 
 def test_ensure_relative_returns_relative(tmp_path):
     base = tmp_path / "base"

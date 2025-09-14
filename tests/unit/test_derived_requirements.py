@@ -6,6 +6,9 @@ from pathlib import Path
 from app.core.store import save, load, filename_for
 from app.core.model import Requirement, requirement_from_dict
 from app.core.search import search
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 

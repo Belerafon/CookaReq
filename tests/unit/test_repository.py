@@ -11,6 +11,8 @@ import pytest
 from app.core.repository import FileRequirementRepository
 from app.core.store import ConflictError
 
+pytestmark = pytest.mark.unit
+
 
 def sample(req_id: int = 1) -> dict:
     return {

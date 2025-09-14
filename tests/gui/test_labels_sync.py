@@ -4,6 +4,8 @@ import pytest
 from app.core import store, label_store
 from app.core.labels import PRESET_SETS
 
+pytestmark = pytest.mark.gui
+
 
 def _create_requirement(directory):
     data = {

@@ -7,6 +7,8 @@ import pytest
 
 from app.core.labels import Label
 
+pytestmark = pytest.mark.gui
+
 
 def test_labels_dialog_changes_color(wx_app):
     wx = pytest.importorskip("wx")

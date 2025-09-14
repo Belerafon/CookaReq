@@ -5,6 +5,8 @@ import pytest
 from app import confirm as confirm_mod
 from app.confirm import set_confirm, auto_confirm, wx_confirm
 
+pytestmark = pytest.mark.gui
+
 
 def test_confirm_without_callback_raises(monkeypatch):
     monkeypatch.setattr(confirm_mod, "_callback", None, raising=False)

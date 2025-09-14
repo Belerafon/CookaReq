@@ -5,6 +5,8 @@ import pytest
 
 from app.log import configure_logging, logger
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def reset_logger() -> None:

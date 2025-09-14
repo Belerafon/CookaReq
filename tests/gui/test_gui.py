@@ -2,6 +2,8 @@
 
 import pytest
 
+pytestmark = pytest.mark.gui
+
 
 def test_gui_imports(wx_app):
     wx = pytest.importorskip("wx")

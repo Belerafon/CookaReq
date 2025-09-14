@@ -5,6 +5,8 @@ import pytest
 
 from app.agent.local_agent import LocalAgent
 
+pytestmark = [pytest.mark.gui, pytest.mark.integration]
+
 
 def test_command_dialog_shows_result_and_saves_history(tmp_path, wx_app):
     wx = pytest.importorskip("wx")

@@ -3,6 +3,9 @@
 import sys
 import types
 import importlib
+import pytest
+
+pytestmark = pytest.mark.gui
 
 
 def test_main_runs(monkeypatch):

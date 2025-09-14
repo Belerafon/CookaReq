@@ -1,6 +1,9 @@
 """Tests for hashing."""
 
 from app.util.hashing import id_to_hash
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 def test_id_to_hash_deterministic():

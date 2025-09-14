@@ -5,6 +5,8 @@ import pytest
 from app.core.store import save
 from app.ui import main_frame
 
+pytestmark = pytest.mark.gui
+
 
 def test_main_frame_editor_multiline_fields_have_size(tmp_path, monkeypatch, wx_app):
     wx = pytest.importorskip("wx")

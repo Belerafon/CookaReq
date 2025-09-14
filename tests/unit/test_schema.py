@@ -4,6 +4,8 @@ import pytest
 
 from app.core.schema import validate
 
+pytestmark = pytest.mark.unit
+
 
 def make_valid() -> dict:
     return {

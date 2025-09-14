@@ -9,6 +9,9 @@ from app.log import logger
 from app.mcp.server import JsonlHandler
 from app.mcp.tools_read import list_requirements
 from app.mcp.utils import log_tool
+import pytest
+
+pytestmark = pytest.mark.integration
 
 def test_tool_logging(tmp_path: Path) -> None:
     log_file = tmp_path / "server.jsonl"

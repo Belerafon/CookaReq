@@ -2,6 +2,8 @@
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 def test_controller_check(monkeypatch):
     from app.mcp.controller import MCPController, MCPStatus
     from app.settings import MCPSettings

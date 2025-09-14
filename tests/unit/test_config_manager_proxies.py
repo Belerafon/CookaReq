@@ -1,6 +1,9 @@
 """Tests for config manager proxies."""
 
 from app.config import ConfigManager
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 def test_config_manager_proxy_methods(tmp_path, wx_app):

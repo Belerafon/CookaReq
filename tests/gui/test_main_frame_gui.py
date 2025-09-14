@@ -4,6 +4,8 @@ import importlib
 import pytest
 import logging
 
+pytestmark = pytest.mark.gui
+
 
 def test_main_frame_open_folder(monkeypatch, tmp_path, wx_app):
     wx = pytest.importorskip("wx")

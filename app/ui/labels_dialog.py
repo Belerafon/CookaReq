@@ -12,6 +12,7 @@ class LabelsDialog(wx.Dialog):
     """Dialog allowing to view labels and adjust their colors."""
 
     def __init__(self, parent: wx.Window | None, labels: list[Label]):
+        """Initialize labels dialog with editable label list."""
         style = wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
         super().__init__(parent, title=_("Labels"), style=style)
         # copy labels to avoid modifying caller until OK

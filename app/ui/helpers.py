@@ -26,6 +26,7 @@ class HelpStaticBox(wx.StaticBoxSizer):
         orient: int = wx.VERTICAL,
         border: int = 5,
     ) -> None:
+        """Create static box sizer with help button."""
         box = wx.StaticBox(parent, label=label)
         super().__init__(box, orient)
 

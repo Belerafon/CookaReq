@@ -23,6 +23,7 @@ class RequirementsController:
         directory: Path,
         repository: RequirementRepository | None = None,
     ) -> None:
+        """Initialize controller for given storage ``directory``."""
         self.config = config
         self.model = model
         self.directory = directory

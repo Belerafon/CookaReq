@@ -26,6 +26,7 @@ class LLMClient:
     """High-level client for LLM operations."""
 
     def __init__(self, settings: LLMSettings) -> None:
+        """Initialize client with LLM configuration ``settings``."""
         import openai
 
         self.settings = settings

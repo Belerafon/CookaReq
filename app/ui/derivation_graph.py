@@ -20,6 +20,7 @@ class DerivationGraphFrame(wx.Frame):
     """Render a graph of requirement derivations."""
 
     def __init__(self, parent: wx.Window | None, requirements: Sequence[Requirement]):
+        """Create frame displaying derivation graph for ``requirements``."""
         super().__init__(parent=parent, title=_("Derivation Graph"))
         self.SetSize((600, 400))
         self._panel = wx.ScrolledWindow(self)

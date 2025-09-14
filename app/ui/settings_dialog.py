@@ -89,6 +89,7 @@ class SettingsDialog(wx.Dialog):
         require_token: bool,
         token: str,
     ) -> None:
+        """Create settings dialog with LLM and MCP configuration."""
         super().__init__(parent, title=_("Settings"))
 
         # General settings -------------------------------------------------

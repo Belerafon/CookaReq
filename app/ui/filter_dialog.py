@@ -20,6 +20,7 @@ class FilterDialog(wx.Dialog):
         labels: list[Label],
         values: dict | None = None,
     ) -> None:
+        """Initialize filter dialog with current ``values``."""
         title = _("Filters")
         super().__init__(parent, title=title)
         self._labels = list(labels)

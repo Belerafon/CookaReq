@@ -32,6 +32,7 @@ class Navigation:
         on_new_requirement: Callable[[wx.Event], None],
         on_run_command: Callable[[wx.Event], None],
     ) -> None:
+        """Initialize navigation menus and event handlers."""
         self.frame = frame
         self.config = config
         self.available_fields = available_fields

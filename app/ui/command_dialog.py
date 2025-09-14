@@ -43,6 +43,7 @@ class CommandDialog(wx.Dialog):
         agent: LocalAgent,
         history_path: Path | None = None,
     ) -> None:
+        """Initialize dialog for interacting with ``agent``."""
         super().__init__(parent, title=_("Agent Command"))
         self._agent = agent
         self._history_path = history_path or _default_history_path()

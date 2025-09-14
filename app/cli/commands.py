@@ -36,7 +36,7 @@ def cmd_list(args: argparse.Namespace, repo: RequirementRepository) -> None:
         status=args.status,
     )
     for r in reqs:
-        print(f"{r.id}: {r.title}")
+        sys.stdout.write(f"{r.id}: {r.title}\n")
 
 
 def add_list_arguments(p: argparse.ArgumentParser) -> None:
@@ -54,15 +54,15 @@ def cmd_add(args: argparse.Namespace, repo: RequirementRepository) -> None:
         with Path(args.file).open(encoding="utf-8") as fh:
             data = json.load(fh)
     except json.JSONDecodeError as exc:
-        print(_("Invalid JSON file: {error}").format(error=exc))
+        sys.stdout.write(_("Invalid JSON file: {error}\n").format(error=exc))
         return
     try:
         obj = model.requirement_from_dict(data)
     except ValueError as exc:
-        print(_("Invalid requirement data: {error}").format(error=exc))
+        sys.stdout.write(_("Invalid requirement data: {error}\n").format(error=exc))
         return
     path = repo.save(args.directory, obj, modified_at=args.modified_at)
-    print(path)
+    sys.stdout.write(f"{path}\n")
 
 
 def add_add_arguments(p: argparse.ArgumentParser) -> None:
@@ -78,18 +78,18 @@ def cmd_edit(args: argparse.Namespace, repo: RequirementRepository) -> None:
         with Path(args.file).open(encoding="utf-8") as fh:
             data = json.load(fh)
     except json.JSONDecodeError as exc:
-        print(_("Invalid JSON file: {error}").format(error=exc))
+        sys.stdout.write(_("Invalid JSON file: {error}\n").format(error=exc))
         return
     try:
         obj = model.requirement_from_dict(data)
     except ValueError as exc:
-        print(_("Invalid requirement data: {error}").format(error=exc))
+        sys.stdout.write(_("Invalid requirement data: {error}\n").format(error=exc))
         return
     mtime = None
     with suppress(FileNotFoundError):
         mtime = repo.load(args.directory, obj.id)[1]
     path = repo.save(args.directory, obj, mtime=mtime, modified_at=args.modified_at)
-    print(path)
+    sys.stdout.write(f"{path}\n")
 
 
 def add_edit_arguments(p: argparse.ArgumentParser) -> None:
@@ -104,10 +104,10 @@ def cmd_delete(args: argparse.Namespace, repo: RequirementRepository) -> None:
     try:
         repo.get(args.directory, args.id)
     except FileNotFoundError:
-        print(f"requirement {args.id} not found", file=sys.stderr)
+        sys.stderr.write(f"requirement {args.id} not found\n")
         return
     repo.delete(args.directory, args.id)
-    print("deleted")
+    sys.stdout.write("deleted\n")
 
 
 def add_delete_arguments(p: argparse.ArgumentParser) -> None:
@@ -121,12 +121,12 @@ def cmd_clone(args: argparse.Namespace, repo: RequirementRepository) -> None:
     try:
         req = repo.get(args.directory, args.source_id)
     except FileNotFoundError:
-        print(f"requirement {args.source_id} not found", file=sys.stderr)
+        sys.stdout.write(f"requirement {args.source_id} not found\n")
         return
     req.id = args.new_id
     req.revision = 1
     path = repo.save(args.directory, req, modified_at=args.modified_at)
-    print(path)
+    sys.stdout.write(f"{path}\n")
 
 
 def add_clone_arguments(p: argparse.ArgumentParser) -> None:
@@ -141,7 +141,7 @@ def cmd_show(args: argparse.Namespace, repo: RequirementRepository) -> None:
     """Show detailed JSON for requirement with *id*."""
     req = repo.get(args.directory, args.id)
     data = model.requirement_to_dict(req)
-    print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
+    sys.stdout.write(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
 
 def add_show_arguments(p: argparse.ArgumentParser) -> None:
@@ -158,7 +158,7 @@ def cmd_check(args: argparse.Namespace, _repo: RequirementRepository) -> None:
         results["llm"] = agent.check_llm()
     if args.mcp or not (args.llm or args.mcp):
         results["mcp"] = agent.check_tools()
-    print(json.dumps(results, ensure_ascii=False, indent=2, sort_keys=True))
+    sys.stdout.write(json.dumps(results, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
 
 def add_check_arguments(p: argparse.ArgumentParser) -> None:

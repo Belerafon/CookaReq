@@ -18,6 +18,7 @@ class MCPClient:
     """Simple HTTP client for the MCP server."""
 
     def __init__(self, settings: MCPSettings, *, confirm: Callable[[str], bool]) -> None:
+        """Initialize client with MCP ``settings`` and confirmation callback."""
         self.settings = settings
         self._confirm = confirm
 

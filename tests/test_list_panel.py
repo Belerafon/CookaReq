@@ -141,8 +141,9 @@ def _build_wx_stub():
             self._items.insert(index, text)
             self._data.insert(index, 0)
             return index
-        def SetStringItem(self, index, col, text):
+        def SetItem(self, index, col, text):
             pass
+        SetStringItem = SetItem
         def SetItemData(self, index, data):
             self._data[index] = data
         def GetItemData(self, index):
@@ -512,7 +513,7 @@ def test_labels_column_renders_badges(monkeypatch):
 
     texts: list[tuple[int, int, str]] = []
     images: list[tuple[int, int, int]] = []
-    panel.list.SetStringItem = lambda idx, col, text: texts.append((idx, col, text))
+    panel.list.SetItem = lambda idx, col, text: texts.append((idx, col, text))
     panel.list.SetItemColumnImage = lambda idx, col, img: images.append((idx, col, img))
     dummy = types.SimpleNamespace(GetWidth=lambda: 10, GetHeight=lambda: 10)
     calls: list[list[str]] = []

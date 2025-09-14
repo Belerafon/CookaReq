@@ -29,6 +29,7 @@ class Navigation:
         on_toggle_column: Callable[[wx.CommandEvent], None],
         on_toggle_log_console: Callable[[wx.CommandEvent], None],
         on_show_derivation_graph: Callable[[wx.Event], None],
+        on_show_trace_matrix: Callable[[wx.Event], None],
         on_new_requirement: Callable[[wx.Event], None],
         on_run_command: Callable[[wx.Event], None],
     ) -> None:
@@ -44,6 +45,7 @@ class Navigation:
         self.on_toggle_column = on_toggle_column
         self.on_toggle_log_console = on_toggle_log_console
         self.on_show_derivation_graph = on_show_derivation_graph
+        self.on_show_trace_matrix = on_show_trace_matrix
         self.on_new_requirement = on_new_requirement
         self.on_run_command = on_run_command
         self._recent_items: dict[int, Path] = {}
@@ -98,6 +100,8 @@ class Navigation:
         self.frame.Bind(wx.EVT_MENU, self.on_toggle_log_console, self.log_menu_item)
         graph_item = view_menu.Append(wx.ID_ANY, _("Show Derivation Graph"))
         self.frame.Bind(wx.EVT_MENU, self.on_show_derivation_graph, graph_item)
+        trace_item = view_menu.Append(wx.ID_ANY, _("Show Trace Matrix"))
+        self.frame.Bind(wx.EVT_MENU, self.on_show_trace_matrix, trace_item)
         menu_bar.Append(view_menu, _("&View"))
 
         tools_menu = wx.Menu()

@@ -653,6 +653,8 @@ class EditorPanel(ScrolledPanel):
                     "revision": 1,
                     "approved_at": None,
                     "notes": "",
+                    "doc_prefix": "",
+                    "rid": "",
                 },
             )
             self.approved_picker.SetValue(wx.DefaultDateTime)
@@ -685,7 +687,12 @@ class EditorPanel(ScrolledPanel):
         """Populate editor fields from ``data``."""
 
         if isinstance(data, Requirement):
+            self.extra["doc_prefix"] = data.doc_prefix
+            self.extra["rid"] = data.rid
             data = requirement_to_dict(data)
+        else:
+            self.extra["doc_prefix"] = data.get("doc_prefix", "")
+            self.extra["rid"] = data.get("rid", "")
         self.original_id = data.get("id")
         with self._bulk_update():
             for name, ctrl in self.fields.items():
@@ -763,6 +770,7 @@ class EditorPanel(ScrolledPanel):
             self._refresh_parent_display()
             for ctrl in self.derivation_fields.values():
                 ctrl.ChangeValue("")
+            self.extra["rid"] = ""
             self._refresh_labels_display()
         self.original_modified_at = ""
         self._auto_resize_all()
@@ -840,7 +848,11 @@ class EditorPanel(ScrolledPanel):
                 "rationale": self.derivation_fields["rationale"].GetValue(),
                 "assumptions": assumptions,
             }
-        return requirement_from_dict(data)
+        return requirement_from_dict(
+            data,
+            doc_prefix=self.extra.get("doc_prefix", ""),
+            rid=self.extra.get("rid", ""),
+        )
 
     # labels helpers ---------------------------------------------------
     def update_labels_list(self, labels: list[Label], allow_freeform: bool = False) -> None:

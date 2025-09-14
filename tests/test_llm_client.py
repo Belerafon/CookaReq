@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from app.log import logger
-from app.llm.client import LLMClient
+from app.llm.client import LLMClient, NO_API_KEY
 from app.mcp.server import JsonlHandler
 from tests.llm_utils import make_openai_mock, settings_with_llm
 from app.settings import LLMSettings
@@ -28,7 +28,7 @@ def test_missing_api_key_ignores_env(monkeypatch):
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     settings = LLMSettings(base_url="https://example", model="foo", api_key=None)
     LLMClient(settings)
-    assert captured["api_key"] is None
+    assert captured["api_key"] == NO_API_KEY
 
 
 def test_check_llm(tmp_path: Path, monkeypatch) -> None:

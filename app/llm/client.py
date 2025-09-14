@@ -14,6 +14,12 @@ from ..telemetry import log_event
 from ..settings import LLMSettings
 from .spec import SYSTEM_PROMPT, TOOLS
 
+# When the backend does not require authentication, the official OpenAI client
+# still insists on a non-empty ``api_key``.  Using a harmless placeholder allows
+# talking to such endpoints while making it explicit that no real key is
+# configured.
+NO_API_KEY = "sk-no-key"
+
 
 class LLMClient:
     """High-level client for LLM operations."""
@@ -24,9 +30,10 @@ class LLMClient:
         self.settings = settings
         if not self.settings.base_url:
             raise ValueError("LLM base URL is not configured")
+        api_key = self.settings.api_key or NO_API_KEY
         self._client = openai.OpenAI(
             base_url=self.settings.base_url,
-            api_key=self.settings.api_key or None,
+            api_key=api_key,
             timeout=self.settings.timeout_minutes * 60,
             max_retries=self.settings.max_retries,
         )

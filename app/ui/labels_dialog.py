@@ -122,11 +122,11 @@ class LabelsDialog(wx.Dialog):
         if added:
             self._populate()
 
-    def _on_show_presets_menu(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_show_presets_menu(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         menu = wx.Menu()
         for key, title in PRESET_SET_TITLES.items():
             item = menu.Append(wx.ID_ANY, _(title))
-            menu.Bind(wx.EVT_MENU, lambda evt, k=key: self._on_add_preset_set(k), item)
+            menu.Bind(wx.EVT_MENU, lambda _evt, k=key: self._on_add_preset_set(k), item)
         self.PopupMenu(menu)
         menu.Destroy()
 

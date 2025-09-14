@@ -78,7 +78,7 @@ class CommandDialog(wx.Dialog):
         self.SetSize((600, 400))
         self._refresh_history_list()
 
-    def _on_run(self, event: wx.Event) -> None:
+    def _on_run(self, _event: wx.Event) -> None:
         text = self.input.GetValue().strip()
         if not text:
             return
@@ -94,7 +94,7 @@ class CommandDialog(wx.Dialog):
         self.output.ShowPosition(self.output.GetLastPosition())
         self._append_history(text, display)
 
-    def _on_clear(self, event: wx.Event) -> None:
+    def _on_clear(self, _event: wx.Event) -> None:
         self.input.SetValue("")
         self.output.SetValue("")
         self.history_list.SetSelection(wx.NOT_FOUND)

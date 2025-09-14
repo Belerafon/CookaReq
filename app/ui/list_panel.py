@@ -88,7 +88,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
         self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
         self.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter)
-        self.reset_btn.Bind(wx.EVT_BUTTON, lambda evt: self.reset_filters())
+        self.reset_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.reset_filters())
 
 # ColumnSorterMixin requirement
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
@@ -546,13 +546,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         edit_item = None
         if field and field != "title":
             edit_item = menu.Append(wx.ID_ANY, _("Edit {field}").format(field=field))
-            menu.Bind(wx.EVT_MENU, lambda evt, c=column: self._on_edit_field(c), edit_item)
+            menu.Bind(wx.EVT_MENU, lambda _evt, c=column: self._on_edit_field(c), edit_item)
         if self._on_clone:
-            menu.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_clone(i), clone_item)
+            menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_clone(i), clone_item)
         if self._on_delete:
-            menu.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_delete(i), delete_item)
+            menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_delete(i), delete_item)
         if self._on_derive:
-            menu.Bind(wx.EVT_MENU, lambda evt, i=req_id: self._on_derive(i), derive_item)
+            menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_derive(i), derive_item)
         return menu, clone_item, delete_item, edit_item
 
     def _get_selected_indices(self) -> list[int]:

@@ -257,7 +257,7 @@ class SettingsDialog(wx.Dialog):
         self.SetSizerAndFit(dlg_sizer)
 
     # ------------------------------------------------------------------
-    def _on_toggle_token(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_toggle_token(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._token.Enable(self._require_token.GetValue())
 
     def _update_mcp_controls(self) -> None:
@@ -287,28 +287,28 @@ class SettingsDialog(wx.Dialog):
             token=self._token.GetValue(),
         )
 
-    def _on_start(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_start(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         settings = self._current_settings()
         self._mcp.start(settings)
         self._update_mcp_controls()
 
-    def _on_stop(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_stop(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._mcp.stop()
         self._update_mcp_controls()
 
-    def _on_check_llm(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_check_llm(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         client = LLMClient(settings=self._current_llm_settings())
         result = client.check_llm()
         label = _("ok") if result.get("ok") else _("error")
         self._llm_status.SetLabel(label)
 
-    def _on_check_tools(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_check_tools(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         client = MCPClient(settings=self._current_settings(), confirm=lambda _m: True)
         result = client.check_tools()
         label = _("ok") if result.get("ok") else _("error")
         self._tools_status.SetLabel(label)
 
-    def _on_check(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_check(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         result = self._mcp.check(self._current_settings())
         status = result.status
         running = status != MCPStatus.NOT_RUNNING

@@ -18,6 +18,9 @@ from .enums import ENUMS
 from .filter_dialog import FilterDialog
 from .requirement_model import RequirementModel
 
+if TYPE_CHECKING:
+    from ..config import ConfigManager
+
 if TYPE_CHECKING:  # pragma: no cover
     from wx import ContextMenuEvent, ListEvent
 
@@ -199,26 +202,26 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
 
     # Columns ---------------------------------------------------------
-    def load_column_widths(self, config: wx.Config) -> None:
+    def load_column_widths(self, config: ConfigManager) -> None:
         """Restore column widths from config with sane bounds."""
         count = self.list.GetColumnCount()
         for i in range(count):
-            width = config.ReadInt(f"col_width_{i}", -1)
+            width = config.read_int(f"col_width_{i}", -1)
             if width != -1:
                 width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
                 self.list.SetColumnWidth(i, width)
 
-    def save_column_widths(self, config: wx.Config) -> None:
+    def save_column_widths(self, config: ConfigManager) -> None:
         """Persist current column widths to config."""
         count = self.list.GetColumnCount()
         for i in range(count):
             width = self.list.GetColumnWidth(i)
             width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
-            config.WriteInt(f"col_width_{i}", width)
+            config.write_int(f"col_width_{i}", width)
 
-    def load_column_order(self, config: wx.Config) -> None:
+    def load_column_order(self, config: ConfigManager) -> None:
         """Restore column ordering from config."""
-        value = config.Read("col_order", "")
+        value = config.read("col_order", "")
         if not value:
             return
         names = [n for n in value.split(",") if n]
@@ -235,7 +238,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         with suppress(Exception):  # pragma: no cover - depends on GUI backend
             self.list.SetColumnsOrder(order)
 
-    def save_column_order(self, config: wx.Config) -> None:
+    def save_column_order(self, config: ConfigManager) -> None:
         """Persist current column ordering to config."""
         try:  # pragma: no cover - depends on GUI backend
             order = self.list.GetColumnsOrder()
@@ -247,7 +250,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 names.append("title")
             elif 1 <= idx <= len(self.columns):
                 names.append(self.columns[idx - 1])
-        config.Write("col_order", ",".join(names))
+        config.write("col_order", ",".join(names))
 
     def reorder_columns(self, from_col: int, to_col: int) -> None:
         """Move column from ``from_col`` index to ``to_col`` index."""

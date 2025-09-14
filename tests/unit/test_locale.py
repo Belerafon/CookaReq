@@ -18,16 +18,16 @@ def test_round_trip():
 
 
 def test_unknown_values_return_input():
-    assert locale.code_to_label('type', 'unknown') == 'unknown'
-    assert locale.label_to_code('type', 'Unknown') == 'Unknown'
+    assert locale.code_to_label("type", "unknown") == "unknown"
+    assert locale.label_to_code("type", "Unknown") == "Unknown"
 
 
 def _enum_label(e):
-    return e.name.replace('_', ' ').lower().capitalize()
+    return e.name.replace("_", " ").lower().capitalize()
 
 
 @pytest.mark.parametrize(
-    'enum_cls,mapping',
+    "enum_cls,mapping",
     [
         (model.RequirementType, locale.TYPE),
         (model.Status, locale.STATUS),

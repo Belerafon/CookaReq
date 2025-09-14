@@ -14,12 +14,12 @@ def test_links_list_becomes_visible(wx_app, monkeypatch):
     called = {}
 
     def fake_fitinside():
-        called['called'] = True
+        called["called"] = True
 
     monkeypatch.setattr(panel, "FitInside", fake_fitinside)
-    panel.derived_id.SetValue('123')
-    panel._on_add_link_generic('derived_from')
+    panel.derived_id.SetValue("123")
+    panel._on_add_link_generic("derived_from")
 
     assert panel.derived_list.IsShown()
-    assert called.get('called')
+    assert called.get("called")
     frame.Destroy()

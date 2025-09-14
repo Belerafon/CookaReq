@@ -48,37 +48,37 @@ class ConfigManager:
 
     # ------------------------------------------------------------------
     # basic ``wx.Config`` API
-    def Read(self, key: str, default: str = "") -> str:
+    def read(self, key: str, default: str = "") -> str:
         """Read string value for ``key``."""
 
         return self._cfg.Read(key, default)
 
-    def ReadInt(self, key: str, default: int = 0) -> int:
+    def read_int(self, key: str, default: int = 0) -> int:
         """Read integer value for ``key``."""
 
         return self._cfg.ReadInt(key, default)
 
-    def ReadBool(self, key: str, default: bool = False) -> bool:
+    def read_bool(self, key: str, default: bool = False) -> bool:
         """Read boolean value for ``key``."""
 
         return self._cfg.ReadBool(key, default)
 
-    def Write(self, key: str, value: str) -> None:
+    def write(self, key: str, value: str) -> None:
         """Write string ``value`` under ``key``."""
 
         self._cfg.Write(key, value)
 
-    def WriteInt(self, key: str, value: int) -> None:
+    def write_int(self, key: str, value: int) -> None:
         """Write integer ``value`` under ``key``."""
 
         self._cfg.WriteInt(key, value)
 
-    def WriteBool(self, key: str, value: bool) -> None:
+    def write_bool(self, key: str, value: bool) -> None:
         """Write boolean ``value`` under ``key``."""
 
         self._cfg.WriteBool(key, value)
 
-    def Flush(self) -> None:  # pragma: no cover - simple wrapper
+    def flush(self) -> None:  # pragma: no cover - simple wrapper
         """Persist configuration to disk."""
 
         self._cfg.Flush()
@@ -363,4 +363,4 @@ class ConfigManager:
             self._cfg.WriteBool("log_shown", False)
         panel.save_column_widths(self)
         panel.save_column_order(self)
-        self.Flush()
+        self.flush()

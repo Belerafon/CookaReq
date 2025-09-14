@@ -259,7 +259,7 @@ def _build_wx_stub():
             return self._renderer
 
     class UltimateListCtrl(_BaseList):
-        def __init__(self, parent=None, agwStyle=0, **kwargs):
+        def __init__(self, parent=None, agw_style=0, **kwargs):
             super().__init__(parent)
         def SetItem(self, item):
             pass
@@ -292,13 +292,13 @@ def _build_wx_stub():
             return [types.SimpleNamespace(GetWindow=lambda w=child: w) for child in self._children]
 
     class Config:
-        def ReadInt(self, key, default):
+        def read_int(self, key, default):
             return default
-        def WriteInt(self, key, value):
+        def write_int(self, key, value):
             pass
-        def Read(self, key, default=""):
+        def read(self, key, default=""):
             return default
-        def Write(self, key, value):
+        def write(self, key, value):
             pass
 
     wx_mod = types.SimpleNamespace(
@@ -390,11 +390,11 @@ def test_list_panel_has_filter_and_list(monkeypatch):
     importlib.reload(list_panel_module)
     model_module = importlib.import_module("app.ui.requirement_model")
     importlib.reload(model_module)
-    ListPanel = list_panel_module.ListPanel
-    RequirementModel = model_module.RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
+    requirement_model_cls = model_module.RequirementModel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
 
     assert isinstance(panel.filter_btn, wx_stub.Button)
     assert isinstance(panel.reset_btn, wx_stub.BitmapButton)
@@ -424,11 +424,11 @@ def test_column_click_sorts(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["id"])
     panel.set_requirements([
         _req(2, "B"),
@@ -455,11 +455,11 @@ def test_column_click_after_set_columns_triggers_sort(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["id"])
     panel.set_requirements([
         _req(2, "B"),
@@ -481,11 +481,11 @@ def test_search_and_label_filters(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_requirements([
         _req(1, "Login", labels=["ui"]),
         _req(2, "Export", labels=["report"]),
@@ -514,11 +514,11 @@ def test_apply_filters(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_requirements([
         _req(1, "Login", labels=["ui"], owner="alice"),
         _req(2, "Export", labels=["report"], owner="bob"),
@@ -541,11 +541,11 @@ def test_reset_button_visibility(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
     assert not panel.reset_btn.IsShown()
     panel.set_search_query("X")
     assert panel.reset_btn.IsShown()
@@ -563,11 +563,11 @@ def test_apply_status_filter(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_requirements([
         _req(1, "A", status=Status.DRAFT),
         _req(2, "B", status=Status.APPROVED),
@@ -589,11 +589,11 @@ def test_labels_column_uses_imagelist(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
     panel.set_requirements([
         _req(1, "A", labels=["ui", "backend"]),
@@ -614,11 +614,11 @@ def test_sort_by_labels(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
     panel.set_requirements([
         _req(1, "A", labels=["beta"]),
@@ -639,11 +639,11 @@ def test_sort_by_multiple_labels(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
     panel.set_requirements([
         _req(1, "A", labels=["alpha", "zeta"]),
@@ -664,11 +664,11 @@ def test_bulk_edit_updates_requirements(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["version"])
     reqs = [
         _req(1, "A", version="1"),
@@ -691,12 +691,12 @@ def test_sort_method_and_callback(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
     calls = []
-    panel = ListPanel(frame, model=RequirementModel(), on_sort_changed=lambda c, a: calls.append((c, a)))
+    panel = list_panel_cls(frame, model=requirement_model_cls(), on_sort_changed=lambda c, a: calls.append((c, a)))
     panel.set_columns(["id"])
     panel.set_requirements([
         _req(2, "B"),
@@ -722,11 +722,11 @@ def test_reorder_columns(monkeypatch):
 
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
+    requirement_model_cls = importlib.import_module("app.ui.requirement_model").RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
 
     frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
+    panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["id", "status", "priority"])
     panel.reorder_columns(1, 3)
     assert panel.columns == ["status", "priority", "id"]

@@ -45,9 +45,11 @@ def wx_app():
         try:
             from pyvirtualdisplay import Display
         except Exception:
-            Display = None
-        if Display is not None:
-            display = Display(visible=False, size=(1280, 800))
+            display_cls = None
+        else:
+            display_cls = Display
+        if display_cls is not None:
+            display = display_cls(visible=False, size=(1280, 800))
             display.start()
     wx = pytest.importorskip("wx")
     app = wx.App()

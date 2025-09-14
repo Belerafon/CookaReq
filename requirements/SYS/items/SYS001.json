@@ -1,0 +1,14 @@
+{
+  "id": 1,
+  "title": "Именование по идентификатору",
+  "text": "Система должна сохранять каждое требование в JSON-файл, имя которого совпадает с его идентификатором.",
+  "labels": ["storage"],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "status": "approved",
+  "type": "requirement",
+  "verification": "analysis",
+  "links": []
+}

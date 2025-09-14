@@ -1,0 +1,14 @@
+{
+  "id": 2,
+  "title": "Поиск требований",
+  "text": "Система должна обеспечивать фильтрацию и полнотекстовый поиск требований по меткам и полям.",
+  "labels": ["search"],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "status": "approved",
+  "type": "requirement",
+  "verification": "analysis",
+  "links": ["SYS002"]
+}

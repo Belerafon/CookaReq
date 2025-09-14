@@ -1,0 +1,14 @@
+{
+  "id": 1,
+  "title": "Редактор требований",
+  "text": "Система должна предоставлять графический редактор требований с формами для всех полей и возможностью сохранения.",
+  "labels": ["editor"],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "status": "approved",
+  "type": "requirement",
+  "verification": "analysis",
+  "links": ["HLR001"]
+}

@@ -1,0 +1,14 @@
+{
+  "id": 2,
+  "title": "Структурированная модель данных",
+  "text": "Система должна представлять каждое требование как dataclass с типизированными полями для статуса, приоритета и способа верификации.",
+  "labels": ["model"],
+  "owner": "Team",
+  "priority": "medium",
+  "revision": 1,
+  "source": "architecture",
+  "status": "approved",
+  "type": "requirement",
+  "verification": "analysis",
+  "links": []
+}

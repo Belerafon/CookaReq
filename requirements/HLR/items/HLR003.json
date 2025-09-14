@@ -1,0 +1,14 @@
+{
+  "id": 3,
+  "title": "Локализация интерфейса",
+  "text": "Система должна отображать элементы интерфейса на русском языке с использованием словаря локализации.",
+  "labels": ["i18n"],
+  "owner": "Team",
+  "priority": "low",
+  "revision": 1,
+  "source": "architecture",
+  "status": "approved",
+  "type": "requirement",
+  "verification": "inspection",
+  "links": ["SYS003"]
+}

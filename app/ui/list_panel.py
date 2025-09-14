@@ -410,12 +410,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetItemImage(index, -1)
                 except Exception:
                     pass
-            if hasattr(self.list, "SetItemColumnImage"):
-                for col in range(self.list.GetColumnCount()):
-                    try:
-                        self.list.SetItemColumnImage(index, col, -1)
-                    except Exception:
-                        pass
             req_id = getattr(req, "id", 0)
             try:
                 self.list.SetItemData(index, int(req_id))

@@ -10,6 +10,14 @@ from . import locale
 from .enums import ENUMS
 
 
+def _safe_colour(value: str) -> wx.Colour | None:
+    """Return ``wx.Colour`` from *value* or ``None`` on failure."""
+    try:  # pragma: no cover - platform dependent
+        return wx.Colour(value)
+    except Exception:  # pragma: no cover - platform dependent
+        return None
+
+
 class FilterDialog(wx.Dialog):
     """Dialog allowing to configure various filters."""
 
@@ -49,12 +57,10 @@ class FilterDialog(wx.Dialog):
         choices = [lbl.name for lbl in self._labels]
         self.labels_box = wx.CheckListBox(self, choices=choices)
         for i, lbl in enumerate(self._labels):
-            try:
-                colour = wx.Colour(lbl.color)
+            colour = _safe_colour(lbl.color)
+            if colour is not None:
                 self.labels_box.SetItemBackgroundColour(i, colour)
                 self.labels_box.SetItemForegroundColour(i, wx.BLACK)
-            except Exception:  # pragma: no cover - platform dependent
-                pass
         for lbl in values.get("labels", []):
             names = [label_obj.name for label_obj in self._labels]
             if lbl in names:

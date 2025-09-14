@@ -13,11 +13,16 @@ def _request(port, headers=None):
     return resp.status, body
 
 
+def _try_request(port, headers=None) -> bool:
+    try:
+        _request(port, headers=headers)
+    except ConnectionRefusedError:
+        return False
+    return True
+
+
 def _wait_until_ready(port, headers=None):
     for _ in range(50):
-        try:
-            _request(port, headers=headers)
-        except ConnectionRefusedError:
-            time.sleep(0.1)
-        else:
+        if _try_request(port, headers=headers):
             return
+        time.sleep(0.1)

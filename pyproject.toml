@@ -49,6 +49,7 @@ select = [
     "T20",
     "N",
     "DTZ",
+    "PERF",
     "Q",
     "SLF",
     "TRY",

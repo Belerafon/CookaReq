@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -213,3 +214,167 @@ def iter_links(root: str | Path) -> Iterable[tuple[str, str]]:
             rid = rid_for(doc, item_id)
             for parent in sorted(data.get("links", [])):
                 yield rid, parent
+
+
+def plan_delete_item(
+    root: str | Path,
+    rid: str,
+    docs: Mapping[str, Document] | None = None,
+) -> tuple[bool, list[str]]:
+    """Return items referencing ``rid`` without deleting anything."""
+
+    root_path = Path(root)
+    if docs is None:
+        docs = load_documents(root_path)
+    try:
+        prefix, item_id = parse_rid(rid)
+    except ValueError:
+        return False, []
+    doc = docs.get(prefix)
+    if doc is None:
+        return False, []
+    if not item_path(root_path / prefix, doc, item_id).exists():
+        return False, []
+
+    affected: list[str] = []
+    for pfx, d in docs.items():
+        dir_path = root_path / pfx
+        for other_id in list_item_ids(dir_path, d):
+            data, _ = load_item(dir_path, d, other_id)
+            links = data.get("links")
+            if isinstance(links, list) and rid in links:
+                affected.append(rid_for(d, other_id))
+            elif isinstance(links, dict):
+                for coll in links.values():
+                    if rid in coll:
+                        affected.append(rid_for(d, other_id))
+                        break
+    return True, sorted(affected)
+
+
+def plan_delete_document(
+    root: str | Path,
+    prefix: str,
+    docs: Mapping[str, Document] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Return document prefixes and item ids that would be removed."""
+
+    root_path = Path(root)
+    if docs is None:
+        docs = load_documents(root_path)
+    doc = docs.get(prefix)
+    if doc is None:
+        return [], []
+
+    docs_to_remove = [prefix]
+    items: list[str] = []
+    directory = root_path / prefix
+    for item_id in list_item_ids(directory, doc):
+        items.append(rid_for(doc, item_id))
+
+    for pfx, d in docs.items():
+        if d.parent == prefix:
+            child_docs, child_items = plan_delete_document(root_path, pfx, docs)
+            docs_to_remove.extend(child_docs)
+            items.extend(child_items)
+    return docs_to_remove, items
+
+
+def delete_item(
+    root: str | Path,
+    rid: str,
+    docs: Mapping[str, Document] | None = None,
+) -> bool:
+    """Remove requirement ``rid`` and drop links pointing to it.
+
+    Parameters
+    ----------
+    root:
+        Directory containing requirement documents.
+    rid:
+        Identifier of the requirement to delete (e.g. ``"SYS001"``).
+    docs:
+        Optional pre-loaded document mapping to avoid repeated disk access.
+
+    Returns
+    -------
+    bool
+        ``True`` when the requirement existed and was removed.
+    """
+
+    root_path = Path(root)
+    if docs is None:
+        docs = load_documents(root_path)
+    try:
+        prefix, item_id = parse_rid(rid)
+    except ValueError:
+        return False
+    doc = docs.get(prefix)
+    if not doc:
+        return False
+    directory = root_path / prefix
+    path = item_path(directory, doc, item_id)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return False
+
+    # remove references from other requirements ---------------------
+    for pfx, d in docs.items():
+        dir_path = root_path / pfx
+        for other_id in list_item_ids(dir_path, d):
+            data, _ = load_item(dir_path, d, other_id)
+            links = data.get("links")
+            changed = False
+            if isinstance(links, list):
+                new_links = [l for l in links if l != rid]
+                if len(new_links) != len(links):
+                    data["links"] = new_links
+                    changed = True
+            elif isinstance(links, dict):
+                for key, coll in list(links.items()):
+                    new_coll = [l for l in coll if l != rid]
+                    if len(new_coll) != len(coll):
+                        links[key] = new_coll
+                        changed = True
+                if isinstance(links, dict) and all(not v for v in links.values()):
+                    data.pop("links")
+            if changed:
+                save_item(dir_path, d, data)
+    return True
+
+
+def delete_document(
+    root: str | Path,
+    prefix: str,
+    docs: Mapping[str, Document] | None = None,
+) -> bool:
+    """Remove document ``prefix`` and all its items.
+
+    Deletion is recursive: child documents are removed prior to the target
+    document. References to any removed items are also cleared from remaining
+    requirements.
+    """
+
+    root_path = Path(root)
+    if docs is None:
+        docs = load_documents(root_path)
+    doc = docs.get(prefix)
+    if doc is None:
+        return False
+
+    # delete child documents first
+    for pfx, d in list(docs.items()):
+        if d.parent == prefix:
+            delete_document(root_path, pfx, docs)
+
+    # delete items and clean links
+    directory = root_path / prefix
+    for item_id in list(list_item_ids(directory, doc)):
+        rid = rid_for(doc, item_id)
+        delete_item(root_path, rid, docs)
+
+    # remove document directory
+    shutil.rmtree(directory, ignore_errors=True)
+    docs.pop(prefix, None)
+    return True

@@ -28,6 +28,10 @@ from app.core.doc_store import (
     rid_for,
     save_document,
     save_item,
+    delete_document,
+    delete_item,
+    plan_delete_document,
+    plan_delete_item,
     collect_labels,
 )
 from app.core.repository import RequirementRepository
@@ -199,6 +203,37 @@ def cmd_doc_list(args: argparse.Namespace, _repo: RequirementRepository) -> None
             sys.stdout.write(f"{doc.prefix} {doc.title}\n")
 
 
+def cmd_doc_delete(args: argparse.Namespace, _repo: RequirementRepository) -> None:
+    """Delete document ``prefix`` and its descendants."""
+
+    docs = load_documents(args.directory)
+    if getattr(args, "dry_run", False):
+        doc_list, item_list = plan_delete_document(
+            args.directory, args.prefix, docs
+        )
+        if not doc_list:
+            sys.stdout.write(
+                _("document not found: {prefix}\n").format(prefix=args.prefix)
+            )
+            return
+        for p in doc_list:
+            sys.stdout.write(f"{p}\n")
+        for rid in item_list:
+            sys.stdout.write(f"{rid}\n")
+        return
+    msg = _("Delete document {prefix} and its subtree?").format(prefix=args.prefix)
+    if not confirm(msg):
+        sys.stdout.write(_("aborted\n"))
+        return
+    removed = delete_document(args.directory, args.prefix, docs)
+    if removed:
+        sys.stdout.write(f"{args.prefix}\n")
+    else:
+        sys.stdout.write(
+            _("document not found: {prefix}\n").format(prefix=args.prefix)
+        )
+
+
 def add_doc_arguments(p: argparse.ArgumentParser) -> None:
     """Configure parser for ``doc`` subcommands."""
 
@@ -215,6 +250,16 @@ def add_doc_arguments(p: argparse.ArgumentParser) -> None:
     lst = sub.add_parser("list", help=_("list documents"))
     lst.add_argument("directory", help=_("requirements root"))
     lst.set_defaults(func=cmd_doc_list)
+
+    del_p = sub.add_parser("delete", help=_("delete document"))
+    del_p.add_argument("directory", help=_("requirements root"))
+    del_p.add_argument("prefix", help=_("document prefix"))
+    del_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=_("show what would be deleted"),
+    )
+    del_p.set_defaults(func=cmd_doc_delete)
 
 
 def cmd_item_add(args: argparse.Namespace, _repo: RequirementRepository) -> None:
@@ -263,6 +308,30 @@ def cmd_item_move(args: argparse.Namespace, _repo: RequirementRepository) -> Non
     sys.stdout.write(f"{rid_for(dst_doc, new_id)}\n")
 
 
+def cmd_item_delete(args: argparse.Namespace, _repo: RequirementRepository) -> None:
+    """Delete requirement ``rid`` and update references."""
+
+    docs = load_documents(args.directory)
+    if getattr(args, "dry_run", False):
+        exists, refs = plan_delete_item(args.directory, args.rid, docs)
+        if not exists:
+            sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
+            return
+        sys.stdout.write(f"{args.rid}\n")
+        for r in refs:
+            sys.stdout.write(f"{r}\n")
+        return
+    msg = _("Delete item {rid}?").format(rid=args.rid)
+    if not confirm(msg):
+        sys.stdout.write(_("aborted\n"))
+        return
+    removed = delete_item(args.directory, args.rid, docs)
+    if removed:
+        sys.stdout.write(f"{args.rid}\n")
+    else:
+        sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
+
+
 def add_item_arguments(p: argparse.ArgumentParser) -> None:
     """Configure parser for ``item`` subcommands."""
 
@@ -281,6 +350,16 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     move_p.add_argument("rid", help=_("requirement identifier"))
     move_p.add_argument("new_prefix", help=_("target document prefix"))
     move_p.set_defaults(func=cmd_item_move)
+
+    del_p = sub.add_parser("delete", help=_("delete item"))
+    del_p.add_argument("directory", help=_("requirements root"))
+    del_p.add_argument("rid", help=_("requirement identifier"))
+    del_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=_("show what would be deleted"),
+    )
+    del_p.set_defaults(func=cmd_item_delete)
 
 
 def cmd_link(args: argparse.Namespace, _repo: RequirementRepository) -> None:

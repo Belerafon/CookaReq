@@ -62,8 +62,22 @@ Available commands:
 - `check` — verify LLM and MCP connectivity according to loaded settings
 - `link <dir> <rid> <parents...>` — link a requirement to ancestors
 - `trace <dir> [--format csv|html] [-o FILE]` — export child-parent links; creates parent directories for `FILE`
+- `migrate to-docs <dir> --default PREFIX [--rules RULES]` — convert flat files to document tree
 
-The `add` and `edit` commands validate the input file before saving. If the JSON is malformed or does not match the requirement schema, an error message is printed and no changes are written to disk. The `check` command uses the same LocalAgent as the GUI to test LLM and MCP access.
+The `add` and `edit` commands validate the input file before saving. If the JSON is malformed or does not match the requirement schema, an error message is printed and no changes are written to disk. The `check` command uses the same LocalAgent as the GUI to test LLM and MCP access. This agent is imported lazily, so running `--help` or unrelated commands does not require LLM/MCP dependencies.
+
+### Migrating legacy requirements
+
+Older repositories may store all requirement files in a single directory with
+identifiers such as `CR-001.json`. Use the migration utility to reorganize them
+into the document-based layout:
+
+```bash
+python3 -m app.cli migrate to-docs <legacy_dir> --default SYS --rules "label:doc=HLR->HLR"
+```
+
+Files are assigned to documents according to label rules. Links between
+requirements are rewritten to the new RIDs.
 
 ## MCP Integration
 
@@ -124,6 +138,12 @@ compilation to binary `.mo` catalogs is required.
 
 Run the full test suite with `pytest -q`. GUI tests are executed headless via
 `pytest-xvfb`, so no display server is required.
+
+For a rapid health check, execute the smoke tests:
+
+```bash
+pytest -m smoke -q
+```
 
 ## License
 

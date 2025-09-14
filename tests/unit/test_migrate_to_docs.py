@@ -54,3 +54,28 @@ def test_migrate_to_docs_basic(tmp_path: Path):
     assert doc["prefix"] == "SYS"
     assert doc["digits"] == 3
     assert doc["labels"]["allowFreeform"] is True
+
+
+def test_migrate_to_docs_links(tmp_path: Path):
+    r1 = {
+        "id": "CR-001",
+        "title": "One",
+        "statement": "First",
+        "labels": ["doc=SYS"],
+    }
+    r2 = {
+        "id": "CR-002",
+        "title": "Two",
+        "statement": "Second",
+        "labels": ["doc=SYS"],
+        "links": ["CR-001", "EXT-9"],
+    }
+    write_req(tmp_path / "CR-001.json", r1)
+    write_req(tmp_path / "CR-002.json", r2)
+
+    migrate_to_docs(tmp_path, rules="label:doc=SYS->SYS", default="SYS")
+
+    data = json.loads(
+        (tmp_path / "SYS" / "items" / "SYS002.json").read_text(encoding="utf-8")
+    )
+    assert data["links"] == ["SYS001", "EXT-9"]

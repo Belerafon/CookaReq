@@ -215,9 +215,9 @@ def test_cli_check_uses_agent(tmp_path, monkeypatch, capsys):
             called["mcp"] = True
             return {"status": "ok"}
 
-    import app.cli.commands as cli_mod
+    import app.agent as agent_mod
 
-    monkeypatch.setattr(cli_mod, "LocalAgent", DummyAgent)
+    monkeypatch.setattr(agent_mod, "LocalAgent", DummyAgent)
 
     run_cli(["--settings", str(settings_file), "check"])
     captured = capsys.readouterr().out
@@ -243,9 +243,9 @@ def test_cli_check_llm_only(tmp_path, monkeypatch, capsys):
             called["mcp"] = True
             return {"status": "ok"}
 
-    import app.cli.commands as cli_mod
+    import app.agent as agent_mod
 
-    monkeypatch.setattr(cli_mod, "LocalAgent", DummyAgent)
+    monkeypatch.setattr(agent_mod, "LocalAgent", DummyAgent)
 
     run_cli(["--settings", str(settings_file), "check", "--llm"])
     captured = capsys.readouterr().out
@@ -272,9 +272,9 @@ def test_cli_check_mcp_only(tmp_path, monkeypatch, capsys):
             called["mcp"] = True
             return {"status": "ok"}
 
-    import app.cli.commands as cli_mod
+    import app.agent as agent_mod
 
-    monkeypatch.setattr(cli_mod, "LocalAgent", DummyAgent)
+    monkeypatch.setattr(agent_mod, "LocalAgent", DummyAgent)
 
     run_cli(["--settings", str(settings_file), "check", "--mcp"])
     captured = capsys.readouterr().out

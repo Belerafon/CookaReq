@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, TextIO
 
-from app.agent import LocalAgent
 from app.confirm import confirm
 from app.core import model
 from app.core.doc_store import (
@@ -511,6 +510,8 @@ def add_migrate_arguments(p: argparse.ArgumentParser) -> None:
 
 def cmd_check(args: argparse.Namespace, _repo: RequirementRepository) -> None:
     """Verify LLM and MCP connectivity using loaded settings."""
+    from app.agent import LocalAgent
+
     agent = LocalAgent(settings=args.app_settings, confirm=confirm)
     results: dict[str, object] = {}
     if args.llm or not (args.llm or args.mcp):

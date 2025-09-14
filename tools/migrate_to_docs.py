@@ -6,7 +6,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, List
 
 RULE_RE = re.compile(r"^(?:tag|label):([^=]+)=([^->]+)->([A-Z][A-Z0-9_]*)$")
 
@@ -55,11 +55,13 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
     root = Path(directory)
     if not root.is_dir():
         raise FileNotFoundError(str(directory))
+
     rule_objs = parse_rules(rules)
     digits_map: dict[str, int] = {}
-    items: list[tuple[str, str, dict]] = []
+    parsed: List[dict] = []
 
-    for fp in list(root.glob("*.json")):
+    # First pass: read legacy files and collect metadata
+    for fp in root.glob("*.json"):
         with fp.open(encoding="utf-8") as fh:
             data = json.load(fh)
         old_id = data.get("id")
@@ -72,25 +74,51 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
         width = len(m.group(2))
         labels = list(data.get("labels", []))
         prefix = select_prefix(labels, rule_objs, default)
-        digits_map.setdefault(prefix, width)
-        rid = f"{prefix}{num:0{digits_map[prefix]}d}"
-        item = {
-            "id": num,
-            "title": data.get("title", ""),
-            "text": data.get("statement", ""),
-            "labels": [lbl for lbl in labels if not lbl.startswith("doc=")],
-        }
-        if "revision" in data:
-            item["revision"] = data["revision"]
-        items.append((prefix, rid, item))
-        fp.unlink()
+        digits_map[prefix] = max(digits_map.get(prefix, 0), width)
+        parsed.append({
+            "fp": fp,
+            "data": data,
+            "old_id": old_id,
+            "num": num,
+            "prefix": prefix,
+            "labels": labels,
+            "links": list(data.get("links", [])),
+        })
 
-    for prefix, rid, item in items:
+    # Determine new identifiers and build mapping
+    id_map: dict[str, str] = {}
+    for info in parsed:
+        digits = digits_map[info["prefix"]]
+        rid = f"{info['prefix']}{info['num']:0{digits}d}"
+        info["rid"] = rid
+        id_map[info["old_id"]] = rid
+
+    # Second pass: rewrite items and links
+    items: list[tuple[str, str, dict]] = []
+    for info in parsed:
+        item = {
+            "id": info["num"],
+            "title": info["data"].get("title", ""),
+            "text": info["data"].get("statement", ""),
+            "labels": [
+                lbl for lbl in info["labels"] if not lbl.startswith("doc=")
+            ],
+        }
+        if info["links"]:
+            item["links"] = [id_map.get(l, l) for l in info["links"]]
+        if "revision" in info["data"]:
+            item["revision"] = info["data"]["revision"]
+        items.append((info["prefix"], info["rid"], item, info["fp"]))
+
+    # Write new items and remove legacy files
+    for prefix, rid, item, fp in items:
         items_dir = root / prefix / "items"
         items_dir.mkdir(parents=True, exist_ok=True)
         with (items_dir / f"{rid}.json").open("w", encoding="utf-8") as fh:
             json.dump(item, fh, ensure_ascii=False, indent=2, sort_keys=True)
+        fp.unlink()
 
+    # Create document descriptors
     for prefix, digits in digits_map.items():
         doc_dir = root / prefix
         doc = {

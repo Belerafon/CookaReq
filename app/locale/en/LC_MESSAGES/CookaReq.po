@@ -467,6 +467,21 @@ msgstr "Update requirement?"
 msgid "Verifies"
 msgstr "Verifies"
 
+msgid "IDs of requirements this one verifies"
+msgstr "IDs of requirements this one verifies"
+
+msgid "IDs of related requirements"
+msgstr "IDs of related requirements"
+
+msgid "IDs of source requirements"
+msgstr "IDs of source requirements"
+
+msgid "Requirement ID"
+msgstr "Requirement ID"
+
+msgid "ID"
+msgstr "ID"
+
 msgid "check only LLM"
 msgstr "check only LLM"
 

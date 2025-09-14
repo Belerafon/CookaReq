@@ -6,54 +6,88 @@ from typing import Callable
 import wx
 
 
-def create_help_static_box(
-    parent: wx.Window,
-    label: str,
-    help_text: str,
-    on_help: Callable[[str], None],
-    *,
-    orient: int = wx.VERTICAL,
-    border: int = 5,
-) -> tuple[wx.StaticBox, wx.StaticBoxSizer]:
-    """Create a ``wx.StaticBox`` with a question button that shows a hint.
+class HelpStaticBox(wx.StaticBoxSizer):
+    """A ``wx.StaticBoxSizer`` with a built-in help button.
 
-    The button is anchored in the top‑right corner of the box so it does not
-    consume additional layout space. ``on_help`` is called with ``help_text``
-    when the button is pressed.
-
-    Parameters
-    ----------
-    parent: wx.Window
-        Parent widget for the static box.
-    label: str
-        Title of the static box.
-    help_text: str
-        Message to display when the help button is clicked.
-    on_help: Callable[[str], None]
-        Callback invoked when the help button is pressed; typically shows a
-        dialog with the hint text.
-    orient: int, optional
-        Orientation for ``wx.StaticBoxSizer``; ``wx.VERTICAL`` by default.
-    border: int, optional
-        Distance from the box edge to the help button; default is ``5``.
-
-    Returns
-    -------
-    Tuple[wx.StaticBox, wx.StaticBoxSizer]
-        The created static box and its sizer.
+    The button is appended to the first row inside the static box so it sits on
+    the same line as the first added control. This avoids manual coordinate
+    calculations and relies on sizer layout for positioning.
     """
-    box = wx.StaticBox(parent, label=label)
-    sizer = wx.StaticBoxSizer(box, orient)
-    btn = wx.Button(box, label="?", style=wx.BU_EXACTFIT)
-    btn.Bind(wx.EVT_BUTTON, lambda _evt: on_help(help_text))
 
-    def _reposition(_evt: wx.Event | None = None) -> None:
-        """Place the help button in the box's top-right corner."""
-        w, _ = box.GetClientSize()
-        bw, _ = btn.GetSize()
-        btn.SetPosition((w - bw - border, border))
+    def __init__(
+        self,
+        parent: wx.Window,
+        label: str,
+        help_text: str,
+        on_help: Callable[[str], None],
+        *,
+        orient: int = wx.VERTICAL,
+        border: int = 5,
+    ) -> None:
+        box = wx.StaticBox(parent, label=label)
+        super().__init__(box, orient)
 
-    box.Bind(wx.EVT_SIZE, _reposition)
-    wx.CallAfter(_reposition)
+        self._border = border
+        self._btn = wx.Button(box, label="?", style=wx.BU_EXACTFIT)
+        self._btn.Bind(wx.EVT_BUTTON, lambda _evt: on_help(help_text))
+        self._has_header = False
 
-    return box, sizer
+    def _wrap_first(self, item: wx.Window | wx.Sizer, flag: int) -> wx.Sizer:
+        """Wrap the first item with the help button row."""
+        self._has_header = True
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        row.Add(item, 1, flag & ~wx.ALL, 0)
+        row.Add(self._btn, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, self._border)
+        return row
+
+    def Add(
+        self,
+        item: wx.Window | wx.Sizer,
+        proportion: int = 0,
+        flag: int = 0,
+        border: int = 0,
+        userData: object | None = None,
+    ) -> wx.SizerItem:
+        """Add an item to the sizer.
+
+        The first added item is wrapped into a horizontal row alongside the
+        help button. Subsequent items are forwarded to ``wx.StaticBoxSizer``
+        unchanged.
+        """
+        if not self._has_header:
+            row = self._wrap_first(item, flag)
+            return super().Add(row, proportion, flag, border, userData)
+        return super().Add(item, proportion, flag, border, userData)
+
+    def Prepend(
+        self,
+        item: wx.Window | wx.Sizer,
+        proportion: int = 0,
+        flag: int = 0,
+        border: int = 0,
+        userData: object | None = None,
+    ) -> wx.SizerItem:
+        """Prepend an item, keeping the help button on the first row."""
+        if not self._has_header:
+            row = self._wrap_first(item, flag)
+            return super().Prepend(row, proportion, flag, border, userData)
+        return super().Insert(1, item, proportion, flag, border, userData)
+
+    def Insert(
+        self,
+        index: int,
+        item: wx.Window | wx.Sizer,
+        proportion: int = 0,
+        flag: int = 0,
+        border: int = 0,
+        userData: object | None = None,
+    ) -> wx.SizerItem:
+        """Insert an item at the given position.
+
+        Indexing is performed as if the help row did not exist, so callers can
+        treat this sizer like a regular ``StaticBoxSizer``.
+        """
+        if not self._has_header:
+            row = self._wrap_first(item, flag)
+            return super().Insert(index, row, proportion, flag, border, userData)
+        return super().Insert(index + 1, item, proportion, flag, border, userData)

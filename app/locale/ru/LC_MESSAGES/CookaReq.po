@@ -470,6 +470,21 @@ msgstr "Обновить требование?"
 msgid "Verifies"
 msgstr "Проверяет"
 
+msgid "IDs of requirements this one verifies"
+msgstr "ID требований, которые проверяет это требование"
+
+msgid "IDs of related requirements"
+msgstr "ID связанных требований"
+
+msgid "IDs of source requirements"
+msgstr "ID исходных требований"
+
+msgid "Requirement ID"
+msgstr "ID требования"
+
+msgid "ID"
+msgstr "ID"
+
 msgid "check only LLM"
 msgstr "проверить только LLM"
 

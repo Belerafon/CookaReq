@@ -25,6 +25,7 @@ set_confirm(auto_confirm)
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Construct argument parser for CLI commands."""
     parser = argparse.ArgumentParser(description=_("CookaReq CLI"))
     parser.add_argument(
         "--settings",

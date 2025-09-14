@@ -166,7 +166,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
         if not labels:
-            self.list.SetStringItem(index, col, "")
+            self.list.SetItem(index, col, "")
             return
         key = tuple(labels)
         img_id = self._label_images.get(key)
@@ -175,7 +175,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
             img_id = self._image_list.Add(bmp)
             self._label_images[key] = img_id
-        self.list.SetStringItem(index, col, "")
+        self.list.SetItem(index, col, "")
         if hasattr(self.list, "SetItemColumnImage"):
             try:
                 self.list.SetItemColumnImage(index, col, img_id)
@@ -191,7 +191,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             except Exception:
                 pass
         else:  # pragma: no cover - stub fallback
-            self.list.SetStringItem(index, col, ", ".join(labels))
+            self.list.SetItem(index, col, ", ".join(labels))
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""
@@ -426,7 +426,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                             suspect_row = True
                         texts.append(txt)
                     value = ", ".join(texts)
-                    self.list.SetStringItem(index, col, value)
+                    self.list.SetItem(index, col, value)
                     continue
                 if field in {"verifies", "relates"}:
                     links = getattr(getattr(req, "links", None), field, [])
@@ -438,7 +438,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                             suspect_row = True
                         texts.append(txt)
                     value = ", ".join(texts)
-                    self.list.SetStringItem(index, col, value)
+                    self.list.SetItem(index, col, value)
                     continue
                 if field == "parent":
                     link = getattr(req, "parent", None)
@@ -448,15 +448,15 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                         if getattr(link, "suspect", False):
                             value = f"!{value}"
                             suspect_row = True
-                    self.list.SetStringItem(index, col, value)
+                    self.list.SetItem(index, col, value)
                     continue
                 if field == "derived_count":
                     count = len(self.derived_map.get(req.id, []))
-                    self.list.SetStringItem(index, col, str(count))
+                    self.list.SetItem(index, col, str(count))
                     continue
                 if field == "attachments":
                     value = ", ".join(getattr(a, "path", "") for a in getattr(req, "attachments", []))
-                    self.list.SetStringItem(index, col, value)
+                    self.list.SetItem(index, col, value)
                     continue
                 value = getattr(req, field, "")
                 if isinstance(value, Enum):
@@ -464,7 +464,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if field == "labels" and isinstance(value, list):
                     self._set_label_image(index, col, value)
                     continue
-                self.list.SetStringItem(index, col, str(value))
+                self.list.SetItem(index, col, str(value))
             if suspect_row and hasattr(self.list, "SetItemTextColour"):
                 try:
                     colour = getattr(wx, "RED", None) or wx.Colour(255, 0, 0)
@@ -618,4 +618,4 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             setattr(req, field, value)
             self.model.update(req)
             display = value.value if isinstance(value, Enum) else value
-            self.list.SetStringItem(idx, column, str(display))
+            self.list.SetItem(idx, column, str(display))

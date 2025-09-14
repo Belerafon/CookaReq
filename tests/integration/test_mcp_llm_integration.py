@@ -8,6 +8,9 @@ from app.log import logger
 from app.agent import LocalAgent
 from app.mcp.server import JsonlHandler, app as mcp_app
 from tests.llm_utils import make_openai_mock, settings_with_mcp
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 def test_create_and_delete_requirement_via_llm(tmp_path: Path, monkeypatch, mcp_server) -> None:

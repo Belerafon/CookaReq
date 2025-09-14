@@ -4,6 +4,9 @@ from app.core.labels import Label, add_label, get_label, update_label, delete_la
 from app.core import label_store
 from app.core.label_repository import FileLabelRepository
 from pathlib import Path
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 def test_label_crud_operations(tmp_path: Path) -> None:

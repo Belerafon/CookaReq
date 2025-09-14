@@ -7,6 +7,9 @@ from pathlib import Path
 import app.telemetry as telemetry
 from app.log import JsonlHandler, logger
 from app.telemetry import REDACTED, log_event, sanitize
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 def test_sanitize_redacts_sensitive_keys() -> None:

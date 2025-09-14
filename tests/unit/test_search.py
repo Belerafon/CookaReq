@@ -16,6 +16,9 @@ from app.core.search import (
     search_text,
 )
 from app.core.requirements import filter_by_status
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 def sample_requirements():

@@ -13,6 +13,8 @@ from tests.llm_utils import make_openai_mock, settings_with_llm
 from app.settings import LLMSettings
 from types import SimpleNamespace
 
+pytestmark = pytest.mark.integration
+
 
 def test_missing_api_key_ignores_env(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "dummy")

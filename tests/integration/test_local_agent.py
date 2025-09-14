@@ -7,6 +7,8 @@ from app.agent.local_agent import LocalAgent
 from app.settings import AppSettings
 from app.mcp.utils import ErrorCode
 
+pytestmark = pytest.mark.integration
+
 
 class FailingLLM:
     def check_llm(self):

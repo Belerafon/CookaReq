@@ -2,6 +2,9 @@
 
 import threading
 from app import i18n
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 def test_flush_missing_writes_unique_msgids(tmp_path):

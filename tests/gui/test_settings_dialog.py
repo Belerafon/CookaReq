@@ -2,6 +2,8 @@
 
 import pytest
 
+pytestmark = [pytest.mark.gui, pytest.mark.integration]
+
 
 def test_available_translations_contains_locales():
     wx = pytest.importorskip("wx")

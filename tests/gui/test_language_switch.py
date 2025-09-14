@@ -4,6 +4,8 @@ import importlib
 
 import pytest
 
+pytestmark = pytest.mark.gui
+
 
 def test_switch_to_russian_updates_ui(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")

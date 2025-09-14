@@ -6,6 +6,8 @@ from app.i18n import _, install
 from app.ui import locale
 from app.core import model
 
+pytestmark = pytest.mark.unit
+
 
 def test_round_trip():
     install("CookaReq", "app/locale", ["en"])

@@ -13,6 +13,8 @@ from app.mcp.tools_write import (
 from app.mcp.utils import ErrorCode
 from app.core.store import load, filename_for
 
+pytestmark = pytest.mark.unit
+
 
 def _base_req(req_id: int) -> dict:
     return {

@@ -6,6 +6,8 @@ import pytest
 from app.core.store import load_index
 from app.core.validate import ValidationError, validate
 
+pytestmark = pytest.mark.unit
+
 
 def make_valid() -> dict:
     return {

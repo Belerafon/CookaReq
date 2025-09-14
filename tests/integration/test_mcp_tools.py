@@ -5,6 +5,9 @@ from pathlib import Path
 from app.core import store
 from app.mcp.tools_read import list_requirements, get_requirement, search_requirements
 from app.mcp.utils import ErrorCode
+import pytest
+
+pytestmark = pytest.mark.integration
 
 
 def _sample(req_id: int, title: str, status: str, labels: list[str]) -> dict:

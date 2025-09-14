@@ -11,6 +11,8 @@ from tests.llm_utils import make_openai_mock, settings_with_llm
 import app.ui.main_frame as main_frame
 import app.ui.command_dialog as cmd
 
+pytestmark = [pytest.mark.gui, pytest.mark.integration]
+
 def test_main_frame_creates_requirement_via_llm(tmp_path: Path, monkeypatch, wx_app, mcp_server) -> None:
     wx = pytest.importorskip("wx")
     port = mcp_server

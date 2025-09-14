@@ -11,6 +11,8 @@ from app.core.model import (
     DerivationLink,
 )
 
+pytestmark = pytest.mark.gui
+
 
 def _req(id: int, title: str, **kwargs) -> Requirement:
     base = dict(

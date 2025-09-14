@@ -6,6 +6,9 @@ import importlib
 
 from app.core.model import Requirement, RequirementType, Status, Priority, Verification
 from app.core.labels import Label
+import pytest
+
+pytestmark = pytest.mark.gui
 
 
 def _build_wx_stub():

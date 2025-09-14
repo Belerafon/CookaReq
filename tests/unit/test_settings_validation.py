@@ -7,6 +7,8 @@ import pytest
 
 from app.settings import load_app_settings
 
+pytestmark = pytest.mark.unit
+
 
 def test_invalid_settings_raises(tmp_path):
     file = tmp_path / "settings.json"

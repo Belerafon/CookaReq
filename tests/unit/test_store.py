@@ -24,6 +24,8 @@ from app.core.store import (
     _scan_ids,
 )
 
+pytestmark = pytest.mark.unit
+
 
 def sample(req_id: int = 1) -> dict:
     return {

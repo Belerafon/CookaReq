@@ -23,7 +23,7 @@ def test_item_add_and_move(tmp_path, capsys):
         prefix="SYS",
         title="Login",
         text="User shall login",
-        tags=None,
+        labels=None,
     )
     commands.cmd_item_add(add_args, repo)
     rid = capsys.readouterr().out.strip()

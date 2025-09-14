@@ -26,6 +26,7 @@ from app.core.doc_store import (
     rid_for,
     save_document,
     save_item,
+    collect_labels,
 )
 from app.core.repository import RequirementRepository
 from app.i18n import _
@@ -217,13 +218,29 @@ def add_doc_arguments(p: argparse.ArgumentParser) -> None:
 def cmd_item_add(args: argparse.Namespace, _repo: RequirementRepository) -> None:
     """Create a new requirement item under a document."""
 
-    doc_dir = Path(args.directory) / args.prefix
-    doc = load_document(doc_dir)
-    item_id = next_item_id(doc_dir, doc)
-    labels = []
+    docs = load_documents(args.directory)
+    doc = docs.get(args.prefix)
+    if doc is None:
+        sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=args.prefix))
+        return
+    allowed, freeform = collect_labels(args.prefix, docs)
+    labels: list[str] = []
     if args.tags:
         labels = [t.strip() for t in args.tags.split(",") if t.strip()]
-    data = {"id": item_id, "title": args.title, "text": args.text, "labels": labels, "links": []}
+        if not freeform:
+            unknown = [lbl for lbl in labels if lbl not in allowed]
+            if unknown:
+                sys.stdout.write(_("unknown label: {name}\n").format(name=unknown[0]))
+                return
+    doc_dir = Path(args.directory) / args.prefix
+    item_id = next_item_id(doc_dir, doc)
+    data = {
+        "id": item_id,
+        "title": args.title,
+        "text": args.text,
+        "labels": labels,
+        "links": [],
+    }
     save_item(doc_dir, doc, data)
     sys.stdout.write(f"{rid_for(doc, item_id)}\n")
 

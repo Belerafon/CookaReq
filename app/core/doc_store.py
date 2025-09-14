@@ -115,6 +115,26 @@ def is_ancestor(
     return False
 
 
+def collect_labels(prefix: str, docs: Mapping[str, Document]) -> tuple[set[str], bool]:
+    """Return allowed label keys and freeform flag for ``prefix``.
+
+    The result aggregates label definitions from ``prefix`` and all its
+    ancestors, with ``allow_freeform`` set when any document in the chain
+    permits free-form labels.
+    """
+
+    allowed: set[str] = set()
+    allow_freeform = False
+    current = docs.get(prefix)
+    while current:
+        allowed.update(ld.key for ld in current.labels.defs)
+        allow_freeform = allow_freeform or current.labels.allow_freeform
+        if not current.parent:
+            break
+        current = docs.get(current.parent)
+    return allowed, allow_freeform
+
+
 def rid_for(doc: Document, item_id: int) -> str:
     """Return requirement identifier for ``item_id`` within ``doc``."""
 

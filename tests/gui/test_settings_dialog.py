@@ -260,10 +260,13 @@ def test_settings_help_buttons(monkeypatch, wx_app):
         open_last=False,
         remember_sort=False,
         language="en",
-        api_base="",
+        base_url="",
         model="",
         api_key="",
-        timeout=10,
+        max_retries=3,
+        max_output_tokens=0,
+        timeout_minutes=10,
+        stream=False,
         host="localhost",
         port=8000,
         base_path="/tmp",
@@ -273,11 +276,11 @@ def test_settings_help_buttons(monkeypatch, wx_app):
 
     base_btn = next(
         item.GetWindow()
-        for item in dlg._api_base.GetContainingSizer().GetChildren()
+        for item in dlg._base_url.GetContainingSizer().GetChildren()
         if isinstance(item.GetWindow(), wx.Button)
     )
     base_btn.GetEventHandler().ProcessEvent(wx.CommandEvent(wx.EVT_BUTTON.typeId))
-    assert shown[-1] == LLM_HELP["api_base"]
+    assert shown[-1] == LLM_HELP["base_url"]
 
     host_btn = next(
         item.GetWindow()

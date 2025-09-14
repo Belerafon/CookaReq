@@ -12,7 +12,7 @@ from ..mcp.controller import MCPController, MCPStatus
 from ..settings import LLMSettings, MCPSettings
 
 LLM_HELP: dict[str, str] = {
-    "api_base": _(
+    "base_url": _(
         "Базовый URL LLM API. Пример: https://api.openai.com/v1\n"
         "Обязательное поле; определяет, куда отправляются запросы."
     ),
@@ -24,9 +24,9 @@ LLM_HELP: dict[str, str] = {
         "Ключ доступа к LLM. Пример: sk-XXXX\n"
         "Обязателен, если сервис требует авторизации."
     ),
-    "timeout": _(
-        "Тайм-аут HTTP-запроса в секундах. Пример: 30\n"
-        "Необязательное поле; по умолчанию 60."
+    "timeout_minutes": _(
+        "Тайм-аут HTTP-запроса в минутах. Пример: 1\n"
+        "Необязательное поле; по умолчанию 60 секунд."
     ),
 }
 
@@ -140,8 +140,8 @@ class SettingsDialog(wx.Dialog):
         base_sz = wx.BoxSizer(wx.HORIZONTAL)
 
         base_sz.Add(wx.StaticText(llm, label=_("API base")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-        base_sz.Add(self._api_base, 1, wx.ALIGN_CENTER_VERTICAL)
-        base_sz.Add(make_help_button(llm, LLM_HELP["api_base"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        base_sz.Add(self._base_url, 1, wx.ALIGN_CENTER_VERTICAL)
+        base_sz.Add(make_help_button(llm, LLM_HELP["base_url"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         llm_sizer.Add(base_sz, 0, wx.ALL | wx.EXPAND, 5)
         model_sz = wx.BoxSizer(wx.HORIZONTAL)
         model_sz.Add(wx.StaticText(llm, label=_("Model")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
@@ -164,7 +164,7 @@ class SettingsDialog(wx.Dialog):
         timeout_sz = wx.BoxSizer(wx.HORIZONTAL)
         timeout_sz.Add(wx.StaticText(llm, label=_("Timeout (min)")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         timeout_sz.Add(self._timeout, 1, wx.ALIGN_CENTER_VERTICAL)
-        timeout_sz.Add(make_help_button(llm, LLM_HELP["timeout"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        timeout_sz.Add(make_help_button(llm, LLM_HELP["timeout_minutes"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         llm_sizer.Add(timeout_sz, 0, wx.ALL | wx.EXPAND, 5)
         stream_sz = wx.BoxSizer(wx.HORIZONTAL)
         stream_sz.Add(self._stream, 0, wx.ALIGN_CENTER_VERTICAL)

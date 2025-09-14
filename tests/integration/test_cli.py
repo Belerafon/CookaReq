@@ -236,7 +236,7 @@ def test_cli_edit_invalid_data(tmp_path, capsys):
 def test_cli_module_entrypoint(tmp_path):
     data = sample()
     save(tmp_path, data)
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     proc = subprocess.run(
         [sys.executable, "-m", "app.cli", "list", str(tmp_path)],
         capture_output=True,

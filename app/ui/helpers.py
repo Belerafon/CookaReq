@@ -32,6 +32,14 @@ class HelpStaticBox(wx.StaticBoxSizer):
         self._btn.Bind(wx.EVT_BUTTON, lambda _evt: on_help(help_text))
         self._has_header = False
 
+    def _wrap_first(self, item: wx.Window | wx.Sizer, flag: int) -> wx.Sizer:
+        """Wrap the first item with the help button row."""
+        self._has_header = True
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        row.Add(item, 1, flag & ~wx.ALL, 0)
+        row.Add(self._btn, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, self._border)
+        return row
+
     def Add(
         self,
         item: wx.Window | wx.Sizer,
@@ -47,9 +55,39 @@ class HelpStaticBox(wx.StaticBoxSizer):
         unchanged.
         """
         if not self._has_header:
-            self._has_header = True
-            row = wx.BoxSizer(wx.HORIZONTAL)
-            row.Add(item, 1, flag & ~wx.ALL, 0)
-            row.Add(self._btn, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, self._border)
+            row = self._wrap_first(item, flag)
             return super().Add(row, proportion, flag, border, userData)
         return super().Add(item, proportion, flag, border, userData)
+
+    def Prepend(
+        self,
+        item: wx.Window | wx.Sizer,
+        proportion: int = 0,
+        flag: int = 0,
+        border: int = 0,
+        userData: object | None = None,
+    ) -> wx.SizerItem:
+        """Prepend an item, keeping the help button on the first row."""
+        if not self._has_header:
+            row = self._wrap_first(item, flag)
+            return super().Prepend(row, proportion, flag, border, userData)
+        return super().Insert(1, item, proportion, flag, border, userData)
+
+    def Insert(
+        self,
+        index: int,
+        item: wx.Window | wx.Sizer,
+        proportion: int = 0,
+        flag: int = 0,
+        border: int = 0,
+        userData: object | None = None,
+    ) -> wx.SizerItem:
+        """Insert an item at the given position.
+
+        Indexing is performed as if the help row did not exist, so callers can
+        treat this sizer like a regular ``StaticBoxSizer``.
+        """
+        if not self._has_header:
+            row = self._wrap_first(item, flag)
+            return super().Insert(index, row, proportion, flag, border, userData)
+        return super().Insert(index + 1, item, proportion, flag, border, userData)

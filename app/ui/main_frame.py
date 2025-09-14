@@ -170,7 +170,7 @@ class MainFrame(wx.Frame):
 
         return self.labels_controller.labels if self.labels_controller else []
 
-    def on_open_folder(self, event: wx.Event) -> None:
+    def on_open_folder(self, _event: wx.Event) -> None:
         """Handle "Open Folder" menu action."""
 
         dlg = wx.DirDialog(self, _("Select requirements folder"))
@@ -185,7 +185,7 @@ class MainFrame(wx.Frame):
         if path:
             self._load_directory(path)
 
-    def on_open_settings(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def on_open_settings(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         """Display settings dialog and apply changes."""
 
         dlg = SettingsDialog(
@@ -258,7 +258,7 @@ class MainFrame(wx.Frame):
             self._apply_language()
         dlg.Destroy()
 
-    def on_run_command(self, event: wx.Event) -> None:
+    def on_run_command(self, _event: wx.Event) -> None:
         """Invoke agent command dialog."""
 
         settings = AppSettings(llm=self.llm_settings, mcp=self.mcp_settings)
@@ -444,7 +444,7 @@ class MainFrame(wx.Frame):
         self.panel.load_column_order(self.config)
         self.config.set_columns(self.selected_fields)
 
-    def on_toggle_log_console(self, event: wx.CommandEvent) -> None:
+    def on_toggle_log_console(self, _event: wx.CommandEvent) -> None:
         """Toggle visibility of log console panel."""
 
         if self.navigation.log_menu_item.IsChecked():
@@ -488,7 +488,7 @@ class MainFrame(wx.Frame):
         self.config.set_sort_settings(column, ascending)
 
     # context menu actions -------------------------------------------
-    def on_new_requirement(self, event: wx.Event) -> None:
+    def on_new_requirement(self, _event: wx.Event) -> None:
         """Create and persist a new requirement."""
 
         if not self.req_controller:

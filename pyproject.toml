@@ -41,11 +41,15 @@ select = [
     "W",
     "C4",
     "A",
+    "ARG",
     "SIM",
     "RUF",
 ]
 
 ignore = ["RUF001", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = ["ARG001", "ARG002", "ARG003", "ARG004", "ARG005"]
 
 [build-system]
 requires = ["setuptools", "wheel"]

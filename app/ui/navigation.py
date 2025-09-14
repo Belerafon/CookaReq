@@ -72,7 +72,7 @@ class Navigation:
         self.frame.Bind(wx.EVT_MENU, self.on_new_requirement, new_item)
         self.frame.Bind(wx.EVT_MENU, self.on_open_settings, settings_item)
         self.frame.Bind(wx.EVT_MENU, self.on_manage_labels, labels_item)
-        self.frame.Bind(wx.EVT_MENU, lambda evt: self.frame.Close(), exit_item)
+        self.frame.Bind(wx.EVT_MENU, lambda _evt: self.frame.Close(), exit_item)
         self._rebuild_recent_menu()
         self.manage_labels_id = labels_item.GetId()
         menu_bar.Append(file_menu, _("&File"))

@@ -13,10 +13,21 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "polib", "pydocstyle"]
+dev = ["pytest", "polib", "pydocstyle", "ruff"]
 
 [tool.pydocstyle]
 select = ["D100", "D101", "D102", "D103"]
+
+[tool.ruff]
+exclude = [
+    "build",
+    "dist",
+    ".venv",
+    "**/migrations/*",
+]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
 
 [build-system]
 requires = ["setuptools", "wheel"]

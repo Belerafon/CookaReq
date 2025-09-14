@@ -86,10 +86,22 @@ Install the package along with development dependencies:
 pip install .[dev]
 ```
 
+If Ruff is missing, install it separately:
+
+```bash
+python3 -m pip install ruff
+```
+
 Check that every module has a docstring:
 
 ```bash
 pydocstyle app tests
+```
+
+Run Ruff to catch basic errors:
+
+```bash
+ruff check app tests
 ```
 
 ## License

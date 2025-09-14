@@ -576,7 +576,7 @@ def test_apply_status_filter(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
 
-def test_labels_column_stores_labels(monkeypatch):
+def test_labels_column_uses_imagelist(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -596,9 +596,9 @@ def test_labels_column_stores_labels(monkeypatch):
         _req(1, "A", labels=["ui", "backend"]),
     ])
     labels_col = panel.columns.index("labels") + 1
-    # labels рендерятся обычным текстом, т.к. цветные иконки
-    # приводили к отступам в первой колонке на Windows (см. list_panel.py)
-    assert panel.list._cells[(0, labels_col)] == "ui, backend"
+    # В колонке labels должен появиться image-id, а колонка Title остаётся без картинки
+    assert panel.list._col_images[(0, labels_col)] >= 0
+    assert panel.list._item_images[0] == -1
 
 
 def test_sort_by_labels(monkeypatch):

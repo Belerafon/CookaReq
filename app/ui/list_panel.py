@@ -11,7 +11,7 @@ from typing import Callable, List, Sequence, TYPE_CHECKING
 from enum import Enum
 
 from ..core.model import Priority, RequirementType, Status, Verification, Requirement
-from ..core.labels import Label
+from ..core.labels import Label, _color_from_name
 from .requirement_model import RequirementModel
 from .filter_dialog import FilterDialog
 from . import locale
@@ -61,25 +61,17 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         btn_row.Add(self.reset_btn, 0, right, 5)
         btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
+        if hasattr(self.list, "SetExtraStyle"):
+            extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
+            if extra:
+                try:
+                    self.list.SetExtraStyle(self.list.GetExtraStyle() | extra)
+                except Exception:  # pragma: no cover - backend quirks
+                    pass
         self._labels: list[Label] = []
         self.current_filters: dict = {}
-        # NOTE: ранее в этой панели пытались отображать метки цветными
-        # иконками через wx.ImageList. На Windows wx.ListCtrl добавляет
-        # изображение с индексом 0 в первую колонку, даже если оно задано
-        # только для подколонки. Это приводило к пустому отступу в столбце
-        # «Название», а попытки сбрасывать изображение через SetItemImage/
-        # SetItemColumnImage давали непредсказуемые результаты на разных
-        # платформах. До нахождения устойчивого решения метки выводятся
-        # обычным текстом, а код работы с ImageList удалён.
-        # Проблемы, с которыми столкнулись:
-        #   * Windows самопроизвольно резервирует место под иконку
-        #     в первой колонке;
-        #   * размеры битмапов в ImageList должны совпадать, иначе
-        #     изображения тихо подменяются;
-        #   * поведение SetItem/SetItemColumnImage различается между
-        #     платформами и даже версиями wx;
-        #   * тесты в headless-окружении требуют сложных заглушек wx.
-        # В будущем возможно возвращение цветных меток через иной подход.
+        self._image_list: wx.ImageList | None = None
+        self._label_images: dict[tuple[str, ...], int] = {}
         ColumnSorterMixin.__init__(self, 1)
         self.columns: List[str] = []
         self._on_clone = on_clone
@@ -124,11 +116,77 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if on_derive is not None:
             self._on_derive = on_derive
 
-    # Ранее тут находилась сложная логика рендеринга меток в виде цветных
-    # битмапов. После выявленных проблем (см. комментарий выше) оставляем
-    # только текстовое представление меток.
-    def _set_label_text(self, index: int, col: int, labels: list[str]) -> None:
-        self.list.SetItem(index, col, ", ".join(labels))
+    def _label_color(self, name: str) -> str:
+        for lbl in self._labels:
+            if lbl.name == name:
+                return lbl.color
+        return _color_from_name(name)
+
+    def _ensure_image_list_size(self, width: int, height: int) -> None:
+        if self._image_list is None:
+            self._image_list = wx.ImageList(width or 1, height or 1)
+            self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
+            return
+        cur_w, cur_h = self._image_list.GetSize()
+        if width <= cur_w and height <= cur_h:
+            return
+        new_list = wx.ImageList(max(width, cur_w), max(height, cur_h))
+        count = self._image_list.GetImageCount()
+        for idx in range(count):
+            bmp = self._image_list.GetBitmap(idx)
+            new_list.Add(bmp)
+        self._image_list = new_list
+        self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
+
+    def _create_label_bitmap(self, names: list[str]) -> wx.Bitmap:
+        padding_x, padding_y, gap = 4, 2, 2
+        font = self.list.GetFont()
+        dc = wx.MemoryDC()
+        dc.SelectObject(wx.Bitmap(1, 1))
+        dc.SetFont(font)
+        widths: list[int] = []
+        height = 0
+        for name in names:
+            w, h = dc.GetTextExtent(name)
+            widths.append(w)
+            height = max(height, h)
+        height += padding_y * 2
+        total = sum(w + padding_x * 2 for w in widths) + gap * (len(names) - 1)
+        bmp = wx.Bitmap(total or 1, height or 1)
+        dc.SelectObject(bmp)
+        dc.SetBackground(wx.Brush(self.list.GetBackgroundColour()))
+        dc.Clear()
+        x = 0
+        for name, w in zip(names, widths):
+            colour = wx.Colour(self._label_color(name))
+            dc.SetBrush(wx.Brush(colour))
+            dc.SetPen(wx.Pen(colour))
+            box_w = w + padding_x * 2
+            dc.DrawRectangle(x, 0, box_w, height)
+            dc.SetTextForeground(wx.BLACK)
+            dc.DrawText(name, x + padding_x, padding_y)
+            x += box_w + gap
+        dc.SelectObject(wx.NullBitmap)
+        return bmp
+
+    def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
+        if not labels:
+            self.list.SetItem(index, col, "")
+            return
+        key = tuple(labels)
+        img_id = self._label_images.get(key)
+        if img_id is None:
+            bmp = self._create_label_bitmap(labels)
+            self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
+            img_id = self._image_list.Add(bmp)
+            self._label_images[key] = img_id
+        self.list.SetItem(index, col, "")
+        self.list.SetItemColumnImage(index, col, img_id)
+        if hasattr(self.list, "SetItemImage"):
+            try:
+                self.list.SetItemImage(index, -1)
+            except Exception:
+                pass
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields."""
@@ -411,7 +469,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
                 if field == "labels" and isinstance(value, list):
-                    self._set_label_text(index, col, value)
+                    self._set_label_image(index, col, value)
                     continue
                 self.list.SetItem(index, col, str(value))
             if suspect_row and hasattr(self.list, "SetItemTextColour"):

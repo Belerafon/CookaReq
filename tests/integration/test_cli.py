@@ -11,6 +11,7 @@ import pytest
 
 from app.cli.main import main
 from app.core.store import save
+from app.i18n import _
 from app.settings import AppSettings
 
 pytestmark = pytest.mark.integration
@@ -282,24 +283,28 @@ def test_cli_check_mcp_only(tmp_path, monkeypatch, capsys):
     assert "llm" not in captured
 
 
-def test_cli_add_missing_file(tmp_path):
+def test_cli_add_missing_file(tmp_path, capsys):
     req_dir = tmp_path / "reqs"
     req_dir.mkdir()
     missing = req_dir / "missing.json"
-    with pytest.raises(FileNotFoundError) as exc:
-        run_cli(["add", str(req_dir), str(missing)])
-    assert "No such file or directory" in str(exc.value)
+    run_cli(["add", str(req_dir), str(missing)])
+    captured = capsys.readouterr().out
+    assert _("File not found: {file}").format(file=str(missing)) in captured
+    assert list(req_dir.iterdir()) == []
 
 
-def test_cli_edit_missing_file(tmp_path):
+def test_cli_edit_missing_file(tmp_path, capsys):
     req_dir = tmp_path / "reqs"
     req_dir.mkdir()
     data = sample()
     save(req_dir, data)
     missing = req_dir / "missing.json"
-    with pytest.raises(FileNotFoundError) as exc:
-        run_cli(["edit", str(req_dir), str(missing)])
-    assert "No such file or directory" in str(exc.value)
+    run_cli(["edit", str(req_dir), str(missing)])
+    captured = capsys.readouterr().out
+    assert _("File not found: {file}").format(file=str(missing)) in captured
+    run_cli(["show", str(req_dir), "1"])
+    loaded = json.loads(capsys.readouterr().out)
+    assert loaded["title"] == data["title"]
 
 
 def test_cli_add_invalid_json(tmp_path, capsys):

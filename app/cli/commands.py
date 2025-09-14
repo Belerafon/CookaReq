@@ -53,6 +53,9 @@ def cmd_add(args: argparse.Namespace, repo: RequirementRepository) -> None:
     try:
         with Path(args.file).open(encoding="utf-8") as fh:
             data = json.load(fh)
+    except FileNotFoundError:
+        sys.stdout.write(_("File not found: {file}\n").format(file=args.file))
+        return
     except json.JSONDecodeError as exc:
         sys.stdout.write(_("Invalid JSON file: {error}\n").format(error=exc))
         return
@@ -77,6 +80,9 @@ def cmd_edit(args: argparse.Namespace, repo: RequirementRepository) -> None:
     try:
         with Path(args.file).open(encoding="utf-8") as fh:
             data = json.load(fh)
+    except FileNotFoundError:
+        sys.stdout.write(_("File not found: {file}\n").format(file=args.file))
+        return
     except json.JSONDecodeError as exc:
         sys.stdout.write(_("Invalid JSON file: {error}\n").format(error=exc))
         return

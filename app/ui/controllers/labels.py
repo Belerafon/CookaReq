@@ -21,6 +21,7 @@ class LabelsController:
         directory: Path,
         repository: LabelRepository | None = None,
     ) -> None:
+        """Initialize controller with storage ``directory`` and model."""
         self.config = config
         self.model = model
         self.directory = directory

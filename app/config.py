@@ -30,6 +30,15 @@ class ConfigManager:
     """Wrapper around :class:`wx.Config` with typed helpers."""
 
     def __init__(self, app_name: str = "CookaReq", path: Path | str | None = None) -> None:
+        """Initialize configuration storage.
+
+        Parameters
+        ----------
+        app_name:
+            Application name for config files.
+        path:
+            Optional explicit path for configuration file.
+        """
         if path is None:
             self._cfg = wx.Config(appName=app_name)
         else:

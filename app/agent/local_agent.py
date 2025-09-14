@@ -23,6 +23,7 @@ class LocalAgent:
         mcp: MCPClient | None = None,
         confirm: Callable[[str], bool] | None = None,
     ) -> None:
+        """Initialize agent with optional settings or prebuilt clients."""
         if settings is not None:
             if confirm is None:
                 confirm = default_confirm

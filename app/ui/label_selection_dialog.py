@@ -18,6 +18,7 @@ class LabelSelectionDialog(wx.Dialog):
     """Dialog allowing to choose labels while displaying their colors."""
 
     def __init__(self, parent: wx.Window | None, labels: list[Label], selected: list[str]):
+        """Initialize dialog listing ``labels`` with ``selected`` prechecked."""
         style = wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
         super().__init__(parent, title=_("Labels"), style=style)
         self._labels = list(labels)

@@ -16,6 +16,7 @@ class JsonlHandler(logging.Handler):
     """Write log records as JSON lines with timestamps."""
 
     def __init__(self, filename: Path | str) -> None:
+        """Create handler writing JSON lines to *filename*."""
         super().__init__(level=logging.INFO)
         self.filename = Path(filename)
 

@@ -13,6 +13,7 @@ class RequirementModel:
     """Maintain requirement data and apply filters/sorting."""
 
     def __init__(self) -> None:
+        """Initialize empty requirement collections."""
         self._all: list[Requirement] = []
         self._visible: list[Requirement] = []
         self._labels: list[str] = []

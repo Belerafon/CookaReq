@@ -33,6 +33,7 @@ class WxLogHandler(logging.Handler):
     """Forward log records to a ``wx.TextCtrl``."""
 
     def __init__(self, target: wx.TextCtrl) -> None:
+        """Initialize handler redirecting log output to ``target``."""
         super().__init__()
         self._target = target
         self.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
@@ -56,6 +57,7 @@ class MainFrame(wx.Frame):
         config: ConfigManager | None = None,
         model: RequirementModel | None = None,
     ) -> None:
+        """Set up main application window and controllers."""
         self._base_title = "CookaReq"
         self.config = config if config is not None else ConfigManager()
         self.model = model if model is not None else RequirementModel()

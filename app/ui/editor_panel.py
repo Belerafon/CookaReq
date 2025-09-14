@@ -36,6 +36,7 @@ class EditorPanel(ScrolledPanel):
         on_save: Callable[[], None] | None = None,
         on_add_derived: Callable[[Requirement], None] | None = None,
     ):
+        """Initialize requirement editor widgets."""
         super().__init__(parent)
         self.fields: dict[str, wx.TextCtrl] = {}
         self.enums: dict[str, wx.Choice] = {}

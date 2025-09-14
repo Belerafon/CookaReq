@@ -38,6 +38,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         on_sort_changed: Callable[[int, bool], None] | None = None,
         on_derive: Callable[[int], None] | None = None,
     ):
+        """Initialize list view and controls for requirements."""
         wx.Panel.__init__(self, parent)
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)

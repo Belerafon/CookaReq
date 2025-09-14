@@ -92,36 +92,7 @@ compilation to binary `.mo` catalogs is required.
 
 ## Development
 
-Install the package along with development dependencies:
-
-```bash
-pip install .[dev]
-```
-
-If Ruff is missing, install it separately:
-
-```bash
-python3 -m pip install ruff
-python3 -m pip install vulture
-```
-
-Check that every module has a docstring:
-
-```bash
-pydocstyle app tests
-```
-
-Run Ruff to catch basic errors:
-
-```bash
-ruff check app tests
-```
-
-Find dead code:
-
-```bash
-vulture app --min-confidence 80
-```
+> **Note**: tests and linters are temporarily disabled during a major refactor.
 
 ## License
 

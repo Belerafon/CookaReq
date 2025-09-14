@@ -25,7 +25,7 @@ from ..core.model import (
 )
 from . import locale
 from .label_selection_dialog import LabelSelectionDialog
-from .helpers import create_help_static_box
+from .helpers import HelpStaticBox
 
 
 class EditorPanel(ScrolledPanel):
@@ -281,9 +281,10 @@ class EditorPanel(ScrolledPanel):
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
 
         # attachments section --------------------------------------------
-        a_box, a_sizer = create_help_static_box(
+        a_sizer = HelpStaticBox(
             self, _("Attachments"), self._help_texts["attachments"], self._show_help
         )
+        a_box = a_sizer.GetStaticBox()
         self.attachments_list = wx.ListCtrl(
             a_box, style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL
         )
@@ -334,9 +335,10 @@ class EditorPanel(ScrolledPanel):
         links_grid.AddGrowableRow(2, 1)
 
         # labels section -------------------------------------------------
-        box, box_sizer = create_help_static_box(
+        box_sizer = HelpStaticBox(
             self, _("Labels"), self._help_texts["labels"], self._show_help
         )
+        box = box_sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.labels_panel = wx.Panel(box)
         self.labels_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
@@ -354,9 +356,10 @@ class EditorPanel(ScrolledPanel):
         self.parent: dict[str, Any] | None = None
 
         # parent section -------------------------------------------------
-        pr_box, pr_sizer = create_help_static_box(
+        pr_sizer = HelpStaticBox(
             self, _("Parent"), self._help_texts["parent"], self._show_help
         )
+        pr_box = pr_sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.parent_id = wx.TextCtrl(pr_box, size=(120, -1))
         row.Add(self.parent_id, 0, wx.RIGHT, 5)
@@ -492,9 +495,10 @@ class EditorPanel(ScrolledPanel):
         id_name: str | None = None,
         list_name: str | None = None,
     ) -> wx.StaticBoxSizer:
-        box, sizer = create_help_static_box(
+        sizer = HelpStaticBox(
             self, label, self._help_texts[help_key], self._show_help
         )
+        box = sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
         id_ctrl = wx.TextCtrl(box)
         row.Add(id_ctrl, 1, wx.EXPAND | wx.RIGHT, 5)

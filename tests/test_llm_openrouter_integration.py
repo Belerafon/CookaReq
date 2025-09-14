@@ -21,6 +21,8 @@ def _load_openrouter_key() -> str | None:
 
 @pytest.mark.real_llm
 def test_openrouter_check_llm(tmp_path):
+    if not os.getenv("COOKAREQ_RUN_REAL_LLM_TESTS"):
+        pytest.skip("Set COOKAREQ_RUN_REAL_LLM_TESTS=1 to enable this test")
     key = _load_openrouter_key()
     if not key:
         pytest.skip("OPEN_ROUTER key not available")

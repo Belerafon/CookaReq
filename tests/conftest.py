@@ -19,6 +19,10 @@ import socket
 def _mock_openrouter(monkeypatch, request):
     """Подменить OpenAI на мок, исключив реальные сетевые вызовы."""
     if request.node.get_closest_marker("real_llm"):
+        if not os.getenv("COOKAREQ_RUN_REAL_LLM_TESTS"):
+            pytest.skip(
+                "Set COOKAREQ_RUN_REAL_LLM_TESTS=1 to run tests hitting real LLM"
+            )
         return
     from tests.llm_utils import make_openai_mock
 

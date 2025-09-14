@@ -500,32 +500,6 @@ def test_search_and_label_filters(monkeypatch):
     assert panel.model.get_visible() == []
 
 
-def test_label_icons_only_in_label_column(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
-    panel.set_columns(["labels", "id"])
-    panel.update_labels_list([Label(name="UI", color="#ff0000")])
-    panel.set_requirements([_req(1, "T", labels=["UI"])])
-
-    labels_col = panel.columns.index("labels") + 1
-    assert panel.list._item_images[0] == -1
-    assert panel.list._col_images[(0, labels_col)] >= 0
-    for col in range(panel.list.GetColumnCount()):
-        if col != labels_col:
-            assert panel.list._col_images.get((0, col), -1) == -1
-
 
 def test_apply_filters(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
@@ -622,29 +596,9 @@ def test_labels_column_stores_labels(monkeypatch):
         _req(1, "A", labels=["ui", "backend"]),
     ])
     labels_col = panel.columns.index("labels") + 1
-    assert panel.list._col_images[(0, labels_col)] >= 0
-
-
-def test_labels_column_uses_colors(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    RequirementModel = importlib.import_module("app.ui.requirement_model").RequirementModel
-    ListPanel = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = ListPanel(frame, model=RequirementModel())
-    panel.update_labels_list([Label("ui", "#123456")])
-    panel.set_columns(["labels"])
-
-    assert panel._label_color("ui") == "#123456"
-    panel.set_requirements([_req(1, "A", labels=["ui"])])
+    # labels рендерятся обычным текстом, т.к. цветные иконки
+    # приводили к отступам в первой колонке на Windows (см. list_panel.py)
+    assert panel.list._cells[(0, labels_col)] == "ui, backend"
 
 
 def test_sort_by_labels(monkeypatch):

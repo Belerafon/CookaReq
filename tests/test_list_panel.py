@@ -155,6 +155,8 @@ def _build_wx_stub():
             return -1, 0, -1
         def SetItemColumnImage(self, index, col, img):
             pass
+        def SetItemImage(self, index, img):
+            pass
         def SetImageList(self, il, which):
             self._imagelist = il
         def GetImageList(self, which):

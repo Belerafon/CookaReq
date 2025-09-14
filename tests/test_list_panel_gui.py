@@ -214,6 +214,15 @@ def test_labels_render_in_correct_column(wx_app):
     panel = list_panel.ListPanel(frame, model=RequirementModel())
     panel.set_columns(["labels"])
     panel.update_labels_list([Label(name="UI", color="#ff0000")])
+    orig = panel.list.SetItemColumnImage
+
+    def buggy_setcolimg(idx, col, img):
+        res = orig(idx, col, img)
+        if col != 0:
+            panel.list.SetItemImage(idx, 0)
+        return res
+
+    panel.list.SetItemColumnImage = buggy_setcolimg
     panel.set_requirements([_req(1, "T", labels=["UI"])])
     wx_app.Yield()
     item_title = panel.list.GetItem(0, 0)

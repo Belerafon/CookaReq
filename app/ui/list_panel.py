@@ -175,9 +175,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
         self.list.SetItem(index, col, "")
         if not labels:
-            # Ensure the title column stays icon-free even when no label image
-            if hasattr(self.list, "SetItemColumnImage"):
-                self.list.SetItemColumnImage(index, 0, -1)
+            if hasattr(self.list, "SetItemImage"):
+                try:
+                    self.list.SetItemImage(index, -1)
+                except Exception:
+                    pass
             return
         key = tuple(labels)
         img_id = self._label_images.get(key)
@@ -186,11 +188,16 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
             img_id = self._image_list.Add(bmp)
             self._label_images[key] = img_id
-        # ``SetItemColumnImage`` on some platforms implicitly assigns ``IMAGE_NONE``
-        # to the main column. Reset it to ``-1`` so "Title" does not reserve
-        # space for an icon.
         self.list.SetItemColumnImage(index, col, img_id)
-        self.list.SetItemColumnImage(index, 0, -1)
+        if hasattr(self.list, "SetItemImage"):
+            try:
+                # Clearing via ``SetItemColumnImage(..., 0, -1)`` proved unreliable
+                # on some platforms (notably Windows) where a subitem image causes
+                # the main column to default to image ``0``. Explicitly reset the
+                # primary image to ``-1`` to avoid unintended icons in "Title".
+                self.list.SetItemImage(index, -1)
+            except Exception:
+                pass
 
     # temporary instrumentation -------------------------------------
     def _debug_probe_images(self, index: int) -> None:

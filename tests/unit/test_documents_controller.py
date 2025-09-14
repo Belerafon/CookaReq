@@ -56,7 +56,10 @@ def test_load_documents_and_items(tmp_path: Path):
     assert "SYS" in docs
     derived = controller.load_items("SYS")
     assert derived == {}
-    assert [r.id for r in model.get_all()] == [1]
+    all_reqs = model.get_all()
+    assert [r.id for r in all_reqs] == [1]
+    assert all_reqs[0].doc_prefix == "SYS"
+    assert all_reqs[0].rid == "SYS001"
     labels, freeform = controller.collect_labels("SYS")
     assert freeform is True
     assert labels and labels[0].name == "ui" and labels[0].color == "#123456"
@@ -74,10 +77,30 @@ def test_next_id_save_and_delete(tmp_path: Path):
     new_id = controller.next_item_id("SYS")
     assert new_id == 1
     req = _req(new_id)
-    controller.add_requirement(req)
+    controller.add_requirement("SYS", req)
     controller.save_requirement("SYS", req)
     path = doc_dir / "items" / "SYS001.json"
     assert path.is_file()
+    assert req.doc_prefix == "SYS"
+    assert req.rid == "SYS001"
 
     controller.delete_requirement("SYS", req.id)
     assert not path.exists()
+
+
+def test_iter_links(tmp_path: Path):
+    sys_doc = Document(prefix="SYS", title="System", digits=3)
+    hlr_doc = Document(prefix="HLR", title="High", digits=3, parent="SYS")
+    sys_dir = tmp_path / "SYS"
+    hlr_dir = tmp_path / "HLR"
+    save_document(sys_dir, sys_doc)
+    save_document(hlr_dir, hlr_doc)
+    save_item(sys_dir, sys_doc, requirement_to_dict(_req(1)))
+    data = requirement_to_dict(_req(1))
+    data["links"] = ["SYS001"]
+    save_item(hlr_dir, hlr_doc, data)
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    links = list(controller.iter_links())
+    assert ("HLR001", "SYS001") in links

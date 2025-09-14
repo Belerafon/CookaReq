@@ -66,3 +66,23 @@ def test_requirement_derivation_conversion():
     roundtrip = requirement_to_dict(req)
     assert roundtrip["derived_from"][0]["source_revision"] == 3
     assert roundtrip["derivation"]["assumptions"] == ["a1", "a2"]
+
+
+def test_requirement_prefix_and_rid():
+    data = {
+        "id": 5,
+        "title": "T",
+        "statement": "S",
+        "type": "requirement",
+        "status": "draft",
+        "owner": "o",
+        "priority": "medium",
+        "source": "s",
+        "verification": "analysis",
+    }
+    req = requirement_from_dict(data, doc_prefix="SYS", rid="SYS005")
+    assert req.doc_prefix == "SYS"
+    assert req.rid == "SYS005"
+    roundtrip = requirement_to_dict(req)
+    assert "doc_prefix" not in roundtrip
+    assert "rid" not in roundtrip

@@ -13,6 +13,7 @@ from ..confirm import confirm
 from ..core.label_repository import FileLabelRepository
 from ..core.labels import Label
 from ..core.model import DerivationLink, Requirement
+from ..core.doc_store import iter_links as doc_iter_links
 from ..core.repository import FileRequirementRepository
 from ..i18n import _
 from ..log import logger
@@ -116,6 +117,7 @@ class MainFrame(wx.Frame):
             on_toggle_column=self.on_toggle_column,
             on_toggle_log_console=self.on_toggle_log_console,
             on_show_derivation_graph=self.on_show_derivation_graph,
+            on_show_trace_matrix=self.on_show_trace_matrix,
             on_new_requirement=self.on_new_requirement,
             on_run_command=self.on_run_command,
         )
@@ -390,16 +392,42 @@ class MainFrame(wx.Frame):
         if not self.current_dir:
             wx.MessageBox(_("Select requirements folder first"), _("No Data"))
             return
+        if self.docs_controller:
+            links = list(self.docs_controller.iter_links())
+        else:
+            links = list(doc_iter_links(self.current_dir))
+        if not links:
+            wx.MessageBox(_("No links found"), _("No Data"))
+            return
         try:
             from .derivation_graph import DerivationGraphFrame
         except Exception as exc:
             wx.MessageBox(str(exc), _("Error"))
             return
-        reqs = self.model.get_all()
-        if not reqs:
-            wx.MessageBox(_("No requirements loaded"), _("No Data"))
+        frame = DerivationGraphFrame(self, links)
+        frame.Show()
+
+    def on_show_trace_matrix(
+        self,
+        _event: wx.Event,
+    ) -> None:  # pragma: no cover - GUI event
+        """Open window displaying requirement trace links."""
+        if not self.current_dir:
+            wx.MessageBox(_("Select requirements folder first"), _("No Data"))
             return
-        frame = DerivationGraphFrame(self, reqs)
+        if self.docs_controller:
+            links = list(self.docs_controller.iter_links())
+        else:
+            links = list(doc_iter_links(self.current_dir))
+        if not links:
+            wx.MessageBox(_("No links found"), _("No Data"))
+            return
+        try:
+            from .trace_matrix import TraceMatrixFrame
+        except Exception as exc:  # pragma: no cover - missing wx
+            wx.MessageBox(str(exc), _("Error"))
+            return
+        frame = TraceMatrixFrame(self, links)
         frame.Show()
 
     def _load_directory(self, path: Path) -> None:
@@ -595,8 +623,9 @@ class MainFrame(wx.Frame):
             self.editor.new_requirement()
             self.editor.fields["id"].SetValue(str(new_id))
             data = self.editor.get_data()
-            self.docs_controller.add_requirement(data)
+            self.docs_controller.add_requirement(self.current_doc_prefix, data)
             self.panel.refresh()
+            self.editor.load(data, path=None, mtime=None)
             self.editor.Show()
             self.splitter.UpdateSize()
             return
@@ -625,7 +654,7 @@ class MainFrame(wx.Frame):
                 modified_at="",
                 revision=1,
             )
-            self.docs_controller.add_requirement(clone)
+            self.docs_controller.add_requirement(self.current_doc_prefix, clone)
             self.panel.refresh()
             self.editor.load(clone, path=None, mtime=None)
             self.editor.Show()
@@ -672,7 +701,7 @@ class MainFrame(wx.Frame):
             return
         clone = self._create_derived_from(source)
         if self.docs_controller and self.current_doc_prefix:
-            self.docs_controller.add_requirement(clone)
+            self.docs_controller.add_requirement(self.current_doc_prefix, clone)
         else:
             self.model.add(clone)
         self.panel.add_derived_link(source.id, clone.id)
@@ -685,7 +714,7 @@ class MainFrame(wx.Frame):
         """Save requirement derived from ``source`` currently in editor."""
         clone = self._create_derived_from(source)
         if self.docs_controller and self.current_doc_prefix:
-            self.docs_controller.add_requirement(clone)
+            self.docs_controller.add_requirement(self.current_doc_prefix, clone)
         else:
             self.model.add(clone)
         self.panel.add_derived_link(source.id, clone.id)

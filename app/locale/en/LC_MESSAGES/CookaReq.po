@@ -682,3 +682,14 @@ msgid ""
 "risk decisions transparent and supports future recalculations."
 msgstr ""
 "risk decisions transparent and supports future recalculations."
+msgid "Show Trace Matrix"
+msgstr "Show Trace Matrix"
+
+msgid "Trace Matrix"
+msgstr "Trace Matrix"
+
+msgid "Child"
+msgstr "Child"
+
+msgid "No links found"
+msgstr "No links found"

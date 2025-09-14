@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Iterable, Tuple
 
 from ...core.doc_store import (
     Document,
+    iter_links as doc_iter_links,
     load_documents,
     list_item_ids,
     load_item,
     save_item,
     item_path,
+    rid_for,
     next_item_id as doc_next_item_id,
 )
 from ...core.model import Requirement, requirement_from_dict, requirement_to_dict
@@ -47,7 +49,8 @@ class DocumentsController:
         derived_map: dict[int, list[int]] = {}
         for item_id in sorted(list_item_ids(directory, doc)):
             data, _mtime = load_item(directory, doc, item_id)
-            req = requirement_from_dict(data)
+            rid = rid_for(doc, item_id)
+            req = requirement_from_dict(data, doc_prefix=doc.prefix, rid=rid)
             items.append(req)
             for link in getattr(req, "derived_from", []):
                 derived_map.setdefault(link.source_id, []).append(req.id)
@@ -85,15 +88,20 @@ class DocumentsController:
         doc = self.documents[prefix]
         return doc_next_item_id(self.root / prefix, doc)
 
-    def add_requirement(self, req: Requirement) -> None:
-        """Add ``req`` to the in-memory model."""
+    def add_requirement(self, prefix: str, req: Requirement) -> None:
+        """Add ``req`` to the in-memory model for document ``prefix``."""
 
+        doc = self.documents[prefix]
+        req.doc_prefix = prefix
+        req.rid = rid_for(doc, req.id)
         self.model.add(req)
 
     def save_requirement(self, prefix: str, req: Requirement) -> Path:
         """Persist ``req`` within document ``prefix`` and return file path."""
 
         doc = self.documents[prefix]
+        req.doc_prefix = prefix
+        req.rid = rid_for(doc, req.id)
         data = requirement_to_dict(req)
         return save_item(self.root / prefix, doc, data)
 
@@ -108,3 +116,9 @@ class DocumentsController:
             path.unlink()
         self.model.delete(req_id)
         return True
+
+    # ------------------------------------------------------------------
+    def iter_links(self) -> Iterable[Tuple[str, str]]:
+        """Yield ``(child_rid, parent_rid)`` pairs for requirements."""
+
+        return doc_iter_links(self.root)

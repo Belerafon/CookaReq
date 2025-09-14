@@ -109,9 +109,14 @@ class Requirement:
     derived_from: list[RequirementLink] = field(default_factory=list)
     links: Links = field(default_factory=Links)
     derivation: DerivationInfo | None = None
+    # document-related metadata
+    doc_prefix: str = ""
+    rid: str = ""
 
 
-def requirement_from_dict(data: dict[str, Any]) -> Requirement:
+def requirement_from_dict(
+    data: dict[str, Any], *, doc_prefix: str = "", rid: str = ""
+) -> Requirement:
     """Create :class:`Requirement` instance from a plain ``dict``.
 
     Nested ``attachments`` and derivation structures are converted
@@ -162,12 +167,17 @@ def requirement_from_dict(data: dict[str, Any]) -> Requirement:
         derived_from=derived_from,
         links=links,
         derivation=derivation,
+        doc_prefix=doc_prefix,
+        rid=rid,
     )
 
 
 def requirement_to_dict(req: Requirement) -> dict[str, Any]:
     """Convert ``req`` into a plain ``dict`` suitable for JSON storage."""
     data = asdict(req)
+    # ``doc_prefix`` and ``rid`` are derived from file location; omit
+    data.pop("doc_prefix", None)
+    data.pop("rid", None)
     if (
         "links" in data
         and not data["links"]["verifies"]

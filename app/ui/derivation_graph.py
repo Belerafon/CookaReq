@@ -1,9 +1,4 @@
-"""Display derivation graph for requirements using ``networkx`` and Graphviz.
-
-The graph shows requirement nodes (prefixed with ``SR``) and ``derived-from``
-links. It relies on ``networkx`` and the Graphviz ``dot`` tool. If these
-packages are missing, a friendly message is shown instead of the graph.
-"""
+"""Display derivation graph for requirement links."""
 
 from __future__ import annotations
 
@@ -12,15 +7,34 @@ from collections.abc import Sequence
 
 import wx
 
-from ..core.model import Requirement
+from ..core.doc_store import parse_rid
+from ..core.labels import _color_from_name
 from ..i18n import _
+
+
+def build_graph_from_links(links: Sequence[tuple[str, str]]):
+    """Return ``networkx`` graph for ``links`` with colored nodes."""
+    import networkx as nx
+
+    graph = nx.DiGraph()
+    for child, parent in links:
+        for rid in (child, parent):
+            if rid not in graph:
+                prefix, _ = parse_rid(rid)
+                graph.add_node(
+                    rid,
+                    style="filled",
+                    fillcolor=_color_from_name(prefix),
+                )
+        graph.add_edge(child, parent, label="derived-from")
+    return graph
 
 
 class DerivationGraphFrame(wx.Frame):
     """Render a graph of requirement derivations."""
 
-    def __init__(self, parent: wx.Window | None, requirements: Sequence[Requirement]):
-        """Create frame displaying derivation graph for ``requirements``."""
+    def __init__(self, parent: wx.Window | None, links: Sequence[tuple[str, str]]):
+        """Create frame displaying derivation graph for ``links``."""
         super().__init__(parent=parent, title=_("Derivation Graph"))
         self.SetSize((600, 400))
         self._panel = wx.ScrolledWindow(self)
@@ -28,16 +42,15 @@ class DerivationGraphFrame(wx.Frame):
         self._panel.SetSizer(sizer)
         self._bitmap = wx.StaticBitmap(self._panel)
         sizer.Add(self._bitmap, 0, wx.ALL, 5)
-        self._build_graph(requirements)
+        self._build_graph(links)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.Add(self._panel, 1, wx.EXPAND)
         self.SetSizer(main_sizer)
 
     # ------------------------------------------------------------------
-    def _build_graph(self, requirements: Sequence[Requirement]) -> None:
+    def _build_graph(self, links: Sequence[tuple[str, str]]) -> None:
         """Generate graph image and place it inside the scrolled window."""
         try:
-            import networkx as nx
             from networkx.drawing.nx_pydot import to_pydot
         except Exception:  # pragma: no cover - optional dependency
             wx.StaticText(
@@ -46,18 +59,7 @@ class DerivationGraphFrame(wx.Frame):
             )
             return
 
-        graph = nx.DiGraph()
-        for req in requirements:
-            node = f"SR{req.id}"
-            graph.add_node(node)
-        for req in requirements:
-            src_node = f"SR{req.id}"
-            for link in req.derived_from:
-                target = f"SR{link.source_id}"
-                if target not in graph:
-                    graph.add_node(target)
-                graph.add_edge(src_node, target, label="derived-from")
-
+        graph = build_graph_from_links(links)
         if graph.number_of_edges() == 0:
             wx.StaticText(self._panel, label=_("No derivation links found."))
             return

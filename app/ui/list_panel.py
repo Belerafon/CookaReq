@@ -403,6 +403,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.list.DeleteAllItems()
         for req in items:
             title = getattr(req, "title", "")
+<<< codex/fix-labels-display-in-requirements-list-grgjfv
             index = self.list.InsertItem(self.list.GetItemCount(), title, -1)
             # Windows ListCtrl may still assign image 0; clear explicitly
             if hasattr(self.list, "SetItemImage"):
@@ -410,6 +411,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetItemImage(index, -1)
                 except Exception:
                     pass
+=====
+            index = self.list.InsertItem(self.list.GetItemCount(), title)
+>>>>> main
             req_id = getattr(req, "id", 0)
             try:
                 self.list.SetItemData(index, int(req_id))

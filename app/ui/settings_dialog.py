@@ -5,10 +5,52 @@ from importlib import resources
 
 import wx
 
+from .helpers import make_help_button
 from ..llm.client import LLMClient
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
 from ..settings import LLMSettings, MCPSettings
+
+LLM_HELP: dict[str, str] = {
+    "api_base": _(
+        "Базовый URL LLM API. Пример: https://api.openai.com/v1\n"
+        "Обязательное поле; определяет, куда отправляются запросы."
+    ),
+    "model": _(
+        "Имя модели LLM. Пример: gpt-4-turbo\n"
+        "Обязательное поле, определяет используемую модель."
+    ),
+    "api_key": _(
+        "Ключ доступа к LLM. Пример: sk-XXXX\n"
+        "Обязателен, если сервис требует авторизации."
+    ),
+    "timeout": _(
+        "Тайм-аут HTTP-запроса в секундах. Пример: 30\n"
+        "Необязательное поле; по умолчанию 60."
+    ),
+}
+
+MCP_HELP: dict[str, str] = {
+    "host": _(
+        "Адрес хоста MCP-сервера. Пример: 127.0.0.1\n"
+        "Обязательное поле; определяет, где запускать сервер."
+    ),
+    "port": _(
+        "Порт MCP-сервера. Пример: 8123\n"
+        "Обязательное поле."
+    ),
+    "base_path": _(
+        "Базовая папка с требованиями. Пример: /tmp/reqs\n"
+        "Обязательное поле; сервер обслуживает файлы из этой директории."
+    ),
+    "require_token": _(
+        "Если включено, сервер требует токен аутентификации."
+    ),
+    "token": _(
+        "Токен доступа для MCP. Пример: secret123\n"
+        "Обязателен, если включено 'Require token'."
+    ),
+}
 
 
 def available_translations() -> list[tuple[str, str]]:
@@ -91,18 +133,22 @@ class SettingsDialog(wx.Dialog):
         base_sz = wx.BoxSizer(wx.HORIZONTAL)
         base_sz.Add(wx.StaticText(llm, label=_("API base")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         base_sz.Add(self._api_base, 1, wx.ALIGN_CENTER_VERTICAL)
+        base_sz.Add(make_help_button(llm, LLM_HELP["api_base"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         llm_sizer.Add(base_sz, 0, wx.ALL | wx.EXPAND, 5)
         model_sz = wx.BoxSizer(wx.HORIZONTAL)
         model_sz.Add(wx.StaticText(llm, label=_("Model")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         model_sz.Add(self._model, 1, wx.ALIGN_CENTER_VERTICAL)
+        model_sz.Add(make_help_button(llm, LLM_HELP["model"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         llm_sizer.Add(model_sz, 0, wx.ALL | wx.EXPAND, 5)
         key_sz = wx.BoxSizer(wx.HORIZONTAL)
         key_sz.Add(wx.StaticText(llm, label=_("API key")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         key_sz.Add(self._api_key, 1, wx.ALIGN_CENTER_VERTICAL)
+        key_sz.Add(make_help_button(llm, LLM_HELP["api_key"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         llm_sizer.Add(key_sz, 0, wx.ALL | wx.EXPAND, 5)
         timeout_sz = wx.BoxSizer(wx.HORIZONTAL)
         timeout_sz.Add(wx.StaticText(llm, label=_("Timeout")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         timeout_sz.Add(self._timeout, 1, wx.ALIGN_CENTER_VERTICAL)
+        timeout_sz.Add(make_help_button(llm, LLM_HELP["timeout"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         llm_sizer.Add(timeout_sz, 0, wx.ALL | wx.EXPAND, 5)
         btn_sz = wx.BoxSizer(wx.HORIZONTAL)
         llm_btn_sz = wx.BoxSizer(wx.VERTICAL)
@@ -148,19 +194,26 @@ class SettingsDialog(wx.Dialog):
         host_sz = wx.BoxSizer(wx.HORIZONTAL)
         host_sz.Add(wx.StaticText(mcp, label=_("Host")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         host_sz.Add(self._host, 1, wx.ALIGN_CENTER_VERTICAL)
+        host_sz.Add(make_help_button(mcp, MCP_HELP["host"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         mcp_sizer.Add(host_sz, 0, wx.ALL | wx.EXPAND, 5)
         port_sz = wx.BoxSizer(wx.HORIZONTAL)
         port_sz.Add(wx.StaticText(mcp, label=_("Port")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         port_sz.Add(self._port, 1, wx.ALIGN_CENTER_VERTICAL)
+        port_sz.Add(make_help_button(mcp, MCP_HELP["port"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         mcp_sizer.Add(port_sz, 0, wx.ALL | wx.EXPAND, 5)
         base_sz = wx.BoxSizer(wx.HORIZONTAL)
         base_sz.Add(wx.StaticText(mcp, label=_("Path")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         base_sz.Add(self._base_path, 1, wx.ALIGN_CENTER_VERTICAL)
+        base_sz.Add(make_help_button(mcp, MCP_HELP["base_path"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         mcp_sizer.Add(base_sz, 0, wx.ALL | wx.EXPAND, 5)
-        mcp_sizer.Add(self._require_token, 0, wx.ALL, 5)
+        token_toggle_sz = wx.BoxSizer(wx.HORIZONTAL)
+        token_toggle_sz.Add(self._require_token, 0, wx.ALIGN_CENTER_VERTICAL)
+        token_toggle_sz.Add(make_help_button(mcp, MCP_HELP["require_token"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        mcp_sizer.Add(token_toggle_sz, 0, wx.ALL, 5)
         token_sz = wx.BoxSizer(wx.HORIZONTAL)
         token_sz.Add(wx.StaticText(mcp, label=_("Token")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         token_sz.Add(self._token, 1, wx.ALIGN_CENTER_VERTICAL)
+        token_sz.Add(make_help_button(mcp, MCP_HELP["token"]), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         mcp_sizer.Add(token_sz, 0, wx.ALL | wx.EXPAND, 5)
         btn_sz = wx.BoxSizer(wx.HORIZONTAL)
         btn_sz.Add(self._start, 0, wx.RIGHT, 5)

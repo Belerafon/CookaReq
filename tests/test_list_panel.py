@@ -194,16 +194,25 @@ def _build_wx_stub():
             return len(self._items)
         def GetColumnCount(self):
             return len(self._cols)
+<<<<< codex/fix-labels-display-in-requirements-list-grgjfv
         def InsertItem(self, index, text, image=-1):
+====
+        def InsertItem(self, index, text):
+>>>>> main
             self._items.insert(index, text)
             self._data.insert(index, 0)
             self._item_images.insert(index, image)
             return index
         InsertStringItem = InsertItem
+<<<<< codex/fix-labels-display-in-requirements-list-grgjfv
         def SetItem(self, index, col, text, image=-1):
             if col == 0:
                 self._items[index] = text
             self._cells[(index, col)] = text
+=====
+        def SetItem(self, index, col, text):
+            pass
+>>>>> main
         SetStringItem = SetItem
         def SetItemData(self, index, data):
             self._data[index] = data

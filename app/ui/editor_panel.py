@@ -25,7 +25,7 @@ from ..core.model import (
 )
 from . import locale
 from .label_selection_dialog import LabelSelectionDialog
-from .helpers import create_help_static_box
+from .helpers import HelpStaticBox, make_help_button, show_help
 
 
 class EditorPanel(ScrolledPanel):
@@ -183,8 +183,7 @@ class EditorPanel(ScrolledPanel):
             ),
             "verifies": _(
                 "Links to requirements that this one verifies or tests. "
-                "Use it to show downward traceability towards implementation or validation artifacts. "
-                "Mark suspect links when changes might invalidate verification."
+                "Use it to show downward traceability towards implementation or validation artifacts."
             ),
             "relates": _(
                 "Associations with requirements touching the same topic. "
@@ -193,8 +192,7 @@ class EditorPanel(ScrolledPanel):
             ),
             "derived_from": _(
                 "Source requirements from which this one was derived. "
-                "Capturing derivation clarifies reasoning and lets teams propagate changes upstream. "
-                "Keep suspect flag to signal when the parent requirement has changed."
+                "Capturing derivation clarifies reasoning and lets teams propagate changes upstream."
             ),
         }
 
@@ -213,7 +211,7 @@ class EditorPanel(ScrolledPanel):
             ("source", True),
         ]:
             label = wx.StaticText(self, label=labels[name])
-            help_btn = self._make_help_button(self._help_texts[name])
+            help_btn = make_help_button(self, self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -234,7 +232,7 @@ class EditorPanel(ScrolledPanel):
         def add_text_field(name: str) -> None:
             container = wx.BoxSizer(wx.VERTICAL)
             label = wx.StaticText(self, label=labels[name])
-            help_btn = self._make_help_button(self._help_texts[name])
+            help_btn = make_help_button(self, self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -250,7 +248,7 @@ class EditorPanel(ScrolledPanel):
             codes = getattr(locale, name.upper()).keys()
             choices = [locale.code_to_label(name, code) for code in codes]
             choice = wx.Choice(self, choices=choices)
-            help_btn = self._make_help_button(self._help_texts[name])
+            help_btn = make_help_button(self, self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(choice, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -281,9 +279,10 @@ class EditorPanel(ScrolledPanel):
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
 
         # attachments section --------------------------------------------
-        a_box, a_sizer = create_help_static_box(
-            self, _("Attachments"), self._help_texts["attachments"], self._show_help
+        a_sizer = HelpStaticBox(
+            self, _("Attachments"), self._help_texts["attachments"], lambda msg: show_help(self, msg)
         )
+        a_box = a_sizer.GetStaticBox()
         self.attachments_list = wx.ListCtrl(
             a_box, style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL
         )
@@ -304,7 +303,7 @@ class EditorPanel(ScrolledPanel):
         container = wx.BoxSizer(wx.VERTICAL)
         row = wx.BoxSizer(wx.HORIZONTAL)
         label = wx.StaticText(self, label=_("Approved at"))
-        help_btn = self._make_help_button(self._help_texts["approved_at"])
+        help_btn = make_help_button(self, self._help_texts["approved_at"])
         row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
         row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         container.Add(row, 0, wx.ALL, 5)
@@ -317,7 +316,7 @@ class EditorPanel(ScrolledPanel):
         container = wx.BoxSizer(wx.VERTICAL)
         row = wx.BoxSizer(wx.HORIZONTAL)
         label = wx.StaticText(self, label=_("Notes"))
-        help_btn = self._make_help_button(self._help_texts["notes"])
+        help_btn = make_help_button(self, self._help_texts["notes"])
         row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
         row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         container.Add(row, 0, wx.ALL, 5)
@@ -334,9 +333,10 @@ class EditorPanel(ScrolledPanel):
         links_grid.AddGrowableRow(2, 1)
 
         # labels section -------------------------------------------------
-        box, box_sizer = create_help_static_box(
-            self, _("Labels"), self._help_texts["labels"], self._show_help
+        box_sizer = HelpStaticBox(
+            self, _("Labels"), self._help_texts["labels"], lambda msg: show_help(self, msg)
         )
+        box = box_sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.labels_panel = wx.Panel(box)
         self.labels_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
@@ -354,9 +354,10 @@ class EditorPanel(ScrolledPanel):
         self.parent: dict[str, Any] | None = None
 
         # parent section -------------------------------------------------
-        pr_box, pr_sizer = create_help_static_box(
-            self, _("Parent"), self._help_texts["parent"], self._show_help
+        pr_sizer = HelpStaticBox(
+            self, _("Parent"), self._help_texts["parent"], lambda msg: show_help(self, msg)
         )
+        pr_box = pr_sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.parent_id = wx.TextCtrl(pr_box, size=(120, -1))
         row.Add(self.parent_id, 0, wx.RIGHT, 5)
@@ -373,19 +374,27 @@ class EditorPanel(ScrolledPanel):
 
         # verifies section ----------------------------------------------
         ver_sizer = self._create_links_section(
-            _("Verifies"), "verifies", help_key="verifies"
+            _("IDs of requirements this one verifies"),
+            "verifies",
+            help_key="verifies",
         )
         links_grid.Add(ver_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # relates section -----------------------------------------------
         rel_sizer = self._create_links_section(
-            _("Relates"), "relates", help_key="relates"
+            _("IDs of related requirements"),
+            "relates",
+            help_key="relates",
         )
         links_grid.Add(rel_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # derived from section -------------------------------------------
         df_sizer = self._create_links_section(
-            _("Derived from"), "derived_from", help_key="derived_from", id_name="derived_id", list_name="derived_list"
+            _("IDs of source requirements"),
+            "derived_from",
+            help_key="derived_from",
+            id_name="derived_id",
+            list_name="derived_list",
         )
         links_grid.Add(df_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
@@ -402,7 +411,7 @@ class EditorPanel(ScrolledPanel):
             ("assumptions", True),
         ]:
             label = wx.StaticText(deriv_box, label=labels[name])
-            help_btn = self._make_help_button(self._help_texts[name])
+            help_btn = make_help_button(self, self._help_texts[name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -492,11 +501,13 @@ class EditorPanel(ScrolledPanel):
         id_name: str | None = None,
         list_name: str | None = None,
     ) -> wx.StaticBoxSizer:
-        box, sizer = create_help_static_box(
-            self, label, self._help_texts[help_key], self._show_help
+        sizer = HelpStaticBox(
+            self, label, self._help_texts[help_key], lambda msg: show_help(self, msg)
         )
+        box = sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
         id_ctrl = wx.TextCtrl(box)
+        id_ctrl.SetHint(_("Requirement ID"))
         row.Add(id_ctrl, 1, wx.EXPAND | wx.RIGHT, 5)
         add_btn = wx.Button(box, label=_("Add"))
         add_btn.Bind(wx.EVT_BUTTON, lambda _evt, a=attr: self._on_add_link_generic(a))
@@ -505,8 +516,15 @@ class EditorPanel(ScrolledPanel):
         remove_btn.Bind(wx.EVT_BUTTON, lambda _evt, a=attr: self._on_remove_link_generic(a))
         row.Add(remove_btn, 0)
         sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
-        lst = wx.CheckListBox(box, choices=[])
-        lst.Bind(wx.EVT_CHECKLISTBOX, lambda _evt, a=attr: self._toggle_links(a))
+        lst = wx.ListCtrl(box, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        lst.InsertColumn(0, _("ID"))
+        lst.InsertColumn(1, _("Title"))
+        lst.SetColumnWidth(0, wx.LIST_AUTOSIZE_USEHEADER)
+        lst.SetColumnWidth(1, wx.LIST_AUTOSIZE_USEHEADER)
+        lst.Bind(
+            wx.EVT_SIZE,
+            lambda evt, lc=lst: (evt.Skip(), self._autosize_link_columns(lc)),
+        )
         sizer.Add(lst, 1, wx.EXPAND | wx.ALL, 5)
         # по умолчанию список и кнопка удаления скрыты
         lst.Hide()
@@ -545,6 +563,35 @@ class EditorPanel(ScrolledPanel):
         box = list_ctrl.GetParent()
         box.Layout()
         self.Layout()
+        self.FitInside()
+        if visible:
+            self._autosize_link_columns(list_ctrl)
+
+    def _autosize_link_columns(self, list_ctrl: wx.ListCtrl) -> None:
+        """Adjust column widths for a two-column link list."""
+        list_ctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE_USEHEADER)
+        total = list_ctrl.GetClientSize().width
+        id_width = list_ctrl.GetColumnWidth(0)
+        if total > id_width:
+            list_ctrl.SetColumnWidth(1, total - id_width)
+        else:
+            list_ctrl.SetColumnWidth(1, wx.LIST_AUTOSIZE)
+
+    def _rebuild_links_list(self, attr: str) -> None:
+        """Repopulate ListCtrl for given link attribute."""
+        _, list_ctrl, links_list = self._link_widgets(attr)
+        list_ctrl.DeleteAllItems()
+        for link in links_list:
+            src_id = link["source_id"]
+            title = ""
+            if self.directory:
+                try:
+                    req = req_ops.get_requirement(self.directory, src_id)
+                    title = req.title or ""
+                except Exception:  # pragma: no cover - lookup errors
+                    pass
+            idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), str(src_id))
+            list_ctrl.SetItem(idx, 1, title)
 
     # basic operations -------------------------------------------------
     def set_directory(self, directory: str | Path | None) -> None:
@@ -583,11 +630,11 @@ class EditorPanel(ScrolledPanel):
             self.approved_picker.SetValue(wx.DefaultDateTime)
             self.notes_ctrl.ChangeValue("")
             self._refresh_attachments()
-            self.derived_list.Set([])
+            self.derived_list.DeleteAllItems()
             self.derived_id.ChangeValue("")
-            self.verifies_list.Set([])
+            self.verifies_list.DeleteAllItems()
             self.verifies_id.ChangeValue("")
-            self.relates_list.Set([])
+            self.relates_list.DeleteAllItems()
             self.relates_id.ChangeValue("")
             self._refresh_links_visibility("derived_from")
             self._refresh_links_visibility("verifies")
@@ -617,25 +664,16 @@ class EditorPanel(ScrolledPanel):
                 ctrl.ChangeValue(str(data.get(name, "")))
             self.attachments = list(data.get("attachments", []))
             self.derived_from = [dict(link) for link in data.get("derived_from", [])]
-            items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.derived_from]
-            self.derived_list.Set(items)
-            for i, link in enumerate(self.derived_from):
-                self.derived_list.Check(i, link.get("suspect", False))
+            self._rebuild_links_list("derived_from")
             self.derived_id.ChangeValue("")
             self._refresh_links_visibility("derived_from")
             links = data.get("links", {})
             self.verifies = [dict(l) for l in links.get("verifies", [])]
-            items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.verifies]
-            self.verifies_list.Set(items)
-            for i, link in enumerate(self.verifies):
-                self.verifies_list.Check(i, link.get("suspect", False))
+            self._rebuild_links_list("verifies")
             self.verifies_id.ChangeValue("")
             self._refresh_links_visibility("verifies")
             self.relates = [dict(l) for l in links.get("relates", [])]
-            items = [f"{d['source_id']} (r{d['source_revision']})" for d in self.relates]
-            self.relates_list.Set(items)
-            for i, link in enumerate(self.relates):
-                self.relates_list.Check(i, link.get("suspect", False))
+            self._rebuild_links_list("relates")
             self.relates_id.ChangeValue("")
             self._refresh_links_visibility("relates")
             self.parent = dict(data.get("parent", {})) or None
@@ -684,11 +722,11 @@ class EditorPanel(ScrolledPanel):
             self.mtime = None
             self.original_id = None
             self.derived_from = []
-            self.derived_list.Set([])
+            self.derived_list.DeleteAllItems()
             self.verifies = []
-            self.verifies_list.Set([])
+            self.verifies_list.DeleteAllItems()
             self.relates = []
-            self.relates_list.Set([])
+            self.relates_list.DeleteAllItems()
             self._refresh_links_visibility("derived_from")
             self._refresh_links_visibility("verifies")
             self._refresh_links_visibility("relates")
@@ -838,6 +876,7 @@ class EditorPanel(ScrolledPanel):
             btn_sizer.Show(self.remove_attachment_btn, visible)
             btn_sizer.Layout()
         self.Layout()
+        self.FitInside()
 
     def _on_add_attachment(self, _event: wx.CommandEvent) -> None:
         dlg = wx.FileDialog(self, _("Select attachment"), style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
@@ -868,37 +907,40 @@ class EditorPanel(ScrolledPanel):
         try:
             src_id = int(value)
         except ValueError:
+            wx.MessageBox(_("ID must be a number"), _("Error"), style=wx.ICON_ERROR)
             return
         revision = 1
+        title = ""
         if self.directory:
             try:
                 req = req_ops.get_requirement(self.directory, src_id)
                 revision = req.revision or 1
-            except Exception:
+                title = req.title or ""
+            except Exception:  # pragma: no cover - lookup errors
                 pass
         links_list.append({"source_id": src_id, "source_revision": revision, "suspect": False})
-        list_ctrl.Append(f"{src_id} (r{revision})")
+        idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), str(src_id))
+        list_ctrl.SetItem(idx, 1, title)
         id_ctrl.ChangeValue("")
         self._refresh_links_visibility(attr)
 
     def _on_remove_link_generic(self, attr: str) -> None:
         _, list_ctrl, links_list = self._link_widgets(attr)
-        idx = list_ctrl.GetFirstSelected() if hasattr(list_ctrl, "GetFirstSelected") else getattr(list_ctrl, "GetSelection", lambda: -1)()
+        idx = (
+            list_ctrl.GetFirstSelected()
+            if hasattr(list_ctrl, "GetFirstSelected")
+            else getattr(list_ctrl, "GetSelection", lambda: -1)()
+        )
         if idx != -1:
             del links_list[idx]
-            list_ctrl.Delete(idx)
+            if hasattr(list_ctrl, "DeleteItem"):
+                list_ctrl.DeleteItem(idx)
+            else:
+                list_ctrl.Delete(idx)
         self._refresh_links_visibility(attr)
-
-    def _toggle_links(self, attr: str) -> None:
-        _, list_ctrl, links_list = self._link_widgets(attr)
-        for i, link in enumerate(links_list):
-            link["suspect"] = list_ctrl.IsChecked(i)
 
     def _on_add_link(self, _event: wx.CommandEvent) -> None:
         self._on_add_link_generic("derived_from")
-
-    def _on_link_toggle(self, _event: wx.CommandEvent) -> None:
-        self._toggle_links("derived_from")
 
     def _on_set_parent(self, _event: wx.CommandEvent) -> None:
         value = self.parent_id.GetValue().strip()
@@ -1010,23 +1052,3 @@ class EditorPanel(ScrolledPanel):
             idx = self.attachments_list.InsertItem(self.attachments_list.GetItemCount(), path)
             self.attachments_list.SetItem(idx, 1, note)
 
-    # helpers ----------------------------------------------------------
-    def _make_help_button(self, message: str, parent: wx.Window | None = None) -> wx.Button:
-        btn = wx.Button(parent or self, label="?", style=wx.BU_EXACTFIT)
-        btn.Bind(wx.EVT_BUTTON, lambda _evt, msg=message: self._show_help(msg))
-        return btn
-
-    def _show_help(self, message: str) -> None:
-        dlg = wx.Dialog(self, title=_("Hint"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        text = wx.TextCtrl(
-            dlg,
-            value=message,
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_NONE,
-        )
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(text, 1, wx.EXPAND | wx.ALL, 10)
-        dlg.SetSizerAndFit(sizer)
-        dlg.SetSize((500, 300))
-        wx.CallAfter(dlg.SetFocus)
-        dlg.ShowModal()
-        dlg.Destroy()

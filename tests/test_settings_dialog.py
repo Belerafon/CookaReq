@@ -230,3 +230,46 @@ def test_llm_agent_checks(monkeypatch, wx_app):
     assert dlg._tools_status.GetLabel() == sd._("ok")
 
     dlg.Destroy()
+
+
+def test_settings_help_buttons(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.settings_dialog import SettingsDialog, LLM_HELP, MCP_HELP
+    from app.ui import helpers
+
+    shown: list[str] = []
+    monkeypatch.setattr(helpers, "show_help", lambda parent, msg: shown.append(msg))
+
+    dlg = SettingsDialog(
+        None,
+        open_last=False,
+        remember_sort=False,
+        language="en",
+        api_base="",
+        model="",
+        api_key="",
+        timeout=10,
+        host="localhost",
+        port=8000,
+        base_path="/tmp",
+        require_token=False,
+        token="",
+    )
+
+    base_btn = next(
+        item.GetWindow()
+        for item in dlg._api_base.GetContainingSizer().GetChildren()
+        if isinstance(item.GetWindow(), wx.Button)
+    )
+    base_btn.GetEventHandler().ProcessEvent(wx.CommandEvent(wx.EVT_BUTTON.typeId))
+    assert shown[-1] == LLM_HELP["api_base"]
+
+    host_btn = next(
+        item.GetWindow()
+        for item in dlg._host.GetContainingSizer().GetChildren()
+        if isinstance(item.GetWindow(), wx.Button)
+    )
+    host_btn.GetEventHandler().ProcessEvent(wx.CommandEvent(wx.EVT_BUTTON.typeId))
+    assert shown[-1] == MCP_HELP["host"]
+
+    dlg.Destroy()

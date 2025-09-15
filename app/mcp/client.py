@@ -142,8 +142,3 @@ class MCPClient:
             log_event("ERROR", {"error": err})
             return {"ok": False, "error": err}
 
-    # ------------------------------------------------------------------
-    def _call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        """Backward compatible wrapper for :meth:`call_tool`."""
-
-        return self.call_tool(name, arguments)

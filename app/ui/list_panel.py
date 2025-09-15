@@ -13,6 +13,7 @@ from wx.lib.mixins.listctrl import ColumnSorterMixin
 from ..core.doc_store import LabelDef, label_color, stable_color
 from ..core.model import Requirement
 from ..i18n import _
+from ..log import logger
 from . import locale
 from .enums import ENUMS
 from .filter_dialog import FilterDialog
@@ -20,6 +21,7 @@ from .requirement_model import RequirementModel
 
 if TYPE_CHECKING:
     from ..config import ConfigManager
+    from .controllers import DocumentsController
 
 if TYPE_CHECKING:  # pragma: no cover
     from wx import ContextMenuEvent, ListEvent
@@ -36,6 +38,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         parent: wx.Window,
         *,
         model: RequirementModel | None = None,
+        docs_controller: DocumentsController | None = None,
         on_clone: Callable[[int], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
         on_sort_changed: Callable[[int, bool], None] | None = None,
@@ -85,6 +88,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.derived_map: dict[str, list[int]] = {}
         self._sort_column = -1
         self._sort_ascending = True
+        self._docs_controller = docs_controller
+        self._current_doc_prefix: str | None = None
         self._setup_columns()
         sizer.Add(btn_row, 0, wx.ALL, 5)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
@@ -119,6 +124,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._on_delete = on_delete
         if on_derive is not None:
             self._on_derive = on_derive
+
+    def set_documents_controller(
+        self, controller: DocumentsController | None
+    ) -> None:
+        """Set documents controller used for persistence."""
+
+        self._docs_controller = controller
+
+    def set_active_document(self, prefix: str | None) -> None:
+        """Record currently active document prefix for persistence."""
+
+        self._current_doc_prefix = prefix
 
     def _label_color(self, name: str) -> str:
         for lbl in self._labels:
@@ -617,3 +634,15 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             else:
                 display = value
             self.list.SetItem(idx, column, str(display))
+            self._persist_requirement(req)
+
+    def _persist_requirement(self, req: Requirement) -> None:
+        """Persist edited ``req`` if controller and document are available."""
+
+        if not self._docs_controller or not self._current_doc_prefix:
+            return
+        try:
+            self._docs_controller.save_requirement(self._current_doc_prefix, req)
+        except Exception:  # pragma: no cover - log and continue
+            rid = getattr(req, "rid", req.id)
+            logger.exception("Failed to save requirement %s", rid)

@@ -8,7 +8,6 @@ from pathlib import Path
 
 from app import i18n
 from app.confirm import auto_confirm, set_confirm
-from app.core.repository import FileRequirementRepository, RequirementRepository
 from app.i18n import _
 from app.log import configure_logging
 from app.settings import AppSettings, load_app_settings
@@ -38,10 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(
-    argv: list[str] | None = None,
-    repo: RequirementRepository | None = None,
-) -> int:
+def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     configure_logging()
     parser = build_parser()
@@ -50,8 +46,7 @@ def main(
     if args.settings:
         settings = load_app_settings(args.settings)
     args.app_settings = settings
-    repository = repo or FileRequirementRepository()
-    args.func(args, repository)
+    args.func(args)
     return 0
 
 

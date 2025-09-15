@@ -10,9 +10,9 @@ from app.core.model import (
     Status,
     Verification,
 )
-from app.core.requirements import filter_by_status
 from app.core.search import (
     filter_by_labels,
+    filter_by_status,
     filter_has_derived,
     filter_is_derived,
     search,

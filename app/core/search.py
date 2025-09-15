@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 
-from .model import Requirement
+from .model import Requirement, Status
 
 # Fields allowed for text search
 SEARCHABLE_FIELDS = {
@@ -15,6 +15,22 @@ SEARCHABLE_FIELDS = {
     "owner",
     "notes",
 }
+
+
+def filter_by_status(
+    requirements: Iterable[Requirement],
+    status: str | Status | None,
+) -> list[Requirement]:
+    """Filter ``requirements`` by ``status`` if provided."""
+
+    reqs = list(requirements)
+    if not status:
+        return reqs
+    try:
+        st = Status(status)
+    except ValueError:
+        return []
+    return [r for r in reqs if r.status == st]
 
 
 def filter_by_labels(

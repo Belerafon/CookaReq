@@ -450,16 +450,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     value = ", ".join(texts)
                     self.list.SetItem(index, col, value)
                     continue
-                if field in {"verifies", "relates"}:
-                    links = getattr(getattr(req, "links", None), field, [])
-                    texts: list[str] = []
-                    for link in links:
-                        txt = getattr(link, "rid", "")
-                        if getattr(link, "suspect", False):
-                            txt = f"!{txt}"
-                            suspect_row = True
-                        texts.append(txt)
-                    value = ", ".join(texts)
+                if field == "links":
+                    links = getattr(req, "links", [])
+                    value = ", ".join(str(l) for l in links)
                     self.list.SetItem(index, col, value)
                     continue
                 if field == "parent":

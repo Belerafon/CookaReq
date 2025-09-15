@@ -74,14 +74,6 @@ class DerivationInfo:
 
 
 @dataclass
-class Links:
-    """Grouping for miscellaneous requirement links."""
-
-    verifies: list[RequirementRef] = field(default_factory=list)
-    relates: list[RequirementRef] = field(default_factory=list)
-
-
-@dataclass
 class Requirement:
     """Represent a requirement with metadata and trace links."""
 
@@ -108,7 +100,7 @@ class Requirement:
     parent: RequirementRef | None = None
     derived_from: list[RequirementRef] = field(default_factory=list)
     derived_to: list[RequirementRef] = field(default_factory=list)
-    links: Links = field(default_factory=Links)
+    links: list[str] = field(default_factory=list)
     derivation: DerivationInfo | None = None
     # document-related metadata
     doc_prefix: str = ""
@@ -136,11 +128,17 @@ def requirement_from_dict(
     parent = _ref(parent_data) if parent_data else None
     derived_from = [_ref(d) for d in data.get("derived_from", [])]
     derived_to = [_ref(d) for d in data.get("derived_to", [])]
-    links_data = data.get("links", {})
-    links = Links(
-        verifies=[_ref(link_data) for link_data in links_data.get("verifies", [])],
-        relates=[_ref(link_data) for link_data in links_data.get("relates", [])],
-    )
+    raw_links = data.get("links", [])
+    links: list[str] = []
+    if isinstance(raw_links, dict):
+        for coll in raw_links.values():
+            for item in coll:
+                if isinstance(item, dict):
+                    links.append(str(item.get("rid", "")))
+                else:
+                    links.append(str(item))
+    elif isinstance(raw_links, list):
+        links = [str(link) for link in raw_links]
     derivation_data = data.get("derivation")
     derivation = DerivationInfo(**derivation_data) if derivation_data else None
     return Requirement(
@@ -184,12 +182,8 @@ def requirement_to_dict(req: Requirement) -> dict[str, Any]:
     # ``doc_prefix`` and ``rid`` are derived from file location; omit
     data.pop("doc_prefix", None)
     data.pop("rid", None)
-    if (
-        "links" in data
-        and not data["links"]["verifies"]
-        and not data["links"]["relates"]
-    ):
-        del data["links"]
+    if not data.get("links"):
+        data.pop("links", None)
     for key in ("type", "status", "priority", "verification"):
         value = data.get(key)
         if isinstance(value, Enum):

@@ -6,8 +6,8 @@ from collections.abc import Sequence
 from dataclasses import asdict, is_dataclass
 from enum import Enum
 
-from ..core import requirements as req_ops
 from ..core.model import Requirement
+from ..core.search import filter_by_status, search
 
 
 class RequirementModel:
@@ -126,8 +126,8 @@ class RequirementModel:
 
     # helpers ---------------------------------------------------------
     def _refresh(self) -> None:
-        base = req_ops.filter_by_status(self._all, self._status)
-        self._visible = req_ops.search_loaded(
+        base = filter_by_status(self._all, self._status)
+        self._visible = search(
             base,
             labels=self._labels,
             query=self._query,

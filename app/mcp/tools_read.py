@@ -1,13 +1,32 @@
-"""Utility functions for MCP requirement access."""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
 
-from ..core import requirements as req_ops
-from ..core.model import Requirement, requirement_to_dict
+from ..core.doc_store import (
+    load_documents,
+    list_item_ids,
+    load_document,
+    load_item,
+    parse_rid,
+    rid_for,
+)
+from ..core.model import Requirement, requirement_from_dict, requirement_to_dict
+from ..core.search import filter_by_labels, filter_by_status, search
 from .utils import ErrorCode, log_tool, mcp_error
+
+
+def _load_all(directory: str | Path) -> list[Requirement]:
+    root = Path(directory)
+    docs = load_documents(root)
+    items: list[Requirement] = []
+    for prefix, doc in docs.items():
+        dir_path = root / prefix
+        for item_id in list_item_ids(dir_path, doc):
+            data, _ = load_item(dir_path, doc, item_id)
+            req = requirement_from_dict(data, doc_prefix=prefix, rid=rid_for(doc, item_id))
+            items.append(req)
+    return items
 
 
 def _paginate(requirements: Sequence[Requirement], page: int, per_page: int) -> dict:
@@ -18,7 +37,11 @@ def _paginate(requirements: Sequence[Requirement], page: int, per_page: int) -> 
     total = len(requirements)
     start = (page - 1) * per_page
     end = start + per_page
-    items = [requirement_to_dict(r) for r in requirements[start:end]]
+    items = []
+    for r in requirements[start:end]:
+        data = requirement_to_dict(r)
+        data["rid"] = r.rid
+        items.append(data)
     return {"total": total, "page": page, "per_page": per_page, "items": items}
 
 
@@ -30,7 +53,6 @@ def list_requirements(
     status: str | None = None,
     labels: Sequence[str] | None = None,
 ) -> dict:
-    """Return requirements from ``directory`` with optional filters."""
     params = {
         "directory": str(directory),
         "page": page,
@@ -39,7 +61,7 @@ def list_requirements(
         "labels": list(labels) if labels else None,
     }
     try:
-        reqs = req_ops.search_requirements(directory, labels=labels, status=status)
+        reqs = _load_all(directory)
     except FileNotFoundError:
         return log_tool(
             "list_requirements",
@@ -50,25 +72,23 @@ def list_requirements(
                 {"directory": str(directory)},
             ),
         )
-    except Exception as exc:  # pragma: no cover - defensive
-        return log_tool(
-            "list_requirements",
-            params,
-            mcp_error(ErrorCode.INTERNAL, str(exc)),
-        )
+    reqs = filter_by_status(reqs, status)
+    reqs = filter_by_labels(reqs, labels or [])
     return log_tool("list_requirements", params, _paginate(reqs, page, per_page))
 
 
-def get_requirement(directory: str | Path, req_id: int) -> dict:
-    """Return requirement ``req_id`` from ``directory``."""
-    params = {"directory": str(directory), "req_id": req_id}
+def get_requirement(directory: str | Path, rid: str) -> dict:
+    params = {"directory": str(directory), "rid": rid}
     try:
-        req = req_ops.get_requirement(directory, req_id)
+        prefix, item_id = parse_rid(rid)
+        doc = load_document(Path(directory) / prefix)
+        data, _ = load_item(Path(directory) / prefix, doc, item_id)
+        req = requirement_from_dict(data, doc_prefix=prefix, rid=rid)
     except FileNotFoundError:
         return log_tool(
             "get_requirement",
             params,
-            mcp_error(ErrorCode.NOT_FOUND, f"requirement {req_id} not found"),
+            mcp_error(ErrorCode.NOT_FOUND, f"requirement {rid} not found"),
         )
     except Exception as exc:  # pragma: no cover - defensive
         return log_tool(
@@ -88,7 +108,6 @@ def search_requirements(
     page: int = 1,
     per_page: int = 50,
 ) -> dict:
-    """Search requirements with text query and optional filters."""
     params = {
         "directory": str(directory),
         "query": query,
@@ -98,12 +117,7 @@ def search_requirements(
         "per_page": per_page,
     }
     try:
-        reqs = req_ops.search_requirements(
-            directory,
-            query=query,
-            labels=labels,
-            status=status,
-        )
+        reqs = _load_all(directory)
     except FileNotFoundError:
         return log_tool(
             "search_requirements",
@@ -114,10 +128,6 @@ def search_requirements(
                 {"directory": str(directory)},
             ),
         )
-    except Exception as exc:  # pragma: no cover - defensive
-        return log_tool(
-            "search_requirements",
-            params,
-            mcp_error(ErrorCode.INTERNAL, str(exc)),
-        )
+    reqs = filter_by_status(reqs, status)
+    reqs = search(reqs, labels=labels, query=query)
     return log_tool("search_requirements", params, _paginate(reqs, page, per_page))

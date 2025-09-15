@@ -10,18 +10,15 @@ import wx
 from ..agent import LocalAgent
 from ..config import ConfigManager
 from ..confirm import confirm
-from ..core.label_repository import FileLabelRepository
 from ..core.labels import Label
 from ..core.model import DerivationLink, Requirement
-from ..core.doc_store import iter_links as doc_iter_links
-from ..core.store import ConflictError
-from ..core.repository import FileRequirementRepository
+from ..core.doc_store import Document, LabelDef, save_document
 from ..i18n import _
 from ..log import logger
 from ..mcp.controller import MCPController
 from ..settings import AppSettings, LLMSettings, MCPSettings
 from .command_dialog import CommandDialog
-from .controllers import LabelsController, RequirementsController, DocumentsController
+from .controllers import DocumentsController
 from .document_tree import DocumentTree
 from .editor_panel import EditorPanel
 from .labels_dialog import LabelsDialog
@@ -93,8 +90,6 @@ class MainFrame(wx.Frame):
         self.mcp_settings = self.config.get_mcp_settings()
         self.mcp = MCPController()
         self.mcp.start(self.mcp_settings)
-        self.req_controller: RequirementsController | None = None
-        self.labels_controller: LabelsController | None = None
         self.docs_controller: DocumentsController | None = None
         super().__init__(parent=parent, title=self._base_title)
         # Load all available icon sizes so that Windows taskbar and other
@@ -192,11 +187,6 @@ class MainFrame(wx.Frame):
 
         return self.config.get_recent_dirs()
 
-    @property
-    def labels(self) -> list[Label]:
-        """Return currently loaded labels."""
-
-        return self.labels_controller.labels if self.labels_controller else []
 
     def on_open_folder(self, _event: wx.Event) -> None:
         """Handle "Open Folder" menu action."""
@@ -359,30 +349,22 @@ class MainFrame(wx.Frame):
     ) -> None:  # pragma: no cover - GUI event
         """Open dialog to manage defined labels."""
 
-        if not self.labels_controller:
+        if not (self.docs_controller and self.current_doc_prefix and self.current_dir):
             return
-        dlg = LabelsDialog(self, self.labels_controller.labels)
+        doc = self.docs_controller.documents[self.current_doc_prefix]
+        labels = [Label(ld.key, ld.color or "#ffffff") for ld in doc.labels.defs]
+        dlg = LabelsDialog(self, labels)
         if dlg.ShowModal() == wx.ID_OK:
             new_labels = dlg.get_labels()
-            used = self.labels_controller.update_labels(
-                new_labels,
-                remove_from_requirements=False,
+            doc.labels.defs = [
+                LabelDef(key=l.name, title=l.name, color=l.color) for l in new_labels
+            ]
+            save_document(self.current_dir / self.current_doc_prefix, doc)
+            labels_all, freeform = self.docs_controller.collect_labels(
+                self.current_doc_prefix
             )
-            if used:
-                lines = [f"{k}: {', '.join(map(str, v))}" for k, v in used.items()]
-                msg = _(
-                    "Labels in use will be removed from requirements:\n%s\nContinue?",
-                ) % "\n".join(lines)
-                if not confirm(msg):
-                    dlg.Destroy()
-                    return
-                self.labels_controller.update_labels(
-                    new_labels,
-                    remove_from_requirements=True,
-                )
-                self.panel.refresh()
-            self.editor.update_labels_list(self.labels_controller.labels)
-            self.panel.update_labels_list(self.labels_controller.labels)
+            self.editor.update_labels_list(labels_all, freeform)
+            self.panel.update_labels_list(labels_all)
         dlg.Destroy()
 
     def on_show_derivation_graph(
@@ -393,10 +375,7 @@ class MainFrame(wx.Frame):
         if not self.current_dir:
             wx.MessageBox(_("Select requirements folder first"), _("No Data"))
             return
-        if self.docs_controller:
-            links = list(self.docs_controller.iter_links())
-        else:
-            links = list(doc_iter_links(self.current_dir))
+        links = list(self.docs_controller.iter_links()) if self.docs_controller else []
         if not links:
             wx.MessageBox(_("No links found"), _("No Data"))
             return
@@ -416,10 +395,7 @@ class MainFrame(wx.Frame):
         if not self.current_dir:
             wx.MessageBox(_("Select requirements folder first"), _("No Data"))
             return
-        if self.docs_controller:
-            links = list(self.docs_controller.iter_links())
-        else:
-            links = list(doc_iter_links(self.current_dir))
+        links = list(self.docs_controller.iter_links()) if self.docs_controller else []
         if not links:
             wx.MessageBox(_("No links found"), _("No Data"))
             return
@@ -433,60 +409,28 @@ class MainFrame(wx.Frame):
 
     def _load_directory(self, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""
-        has_docs = any((path / d / "document.json").is_file() for d in path.iterdir() if d.is_dir())
-        if has_docs:
-            self.req_controller = None
-            self.labels_controller = None
-            self.docs_controller = DocumentsController(path, self.model)
-            docs = self.docs_controller.load_documents()
-            self.doc_tree.set_documents(docs)
-            self.config.add_recent_dir(path)
-            self.navigation.update_recent_menu()
-            self.SetTitle(f"{self._base_title} - {path}")
-            self.current_dir = path
-            if docs:
-                first = sorted(docs)[0]
-                self.current_doc_prefix = first
-                self.editor.set_directory(self.current_dir / first)
-                derived_map = self.docs_controller.load_items(first)
-                labels, freeform = self.docs_controller.collect_labels(first)
-                self.panel.set_requirements(self.model.get_all(), derived_map)
-                self.editor.update_labels_list(labels, freeform)
-                self.panel.update_labels_list(labels)
-            else:
-                self.current_doc_prefix = None
-                self.editor.set_directory(None)
-                self.panel.set_requirements([], {})
-                self.editor.update_labels_list([])
-                self.panel.update_labels_list([])
-        else:
-            self.docs_controller = None
-            repo = FileRequirementRepository()
-            self.req_controller = RequirementsController(
-                self.config,
-                self.model,
-                path,
-                repo,
-            )
-            lbl_repo = FileLabelRepository()
-            self.labels_controller = LabelsController(
-                self.config,
-                self.model,
-                path,
-                lbl_repo,
-            )
-            self.labels_controller.load_labels()
-            derived_map = self.req_controller.load_directory()
-            self.doc_tree.set_documents({})
-            self.navigation.update_recent_menu()
-            self.SetTitle(f"{self._base_title} - {path}")
-            self.current_dir = path
-            self.current_doc_prefix = None
-            self.editor.set_directory(self.current_dir)
+        self.docs_controller = DocumentsController(path, self.model)
+        docs = self.docs_controller.load_documents()
+        self.doc_tree.set_documents(docs)
+        self.config.add_recent_dir(path)
+        self.navigation.update_recent_menu()
+        self.SetTitle(f"{self._base_title} - {path}")
+        self.current_dir = path
+        if docs:
+            first = sorted(docs)[0]
+            self.current_doc_prefix = first
+            self.editor.set_directory(self.current_dir / first)
+            derived_map = self.docs_controller.load_items(first)
+            labels, freeform = self.docs_controller.collect_labels(first)
             self.panel.set_requirements(self.model.get_all(), derived_map)
-            self.labels_controller.sync_labels()
-            self.editor.update_labels_list(self.labels_controller.labels)
-            self.panel.update_labels_list(self.labels_controller.labels)
+            self.editor.update_labels_list(labels, freeform)
+            self.panel.update_labels_list(labels)
+        else:
+            self.current_doc_prefix = None
+            self.editor.set_directory(None)
+            self.panel.set_requirements([], {})
+            self.editor.update_labels_list([])
+            self.panel.update_labels_list([])
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
         self.editor.Hide()
@@ -533,13 +477,6 @@ class MainFrame(wx.Frame):
                 )
             else:
                 self.editor.save(self.current_dir)
-        except ConflictError:  # pragma: no cover - GUI event
-            wx.MessageBox(
-                _("File was modified on disk. Save cancelled."),
-                _("Error"),
-                wx.ICON_ERROR,
-            )
-            return
         except Exception as exc:  # pragma: no cover - GUI event
             wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
             return
@@ -552,10 +489,6 @@ class MainFrame(wx.Frame):
             )
             self.editor.update_labels_list(labels, freeform)
             self.panel.update_labels_list(labels)
-        elif self.labels_controller:
-            self.labels_controller.sync_labels()
-            self.editor.update_labels_list(self.labels_controller.labels)
-            self.panel.update_labels_list(self.labels_controller.labels)
 
     def on_toggle_column(self, event: wx.CommandEvent) -> None:
         """Show or hide column associated with menu item."""
@@ -619,53 +552,34 @@ class MainFrame(wx.Frame):
     # context menu actions -------------------------------------------
     def on_new_requirement(self, _event: wx.Event) -> None:
         """Create and persist a new requirement."""
-        if self.docs_controller and self.current_doc_prefix:
-            new_id = self.docs_controller.next_item_id(self.current_doc_prefix)
-            self.editor.new_requirement()
-            self.editor.fields["id"].SetValue(str(new_id))
-            data = self.editor.get_data()
-            self.docs_controller.add_requirement(self.current_doc_prefix, data)
-            self.panel.refresh()
-            self.editor.load(data, path=None, mtime=None)
-            self.editor.Show()
-            self.splitter.UpdateSize()
+        if not (self.docs_controller and self.current_doc_prefix):
             return
-        if not self.req_controller:
-            return
-        new_id = self.req_controller.generate_new_id()
+        new_id = self.docs_controller.next_item_id(self.current_doc_prefix)
         self.editor.new_requirement()
         self.editor.fields["id"].SetValue(str(new_id))
         data = self.editor.get_data()
-        self.req_controller.add_requirement(data)
+        self.docs_controller.add_requirement(self.current_doc_prefix, data)
         self.panel.refresh()
+        self.editor.load(data, path=None, mtime=None)
         self.editor.Show()
         self.splitter.UpdateSize()
 
     def on_clone_requirement(self, req_id: int) -> None:
         """Clone requirement ``req_id`` and open in editor."""
-        if self.docs_controller and self.current_doc_prefix:
-            source = self.model.get_by_id(req_id)
-            if not source:
-                return
-            new_id = self.docs_controller.next_item_id(self.current_doc_prefix)
-            clone = replace(
-                source,
-                id=new_id,
-                title=f"{_('(Copy)')} {source.title}".strip(),
-                modified_at="",
-                revision=1,
-            )
-            self.docs_controller.add_requirement(self.current_doc_prefix, clone)
-            self.panel.refresh()
-            self.editor.load(clone, path=None, mtime=None)
-            self.editor.Show()
-            self.splitter.UpdateSize()
+        if not (self.docs_controller and self.current_doc_prefix):
             return
-        if not self.req_controller:
+        source = self.model.get_by_id(req_id)
+        if not source:
             return
-        clone = self.req_controller.clone_requirement(req_id)
-        if not clone:
-            return
+        new_id = self.docs_controller.next_item_id(self.current_doc_prefix)
+        clone = replace(
+            source,
+            id=new_id,
+            title=f"{_('(Copy)')} {source.title}".strip(),
+            modified_at="",
+            revision=1,
+        )
+        self.docs_controller.add_requirement(self.current_doc_prefix, clone)
         self.panel.refresh()
         self.editor.load(clone, path=None, mtime=None)
         self.editor.Show()
@@ -674,10 +588,8 @@ class MainFrame(wx.Frame):
     def _create_derived_from(self, source: Requirement) -> Requirement:
         if self.docs_controller and self.current_doc_prefix:
             new_id = self.docs_controller.next_item_id(self.current_doc_prefix)
-        elif self.req_controller:
-            new_id = self.req_controller.generate_new_id()
         else:
-            raise RuntimeError("Requirements controller not initialized")
+            raise RuntimeError("Documents controller not initialized")
         clone = replace(
             source,
             id=new_id,
@@ -703,7 +615,7 @@ class MainFrame(wx.Frame):
         if self.docs_controller and self.current_doc_prefix:
             self.docs_controller.add_requirement(self.current_doc_prefix, clone)
         else:
-            self.model.add(clone)
+            return
         self.panel.add_derived_link(source.rid or str(source.id), clone.id)
         self.panel.refresh()
         self.editor.load(clone, path=None, mtime=None)
@@ -716,7 +628,7 @@ class MainFrame(wx.Frame):
         if self.docs_controller and self.current_doc_prefix:
             self.docs_controller.add_requirement(self.current_doc_prefix, clone)
         else:
-            self.model.add(clone)
+            return
         self.panel.add_derived_link(source.rid or str(source.id), clone.id)
         self.panel.refresh()
         self.editor.load(clone, path=None, mtime=None)
@@ -725,25 +637,15 @@ class MainFrame(wx.Frame):
 
     def on_delete_requirement(self, req_id: int) -> None:
         """Delete requirement ``req_id`` and refresh views."""
-        if self.docs_controller and self.current_doc_prefix:
-            if not self.docs_controller.delete_requirement(self.current_doc_prefix, req_id):
-                return
-            self.panel.refresh()
-            self.editor.Hide()
-            self.splitter.UpdateSize()
-            labels, freeform = self.docs_controller.collect_labels(
-                self.current_doc_prefix
-            )
-            self.editor.update_labels_list(labels, freeform)
-            self.panel.update_labels_list(labels)
+        if not (self.docs_controller and self.current_doc_prefix):
             return
-        if not self.req_controller or not self.labels_controller:
-            return
-        if not self.req_controller.delete_requirement(req_id):
+        if not self.docs_controller.delete_requirement(self.current_doc_prefix, req_id):
             return
         self.panel.refresh()
         self.editor.Hide()
         self.splitter.UpdateSize()
-        self.labels_controller.sync_labels()
-        self.editor.update_labels_list(self.labels_controller.labels)
-        self.panel.update_labels_list(self.labels_controller.labels)
+        labels, freeform = self.docs_controller.collect_labels(
+            self.current_doc_prefix
+        )
+        self.editor.update_labels_list(labels, freeform)
+        self.panel.update_labels_list(labels)

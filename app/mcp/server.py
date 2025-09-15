@@ -137,10 +137,10 @@ def list_requirements(
 
 
 @mcp_server.tool()
-def get_requirement(req_id: int) -> dict:
+def get_requirement(rid: str) -> dict:
     """Return a single requirement by identifier."""
     directory = app.state.base_path
-    return tools_read.get_requirement(directory, req_id)
+    return tools_read.get_requirement(directory, rid)
 
 
 @mcp_server.tool()
@@ -165,36 +165,36 @@ def search_requirements(
 
 
 @mcp_server.tool()
-def create_requirement(data: Mapping[str, object]) -> dict:
+def create_requirement(prefix: str, data: Mapping[str, object]) -> dict:
     """Create a requirement in the configured directory."""
     directory = app.state.base_path
-    return tools_write.create_requirement(directory, data)
+    return tools_write.create_requirement(directory, prefix=prefix, data=data)
 
 
 @mcp_server.tool()
 def patch_requirement(
-    req_id: int,
+    rid: str,
     patch: list[dict],
     *,
     rev: int,
 ) -> dict:
     """Apply JSON Patch to a requirement."""
     directory = app.state.base_path
-    return tools_write.patch_requirement(directory, req_id, patch, rev=rev)
+    return tools_write.patch_requirement(directory, rid, patch, rev=rev)
 
 
 @mcp_server.tool()
-def delete_requirement(req_id: int, *, rev: int) -> dict | None:
+def delete_requirement(rid: str, *, rev: int) -> dict | None:
     """Delete a requirement if revision matches."""
     directory = app.state.base_path
-    return tools_write.delete_requirement(directory, req_id, rev=rev)
+    return tools_write.delete_requirement(directory, rid, rev=rev)
 
 
 @mcp_server.tool()
 def link_requirements(
     *,
-    source_id: int,
-    derived_id: int,
+    source_rid: str,
+    derived_rid: str,
     link_type: str,
     rev: int,
 ) -> dict:
@@ -202,8 +202,8 @@ def link_requirements(
     directory = app.state.base_path
     return tools_write.link_requirements(
         directory,
-        source_id=source_id,
-        derived_id=derived_id,
+        source_rid=source_rid,
+        derived_rid=derived_rid,
         link_type=link_type,
         rev=rev,
     )

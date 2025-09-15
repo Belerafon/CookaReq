@@ -6,12 +6,10 @@ import pytest
 
 from app.cli import commands
 from app.core.doc_store import Document, DocumentLabels, LabelDef, save_document
-from app.core.repository import FileRequirementRepository
 
 
 @pytest.mark.unit
 def test_item_add_rejects_unknown_label(tmp_path, capsys):
-    repo = FileRequirementRepository()
     doc_sys = Document(prefix="SYS", title="System", digits=3)
     save_document(tmp_path / "SYS", doc_sys)
     doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
@@ -23,7 +21,7 @@ def test_item_add_rejects_unknown_label(tmp_path, capsys):
         text="X",
         labels="unknown",
     )
-    commands.cmd_item_add(args, repo)
+    commands.cmd_item_add(args)
     out = capsys.readouterr().out
     assert "unknown label: unknown" in out
     items_dir = Path(tmp_path) / "HLR" / "items"
@@ -32,7 +30,6 @@ def test_item_add_rejects_unknown_label(tmp_path, capsys):
 
 @pytest.mark.unit
 def test_item_add_accepts_inherited_label(tmp_path, capsys):
-    repo = FileRequirementRepository()
     doc_sys = Document(
         prefix="SYS",
         title="System",
@@ -49,7 +46,7 @@ def test_item_add_accepts_inherited_label(tmp_path, capsys):
         text="X",
         labels="ui",
     )
-    commands.cmd_item_add(args, repo)
+    commands.cmd_item_add(args)
     out = capsys.readouterr().out.strip()
     assert out == "HLR01"
     path = Path(tmp_path) / "HLR" / "items" / "HLR01.json"

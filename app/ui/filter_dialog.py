@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import wx
 
-from ..core import requirements as req_ops
 from ..core.labels import Label
+from ..core.search import SEARCHABLE_FIELDS
 from ..i18n import _
 from . import locale
 from .enums import ENUMS
@@ -46,7 +46,7 @@ class FilterDialog(wx.Dialog):
 
         # Per-field queries
         self.field_controls: dict[str, wx.TextCtrl] = {}
-        for field in sorted(req_ops.SEARCHABLE_FIELDS):
+        for field in sorted(SEARCHABLE_FIELDS):
             sizer.Add(
                 wx.StaticText(self, label=locale.field_label(field)),
                 0,

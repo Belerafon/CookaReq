@@ -4,26 +4,51 @@ import wx
 
 from ..config import ConfigManager
 from ..confirm import confirm
-from ..core.labels import PRESET_SET_TITLES, PRESET_SETS, Label
+from ..core.label_presets import PRESET_SET_TITLES, PRESET_SETS
+from ..core.doc_store import LabelDef, label_color
 from ..i18n import _
+
+
+class _LabelEditDialog(wx.Dialog):
+    """Small dialog to edit label key and title."""
+
+    def __init__(self, parent: wx.Window, key: str, title: str):
+        super().__init__(parent, title=_("Edit label"))
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(wx.StaticText(self, label=_("Key")), 0, wx.ALL, 5)
+        self.key_ctrl = wx.TextCtrl(self, value=key)
+        sizer.Add(self.key_ctrl, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(wx.StaticText(self, label=_("Title")), 0, wx.ALL, 5)
+        self.title_ctrl = wx.TextCtrl(self, value=title)
+        sizer.Add(self.title_ctrl, 0, wx.EXPAND | wx.ALL, 5)
+        btn_sizer = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
+        if btn_sizer:
+            sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
+        self.SetSizerAndFit(sizer)
+
+    def get_values(self) -> tuple[str, str]:
+        return self.key_ctrl.GetValue().strip(), self.title_ctrl.GetValue().strip()
 
 
 class LabelsDialog(wx.Dialog):
     """Dialog allowing to view labels and adjust their colors."""
 
-    def __init__(self, parent: wx.Window | None, labels: list[Label]):
+    def __init__(self, parent: wx.Window | None, labels: list[LabelDef]):
         """Initialize labels dialog with editable label list."""
         style = wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
         super().__init__(parent, title=_("Labels"), style=style)
         # copy labels to avoid modifying caller until OK
-        self._labels: list[Label] = [Label(lbl.name, lbl.color) for lbl in labels]
+        self._labels: list[LabelDef] = [
+            LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels
+        ]
         cfg = getattr(parent, "config", None)
         if cfg is None:
             cfg = ConfigManager()
         self._config = cfg
 
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
-        self.list.InsertColumn(0, _("Name"))
+        self.list.InsertColumn(0, _("Key"))
+        self.list.InsertColumn(1, _("Title"))
 
         # image list to display colored rectangles instead of hex codes
         self._img_list = wx.ImageList(16, 16)
@@ -38,8 +63,8 @@ class LabelsDialog(wx.Dialog):
         self.add_presets = wx.Button(self, label=_("Add presets"))
         self.add_presets.Bind(wx.EVT_BUTTON, self._on_show_presets_menu)
 
-        self.rename_btn = wx.Button(self, label=_("Rename"))
-        self.rename_btn.Bind(wx.EVT_BUTTON, self._on_rename_selected)
+        self.edit_btn = wx.Button(self, label=_("Edit"))
+        self.edit_btn.Bind(wx.EVT_BUTTON, self._on_edit_selected)
 
         self.delete_btn = wx.Button(self, label=_("Delete"))
         self.delete_btn.Bind(wx.EVT_BUTTON, self._on_delete_selected)
@@ -56,7 +81,7 @@ class LabelsDialog(wx.Dialog):
         sizer.Add(self.color_picker, 0, wx.ALL | wx.ALIGN_RIGHT, 5)
         btn_row = wx.BoxSizer(wx.HORIZONTAL)
         btn_row.Add(self.add_presets, 0, wx.ALL, 5)
-        btn_row.Add(self.rename_btn, 0, wx.ALL, 5)
+        btn_row.Add(self.edit_btn, 0, wx.ALL, 5)
         btn_row.Add(self.delete_btn, 0, wx.ALL, 5)
         btn_row.Add(self.clear_btn, 0, wx.ALL, 5)
         sizer.Add(btn_row, 0, wx.ALIGN_RIGHT)
@@ -67,7 +92,7 @@ class LabelsDialog(wx.Dialog):
         sizer.Fit(self)
         self.SetMinSize(self.GetSize())
         self._load_layout()
-        wx.CallAfter(self._resize_column)
+        wx.CallAfter(self._resize_columns)
 
     def _get_icon_index(self, colour: str) -> int:
         """Return image index for ``colour``, creating bitmap if needed."""
@@ -85,14 +110,15 @@ class LabelsDialog(wx.Dialog):
     def _populate(self) -> None:
         self.list.DeleteAllItems()
         for lbl in self._labels:
-            idx = self.list.InsertItem(self.list.GetItemCount(), lbl.name)
-            img_idx = self._get_icon_index(lbl.color)
+            idx = self.list.InsertItem(self.list.GetItemCount(), lbl.key)
+            self.list.SetItem(idx, 1, lbl.title)
+            img_idx = self._get_icon_index(label_color(lbl))
             self.list.SetItemColumnImage(idx, 0, img_idx)
-        self._resize_column()
+        self._resize_columns()
 
     def _on_select(self, event: wx.ListEvent) -> None:  # pragma: no cover - GUI event
         idx = event.GetIndex()
-        colour = wx.Colour(self._labels[idx].color)
+        colour = wx.Colour(label_color(self._labels[idx]))
         self.color_picker.SetColour(colour)
         self.color_picker.Enable()
 
@@ -117,11 +143,11 @@ class LabelsDialog(wx.Dialog):
         return indices
 
     def _on_add_preset_set(self, key: str) -> None:  # pragma: no cover - GUI event
-        existing = {lbl.name for lbl in self._labels}
+        existing = {lbl.key for lbl in self._labels}
         added = False
         for preset in PRESET_SETS.get(key, []):
-            if preset.name not in existing:
-                self._labels.append(Label(preset.name, preset.color))
+            if preset.key not in existing:
+                self._labels.append(LabelDef(preset.key, preset.title, preset.color))
                 added = True
         if added:
             self._populate()
@@ -155,44 +181,44 @@ class LabelsDialog(wx.Dialog):
             self._populate()
             self.color_picker.Disable()
 
-    def get_labels(self) -> list[Label]:
+    def get_labels(self) -> list[LabelDef]:
         """Return updated labels."""
-        return list(self._labels)
+        return [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
 
     # --- new methods -------------------------------------------------
 
-    def _resize_column(self) -> None:
+    def _resize_columns(self) -> None:
         width = self.list.GetClientSize().width
         if width > 0:
-            self.list.SetColumnWidth(0, width - 4)
+            first = int(width * 0.4)
+            self.list.SetColumnWidth(0, first)
+            self.list.SetColumnWidth(1, width - first - 4)
 
     def _on_list_size(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
-        self._resize_column()
+        self._resize_columns()
 
-    def _on_rename_selected(
+    def _on_edit_selected(
         self,
         _event: wx.Event,
     ) -> None:  # pragma: no cover - GUI event
         idx = self.list.GetFirstSelected()
         if idx == -1:
             return
-        old_name = self._labels[idx].name
-        dlg = wx.TextEntryDialog(self, _("New name"), _("Rename"), value=old_name)
+        lbl = self._labels[idx]
+        dlg = _LabelEditDialog(self, lbl.key, lbl.title)
         if dlg.ShowModal() == wx.ID_OK:
-            new_name = dlg.GetValue().strip()
-            if not new_name:
+            new_key, new_title = dlg.get_values()
+            if not new_key:
                 dlg.Destroy()
                 return
-            existing = {lbl.name for i, lbl in enumerate(self._labels) if i != idx}
-            if new_name in existing:
-                wx.MessageBox(
-                    _("Label already exists"),
-                    _("Error"),
-                    style=wx.ICON_ERROR,
-                )
+            existing = {l.key for i, l in enumerate(self._labels) if i != idx}
+            if new_key in existing:
+                wx.MessageBox(_("Label already exists"), _("Error"), style=wx.ICON_ERROR)
             else:
-                self._labels[idx].name = new_name
-                self.list.SetItem(idx, 0, new_name)
+                lbl.key = new_key
+                lbl.title = new_title or new_key
+                self.list.SetItem(idx, 0, lbl.key)
+                self.list.SetItem(idx, 1, lbl.title)
         dlg.Destroy()
 
     def _load_layout(self) -> None:

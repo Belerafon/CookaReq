@@ -3,7 +3,7 @@
 import wx
 from contextlib import suppress
 
-from ..core.labels import Label
+from ..core.doc_store import LabelDef, label_color
 from ..i18n import _
 
 
@@ -25,7 +25,7 @@ class LabelSelectionDialog(wx.Dialog):
     def __init__(
         self,
         parent: wx.Window | None,
-        labels: list[Label],
+        labels: list[LabelDef],
         selected: list[str],
         *,
         allow_freeform: bool = False,
@@ -37,21 +37,23 @@ class LabelSelectionDialog(wx.Dialog):
         """
         style = wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
         super().__init__(parent, title=_("Labels"), style=style)
-        self._labels = list(labels)
+        self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
         self._allow_freeform = allow_freeform
 
         self.list = _CheckListCtrl(self)
-        self.list.InsertColumn(0, _("Name"))
+        self.list.InsertColumn(0, _("Key"))
+        self.list.InsertColumn(1, _("Title"))
 
         self._img_list = wx.ImageList(16, 16)
         self._color_icons: dict[str, int] = {}
         self.list.AssignImageList(self._img_list, wx.IMAGE_LIST_SMALL)
 
         for lbl in self._labels:
-            idx = self.list.InsertItem(self.list.GetItemCount(), lbl.name)
-            img_idx = self._get_icon_index(lbl.color)
+            idx = self.list.InsertItem(self.list.GetItemCount(), lbl.key)
+            self.list.SetItem(idx, 1, lbl.title)
+            img_idx = self._get_icon_index(label_color(lbl))
             self.list.SetItemColumnImage(idx, 0, img_idx)
-            if lbl.name in selected:
+            if lbl.key in selected:
                 self.list.CheckItem(idx)
 
         self.list.Bind(wx.EVT_SIZE, self._on_list_size)
@@ -71,7 +73,7 @@ class LabelSelectionDialog(wx.Dialog):
         self.SetSizer(sizer)
         sizer.Fit(self)
         self.SetMinSize(self.GetSize())
-        wx.CallAfter(self._resize_column)
+        wx.CallAfter(self._resize_columns)
 
     def _get_icon_index(self, colour: str) -> int:
         """Return image index for ``colour``, creating bitmap if needed."""
@@ -86,17 +88,19 @@ class LabelSelectionDialog(wx.Dialog):
             self._color_icons[colour] = self._img_list.Add(bmp)
         return self._color_icons[colour]
 
-    def _resize_column(self) -> None:
+    def _resize_columns(self) -> None:
         width = self.list.GetClientSize().width
         if width > 0:
-            self.list.SetColumnWidth(0, width - 4)
+            first = int(width * 0.4)
+            self.list.SetColumnWidth(0, first)
+            self.list.SetColumnWidth(1, width - first - 4)
 
     def _on_list_size(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
-        self._resize_column()
+        self._resize_columns()
 
     def get_selected(self) -> list[str]:
         """Return names of checked and custom labels."""
-        names = [self._labels[i].name for i in self.list.GetCheckedItems()]
+        names = [self._labels[i].key for i in self.list.GetCheckedItems()]
         if self.freeform_ctrl:
             extra = [
                 t.strip() for t in self.freeform_ctrl.GetValue().split(",") if t.strip()

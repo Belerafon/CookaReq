@@ -1,13 +1,16 @@
 import pytest
 
-from app.core.labels import Label
+from app.core.doc_store import LabelDef
 from app.ui.filter_dialog import FilterDialog
 
 pytestmark = pytest.mark.gui
 
 
 def _make_dialog(wx_app):
-    labels = [Label("foo", "#000000"), Label("bar", "#ffffff")]
+    labels = [
+        LabelDef(key="foo", title="Foo", color="#000000"),
+        LabelDef(key="bar", title="Bar", color="#ffffff"),
+    ]
     values = {
         "query": "search",
         "field_queries": {"title": "abc"},

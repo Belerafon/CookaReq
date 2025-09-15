@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import wx
 
-from ..core.labels import Label
+from ..core.doc_store import LabelDef, label_color
 from ..core.search import SEARCHABLE_FIELDS
 from ..i18n import _
 from . import locale
@@ -26,13 +26,13 @@ class FilterDialog(wx.Dialog):
         self,
         parent: wx.Window,
         *,
-        labels: list[Label],
+        labels: list[LabelDef],
         values: dict | None = None,
     ) -> None:
         """Initialize filter dialog with current ``values``."""
         title = _("Filters")
         super().__init__(parent, title=title)
-        self._labels = list(labels)
+        self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
         self._build_ui(values or {})
 
     def _build_ui(self, values: dict) -> None:
@@ -60,15 +60,15 @@ class FilterDialog(wx.Dialog):
 
         # Labels
         sizer.Add(wx.StaticText(self, label=_("Labels")), 0, wx.ALL, 5)
-        choices = [lbl.name for lbl in self._labels]
+        choices = [lbl.key for lbl in self._labels]
         self.labels_box = wx.CheckListBox(self, choices=choices)
         for i, lbl in enumerate(self._labels):
-            colour = _safe_colour(lbl.color)
+            colour = _safe_colour(label_color(lbl))
             if colour is not None:
                 self.labels_box.SetItemBackgroundColour(i, colour)
                 self.labels_box.SetItemForegroundColour(i, wx.BLACK)
         for lbl in values.get("labels", []):
-            names = [label_obj.name for label_obj in self._labels]
+            names = [label_obj.key for label_obj in self._labels]
             if lbl in names:
                 idx = names.index(lbl)
                 self.labels_box.Check(idx)
@@ -116,7 +116,7 @@ class FilterDialog(wx.Dialog):
     def get_filters(self) -> dict:
         """Return chosen filters as a dict."""
         labels = [
-            self._labels[i].name
+            self._labels[i].key
             for i in range(self.labels_box.GetCount())
             if self.labels_box.IsChecked(i)
         ]

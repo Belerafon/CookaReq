@@ -11,8 +11,7 @@ import wx
 import wx.adv
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from ..core.doc_store import Document, save_item, list_item_ids
-from ..core.labels import Label
+from ..core.doc_store import Document, LabelDef, label_color, save_item, list_item_ids, stable_color
 from ..core.model import (
     Priority,
     Requirement,
@@ -332,7 +331,7 @@ class EditorPanel(ScrolledPanel):
         row.Add(edit_labels_btn, 0)
         box_sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
         links_grid.Add(box_sizer, 0, wx.EXPAND | wx.ALL, 5)
-        self._label_defs: list[Label] = []
+        self._label_defs: list[LabelDef] = []
         self._labels_allow_freeform = False
 
         # generic links section ----------------------------------------
@@ -689,14 +688,14 @@ class EditorPanel(ScrolledPanel):
         )
 
     # labels helpers ---------------------------------------------------
-    def update_labels_list(self, labels: list[Label], allow_freeform: bool = False) -> None:
+    def update_labels_list(self, labels: list[LabelDef], allow_freeform: bool = False) -> None:
         """Update available labels, free-form policy and reapply selection."""
-        self._label_defs = list(labels)
+        self._label_defs = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
         self._labels_allow_freeform = allow_freeform
         current = [
             lbl
             for lbl in self.extra.get("labels", [])
-            if allow_freeform or any(label.name == lbl for label in labels)
+            if allow_freeform or any(label.key == lbl for label in labels)
         ]
         self.extra["labels"] = current
         self._refresh_labels_display()
@@ -710,7 +709,7 @@ class EditorPanel(ScrolledPanel):
                     cleaned.append(lbl)
             self.extra["labels"] = cleaned
         else:
-            available = {label.name for label in self._label_defs}
+            available = {label.key for label in self._label_defs}
             self.extra["labels"] = [lbl for lbl in labels if lbl in available]
         self._refresh_labels_display()
 
@@ -732,11 +731,11 @@ class EditorPanel(ScrolledPanel):
                     (
                         label_def
                         for label_def in self._label_defs
-                        if label_def.name == name
+                        if label_def.key == name
                     ),
                     None,
                 )
-                color = lbl_def.color if lbl_def else "#cccccc"
+                color = label_color(lbl_def) if lbl_def else stable_color(name)
                 txt = wx.StaticText(self.labels_panel, label=name)
                 txt.SetBackgroundColour(color)
                 txt.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)

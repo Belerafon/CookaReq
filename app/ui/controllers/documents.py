@@ -6,6 +6,7 @@ from typing import Dict, Iterable, Tuple
 
 from ...core.doc_store import (
     Document,
+    LabelDef,
     iter_links as doc_iter_links,
     load_documents,
     list_item_ids,
@@ -15,9 +16,9 @@ from ...core.doc_store import (
     next_item_id as doc_next_item_id,
     delete_document as doc_delete_document,
     delete_item,
+    stable_color,
 )
 from ...core.model import Requirement, requirement_from_dict, requirement_to_dict
-from ...core.labels import Label, _color_from_name
 
 
 @dataclass
@@ -58,7 +59,7 @@ class DocumentsController:
         self.model.set_requirements(items)
         return derived_map
 
-    def collect_labels(self, prefix: str) -> tuple[list[Label], bool]:
+    def collect_labels(self, prefix: str) -> tuple[list[LabelDef], bool]:
         """Return labels and free-form flag for document ``prefix``.
 
         Aggregates label definitions from the selected document and all its
@@ -66,7 +67,7 @@ class DocumentsController:
         free-form labels.
         """
 
-        labels: list[Label] = []
+        labels: list[LabelDef] = []
         allow_freeform = False
         chain: list[Document] = []
         current = self.documents.get(prefix)
@@ -78,8 +79,8 @@ class DocumentsController:
             current = self.documents.get(current.parent)
         for doc in reversed(chain):
             for ld in doc.labels.defs:
-                color = ld.color or _color_from_name(ld.key)
-                labels.append(Label(ld.key, color))
+                color = ld.color or stable_color(ld.key)
+                labels.append(LabelDef(ld.key, ld.title, color))
         return labels, allow_freeform
 
     # requirement operations -----------------------------------------

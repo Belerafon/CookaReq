@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+from hashlib import sha256
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -15,6 +16,22 @@ class LabelDef:
     key: str
     title: str
     color: str | None = None
+
+
+def stable_color(name: str) -> str:
+    """Return a pastel color generated from ``name``."""
+
+    digest = sha256(name.encode("utf-8")).hexdigest()
+    r = (int(digest[0:2], 16) + 0xAA) // 2
+    g = (int(digest[2:4], 16) + 0xAA) // 2
+    b = (int(digest[4:6], 16) + 0xAA) // 2
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def label_color(label: LabelDef) -> str:
+    """Return explicit label color or a generated one."""
+
+    return label.color or stable_color(label.key)
 
 
 @dataclass

@@ -34,7 +34,7 @@ from ..util.time import local_now_str, normalize_timestamp
 from ..i18n import _
 from . import locale
 from .enums import ENUMS
-from .helpers import HelpStaticBox, make_help_button, show_help
+from .helpers import AutoHeightListCtrl, HelpStaticBox, make_help_button, show_help
 from .label_selection_dialog import LabelSelectionDialog
 
 logger = logging.getLogger(__name__)
@@ -272,7 +272,7 @@ class EditorPanel(ScrolledPanel):
             lambda msg: show_help(self, msg),
         )
         a_box = a_sizer.GetStaticBox()
-        self.attachments_list = wx.ListCtrl(
+        self.attachments_list = AutoHeightListCtrl(
             a_box,
             style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL,
         )
@@ -778,25 +778,32 @@ class EditorPanel(ScrolledPanel):
         dlg.Destroy()
 
     def _refresh_attachments(self) -> None:
-        self.attachments_list.DeleteAllItems()
-        for att in self.attachments:
-            idx = self.attachments_list.InsertItem(
-                self.attachments_list.GetItemCount(),
-                att.get("path", ""),
-            )
-            self.attachments_list.SetItem(idx, 1, att.get("note", ""))
+        self.attachments_list.Freeze()
+        try:
+            self.attachments_list.DeleteAllItems()
+            for att in self.attachments:
+                idx = self.attachments_list.InsertItem(
+                    self.attachments_list.GetItemCount(),
+                    att.get("path", ""),
+                )
+                self.attachments_list.SetItem(idx, 1, att.get("note", ""))
+        finally:
+            self.attachments_list.Thaw()
+        self.attachments_list.InvalidateBestSize()
         visible = bool(self.attachments)
-        self.attachments_list.Show(visible)
         sizer = self.attachments_list.GetContainingSizer()
         if sizer:
-            sizer.Show(self.attachments_list, visible)
+            sizer.ShowItems(visible)
             sizer.Layout()
+        self.attachments_list.Show(visible)
         self.remove_attachment_btn.Enable(visible)
         self.remove_attachment_btn.Show(visible)
         btn_sizer = self.remove_attachment_btn.GetContainingSizer()
         if btn_sizer:
             btn_sizer.Show(self.remove_attachment_btn, visible)
             btn_sizer.Layout()
+        if visible:
+            self.attachments_list.SendSizeEvent()
         self.Layout()
         self.FitInside()
 

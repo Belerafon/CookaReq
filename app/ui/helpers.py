@@ -97,6 +97,68 @@ class HelpStaticBox(wx.StaticBoxSizer):
         return super().Insert(index + 1, item, proportion, flag, border, userData)
 
 
+class AutoHeightListCtrl(wx.ListCtrl):
+    """A ``wx.ListCtrl`` that reports a height matching its contents."""
+
+    def __init__(
+        self,
+        *args,
+        max_rows: int | None = None,
+        extra_padding: int = 4,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._max_rows = max_rows
+        self._extra_padding = extra_padding
+        self._row_height: int | None = None
+        self._header_height: int | None = None
+
+    def _measure_row_height(self) -> int:
+        if self._row_height:
+            return self._row_height
+        rect = wx.Rect()
+        if self.GetItemCount() and self.GetItemRect(0, rect, wx.LIST_RECT_BOUNDS):
+            self._row_height = rect.height
+        else:
+            # Fallback to a reasonable approximation based on the current font.
+            self._row_height = self.GetCharHeight() + 8
+        return self._row_height
+
+    def _measure_header_height(self) -> int:
+        if self._header_height:
+            return self._header_height
+        header = self.GetHeaderCtrl()
+        if header:
+            self._header_height = header.GetSize().height
+        else:
+            # ``wx.LC_REPORT`` without a dedicated header still reserves a small
+            # area above the items.  Mirror the behaviour with a font-based
+            # estimate to avoid clipping.
+            self._header_height = self.GetCharHeight() + 6
+        return self._header_height
+
+    def InvalidateBestSize(self) -> None:  # noqa: N802 - wxWidgets API casing
+        self._row_height = None
+        self._header_height = None
+        super().InvalidateBestSize()
+
+    def DoGetBestSize(self) -> wx.Size:  # noqa: N802 - wxWidgets API casing
+        best = super().DoGetBestSize()
+        count = self.GetItemCount()
+        if count <= 0:
+            return wx.Size(best.width, 0)
+
+        row_height = self._measure_row_height()
+        rows = count
+        if self._max_rows is not None:
+            rows = min(rows, self._max_rows)
+        header_height = self._measure_header_height()
+        border = self.GetWindowBorderSize()
+        vertical_border = border.height if border else 0
+        height = header_height + row_height * rows + vertical_border * 2 + self._extra_padding
+        return wx.Size(best.width, height)
+
+
 def show_help(parent: wx.Window, message: str, *, title: str | None = None) -> None:
     """Display a modal dialog with ``message``.
 

@@ -63,7 +63,7 @@ def test_load_documents_and_items(tmp_path: Path):
     assert all_reqs[0].rid == "SYS001"
     labels, freeform = controller.collect_labels("SYS")
     assert freeform is True
-    assert labels and labels[0].name == "ui" and labels[0].color == "#123456"
+    assert labels and labels[0].key == "ui" and labels[0].color == "#123456"
 
 
 def test_next_id_save_and_delete(tmp_path: Path):

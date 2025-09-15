@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
-from ..core.labels import Label, _color_from_name
+from ..core.doc_store import LabelDef, label_color, stable_color
 from ..core.model import Requirement
 from ..i18n import _
 from . import locale
@@ -72,7 +72,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if extra:
                 with suppress(Exception):  # pragma: no cover - backend quirks
                     self.list.SetExtraStyle(self.list.GetExtraStyle() | extra)
-        self._labels: list[Label] = []
+        self._labels: list[LabelDef] = []
         self.current_filters: dict = {}
         self._image_list: wx.ImageList | None = None
         self._label_images: dict[tuple[str, ...], int] = {}
@@ -122,9 +122,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _label_color(self, name: str) -> str:
         for lbl in self._labels:
-            if lbl.name == name:
-                return lbl.color
-        return _color_from_name(name)
+            if lbl.key == name:
+                return label_color(lbl)
+        return stable_color(name)
 
     def _ensure_image_list_size(self, width: int, height: int) -> None:
         if self._image_list is None:
@@ -340,9 +340,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             filters["fields"] = list(fields)
         self.apply_filters(filters)
 
-    def update_labels_list(self, labels: list[Label]) -> None:
+    def update_labels_list(self, labels: list[LabelDef]) -> None:
         """Update available labels for the filter dialog."""
-        self._labels = list(labels)
+        self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
 
     def _on_filter(self, event):  # pragma: no cover - simple event binding
         dlg = FilterDialog(self, labels=self._labels, values=self.current_filters)

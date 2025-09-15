@@ -7,8 +7,7 @@ from collections.abc import Sequence
 
 import wx
 
-from ..core.doc_store import parse_rid
-from ..core.labels import _color_from_name
+from ..core.doc_store import parse_rid, stable_color
 from ..i18n import _
 
 
@@ -24,7 +23,7 @@ def build_graph_from_links(links: Sequence[tuple[str, str]]):
                 graph.add_node(
                     rid,
                     style="filled",
-                    fillcolor=_color_from_name(prefix),
+                    fillcolor=stable_color(prefix),
                 )
         graph.add_edge(child, parent, label="derived-from")
     return graph

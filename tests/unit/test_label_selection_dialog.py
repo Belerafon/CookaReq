@@ -1,13 +1,18 @@
 import pytest
 
 from app.ui.label_selection_dialog import LabelSelectionDialog
-from app.core.labels import Label
+from app.core.doc_store import LabelDef
 
 pytestmark = pytest.mark.unit
 
 
 def test_label_selection_dialog_freeform(wx_app):
-    dlg = LabelSelectionDialog(None, [Label("a", "#111111")], [], allow_freeform=True)
+    dlg = LabelSelectionDialog(
+        None,
+        [LabelDef(key="a", title="A", color="#111111")],
+        [],
+        allow_freeform=True,
+    )
     dlg.list.CheckItem(0)
     assert dlg.freeform_ctrl is not None
     dlg.freeform_ctrl.SetValue("b, c , d")

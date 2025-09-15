@@ -10,7 +10,6 @@ import wx
 from ..agent import LocalAgent
 from ..config import ConfigManager
 from ..confirm import confirm
-from ..core.labels import Label
 from ..core.model import Requirement
 from ..core.doc_store import Document, LabelDef, save_document
 from ..i18n import _
@@ -350,19 +349,16 @@ class MainFrame(wx.Frame):
         if not (self.docs_controller and self.current_doc_prefix and self.current_dir):
             return
         doc = self.docs_controller.documents[self.current_doc_prefix]
-        labels = [Label(ld.key, ld.color or "#ffffff") for ld in doc.labels.defs]
+        labels = [LabelDef(ld.key, ld.title, ld.color) for ld in doc.labels.defs]
         dlg = LabelsDialog(self, labels)
         if dlg.ShowModal() == wx.ID_OK:
-            new_labels = dlg.get_labels()
-            doc.labels.defs = [
-                LabelDef(key=l.name, title=l.name, color=l.color) for l in new_labels
-            ]
+            doc.labels.defs = dlg.get_labels()
             save_document(self.current_dir / self.current_doc_prefix, doc)
             labels_all, freeform = self.docs_controller.collect_labels(
                 self.current_doc_prefix
             )
+            self.list_panel.update_labels_list(labels_all)
             self.editor.update_labels_list(labels_all, freeform)
-            self.panel.update_labels_list(labels_all)
         dlg.Destroy()
 
     def on_show_derivation_graph(

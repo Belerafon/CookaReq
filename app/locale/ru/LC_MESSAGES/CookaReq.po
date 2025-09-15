@@ -34,6 +34,9 @@ msgstr "OK"
 msgid "error"
 msgstr "ошибка"
 
+msgid "Unknown error"
+msgstr "Неизвестная ошибка"
+
 # Enumeration labels
 msgid "Requirement"
 msgstr "Требование"

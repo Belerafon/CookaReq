@@ -34,6 +34,9 @@ msgstr "ok"
 msgid "error"
 msgstr "error"
 
+msgid "Unknown error"
+msgstr "Unknown error"
+
 msgid "&File"
 msgstr "&File"
 

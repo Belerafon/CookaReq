@@ -132,3 +132,31 @@ def make_help_button(parent: wx.Window, message: str) -> wx.Button:
     btn = wx.Button(parent, label="?", style=wx.BU_EXACTFIT)
     btn.Bind(wx.EVT_BUTTON, lambda _evt: show_help(parent, message))
     return btn
+
+
+def format_error_message(error: object, *, fallback: str | None = None) -> str:
+    """Normalize ``error`` objects for display in the UI.
+
+    ``error`` may be a mapping with ``code``/``type`` and ``message`` fields,
+    an exception instance or any other value.  Dictionaries are rendered as
+    ``"code: message"`` pairs when possible.  If all attempts fail, returns the
+    provided ``fallback`` or a localized "Unknown error" string.
+    """
+
+    if isinstance(error, dict):
+        code = error.get("code") or error.get("type")
+        message = error.get("message")
+        parts = [str(part) for part in (code, message) if part]
+        if parts:
+            return ": ".join(parts)
+    if isinstance(error, BaseException):
+        text = str(error)
+        if text:
+            return text
+    elif error:
+        text = str(error)
+        if text:
+            return text
+    if fallback is not None:
+        return fallback
+    return _("Unknown error")

@@ -18,7 +18,7 @@ CookaReq (Cook a requirement) is a wibecoded desktop application built with wxPy
 - Display document hierarchy in a tree and switch between documents
  - Editor and requirement list respect labels inherited from the selected document and
    allow free-form entries when any parent document permits them
-- Command-line utility for batch operations and health checks
+ - Command-line utility for managing documents and items, linking and tracing requirements, performing migrations and health checks
 - MCP server exposing requirement tools for external agents
 - Interface localization via text `.po` files
 
@@ -51,20 +51,22 @@ The CLI lives in the `app/cli` package. Example usage:
 python3 -m app.cli <command> [arguments]
 ```
 
-Available commands:
+Subcommands:
 
-- `list <dir>` — print the list of requirements; supports `--labels`, `--query`, `--fields` and `--status` for filtering
-- `add <dir> <file>` — add a requirement from a JSON file (use `--modified-at` to set timestamp)
-- `edit <dir> <file>` — update an existing requirement with data from a file (use `--modified-at` to override timestamp)
-- `clone <dir> <source_id> <new_id>` — copy a requirement to a new id (revision reset; timestamp updated unless `--modified-at` specified)
-- `delete <dir> <id>` — remove a requirement by id
-- `show <dir> <id>` — display the full contents of a requirement as JSON
-- `check` — verify LLM and MCP connectivity according to loaded settings
-- `link <dir> <rid> <parents...>` — link a requirement to ancestors
-- `trace <dir> [--format csv|html] [-o FILE]` — export child-parent links; creates parent directories for `FILE`
-- `migrate to-docs <dir> --default PREFIX [--rules RULES]` — convert flat files to document tree
+- `doc create <root> <PREFIX> <title> [--digits N] [--parent P]` — create a document
+- `doc list <root>` — list existing documents
+- `doc delete <root> <PREFIX> [--dry-run]` — delete a document
 
-The `add` and `edit` commands validate the input file before saving. If the JSON is malformed or does not match the requirement schema, an error message is printed and no changes are written to disk. The `check` command uses the same LocalAgent as the GUI to test LLM and MCP access. This agent is imported lazily, so running `--help` or unrelated commands does not require LLM/MCP dependencies.
+- `item add <root> <PREFIX> --title T --statement S [--labels L1,L2]` — add a requirement to a document
+- `item move <root> <RID> <NEW_PREFIX>` — move a requirement to another document
+- `item delete <root> <RID> [--dry-run]` — delete a requirement and update references
+
+- `link <root> <RID> <PARENT...> [--replace]` — connect a requirement to ancestor items
+- `trace <root> [--format plain|csv|html] [-o FILE]` — export links as a trace matrix
+- `migrate to-docs <legacy_dir> --default PREFIX [--rules RULES]` — convert flat files to the document tree
+- `check [--llm|--mcp]` — verify LLM and MCP connectivity according to loaded settings
+
+Commands that modify data validate input JSON and labels before saving. If validation fails, no changes are written to disk. The `check` command uses the same LocalAgent as the GUI to test LLM and MCP access. This agent is imported lazily, so running `--help` or unrelated commands does not require LLM/MCP dependencies.
 
 ### Migrating legacy requirements
 
@@ -77,7 +79,8 @@ python3 -m app.cli migrate to-docs <legacy_dir> --default SYS --rules "label:doc
 ```
 
 Files are assigned to documents according to label rules. Links between
-requirements are rewritten to the new RIDs.
+requirements are rewritten to the new RIDs. The resulting layout follows
+`requirements/<PREFIX>/items/<RID>.json`.
 
 ## MCP Integration
 

@@ -1,5 +1,7 @@
 """Dialog for application settings with MCP controls."""
 
+import threading
+from collections.abc import Callable
 from importlib import resources
 
 import wx
@@ -9,7 +11,7 @@ from ..llm.client import LLMClient
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
 from ..settings import LLMSettings, MCPSettings
-from .helpers import make_help_button
+from .helpers import format_error_message, make_help_button
 
 LLM_HELP: dict[str, str] = {
     "base_url": _(
@@ -405,16 +407,38 @@ class SettingsDialog(wx.Dialog):
         self._update_mcp_controls()
 
     def _on_check_llm(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
-        client = LLMClient(settings=self._current_llm_settings())
-        result = client.check_llm()
-        label = _("ok") if result.get("ok") else _("error")
-        self._llm_status.SetLabel(label)
+        settings = self._current_llm_settings()
+
+        def task() -> tuple[bool, str | None]:
+            client = LLMClient(settings=settings)
+            result = client.check_llm()
+            ok = bool(result.get("ok"))
+            if ok:
+                return True, None
+            return False, format_error_message(result.get("error"))
+
+        self._run_background_check(
+            button=self._check_llm,
+            status_label=self._llm_status,
+            task=task,
+        )
 
     def _on_check_tools(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
-        client = MCPClient(settings=self._current_settings(), confirm=lambda _m: True)
-        result = client.check_tools()
-        label = _("ok") if result.get("ok") else _("error")
-        self._tools_status.SetLabel(label)
+        settings = self._current_settings()
+
+        def task() -> tuple[bool, str | None]:
+            client = MCPClient(settings=settings, confirm=lambda _m: True)
+            result = client.check_tools()
+            ok = bool(result.get("ok"))
+            if ok:
+                return True, None
+            return False, format_error_message(result.get("error"))
+
+        self._run_background_check(
+            button=self._check_tools,
+            status_label=self._tools_status,
+            task=task,
+        )
 
     def _on_check(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         result = self._mcp.check(self._current_settings())
@@ -434,6 +458,51 @@ class SettingsDialog(wx.Dialog):
             f"{_('Status')}: {label}\n{result.message}",
             _("Check MCP"),
         )
+
+    # ------------------------------------------------------------------
+    def _run_background_check(
+        self,
+        *,
+        button: wx.Button,
+        status_label: wx.StaticText,
+        task: Callable[[], tuple[bool, str | None]],
+    ) -> None:
+        status_label.SetLabel("...")
+        status_label.SetToolTip(None)
+        button.Enable(False)
+
+        app = wx.GetApp()
+        is_main_loop_running = bool(
+            app and getattr(app, "IsMainLoopRunning", lambda: False)()
+        )
+        finished = threading.Event()
+        result_holder: dict[str, tuple[bool, str | None]] = {}
+
+        def apply_result(ok: bool, tooltip: str | None) -> None:
+            button.Enable(True)
+            status_label.SetLabel(_("ok") if ok else _("error"))
+            status_label.SetToolTip(tooltip if tooltip else None)
+
+        def worker() -> None:
+            try:
+                ok, tooltip = task()
+            except Exception as exc:  # pragma: no cover - defensive
+                ok = False
+                tooltip = format_error_message(exc)
+
+            if is_main_loop_running:
+                wx.CallAfter(apply_result, ok, tooltip)
+            else:
+                result_holder["value"] = (ok, tooltip)
+                finished.set()
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+        if not is_main_loop_running:
+            finished.wait()
+            ok, tooltip = result_holder.get("value", (False, None))
+            apply_result(ok, tooltip)
 
     # ------------------------------------------------------------------
     def get_values(

@@ -14,6 +14,8 @@ SEARCHABLE_FIELDS = {
     "source",
     "owner",
     "notes",
+    "rationale",
+    "assumptions",
 }
 
 

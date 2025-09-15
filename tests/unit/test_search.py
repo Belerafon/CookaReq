@@ -35,6 +35,8 @@ def sample_requirements():
             verification=Verification.ANALYSIS,
             labels=["ui", "auth"],
             notes="Requires username",
+            rationale="Secure access",
+            assumptions="Users have accounts",
         ),
         Requirement(
             id=2,
@@ -87,6 +89,10 @@ def test_search_text():
     assert [r.id for r in found] == [1]
     found = search_text(reqs, "EXPORT", ["title"])
     assert [r.id for r in found] == [3]
+    found = search_text(reqs, "secure", ["rationale"])
+    assert [r.id for r in found] == [1]
+    found = search_text(reqs, "accounts", ["assumptions"])
+    assert [r.id for r in found] == [1]
 
 
 def test_search_text_empty_query_returns_all():
@@ -129,6 +135,8 @@ def test_field_queries():
     assert [r.id for r in found] == [1]
     found = search(reqs, field_queries={"title": "report", "owner": "carol"})
     assert [r.id for r in found] == [3]
+    found = search(reqs, field_queries={"rationale": "secure"})
+    assert [r.id for r in found] == [1]
 
 
 def test_filter_by_status_function():

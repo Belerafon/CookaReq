@@ -34,6 +34,8 @@ def test_requirement_defaults():
     assert req.approved_at is None
     assert req.notes == ""
     assert req.conditions == ""
+    assert req.rationale == ""
+    assert req.assumptions == ""
     assert req.version == ""
     assert req.modified_at == ""
 
@@ -72,15 +74,21 @@ def test_requirement_extended_roundtrip():
         attachments=[Attachment(path="doc.txt", note="ref")],
         approved_at="2024-01-01 00:00:00",
         notes="extra",
+        rationale="because",
+        assumptions="if ready",
     )
     data = requirement_to_dict(req)
     assert data["attachments"][0]["path"] == "doc.txt"
     assert data["approved_at"] == "2024-01-01 00:00:00"
     assert "acceptance" in data and data["acceptance"] is None
+    assert data["rationale"] == "because"
+    assert data["assumptions"] == "if ready"
     again = requirement_from_dict(data)
     assert again.attachments[0].note == "ref"
     assert again.approved_at == "2024-01-01 00:00:00"
     assert again.notes == "extra"
+    assert again.rationale == "because"
+    assert again.assumptions == "if ready"
 
 
 def test_requirement_from_dict_missing_statement():

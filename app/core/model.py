@@ -67,6 +67,8 @@ class Requirement:
     verification: Verification
     acceptance: str | None = None
     conditions: str = ""
+    rationale: str = ""
+    assumptions: str = ""
     version: str = ""
     modified_at: str = ""
     labels: list[str] = field(default_factory=list)
@@ -135,6 +137,8 @@ def requirement_from_dict(
         verification=Verification(data["verification"]),
         acceptance=data.get("acceptance"),
         conditions=data.get("conditions", ""),
+        rationale=data.get("rationale", ""),
+        assumptions=data.get("assumptions", ""),
         version=data.get("version", ""),
         modified_at=normalize_timestamp(data.get("modified_at")),
         labels=labels,

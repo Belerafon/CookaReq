@@ -137,24 +137,37 @@ def is_ancestor(
     return False
 
 
-def collect_labels(prefix: str, docs: Mapping[str, Document]) -> tuple[set[str], bool]:
-    """Return allowed label keys and freeform flag for ``prefix``.
+def collect_label_defs(
+    prefix: str, docs: Mapping[str, Document]
+) -> tuple[list[LabelDef], bool]:
+    """Return label definitions and freeform flag for ``prefix``.
 
-    The result aggregates label definitions from ``prefix`` and all its
-    ancestors, with ``allow_freeform`` set when any document in the chain
-    permits free-form labels.
+    Aggregates label definitions from ``prefix`` and its ancestors while also
+    determining whether any document in the chain permits free-form labels.
+    Colors are resolved using :func:`label_color`.
     """
 
-    allowed: set[str] = set()
+    labels: list[LabelDef] = []
     allow_freeform = False
+    chain: list[Document] = []
     current = docs.get(prefix)
     while current:
-        allowed.update(ld.key for ld in current.labels.defs)
+        chain.append(current)
         allow_freeform = allow_freeform or current.labels.allow_freeform
         if not current.parent:
             break
         current = docs.get(current.parent)
-    return allowed, allow_freeform
+    for doc in reversed(chain):
+        for ld in doc.labels.defs:
+            labels.append(LabelDef(ld.key, ld.title, label_color(ld)))
+    return labels, allow_freeform
+
+
+def collect_labels(prefix: str, docs: Mapping[str, Document]) -> tuple[set[str], bool]:
+    """Return allowed label keys and freeform flag for ``prefix``."""
+
+    defs, freeform = collect_label_defs(prefix, docs)
+    return {d.key for d in defs}, freeform
 
 
 def rid_for(doc: Document, item_id: int) -> str:

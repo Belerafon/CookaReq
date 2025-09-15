@@ -89,7 +89,8 @@ def requirement_from_dict(
     into their respective dataclasses. Missing optional fields fall back to
     sensible defaults.
     """
-    attachments = [Attachment(**a) for a in data.get("attachments", [])]
+    attachments_data = data.get("attachments") or []
+    attachments = [Attachment(**a) for a in attachments_data]
     raw_links = data.get("links", [])
     links = [str(link) for link in raw_links] if isinstance(raw_links, list) else []
     statement = data.get("statement", data.get("text", ""))
@@ -107,7 +108,7 @@ def requirement_from_dict(
         conditions=data.get("conditions", ""),
         version=data.get("version", ""),
         modified_at=normalize_timestamp(data.get("modified_at")),
-        labels=list(data.get("labels", [])),
+        labels=list(data.get("labels") or []),
         attachments=attachments,
         revision=data.get("revision", 1),
         approved_at=(
@@ -134,4 +135,4 @@ def requirement_to_dict(req: Requirement) -> dict[str, Any]:
         value = data.get(key)
         if isinstance(value, Enum):
             data[key] = value.value
-    return {k: v for k, v in data.items() if v is not None}
+    return data

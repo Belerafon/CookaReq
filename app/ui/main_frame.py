@@ -186,11 +186,27 @@ class MainFrame(wx.Frame):
         return self.config.get_recent_dirs()
 
 
+    def _confirm_discard_changes(self) -> bool:
+        """Ask user to discard unsaved edits if editor has pending changes."""
+
+        if not getattr(self, "editor", None):
+            return True
+        if not self.editor.is_dirty():
+            return True
+        if confirm(_("Discard unsaved changes?")):
+            self.editor.mark_clean()
+            return True
+        return False
+
+
     def on_open_folder(self, _event: wx.Event) -> None:
         """Handle "Open Folder" menu action."""
 
         dlg = wx.DirDialog(self, _("Select requirements folder"))
         if dlg.ShowModal() == wx.ID_OK:
+            if not self._confirm_discard_changes():
+                dlg.Destroy()
+                return
             self._load_directory(Path(dlg.GetPath()))
         dlg.Destroy()
 
@@ -198,7 +214,7 @@ class MainFrame(wx.Frame):
         """Open a directory selected from the "recent" menu."""
 
         path = self.navigation.get_recent_path(event.GetId())
-        if path:
+        if path and self._confirm_discard_changes():
             self._load_directory(path)
 
     def on_open_settings(
@@ -528,6 +544,10 @@ class MainFrame(wx.Frame):
         self.config.save_layout(self, self.doc_splitter, self.main_splitter, self.panel)
 
     def _on_close(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+        if not self._confirm_discard_changes():
+            if hasattr(event, "Veto") and event.CanVeto():  # pragma: no cover - GUI event
+                event.Veto()
+            return
         self._save_layout()
         if self.log_handler in logger.handlers:
             logger.removeHandler(self.log_handler)

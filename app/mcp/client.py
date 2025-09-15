@@ -11,7 +11,7 @@ from typing import Any
 from ..i18n import _
 from ..settings import MCPSettings
 from ..telemetry import log_event
-from .utils import ErrorCode, mcp_error, sanitize
+from .utils import ErrorCode, mcp_error
 
 
 class MCPClient:
@@ -45,9 +45,10 @@ class MCPClient:
             "token": self.settings.token if self.settings.require_token else "",
         }
         start = time.monotonic()
+        # ``log_event`` выполняет собственную очистку чувствительных данных.
         log_event(
             "TOOL_CALL",
-            {"tool": "list_requirements", "params": sanitize(params)},
+            {"tool": "list_requirements", "params": params},
         )
         try:
             conn = HTTPConnection(self.settings.host, self.settings.port, timeout=5)
@@ -96,9 +97,10 @@ class MCPClient:
                 log_event("CANCELLED", {"tool": name})
                 return {"error": err}
 
+        # ``log_event`` выполняет собственную очистку чувствительных данных.
         log_event(
             "TOOL_CALL",
-            {"tool": name, "params": sanitize(dict(arguments))},
+            {"tool": name, "params": dict(arguments)},
         )
         start = time.monotonic()
         try:

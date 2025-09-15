@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Iterable, List
 
 RULE_RE = re.compile(r"^label:([^=]+)=([^->]+)->([A-Z][A-Z0-9_]*)$")
+LEGACY_ID_RE = re.compile(
+    r"^(?:(?P<prefix>(?=.*[A-Za-z_])[A-Za-z0-9_]+?)[-_]?)?(?P<num>[0-9]+)$"
+)
 
 
 @dataclass
@@ -61,21 +64,43 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
     for fp in root.glob("*.json"):
         with fp.open(encoding="utf-8") as fh:
             data = json.load(fh)
-        old_id = data.get("id")
-        if not isinstance(old_id, str):
+        raw_id = data.get("id")
+        if raw_id is None:
             raise ValueError(f"missing id in {fp}")
-        m = re.match(r"([A-Za-z0-9_]+)[-_]?([0-9]+)", old_id)
-        if not m:
-            raise ValueError(f"invalid id format: {old_id}")
-        num = int(m.group(2))
-        width = len(m.group(2))
+
+        aliases: list[str] = []
+
+        def add_alias(value: str) -> None:
+            if value not in aliases:
+                aliases.append(value)
+
+        if isinstance(raw_id, int):
+            digits_id = str(raw_id)
+            normalized_id = f"{default}{digits_id}"
+            add_alias(normalized_id)
+            add_alias(digits_id)
+            display_id = digits_id
+        elif isinstance(raw_id, str):
+            normalized_id = raw_id
+            add_alias(normalized_id)
+            display_id = raw_id
+        else:
+            raise ValueError(f"invalid id format: {raw_id}")
+
+        match = LEGACY_ID_RE.match(normalized_id)
+        if not match:
+            raise ValueError(f"invalid id format: {display_id}")
+
+        num_str = match.group("num")
+        num = int(num_str)
+        width = len(num_str)
         labels = list(data.get("labels", []))
         prefix = select_prefix(labels, rule_objs, default)
         digits_map[prefix] = max(digits_map.get(prefix, 0), width)
         parsed.append({
             "fp": fp,
             "data": data,
-            "old_id": old_id,
+            "aliases": aliases,
             "num": num,
             "prefix": prefix,
             "labels": labels,
@@ -88,7 +113,8 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
         digits = digits_map[info["prefix"]]
         rid = f"{info['prefix']}{info['num']:0{digits}d}"
         info["rid"] = rid
-        id_map[info["old_id"]] = rid
+        for alias in info["aliases"]:
+            id_map[alias] = rid
 
     # Second pass: rewrite items and links
     items: list[tuple[str, str, dict]] = []
@@ -105,7 +131,13 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
             ],
         }
         if info["links"]:
-            item["links"] = [id_map.get(link, link) for link in info["links"]]
+            remapped_links = []
+            for link in info["links"]:
+                new_link = id_map.get(link)
+                if new_link is None and not isinstance(link, str):
+                    new_link = id_map.get(str(link))
+                remapped_links.append(new_link if new_link is not None else link)
+            item["links"] = remapped_links
         if "revision" in info["data"]:
             item["revision"] = info["data"]["revision"]
         items.append((info["prefix"], info["rid"], item, info["fp"]))

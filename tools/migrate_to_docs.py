@@ -93,10 +93,13 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
     # Second pass: rewrite items and links
     items: list[tuple[str, str, dict]] = []
     for info in parsed:
+        statement = info["data"].get("statement")
+        if statement is None:
+            raise ValueError(f"missing statement in {info['fp']}")
         item = {
             "id": info["num"],
             "title": info["data"].get("title", ""),
-            "statement": info["data"].get("statement", info["data"].get("text", "")),
+            "statement": statement,
             "labels": [
                 lbl for lbl in info["labels"] if not lbl.startswith("doc=")
             ],

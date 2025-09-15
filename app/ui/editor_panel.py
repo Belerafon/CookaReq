@@ -11,8 +11,7 @@ import wx
 import wx.adv
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from ..core import requirements as req_ops
-from ..core.doc_store import Document, save_item
+from ..core.doc_store import Document, save_item, list_item_ids
 from ..core.labels import Label
 from ..core.model import (
     Priority,
@@ -187,14 +186,10 @@ class EditorPanel(ScrolledPanel):
                 "Establishing parenthood keeps the traceability chain intact and simplifies impact analysis. "
                 "Clear links are essential during audits and design reviews.",
             ),
-            "verifies": _(
-                "Links to requirements that this one verifies or tests. "
-                "Use it to show downward traceability towards implementation or validation artifacts.",
-            ),
-            "relates": _(
-                "Associations with requirements touching the same topic. "
-                "Related links help discover dependencies and avoid conflicting decisions. "
-                "They are informational and do not imply hierarchy.",
+            "links": _(
+                "Links to higher-level requirements or stakeholder needs. "
+                "Upward traceability shows why this requirement exists and simplifies impact analysis when parents change. "
+                "Use it to prove coverage of system objectives.",
             ),
             "derived_from": _(
                 "Source requirements from which this one was derived. "
@@ -390,21 +385,13 @@ class EditorPanel(ScrolledPanel):
         pr_sizer.Add(self.parent_display, 0, wx.ALL, 5)
         links_grid.Add(pr_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
-        # verifies section ----------------------------------------------
-        ver_sizer = self._create_links_section(
-            _("IDs of requirements this one verifies"),
-            "verifies",
-            help_key="verifies",
+        # generic links section ----------------------------------------
+        ln_sizer = self._create_links_section(
+            _("IDs of linked requirements"),
+            "links",
+            help_key="links",
         )
-        links_grid.Add(ver_sizer, 0, wx.EXPAND | wx.ALL, 5)
-
-        # relates section -----------------------------------------------
-        rel_sizer = self._create_links_section(
-            _("IDs of related requirements"),
-            "relates",
-            help_key="relates",
-        )
-        links_grid.Add(rel_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        links_grid.Add(ln_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # derived from section -------------------------------------------
         df_sizer = self._create_links_section(
@@ -606,15 +593,8 @@ class EditorPanel(ScrolledPanel):
         list_ctrl.DeleteAllItems()
         for link in links_list:
             src_rid = link["rid"]
-            title = ""
-            if self.directory and src_rid.isdigit():
-                try:
-                    req = req_ops.get_requirement(self.directory, int(src_rid))
-                    title = req.title or ""
-                except Exception:  # pragma: no cover - lookup errors
-                    logger.exception("Failed to load requirement %s", src_rid)
             idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), src_rid)
-            list_ctrl.SetItem(idx, 1, title)
+            list_ctrl.SetItem(idx, 1, "")
 
     # basic operations -------------------------------------------------
     def set_directory(self, directory: str | Path | None) -> None:
@@ -641,8 +621,7 @@ class EditorPanel(ScrolledPanel):
                 choice.SetStringSelection(defaults[name])
             self.attachments = []
             self.derived_from = []
-            self.verifies = []
-            self.relates = []
+            self.links = []
             self.parent = None
             self.current_path = None
             self.mtime = None
@@ -662,13 +641,10 @@ class EditorPanel(ScrolledPanel):
             self._refresh_attachments()
             self.derived_list.DeleteAllItems()
             self.derived_id.ChangeValue("")
-            self.verifies_list.DeleteAllItems()
-            self.verifies_id.ChangeValue("")
-            self.relates_list.DeleteAllItems()
-            self.relates_id.ChangeValue("")
+            self.links_list.DeleteAllItems()
+            self.links_id.ChangeValue("")
             self._refresh_links_visibility("derived_from")
-            self._refresh_links_visibility("verifies")
-            self._refresh_links_visibility("relates")
+            self._refresh_links_visibility("links")
             self._refresh_parent_display()
             for ctrl in self.derivation_fields.values():
                 ctrl.ChangeValue("")
@@ -702,15 +678,10 @@ class EditorPanel(ScrolledPanel):
             self._rebuild_links_list("derived_from")
             self.derived_id.ChangeValue("")
             self._refresh_links_visibility("derived_from")
-            links = data.get("links", {})
-            self.verifies = [dict(link) for link in links.get("verifies", [])]
-            self._rebuild_links_list("verifies")
-            self.verifies_id.ChangeValue("")
-            self._refresh_links_visibility("verifies")
-            self.relates = [dict(link) for link in links.get("relates", [])]
-            self._rebuild_links_list("relates")
-            self.relates_id.ChangeValue("")
-            self._refresh_links_visibility("relates")
+            self.links = [{"rid": rid} for rid in data.get("links", [])]
+            self._rebuild_links_list("links")
+            self.links_id.ChangeValue("")
+            self._refresh_links_visibility("links")
             self.parent = dict(data.get("parent", {})) or None
             self._refresh_parent_display()
             for name, choice in self.enums.items():
@@ -759,13 +730,10 @@ class EditorPanel(ScrolledPanel):
             self.original_id = None
             self.derived_from = []
             self.derived_list.DeleteAllItems()
-            self.verifies = []
-            self.verifies_list.DeleteAllItems()
-            self.relates = []
-            self.relates_list.DeleteAllItems()
+            self.links = []
+            self.links_list.DeleteAllItems()
             self._refresh_links_visibility("derived_from")
-            self._refresh_links_visibility("verifies")
-            self._refresh_links_visibility("relates")
+            self._refresh_links_visibility("links")
             self.parent = None
             self._refresh_parent_display()
             for ctrl in self.derivation_fields.values():
@@ -825,11 +793,8 @@ class EditorPanel(ScrolledPanel):
         }
         if self.parent:
             data["parent"] = dict(self.parent)
-        if self.verifies or self.relates:
-            data["links"] = {
-                "verifies": list(self.verifies),
-                "relates": list(self.relates),
-            }
+        if self.links:
+            data["links"] = [link["rid"] for link in self.links]
         dt = self.approved_picker.GetValue()
         approved_at = dt.FormatISODate() if dt.IsValid() else None
         data["approved_at"] = approved_at
@@ -1022,12 +987,6 @@ class EditorPanel(ScrolledPanel):
             return
         rid = value
         revision = 1
-        if self.directory and rid.isdigit():
-            try:
-                req = req_ops.get_requirement(self.directory, int(rid))
-                revision = req.revision or 1
-            except Exception:
-                logger.exception("Failed to load requirement %s", rid)
         self.parent = {"rid": rid, "revision": revision, "suspect": False}
         self.parent_id.ChangeValue("")
         self._refresh_parent_display()
@@ -1072,13 +1031,6 @@ class EditorPanel(ScrolledPanel):
             return
         if req_id <= 0:
             ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
-            ctrl.Refresh()
-            return
-        ids = req_ops.list_ids(self.directory)
-        if self.original_id is not None:
-            ids.discard(self.original_id)
-        if req_id in ids:
-            ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
         else:
             ctrl.SetBackgroundColour(wx.NullColour)
         ctrl.Refresh()
@@ -1115,18 +1067,6 @@ class EditorPanel(ScrolledPanel):
         self.original_id = req.id
         self._on_id_change()
         return path
-
-    def delete(self) -> None:
-        """Remove currently loaded requirement file if present."""
-
-        if self.current_path and self.current_path.exists():
-            req_ops.delete_requirement(
-                self.current_path.parent,
-                int(self.current_path.stem),
-            )
-        self.current_path = None
-        self.mtime = None
-        self.original_id = None
 
     def add_attachment(self, path: str, note: str = "") -> None:
         """Append attachment with ``path`` and optional ``note``."""

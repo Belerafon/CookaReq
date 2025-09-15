@@ -2,13 +2,15 @@ import argparse
 
 import pytest
 
+import argparse
+
+import pytest
+
 from app.cli import commands
 from app.core.doc_store import Document, save_document, save_item
-from app.core.repository import FileRequirementRepository
 
 
-def _prepare_repo(root):
-    repo = FileRequirementRepository()
+def _prepare(root):
     doc_sys = Document(prefix="SYS", title="System", digits=3)
     save_document(root / "SYS", doc_sys)
     doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
@@ -19,35 +21,31 @@ def _prepare_repo(root):
         doc_hlr,
         {"id": 1, "title": "H", "text": "", "labels": [], "links": ["SYS001"]},
     )
-    return repo
 
 
 @pytest.mark.unit
 def test_trace_export(tmp_path, capsys):
-    repo = _prepare_repo(tmp_path)
-
     args = argparse.Namespace(directory=str(tmp_path), format="plain", output=None)
-    commands.cmd_trace(args, repo)
+    _prepare(tmp_path)
+    commands.cmd_trace(args)
     out = capsys.readouterr().out.strip().splitlines()
     assert out == ["HLR01 SYS001"]
 
 
 @pytest.mark.unit
 def test_trace_export_csv(tmp_path, capsys):
-    repo = _prepare_repo(tmp_path)
-
     args = argparse.Namespace(directory=str(tmp_path), format="csv", output=None)
-    commands.cmd_trace(args, repo)
+    _prepare(tmp_path)
+    commands.cmd_trace(args)
     out = capsys.readouterr().out.strip().splitlines()
     assert out == ["child,parent", "HLR01,SYS001"]
 
 
 @pytest.mark.unit
 def test_trace_export_html(tmp_path, capsys):
-    repo = _prepare_repo(tmp_path)
-
     args = argparse.Namespace(directory=str(tmp_path), format="html", output=None)
-    commands.cmd_trace(args, repo)
+    _prepare(tmp_path)
+    commands.cmd_trace(args)
     out = capsys.readouterr().out
     assert "<!DOCTYPE html>" in out
     assert "<style>" in out
@@ -56,11 +54,10 @@ def test_trace_export_html(tmp_path, capsys):
 
 @pytest.mark.unit
 def test_trace_output_file(tmp_path, capsys):
-    repo = _prepare_repo(tmp_path)
-
     out_file = tmp_path / "trace.html"
     args = argparse.Namespace(directory=str(tmp_path), format="html", output=str(out_file))
-    commands.cmd_trace(args, repo)
+    _prepare(tmp_path)
+    commands.cmd_trace(args)
     captured = capsys.readouterr()
     assert captured.out == ""
     data = out_file.read_text()
@@ -70,11 +67,10 @@ def test_trace_output_file(tmp_path, capsys):
 
 @pytest.mark.unit
 def test_trace_output_creates_parent_dirs(tmp_path, capsys):
-    repo = _prepare_repo(tmp_path)
-
     out_file = tmp_path / "nested" / "dir" / "trace.csv"
     args = argparse.Namespace(directory=str(tmp_path), format="csv", output=str(out_file))
-    commands.cmd_trace(args, repo)
+    _prepare(tmp_path)
+    commands.cmd_trace(args)
     captured = capsys.readouterr()
     assert captured.out == ""
     assert out_file.exists()

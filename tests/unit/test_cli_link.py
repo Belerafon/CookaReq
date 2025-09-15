@@ -6,13 +6,10 @@ import pytest
 
 from app.cli import commands
 from app.core.doc_store import Document, save_document, save_item
-from app.core.repository import FileRequirementRepository
 
 
 @pytest.mark.unit
 def test_link_add(tmp_path, capsys):
-    repo = FileRequirementRepository()
-
     doc_sys = Document(prefix="SYS", title="System", digits=3)
     save_document(tmp_path / "SYS", doc_sys)
     doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
@@ -24,7 +21,7 @@ def test_link_add(tmp_path, capsys):
     args = argparse.Namespace(
         directory=str(tmp_path), rid="HLR01", parents=["SYS001"], replace=False
     )
-    commands.cmd_link(args, repo)
+    commands.cmd_link(args)
     out = capsys.readouterr().out.strip()
     assert out == "HLR01"
 
@@ -35,8 +32,6 @@ def test_link_add(tmp_path, capsys):
 
 @pytest.mark.unit
 def test_link_rejects_self_link(tmp_path, capsys):
-    repo = FileRequirementRepository()
-
     doc_sys = Document(prefix="SYS", title="System", digits=3)
     save_document(tmp_path / "SYS", doc_sys)
 
@@ -49,7 +44,7 @@ def test_link_rejects_self_link(tmp_path, capsys):
     args = argparse.Namespace(
         directory=str(tmp_path), rid="SYS001", parents=["SYS001"], replace=False
     )
-    commands.cmd_link(args, repo)
+    commands.cmd_link(args)
     out = capsys.readouterr().out.strip()
     assert out == "invalid link target: SYS001"
 
@@ -60,8 +55,6 @@ def test_link_rejects_self_link(tmp_path, capsys):
 
 @pytest.mark.unit
 def test_link_rejects_non_ancestor(tmp_path, capsys):
-    repo = FileRequirementRepository()
-
     doc_sys = Document(prefix="SYS", title="System", digits=3)
     save_document(tmp_path / "SYS", doc_sys)
     doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
@@ -75,7 +68,7 @@ def test_link_rejects_non_ancestor(tmp_path, capsys):
     args = argparse.Namespace(
         directory=str(tmp_path), rid="HLR01", parents=["LLR01"], replace=False
     )
-    commands.cmd_link(args, repo)
+    commands.cmd_link(args)
     out = capsys.readouterr().out.strip()
     assert out == "invalid link target: LLR01"
 

@@ -46,11 +46,11 @@ TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_requirement",
-            "description": "Retrieve a requirement by id",
+            "description": "Retrieve a requirement by identifier",
             "parameters": {
                 "type": "object",
-                "properties": {"req_id": {"type": "integer"}},
-                "required": ["req_id"],
+                "properties": {"rid": {"type": "string"}},
+                "required": ["rid"],
                 "additionalProperties": False,
             },
         },
@@ -82,10 +82,10 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "prefix": {"type": "string"},
                     "data": {
                         "type": "object",
                         "properties": {
-                            "id": {"type": "integer"},
                             "title": {"type": "string"},
                             "statement": {"type": "string"},
                             "type": {
@@ -123,7 +123,6 @@ TOOLS: list[dict[str, Any]] = [
                             },
                         },
                         "required": [
-                            "id",
                             "title",
                             "statement",
                             "type",
@@ -136,7 +135,7 @@ TOOLS: list[dict[str, Any]] = [
                         "additionalProperties": True,
                     },
                 },
-                "required": ["data"],
+                "required": ["prefix", "data"],
                 "additionalProperties": False,
             },
         },
@@ -149,14 +148,14 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "req_id": {"type": "integer"},
+                    "rid": {"type": "string"},
                     "patch": {
                         "type": "array",
                         "items": {"type": "object"},
                     },
                     "rev": {"type": "integer"},
                 },
-                "required": ["req_id", "patch", "rev"],
+                "required": ["rid", "patch", "rev"],
                 "additionalProperties": False,
             },
         },
@@ -169,10 +168,10 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "req_id": {"type": "integer"},
+                    "rid": {"type": "string"},
                     "rev": {"type": "integer"},
                 },
-                "required": ["req_id", "rev"],
+                "required": ["rid", "rev"],
                 "additionalProperties": False,
             },
         },
@@ -185,14 +184,17 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "source_id": {"type": "integer"},
-                    "derived_id": {"type": "integer"},
-                    "link_type": {"type": "string"},
+                    "source_rid": {"type": "string"},
+                    "derived_rid": {"type": "string"},
+                    "link_type": {
+                        "type": "string",
+                        "enum": ["parent"],
+                    },
                     "rev": {"type": "integer"},
                 },
                 "required": [
-                    "source_id",
-                    "derived_id",
+                    "source_rid",
+                    "derived_rid",
                     "link_type",
                     "rev",
                 ],

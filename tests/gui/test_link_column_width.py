@@ -1,7 +1,6 @@
 import pytest
 import wx
 
-from app.core import requirements as req_ops
 from app.core.model import Priority, Requirement, RequirementType, Status, Verification
 from app.ui.editor_panel import EditorPanel
 
@@ -24,7 +23,6 @@ def test_title_column_expands_to_available_width(wx_app, monkeypatch):
         source="",
         verification=Verification.ANALYSIS,
     )
-    monkeypatch.setattr(req_ops, "get_requirement", lambda d, i: req)
 
     frame.SetClientSize((400, 300))
     frame.Show()

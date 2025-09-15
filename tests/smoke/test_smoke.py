@@ -44,7 +44,7 @@ def test_cli_help() -> None:
         "--help",
     ], capture_output=True, text=True)
     assert proc.returncode == 0
-    assert "list" in proc.stdout
+    assert "doc" in proc.stdout
 
 
 @pytest.mark.smoke

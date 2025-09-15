@@ -126,9 +126,7 @@ Each requirement item (`items/<RID>.json`) includes:
 - `labels` *(list[str])* — labels including inherited ones
  - `derived_from` *(list[obj])* — upstream requirements `{rid, revision, suspect}`
  - `derived_to` *(list[obj])* — downstream requirements `{rid, revision, suspect}`
- - `links` *(obj)* — miscellaneous relations
-   - `verifies` *(list[obj])* — verification links
-   - `relates` *(list[obj])* — generic relationships
+ - `links` *(list[str])* — linked higher-level requirement IDs
 - `attachments` *(list[obj])* — attachments `{path, note}`
 - `revision` *(int)* — revision number (starting at 1)
 - `notes` *(str)* — additional comments

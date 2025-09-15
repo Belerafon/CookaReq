@@ -27,7 +27,7 @@ CookaReq (Cook a requirement) is a wibecoded desktop application built with wxPy
 The main window is divided into three panes:
 
 1. **Document tree** — shows documents with their parent–child relationships.
-2. **Requirement list** — a table with customizable columns. Supports sorting, label filters, text search and an extended filter dialog. The context menu lets you create new requirements, clone existing ones and delete entries.
+2. **Requirement list** — a table with customizable columns. Supports sorting, label filters, text search and an extended filter dialog. The context menu lets you create new requirements, clone existing ones and delete entries. Deleting entries prompts for confirmation and shows the requirement's RID and title to prevent accidental removal.
 3. **Editor** — a form with the fields of a requirement model. It appears when creating or editing a record and allows saving changes to a file.
 
 Selecting a document updates the requirement list and editor with the items and label presets defined for that document and its ancestors. If any document in the chain enables free-form labels, the selection dialog accepts additional custom names.

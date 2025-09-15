@@ -613,6 +613,21 @@ class MainFrame(wx.Frame):
         """Delete requirement ``req_id`` and refresh views."""
         if not (self.docs_controller and self.current_doc_prefix):
             return
+        requirement = self.model.get_by_id(req_id) if self.model else None
+        message = _("Delete requirement?")
+        if requirement:
+            summary_parts: list[str] = []
+            if requirement.rid:
+                summary_parts.append(requirement.rid)
+            title = requirement.title.strip()
+            if title:
+                summary_parts.append(title)
+            if summary_parts:
+                message = _("Delete requirement {summary}?").format(
+                    summary=" — ".join(summary_parts)
+                )
+        if not confirm(message):
+            return
         if not self.docs_controller.delete_requirement(self.current_doc_prefix, req_id):
             return
         self.panel.refresh()

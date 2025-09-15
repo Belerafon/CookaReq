@@ -39,5 +39,6 @@ Thumbs.db
 app/locale/missing.po
 
 # Logs
-server.log
-server.jsonl
+# Development server logs generated at project root
+/server.log
+/server.jsonl

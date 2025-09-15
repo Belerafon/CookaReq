@@ -18,6 +18,7 @@ from ..mcp.controller import MCPController
 from ..settings import AppSettings, LLMSettings, MCPSettings
 from .command_dialog import CommandDialog
 from .controllers import DocumentsController
+from .document_dialog import DocumentPropertiesDialog
 from .document_tree import DocumentTree
 from .editor_panel import EditorPanel
 from .labels_dialog import LabelsDialog
@@ -125,7 +126,13 @@ class MainFrame(wx.Frame):
         self.main_splitter = wx.SplitterWindow(self)
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         self.splitter = wx.SplitterWindow(self.doc_splitter)
-        self.doc_tree = DocumentTree(self.doc_splitter, on_select=self.on_document_selected)
+        self.doc_tree = DocumentTree(
+            self.doc_splitter,
+            on_select=self.on_document_selected,
+            on_new_document=self.on_new_document,
+            on_rename_document=self.on_rename_document,
+            on_delete_document=self.on_delete_document,
+        )
         self.doc_tree.tree.Bind(wx.EVT_TREE_SEL_CHANGING, self._on_doc_changing)
         self.panel = ListPanel(
             self.splitter,
@@ -437,6 +444,7 @@ class MainFrame(wx.Frame):
             self.panel.set_requirements(self.model.get_all(), derived_map)
             self.editor.update_labels_list(labels, freeform)
             self.panel.update_labels_list(labels)
+            self.doc_tree.select(first)
         else:
             self.current_doc_prefix = None
             self.editor.set_directory(None)
@@ -448,7 +456,121 @@ class MainFrame(wx.Frame):
         self._selected_requirement_id = None
         self.editor.Hide()
 
+    def _refresh_documents(
+        self,
+        *,
+        select: str | None = None,
+        force_reload: bool = False,
+    ) -> None:
+        """Reload document tree and optionally change selection."""
+
+        if not self.docs_controller:
+            return
+        docs = self.docs_controller.load_documents()
+        self.doc_tree.set_documents(docs)
+        target = select
+        if target and target not in docs:
+            target = None
+        if target is None:
+            if self.current_doc_prefix and self.current_doc_prefix in docs:
+                target = self.current_doc_prefix
+            elif docs:
+                target = sorted(docs)[0]
+        if target:
+            if force_reload or target != self.current_doc_prefix:
+                self.current_doc_prefix = None
+            self.doc_tree.select(target)
+        else:
+            self.current_doc_prefix = None
+            self.editor.set_directory(None)
+            self.panel.set_requirements([], {})
+            self.editor.update_labels_list([])
+            self.panel.update_labels_list([])
+            self._selected_requirement_id = None
+            self.editor.Hide()
+
     # recent directories -------------------------------------------------
+
+    def on_new_document(self, parent_prefix: str | None) -> None:
+        """Create a new document under ``parent_prefix``."""
+
+        if not (self.docs_controller and self.current_dir):
+            wx.MessageBox(_("Select requirements folder first"), _("No Data"))
+            return
+        dlg = DocumentPropertiesDialog(
+            self,
+            mode="create",
+            parent_prefix=parent_prefix,
+        )
+        if dlg.ShowModal() != wx.ID_OK:
+            return
+        props = dlg.get_properties()
+        if props is None:
+            return
+        try:
+            doc = self.docs_controller.create_document(
+                props.prefix,
+                props.title,
+                digits=props.digits,
+                parent=parent_prefix,
+            )
+        except ValueError as exc:
+            wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
+            return
+        self._selected_requirement_id = None
+        self._refresh_documents(select=doc.prefix, force_reload=True)
+
+    def on_rename_document(self, prefix: str) -> None:
+        """Rename or retitle document ``prefix``."""
+
+        if not self.docs_controller:
+            return
+        doc = self.docs_controller.documents.get(prefix)
+        if not doc:
+            return
+        dlg = DocumentPropertiesDialog(
+            self,
+            mode="rename",
+            prefix=doc.prefix,
+            title=doc.title,
+            digits=doc.digits,
+            parent_prefix=doc.parent,
+        )
+        if dlg.ShowModal() != wx.ID_OK:
+            return
+        props = dlg.get_properties()
+        if props is None:
+            return
+        try:
+            self.docs_controller.rename_document(
+                prefix,
+                title=props.title,
+                digits=props.digits,
+            )
+        except ValueError as exc:
+            wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
+            return
+        self._refresh_documents(select=prefix, force_reload=True)
+
+    def on_delete_document(self, prefix: str) -> None:
+        """Delete document ``prefix`` after confirmation."""
+
+        if not self.docs_controller:
+            return
+        doc = self.docs_controller.documents.get(prefix)
+        if not doc:
+            return
+        msg = _("Delete document {prefix} and its subtree?").format(prefix=prefix)
+        if not confirm(msg):
+            return
+        parent_prefix = doc.parent
+        removed = self.docs_controller.delete_document(prefix)
+        if not removed:
+            wx.MessageBox(_("Document not found"), _("Error"), wx.ICON_ERROR)
+            return
+        self._selected_requirement_id = None
+        target = parent_prefix if parent_prefix in self.docs_controller.documents else None
+        self._refresh_documents(select=target, force_reload=True)
 
     def _on_doc_changing(self, event: wx.TreeEvent) -> None:
         """Request confirmation before switching documents."""

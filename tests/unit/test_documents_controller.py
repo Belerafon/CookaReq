@@ -7,6 +7,7 @@ from app.core.doc_store import (
     Document,
     DocumentLabels,
     LabelDef,
+    load_document,
     save_document,
     save_item,
     load_item,
@@ -152,3 +153,79 @@ def test_delete_document_recursively(tmp_path: Path):
     assert not hlr_dir.exists()
     assert not llr_dir.exists()
     assert model.get_all() == []
+
+
+def test_create_document_persists_configuration(tmp_path: Path) -> None:
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    created = controller.create_document("SYS", "System", digits=4)
+    assert created.prefix == "SYS"
+    assert created.digits == 4
+    path = tmp_path / "SYS" / "document.json"
+    assert path.is_file()
+    stored = load_document(tmp_path / "SYS")
+    assert stored.title == "System"
+    assert stored.digits == 4
+
+
+def test_create_document_with_parent(tmp_path: Path) -> None:
+    parent_doc = Document(prefix="SYS", title="System", digits=3)
+    save_document(tmp_path / "SYS", parent_doc)
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    child = controller.create_document("HLR", "High", parent="SYS")
+    assert child.parent == "SYS"
+    stored_child = load_document(tmp_path / "HLR")
+    assert stored_child.parent == "SYS"
+
+
+def test_create_document_rejects_invalid_prefix(tmp_path: Path) -> None:
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    with pytest.raises(ValueError):
+        controller.create_document("sys", "System")
+
+
+def test_create_document_rejects_duplicate(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System", digits=3)
+    save_document(tmp_path / "SYS", doc)
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    with pytest.raises(ValueError):
+        controller.create_document("SYS", "Another")
+
+
+def test_rename_document_updates_metadata(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System", digits=3)
+    save_document(tmp_path / "SYS", doc)
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    updated = controller.rename_document("SYS", title="Updated", digits=5)
+    assert updated.title == "Updated"
+    assert updated.digits == 5
+    stored = load_document(tmp_path / "SYS")
+    assert stored.title == "Updated"
+    assert stored.digits == 5
+
+
+def test_rename_document_rejects_unknown(tmp_path: Path) -> None:
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    with pytest.raises(ValueError):
+        controller.rename_document("SYS", title="Missing")
+
+
+def test_rename_document_rejects_invalid_digits(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System", digits=3)
+    save_document(tmp_path / "SYS", doc)
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    with pytest.raises(ValueError):
+        controller.rename_document("SYS", digits=0)

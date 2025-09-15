@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from pathlib import Path
 from typing import Dict, Iterable, Tuple
 
@@ -12,6 +13,7 @@ from ...core.doc_store import (
     load_documents,
     list_item_ids,
     load_item,
+    save_document,
     save_item,
     rid_for,
     next_item_id as doc_next_item_id,
@@ -30,6 +32,8 @@ class DocumentsController:
 
     def __post_init__(self) -> None:
         self.documents: Dict[str, Document] = {}
+
+    _PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
     # ------------------------------------------------------------------
     def load_documents(self) -> Dict[str, Document]:
@@ -108,6 +112,68 @@ class DocumentsController:
             self.load_documents()
             self.model.set_requirements([])
         return removed
+
+    def create_document(
+        self,
+        prefix: str,
+        title: str,
+        *,
+        digits: int = 3,
+        parent: str | None = None,
+    ) -> Document:
+        """Create a new document and persist it to disk."""
+
+        prefix = prefix.strip()
+        if not prefix:
+            raise ValueError("prefix cannot be empty")
+        if not self._PREFIX_RE.match(prefix):
+            raise ValueError("prefix must start with a capital letter and contain only A-Z, 0-9 or underscore")
+        if digits <= 0:
+            raise ValueError("digits must be positive")
+        if prefix in self.documents:
+            raise ValueError(f"document already exists: {prefix}")
+        if parent:
+            parent = parent.strip()
+            if parent == prefix:
+                raise ValueError("document cannot be its own parent")
+            if parent not in self.documents:
+                raise ValueError(f"unknown parent document: {parent}")
+        doc = Document(
+            prefix=prefix,
+            title=title or prefix,
+            digits=digits,
+            parent=parent or None,
+        )
+        save_document(self.root / prefix, doc)
+        self.load_documents()
+        return self.documents[prefix]
+
+    def rename_document(
+        self,
+        prefix: str,
+        *,
+        title: str | None = None,
+        digits: int | None = None,
+    ) -> Document:
+        """Update metadata of document ``prefix``."""
+
+        doc = self.documents.get(prefix)
+        if doc is None:
+            raise ValueError(f"unknown document prefix: {prefix}")
+        updated = False
+        if title is not None:
+            doc.title = title
+            updated = True
+        if digits is not None:
+            if digits <= 0:
+                raise ValueError("digits must be positive")
+            doc.digits = digits
+            updated = True
+        if not updated:
+            return doc
+        save_document(self.root / prefix, doc)
+        self.load_documents()
+        return self.documents[prefix]
 
     # ------------------------------------------------------------------
     def iter_links(self) -> Iterable[Tuple[str, str]]:

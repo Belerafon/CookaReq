@@ -53,27 +53,6 @@ class Attachment:
 
 
 @dataclass
-class RequirementRef:
-    """Reference to another requirement with revision tracking."""
-
-    rid: str
-    revision: int
-    suspect: bool = False
-
-
-# Backwards compatible alias for existing code/tests
-DerivationLink = RequirementRef
-
-
-@dataclass
-class DerivationInfo:
-    """Details describing how the requirement was derived."""
-
-    rationale: str
-    assumptions: list[str]
-
-
-@dataclass
 class Requirement:
     """Represent a requirement with metadata and trace links."""
 
@@ -88,8 +67,6 @@ class Requirement:
     verification: Verification
     acceptance: str | None = None
     conditions: str = ""
-    trace_up: str = ""
-    trace_down: str = ""
     version: str = ""
     modified_at: str = ""
     labels: list[str] = field(default_factory=list)
@@ -97,11 +74,7 @@ class Requirement:
     revision: int = 1
     approved_at: str | None = None
     notes: str = ""
-    parent: RequirementRef | None = None
-    derived_from: list[RequirementRef] = field(default_factory=list)
-    derived_to: list[RequirementRef] = field(default_factory=list)
     links: list[str] = field(default_factory=list)
-    derivation: DerivationInfo | None = None
     # document-related metadata
     doc_prefix: str = ""
     rid: str = ""
@@ -117,34 +90,13 @@ def requirement_from_dict(
     sensible defaults.
     """
     attachments = [Attachment(**a) for a in data.get("attachments", [])]
-
-    def _ref(d: dict[str, Any]) -> RequirementRef:
-        if "rid" not in d and "id" in d:
-            d = dict(d)
-            d["rid"] = str(d.pop("id"))
-        return RequirementRef(**d)
-
-    parent_data = data.get("parent")
-    parent = _ref(parent_data) if parent_data else None
-    derived_from = [_ref(d) for d in data.get("derived_from", [])]
-    derived_to = [_ref(d) for d in data.get("derived_to", [])]
     raw_links = data.get("links", [])
-    links: list[str] = []
-    if isinstance(raw_links, dict):
-        for coll in raw_links.values():
-            for item in coll:
-                if isinstance(item, dict):
-                    links.append(str(item.get("rid", "")))
-                else:
-                    links.append(str(item))
-    elif isinstance(raw_links, list):
-        links = [str(link) for link in raw_links]
-    derivation_data = data.get("derivation")
-    derivation = DerivationInfo(**derivation_data) if derivation_data else None
+    links = [str(link) for link in raw_links] if isinstance(raw_links, list) else []
+    statement = data.get("statement", data.get("text", ""))
     return Requirement(
         id=data["id"],
         title=data.get("title", ""),
-        statement=data.get("statement", ""),
+        statement=statement,
         type=RequirementType(data.get("type")),
         status=Status(data.get("status")),
         owner=data.get("owner", ""),
@@ -153,8 +105,6 @@ def requirement_from_dict(
         verification=Verification(data.get("verification")),
         acceptance=data.get("acceptance"),
         conditions=data.get("conditions", ""),
-        trace_up=data.get("trace_up", ""),
-        trace_down=data.get("trace_down", ""),
         version=data.get("version", ""),
         modified_at=normalize_timestamp(data.get("modified_at")),
         labels=list(data.get("labels", [])),
@@ -166,11 +116,7 @@ def requirement_from_dict(
             else None
         ),
         notes=data.get("notes", ""),
-        parent=parent,
-        derived_from=derived_from,
-        derived_to=derived_to,
         links=links,
-        derivation=derivation,
         doc_prefix=doc_prefix,
         rid=rid,
     )

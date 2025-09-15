@@ -96,7 +96,7 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
         item = {
             "id": info["num"],
             "title": info["data"].get("title", ""),
-            "text": info["data"].get("statement", ""),
+            "statement": info["data"].get("statement", info["data"].get("text", "")),
             "labels": [
                 lbl for lbl in info["labels"] if not lbl.startswith("doc=")
             ],

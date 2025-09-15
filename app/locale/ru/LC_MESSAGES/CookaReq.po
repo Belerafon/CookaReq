@@ -118,11 +118,6 @@ msgstr "Критерии приемки требования"
 msgid "Conditions"
 msgstr "Условия и режимы"
 
-msgid "Trace up"
-msgstr "Трассировка вверх"
-
-msgid "Trace down"
-msgstr "Трассировка вниз"
 
 msgid "Requirement version"
 msgstr "Версия требования"
@@ -576,16 +571,6 @@ msgstr ""
 "облегчает анализ последствий при изменении родительских элементов. "
 "Используйте её, чтобы подтвердить покрытие целей системы."
 
-msgid ""
-"References to lower-level derived requirements, design elements or test "
-"cases. Downward traceability reveals how the requirement will be implemented "
-"and verified. It supports audits and helps detect missing implementation "
-"pieces."
-msgstr ""
-"Ссылки на нижестоящие производные требования, элементы проектирования или "
-"тесты. Трассировка вниз показывает, как требование будет реализовано и "
-"проверено. Она поддерживает аудит и помогает выявлять отсутствующие части "
-"реализации."
 
 msgid ""
 "Sequential version number for change control. Increase it whenever the "

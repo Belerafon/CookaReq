@@ -116,7 +116,7 @@ Each requirement item (`items/<RID>.json`) includes:
 
 - `id` *(int)* — numeric identifier unique within the document
 - `title` *(str)* — short name
-- `text` *(str)* — requirement statement
+- `statement` *(str)* — requirement statement
 - `type` *(str)* — `requirement`, `constraint`, `interface`
 - `status` *(str)* — `draft`, `in_review`, `approved`, `baselined`, `retired`
 - `owner` *(str)* — responsible person
@@ -124,9 +124,7 @@ Each requirement item (`items/<RID>.json`) includes:
 - `source` *(str)* — origin of the requirement
 - `verification` *(str)* — method of verification
 - `labels` *(list[str])* — labels including inherited ones
- - `derived_from` *(list[obj])* — upstream requirements `{rid, revision, suspect}`
- - `derived_to` *(list[obj])* — downstream requirements `{rid, revision, suspect}`
- - `links` *(list[str])* — linked higher-level requirement IDs
+- `links` *(list[str])* — linked higher-level requirement IDs
 - `attachments` *(list[obj])* — attachments `{path, note}`
 - `revision` *(int)* — revision number (starting at 1)
 - `notes` *(str)* — additional comments

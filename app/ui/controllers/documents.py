@@ -36,25 +36,25 @@ class DocumentsController:
         self.documents = load_documents(self.root)
         return self.documents
 
-    def load_items(self, prefix: str) -> dict[int, list[int]]:
+    def load_items(self, prefix: str) -> dict[str, list[int]]:
         """Load items for document ``prefix`` into the model.
 
-        Returns a mapping of source requirement id to list of derived ids.
+        Returns a mapping of parent requirement RID to list of linked item ids.
         """
         doc = self.documents.get(prefix)
         if not doc:
             self.model.set_requirements([])
             return {}
         directory = self.root / prefix
-        items = []
+        items: list[Requirement] = []
         derived_map: dict[str, list[int]] = {}
         for item_id in sorted(list_item_ids(directory, doc)):
             data, _mtime = load_item(directory, doc, item_id)
             rid = rid_for(doc, item_id)
             req = requirement_from_dict(data, doc_prefix=doc.prefix, rid=rid)
             items.append(req)
-            for link in getattr(req, "derived_from", []):
-                derived_map.setdefault(link.rid, []).append(req.id)
+            for parent in getattr(req, "links", []):
+                derived_map.setdefault(parent, []).append(req.id)
         self.model.set_requirements(items)
         return derived_map
 

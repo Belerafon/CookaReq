@@ -148,7 +148,7 @@ def cmd_item_add(args: argparse.Namespace) -> None:
     data = {
         "id": item_id,
         "title": args.title,
-        "text": args.text,
+        "statement": args.statement,
         "labels": labels,
         "links": [],
     }
@@ -205,7 +205,7 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     add_p.add_argument("directory", help=_("requirements root"))
     add_p.add_argument("prefix", help=_("document prefix"))
     add_p.add_argument("--title", required=True, help=_("item title"))
-    add_p.add_argument("--text", required=True, help=_("item text"))
+    add_p.add_argument("--statement", required=True, help=_("item statement"))
     add_p.add_argument("--labels", dest="labels", help=_("comma-separated labels"))
     add_p.set_defaults(func=cmd_item_add)
 

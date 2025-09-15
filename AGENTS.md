@@ -121,11 +121,11 @@ items/<RID>.json
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "CookaReq Item",
   "type": "object",
-  "required": ["id", "title", "text"],
+  "required": ["id", "title", "statement"],
   "properties": {
     "id":         { "type": "integer", "minimum": 1 },
     "title":      { "type": "string", "minLength": 1 },
-    "text":       { "type": "string", "minLength": 1 },
+    "statement":  { "type": "string", "minLength": 1 },
     "level":      { "type": ["string", "null"], "pattern": "^[0-9]+(\\.[0-9]+)*$" },
     "active":     { "type": "boolean", "default": true },
     "normative":  { "type": "boolean", "default": true },
@@ -272,7 +272,7 @@ cookareq migrate to-docs \
   --rules "label:doc=SYS->SYS; label:doc=HLR->HLR; label:doc=LLR->LLR" \
   --default SYS
 
-Шаги: создать каталоги/document.json, разнести элементы, пересчитать имена файлов, преобразовать trace_up→links (RID), собрать/раскидать labels.
+Шаги: создать каталоги/document.json, разнести элементы, пересчитать имена файлов, перенести ссылки в поле links (RID), собрать/раскидать labels.
 
 
 

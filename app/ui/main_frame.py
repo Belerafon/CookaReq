@@ -11,7 +11,7 @@ from ..agent import LocalAgent
 from ..config import ConfigManager
 from ..confirm import confirm
 from ..core.labels import Label
-from ..core.model import DerivationLink, Requirement
+from ..core.model import Requirement
 from ..core.doc_store import Document, LabelDef, save_document
 from ..i18n import _
 from ..log import logger
@@ -139,7 +139,6 @@ class MainFrame(wx.Frame):
         self.editor = EditorPanel(
             self.splitter,
             on_save=self._on_editor_save,
-            on_add_derived=self.on_add_derived_requirement,
         )
         self.splitter.SplitVertically(self.panel, self.editor, 300)
         self.doc_splitter.SplitVertically(self.doc_tree, self.splitter, 200)
@@ -325,7 +324,6 @@ class MainFrame(wx.Frame):
         self.editor = EditorPanel(
             self.splitter,
             on_save=self._on_editor_save,
-            on_add_derived=self.on_add_derived_requirement,
         )
         self.editor.Hide()
 
@@ -585,24 +583,20 @@ class MainFrame(wx.Frame):
         self.editor.Show()
         self.splitter.UpdateSize()
 
-    def _create_derived_from(self, source: Requirement) -> Requirement:
+    def _create_linked_copy(self, source: Requirement) -> Requirement:
         if self.docs_controller and self.current_doc_prefix:
             new_id = self.docs_controller.next_item_id(self.current_doc_prefix)
         else:
             raise RuntimeError("Documents controller not initialized")
+        parent_rid = source.rid or str(source.id)
         clone = replace(
             source,
             id=new_id,
             title=f"{_('(Derived)')} {source.title}".strip(),
             modified_at="",
             revision=1,
+            links=[*getattr(source, "links", []), parent_rid],
         )
-        link = DerivationLink(rid=source.rid or str(source.id), revision=source.revision, suspect=False)
-        clone.derived_from = [*source.derived_from, link]
-        source.derived_to.append(
-            DerivationLink(rid=str(new_id), revision=1, suspect=False)
-        )
-        clone.derivation = None
         return clone
 
     def on_derive_requirement(self, req_id: int) -> None:
@@ -611,29 +605,17 @@ class MainFrame(wx.Frame):
         source = self.model.get_by_id(req_id)
         if not source:
             return
-        clone = self._create_derived_from(source)
+        clone = self._create_linked_copy(source)
         if self.docs_controller and self.current_doc_prefix:
             self.docs_controller.add_requirement(self.current_doc_prefix, clone)
         else:
             return
-        self.panel.add_derived_link(source.rid or str(source.id), clone.id)
+        self.panel.record_link(source.rid or str(source.id), clone.id)
         self.panel.refresh()
         self.editor.load(clone, path=None, mtime=None)
         self.editor.Show()
         self.splitter.UpdateSize()
 
-    def on_add_derived_requirement(self, source: Requirement) -> None:
-        """Save requirement derived from ``source`` currently in editor."""
-        clone = self._create_derived_from(source)
-        if self.docs_controller and self.current_doc_prefix:
-            self.docs_controller.add_requirement(self.current_doc_prefix, clone)
-        else:
-            return
-        self.panel.add_derived_link(source.rid or str(source.id), clone.id)
-        self.panel.refresh()
-        self.editor.load(clone, path=None, mtime=None)
-        self.editor.Show()
-        self.splitter.UpdateSize()
 
     def on_delete_requirement(self, req_id: int) -> None:
         """Delete requirement ``req_id`` and refresh views."""

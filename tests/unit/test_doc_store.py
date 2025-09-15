@@ -31,8 +31,8 @@ def test_document_store_roundtrip(tmp_path: Path):
     assert loaded.prefix == "SYS"
     assert loaded.digits == 3
 
-    item1 = {"id": 1, "title": "One", "text": "First"}
-    item2 = {"id": 2, "title": "Two", "text": "Second"}
+    item1 = {"id": 1, "title": "One", "statement": "First"}
+    item2 = {"id": 2, "title": "Two", "statement": "Second"}
     save_item(doc_dir, doc, item1)
     save_item(doc_dir, doc, item2)
 
@@ -44,7 +44,7 @@ def test_document_store_roundtrip(tmp_path: Path):
 
     data, _ = load_item(doc_dir, doc, 2)
     assert data["title"] == "Two"
-    assert data["text"] == "Second"
+    assert data["statement"] == "Second"
 
 
 def test_parse_rid_and_next_id(tmp_path: Path):
@@ -55,7 +55,7 @@ def test_parse_rid_and_next_id(tmp_path: Path):
     assert parse_rid("HLR01") == ("HLR", 1)
     assert next_item_id(doc_dir, doc) == 1
 
-    save_item(doc_dir, doc, {"id": 1, "title": "T", "text": "X"})
+    save_item(doc_dir, doc, {"id": 1, "title": "T", "statement": "X"})
     assert next_item_id(doc_dir, doc) == 2
 
 
@@ -64,11 +64,11 @@ def test_delete_item_removes_links(tmp_path: Path):
     hlr_doc = Document(prefix="HLR", title="High", digits=2, parent="SYS")
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
-    save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "text": ""})
+    save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "statement": ""})
     save_item(
         tmp_path / "HLR",
         hlr_doc,
-        {"id": 1, "title": "H", "text": "", "links": ["SYS001"]},
+        {"id": 1, "title": "H", "statement": "", "links": ["SYS001"]},
     )
     docs = load_documents(tmp_path)
     assert delete_item(tmp_path, "SYS001", docs) is True
@@ -86,9 +86,9 @@ def test_delete_document_recursively(tmp_path: Path):
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
     save_document(tmp_path / "LLR", llr_doc)
-    save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "text": ""})
-    save_item(tmp_path / "HLR", hlr_doc, {"id": 1, "title": "H", "text": "", "links": ["SYS001"]})
-    save_item(tmp_path / "LLR", llr_doc, {"id": 1, "title": "L", "text": "", "links": ["HLR01"]})
+    save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "statement": ""})
+    save_item(tmp_path / "HLR", hlr_doc, {"id": 1, "title": "H", "statement": "", "links": ["SYS001"]})
+    save_item(tmp_path / "LLR", llr_doc, {"id": 1, "title": "L", "statement": "", "links": ["HLR01"]})
     docs = load_documents(tmp_path)
     assert delete_document(tmp_path, "HLR", docs) is True
     assert not (tmp_path / "HLR").exists()
@@ -101,11 +101,11 @@ def test_plan_delete_item_lists_references(tmp_path: Path):
     hlr_doc = Document(prefix="HLR", title="High", digits=2, parent="SYS")
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
-    save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "text": ""})
+    save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "statement": ""})
     save_item(
         tmp_path / "HLR",
         hlr_doc,
-        {"id": 1, "title": "H", "text": "", "links": ["SYS001"]},
+        {"id": 1, "title": "H", "statement": "", "links": ["SYS001"]},
     )
     docs = load_documents(tmp_path)
     exists, refs = plan_delete_item(tmp_path, "SYS001", docs)
@@ -122,8 +122,8 @@ def test_plan_delete_document_lists_subtree(tmp_path: Path):
     hlr_doc = Document(prefix="HLR", title="High", digits=2, parent="SYS")
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
-    save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "text": ""})
-    save_item(tmp_path / "HLR", hlr_doc, {"id": 1, "title": "H", "text": ""})
+    save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "statement": ""})
+    save_item(tmp_path / "HLR", hlr_doc, {"id": 1, "title": "H", "statement": ""})
     docs = load_documents(tmp_path)
     doc_list, item_list = plan_delete_document(tmp_path, "SYS", docs)
     assert set(doc_list) == {"SYS", "HLR"}

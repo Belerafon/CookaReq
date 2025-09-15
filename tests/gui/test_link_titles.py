@@ -24,9 +24,9 @@ def test_added_link_shows_id_and_title(wx_app, monkeypatch):
         verification=Verification.ANALYSIS,
     )
 
-    panel.derived_id.SetValue("123")
-    panel._on_add_link_generic("derived_from")
+    panel.links_id.SetValue("123")
+    panel._on_add_link_generic("links")
 
-    assert panel.derived_list.GetItemText(0, 0) == "123"
-    assert panel.derived_list.GetItemText(0, 1) == ""
+    assert panel.links_list.GetItemText(0, 0) == "123"
+    assert panel.links_list.GetItemText(0, 1) == ""
     frame.Destroy()

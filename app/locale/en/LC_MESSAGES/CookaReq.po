@@ -211,11 +211,6 @@ msgstr "Test"
 msgid "Title"
 msgstr "Title"
 
-msgid "Trace down"
-msgstr "Trace down"
-
-msgid "Trace up"
-msgstr "Trace up"
 
 msgid "Unique integer identifier"
 msgstr "Unique integer identifier"
@@ -571,16 +566,6 @@ msgstr ""
 "shows why this requirement exists and simplifies impact analysis when "
 "parents change. Use it to prove coverage of system objectives."
 
-msgid ""
-"References to lower-level derived requirements, design elements or test "
-"cases. Downward traceability reveals how the requirement will be implemented "
-"and verified. It supports audits and helps detect missing implementation "
-"pieces."
-msgstr ""
-"References to lower-level derived requirements, design elements or test "
-"cases. Downward traceability reveals how the requirement will be implemented "
-"and verified. It supports audits and helps detect missing implementation "
-"pieces."
 
 msgid ""
 "Sequential version number for change control. Increase it whenever the "

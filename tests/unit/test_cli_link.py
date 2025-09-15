@@ -15,8 +15,8 @@ def test_link_add(tmp_path, capsys):
     doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
     save_document(tmp_path / "HLR", doc_hlr)
 
-    save_item(tmp_path / "SYS", doc_sys, {"id": 1, "title": "S", "text": "", "labels": [], "links": []})
-    save_item(tmp_path / "HLR", doc_hlr, {"id": 1, "title": "H", "text": "", "labels": [], "links": []})
+    save_item(tmp_path / "SYS", doc_sys, {"id": 1, "title": "S", "statement": "", "labels": [], "links": []})
+    save_item(tmp_path / "HLR", doc_hlr, {"id": 1, "title": "H", "statement": "", "labels": [], "links": []})
 
     args = argparse.Namespace(
         directory=str(tmp_path), rid="HLR01", parents=["SYS001"], replace=False
@@ -38,7 +38,7 @@ def test_link_rejects_self_link(tmp_path, capsys):
     save_item(
         tmp_path / "SYS",
         doc_sys,
-        {"id": 1, "title": "S", "text": "", "labels": [], "links": []},
+        {"id": 1, "title": "S", "statement": "", "labels": [], "links": []},
     )
 
     args = argparse.Namespace(
@@ -62,8 +62,8 @@ def test_link_rejects_non_ancestor(tmp_path, capsys):
     doc_llr = Document(prefix="LLR", title="Low", digits=2, parent="HLR")
     save_document(tmp_path / "LLR", doc_llr)
 
-    save_item(tmp_path / "HLR", doc_hlr, {"id": 1, "title": "H", "text": "", "labels": [], "links": []})
-    save_item(tmp_path / "LLR", doc_llr, {"id": 1, "title": "L", "text": "", "labels": [], "links": []})
+    save_item(tmp_path / "HLR", doc_hlr, {"id": 1, "title": "H", "statement": "", "labels": [], "links": []})
+    save_item(tmp_path / "LLR", doc_llr, {"id": 1, "title": "L", "statement": "", "labels": [], "links": []})
 
     args = argparse.Namespace(
         directory=str(tmp_path), rid="HLR01", parents=["LLR01"], replace=False

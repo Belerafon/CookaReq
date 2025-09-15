@@ -1,9 +1,6 @@
 {
-  "derived_from": [
-    {
-      "rid": "SYS003",
-      "revision": 1
-    }
+  "links": [
+    "SYS003"
   ],
   "id": 3,
   "labels": [

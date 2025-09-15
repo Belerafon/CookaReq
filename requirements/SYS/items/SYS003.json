@@ -7,12 +7,6 @@
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "derived_to": [
-    {
-      "rid": "HLR003",
-      "revision": 1
-    }
-  ],
   "statement": "Система должна предоставлять CLI для перечисления, добавления, правки и отображения требований, хранящихся в каталоге.",
   "status": "approved",
   "title": "Командный интерфейс",

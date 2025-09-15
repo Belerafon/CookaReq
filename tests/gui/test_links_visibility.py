@@ -9,7 +9,7 @@ pytestmark = pytest.mark.gui
 def test_links_list_becomes_visible(wx_app, monkeypatch):
     frame = wx.Frame(None)
     panel = EditorPanel(frame)
-    assert not panel.derived_list.IsShown()
+    assert not panel.links_list.IsShown()
 
     called = {}
 
@@ -17,9 +17,9 @@ def test_links_list_becomes_visible(wx_app, monkeypatch):
         called["called"] = True
 
     monkeypatch.setattr(panel, "FitInside", fake_fitinside)
-    panel.derived_id.SetValue("123")
-    panel._on_add_link_generic("derived_from")
+    panel.links_id.SetValue("123")
+    panel._on_add_link_generic("links")
 
-    assert panel.derived_list.IsShown()
+    assert panel.links_list.IsShown()
     assert called.get("called")
     frame.Destroy()

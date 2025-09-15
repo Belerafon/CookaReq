@@ -5,7 +5,6 @@ import importlib
 import pytest
 
 from app.core.model import (
-    DerivationLink,
     Priority,
     Requirement,
     RequirementType,
@@ -205,14 +204,10 @@ def test_recalc_derived_map_updates_count(wx_app):
     panel = list_panel.ListPanel(frame, model=RequirementModel())
     panel.set_columns(["derived_count"])
     req1 = _req(1, "S")
-    req2 = _req(
-        2,
-        "D",
-        derived_from=[DerivationLink(rid="1", revision=1, suspect=False)],
-    )
+    req2 = _req(2, "D", links=["1"])
     panel.set_requirements([req1, req2])
     assert panel.list.GetItem(0, 1).GetText() == "1"
-    req2.derived_from = []
+    req2.links = []
     panel.recalc_derived_map([req1, req2])
     assert panel.list.GetItem(0, 1).GetText() == "0"
     frame.Destroy()

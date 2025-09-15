@@ -306,8 +306,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if derived_map is None:
             derived_map = {}
             for req in requirements:
-                for link in getattr(req, "derived_from", []):
-                    derived_map.setdefault(link.rid, []).append(req.id)
+                for parent in getattr(req, "links", []):
+                    derived_map.setdefault(parent, []).append(req.id)
         self.derived_map = derived_map
         self._refresh()
 
@@ -323,7 +323,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.model.set_status(self.current_filters.get("status"))
         self.model.set_is_derived(self.current_filters.get("is_derived", False))
         self.model.set_has_derived(self.current_filters.get("has_derived", False))
-        self.model.set_suspect_only(self.current_filters.get("suspect_only", False))
         self._refresh()
         self._update_filter_summary()
         self._toggle_reset_button()
@@ -373,8 +372,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             parts.append(_("Derived only"))
         if self.current_filters.get("has_derived"):
             parts.append(_("Has derived"))
-        if self.current_filters.get("suspect_only"):
-            parts.append(_("Suspect only"))
         field_queries = self.current_filters.get("field_queries", {})
         for field, value in field_queries.items():
             if value:
@@ -396,8 +393,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if self.current_filters.get("is_derived"):
             return True
         if self.current_filters.get("has_derived"):
-            return True
-        if self.current_filters.get("suspect_only"):
             return True
         field_queries = self.current_filters.get("field_queries", {})
         return bool(any(field_queries.values()))
@@ -429,7 +424,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self.list.SetItemData(index, int(req_id))
             except Exception:
                 self.list.SetItemData(index, 0)
-            suspect_row = False
             for col, field in enumerate(self._field_order):
                 if field == "title":
                     self.list.SetItem(index, col, getattr(req, "title", ""))
@@ -438,31 +432,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     value = getattr(req, "labels", [])
                     self._set_label_image(index, col, value)
                     continue
-                if field == "derived_from":
-                    links = getattr(req, "derived_from", [])
-                    texts: list[str] = []
-                    for link in links:
-                        txt = getattr(link, "rid", "")
-                        if getattr(link, "suspect", False):
-                            txt = f"!{txt}"
-                            suspect_row = True
-                        texts.append(txt)
-                    value = ", ".join(texts)
-                    self.list.SetItem(index, col, value)
-                    continue
                 if field == "links":
                     links = getattr(req, "links", [])
                     value = ", ".join(str(l) for l in links)
-                    self.list.SetItem(index, col, value)
-                    continue
-                if field == "parent":
-                    link = getattr(req, "parent", None)
-                    value = ""
-                    if link:
-                        value = getattr(link, "rid", "")
-                        if getattr(link, "suspect", False):
-                            value = f"!{value}"
-                            suspect_row = True
                     self.list.SetItem(index, col, value)
                     continue
                 if field == "derived_count":
@@ -480,27 +452,23 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
                 self.list.SetItem(index, col, str(value))
-            if suspect_row and hasattr(self.list, "SetItemTextColour"):
-                with suppress(Exception):
-                    colour = getattr(wx, "RED", None) or wx.Colour(255, 0, 0)
-                    self.list.SetItemTextColour(index, colour)
 
     def refresh(self) -> None:
         """Public wrapper to reload list control."""
         self._refresh()
 
-    def add_derived_link(self, source_rid: str, derived_id: int) -> None:
-        """Record that ``derived_id`` is derived from ``source_rid``."""
+    def record_link(self, parent_rid: str, child_id: int) -> None:
+        """Record that ``child_id`` links to ``parent_rid``."""
 
-        self.derived_map.setdefault(source_rid, []).append(derived_id)
+        self.derived_map.setdefault(parent_rid, []).append(child_id)
 
     def recalc_derived_map(self, requirements: list[Requirement]) -> None:
         """Rebuild derived requirements map from ``requirements``."""
 
         derived_map: dict[str, list[int]] = {}
         for req in requirements:
-            for link in getattr(req, "derived_from", []):
-                derived_map.setdefault(link.rid, []).append(req.id)
+            for parent in getattr(req, "links", []):
+                derived_map.setdefault(parent, []).append(req.id)
         self.derived_map = derived_map
         self._refresh()
 

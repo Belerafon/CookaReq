@@ -7,7 +7,7 @@ from typing import Any, Mapping
 import jsonpatch
 
 from ..core.doc_store import (
-    collect_labels,
+    validate_labels,
     delete_item,
     is_ancestor,
     load_documents,
@@ -39,16 +39,14 @@ def create_requirement(directory: str | Path, *, prefix: str, data: Mapping[str,
                 params,
                 mcp_error(ErrorCode.NOT_FOUND, f"unknown document prefix: {prefix}"),
             )
-        allowed, freeform = collect_labels(prefix, docs)
         labels = list(data.get("labels", []))
-        if labels and not freeform:
-            unknown = [lbl for lbl in labels if lbl not in allowed]
-            if unknown:
-                return log_tool(
-                    "create_requirement",
-                    params,
-                    mcp_error(ErrorCode.VALIDATION_ERROR, f"unknown label: {unknown[0]}"),
-                )
+        err = validate_labels(prefix, labels, docs)
+        if err:
+            return log_tool(
+                "create_requirement",
+                params,
+                mcp_error(ErrorCode.VALIDATION_ERROR, err),
+            )
         doc_dir = Path(directory) / prefix
         item_id = next_item_id(doc_dir, doc)
         req_dict = dict(data)
@@ -135,16 +133,13 @@ def patch_requirement(
         )
 
     data["revision"] = current + 1
-    allowed, freeform = collect_labels(prefix, docs)
-    labels = data.get("labels", [])
-    if labels and not freeform:
-        unknown = [lbl for lbl in labels if lbl not in allowed]
-        if unknown:
-            return log_tool(
-                "patch_requirement",
-                params,
-                mcp_error(ErrorCode.VALIDATION_ERROR, f"unknown label: {unknown[0]}"),
-            )
+    err = validate_labels(prefix, data.get("labels", []), docs)
+    if err:
+        return log_tool(
+            "patch_requirement",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, err),
+        )
     try:
         req = requirement_from_dict(data, doc_prefix=prefix, rid=rid)
         save_item(dir_path, doc, requirement_to_dict(req))

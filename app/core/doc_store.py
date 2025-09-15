@@ -6,7 +6,7 @@ import shutil
 from hashlib import sha256
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Optional
 
 
 @dataclass
@@ -168,6 +168,34 @@ def collect_labels(prefix: str, docs: Mapping[str, Document]) -> tuple[set[str],
 
     defs, freeform = collect_label_defs(prefix, docs)
     return {d.key for d in defs}, freeform
+
+
+def validate_labels(
+    prefix: str, labels: list[str], docs: Mapping[str, Document]
+) -> Optional[str]:
+    """Validate ``labels`` for items under document ``prefix``.
+
+    Parameters
+    ----------
+    prefix:
+        Document prefix for which the labels are being validated.
+    labels:
+        Labels requested for the requirement.
+    docs:
+        Mapping of document prefixes to :class:`Document` instances.
+
+    Returns
+    -------
+    Optional[str]
+        ``None`` if labels are valid, otherwise an error message.
+    """
+
+    allowed, freeform = collect_labels(prefix, docs)
+    if labels and not freeform:
+        unknown = [lbl for lbl in labels if lbl not in allowed]
+        if unknown:
+            return f"unknown label: {unknown[0]}"
+    return None
 
 
 def rid_for(doc: Document, item_id: int) -> str:

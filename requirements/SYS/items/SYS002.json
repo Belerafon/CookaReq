@@ -1,14 +1,21 @@
 {
   "id": 2,
-  "title": "Структурированная модель данных",
-  "text": "Система должна представлять каждое требование как dataclass с типизированными полями для статуса, приоритета и способа верификации.",
-  "labels": ["model"],
+  "labels": [
+    "model"
+  ],
   "owner": "Team",
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
+  "derived_to": [
+    {
+      "rid": "HLR002",
+      "revision": 1
+    }
+  ],
+  "statement": "Система должна представлять каждое требование как dataclass с типизированными полями для статуса, приоритета и способа верификации.",
   "status": "approved",
+  "title": "Структурированная модель данных",
   "type": "requirement",
-  "verification": "analysis",
-  "links": []
+  "verification": "analysis"
 }

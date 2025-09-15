@@ -1,14 +1,21 @@
 {
+  "derived_from": [
+    {
+      "rid": "HLR001",
+      "revision": 1
+    }
+  ],
   "id": 1,
-  "title": "Редактор требований",
-  "text": "Система должна предоставлять графический редактор требований с формами для всех полей и возможностью сохранения.",
-  "labels": ["editor"],
+  "labels": [
+    "editor"
+  ],
   "owner": "Team",
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
+  "statement": "Система должна предоставлять графический редактор требований с формами для всех полей и возможностью сохранения.",
   "status": "approved",
+  "title": "Редактор требований",
   "type": "requirement",
-  "verification": "analysis",
-  "links": ["HLR001"]
+  "verification": "analysis"
 }

@@ -43,7 +43,7 @@ def test_validate_rejects_bad_enum():
 def test_derived_from_and_derivation_valid():
     data = make_valid()
     data["derived_from"] = [
-        {"source_id": 2, "source_revision": 1, "suspect": True},
+        {"rid": "2", "revision": 1, "suspect": True},
     ]
     data["derivation"] = {
         "rationale": "r",
@@ -54,7 +54,7 @@ def test_derived_from_and_derivation_valid():
 
 def test_derived_from_missing_field():
     data = make_valid()
-    data["derived_from"] = [{"source_id": 2}]
+    data["derived_from"] = [{"rid": "2"}]
     with pytest.raises(ValueError):
         validate(data)
 

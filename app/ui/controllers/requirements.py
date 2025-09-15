@@ -38,10 +38,10 @@ class RequirementsController:
         except Exception as exc:
             logger.warning("Failed to load directory %s: %s", self.directory, exc)
             items = []
-        derived_map: dict[int, list[int]] = {}
+        derived_map: dict[str, list[int]] = {}
         for req in items:
             for link in getattr(req, "derived_from", []):
-                derived_map.setdefault(link.source_id, []).append(req.id)
+                derived_map.setdefault(link.rid, []).append(req.id)
         self.model.set_requirements(items)
         return derived_map
 

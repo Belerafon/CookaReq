@@ -685,12 +685,11 @@ class MainFrame(wx.Frame):
             modified_at="",
             revision=1,
         )
-        link = DerivationLink(
-            source_id=source.id,
-            source_revision=source.revision,
-            suspect=False,
-        )
+        link = DerivationLink(rid=source.rid or str(source.id), revision=source.revision, suspect=False)
         clone.derived_from = [*source.derived_from, link]
+        source.derived_to.append(
+            DerivationLink(rid=str(new_id), revision=1, suspect=False)
+        )
         clone.derivation = None
         return clone
 
@@ -705,7 +704,7 @@ class MainFrame(wx.Frame):
             self.docs_controller.add_requirement(self.current_doc_prefix, clone)
         else:
             self.model.add(clone)
-        self.panel.add_derived_link(source.id, clone.id)
+        self.panel.add_derived_link(source.rid or str(source.id), clone.id)
         self.panel.refresh()
         self.editor.load(clone, path=None, mtime=None)
         self.editor.Show()
@@ -718,7 +717,7 @@ class MainFrame(wx.Frame):
             self.docs_controller.add_requirement(self.current_doc_prefix, clone)
         else:
             self.model.add(clone)
-        self.panel.add_derived_link(source.id, clone.id)
+        self.panel.add_derived_link(source.rid or str(source.id), clone.id)
         self.panel.refresh()
         self.editor.load(clone, path=None, mtime=None)
         self.editor.Show()

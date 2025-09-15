@@ -82,7 +82,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._on_delete = on_delete
         self._on_sort_changed = on_sort_changed
         self._on_derive = on_derive
-        self.derived_map: dict[int, list[int]] = {}
+        self.derived_map: dict[str, list[int]] = {}
         self._sort_column = -1
         self._sort_ascending = True
         self._setup_columns()
@@ -299,7 +299,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def set_requirements(
         self,
         requirements: list,
-        derived_map: dict[int, list[int]] | None = None,
+        derived_map: dict[str, list[int]] | None = None,
     ) -> None:
         """Populate list control with requirement data via model."""
         self.model.set_requirements(requirements)
@@ -307,7 +307,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             derived_map = {}
             for req in requirements:
                 for link in getattr(req, "derived_from", []):
-                    derived_map.setdefault(link.source_id, []).append(req.id)
+                    derived_map.setdefault(link.rid, []).append(req.id)
         self.derived_map = derived_map
         self._refresh()
 
@@ -442,7 +442,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     links = getattr(req, "derived_from", [])
                     texts: list[str] = []
                     for link in links:
-                        txt = str(getattr(link, "source_id", ""))
+                        txt = getattr(link, "rid", "")
                         if getattr(link, "suspect", False):
                             txt = f"!{txt}"
                             suspect_row = True
@@ -454,7 +454,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     links = getattr(getattr(req, "links", None), field, [])
                     texts: list[str] = []
                     for link in links:
-                        txt = str(getattr(link, "source_id", ""))
+                        txt = getattr(link, "rid", "")
                         if getattr(link, "suspect", False):
                             txt = f"!{txt}"
                             suspect_row = True
@@ -466,14 +466,15 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     link = getattr(req, "parent", None)
                     value = ""
                     if link:
-                        value = str(getattr(link, "source_id", ""))
+                        value = getattr(link, "rid", "")
                         if getattr(link, "suspect", False):
                             value = f"!{value}"
                             suspect_row = True
                     self.list.SetItem(index, col, value)
                     continue
                 if field == "derived_count":
-                    count = len(self.derived_map.get(req.id, []))
+                    rid = req.rid or str(req.id)
+                    count = len(self.derived_map.get(rid, []))
                     self.list.SetItem(index, col, str(count))
                     continue
                 if field == "attachments":
@@ -495,18 +496,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Public wrapper to reload list control."""
         self._refresh()
 
-    def add_derived_link(self, source_id: int, derived_id: int) -> None:
-        """Record that ``derived_id`` is derived from ``source_id``."""
+    def add_derived_link(self, source_rid: str, derived_id: int) -> None:
+        """Record that ``derived_id`` is derived from ``source_rid``."""
 
-        self.derived_map.setdefault(source_id, []).append(derived_id)
+        self.derived_map.setdefault(source_rid, []).append(derived_id)
 
     def recalc_derived_map(self, requirements: list[Requirement]) -> None:
         """Rebuild derived requirements map from ``requirements``."""
 
-        derived_map: dict[int, list[int]] = {}
+        derived_map: dict[str, list[int]] = {}
         for req in requirements:
             for link in getattr(req, "derived_from", []):
-                derived_map.setdefault(link.source_id, []).append(req.id)
+                derived_map.setdefault(link.rid, []).append(req.id)
         self.derived_map = derived_map
         self._refresh()
 

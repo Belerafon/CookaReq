@@ -16,7 +16,7 @@ from ..core.store import ConflictError
 from .utils import ErrorCode, log_tool, mcp_error
 
 # Fields that must not be modified directly through patching
-UNPATCHABLE_FIELDS = {"id", "revision", "derived_from", "parent", "links"}
+UNPATCHABLE_FIELDS = {"id", "revision", "derived_from", "derived_to", "parent", "links"}
 
 # Known requirement fields
 KNOWN_FIELDS = set(SCHEMA["properties"].keys())
@@ -291,23 +291,27 @@ def link_requirements(
             mcp_error(ErrorCode.VALIDATION_ERROR, f"invalid link_type: {link_type}"),
         )
 
-    link = {"source_id": source_id, "source_revision": src_revision, "suspect": False}
+    link = {"rid": str(source_id), "revision": src_revision, "suspect": False}
     if link_type == "parent":
         data["parent"] = link
     elif link_type == "derived_from":
         links = [
-            item
-            for item in data.get("derived_from", [])
-            if item.get("source_id") != source_id
+            item for item in data.get("derived_from", []) if item.get("rid") != str(source_id)
         ]
         links.append(link)
         data["derived_from"] = links
+        # also update source requirement with derived_to
+        src_links = [
+            item
+            for item in src_data.get("derived_to", [])
+            if item.get("rid") != str(derived_id)
+        ]
+        src_links.append({"rid": str(derived_id), "revision": current, "suspect": False})
+        src_data["derived_to"] = src_links
     else:
         links_obj = data.get("links", {})
         lst = [
-            item
-            for item in links_obj.get(link_type, [])
-            if item.get("source_id") != source_id
+            item for item in links_obj.get(link_type, []) if item.get("rid") != str(source_id)
         ]
         lst.append(link)
         links_obj[link_type] = lst
@@ -316,6 +320,9 @@ def link_requirements(
     try:
         obj = requirement_from_dict(data)
         req_ops.save_requirement(directory, obj, mtime=mtime)
+        if link_type == "derived_from":
+            src_obj = requirement_from_dict(src_data)
+            req_ops.save_requirement(directory, src_obj)
     except ConflictError as exc:
         return log_tool(
             "link_requirements",

@@ -1,14 +1,27 @@
 {
+  "derived_from": [
+    {
+      "rid": "SYS002",
+      "revision": 1
+    }
+  ],
   "id": 2,
-  "title": "Поиск требований",
-  "text": "Система должна обеспечивать фильтрацию и полнотекстовый поиск требований по меткам и полям.",
-  "labels": ["search"],
+  "labels": [
+    "search"
+  ],
   "owner": "Team",
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
+  "derived_to": [
+    {
+      "rid": "LLR002",
+      "revision": 1
+    }
+  ],
+  "statement": "Система должна обеспечивать фильтрацию и полнотекстовый поиск требований по меткам и полям.",
   "status": "approved",
+  "title": "Поиск требований",
   "type": "requirement",
-  "verification": "analysis",
-  "links": ["SYS002"]
+  "verification": "analysis"
 }

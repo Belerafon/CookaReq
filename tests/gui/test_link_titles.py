@@ -24,9 +24,9 @@ def test_added_link_shows_id_and_title(wx_app, monkeypatch):
         verification=Verification.ANALYSIS,
     )
 
-    panel.links_id.SetValue("123")
+    panel.links_id.SetValue("SYS123")
     panel._on_add_link_generic("links")
 
-    assert panel.links_list.GetItemText(0, 0) == "123"
+    assert panel.links_list.GetItemText(0, 0) == "SYS123"
     assert panel.links_list.GetItemText(0, 1) == ""
     frame.Destroy()

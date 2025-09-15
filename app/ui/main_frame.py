@@ -461,16 +461,17 @@ class MainFrame(wx.Frame):
             self.splitter.UpdateSize()
 
     def _on_editor_save(self) -> None:
-        if not self.current_dir:
+        if not (
+            self.current_dir
+            and self.docs_controller
+            and self.current_doc_prefix
+        ):
             return
         try:
-            if self.docs_controller and self.current_doc_prefix:
-                doc = self.docs_controller.documents[self.current_doc_prefix]
-                self.editor.save(
-                    self.current_dir / self.current_doc_prefix, doc=doc
-                )
-            else:
-                self.editor.save(self.current_dir)
+            doc = self.docs_controller.documents[self.current_doc_prefix]
+            self.editor.save(
+                self.current_dir / self.current_doc_prefix, doc=doc
+            )
         except Exception as exc:  # pragma: no cover - GUI event
             wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
             return

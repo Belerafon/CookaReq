@@ -28,7 +28,7 @@ def test_title_column_expands_to_available_width(wx_app, monkeypatch):
     frame.Show()
     wx.GetApp().Yield()
 
-    panel.links_id.SetValue("1")
+    panel.links_id.SetValue("SYS001")
     panel._on_add_link_generic("links")
 
     panel.links_list.SendSizeEvent()

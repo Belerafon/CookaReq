@@ -11,7 +11,16 @@ import wx
 import wx.adv
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from ..core.doc_store import Document, LabelDef, label_color, save_item, list_item_ids, stable_color
+from ..core.doc_store import (
+    Document,
+    LabelDef,
+    label_color,
+    save_item,
+    stable_color,
+    parse_rid,
+    load_document,
+    load_item,
+)
 from ..core.model import (
     Priority,
     Requirement,
@@ -815,21 +824,23 @@ class EditorPanel(ScrolledPanel):
     # generic link handlers -------------------------------------------
     def _on_add_link_generic(self, attr: str) -> None:
         id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
-        value = id_ctrl.GetValue().strip()
+        value = id_ctrl.GetValue().strip().upper()
         if not value:
             return
         try:
-            ref_id_int = int(value)
+            prefix, item_id = parse_rid(value)
         except ValueError:
-            wx.MessageBox(_("ID must be a number"), _("Error"), style=wx.ICON_ERROR)
+            wx.MessageBox(_("Invalid requirement ID"), _("Error"), style=wx.ICON_ERROR)
             return
         revision = 1
         title = ""
         if self.directory:
             try:
-                req = req_ops.get_requirement(self.directory, ref_id_int)
-                revision = req.revision or 1
-                title = req.title or ""
+                root = Path(self.directory).parent
+                doc = load_document(root / prefix)
+                data, _ = load_item(root / prefix, doc, item_id)
+                revision = int(data.get("revision", 1))
+                title = str(data.get("title", ""))
             except Exception:  # pragma: no cover - lookup errors
                 logger.exception("Failed to load requirement %s", value)
         links_list.append({"rid": value, "revision": revision, "suspect": False})
@@ -881,8 +892,8 @@ class EditorPanel(ScrolledPanel):
         if self._on_save_callback:
             self._on_save_callback()
 
-    def save(self, directory: str | Path, *, doc: Document | None = None) -> Path:
-        """Persist editor contents to ``directory`` and return path."""
+    def save(self, directory: str | Path, *, doc: Document) -> Path:
+        """Persist editor contents to ``directory`` within ``doc`` and return path."""
 
         req = self.get_data()
         mod = (
@@ -890,17 +901,9 @@ class EditorPanel(ScrolledPanel):
             if req.modified_at and req.modified_at != self.original_modified_at
             else None
         )
-        if doc:
-            req.modified_at = normalize_timestamp(mod) if mod else local_now_str()
-            data = requirement_to_dict(req)
-            path = save_item(directory, doc, data)
-        else:
-            path = req_ops.save_requirement(
-                directory,
-                req,
-                mtime=self.mtime,
-                modified_at=mod,
-            )
+        req.modified_at = normalize_timestamp(mod) if mod else local_now_str()
+        data = requirement_to_dict(req)
+        path = save_item(directory, doc, data)
         self.fields["modified_at"].ChangeValue(req.modified_at)
         self.original_modified_at = req.modified_at
         self.current_path = path

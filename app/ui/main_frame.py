@@ -357,7 +357,7 @@ class MainFrame(wx.Frame):
             labels_all, freeform = self.docs_controller.collect_labels(
                 self.current_doc_prefix
             )
-            self.list_panel.update_labels_list(labels_all)
+            self.panel.update_labels_list(labels_all)
             self.editor.update_labels_list(labels_all, freeform)
         dlg.Destroy()
 
@@ -366,10 +366,10 @@ class MainFrame(wx.Frame):
         _event: wx.Event,
     ) -> None:  # pragma: no cover - GUI event
         """Open window displaying requirement derivation graph."""
-        if not self.current_dir:
+        if not (self.current_dir and self.docs_controller):
             wx.MessageBox(_("Select requirements folder first"), _("No Data"))
             return
-        links = list(self.docs_controller.iter_links()) if self.docs_controller else []
+        links = list(self.docs_controller.iter_links())
         if not links:
             wx.MessageBox(_("No links found"), _("No Data"))
             return
@@ -386,10 +386,10 @@ class MainFrame(wx.Frame):
         _event: wx.Event,
     ) -> None:  # pragma: no cover - GUI event
         """Open window displaying requirement trace links."""
-        if not self.current_dir:
+        if not (self.current_dir and self.docs_controller):
             wx.MessageBox(_("Select requirements folder first"), _("No Data"))
             return
-        links = list(self.docs_controller.iter_links()) if self.docs_controller else []
+        links = list(self.docs_controller.iter_links())
         if not links:
             wx.MessageBox(_("No links found"), _("No Data"))
             return
@@ -478,12 +478,9 @@ class MainFrame(wx.Frame):
         data = self.editor.get_data()
         self.model.update(data)
         self.panel.recalc_derived_map(self.model.get_all())
-        if self.docs_controller and self.current_doc_prefix:
-            labels, freeform = self.docs_controller.collect_labels(
-                self.current_doc_prefix
-            )
-            self.editor.update_labels_list(labels, freeform)
-            self.panel.update_labels_list(labels)
+        labels, freeform = self.docs_controller.collect_labels(self.current_doc_prefix)
+        self.editor.update_labels_list(labels, freeform)
+        self.panel.update_labels_list(labels)
 
     def on_toggle_column(self, event: wx.CommandEvent) -> None:
         """Show or hide column associated with menu item."""
@@ -581,10 +578,9 @@ class MainFrame(wx.Frame):
         self.splitter.UpdateSize()
 
     def _create_linked_copy(self, source: Requirement) -> Requirement:
-        if self.docs_controller and self.current_doc_prefix:
-            new_id = self.docs_controller.next_item_id(self.current_doc_prefix)
-        else:
+        if not (self.docs_controller and self.current_doc_prefix):
             raise RuntimeError("Documents controller not initialized")
+        new_id = self.docs_controller.next_item_id(self.current_doc_prefix)
         parent_rid = source.rid or str(source.id)
         clone = replace(
             source,
@@ -599,14 +595,13 @@ class MainFrame(wx.Frame):
     def on_derive_requirement(self, req_id: int) -> None:
         """Create a requirement derived from ``req_id`` and open it."""
 
+        if not (self.docs_controller and self.current_doc_prefix):
+            return
         source = self.model.get_by_id(req_id)
         if not source:
             return
         clone = self._create_linked_copy(source)
-        if self.docs_controller and self.current_doc_prefix:
-            self.docs_controller.add_requirement(self.current_doc_prefix, clone)
-        else:
-            return
+        self.docs_controller.add_requirement(self.current_doc_prefix, clone)
         self.panel.record_link(source.rid or str(source.id), clone.id)
         self.panel.refresh()
         self.editor.load(clone, path=None, mtime=None)

@@ -55,20 +55,32 @@ SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {
                 "type": "object",
-                "required": ["source_id", "source_revision"],
+                "required": ["rid", "revision"],
                 "properties": {
-                    "source_id": {"type": "integer"},
-                    "source_revision": {"type": "integer"},
+                    "rid": {"type": "string"},
+                    "revision": {"type": "integer"},
+                    "suspect": {"type": "boolean"},
+                },
+            },
+        },
+        "derived_to": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["rid", "revision"],
+                "properties": {
+                    "rid": {"type": "string"},
+                    "revision": {"type": "integer"},
                     "suspect": {"type": "boolean"},
                 },
             },
         },
         "parent": {
             "type": "object",
-            "required": ["source_id", "source_revision"],
+            "required": ["rid", "revision"],
             "properties": {
-                "source_id": {"type": "integer"},
-                "source_revision": {"type": "integer"},
+                "rid": {"type": "string"},
+                "revision": {"type": "integer"},
                 "suspect": {"type": "boolean"},
             },
         },
@@ -79,10 +91,10 @@ SCHEMA: dict[str, Any] = {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["source_id", "source_revision"],
+                        "required": ["rid", "revision"],
                         "properties": {
-                            "source_id": {"type": "integer"},
-                            "source_revision": {"type": "integer"},
+                            "rid": {"type": "string"},
+                            "revision": {"type": "integer"},
                             "suspect": {"type": "boolean"},
                         },
                     },
@@ -91,10 +103,10 @@ SCHEMA: dict[str, Any] = {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["source_id", "source_revision"],
+                        "required": ["rid", "revision"],
                         "properties": {
-                            "source_id": {"type": "integer"},
-                            "source_revision": {"type": "integer"},
+                            "rid": {"type": "string"},
+                            "revision": {"type": "integer"},
                             "suspect": {"type": "boolean"},
                         },
                     },

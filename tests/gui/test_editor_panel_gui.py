@@ -171,17 +171,17 @@ def test_editor_loads_links(tmp_path, wx_app):
     panel = _make_panel()
     data = {
         "id": 5,
-        "parent": {"source_id": 1, "source_revision": 1, "suspect": False},
+        "parent": {"rid": "1", "revision": 1, "suspect": False},
         "links": {
-            "verifies": [{"source_id": 2, "source_revision": 1, "suspect": False}],
-            "relates": [{"source_id": 3, "source_revision": 1, "suspect": False}],
+            "verifies": [{"rid": "2", "revision": 1, "suspect": False}],
+            "relates": [{"rid": "3", "revision": 1, "suspect": False}],
         },
     }
     panel.load(data, path=tmp_path / "req.json", mtime=0.0)
     result = panel.get_data()
-    assert result.parent is not None and result.parent.source_id == 1
-    assert result.links.verifies and result.links.verifies[0].source_id == 2
-    assert result.links.relates and result.links.relates[0].source_id == 3
+    assert result.parent is not None and result.parent.rid == "1"
+    assert result.links.verifies and result.links.verifies[0].rid == "2"
+    assert result.links.relates and result.links.relates[0].rid == "3"
 
 
 def test_multiline_fields_resize_dynamically(wx_app):

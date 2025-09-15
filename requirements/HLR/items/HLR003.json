@@ -1,14 +1,21 @@
 {
+  "derived_from": [
+    {
+      "rid": "SYS003",
+      "revision": 1
+    }
+  ],
   "id": 3,
-  "title": "Локализация интерфейса",
-  "text": "Система должна отображать элементы интерфейса на русском языке с использованием словаря локализации.",
-  "labels": ["i18n"],
+  "labels": [
+    "i18n"
+  ],
   "owner": "Team",
   "priority": "low",
   "revision": 1,
   "source": "architecture",
+  "statement": "Система должна отображать элементы интерфейса на русском языке с использованием словаря локализации.",
   "status": "approved",
+  "title": "Локализация интерфейса",
   "type": "requirement",
-  "verification": "inspection",
-  "links": ["SYS003"]
+  "verification": "inspection"
 }

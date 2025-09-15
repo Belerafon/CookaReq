@@ -158,19 +158,37 @@ def mark_suspects(directory: str | Path, changed_id: int, new_revision: int) -> 
             continue
         changed = False
         parent = data.get("parent")
-        if (
-            parent
-            and parent.get("source_id") == changed_id
-            and parent.get("source_revision") != new_revision
-            and not parent.get("suspect", False)
-        ):
-            parent["suspect"] = True
-            changed = True
+        if parent:
+            rid = parent.get("rid")
+            if (
+                rid is not None
+                and rid.isdigit()
+                and int(rid) == changed_id
+                and parent.get("revision") != new_revision
+                and not parent.get("suspect", False)
+            ):
+                parent["suspect"] = True
+                changed = True
 
         for link in data.get("derived_from", []):
+            rid = link.get("rid")
             if (
-                link.get("source_id") == changed_id
-                and link.get("source_revision") != new_revision
+                rid is not None
+                and rid.isdigit()
+                and int(rid) == changed_id
+                and link.get("revision") != new_revision
+                and not link.get("suspect", False)
+            ):
+                link["suspect"] = True
+                changed = True
+
+        for link in data.get("derived_to", []):
+            rid = link.get("rid")
+            if (
+                rid is not None
+                and rid.isdigit()
+                and int(rid) == changed_id
+                and link.get("revision") != new_revision
                 and not link.get("suspect", False)
             ):
                 link["suspect"] = True
@@ -179,9 +197,12 @@ def mark_suspects(directory: str | Path, changed_id: int, new_revision: int) -> 
         links_obj = data.get("links", {})
         for coll in (links_obj.get("verifies", []), links_obj.get("relates", [])):
             for link in coll:
+                rid = link.get("rid")
                 if (
-                    link.get("source_id") == changed_id
-                    and link.get("source_revision") != new_revision
+                    rid is not None
+                    and rid.isdigit()
+                    and int(rid) == changed_id
+                    and link.get("revision") != new_revision
                     and not link.get("suspect", False)
                 ):
                     link["suspect"] = True

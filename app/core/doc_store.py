@@ -37,6 +37,10 @@ class Document:
     attributes: dict[str, Any] = field(default_factory=dict)
 
 
+class ValidationError(Exception):
+    """Raised when requirement links violate business rules."""
+
+
 def _read_json(path: Path) -> dict:
     with path.open(encoding="utf-8") as fh:
         return json.load(fh)
@@ -155,6 +159,33 @@ def parse_rid(rid: str) -> tuple[str, int]:
     return prefix, int(num)
 
 
+def _validate_links(
+    root: Path,
+    doc: Document,
+    data: Mapping[str, Any],
+    docs: Mapping[str, Document],
+) -> None:
+    rid_self = rid_for(doc, int(data["id"]))
+    links = data.get("links")
+    if not isinstance(links, list):
+        return
+    for rid in links:
+        try:
+            prefix, item_id = parse_rid(rid)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+        if rid == rid_self:
+            raise ValidationError("link references self")
+        target_doc = docs.get(prefix)
+        if target_doc is None:
+            raise ValidationError(f"unknown document prefix: {prefix}")
+        if not is_ancestor(doc.prefix, prefix, docs):
+            raise ValidationError(f"invalid link target: {rid}")
+        path = item_path(root / prefix, target_doc, item_id)
+        if not path.exists():
+            raise ValidationError(f"linked item not found: {rid}")
+
+
 def item_path(directory: str | Path, doc: Document, item_id: int) -> Path:
     """Return filesystem path for ``item_id`` inside ``doc``."""
 
@@ -163,7 +194,9 @@ def item_path(directory: str | Path, doc: Document, item_id: int) -> Path:
 
 def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
     """Save requirement ``data`` within ``doc`` and return file path."""
-
+    root = Path(directory).parent
+    docs = load_documents(root)
+    _validate_links(root, doc, data, docs)
     path = item_path(directory, doc, int(data["id"]))
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:

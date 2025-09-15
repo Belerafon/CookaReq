@@ -56,7 +56,7 @@ def test_acceptance_present_passes(tmp_path):
 
 def test_self_reference(tmp_path):
     data = make_valid()
-    data["derived_from"] = [{"source_id": 1, "source_revision": 1, "suspect": False}]
+    data["derived_from"] = [{"rid": "1", "revision": 1, "suspect": False}]
     with pytest.raises(ValidationError):
         validate(data, tmp_path)
 
@@ -64,7 +64,7 @@ def test_self_reference(tmp_path):
 def test_missing_source_id(tmp_path):
     data = make_valid()
     data["id"] = 2
-    data["derived_from"] = [{"source_id": 1, "source_revision": 1, "suspect": False}]
+    data["derived_from"] = [{"rid": "1", "revision": 1, "suspect": False}]
     with pytest.raises(ValidationError):
         validate(data, tmp_path)
 
@@ -73,11 +73,11 @@ def test_cycle_detection(tmp_path):
     write_req(
         tmp_path,
         1,
-        derived_from=[{"source_id": 2, "source_revision": 1, "suspect": False}],
+        derived_from=[{"rid": "2", "revision": 1, "suspect": False}],
     )
     data = make_valid()
     data["id"] = 2
-    data["derived_from"] = [{"source_id": 1, "source_revision": 1, "suspect": False}]
+    data["derived_from"] = [{"rid": "1", "revision": 1, "suspect": False}]
     with pytest.raises(ValidationError):
         validate(data, tmp_path)
 
@@ -86,5 +86,5 @@ def test_valid_reference_passes(tmp_path):
     write_req(tmp_path, 1)
     data = make_valid()
     data["id"] = 2
-    data["derived_from"] = [{"source_id": 1, "source_revision": 1, "suspect": False}]
+    data["derived_from"] = [{"rid": "1", "revision": 1, "suspect": False}]
     validate(data, tmp_path)

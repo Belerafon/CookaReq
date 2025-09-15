@@ -605,15 +605,15 @@ class EditorPanel(ScrolledPanel):
         _, list_ctrl, links_list = self._link_widgets(attr)
         list_ctrl.DeleteAllItems()
         for link in links_list:
-            src_id = link["source_id"]
+            src_rid = link["rid"]
             title = ""
-            if self.directory:
+            if self.directory and src_rid.isdigit():
                 try:
-                    req = req_ops.get_requirement(self.directory, src_id)
+                    req = req_ops.get_requirement(self.directory, int(src_rid))
                     title = req.title or ""
                 except Exception:  # pragma: no cover - lookup errors
-                    logger.exception("Failed to load requirement %s", src_id)
-            idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), str(src_id))
+                    logger.exception("Failed to load requirement %s", src_rid)
+            idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), src_rid)
             list_ctrl.SetItem(idx, 1, title)
 
     # basic operations -------------------------------------------------
@@ -982,7 +982,7 @@ class EditorPanel(ScrolledPanel):
         if not value:
             return
         try:
-            src_id = int(value)
+            ref_id_int = int(value)
         except ValueError:
             wx.MessageBox(_("ID must be a number"), _("Error"), style=wx.ICON_ERROR)
             return
@@ -990,15 +990,13 @@ class EditorPanel(ScrolledPanel):
         title = ""
         if self.directory:
             try:
-                req = req_ops.get_requirement(self.directory, src_id)
+                req = req_ops.get_requirement(self.directory, ref_id_int)
                 revision = req.revision or 1
                 title = req.title or ""
             except Exception:  # pragma: no cover - lookup errors
-                logger.exception("Failed to load requirement %s", src_id)
-        links_list.append(
-            {"source_id": src_id, "source_revision": revision, "suspect": False},
-        )
-        idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), str(src_id))
+                logger.exception("Failed to load requirement %s", value)
+        links_list.append({"rid": value, "revision": revision, "suspect": False})
+        idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), value)
         list_ctrl.SetItem(idx, 1, title)
         id_ctrl.ChangeValue("")
         self._refresh_links_visibility(attr)
@@ -1022,22 +1020,15 @@ class EditorPanel(ScrolledPanel):
         value = self.parent_id.GetValue().strip()
         if not value:
             return
-        try:
-            src_id = int(value)
-        except ValueError:
-            return
+        rid = value
         revision = 1
-        if self.directory:
+        if self.directory and rid.isdigit():
             try:
-                req = req_ops.get_requirement(self.directory, src_id)
+                req = req_ops.get_requirement(self.directory, int(rid))
                 revision = req.revision or 1
             except Exception:
-                logger.exception("Failed to load requirement %s", src_id)
-        self.parent = {
-            "source_id": src_id,
-            "source_revision": revision,
-            "suspect": False,
-        }
+                logger.exception("Failed to load requirement %s", rid)
+        self.parent = {"rid": rid, "revision": revision, "suspect": False}
         self.parent_id.ChangeValue("")
         self._refresh_parent_display()
 
@@ -1047,7 +1038,7 @@ class EditorPanel(ScrolledPanel):
 
     def _refresh_parent_display(self) -> None:
         if self.parent:
-            txt = f"{self.parent['source_id']} (r{self.parent['source_revision']})"
+            txt = f"{self.parent['rid']} (r{self.parent['revision']})"
         else:
             txt = _("(none)")
         self.parent_display.SetLabel(txt)

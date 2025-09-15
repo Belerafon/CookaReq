@@ -121,14 +121,15 @@ def filter_has_derived(
     """
 
     reqs = list(requirements)
-    sources: dict[int, list[bool]] = {}
+    sources: dict[str, list[bool]] = {}
     for req in all_requirements:
         for link in req.derived_from:
-            sources.setdefault(link.source_id, []).append(link.suspect)
+            sources.setdefault(link.rid, []).append(link.suspect)
 
     result: list[Requirement] = []
     for req in reqs:
-        flags = sources.get(req.id, [])
+        rid = req.rid or str(req.id)
+        flags = sources.get(rid, [])
         if not flags:
             continue
         if suspect_only and not any(flags):

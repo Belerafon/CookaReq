@@ -101,7 +101,11 @@ def test_link_requirements(tmp_path: Path):
     data, _ = load(path)
     assert data["revision"] == 2
     assert data["derived_from"] == [
-        {"source_id": 1, "source_revision": 1, "suspect": False},
+        {"rid": "1", "revision": 1, "suspect": False},
+    ]
+    src_data, _ = load(tmp_path / filename_for(1))
+    assert src_data["derived_to"] == [
+        {"rid": "2", "revision": 1, "suspect": False},
     ]
 
     # outdated rev
@@ -256,20 +260,20 @@ def test_link_requirements_types(tmp_path: Path) -> None:
 
     link_requirements(tmp_path, source_id=1, derived_id=2, link_type="parent", rev=1)
     data, _ = load(tmp_path / filename_for(2))
-    assert data["parent"] == {"source_id": 1, "source_revision": 1, "suspect": False}
+    assert data["parent"] == {"rid": "1", "revision": 1, "suspect": False}
     assert data["revision"] == 2
 
     link_requirements(tmp_path, source_id=3, derived_id=4, link_type="verifies", rev=1)
     data, _ = load(tmp_path / filename_for(4))
     assert data["links"]["verifies"] == [
-        {"source_id": 3, "source_revision": 1, "suspect": False},
+        {"rid": "3", "revision": 1, "suspect": False},
     ]
     assert data["revision"] == 2
 
     link_requirements(tmp_path, source_id=5, derived_id=6, link_type="relates", rev=1)
     data, _ = load(tmp_path / filename_for(6))
     assert data["links"]["relates"] == [
-        {"source_id": 5, "source_revision": 1, "suspect": False},
+        {"rid": "5", "revision": 1, "suspect": False},
     ]
     assert data["revision"] == 2
 

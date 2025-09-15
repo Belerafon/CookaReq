@@ -60,7 +60,7 @@ def sample_requirements():
             source="spec",
             verification=Verification.ANALYSIS,
             labels=["ui"],
-            derived_from=[DerivationLink(source_id=2, source_revision=1, suspect=True)],
+            derived_from=[DerivationLink(rid="2", revision=1, suspect=True)],
         ),
     ]
 

@@ -180,7 +180,7 @@ def test_link_requirements_via_http(tmp_path: Path) -> None:
         assert status == 200
         assert body["revision"] == 2
         assert body["derived_from"] == [
-            {"source_id": 1, "source_revision": 1, "suspect": False},
+            {"rid": "1", "revision": 1, "suspect": False},
         ]
     finally:
         stop_server()

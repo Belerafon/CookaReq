@@ -129,7 +129,7 @@ def test_id_cache_scans_once_with_many_files(monkeypatch, tmp_path: Path):
 def test_mark_suspects_on_revision_change(tmp_path: Path):
     req1 = sample(1)
     req2 = sample(2)
-    req2["derived_from"] = [{"source_id": 1, "source_revision": 1, "suspect": False}]
+    req2["derived_from"] = [{"rid": "1", "revision": 1, "suspect": False}]
 
     save(tmp_path, req1)
     save(tmp_path, req2)

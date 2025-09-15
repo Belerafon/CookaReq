@@ -53,16 +53,16 @@ class Attachment:
 
 
 @dataclass
-class RequirementLink:
+class RequirementRef:
     """Reference to another requirement with revision tracking."""
 
-    source_id: int
-    source_revision: int
+    rid: str
+    revision: int
     suspect: bool = False
 
 
 # Backwards compatible alias for existing code/tests
-DerivationLink = RequirementLink
+DerivationLink = RequirementRef
 
 
 @dataclass
@@ -77,8 +77,8 @@ class DerivationInfo:
 class Links:
     """Grouping for miscellaneous requirement links."""
 
-    verifies: list[RequirementLink] = field(default_factory=list)
-    relates: list[RequirementLink] = field(default_factory=list)
+    verifies: list[RequirementRef] = field(default_factory=list)
+    relates: list[RequirementRef] = field(default_factory=list)
 
 
 @dataclass
@@ -105,8 +105,9 @@ class Requirement:
     revision: int = 1
     approved_at: str | None = None
     notes: str = ""
-    parent: RequirementLink | None = None
-    derived_from: list[RequirementLink] = field(default_factory=list)
+    parent: RequirementRef | None = None
+    derived_from: list[RequirementRef] = field(default_factory=list)
+    derived_to: list[RequirementRef] = field(default_factory=list)
     links: Links = field(default_factory=Links)
     derivation: DerivationInfo | None = None
     # document-related metadata
@@ -124,17 +125,21 @@ def requirement_from_dict(
     sensible defaults.
     """
     attachments = [Attachment(**a) for a in data.get("attachments", [])]
+
+    def _ref(d: dict[str, Any]) -> RequirementRef:
+        if "rid" not in d and "id" in d:
+            d = dict(d)
+            d["rid"] = str(d.pop("id"))
+        return RequirementRef(**d)
+
     parent_data = data.get("parent")
-    parent = RequirementLink(**parent_data) if parent_data else None
-    derived_from = [RequirementLink(**d) for d in data.get("derived_from", [])]
+    parent = _ref(parent_data) if parent_data else None
+    derived_from = [_ref(d) for d in data.get("derived_from", [])]
+    derived_to = [_ref(d) for d in data.get("derived_to", [])]
     links_data = data.get("links", {})
     links = Links(
-        verifies=[
-            RequirementLink(**link_data) for link_data in links_data.get("verifies", [])
-        ],
-        relates=[
-            RequirementLink(**link_data) for link_data in links_data.get("relates", [])
-        ],
+        verifies=[_ref(link_data) for link_data in links_data.get("verifies", [])],
+        relates=[_ref(link_data) for link_data in links_data.get("relates", [])],
     )
     derivation_data = data.get("derivation")
     derivation = DerivationInfo(**derivation_data) if derivation_data else None
@@ -165,6 +170,7 @@ def requirement_from_dict(
         notes=data.get("notes", ""),
         parent=parent,
         derived_from=derived_from,
+        derived_to=derived_to,
         links=links,
         derivation=derivation,
         doc_prefix=doc_prefix,

@@ -38,6 +38,7 @@ def test_requirement_defaults():
     assert req.version == ""
     assert req.modified_at == ""
     assert req.derived_from == []
+    assert req.derived_to == []
     assert req.derivation is None
 
 
@@ -53,7 +54,7 @@ def test_requirement_derivation_conversion():
         "source": "spec",
         "verification": "analysis",
         "derived_from": [
-            {"source_id": 2, "source_revision": 3, "suspect": True},
+            {"rid": "2", "revision": 3, "suspect": True},
         ],
         "derivation": {
             "rationale": "r",
@@ -61,10 +62,10 @@ def test_requirement_derivation_conversion():
         },
     }
     req = requirement_from_dict(data)
-    assert req.derived_from[0].source_id == 2
+    assert req.derived_from[0].rid == "2"
     assert req.derived_from[0].suspect is True
     roundtrip = requirement_to_dict(req)
-    assert roundtrip["derived_from"][0]["source_revision"] == 3
+    assert roundtrip["derived_from"][0]["revision"] == 3
     assert roundtrip["derivation"]["assumptions"] == ["a1", "a2"]
 
 

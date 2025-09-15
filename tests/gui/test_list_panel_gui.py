@@ -208,7 +208,7 @@ def test_recalc_derived_map_updates_count(wx_app):
     req2 = _req(
         2,
         "D",
-        derived_from=[DerivationLink(source_id=1, source_revision=1, suspect=False)],
+        derived_from=[DerivationLink(rid="1", revision=1, suspect=False)],
     )
     panel.set_requirements([req1, req2])
     assert panel.list.GetItem(0, 1).GetText() == "1"

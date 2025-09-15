@@ -89,26 +89,55 @@ def requirement_from_dict(
     into their respective dataclasses. Missing optional fields fall back to
     sensible defaults.
     """
-    attachments_data = data.get("attachments") or []
+    required = [
+        "id",
+        "title",
+        "statement",
+        "type",
+        "status",
+        "owner",
+        "priority",
+        "source",
+        "verification",
+    ]
+    for field in required:
+        if field not in data:
+            raise KeyError(f"missing required field: {field}")
+
+    for field in ("text", "tags"):
+        if field in data:
+            raise KeyError(f"unsupported field: {field}")
+
+    attachments_data = data.get("attachments", [])
+    if not isinstance(attachments_data, list):
+        raise TypeError("attachments must be a list")
     attachments = [Attachment(**a) for a in attachments_data]
+
     raw_links = data.get("links", [])
-    links = [str(link) for link in raw_links] if isinstance(raw_links, list) else []
-    statement = data.get("statement", data.get("text", ""))
+    if raw_links is not None and not isinstance(raw_links, list):
+        raise TypeError("links must be a list")
+    links = [str(link) for link in raw_links] if raw_links else []
+
+    labels_data = data.get("labels", [])
+    if labels_data is not None and not isinstance(labels_data, list):
+        raise TypeError("labels must be a list")
+    labels = list(labels_data or [])
+
     return Requirement(
         id=data["id"],
-        title=data.get("title", ""),
-        statement=statement,
-        type=RequirementType(data.get("type")),
-        status=Status(data.get("status")),
-        owner=data.get("owner", ""),
-        priority=Priority(data.get("priority")),
-        source=data.get("source", ""),
-        verification=Verification(data.get("verification")),
+        title=data["title"],
+        statement=data["statement"],
+        type=RequirementType(data["type"]),
+        status=Status(data["status"]),
+        owner=data["owner"],
+        priority=Priority(data["priority"]),
+        source=data["source"],
+        verification=Verification(data["verification"]),
         acceptance=data.get("acceptance"),
         conditions=data.get("conditions", ""),
         version=data.get("version", ""),
         modified_at=normalize_timestamp(data.get("modified_at")),
-        labels=list(data.get("labels") or []),
+        labels=labels,
         attachments=attachments,
         revision=data.get("revision", 1),
         approved_at=(

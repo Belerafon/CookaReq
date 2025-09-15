@@ -81,3 +81,34 @@ def test_requirement_extended_roundtrip():
     assert again.attachments[0].note == "ref"
     assert again.approved_at == "2024-01-01 00:00:00"
     assert again.notes == "extra"
+
+
+def test_requirement_from_dict_missing_statement():
+    data = {
+        "id": 1,
+        "title": "T",
+        "type": "requirement",
+        "status": "draft",
+        "owner": "o",
+        "priority": "medium",
+        "source": "s",
+        "verification": "analysis",
+    }
+    with pytest.raises(KeyError):
+        requirement_from_dict(data)
+
+
+def test_requirement_from_dict_rejects_text_field():
+    data = {
+        "id": 1,
+        "title": "T",
+        "text": "legacy",
+        "type": "requirement",
+        "status": "draft",
+        "owner": "o",
+        "priority": "medium",
+        "source": "s",
+        "verification": "analysis",
+    }
+    with pytest.raises(KeyError):
+        requirement_from_dict(data)

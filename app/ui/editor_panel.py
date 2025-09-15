@@ -58,6 +58,7 @@ class EditorPanel(ScrolledPanel):
         self._on_save_callback = on_save
         self.directory: Path | None = None
         self.original_id: int | None = None
+        self._saved_state: dict[str, Any] | None = None
 
         field_names = [
             "id",
@@ -375,6 +376,7 @@ class EditorPanel(ScrolledPanel):
         self.mtime: float | None = None
         self._refresh_labels_display()
         self._refresh_attachments()
+        self.mark_clean()
 
     def _bind_autosize(self, ctrl: wx.TextCtrl) -> None:
         """Register multiline text control for dynamic height."""
@@ -565,6 +567,7 @@ class EditorPanel(ScrolledPanel):
         self.original_modified_at = ""
         self._auto_resize_all()
         self._on_id_change()
+        self.mark_clean()
 
     def load(
         self,
@@ -619,6 +622,7 @@ class EditorPanel(ScrolledPanel):
         self.original_modified_at = self.fields["modified_at"].GetValue()
         self._auto_resize_all()
         self._on_id_change()
+        self.mark_clean()
 
     def clone(self, new_id: int) -> None:
         """Copy current requirement into a new one with ``new_id``."""
@@ -911,7 +915,47 @@ class EditorPanel(ScrolledPanel):
         self.directory = Path(directory)
         self.original_id = req.id
         self._on_id_change()
+        self.mark_clean()
         return path
+
+    def _snapshot_state(self) -> dict[str, Any]:
+        """Return immutable snapshot of current editor contents."""
+
+        fields_state = {
+            name: ctrl.GetValue()
+            for name, ctrl in self.fields.items()
+        }
+        enums_state = {
+            name: locale.label_to_code(name, choice.GetStringSelection())
+            for name, choice in self.enums.items()
+        }
+        attachments_state = [dict(att) for att in self.attachments]
+        links_state = [dict(link) for link in self.links]
+        dt = self.approved_picker.GetValue()
+        approved_at = dt.FormatISODate() if dt.IsValid() else None
+        snapshot = {
+            "fields": fields_state,
+            "enums": enums_state,
+            "attachments": attachments_state,
+            "links": links_state,
+            "labels": list(self.extra.get("labels", [])),
+            "approved_at": approved_at,
+            "notes": self.notes_ctrl.GetValue(),
+            "revision": self.extra.get("revision", 1),
+        }
+        return snapshot
+
+    def mark_clean(self) -> None:
+        """Store current state as the latest saved baseline."""
+
+        self._saved_state = self._snapshot_state()
+
+    def is_dirty(self) -> bool:
+        """Return True when editor content differs from saved baseline."""
+
+        if self._saved_state is None:
+            return False
+        return self._snapshot_state() != self._saved_state
 
     def add_attachment(self, path: str, note: str = "") -> None:
         """Append attachment with ``path`` and optional ``note``."""

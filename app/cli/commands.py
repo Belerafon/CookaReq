@@ -9,7 +9,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, TextIO
+from typing import Any, Callable, TextIO
 
 from app.confirm import confirm
 from app.core.doc_store import (
@@ -31,8 +31,21 @@ from app.core.doc_store import (
     plan_delete_item,
     collect_labels,
 )
+from app.core.model import (
+    Priority,
+    RequirementType,
+    Status,
+    Verification,
+    requirement_from_dict,
+    requirement_to_dict,
+)
 from app.i18n import _
 from tools.migrate_to_docs import migrate_to_docs
+
+REQ_TYPE_CHOICES = [e.value for e in RequirementType]
+STATUS_CHOICES = [e.value for e in Status]
+PRIORITY_CHOICES = [e.value for e in Priority]
+VERIFICATION_CHOICES = [e.value for e in Verification]
 
 
 @dataclass
@@ -128,48 +141,139 @@ def add_doc_arguments(p: argparse.ArgumentParser) -> None:
 
 def cmd_item_add(args: argparse.Namespace) -> None:
     """Create a new requirement item under a document."""
-
     docs = load_documents(args.directory)
     doc = docs.get(args.prefix)
     if doc is None:
         sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=args.prefix))
         return
+    base: dict[str, Any] = {}
+    data_path = getattr(args, "data", None)
+    if data_path:
+        with open(data_path, encoding="utf-8") as fh:
+            base = json.load(fh)
     allowed, freeform = collect_labels(args.prefix, docs)
-    labels: list[str] = []
-    if args.labels:
-        labels = [t.strip() for t in args.labels.split(",") if t.strip()]
-        if not freeform:
-            unknown = [lbl for lbl in labels if lbl not in allowed]
-            if unknown:
-                sys.stdout.write(_("unknown label: {name}\n").format(name=unknown[0]))
-                return
-    doc_dir = Path(args.directory) / args.prefix
-    item_id = next_item_id(doc_dir, doc)
+    labels: list[str] = list(base.get("labels", []))
+    labels_arg = getattr(args, "labels", None)
+    if labels_arg is not None:
+        labels = [t.strip() for t in labels_arg.split(",") if t.strip()]
+    if labels and not freeform:
+        unknown = [lbl for lbl in labels if lbl not in allowed]
+        if unknown:
+            sys.stdout.write(_("unknown label: {name}\n").format(name=unknown[0]))
+            return
+    links: list[str] = list(base.get("links", []))
+    links_arg = getattr(args, "links", None)
+    if links_arg:
+        links = [t.strip() for t in links_arg.split(",") if t.strip()]
+    attachments = base.get("attachments", [])
+    attachments_arg = getattr(args, "attachments", None)
+    if attachments_arg:
+        attachments = json.loads(attachments_arg)
+    item_id = next_item_id(Path(args.directory) / args.prefix, doc)
     data = {
         "id": item_id,
-        "title": args.title,
-        "statement": args.statement,
+        "title": getattr(args, "title", None) or base.get("title", ""),
+        "statement": getattr(args, "statement", None) or base.get("statement", ""),
+        "type": getattr(args, "type", None)
+        or base.get("type", RequirementType.REQUIREMENT.value),
+        "status": getattr(args, "status", None)
+        or base.get("status", Status.DRAFT.value),
+        "owner": getattr(args, "owner", None) or base.get("owner", ""),
+        "priority": getattr(args, "priority", None)
+        or base.get("priority", Priority.MEDIUM.value),
+        "source": getattr(args, "source", None) or base.get("source", ""),
+        "verification": getattr(args, "verification", None)
+        or base.get("verification", Verification.ANALYSIS.value),
+        "acceptance": getattr(args, "acceptance", None)
+        if getattr(args, "acceptance", None) is not None
+        else base.get("acceptance"),
+        "conditions": getattr(args, "conditions", None) or base.get("conditions", ""),
+        "version": getattr(args, "version", None) or base.get("version", ""),
+        "modified_at": getattr(args, "modified_at", None) or base.get("modified_at", ""),
         "labels": labels,
-        "links": [],
+        "attachments": attachments,
+        "revision": base.get("revision", 1),
+        "approved_at": getattr(args, "approved_at", None)
+        if getattr(args, "approved_at", None) is not None
+        else base.get("approved_at"),
+        "notes": getattr(args, "notes", None) or base.get("notes", ""),
+        "links": links,
     }
-    save_item(doc_dir, doc, data)
-    sys.stdout.write(f"{rid_for(doc, item_id)}\n")
+    doc_dir = Path(args.directory) / args.prefix
+    req = requirement_from_dict(data, doc_prefix=args.prefix, rid=rid_for(doc, item_id))
+    save_item(doc_dir, doc, requirement_to_dict(req))
+    sys.stdout.write(f"{req.rid}\n")
 
 
 def cmd_item_move(args: argparse.Namespace) -> None:
     """Move existing item ``rid`` to document ``new_prefix``."""
-
     prefix, item_id = parse_rid(args.rid)
     src_dir = Path(args.directory) / prefix
     src_doc = load_document(src_dir)
     data, _mtime = load_item(src_dir, src_doc, item_id)
     item_path(src_dir, src_doc, item_id).unlink()
+    base: dict[str, Any] = {}
+    data_path = getattr(args, "data", None)
+    if data_path:
+        with open(data_path, encoding="utf-8") as fh:
+            base = json.load(fh)
+    data.update(base)
+    if getattr(args, "title", None) is not None:
+        data["title"] = args.title
+    if getattr(args, "statement", None) is not None:
+        data["statement"] = args.statement
+    if getattr(args, "type", None) is not None:
+        data["type"] = args.type
+    if getattr(args, "status", None) is not None:
+        data["status"] = args.status
+    if getattr(args, "owner", None) is not None:
+        data["owner"] = args.owner
+    if getattr(args, "priority", None) is not None:
+        data["priority"] = args.priority
+    if getattr(args, "source", None) is not None:
+        data["source"] = args.source
+    if getattr(args, "verification", None) is not None:
+        data["verification"] = args.verification
+    if getattr(args, "acceptance", None) is not None:
+        data["acceptance"] = args.acceptance
+    if getattr(args, "conditions", None) is not None:
+        data["conditions"] = args.conditions
+    if getattr(args, "version", None) is not None:
+        data["version"] = args.version
+    if getattr(args, "modified_at", None) is not None:
+        data["modified_at"] = args.modified_at
+    if getattr(args, "approved_at", None) is not None:
+        data["approved_at"] = args.approved_at
+    if getattr(args, "notes", None) is not None:
+        data["notes"] = args.notes
+    links_arg = getattr(args, "links", None)
+    if links_arg:
+        data["links"] = [t.strip() for t in links_arg.split(",") if t.strip()]
+    attachments_arg = getattr(args, "attachments", None)
+    if attachments_arg:
+        data["attachments"] = json.loads(attachments_arg)
+    docs = load_documents(args.directory)
+    dst_doc = docs.get(args.new_prefix)
+    if dst_doc is None:
+        sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=args.new_prefix))
+        return
+    allowed, freeform = collect_labels(args.new_prefix, docs)
+    labels = list(data.get("labels", []))
+    labels_arg = getattr(args, "labels", None)
+    if labels_arg is not None:
+        labels = [t.strip() for t in labels_arg.split(",") if t.strip()]
+    if labels and not freeform:
+        unknown = [lbl for lbl in labels if lbl not in allowed]
+        if unknown:
+            sys.stdout.write(_("unknown label: {name}\n").format(name=unknown[0]))
+            return
+    data["labels"] = labels
     dst_dir = Path(args.directory) / args.new_prefix
-    dst_doc = load_document(dst_dir)
     new_id = next_item_id(dst_dir, dst_doc)
     data["id"] = new_id
-    save_item(dst_dir, dst_doc, data)
-    sys.stdout.write(f"{rid_for(dst_doc, new_id)}\n")
+    req = requirement_from_dict(data, doc_prefix=args.new_prefix, rid=rid_for(dst_doc, new_id))
+    save_item(dst_dir, dst_doc, requirement_to_dict(req))
+    sys.stdout.write(f"{req.rid}\n")
 
 
 def cmd_item_delete(args: argparse.Namespace) -> None:
@@ -204,15 +308,48 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     add_p = sub.add_parser("add", help=_("create new item"))
     add_p.add_argument("directory", help=_("requirements root"))
     add_p.add_argument("prefix", help=_("document prefix"))
-    add_p.add_argument("--title", required=True, help=_("item title"))
-    add_p.add_argument("--statement", required=True, help=_("item statement"))
+    add_p.add_argument("--title", help=_("item title"))
+    add_p.add_argument("--statement", help=_("item statement"))
+    add_p.add_argument("--type", choices=REQ_TYPE_CHOICES, default=RequirementType.REQUIREMENT.value)
+    add_p.add_argument("--status", choices=STATUS_CHOICES, default=Status.DRAFT.value)
+    add_p.add_argument("--owner", default="")
+    add_p.add_argument("--priority", choices=PRIORITY_CHOICES, default=Priority.MEDIUM.value)
+    add_p.add_argument("--source", default="")
+    add_p.add_argument("--verification", choices=VERIFICATION_CHOICES, default=Verification.ANALYSIS.value)
+    add_p.add_argument("--acceptance")
+    add_p.add_argument("--conditions")
+    add_p.add_argument("--version")
+    add_p.add_argument("--modified-at", dest="modified_at")
+    add_p.add_argument("--approved-at", dest="approved_at")
+    add_p.add_argument("--notes")
+    add_p.add_argument("--attachments", help=_("JSON list of attachments"))
     add_p.add_argument("--labels", dest="labels", help=_("comma-separated labels"))
+    add_p.add_argument("--links", help=_("comma-separated parent requirement IDs"))
+    add_p.add_argument("--data", help=_("JSON template file"))
     add_p.set_defaults(func=cmd_item_add)
 
     move_p = sub.add_parser("move", help=_("move item"))
     move_p.add_argument("directory", help=_("requirements root"))
     move_p.add_argument("rid", help=_("requirement identifier"))
     move_p.add_argument("new_prefix", help=_("target document prefix"))
+    move_p.add_argument("--title")
+    move_p.add_argument("--statement")
+    move_p.add_argument("--type", choices=REQ_TYPE_CHOICES)
+    move_p.add_argument("--status", choices=STATUS_CHOICES)
+    move_p.add_argument("--owner")
+    move_p.add_argument("--priority", choices=PRIORITY_CHOICES)
+    move_p.add_argument("--source")
+    move_p.add_argument("--verification", choices=VERIFICATION_CHOICES)
+    move_p.add_argument("--acceptance")
+    move_p.add_argument("--conditions")
+    move_p.add_argument("--version")
+    move_p.add_argument("--modified-at", dest="modified_at")
+    move_p.add_argument("--approved-at", dest="approved_at")
+    move_p.add_argument("--notes")
+    move_p.add_argument("--attachments", help=_("JSON list of attachments"))
+    move_p.add_argument("--labels", dest="labels", help=_("comma-separated labels"))
+    move_p.add_argument("--links", help=_("comma-separated parent requirement IDs"))
+    move_p.add_argument("--data", help=_("JSON template file"))
     move_p.set_defaults(func=cmd_item_move)
 
     del_p = sub.add_parser("delete", help=_("delete item"))

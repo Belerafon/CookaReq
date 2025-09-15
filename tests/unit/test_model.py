@@ -3,6 +3,7 @@
 import pytest
 
 from app.core.model import (
+    Attachment,
     Priority,
     Requirement,
     RequirementType,
@@ -55,3 +56,28 @@ def test_requirement_prefix_and_rid():
     roundtrip = requirement_to_dict(req)
     assert "doc_prefix" not in roundtrip
     assert "rid" not in roundtrip
+
+
+def test_requirement_extended_roundtrip():
+    req = Requirement(
+        id=7,
+        title="T",
+        statement="S",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="o",
+        priority=Priority.MEDIUM,
+        source="s",
+        verification=Verification.ANALYSIS,
+        attachments=[Attachment(path="doc.txt", note="ref")],
+        approved_at="2024-01-01 00:00:00",
+        notes="extra",
+    )
+    data = requirement_to_dict(req)
+    assert data["attachments"][0]["path"] == "doc.txt"
+    assert data["approved_at"] == "2024-01-01 00:00:00"
+    assert "acceptance" in data and data["acceptance"] is None
+    again = requirement_from_dict(data)
+    assert again.attachments[0].note == "ref"
+    assert again.approved_at == "2024-01-01 00:00:00"
+    assert again.notes == "extra"

@@ -29,7 +29,7 @@ from app.core.doc_store import (
     delete_item,
     plan_delete_document,
     plan_delete_item,
-    collect_labels,
+    validate_labels,
 )
 from app.core.model import (
     Priority,
@@ -151,16 +151,14 @@ def cmd_item_add(args: argparse.Namespace) -> None:
     if data_path:
         with open(data_path, encoding="utf-8") as fh:
             base = json.load(fh)
-    allowed, freeform = collect_labels(args.prefix, docs)
     labels: list[str] = list(base.get("labels", []))
     labels_arg = getattr(args, "labels", None)
     if labels_arg is not None:
         labels = [t.strip() for t in labels_arg.split(",") if t.strip()]
-    if labels and not freeform:
-        unknown = [lbl for lbl in labels if lbl not in allowed]
-        if unknown:
-            sys.stdout.write(_("unknown label: {name}\n").format(name=unknown[0]))
-            return
+    err = validate_labels(args.prefix, labels, docs)
+    if err:
+        sys.stdout.write(_("{msg}\n").format(msg=err))
+        return
     links: list[str] = list(base.get("links", []))
     links_arg = getattr(args, "links", None)
     if links_arg:
@@ -263,16 +261,14 @@ def cmd_item_move(args: argparse.Namespace) -> None:
     if dst_doc is None:
         sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=args.new_prefix))
         return
-    allowed, freeform = collect_labels(args.new_prefix, docs)
     labels = list(data.get("labels", []))
     labels_arg = getattr(args, "labels", None)
     if labels_arg is not None:
         labels = [t.strip() for t in labels_arg.split(",") if t.strip()]
-    if labels and not freeform:
-        unknown = [lbl for lbl in labels if lbl not in allowed]
-        if unknown:
-            sys.stdout.write(_("unknown label: {name}\n").format(name=unknown[0]))
-            return
+    err = validate_labels(args.new_prefix, labels, docs)
+    if err:
+        sys.stdout.write(_("{msg}\n").format(msg=err))
+        return
     data["labels"] = labels
     dst_dir = Path(args.directory) / args.new_prefix
     new_id = next_item_id(dst_dir, dst_doc)

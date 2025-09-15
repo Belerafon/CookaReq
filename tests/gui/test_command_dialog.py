@@ -19,7 +19,7 @@ def test_command_dialog_shows_result_and_saves_history(tmp_path, wx_app):
 
     class DummyMCP:
         def call_tool(self, name, arguments):
-            return {"value": 42}
+            return {"ok": True, "error": None, "result": {"value": 42}}
 
     agent = LocalAgent(llm=DummyLLM(), mcp=DummyMCP())
     history_file = tmp_path / "history.json"
@@ -54,7 +54,7 @@ def test_command_dialog_shows_error(tmp_path, wx_app):
 
     class DummyMCP:
         def call_tool(self, name, arguments):
-            return {"error": {"code": "FAIL", "message": "bad"}}
+            return {"ok": False, "error": {"code": "FAIL", "message": "bad"}}
 
     agent = LocalAgent(llm=DummyLLM(), mcp=DummyMCP())
     history_file = tmp_path / "history.json"
@@ -72,7 +72,7 @@ def test_command_dialog_persists_between_instances(tmp_path, wx_app):
 
     class DummyAgent:
         def run_command(self, text):
-            return {"echo": text}
+            return {"ok": True, "error": None, "result": {"echo": text}}
 
     history_file = tmp_path / "history.json"
 
@@ -97,7 +97,7 @@ def test_command_dialog_handles_invalid_history(tmp_path, wx_app):
 
     class DummyAgent:
         def run_command(self, text):
-            return {}
+            return {"ok": True, "error": None, "result": {}}
 
     dlg = CommandDialog(None, agent=DummyAgent(), history_path=bad_file)
     assert dlg.history == []

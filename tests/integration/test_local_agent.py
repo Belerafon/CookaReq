@@ -47,6 +47,7 @@ def test_check_llm_and_check_tools_propagate_errors():
 def test_run_command_handles_llm_error():
     agent = LocalAgent(llm=FailingLLM(), mcp=DummyMCP())
     result = agent.run_command("whatever")
+    assert result["ok"] is False
     assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR
     assert result["error"]["message"] == "parse fail"
 
@@ -78,10 +79,10 @@ def test_custom_confirm_message(monkeypatch):
         def call_tool(self, name, arguments):
             if name in {"delete_requirement", "patch_requirement"}:
                 self.confirm("Delete requirement?")
-            return {"ok": True}
+            return {"ok": True, "error": None, "result": {}}
 
     monkeypatch.setattr(la, "LLMClient", StubLLM)
     monkeypatch.setattr(la, "MCPClient", StubMCP)
     agent = LocalAgent(settings=AppSettings(), confirm=custom_confirm)
-    assert agent.run_command("remove") == {"ok": True}
+    assert agent.run_command("remove") == {"ok": True, "error": None, "result": {}}
     assert messages == ["Delete requirement?"]

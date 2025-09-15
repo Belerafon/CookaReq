@@ -216,7 +216,7 @@ def test_llm_agent_checks(monkeypatch, wx_app):
             self.settings = settings
 
         def check_tools(self):
-            return {"ok": True}
+            return {"ok": True, "error": None}
 
     monkeypatch.setattr(
         "app.ui.settings_dialog.LLMClient",

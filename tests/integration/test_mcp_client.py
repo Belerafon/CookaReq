@@ -41,7 +41,7 @@ def test_check_tools_success(tmp_path: Path) -> None:
         finally:
             logger.setLevel(prev_level)
             logger.removeHandler(handler)
-        assert result == {"ok": True}
+        assert result == {"ok": True, "error": None}
         lines = log_file.read_text().splitlines()
         entries = [json.loads(line) for line in lines]
         call = next(e for e in entries if e.get("event") == "TOOL_CALL")
@@ -68,7 +68,8 @@ def test_check_tools_unauthorized(tmp_path: Path) -> None:
         )
         client = MCPClient(settings.mcp, confirm=lambda _m: True)
         result = client.check_tools()
-        assert result["code"] == "UNAUTHORIZED"
+        assert result["ok"] is False
+        assert result["error"]["code"] == "UNAUTHORIZED"
     finally:
         stop_server()
 
@@ -97,6 +98,7 @@ def test_call_tool_delete_requires_confirmation(monkeypatch) -> None:
     monkeypatch.setattr("app.mcp.client.HTTPConnection", DummyConn)
 
     res = client.call_tool("delete_requirement", {"rid": "SYS001", "rev": 1})
+    assert res["ok"] is False
     assert res["error"]["code"] == "CANCELLED"
     assert called["msg"] is not None
 
@@ -152,7 +154,7 @@ def test_call_tool_delete_confirm_yes(monkeypatch) -> None:
     monkeypatch.setattr("app.mcp.client.HTTPConnection", factory)
 
     res = client.call_tool("delete_requirement", {})
-    assert res == {}
+    assert res == {"ok": True, "error": None, "result": {}}
     assert conns and conns[0].requested is True
     assert ("CONFIRM", {"tool": "delete_requirement"}) in events
     assert any(e[0] == "CONFIRM_RESULT" for e in events)

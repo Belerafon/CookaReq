@@ -50,12 +50,16 @@ class LocalAgent:
 
     # ------------------------------------------------------------------
     def run_command(self, text: str) -> dict[str, Any]:
-        """Use the LLM to parse *text* and execute the resulting tool call."""
+        """Use the LLM to parse *text* and execute the resulting tool call.
+
+        Returns a dictionary following the same ``{"ok": bool, "error": ...}``
+        contract as :meth:`MCPClient.call_tool`.
+        """
 
         try:
             name, arguments = self._llm.parse_command(text)
         except Exception as exc:
             err = mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))["error"]
             log_event("ERROR", {"error": err})
-            return {"error": err}
+            return {"ok": False, "error": err}
         return self._mcp.call_tool(name, arguments)

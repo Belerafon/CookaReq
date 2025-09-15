@@ -85,13 +85,14 @@ class CommandDialog(wx.Dialog):
         if not text:
             return
         result = self._agent.run_command(text)
-        if "error" in result:
-            err = result["error"]
-            code = err.get("code", "")
-            msg = err.get("message", "")
+        if not result.get("ok", False):
+            err = result.get("error") or {}
+            code = err.get("code", "") if isinstance(err, dict) else ""
+            msg = err.get("message", "") if isinstance(err, dict) else str(err)
             display = f"{code}: {msg}".strip(": ")
         else:
-            display = json.dumps(result, ensure_ascii=False, indent=2)
+            payload = result.get("result")
+            display = json.dumps(payload, ensure_ascii=False, indent=2)
         self.output.SetValue(display)
         self.output.ShowPosition(self.output.GetLastPosition())
         self._append_history(text, display)

@@ -34,8 +34,9 @@ class MCPClient:
         Returns
         -------
         dict
-            ``{"ok": True}`` on success otherwise an error dictionary with
-            ``code`` and ``message``.
+            A dictionary in the ``{"ok": bool, "error": dict | None}`` format.
+            ``error`` contains the structured MCP error payload when
+            ``ok`` is ``False`` and is ``None`` otherwise.
         """
 
         params = {
@@ -67,21 +68,29 @@ class MCPClient:
         except Exception as exc:  # pragma: no cover - network errors
             err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
-            return err
+            return {"ok": False, "error": err}
         else:
             data = json.loads(body or "{}")
             if resp.status == 200 and "error" not in data:
                 log_event("TOOL_RESULT", {"ok": True}, start_time=start)
-                return {"ok": True}
+                return {"ok": True, "error": None}
             err = data.get("error")
             if not err:
                 err = {"code": str(resp.status), "message": data.get("message", "")}
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
-            return err
+            return {"ok": False, "error": err}
 
     # ------------------------------------------------------------------
     def call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        """Invoke *name* tool with *arguments* on the MCP server."""
+        """Invoke *name* tool with *arguments* on the MCP server.
+
+        Returns
+        -------
+        dict
+            A dictionary with ``ok``/``error`` fields following the same
+            structure as :meth:`check_tools`.  When ``ok`` is ``True`` the
+            optional ``result`` key contains the payload returned by the server.
+        """
 
         if name in {"delete_requirement", "patch_requirement"}:
             log_event("CONFIRM", {"tool": name})
@@ -94,7 +103,7 @@ class MCPClient:
             if not confirmed:
                 err = mcp_error("CANCELLED", _("Cancelled by user"))["error"]
                 log_event("CANCELLED", {"tool": name})
-                return {"error": err}
+                return {"ok": False, "error": err}
 
         log_event(
             "TOOL_CALL",
@@ -117,19 +126,19 @@ class MCPClient:
             err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
             log_event("ERROR", {"error": err})
-            return {"error": err}
+            return {"ok": False, "error": err}
         else:
             data = json.loads(body or "{}")
             if resp.status == 200 and "error" not in data:
                 log_event("TOOL_RESULT", {"result": data}, start_time=start)
                 log_event("DONE")
-                return data
+                return {"ok": True, "error": None, "result": data}
             err = data.get("error")
             if not err:
                 err = {"code": str(resp.status), "message": data.get("message", "")}
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
             log_event("ERROR", {"error": err})
-            return {"error": err}
+            return {"ok": False, "error": err}
 
     # ------------------------------------------------------------------
     def _call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:

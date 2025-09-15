@@ -43,7 +43,8 @@ def test_run_command_list_logs(tmp_path: Path, monkeypatch, mcp_server) -> None:
     finally:
         logger.setLevel(prev_level)
         logger.removeHandler(handler)
-    assert result["items"] == []
+    assert result["ok"] is True
+    assert result["result"]["items"] == []
     entries = [json.loads(line) for line in log_file.read_text().splitlines()]
     events = {e.get("event") for e in entries}
     assert {"LLM_REQUEST", "LLM_RESPONSE", "TOOL_CALL", "TOOL_RESULT", "DONE"} <= events
@@ -75,7 +76,7 @@ def test_run_command_error_logs(tmp_path: Path, monkeypatch, mcp_server) -> None
     finally:
         logger.setLevel(prev_level)
         logger.removeHandler(handler)
-    assert "error" in result
+    assert result["ok"] is False
     entries = [json.loads(line) for line in log_file.read_text().splitlines()]
     events = {e.get("event") for e in entries}
     assert {

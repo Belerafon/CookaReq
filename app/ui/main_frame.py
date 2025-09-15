@@ -126,6 +126,7 @@ class MainFrame(wx.Frame):
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         self.splitter = wx.SplitterWindow(self.doc_splitter)
         self.doc_tree = DocumentTree(self.doc_splitter, on_select=self.on_document_selected)
+        self.doc_tree.tree.Bind(wx.EVT_TREE_SEL_CHANGING, self._on_doc_changing)
         self.panel = ListPanel(
             self.splitter,
             model=self.model,
@@ -172,6 +173,7 @@ class MainFrame(wx.Frame):
         self._load_layout()
         self.current_dir: Path | None = None
         self.current_doc_prefix: str | None = None
+        self._selected_requirement_id: int | None = None
         self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         if self.auto_open_last and self.recent_dirs:
@@ -443,12 +445,27 @@ class MainFrame(wx.Frame):
             self.panel.update_labels_list([])
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
+        self._selected_requirement_id = None
         self.editor.Hide()
 
     # recent directories -------------------------------------------------
 
+    def _on_doc_changing(self, event: wx.TreeEvent) -> None:
+        """Request confirmation before switching documents."""
+
+        if event.GetItem() == event.GetOldItem():
+            event.Skip()
+            return
+        if not self._confirm_discard_changes():
+            if not hasattr(event, "CanVeto") or event.CanVeto():
+                event.Veto()
+            return
+        event.Skip()
+
     def on_document_selected(self, prefix: str) -> None:
         """Load items and labels for selected document ``prefix``."""
+        if prefix == self.current_doc_prefix:
+            return
         if not self.docs_controller:
             return
         self.current_doc_prefix = prefix
@@ -459,6 +476,7 @@ class MainFrame(wx.Frame):
         self.panel.set_requirements(self.model.get_all(), derived_map)
         self.editor.update_labels_list(labels, freeform)
         self.panel.update_labels_list(labels)
+        self._selected_requirement_id = None
         self.editor.Hide()
         self.splitter.UpdateSize()
 
@@ -469,8 +487,17 @@ class MainFrame(wx.Frame):
         if index == wx.NOT_FOUND:
             return
         req_id = self.panel.list.GetItemData(index)
+        if req_id == self._selected_requirement_id:
+            return
+        if not self._confirm_discard_changes():
+            if hasattr(event, "Veto"):
+                can_veto = getattr(event, "CanVeto", None)
+                if can_veto is None or can_veto():
+                    event.Veto()
+            return
         req = self.model.get_by_id(req_id)
         if req:
+            self._selected_requirement_id = req_id
             self.editor.load(req)
             self.editor.Show()
             self.editor.Layout()
@@ -573,6 +600,7 @@ class MainFrame(wx.Frame):
         self.docs_controller.add_requirement(self.current_doc_prefix, data)
         self.panel.refresh()
         self.editor.load(data, path=None, mtime=None)
+        self._selected_requirement_id = new_id
         self.editor.Show()
         self.splitter.UpdateSize()
 
@@ -594,6 +622,7 @@ class MainFrame(wx.Frame):
         self.docs_controller.add_requirement(self.current_doc_prefix, clone)
         self.panel.refresh()
         self.editor.load(clone, path=None, mtime=None)
+        self._selected_requirement_id = new_id
         self.editor.Show()
         self.splitter.UpdateSize()
 
@@ -625,6 +654,7 @@ class MainFrame(wx.Frame):
         self.panel.record_link(source.rid or str(source.id), clone.id)
         self.panel.refresh()
         self.editor.load(clone, path=None, mtime=None)
+        self._selected_requirement_id = clone.id
         self.editor.Show()
         self.splitter.UpdateSize()
 
@@ -652,6 +682,7 @@ class MainFrame(wx.Frame):
             return
         self.panel.refresh()
         self.editor.Hide()
+        self._selected_requirement_id = None
         self.splitter.UpdateSize()
         labels, freeform = self.docs_controller.collect_labels(
             self.current_doc_prefix

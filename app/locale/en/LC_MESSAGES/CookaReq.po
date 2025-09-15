@@ -309,6 +309,9 @@ msgstr "Confirm"
 msgid "Delete requirement?"
 msgstr "Delete requirement?"
 
+msgid "Delete requirement {summary}?"
+msgstr "Delete requirement {summary}?"
+
 msgid "Derivation Graph"
 msgstr "Derivation Graph"
 

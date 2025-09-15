@@ -315,6 +315,9 @@ msgstr "Подтвердить"
 msgid "Delete requirement?"
 msgstr "Удалить требование?"
 
+msgid "Delete requirement {summary}?"
+msgstr "Удалить требование {summary}?"
+
 msgid "Derivation Graph"
 msgstr "Граф выводов"
 

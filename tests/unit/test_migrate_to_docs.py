@@ -81,6 +81,55 @@ def test_migrate_to_docs_links(tmp_path: Path):
     assert data["links"] == ["SYS001", "EXT-9"]
 
 
+@pytest.mark.parametrize("legacy_id", [1, "1"])
+def test_migrate_to_docs_numeric_ids(tmp_path: Path, legacy_id):
+    numeric = {
+        "id": legacy_id,
+        "title": "Legacy numeric",
+        "statement": "Numeric statement",
+        "labels": ["doc=SYS"],
+    }
+    consumer_links = [legacy_id, "EXT-9"]
+    consumer = {
+        "id": "CR-002",
+        "title": "Consumer",
+        "statement": "Reference numeric",
+        "labels": ["doc=SYS"],
+        "links": consumer_links,
+    }
+
+    write_req(tmp_path / "numeric.json", numeric)
+    write_req(tmp_path / "consumer.json", consumer)
+
+    migrate_to_docs(tmp_path, rules="label:doc=SYS->SYS", default="SYS")
+
+    doc = json.loads((tmp_path / "SYS" / "document.json").read_text(encoding="utf-8"))
+    digits = doc["digits"]
+    expected_numeric_rid = f"SYS{int(str(legacy_id)):0{digits}d}"
+
+    numeric_path = tmp_path / "SYS" / "items" / f"{expected_numeric_rid}.json"
+    assert numeric_path.exists()
+    numeric_data = json.loads(numeric_path.read_text(encoding="utf-8"))
+    assert numeric_data["id"] == 1
+    assert numeric_data["title"] == "Legacy numeric"
+    assert numeric_data["labels"] == []
+    assert numeric_data.get("links") is None
+
+    consumer_items = list((tmp_path / "SYS" / "items").glob("*.json"))
+    consumer_data = None
+    for item_path in consumer_items:
+        if item_path.name == f"{expected_numeric_rid}.json":
+            continue
+        data = json.loads(item_path.read_text(encoding="utf-8"))
+        if data["title"] == "Consumer":
+            consumer_data = data
+            break
+    assert consumer_data is not None
+    assert consumer_data["id"] == 2
+    assert consumer_data["labels"] == []
+    assert consumer_data["links"] == [expected_numeric_rid, "EXT-9"]
+
+
 def test_parse_rules_reject_tag_prefix():
     with pytest.raises(ValueError):
         parse_rules("tag:doc=SYS->SYS")

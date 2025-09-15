@@ -87,8 +87,11 @@ def test_requirement_extended_roundtrip():
     assert again.attachments[0].note == "ref"
     assert again.approved_at == "2024-01-01 00:00:00"
     assert again.notes == "extra"
+<<<<< codex/remove-deprecated-keys-and-fields-85qubp
+=======
     assert again.rationale == "because"
     assert again.assumptions == "if ready"
+>>>>> main
 
 
 def test_requirement_from_dict_missing_statement():

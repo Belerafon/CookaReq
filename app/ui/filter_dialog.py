@@ -31,7 +31,11 @@ class FilterDialog(wx.Dialog):
     ) -> None:
         """Initialize filter dialog with current ``values``."""
         title = _("Filters")
-        super().__init__(parent, title=title)
+        super().__init__(
+            parent,
+            title=title,
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+        )
         self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
         self._build_ui(values or {})
 
@@ -72,7 +76,7 @@ class FilterDialog(wx.Dialog):
             if lbl in names:
                 idx = names.index(lbl)
                 self.labels_box.Check(idx)
-        sizer.Add(self.labels_box, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(self.labels_box, 1, wx.EXPAND | wx.ALL, 5)
 
         self.match_any = wx.CheckBox(self, label=_("Match any labels"))
         self.match_any.SetValue(values.get("match_any", False))
@@ -100,6 +104,8 @@ class FilterDialog(wx.Dialog):
         self.has_derived = wx.CheckBox(self, label=_("Has derived"))
         self.has_derived.SetValue(values.get("has_derived", False))
         sizer.Add(self.has_derived, 0, wx.ALL, 5)
+
+        sizer.AddStretchSpacer()
 
         btns = wx.BoxSizer(wx.HORIZONTAL)
         btns.AddStretchSpacer()

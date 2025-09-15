@@ -33,6 +33,8 @@ def test_save_and_load_extended_fields(tmp_path: Path):
         attachments=[Attachment(path="file.txt", note="n")],
         approved_at="2024-01-01",
         notes="note",
+        rationale="reason",
+        assumptions="context",
     )
     save_item(doc_dir, doc, requirement_to_dict(req))
     data, _ = load_item(doc_dir, doc, 1)
@@ -40,3 +42,5 @@ def test_save_and_load_extended_fields(tmp_path: Path):
     assert loaded.attachments[0].path == "file.txt"
     assert loaded.approved_at == "2024-01-01"
     assert loaded.notes == "note"
+    assert loaded.rationale == "reason"
+    assert loaded.assumptions == "context"

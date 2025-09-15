@@ -188,6 +188,8 @@ def cmd_item_add(args: argparse.Namespace) -> None:
         if getattr(args, "acceptance", None) is not None
         else base.get("acceptance"),
         "conditions": getattr(args, "conditions", None) or base.get("conditions", ""),
+        "rationale": getattr(args, "rationale", None) or base.get("rationale", ""),
+        "assumptions": getattr(args, "assumptions", None) or base.get("assumptions", ""),
         "version": getattr(args, "version", None) or base.get("version", ""),
         "modified_at": getattr(args, "modified_at", None) or base.get("modified_at", ""),
         "labels": labels,
@@ -238,6 +240,10 @@ def cmd_item_move(args: argparse.Namespace) -> None:
         data["acceptance"] = args.acceptance
     if getattr(args, "conditions", None) is not None:
         data["conditions"] = args.conditions
+    if getattr(args, "rationale", None) is not None:
+        data["rationale"] = args.rationale
+    if getattr(args, "assumptions", None) is not None:
+        data["assumptions"] = args.assumptions
     if getattr(args, "version", None) is not None:
         data["version"] = args.version
     if getattr(args, "modified_at", None) is not None:
@@ -318,6 +324,8 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     add_p.add_argument("--verification", choices=VERIFICATION_CHOICES, default=Verification.ANALYSIS.value)
     add_p.add_argument("--acceptance")
     add_p.add_argument("--conditions")
+    add_p.add_argument("--rationale")
+    add_p.add_argument("--assumptions")
     add_p.add_argument("--version")
     add_p.add_argument("--modified-at", dest="modified_at")
     add_p.add_argument("--approved-at", dest="approved_at")
@@ -342,6 +350,8 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     move_p.add_argument("--verification", choices=VERIFICATION_CHOICES)
     move_p.add_argument("--acceptance")
     move_p.add_argument("--conditions")
+    move_p.add_argument("--rationale")
+    move_p.add_argument("--assumptions")
     move_p.add_argument("--version")
     move_p.add_argument("--modified-at", dest="modified_at")
     move_p.add_argument("--approved-at", dest="approved_at")

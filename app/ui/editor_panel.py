@@ -182,6 +182,8 @@ class EditorPanel(ScrolledPanel):
             ("statement", True),
             ("acceptance", True),
             ("conditions", True),
+            ("rationale", True),
+            ("assumptions", True),
             ("source", True),
         ]:
             label = wx.StaticText(self, label=labels[name])
@@ -665,6 +667,8 @@ class EditorPanel(ScrolledPanel):
             ),
             "acceptance": self.fields["acceptance"].GetValue(),
             "conditions": self.fields["conditions"].GetValue(),
+            "rationale": self.fields["rationale"].GetValue(),
+            "assumptions": self.fields["assumptions"].GetValue(),
             "version": self.fields["version"].GetValue(),
             "modified_at": self.fields["modified_at"].GetValue(),
             "labels": list(self.extra.get("labels", [])),

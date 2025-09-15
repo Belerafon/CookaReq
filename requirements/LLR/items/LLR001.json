@@ -1,9 +1,6 @@
 {
-  "derived_from": [
-    {
-      "rid": "HLR001",
-      "revision": 1
-    }
+  "links": [
+    "HLR001"
   ],
   "id": 1,
   "labels": [

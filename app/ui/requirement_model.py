@@ -24,7 +24,6 @@ class RequirementModel:
         self._field_queries: dict[str, str] = {}
         self._is_derived: bool = False
         self._has_derived: bool = False
-        self._suspect_only: bool = False
         self._status: str | None = None
         self._sort_field: str | None = None
         self._sort_ascending: bool = True
@@ -99,11 +98,6 @@ class RequirementModel:
         self._has_derived = value
         self._refresh()
 
-    def set_suspect_only(self, value: bool) -> None:
-        """Restrict to requirements marked as suspect."""
-
-        self._suspect_only = value
-        self._refresh()
 
     def set_status(self, status: str | None) -> None:
         """Filter requirements by status code."""
@@ -136,7 +130,6 @@ class RequirementModel:
             match_all=self._labels_match_all,
             is_derived=self._is_derived,
             has_derived=self._has_derived,
-            suspect_only=self._suspect_only,
         )
         self._apply_sort()
 

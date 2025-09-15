@@ -15,11 +15,11 @@ def _prepare(root):
     save_document(root / "SYS", doc_sys)
     doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
     save_document(root / "HLR", doc_hlr)
-    save_item(root / "SYS", doc_sys, {"id": 1, "title": "S", "text": "", "labels": [], "links": []})
+    save_item(root / "SYS", doc_sys, {"id": 1, "title": "S", "statement": "", "labels": [], "links": []})
     save_item(
         root / "HLR",
         doc_hlr,
-        {"id": 1, "title": "H", "text": "", "labels": [], "links": ["SYS001"]},
+        {"id": 1, "title": "H", "statement": "", "labels": [], "links": ["SYS001"]},
     )
 
 

@@ -33,40 +33,8 @@ def test_requirement_defaults():
     assert req.approved_at is None
     assert req.notes == ""
     assert req.conditions == ""
-    assert req.trace_up == ""
-    assert req.trace_down == ""
     assert req.version == ""
     assert req.modified_at == ""
-    assert req.derived_from == []
-    assert req.derived_to == []
-    assert req.derivation is None
-
-
-def test_requirement_derivation_conversion():
-    data = {
-        "id": 1,
-        "title": "Title",
-        "statement": "Statement",
-        "type": "requirement",
-        "status": "draft",
-        "owner": "user",
-        "priority": "medium",
-        "source": "spec",
-        "verification": "analysis",
-        "derived_from": [
-            {"rid": "2", "revision": 3, "suspect": True},
-        ],
-        "derivation": {
-            "rationale": "r",
-            "assumptions": ["a1", "a2"],
-        },
-    }
-    req = requirement_from_dict(data)
-    assert req.derived_from[0].rid == "2"
-    assert req.derived_from[0].suspect is True
-    roundtrip = requirement_to_dict(req)
-    assert roundtrip["derived_from"][0]["revision"] == 3
-    assert roundtrip["derivation"]["assumptions"] == ["a1", "a2"]
 
 
 def test_requirement_prefix_and_rid():

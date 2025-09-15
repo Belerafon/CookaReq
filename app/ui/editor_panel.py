@@ -39,18 +39,15 @@ class EditorPanel(ScrolledPanel):
         self,
         parent: wx.Window,
         on_save: Callable[[], None] | None = None,
-        on_add_derived: Callable[[Requirement], None] | None = None,
     ):
         """Initialize requirement editor widgets."""
         super().__init__(parent)
         self.fields: dict[str, wx.TextCtrl] = {}
         self.enums: dict[str, wx.Choice] = {}
-        self.derivation_fields: dict[str, wx.TextCtrl] = {}
         self._autosize_fields: list[wx.TextCtrl] = []
         self._suspend_events = False
         self.original_modified_at = ""
         self._on_save_callback = on_save
-        self._on_add_derived_callback = on_add_derived
         self.directory: Path | None = None
         self.original_id: int | None = None
 
@@ -60,8 +57,6 @@ class EditorPanel(ScrolledPanel):
             "statement",
             "acceptance",
             "conditions",
-            "trace_up",
-            "trace_down",
             "version",
             "modified_at",
             "owner",
@@ -100,16 +95,6 @@ class EditorPanel(ScrolledPanel):
                 "Operating conditions and modes under which the requirement applies. "
                 "Describe environments, performance ranges or user roles that influence validity. "
                 "Such context helps engineers design correctly and testers reproduce the right setup.",
-            ),
-            "trace_up": _(
-                "Links to higher-level requirements or stakeholder needs. "
-                "Upward traceability shows why this requirement exists and simplifies impact analysis when parents change. "
-                "Use it to prove coverage of system objectives.",
-            ),
-            "trace_down": _(
-                "References to lower-level derived requirements, design elements or test cases. "
-                "Downward traceability reveals how the requirement will be implemented and verified. "
-                "It supports audits and helps detect missing implementation pieces.",
             ),
             "version": _(
                 "Sequential version number for change control. "
@@ -181,19 +166,10 @@ class EditorPanel(ScrolledPanel):
                 "Consistent labeling enables powerful filtering and helps group related items. "
                 "Use shared presets to avoid typos and duplicates.",
             ),
-            "parent": _(
-                "Reference to the immediate higher-level requirement. "
-                "Establishing parenthood keeps the traceability chain intact and simplifies impact analysis. "
-                "Clear links are essential during audits and design reviews.",
-            ),
             "links": _(
                 "Links to higher-level requirements or stakeholder needs. "
                 "Upward traceability shows why this requirement exists and simplifies impact analysis when parents change. "
                 "Use it to prove coverage of system objectives.",
-            ),
-            "derived_from": _(
-                "Source requirements from which this one was derived. "
-                "Capturing derivation clarifies reasoning and lets teams propagate changes upstream.",
             ),
         }
 
@@ -207,8 +183,6 @@ class EditorPanel(ScrolledPanel):
             ("statement", True),
             ("acceptance", True),
             ("conditions", True),
-            ("trace_up", True),
-            ("trace_down", True),
             ("source", True),
         ]:
             label = wx.StaticText(self, label=labels[name])
@@ -335,8 +309,7 @@ class EditorPanel(ScrolledPanel):
         links_grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
         links_grid.AddGrowableCol(0, 1)
         links_grid.AddGrowableCol(1, 1)
-        links_grid.AddGrowableRow(1, 1)
-        links_grid.AddGrowableRow(2, 1)
+        links_grid.AddGrowableRow(0, 1)
 
         # labels section -------------------------------------------------
         box_sizer = HelpStaticBox(
@@ -361,29 +334,6 @@ class EditorPanel(ScrolledPanel):
         links_grid.Add(box_sizer, 0, wx.EXPAND | wx.ALL, 5)
         self._label_defs: list[Label] = []
         self._labels_allow_freeform = False
-        self.parent: dict[str, Any] | None = None
-
-        # parent section -------------------------------------------------
-        pr_sizer = HelpStaticBox(
-            self,
-            _("Parent"),
-            self._help_texts["parent"],
-            lambda msg: show_help(self, msg),
-        )
-        pr_box = pr_sizer.GetStaticBox()
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        self.parent_id = wx.TextCtrl(pr_box, size=(120, -1))
-        row.Add(self.parent_id, 0, wx.RIGHT, 5)
-        set_parent_btn = wx.Button(pr_box, label=_("Set"))
-        set_parent_btn.Bind(wx.EVT_BUTTON, self._on_set_parent)
-        row.Add(set_parent_btn, 0, wx.RIGHT, 5)
-        clear_parent_btn = wx.Button(pr_box, label=_("Clear"))
-        clear_parent_btn.Bind(wx.EVT_BUTTON, self._on_clear_parent)
-        row.Add(clear_parent_btn, 0)
-        pr_sizer.Add(row, 0, wx.ALL, 5)
-        self.parent_display = wx.StaticText(pr_box, label=_("(none)"))
-        pr_sizer.Add(self.parent_display, 0, wx.ALL, 5)
-        links_grid.Add(pr_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # generic links section ----------------------------------------
         ln_sizer = self._create_links_section(
@@ -393,48 +343,11 @@ class EditorPanel(ScrolledPanel):
         )
         links_grid.Add(ln_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
-        # derived from section -------------------------------------------
-        df_sizer = self._create_links_section(
-            _("IDs of source requirements"),
-            "derived_from",
-            help_key="derived_from",
-            id_name="derived_id",
-            list_name="derived_list",
-        )
-        links_grid.Add(df_sizer, 0, wx.EXPAND | wx.ALL, 5)
-
-        # placeholder to balance grid when odd number of items
-        links_grid.Add((0, 0))
-
         sizer.Add(links_grid, 0, wx.EXPAND | wx.ALL, 5)
-
-        # derivation details ---------------------------------------------
-        deriv_box = wx.StaticBox(self, label=_("Derivation"))
-        deriv_sizer = wx.StaticBoxSizer(deriv_box, wx.VERTICAL)
-        for name, multiline in [
-            ("rationale", True),
-            ("assumptions", True),
-        ]:
-            label = wx.StaticText(deriv_box, label=labels[name])
-            help_btn = make_help_button(self, self._help_texts[name])
-            row = wx.BoxSizer(wx.HORIZONTAL)
-            row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
-            row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-            deriv_sizer.Add(row, 0, wx.ALL, 5)
-            style = wx.TE_MULTILINE if multiline else 0
-            ctrl = wx.TextCtrl(deriv_box, style=style)
-            if multiline:
-                self._bind_autosize(ctrl)
-            self.derivation_fields[name] = ctrl
-            deriv_sizer.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
-        sizer.Add(deriv_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         self.save_btn = wx.Button(self, label=_("Save"))
         self.save_btn.Bind(wx.EVT_BUTTON, self._on_save_button)
-        self.add_derived_btn = wx.Button(self, label=_("Add derived"))
-        self.add_derived_btn.Bind(wx.EVT_BUTTON, self._on_add_derived_button)
         btn_row = wx.BoxSizer(wx.HORIZONTAL)
-        btn_row.Add(self.add_derived_btn, 0, wx.ALL, 5)
         btn_row.Add(self.save_btn, 0, wx.ALL, 5)
         sizer.Add(btn_row, 0, wx.ALIGN_RIGHT)
 
@@ -442,7 +355,6 @@ class EditorPanel(ScrolledPanel):
         self.SetupScrolling()
 
         self.attachments: list[dict[str, str]] = []
-        self.derived_from: list[dict[str, Any]] = []
         self.extra: dict[str, Any] = {
             "labels": [],
             "revision": 1,
@@ -453,7 +365,6 @@ class EditorPanel(ScrolledPanel):
         self.mtime: float | None = None
         self._refresh_labels_display()
         self._refresh_attachments()
-        self._refresh_parent_display()
 
     def _bind_autosize(self, ctrl: wx.TextCtrl) -> None:
         """Register multiline text control for dynamic height."""
@@ -550,8 +461,8 @@ class EditorPanel(ScrolledPanel):
         return sizer
 
     def _link_widgets(self, attr: str):
-        id_attr = "derived_id" if attr == "derived_from" else f"{attr}_id"
-        list_attr = "derived_list" if attr == "derived_from" else f"{attr}_list"
+        id_attr = f"{attr}_id"
+        list_attr = f"{attr}_list"
         return getattr(self, id_attr), getattr(self, list_attr), getattr(self, attr)
 
     def _refresh_links_visibility(self, attr: str) -> None:
@@ -620,9 +531,7 @@ class EditorPanel(ScrolledPanel):
             for name, choice in self.enums.items():
                 choice.SetStringSelection(defaults[name])
             self.attachments = []
-            self.derived_from = []
             self.links = []
-            self.parent = None
             self.current_path = None
             self.mtime = None
             self.original_id = None
@@ -639,15 +548,9 @@ class EditorPanel(ScrolledPanel):
             self.approved_picker.SetValue(wx.DefaultDateTime)
             self.notes_ctrl.ChangeValue("")
             self._refresh_attachments()
-            self.derived_list.DeleteAllItems()
-            self.derived_id.ChangeValue("")
             self.links_list.DeleteAllItems()
             self.links_id.ChangeValue("")
-            self._refresh_links_visibility("derived_from")
             self._refresh_links_visibility("links")
-            self._refresh_parent_display()
-            for ctrl in self.derivation_fields.values():
-                ctrl.ChangeValue("")
             self._refresh_labels_display()
         self.original_modified_at = ""
         self._auto_resize_all()
@@ -674,16 +577,10 @@ class EditorPanel(ScrolledPanel):
             for name, ctrl in self.fields.items():
                 ctrl.ChangeValue(str(data.get(name, "")))
             self.attachments = list(data.get("attachments", []))
-            self.derived_from = [dict(link) for link in data.get("derived_from", [])]
-            self._rebuild_links_list("derived_from")
-            self.derived_id.ChangeValue("")
-            self._refresh_links_visibility("derived_from")
             self.links = [{"rid": rid} for rid in data.get("links", [])]
             self._rebuild_links_list("links")
             self.links_id.ChangeValue("")
             self._refresh_links_visibility("links")
-            self.parent = dict(data.get("parent", {})) or None
-            self._refresh_parent_display()
             for name, choice in self.enums.items():
                 enum_cls = ENUMS[name]
                 default_code = next(iter(enum_cls)).value
@@ -709,12 +606,6 @@ class EditorPanel(ScrolledPanel):
             self.current_path = Path(path) if path else None
             self.mtime = mtime
             self._refresh_labels_display()
-            derivation = data.get("derivation", {})
-            for name, ctrl in self.derivation_fields.items():
-                if name == "assumptions":
-                    ctrl.ChangeValue("\n".join(derivation.get(name, [])))
-                else:
-                    ctrl.ChangeValue(derivation.get(name, ""))
         self.original_modified_at = self.fields["modified_at"].GetValue()
         self._auto_resize_all()
         self._on_id_change()
@@ -728,16 +619,9 @@ class EditorPanel(ScrolledPanel):
             self.current_path = None
             self.mtime = None
             self.original_id = None
-            self.derived_from = []
-            self.derived_list.DeleteAllItems()
             self.links = []
             self.links_list.DeleteAllItems()
-            self._refresh_links_visibility("derived_from")
             self._refresh_links_visibility("links")
-            self.parent = None
-            self._refresh_parent_display()
-            for ctrl in self.derivation_fields.values():
-                ctrl.ChangeValue("")
             self.extra["rid"] = ""
             self._refresh_labels_display()
         self.original_modified_at = ""
@@ -782,17 +666,12 @@ class EditorPanel(ScrolledPanel):
             ),
             "acceptance": self.fields["acceptance"].GetValue(),
             "conditions": self.fields["conditions"].GetValue(),
-            "trace_up": self.fields["trace_up"].GetValue(),
-            "trace_down": self.fields["trace_down"].GetValue(),
             "version": self.fields["version"].GetValue(),
             "modified_at": self.fields["modified_at"].GetValue(),
             "labels": list(self.extra.get("labels", [])),
             "attachments": list(self.attachments),
             "revision": self.extra.get("revision", 1),
-            "derived_from": list(self.derived_from),
         }
-        if self.parent:
-            data["parent"] = dict(self.parent)
         if self.links:
             data["links"] = [link["rid"] for link in self.links]
         dt = self.approved_picker.GetValue()
@@ -803,16 +682,6 @@ class EditorPanel(ScrolledPanel):
         self.extra["labels"] = data["labels"]
         self.extra["approved_at"] = approved_at
         self.extra["notes"] = notes
-        if any(ctrl.GetValue().strip() for ctrl in self.derivation_fields.values()):
-            assumptions = [
-                s.strip()
-                for s in self.derivation_fields["assumptions"].GetValue().splitlines()
-                if s.strip()
-            ]
-            data["derivation"] = {
-                "rationale": self.derivation_fields["rationale"].GetValue(),
-                "assumptions": assumptions,
-            }
         return requirement_from_dict(
             data,
             doc_prefix=self.extra.get("doc_prefix", ""),
@@ -980,36 +849,6 @@ class EditorPanel(ScrolledPanel):
             else:
                 list_ctrl.Delete(idx)
         self._refresh_links_visibility(attr)
-
-    def _on_set_parent(self, _event: wx.CommandEvent) -> None:
-        value = self.parent_id.GetValue().strip()
-        if not value:
-            return
-        rid = value
-        revision = 1
-        self.parent = {"rid": rid, "revision": revision, "suspect": False}
-        self.parent_id.ChangeValue("")
-        self._refresh_parent_display()
-
-    def _on_clear_parent(self, _event: wx.CommandEvent) -> None:
-        self.parent = None
-        self._refresh_parent_display()
-
-    def _refresh_parent_display(self) -> None:
-        if self.parent:
-            txt = f"{self.parent['rid']} (r{self.parent['revision']})"
-        else:
-            txt = _("(none)")
-        self.parent_display.SetLabel(txt)
-
-    def _on_add_derived_button(self, _evt: wx.Event) -> None:
-        if not self._on_add_derived_callback:
-            return
-        try:
-            req = self.get_data()
-        except Exception:
-            return
-        self._on_add_derived_callback(req)
 
     def _on_id_change(self, _event: wx.CommandEvent | None = None) -> None:
         if self._suspend_events:

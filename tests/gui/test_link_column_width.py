@@ -28,14 +28,14 @@ def test_title_column_expands_to_available_width(wx_app, monkeypatch):
     frame.Show()
     wx.GetApp().Yield()
 
-    panel.derived_id.SetValue("1")
-    panel._on_add_link_generic("derived_from")
+    panel.links_id.SetValue("1")
+    panel._on_add_link_generic("links")
 
-    panel.derived_list.SendSizeEvent()
+    panel.links_list.SendSizeEvent()
     wx.GetApp().Yield()
 
-    total = panel.derived_list.GetClientSize().width
-    id_width = panel.derived_list.GetColumnWidth(0)
-    title_width = panel.derived_list.GetColumnWidth(1)
+    total = panel.links_list.GetClientSize().width
+    id_width = panel.links_list.GetColumnWidth(0)
+    title_width = panel.links_list.GetColumnWidth(1)
     assert title_width >= total - id_width - 2
     frame.Destroy()

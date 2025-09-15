@@ -18,7 +18,7 @@ def test_item_add_rejects_unknown_label(tmp_path, capsys):
         directory=str(tmp_path),
         prefix="HLR",
         title="T",
-        text="X",
+        statement="X",
         labels="unknown",
     )
     commands.cmd_item_add(args)
@@ -43,7 +43,7 @@ def test_item_add_accepts_inherited_label(tmp_path, capsys):
         directory=str(tmp_path),
         prefix="HLR",
         title="T",
-        text="X",
+        statement="X",
         labels="ui",
     )
     commands.cmd_item_add(args)

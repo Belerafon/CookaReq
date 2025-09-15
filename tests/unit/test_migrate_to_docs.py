@@ -44,7 +44,7 @@ def test_migrate_to_docs_basic(tmp_path: Path):
 
     assert sys_data["id"] == 1
     assert sys_data["title"] == "One"
-    assert sys_data["text"] == "First"
+    assert sys_data["statement"] == "First"
     assert sys_data["labels"] == ["alpha"]
 
     assert hlr_data["id"] == 2

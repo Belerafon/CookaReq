@@ -16,7 +16,6 @@ def _make_dialog(wx_app):
         "status": "draft",
         "is_derived": True,
         "has_derived": True,
-        "suspect_only": True,
     }
     return FilterDialog(None, labels=labels, values=values)
 
@@ -31,7 +30,6 @@ def test_clear_button_resets_all_filters(wx_app):
         "status": None,
         "is_derived": False,
         "has_derived": False,
-        "suspect_only": False,
         "field_queries": {},
     }
     dlg.Destroy()

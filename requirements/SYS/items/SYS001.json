@@ -7,12 +7,6 @@
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "derived_to": [
-    {
-      "rid": "HLR001",
-      "revision": 1
-    }
-  ],
   "statement": "Система должна сохранять каждое требование в JSON-файл, имя которого совпадает с его идентификатором.",
   "status": "approved",
   "title": "Именование по идентификатору",

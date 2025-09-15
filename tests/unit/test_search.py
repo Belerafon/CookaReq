@@ -3,7 +3,6 @@
 import pytest
 
 from app.core.model import (
-    DerivationLink,
     Priority,
     Requirement,
     RequirementType,
@@ -60,7 +59,7 @@ def sample_requirements():
             source="spec",
             verification=Verification.ANALYSIS,
             labels=["ui"],
-            derived_from=[DerivationLink(rid="2", revision=1, suspect=True)],
+            links=["2"],
         ),
     ]
 
@@ -115,17 +114,13 @@ def test_search_match_any():
 def test_filter_is_and_has_derived():
     reqs = sample_requirements()
     assert [r.id for r in filter_is_derived(reqs)] == [3]
-    assert [r.id for r in filter_is_derived(reqs, suspect_only=True)] == [3]
     assert [r.id for r in filter_has_derived(reqs, reqs)] == [2]
-    assert [r.id for r in filter_has_derived(reqs, reqs, suspect_only=True)] == [2]
 
 
 def test_search_with_derived_filters():
     reqs = sample_requirements()
     assert [r.id for r in search(reqs, is_derived=True)] == [3]
     assert [r.id for r in search(reqs, has_derived=True)] == [2]
-    assert [r.id for r in search(reqs, is_derived=True, suspect_only=True)] == [3]
-    assert [r.id for r in search(reqs, has_derived=True, suspect_only=True)] == [2]
 
 
 def test_field_queries():

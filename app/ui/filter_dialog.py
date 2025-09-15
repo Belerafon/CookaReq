@@ -101,10 +101,6 @@ class FilterDialog(wx.Dialog):
         self.has_derived.SetValue(values.get("has_derived", False))
         sizer.Add(self.has_derived, 0, wx.ALL, 5)
 
-        self.suspect_only = wx.CheckBox(self, label=_("Suspect only"))
-        self.suspect_only.SetValue(values.get("suspect_only", False))
-        sizer.Add(self.suspect_only, 0, wx.ALL, 5)
-
         btns = wx.BoxSizer(wx.HORIZONTAL)
         btns.AddStretchSpacer()
         self.clear_btn = wx.Button(self, label=_("Clear filters"))
@@ -140,7 +136,6 @@ class FilterDialog(wx.Dialog):
             ),
             "is_derived": self.is_derived.GetValue(),
             "has_derived": self.has_derived.GetValue(),
-            "suspect_only": self.suspect_only.GetValue(),
             "field_queries": field_queries,
         }
 
@@ -155,4 +150,3 @@ class FilterDialog(wx.Dialog):
         self.status_choice.SetSelection(0)
         self.is_derived.SetValue(False)
         self.has_derived.SetValue(False)
-        self.suspect_only.SetValue(False)

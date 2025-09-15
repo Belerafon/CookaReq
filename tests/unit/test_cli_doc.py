@@ -78,13 +78,13 @@ def test_doc_delete_dry_run_lists_subtree(tmp_path, capsys):
     _ = capsys.readouterr()
 
     item1 = argparse.Namespace(
-        directory=str(tmp_path), prefix="SYS", title="S", text="", labels=None
+        directory=str(tmp_path), prefix="SYS", title="S", statement="", labels=None
     )
     commands.cmd_item_add(item1)
     _ = capsys.readouterr()
 
     item2 = argparse.Namespace(
-        directory=str(tmp_path), prefix="HLR", title="H", text="", labels=None
+        directory=str(tmp_path), prefix="HLR", title="H", statement="", labels=None
     )
     commands.cmd_item_add(item2)
     _ = capsys.readouterr()

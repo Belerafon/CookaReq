@@ -104,53 +104,29 @@ def filter_text_fields(
     return reqs
 
 
-def filter_is_derived(
-    requirements: Iterable[Requirement],
-    *,
-    suspect_only: bool = False,
-) -> list[Requirement]:
-    """Return only requirements that are derived from others.
+def filter_is_derived(requirements: Iterable[Requirement]) -> list[Requirement]:
+    """Return only requirements that link to other requirements."""
 
-    When ``suspect_only`` is ``True`` keep only requirements that have at least
-    one suspect derivation link.
-    """
-
-    reqs = [r for r in requirements if r.derived_from]
-    if suspect_only:
-        reqs = [r for r in reqs if any(link.suspect for link in r.derived_from)]
-    return reqs
+    return [r for r in requirements if getattr(r, "links", [])]
 
 
 def filter_has_derived(
     requirements: Iterable[Requirement],
     all_requirements: Iterable[Requirement],
-    *,
-    suspect_only: bool = False,
 ) -> list[Requirement]:
-    """Return requirements that act as sources for derivations.
-
-    ``all_requirements`` is used to inspect derivation links from every
-    requirement, ensuring that sources are identified even if derived
-    requirements are filtered out before this call. When ``suspect_only`` is
-    ``True`` a requirement is returned only if at least one of its derived
-    requirements links to it with ``suspect`` set.
-    """
+    """Return requirements that are referenced by other requirements."""
 
     reqs = list(requirements)
-    sources: dict[str, list[bool]] = {}
+    sources: set[str] = set()
     for req in all_requirements:
-        for link in req.derived_from:
-            sources.setdefault(link.rid, []).append(link.suspect)
+        for parent in getattr(req, "links", []):
+            sources.add(parent)
 
     result: list[Requirement] = []
     for req in reqs:
         rid = req.rid or str(req.id)
-        flags = sources.get(rid, [])
-        if not flags:
-            continue
-        if suspect_only and not any(flags):
-            continue
-        result.append(req)
+        if rid in sources:
+            result.append(req)
     return result
 
 
@@ -163,7 +139,6 @@ def search(
     match_all: bool = True,
     is_derived: bool = False,
     has_derived: bool = False,
-    suspect_only: bool = False,
     field_queries: Mapping[str, str] | None = None,
 ) -> list[Requirement]:
     """Filter requirements by ``labels`` and ``query`` across ``fields``.
@@ -179,7 +154,7 @@ def search(
     if field_queries:
         reqs = filter_text_fields(reqs, field_queries)
     if is_derived:
-        reqs = filter_is_derived(reqs, suspect_only=suspect_only)
+        reqs = filter_is_derived(reqs)
     if has_derived:
-        reqs = filter_has_derived(reqs, all_reqs, suspect_only=suspect_only)
+        reqs = filter_has_derived(reqs, all_reqs)
     return reqs

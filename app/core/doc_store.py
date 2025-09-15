@@ -167,8 +167,10 @@ def _validate_links(
 ) -> None:
     rid_self = rid_for(doc, int(data["id"]))
     links = data.get("links")
-    if not isinstance(links, list):
+    if links is None:
         return
+    if not isinstance(links, list):
+        raise ValidationError("links must be a list")
     for rid in links:
         try:
             prefix, item_id = parse_rid(rid)
@@ -277,11 +279,6 @@ def plan_delete_item(
             links = data.get("links")
             if isinstance(links, list) and rid in links:
                 affected.append(rid_for(d, other_id))
-            elif isinstance(links, dict):
-                for coll in links.values():
-                    if rid in coll:
-                        affected.append(rid_for(d, other_id))
-                        break
     return True, sorted(affected)
 
 
@@ -358,21 +355,8 @@ def delete_item(
         for other_id in list_item_ids(dir_path, d):
             data, _ = load_item(dir_path, d, other_id)
             links = data.get("links")
-            changed = False
-            if isinstance(links, list):
-                new_links = [link for link in links if link != rid]
-                if len(new_links) != len(links):
-                    data["links"] = new_links
-                    changed = True
-            elif isinstance(links, dict):
-                for key, coll in list(links.items()):
-                    new_coll = [link for link in coll if link != rid]
-                    if len(new_coll) != len(coll):
-                        links[key] = new_coll
-                        changed = True
-                if isinstance(links, dict) and all(not v for v in links.values()):
-                    data.pop("links")
-            if changed:
+            if isinstance(links, list) and rid in links:
+                data["links"] = [link for link in links if link != rid]
                 save_item(dir_path, d, data)
     return True
 

@@ -19,7 +19,7 @@ def test_item_add_and_move(tmp_path, capsys):
         directory=str(tmp_path),
         prefix="SYS",
         title="Login",
-        text="User shall login",
+        statement="User shall login",
         labels=None,
     )
     commands.cmd_item_add(add_args)
@@ -29,7 +29,7 @@ def test_item_add_and_move(tmp_path, capsys):
     path = Path(tmp_path) / "SYS" / "items" / "SYS001.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["title"] == "Login"
-    assert data["text"] == "User shall login"
+    assert data["statement"] == "User shall login"
 
     move_args = argparse.Namespace(
         directory=str(tmp_path), rid="SYS001", new_prefix="HLR"
@@ -55,11 +55,11 @@ def test_item_delete_removes_links(tmp_path, capsys):
     save_document(tmp_path / "HLR", doc_hlr)
 
     add_args = argparse.Namespace(
-        directory=str(tmp_path), prefix="SYS", title="S", text="", labels=None
+        directory=str(tmp_path), prefix="SYS", title="S", statement="", labels=None
     )
     commands.cmd_item_add(add_args)
     add_args2 = argparse.Namespace(
-        directory=str(tmp_path), prefix="HLR", title="H", text="", labels=None
+        directory=str(tmp_path), prefix="HLR", title="H", statement="", labels=None
     )
     commands.cmd_item_add(add_args2)
     # link child to parent
@@ -87,11 +87,11 @@ def test_item_delete_dry_run_lists_links(tmp_path, capsys):
     save_document(tmp_path / "HLR", doc_hlr)
 
     add_args = argparse.Namespace(
-        directory=str(tmp_path), prefix="SYS", title="S", text="", labels=None
+        directory=str(tmp_path), prefix="SYS", title="S", statement="", labels=None
     )
     commands.cmd_item_add(add_args)
     add_args2 = argparse.Namespace(
-        directory=str(tmp_path), prefix="HLR", title="H", text="", labels=None
+        directory=str(tmp_path), prefix="HLR", title="H", statement="", labels=None
     )
     commands.cmd_item_add(add_args2)
     link_args = argparse.Namespace(
@@ -115,7 +115,7 @@ def test_item_delete_requires_confirmation(tmp_path, capsys):
     save_document(tmp_path / "SYS", doc_sys)
 
     add_args = argparse.Namespace(
-        directory=str(tmp_path), prefix="SYS", title="S", text="", labels=None
+        directory=str(tmp_path), prefix="SYS", title="S", statement="", labels=None
     )
     commands.cmd_item_add(add_args)
     _ = capsys.readouterr()

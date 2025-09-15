@@ -1,9 +1,6 @@
 {
-  "derived_from": [
-    {
-      "rid": "SYS001",
-      "revision": 1
-    }
+  "links": [
+    "SYS001"
   ],
   "id": 1,
   "labels": [
@@ -13,12 +10,6 @@
   "priority": "low",
   "revision": 1,
   "source": "architecture",
-  "derived_to": [
-    {
-      "rid": "LLR001",
-      "revision": 1
-    }
-  ],
   "statement": "Система должна предоставлять графический интерфейс с главным окном, списком требований и панелями редактора с русской локализацией.",
   "status": "approved",
   "title": "Графический интерфейс пользователя",

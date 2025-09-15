@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.llm.client import NO_API_KEY, LLMClient
+from app.llm.client import DEFAULT_MAX_OUTPUT_TOKENS, NO_API_KEY, LLMClient
 from app.log import logger
 from app.mcp.server import JsonlHandler
 from app.settings import LLMSettings
@@ -65,3 +65,83 @@ def test_check_llm(tmp_path: Path, monkeypatch) -> None:
     assert res["payload"]["ok"] is True
     assert "timestamp" in req and "size_bytes" in req
     assert "duration_ms" in res
+
+
+def test_check_llm_uses_configured_token_limit(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    settings.llm.max_output_tokens = 7
+    captured: dict[str, object] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, **kwargs):  # noqa: ANN001
+                captured.update(kwargs)
+                return SimpleNamespace()
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    client.check_llm()
+    assert captured["max_output_tokens"] == 7
+
+
+def test_check_llm_uses_default_when_no_limit(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    settings.llm.max_output_tokens = 0
+    captured: dict[str, object] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, **kwargs):  # noqa: ANN001
+                captured.update(kwargs)
+                return SimpleNamespace()
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    client.check_llm()
+    assert captured["max_output_tokens"] == DEFAULT_MAX_OUTPUT_TOKENS
+
+
+def test_parse_command_uses_default_when_no_limit(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    settings.llm.max_output_tokens = None
+    captured: dict[str, object] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, **kwargs):  # noqa: ANN001
+                captured.update(kwargs)
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                tool_calls=[
+                                    SimpleNamespace(
+                                        function=SimpleNamespace(
+                                            name="noop",
+                                            arguments="{}",
+                                        )
+                                    )
+                                ]
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    tool, args = client.parse_command("anything")
+    assert tool == "noop"
+    assert args == {}
+    assert captured["max_output_tokens"] == DEFAULT_MAX_OUTPUT_TOKENS

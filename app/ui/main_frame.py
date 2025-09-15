@@ -429,6 +429,7 @@ class MainFrame(wx.Frame):
     def _load_directory(self, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""
         self.docs_controller = DocumentsController(path, self.model)
+        self.panel.set_documents_controller(self.docs_controller)
         docs = self.docs_controller.load_documents()
         self.doc_tree.set_documents(docs)
         self.config.add_recent_dir(path)
@@ -438,6 +439,7 @@ class MainFrame(wx.Frame):
         if docs:
             first = sorted(docs)[0]
             self.current_doc_prefix = first
+            self.panel.set_active_document(first)
             self.editor.set_directory(self.current_dir / first)
             derived_map = self.docs_controller.load_items(first)
             labels, freeform = self.docs_controller.collect_labels(first)
@@ -447,6 +449,7 @@ class MainFrame(wx.Frame):
             self.doc_tree.select(first)
         else:
             self.current_doc_prefix = None
+            self.panel.set_active_document(None)
             self.editor.set_directory(None)
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([])
@@ -482,6 +485,7 @@ class MainFrame(wx.Frame):
             self.doc_tree.select(target)
         else:
             self.current_doc_prefix = None
+            self.panel.set_active_document(None)
             self.editor.set_directory(None)
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([])
@@ -591,6 +595,7 @@ class MainFrame(wx.Frame):
         if not self.docs_controller:
             return
         self.current_doc_prefix = prefix
+        self.panel.set_active_document(prefix)
         if self.current_dir:
             self.editor.set_directory(self.current_dir / prefix)
         derived_map = self.docs_controller.load_items(prefix)

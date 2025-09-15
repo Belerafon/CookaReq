@@ -1,12 +1,21 @@
 """Tests for list panel."""
 
 import importlib
+import json
 import sys
 import types
 
 import pytest
 
-from app.core.model import Priority, Requirement, RequirementType, Status, Verification
+from app.core.doc_store import Document, save_document, save_item
+from app.core.model import (
+    Priority,
+    Requirement,
+    RequirementType,
+    Status,
+    Verification,
+    requirement_to_dict,
+)
 
 pytestmark = pytest.mark.gui
 
@@ -795,6 +804,57 @@ def test_bulk_edit_updates_requirements(monkeypatch):
     monkeypatch.setattr(panel, "_prompt_value", lambda field: "2")
     panel._on_edit_field(1)
     assert [r.version for r in reqs] == ["2", "2"]
+
+
+def test_context_edit_saves_to_disk(monkeypatch, tmp_path):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
+    documents_controller_cls = importlib.import_module(
+        "app.ui.controllers.documents",
+    ).DocumentsController
+    list_panel_cls = list_panel_module.ListPanel
+
+    doc = Document(prefix="SYS", title="System", digits=3)
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    original = _req(1, "Base", owner="alice")
+    save_item(doc_dir, doc, requirement_to_dict(original))
+
+    model = requirement_model_cls()
+    controller = documents_controller_cls(tmp_path, model)
+    controller.load_documents()
+    derived_map = controller.load_items("SYS")
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_cls(
+        frame,
+        model=model,
+        docs_controller=controller,
+    )
+    panel.set_columns(["owner"])
+    panel.set_active_document("SYS")
+    panel.set_requirements(model.get_all(), derived_map)
+
+    monkeypatch.setattr(panel, "_get_selected_indices", lambda: [0])
+    monkeypatch.setattr(panel, "_prompt_value", lambda field: "bob")
+
+    panel._on_edit_field(1)
+
+    data_path = doc_dir / "items" / "SYS001.json"
+    with data_path.open(encoding="utf-8") as fh:
+        stored = json.load(fh)
+
+    assert stored["owner"] == "bob"
 
 
 def test_sort_method_and_callback(monkeypatch):

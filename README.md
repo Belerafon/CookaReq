@@ -71,7 +71,7 @@ Commands that modify data validate input JSON and labels before saving. If valid
 
 ## MCP Integration
 
-CookaReq includes an MCP server that exposes requirement tools to external agents and the built-in LocalAgent. Available tools cover reading, searching and mutating requirements (`list_requirements`, `get_requirement`, `search_requirements`, `create_requirement`, `patch_requirement`, `delete_requirement`, `link_requirements`). Search-related tools accept a `labels` parameter to filter results. The LocalAgent combines these tools with an LLM client and is accessible from the GUI command dialog or the CLI `check` command.
+CookaReq includes an MCP server that exposes requirement tools to external agents and the built-in LocalAgent. Available tools cover reading, searching and mutating requirements (`list_requirements`, `get_requirement`, `search_requirements`, `create_requirement`, `patch_requirement`, `delete_requirement`, `link_requirements`). Listing and search tools support filtering and pagination via `labels`, `status`, `page`, `per_page` and, for search, an optional `query` string. The LocalAgent combines these tools with an LLM client and is accessible from the GUI command dialog or the CLI `check` command.
 
 ## Requirements Repository
 

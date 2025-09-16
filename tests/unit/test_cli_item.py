@@ -57,6 +57,37 @@ def test_item_add_and_move(tmp_path, capsys):
 
 
 @pytest.mark.unit
+def test_item_edit_updates_fields(tmp_path, capsys):
+    doc = Document(
+        prefix="SYS", title="System", digits=3, labels=DocumentLabels(allow_freeform=True)
+    )
+    save_document(tmp_path / "SYS", doc)
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path), prefix="SYS", title="Login", statement="Initial", labels=None
+    )
+    commands.cmd_item_add(add_args)
+    rid = capsys.readouterr().out.strip()
+    assert rid == "SYS001"
+
+    edit_args = argparse.Namespace(
+        directory=str(tmp_path),
+        rid=rid,
+        status=Status.APPROVED.value,
+        statement="Updated statement",
+    )
+    commands.cmd_item_edit(edit_args)
+    rid_after = capsys.readouterr().out.strip()
+    assert rid_after == rid
+
+    path = item_path(tmp_path / "SYS", doc, 1)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["status"] == Status.APPROVED.value
+    assert data["statement"] == "Updated statement"
+    assert data["id"] == 1
+
+
+@pytest.mark.unit
 def test_item_move_merges_sources(tmp_path, capsys):
     doc_sys = Document(
         prefix="SYS", title="System", digits=3, labels=DocumentLabels(allow_freeform=True)

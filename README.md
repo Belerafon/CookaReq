@@ -59,6 +59,10 @@ Subcommands:
 - `doc delete <root> <PREFIX> [--dry-run]` — delete a document
 
 - `item add <root> <PREFIX> --title T --statement S [--labels L1,L2]` — add a requirement to a document
+- `item edit <root> <RID> [--title T --status S --statement S ...]` — update a requirement in place without changing its RID.
+  Supports the same optional flags as `item add` (`--title`, `--statement`, `--type`, `--status`, `--owner`, `--priority`,
+  `--source`, `--verification`, `--acceptance`, `--conditions`, `--rationale`, `--assumptions`, `--modified-at`, `--approved-at`,
+  `--notes`, `--attachments`, `--labels`, `--links`, `--data`).
 - `item move <root> <RID> <NEW_PREFIX>` — move a requirement to another document
 - `item delete <root> <RID> [--dry-run]` — delete a requirement and update references
 

@@ -13,6 +13,7 @@ from .items import (
     item_path,
     list_item_ids,
     load_item,
+    locate_item_path,
     parse_rid,
     rid_for,
     save_item,
@@ -40,7 +41,7 @@ def validate_item_links(
             raise ValidationError(f"unknown document prefix: {prefix}")
         if not is_ancestor(doc.prefix, prefix, docs):
             raise ValidationError(f"invalid link target: {rid}")
-        path = item_path(root / prefix, target_doc, item_id)
+        path = locate_item_path(root / prefix, target_doc, item_id)
         if not path.exists():
             raise ValidationError(f"linked item not found: {rid}")
 
@@ -76,7 +77,7 @@ def plan_delete_item(
     doc = docs.get(prefix)
     if doc is None:
         return False, []
-    if not item_path(root_path / prefix, doc, item_id).exists():
+    if not locate_item_path(root_path / prefix, doc, item_id).exists():
         return False, []
 
     affected: list[str] = []
@@ -136,11 +137,14 @@ def delete_item(
     if not doc:
         return False
     directory = root_path / prefix
-    path = item_path(directory, doc, item_id)
+    path = locate_item_path(directory, doc, item_id)
     try:
         path.unlink()
     except FileNotFoundError:
         return False
+    alt_path = item_path(directory, doc, item_id)
+    if alt_path != path and alt_path.exists():
+        alt_path.unlink()
 
     for pfx, d in docs.items():
         dir_path = root_path / pfx

@@ -5,7 +5,13 @@ from pathlib import Path
 import pytest
 
 from app.cli import commands
-from app.core.document_store import Document, DocumentLabels, save_document
+from app.core.document_store import (
+    Document,
+    DocumentLabels,
+    item_path,
+    parse_rid,
+    save_document,
+)
 from app.core.model import Priority, RequirementType, Status, Verification
 
 
@@ -29,7 +35,7 @@ def test_item_add_and_move(tmp_path, capsys):
     rid = capsys.readouterr().out.strip()
     assert rid == "SYS001"
 
-    path = Path(tmp_path) / "SYS" / "items" / "SYS001.json"
+    path = item_path(tmp_path / "SYS", doc_sys, 1)
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["title"] == "Login"
     assert data["statement"] == "User shall login"
@@ -41,8 +47,8 @@ def test_item_add_and_move(tmp_path, capsys):
     rid2 = capsys.readouterr().out.strip()
     assert rid2 == "HLR01"
 
-    old_path = Path(tmp_path) / "SYS" / "items" / "SYS001.json"
-    new_path = Path(tmp_path) / "HLR" / "items" / "HLR01.json"
+    old_path = item_path(tmp_path / "SYS", doc_sys, 1)
+    new_path = item_path(tmp_path / "HLR", doc_hlr, 1)
     assert not old_path.exists()
     assert new_path.is_file()
     data2 = json.loads(new_path.read_text(encoding="utf-8"))
@@ -138,8 +144,8 @@ def test_item_move_merges_sources(tmp_path, capsys):
     rid_new = capsys.readouterr().out.strip()
     assert rid_new == "HLR01"
 
-    old_path = Path(tmp_path) / "SYS" / "items" / "SYS001.json"
-    new_path = Path(tmp_path) / "HLR" / "items" / "HLR01.json"
+    old_path = item_path(tmp_path / "SYS", doc_sys, 1)
+    new_path = item_path(tmp_path / "HLR", doc_hlr, 1)
     assert not old_path.exists()
     data_new = json.loads(new_path.read_text(encoding="utf-8"))
 
@@ -184,7 +190,8 @@ def test_item_move_rejects_invalid_status(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "unknown status" in out
 
-    old_path = Path(tmp_path) / "SYS" / "items" / f"{rid}.json"
+    _, item_id = parse_rid(rid)
+    old_path = item_path(tmp_path / "SYS", doc_sys, item_id)
     new_path = Path(tmp_path) / "HLR" / "items"
     assert old_path.is_file()
     assert not any(new_path.glob("*.json"))
@@ -254,8 +261,8 @@ def test_item_add_merges_base_and_arguments(tmp_path, capsys):
     rid = capsys.readouterr().out.strip()
     assert rid == "HLR01"
 
-    item_path = Path(tmp_path) / "HLR" / "items" / "HLR01.json"
-    data = json.loads(item_path.read_text(encoding="utf-8"))
+    item_fp = item_path(tmp_path / "HLR", doc_hlr, 1)
+    data = json.loads(item_fp.read_text(encoding="utf-8"))
     assert data["title"] == "Override title"
     assert data["statement"] == "Base statement"
     assert data["type"] == RequirementType.INTERFACE.value
@@ -323,8 +330,9 @@ def test_item_delete_removes_links(tmp_path, capsys):
     out = capsys.readouterr().out.strip()
     assert out == "SYS001"
 
-    assert not (tmp_path / "SYS" / "items" / "SYS001.json").exists()
-    data = json.loads((tmp_path / "HLR" / "items" / "HLR01.json").read_text())
+    assert not item_path(tmp_path / "SYS", doc_sys, 1).exists()
+    hlr_path = item_path(tmp_path / "HLR", doc_hlr, 1)
+    data = json.loads(hlr_path.read_text())
     assert data.get("links") == []
 
 
@@ -354,8 +362,8 @@ def test_item_delete_dry_run_lists_links(tmp_path, capsys):
     out = capsys.readouterr().out.splitlines()
     assert out == ["SYS001", "HLR01"]
     # nothing removed or updated
-    assert (tmp_path / "SYS" / "items" / "SYS001.json").exists()
-    data = json.loads((tmp_path / "HLR" / "items" / "HLR01.json").read_text())
+    assert item_path(tmp_path / "SYS", doc_sys, 1).exists()
+    data = json.loads(item_path(tmp_path / "HLR", doc_hlr, 1).read_text())
     assert data.get("links") == ["SYS001"]
 
 
@@ -383,6 +391,6 @@ def test_item_delete_requires_confirmation(tmp_path, capsys):
     commands.cmd_item_delete(del_args)
     out = capsys.readouterr().out.strip()
     assert out == "aborted"
-    assert (tmp_path / "SYS" / "items" / "SYS001.json").exists()
+    assert item_path(tmp_path / "SYS", doc_sys, 1).exists()
     assert messages and "SYS001" in messages[0]
 

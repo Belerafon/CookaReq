@@ -44,8 +44,8 @@ def test_migrate_to_docs_basic(tmp_path: Path) -> None:
     # original files removed
     assert not (tmp_path / "CR-001.json").exists()
 
-    sys_item = tmp_path / "SYS" / "items" / "SYS001.json"
-    hlr_item = tmp_path / "HLR" / "items" / "HLR002.json"
+    sys_item = tmp_path / "SYS" / "items" / "001.json"
+    hlr_item = tmp_path / "HLR" / "items" / "002.json"
     assert sys_item.is_file()
     assert hlr_item.is_file()
 
@@ -72,7 +72,7 @@ def test_migrate_to_docs_basic(tmp_path: Path) -> None:
     assert hlr_data["status"] == "draft"
 
     doc = json.loads((tmp_path / "SYS" / "document.json").read_text(encoding="utf-8"))
-    assert doc["prefix"] == "SYS"
+    assert "prefix" not in doc
     assert doc["digits"] == 3
     assert doc["labels"]["allowFreeform"] is True
     assert doc["attributes"] == {}
@@ -93,7 +93,8 @@ def test_migrate_to_docs_creates_default_document(tmp_path: Path) -> None:
     sys_doc_path = tmp_path / "SYS" / "document.json"
     assert sys_doc_path.exists()
     sys_doc = json.loads(sys_doc_path.read_text(encoding="utf-8"))
-    assert sys_doc["prefix"] == "SYS"
+    assert "prefix" not in sys_doc
+    assert sys_doc["title"] == "SYS"
     assert sys_doc["digits"] == 3
     assert sys_doc["attributes"] == {}
 
@@ -122,7 +123,7 @@ def test_migrate_to_docs_links(tmp_path: Path) -> None:
     migrate_to_docs(tmp_path, rules="label:doc=SYS->SYS", default="SYS")
 
     data = json.loads(
-        (tmp_path / "SYS" / "items" / "SYS002.json").read_text(encoding="utf-8")
+        (tmp_path / "SYS" / "items" / "002.json").read_text(encoding="utf-8")
     )
     assert data["links"] == ["SYS001", "EXT-9"]
 
@@ -151,9 +152,10 @@ def test_migrate_to_docs_numeric_ids(tmp_path: Path, legacy_id) -> None:
 
     doc = json.loads((tmp_path / "SYS" / "document.json").read_text(encoding="utf-8"))
     digits = doc["digits"]
-    expected_numeric_rid = f"SYS{int(str(legacy_id)):0{digits}d}"
+    numeric_id = f"{int(str(legacy_id)):0{digits}d}"
+    expected_numeric_rid = f"SYS{numeric_id}"
 
-    numeric_path = tmp_path / "SYS" / "items" / f"{expected_numeric_rid}.json"
+    numeric_path = tmp_path / "SYS" / "items" / f"{numeric_id}.json"
     assert numeric_path.exists()
     numeric_data = json.loads(numeric_path.read_text(encoding="utf-8"))
     assert numeric_data["id"] == 1
@@ -164,7 +166,7 @@ def test_migrate_to_docs_numeric_ids(tmp_path: Path, legacy_id) -> None:
     consumer_items = list((tmp_path / "SYS" / "items").glob("*.json"))
     consumer_data = None
     for item_path in consumer_items:
-        if item_path.name == f"{expected_numeric_rid}.json":
+        if item_path.name == f"{numeric_id}.json":
             continue
         data = json.loads(item_path.read_text(encoding="utf-8"))
         if data["title"] == "Consumer":
@@ -195,7 +197,7 @@ def test_migrate_to_docs_preserves_metadata(tmp_path: Path) -> None:
 
     migrate_to_docs(tmp_path, rules="label:doc=SYS->SYS", default="SYS")
 
-    item_path = tmp_path / "SYS" / "items" / "SYS010.json"
+    item_path = tmp_path / "SYS" / "items" / "010.json"
     data = json.loads(item_path.read_text(encoding="utf-8"))
     assert data["status"] == "approved"
     assert data["owner"] == "Lead"
@@ -219,7 +221,7 @@ def test_migrate_to_docs_structured_source(tmp_path: Path) -> None:
 
     migrate_to_docs(tmp_path, rules="label:doc=SYS->SYS", default="SYS")
 
-    item_path = tmp_path / "SYS" / "items" / "SYS020.json"
+    item_path = tmp_path / "SYS" / "items" / "020.json"
     data = json.loads(item_path.read_text(encoding="utf-8"))
     assert data["source"] == json.dumps(structured["source"], ensure_ascii=False, sort_keys=True)
 

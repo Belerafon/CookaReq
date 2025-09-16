@@ -29,8 +29,9 @@ def test_requirement_roundtrip() -> None:
 @pytest.mark.unit
 def test_document_roundtrip(tmp_path) -> None:
     doc = Document(prefix="TST", title="Test", digits=3)
-    save_document(tmp_path, doc)
-    loaded = load_document(tmp_path)
+    doc_dir = tmp_path / doc.prefix
+    save_document(doc_dir, doc)
+    loaded = load_document(doc_dir)
     assert loaded.prefix == "TST"
 
 

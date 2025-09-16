@@ -153,7 +153,7 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
             id_map[alias] = rid
 
     # Second pass: rewrite items and links
-    items: list[tuple[str, str, dict]] = []
+    items: list[tuple[str, int, dict]] = []
     for info in parsed:
         statement = info["data"].get("statement")
         if statement is None:
@@ -185,13 +185,15 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
             rid=info["rid"],
         )
         item = _serialize_requirement(req)
-        items.append((info["prefix"], info["rid"], item, info["fp"]))
+        items.append((info["prefix"], info["num"], item, info["fp"]))
 
     # Write new items and remove legacy files
-    for prefix, rid, item, fp in items:
+    for prefix, num, item, fp in items:
         items_dir = root / prefix / "items"
         items_dir.mkdir(parents=True, exist_ok=True)
-        with (items_dir / f"{rid}.json").open("w", encoding="utf-8") as fh:
+        digits = digits_map[prefix]
+        filename = f"{num:0{digits}d}.json"
+        with (items_dir / filename).open("w", encoding="utf-8") as fh:
             json.dump(item, fh, ensure_ascii=False, indent=2, sort_keys=True)
         fp.unlink()
 
@@ -201,7 +203,6 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
         doc_dir.mkdir(parents=True, exist_ok=True)
         (doc_dir / "items").mkdir(exist_ok=True)
         doc = {
-            "prefix": prefix,
             "title": prefix,
             "digits": digits,
             "parent": None,

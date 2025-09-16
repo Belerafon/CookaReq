@@ -5,7 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-from . import Document, DocumentLabels, LabelDef
+from . import Document, DocumentLabels, LabelDef, ValidationError
 
 
 def _read_json(path: Path) -> dict:
@@ -34,8 +34,15 @@ def label_color(label: LabelDef) -> str:
 def load_document(directory: str | Path) -> Document:
     """Load document configuration from ``directory``."""
 
-    path = Path(directory) / "document.json"
+    directory_path = Path(directory)
+    prefix = directory_path.name
+    path = directory_path / "document.json"
     data = _read_json(path)
+    stored_prefix = data.get("prefix")
+    if stored_prefix is not None and stored_prefix != prefix:
+        raise ValidationError(
+            f"document prefix mismatch: directory '{prefix}' != stored '{stored_prefix}'"
+        )
     labels_data = data.get("labels", {})
     defs = [LabelDef(**d) for d in labels_data.get("defs", [])]
     labels = DocumentLabels(
@@ -43,8 +50,8 @@ def load_document(directory: str | Path) -> Document:
         defs=defs,
     )
     return Document(
-        prefix=data["prefix"],
-        title=data.get("title", data["prefix"]),
+        prefix=prefix,
+        title=data.get("title", prefix),
         digits=int(data["digits"]),
         parent=data.get("parent"),
         labels=labels,
@@ -55,10 +62,15 @@ def load_document(directory: str | Path) -> Document:
 def save_document(directory: str | Path, doc: Document) -> Path:
     """Persist ``doc`` configuration into ``directory``."""
 
-    path = Path(directory) / "document.json"
+    directory_path = Path(directory)
+    expected_prefix = directory_path.name
+    if doc.prefix != expected_prefix:
+        raise ValidationError(
+            f"document prefix mismatch: directory '{expected_prefix}' != document '{doc.prefix}'"
+        )
+    path = directory_path / "document.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
-        "prefix": doc.prefix,
         "title": doc.title,
         "digits": doc.digits,
         "parent": doc.parent,

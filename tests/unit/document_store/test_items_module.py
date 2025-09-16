@@ -12,6 +12,7 @@ from app.core.document_store.items import (
     create_requirement,
     delete_requirement,
     get_requirement,
+    item_path,
     parse_rid,
     patch_requirement,
     rid_for,
@@ -88,4 +89,4 @@ def test_create_patch_and_delete_requirement(tmp_path: Path, _document: Document
         docs=docs,
     )
     assert deleted == created.rid
-    assert not (tmp_path / "SYS" / "items" / f"{created.rid}.json").exists()
+    assert not item_path(tmp_path / "SYS", _document, 1).exists()

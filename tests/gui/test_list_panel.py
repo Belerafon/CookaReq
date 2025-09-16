@@ -7,7 +7,7 @@ import types
 
 import pytest
 
-from app.core.document_store import Document, save_document, save_item
+from app.core.document_store import Document, item_path, save_document, save_item
 from app.core.model import (
     Priority,
     Requirement,
@@ -963,7 +963,7 @@ def test_context_edit_saves_to_disk(monkeypatch, tmp_path):
 
     panel._on_edit_field(1)
 
-    data_path = doc_dir / "items" / "SYS001.json"
+    data_path = item_path(doc_dir, doc, 1)
     with data_path.open(encoding="utf-8") as fh:
         stored = json.load(fh)
 

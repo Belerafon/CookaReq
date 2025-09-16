@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from ..settings import LLMSettings
+from .constants import DEFAULT_MAX_OUTPUT_TOKENS
 
 # ``OpenAI`` импортируется динамически в конструкторе, чтобы тесты могли
 # подменять ``openai.OpenAI`` до первого использования и тем самым избежать
@@ -15,11 +16,6 @@ from ..settings import LLMSettings
 from ..telemetry import log_event
 from .spec import SYSTEM_PROMPT, TOOLS
 from .validation import validate_tool_call
-
-# When конфигурация не задаёт явное ограничение, используем консервативный
-# дефолт, чтобы не отдавать бесконечно длинные ответы и не зависеть от
-# серверных настроек.
-DEFAULT_MAX_OUTPUT_TOKENS = 5000
 
 # When the backend does not require authentication, the official OpenAI client
 # still insists on a non-empty ``api_key``.  Using a harmless placeholder allows

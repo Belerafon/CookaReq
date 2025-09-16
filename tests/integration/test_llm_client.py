@@ -7,7 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.llm.client import DEFAULT_MAX_OUTPUT_TOKENS, NO_API_KEY, LLMClient
+from app.llm.client import NO_API_KEY, LLMClient
+from app.llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
 from app.log import logger
 from app.mcp.server import JsonlHandler
 from app.settings import LLMSettings
@@ -69,7 +70,7 @@ def test_check_llm(tmp_path: Path, monkeypatch) -> None:
 
 def test_check_llm_uses_configured_token_limit(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
-    settings.llm.max_output_tokens = 7
+    settings.llm.max_output_tokens = MIN_MAX_OUTPUT_TOKENS + 512
     captured: dict[str, object] = {}
 
     class FakeOpenAI:
@@ -85,7 +86,7 @@ def test_check_llm_uses_configured_token_limit(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = LLMClient(settings.llm)
     client.check_llm()
-    assert captured["max_output_tokens"] == 7
+    assert captured["max_output_tokens"] == MIN_MAX_OUTPUT_TOKENS + 512
 
 
 def test_check_llm_uses_default_when_no_limit(tmp_path: Path, monkeypatch) -> None:

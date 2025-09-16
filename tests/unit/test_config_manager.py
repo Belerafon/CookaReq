@@ -3,6 +3,7 @@
 import pytest
 
 from app.config import ConfigManager, DEFAULT_LIST_COLUMNS
+from app.llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
 from app.settings import AppSettings, LLMSettings, MCPSettings, UISettings
 
 pytestmark = pytest.mark.unit
@@ -55,7 +56,7 @@ def _recent_dirs_factory(tmp_path):
         ("language", None),
         ("mcp_auto_start", True),
         ("mcp_port", 59362),
-        ("llm_max_output_tokens", None),
+        ("llm_max_output_tokens", DEFAULT_MAX_OUTPUT_TOKENS),
         ("sort_column", -1),
         ("sort_ascending", True),
         ("log_shown", False),
@@ -88,8 +89,18 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
         pytest.param("llm_api_key", _const("secret"), _const("secret"), id="llm_api_key"),
         pytest.param("llm_api_key", _const(None), _const(None), id="llm_api_key-none"),
         pytest.param("llm_max_retries", _const(7), _const(7), id="llm_max_retries"),
-        pytest.param("llm_max_output_tokens", _const(128), _const(128), id="llm_max_output_tokens"),
-        pytest.param("llm_max_output_tokens", _const(None), _const(None), id="llm_max_output_tokens-none"),
+        pytest.param(
+            "llm_max_output_tokens",
+            _const(MIN_MAX_OUTPUT_TOKENS),
+            _const(MIN_MAX_OUTPUT_TOKENS),
+            id="llm_max_output_tokens-min",
+        ),
+        pytest.param(
+            "llm_max_output_tokens",
+            _const(8192),
+            _const(8192),
+            id="llm_max_output_tokens-custom",
+        ),
         pytest.param("llm_timeout_minutes", _const(12), _const(12), id="llm_timeout"),
         pytest.param("llm_stream", _const(True), _const(True), id="llm_stream"),
         pytest.param("sort_column", _const(5), _const(5), id="sort_column"),
@@ -205,7 +216,7 @@ def test_app_settings_round_trip(tmp_path, wx_app):
             model="gpt",
             api_key="k",
             max_retries=2,
-            max_output_tokens=100,
+            max_output_tokens=2000,
             timeout_minutes=42,
             stream=False,
         ),
@@ -231,6 +242,26 @@ def test_app_settings_round_trip(tmp_path, wx_app):
     cfg.set_app_settings(app_settings)
     loaded = cfg.get_app_settings()
     assert loaded == app_settings
+
+
+def test_get_llm_settings_normalises_zero(tmp_path, wx_app):
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
+
+    cfg.set_value("llm_max_output_tokens", 0)
+    cfg.flush()
+
+    settings = cfg.get_llm_settings()
+    assert settings.max_output_tokens == DEFAULT_MAX_OUTPUT_TOKENS
+
+
+def test_get_llm_settings_enforces_min(tmp_path, wx_app):
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
+
+    cfg.set_value("llm_max_output_tokens", 250)
+    cfg.flush()
+
+    settings = cfg.get_llm_settings()
+    assert settings.max_output_tokens == MIN_MAX_OUTPUT_TOKENS
 
 
 def test_sort_settings_round_trip(tmp_path, wx_app):

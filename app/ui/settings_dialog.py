@@ -8,6 +8,7 @@ import wx
 
 from ..i18n import _
 from ..llm.client import LLMClient
+from ..llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
 from ..settings import LLMSettings, MCPSettings
@@ -47,8 +48,8 @@ LLM_HELP: dict[str, str] = {
         "Optional; defaults to 3 retries.",
     ),
     "max_output_tokens": _(
-        "Maximum number of tokens returned by the model. Example: 2048\n"
-        "Set to 0 to use the provider default.",
+        "Maximum number of tokens returned by the model. Example: 4096\n"
+        "Minimum allowed value is 1000 tokens; CookaReq defaults to 5000 when unset.",
     ),
     "timeout_minutes": _(
         "HTTP request timeout in minutes. Example: 1\n"
@@ -213,12 +214,14 @@ class SettingsDialog(wx.Dialog):
         self._model = wx.TextCtrl(llm, value=model)
         self._api_key = wx.TextCtrl(llm, value=api_key, style=wx.TE_PASSWORD)
         self._max_retries = wx.SpinCtrl(llm, min=0, max=10, initial=max_retries)
-        self._max_output_tokens = wx.SpinCtrl(
+        normalized_tokens = self._normalize_max_output_tokens(max_output_tokens)
+        self._max_output_tokens = wx.TextCtrl(
             llm,
-            min=0,
-            max=500000,
-            initial=max_output_tokens,
+            value=str(normalized_tokens),
         )
+        if hasattr(self._max_output_tokens, "SetHint"):
+            self._max_output_tokens.SetHint(str(DEFAULT_MAX_OUTPUT_TOKENS))
+        self._max_output_tokens.Bind(wx.EVT_TEXT, self._on_max_output_tokens_changed)
         self._timeout = wx.SpinCtrl(llm, min=1, max=9999, initial=timeout_minutes)
         self._stream = wx.CheckBox(llm, label=_("Stream"))
         self._stream.SetValue(stream)
@@ -531,6 +534,42 @@ class SettingsDialog(wx.Dialog):
             dlg_sizer.Add(btn_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
         self.SetSizerAndFit(dlg_sizer)
 
+    def _on_max_output_tokens_changed(self, event: wx.CommandEvent) -> None:
+        """Keep the max token input numeric while allowing quick typing."""
+
+        value = event.GetString()
+        filtered = "".join(ch for ch in value if ch.isdigit())
+        if filtered != value:
+            insertion_point = self._max_output_tokens.GetInsertionPoint()
+            adjustment = len(value) - len(filtered)
+            self._max_output_tokens.ChangeValue(filtered)
+            self._max_output_tokens.SetInsertionPoint(max(0, insertion_point - adjustment))
+            return
+
+        event.Skip()
+
+    @staticmethod
+    def _normalize_max_output_tokens(value: int) -> int:
+        """Clamp initial values to supported defaults."""
+
+        if value <= 0:
+            return DEFAULT_MAX_OUTPUT_TOKENS
+        if value < MIN_MAX_OUTPUT_TOKENS:
+            return MIN_MAX_OUTPUT_TOKENS
+        return value
+
+    def _read_max_output_tokens(self) -> int:
+        """Return sanitized token limit from the input field."""
+
+        raw = self._max_output_tokens.GetValue().strip()
+        if not raw:
+            return DEFAULT_MAX_OUTPUT_TOKENS
+        try:
+            numeric = int(raw)
+        except ValueError:
+            return DEFAULT_MAX_OUTPUT_TOKENS
+        return self._normalize_max_output_tokens(numeric)
+
     # ------------------------------------------------------------------
     def _on_toggle_token(
         self,
@@ -569,7 +608,7 @@ class SettingsDialog(wx.Dialog):
             model=self._model.GetValue(),
             api_key=self._api_key.GetValue() or None,
             max_retries=self._max_retries.GetValue(),
-            max_output_tokens=self._max_output_tokens.GetValue() or None,
+            max_output_tokens=self._read_max_output_tokens(),
             timeout_minutes=self._timeout.GetValue(),
             stream=self._stream.GetValue(),
         )
@@ -722,7 +761,7 @@ class SettingsDialog(wx.Dialog):
             self._model.GetValue(),
             self._api_key.GetValue(),
             self._max_retries.GetValue(),
-            self._max_output_tokens.GetValue(),
+            self._read_max_output_tokens(),
             self._timeout.GetValue(),
             self._stream.GetValue(),
             self._auto_start.GetValue(),

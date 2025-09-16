@@ -14,10 +14,13 @@ from wx.lib.scrolledpanel import ScrolledPanel
 from ..core.document_store import (
     Document,
     LabelDef,
+    RequirementIDCollisionError,
     label_color,
+    list_item_ids,
     save_item,
     stable_color,
     parse_rid,
+    rid_for,
     load_document,
     load_item,
 )
@@ -59,6 +62,9 @@ class EditorPanel(ScrolledPanel):
         self._on_save_callback = on_save
         self.directory: Path | None = None
         self.original_id: int | None = None
+        self._document: Document | None = None
+        self._known_ids: set[int] | None = None
+        self._id_conflict = False
         self._saved_state: dict[str, Any] | None = None
 
         config = load_editor_config()
@@ -233,6 +239,47 @@ class EditorPanel(ScrolledPanel):
         self._refresh_attachments()
         self.mark_clean()
 
+    # helpers -------------------------------------------------------------
+    def _load_document(self) -> Document | None:
+        if not self.directory:
+            return None
+        if self._document is not None:
+            return self._document
+        try:
+            self._document = load_document(self.directory)
+        except Exception:  # pragma: no cover - filesystem errors
+            logger.exception("Failed to load document metadata from %s", self.directory)
+            self._document = None
+        return self._document
+
+    def _refresh_known_ids(self, doc: Document | None = None) -> set[int]:
+        if doc is not None:
+            self._document = doc
+        document = doc or self._load_document()
+        if not document or not self.directory:
+            self._known_ids = set()
+            return self._known_ids
+        try:
+            ids = list_item_ids(self.directory, document)
+        except Exception:  # pragma: no cover - filesystem errors
+            logger.exception("Failed to enumerate requirement ids in %s", self.directory)
+            ids = set()
+        self._known_ids = ids
+        return ids
+
+    def _get_known_ids(self) -> set[int]:
+        if self._known_ids is None:
+            return self._refresh_known_ids()
+        return self._known_ids
+
+    def _has_id_conflict(self, req_id: int, *, doc: Document | None = None) -> bool:
+        if not self.directory or req_id <= 0:
+            return False
+        if self.original_id is not None and req_id == self.original_id:
+            return False
+        ids = self._refresh_known_ids(doc) if doc is not None else self._get_known_ids()
+        return req_id in ids
+
     def _bind_autosize(self, ctrl: wx.TextCtrl) -> None:
         """Register multiline text control for dynamic height."""
         self._autosize_fields.append(ctrl)
@@ -377,6 +424,9 @@ class EditorPanel(ScrolledPanel):
     def set_directory(self, directory: str | Path | None) -> None:
         """Set working directory for ID validation."""
         self.directory = Path(directory) if directory else None
+        self._document = None
+        self._known_ids = None
+        self._id_conflict = False
         self._on_id_change()
 
     def new_requirement(self) -> None:
@@ -734,6 +784,7 @@ class EditorPanel(ScrolledPanel):
             return
         ctrl = self.fields["id"]
         ctrl.SetBackgroundColour(wx.NullColour)
+        self._id_conflict = False
         if not self.directory:
             ctrl.Refresh()
             return
@@ -749,6 +800,11 @@ class EditorPanel(ScrolledPanel):
             return
         if req_id <= 0:
             ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
+            ctrl.Refresh()
+            return
+        if self._has_id_conflict(req_id):
+            ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
+            self._id_conflict = True
         else:
             ctrl.SetBackgroundColour(wx.NullColour)
         ctrl.Refresh()
@@ -761,6 +817,17 @@ class EditorPanel(ScrolledPanel):
         """Persist editor contents to ``directory`` within ``doc`` and return path."""
 
         req = self.get_data()
+        self._document = doc
+        if self._has_id_conflict(req.id, doc=doc):
+            rid = rid_for(doc, req.id)
+            message = _("Requirement {rid} already exists").format(rid=rid)
+            wx.MessageBox(message, _("Error"), style=wx.ICON_ERROR)
+            self._id_conflict = True
+            ctrl = self.fields["id"]
+            ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
+            ctrl.Refresh()
+            raise RequirementIDCollisionError(doc.prefix, req.id, rid=rid)
+        self._id_conflict = False
         mod = (
             req.modified_at
             if req.modified_at and req.modified_at != self.original_modified_at
@@ -775,6 +842,7 @@ class EditorPanel(ScrolledPanel):
         self.mtime = path.stat().st_mtime
         self.directory = Path(directory)
         self.original_id = req.id
+        self._known_ids = None
         self._on_id_change()
         self.mark_clean()
         return path

@@ -126,6 +126,59 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     frame.Destroy()
 
 
+def test_list_panel_refresh_selects_new_row(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["id", "title"])
+    panel.set_requirements([
+        _req(1, "A"),
+        _req(2, "B"),
+        _req(3, "C"),
+    ])
+    wx_app.Yield()
+
+    panel.refresh(select_id=3)
+    wx_app.Yield()
+
+    selected = panel.list.GetFirstSelected()
+    assert selected != wx.NOT_FOUND
+    assert panel.list.GetItemData(selected) == 3
+
+    frame.Destroy()
+
+
+def test_context_menu_hides_single_item_actions(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["title"])
+    panel.set_requirements([
+        _req(1, "A"),
+        _req(2, "B"),
+    ])
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+    panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 0)
+    labels = [item.GetItemLabelText() for item in menu.GetMenuItems()]
+    assert "Clone" not in labels
+    assert "Derive" not in labels
+    assert clone_item is None
+    menu.Destroy()
+    frame.Destroy()
+
+
 def test_list_panel_context_menu_via_event(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

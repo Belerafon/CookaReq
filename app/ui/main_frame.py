@@ -783,9 +783,9 @@ class MainFrame(wx.Frame):
         self.editor.fields["id"].SetValue(str(new_id))
         data = self.editor.get_data()
         self.docs_controller.add_requirement(self.current_doc_prefix, data)
-        self.panel.refresh()
-        self.editor.load(data, path=None, mtime=None)
         self._selected_requirement_id = new_id
+        self.panel.refresh(select_id=new_id)
+        self.editor.load(data, path=None, mtime=None)
         self.editor.Show()
         self.splitter.UpdateSize()
 
@@ -805,9 +805,9 @@ class MainFrame(wx.Frame):
             revision=1,
         )
         self.docs_controller.add_requirement(self.current_doc_prefix, clone)
-        self.panel.refresh()
-        self.editor.load(clone, path=None, mtime=None)
         self._selected_requirement_id = new_id
+        self.panel.refresh(select_id=new_id)
+        self.editor.load(clone, path=None, mtime=None)
         self.editor.Show()
         self.splitter.UpdateSize()
 
@@ -837,9 +837,9 @@ class MainFrame(wx.Frame):
         clone = self._create_linked_copy(source)
         self.docs_controller.add_requirement(self.current_doc_prefix, clone)
         self.panel.record_link(source.rid or str(source.id), clone.id)
-        self.panel.refresh()
-        self.editor.load(clone, path=None, mtime=None)
         self._selected_requirement_id = clone.id
+        self.panel.refresh(select_id=clone.id)
+        self.editor.load(clone, path=None, mtime=None)
         self.editor.Show()
         self.splitter.UpdateSize()
 

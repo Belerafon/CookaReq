@@ -557,9 +557,70 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     value = locale.code_to_label(field, value.value)
                 self.list.SetItem(index, col, str(value))
 
-    def refresh(self) -> None:
-        """Public wrapper to reload list control."""
+    def refresh(self, *, select_id: int | None = None) -> None:
+        """Public wrapper to reload list control.
+
+        When ``select_id`` is provided, the list selects the matching
+        requirement and scrolls to it after reloading the contents.
+        """
+
         self._refresh()
+        if select_id is not None:
+            self.focus_requirement(select_id)
+
+    def focus_requirement(self, req_id: int) -> None:
+        """Select and ensure visibility of requirement ``req_id``."""
+
+        target_index: int | None = None
+        try:
+            count = self.list.GetItemCount()
+        except Exception:  # pragma: no cover - backend quirks
+            return
+        for idx in range(count):
+            try:
+                item_id = self.list.GetItemData(idx)
+            except Exception:
+                continue
+            if item_id == req_id:
+                target_index = idx
+                break
+        if target_index is None:
+            return
+
+        for idx in range(count):
+            self._set_item_selected(idx, idx == target_index)
+
+        if hasattr(self.list, "Focus"):
+            with suppress(Exception):
+                self.list.Focus(target_index)
+        if hasattr(self.list, "EnsureVisible"):
+            with suppress(Exception):
+                self.list.EnsureVisible(target_index)
+
+    def _set_item_selected(self, index: int, selected: bool) -> None:
+        """Apply selection state without propagating backend errors."""
+
+        select_flag = getattr(wx, "LIST_STATE_SELECTED", 0x0002)
+        focus_flag = getattr(wx, "LIST_STATE_FOCUSED", 0x0001)
+        mask = select_flag | focus_flag
+        if hasattr(self.list, "SetItemState"):
+            with suppress(Exception):
+                self.list.SetItemState(index, mask if selected else 0, mask)
+                return
+        if hasattr(self.list, "Select"):
+            try:
+                self.list.Select(index, selected)
+            except TypeError:
+                if selected:
+                    self.list.Select(index)
+                else:
+                    with suppress(Exception):
+                        self.list.Select(index, False)
+            except Exception:
+                return
+        if selected and hasattr(self.list, "Focus"):
+            with suppress(Exception):
+                self.list.Focus(index)
 
     def record_link(self, parent_rid: str, child_id: int) -> None:
         """Record that ``child_id`` links to ``parent_rid``."""
@@ -635,8 +696,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _create_context_menu(self, index: int, column: int | None):
         menu = wx.Menu()
-        derive_item = menu.Append(wx.ID_ANY, _("Derive"))
-        clone_item = menu.Append(wx.ID_ANY, _("Clone"))
+        selected_indices = self._get_selected_indices()
+        if not selected_indices and index != wx.NOT_FOUND:
+            selected_indices = [index]
+        single_selection = len(selected_indices) == 1
+        derive_item = clone_item = None
+        if single_selection:
+            derive_item = menu.Append(wx.ID_ANY, _("Derive"))
+            clone_item = menu.Append(wx.ID_ANY, _("Clone"))
         delete_item = menu.Append(wx.ID_ANY, _("Delete"))
         req_id = self.list.GetItemData(index)
         field = self._field_from_column(column)
@@ -648,7 +715,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 lambda _evt, c=column: self._on_edit_field(c),
                 edit_item,
             )
-        if self._on_clone:
+        if clone_item and self._on_clone:
             menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_clone(i), clone_item)
         if self._on_delete:
             menu.Bind(
@@ -656,7 +723,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 lambda _evt, i=req_id: self._on_delete(i),
                 delete_item,
             )
-        if self._on_derive:
+        if derive_item and self._on_derive:
             menu.Bind(
                 wx.EVT_MENU,
                 lambda _evt, i=req_id: self._on_derive(i),

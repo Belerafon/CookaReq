@@ -28,6 +28,7 @@ class Navigation:
         on_open_recent: Callable[[wx.CommandEvent], None],
         on_toggle_column: Callable[[wx.CommandEvent], None],
         on_toggle_log_console: Callable[[wx.CommandEvent], None],
+        on_toggle_agent_chat: Callable[[wx.CommandEvent], None],
         on_show_derivation_graph: Callable[[wx.Event], None],
         on_show_trace_matrix: Callable[[wx.Event], None],
         on_new_requirement: Callable[[wx.Event], None],
@@ -44,6 +45,7 @@ class Navigation:
         self.on_open_recent = on_open_recent
         self.on_toggle_column = on_toggle_column
         self.on_toggle_log_console = on_toggle_log_console
+        self.on_toggle_agent_chat = on_toggle_agent_chat
         self.on_show_derivation_graph = on_show_derivation_graph
         self.on_show_trace_matrix = on_show_trace_matrix
         self.on_new_requirement = on_new_requirement
@@ -52,6 +54,7 @@ class Navigation:
         self._column_items: dict[int, str] = {}
         self.menu_bar = wx.MenuBar()
         self.log_menu_item: wx.MenuItem | None = None
+        self.agent_chat_menu_item: wx.MenuItem | None = None
         self.recent_menu = wx.Menu()
         self.recent_menu_item: wx.MenuItem | None = None
         self.run_command_id: int | None = None
@@ -98,6 +101,11 @@ class Navigation:
             _("Show Error Console"),
         )
         self.frame.Bind(wx.EVT_MENU, self.on_toggle_log_console, self.log_menu_item)
+        self.agent_chat_menu_item = view_menu.AppendCheckItem(
+            wx.ID_ANY,
+            _("Show Agent Chat"),
+        )
+        self.frame.Bind(wx.EVT_MENU, self.on_toggle_agent_chat, self.agent_chat_menu_item)
         graph_item = view_menu.Append(wx.ID_ANY, _("Show Derivation Graph"))
         self.frame.Bind(wx.EVT_MENU, self.on_show_derivation_graph, graph_item)
         trace_item = view_menu.Append(wx.ID_ANY, _("Show Trace Matrix"))
@@ -105,7 +113,7 @@ class Navigation:
         menu_bar.Append(view_menu, _("&View"))
 
         tools_menu = wx.Menu()
-        cmd_item = tools_menu.Append(wx.ID_ANY, _("Run Agent Command\tCtrl+K"))
+        cmd_item = tools_menu.Append(wx.ID_ANY, _("Open Agent Chat\tCtrl+K"))
         self.frame.Bind(wx.EVT_MENU, self.on_run_command, cmd_item)
         self.run_command_id = cmd_item.GetId()
         menu_bar.Append(tools_menu, _("&Tools"))

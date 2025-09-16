@@ -125,7 +125,11 @@ def test_migrate_to_docs_links(tmp_path: Path) -> None:
     data = json.loads(
         (tmp_path / "SYS" / "items" / "002.json").read_text(encoding="utf-8")
     )
-    assert data["links"] == ["SYS001", "EXT-9"]
+    links = data.get("links", [])
+    assert [entry["rid"] for entry in links] == ["SYS001", "EXT-9"]
+    assert links[0].get("fingerprint")
+    assert links[0].get("suspect") is False
+    assert links[1].get("suspect") is True
 
 
 @pytest.mark.parametrize("legacy_id", [1, "1"])
@@ -175,7 +179,10 @@ def test_migrate_to_docs_numeric_ids(tmp_path: Path, legacy_id) -> None:
     assert consumer_data is not None
     assert consumer_data["id"] == 2
     assert consumer_data["labels"] == []
-    assert consumer_data["links"] == [expected_numeric_rid, "EXT-9"]
+    links = consumer_data.get("links", [])
+    assert [entry["rid"] for entry in links] == [expected_numeric_rid, "EXT-9"]
+    assert links[0].get("fingerprint")
+    assert links[0].get("suspect") is False
 
 
 def test_migrate_to_docs_preserves_metadata(tmp_path: Path) -> None:

@@ -1,16 +1,11 @@
 import argparse
 import json
-from pathlib import Path
 
 import pytest
 
 from app.cli import commands
-<<<<< codex/remove-redundant-names-in-files
 from app.core.document_store import Document, item_path, save_document, save_item
-=====
-from app.core.document_store import Document, save_document, save_item
 from app.core.model import requirement_fingerprint
->>>> main
 
 
 @pytest.mark.unit
@@ -32,7 +27,7 @@ def test_link_add(tmp_path, capsys):
 
     path = item_path(tmp_path / "HLR", doc_hlr, 1)
     data = json.loads(path.read_text(encoding="utf-8"))
-    parent_path = Path(tmp_path) / "SYS" / "items" / "SYS001.json"
+    parent_path = item_path(tmp_path / "SYS", doc_sys, 1)
     parent_data = json.loads(parent_path.read_text(encoding="utf-8"))
     expected_fp = requirement_fingerprint(parent_data)
     assert data["links"] == [{"rid": "SYS001", "fingerprint": expected_fp}]

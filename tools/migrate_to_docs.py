@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass
-from enum import Enum
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, List
 
-from app.core.model import Requirement, requirement_from_dict
+from app.core.model import (
+    Requirement,
+    requirement_fingerprint,
+    requirement_from_dict,
+    requirement_to_dict,
+)
 
 RULE_RE = re.compile(r"^label:([^=]+)=([^->]+)->([A-Z][A-Z0-9_]*)$")
 LEGACY_ID_RE = re.compile(
@@ -68,12 +72,9 @@ def _normalize_source(value: Any) -> str:
 def _serialize_requirement(req: Requirement) -> dict[str, Any]:
     """Convert ``req`` into JSON-serializable dictionary with all schema fields."""
 
-    data = asdict(req)
-    data.pop("doc_prefix", None)
-    data.pop("rid", None)
-    for key, value in list(data.items()):
-        if isinstance(value, Enum):
-            data[key] = value.value
+    data = requirement_to_dict(req)
+    if "links" not in data:
+        data["links"] = []
     return data
 
 
@@ -154,6 +155,7 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
 
     # Second pass: rewrite items and links
     items: list[tuple[str, int, dict]] = []
+    fingerprints: dict[str, str] = {}
     for info in parsed:
         statement = info["data"].get("statement")
         if statement is None:
@@ -185,7 +187,26 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
             rid=info["rid"],
         )
         item = _serialize_requirement(req)
+        fingerprints[info["rid"]] = requirement_fingerprint(item)
         items.append((info["prefix"], info["num"], item, info["fp"]))
+
+    # Populate link fingerprints and suspicion flags
+    for _prefix, _num, item, _fp in items:
+        links = item.get("links")
+        if not links:
+            continue
+        enriched: list[dict[str, Any]] = []
+        for raw in links:
+            entry = dict(raw)
+            rid = entry.get("rid")
+            fingerprint = None if rid is None else fingerprints.get(rid)
+            entry["fingerprint"] = fingerprint
+            entry["suspect"] = fingerprint is None
+            enriched.append(entry)
+        if enriched:
+            item["links"] = enriched
+        else:
+            item["links"] = []
 
     # Write new items and remove legacy files
     for prefix, num, item, fp in items:

@@ -8,7 +8,13 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import jsonpatch
 
-from ..model import Link, Requirement, requirement_fingerprint, requirement_from_dict, requirement_to_dict
+from ..model import (
+    Link,
+    Requirement,
+    requirement_fingerprint,
+    requirement_from_dict,
+    requirement_to_dict,
+)
 from ..search import filter_by_labels, filter_by_status, search
 from . import (
     Document,
@@ -165,26 +171,18 @@ def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
     docs = load_documents(root)
     from .links import validate_item_links  # local import to avoid cycle
 
-<<<<<codex/remove-redundant-names-in-files
-    validate_item_links(root, doc, data, docs)
-    directory_path = Path(directory)
-    item_id = int(data["id"])
-    path = item_path(directory_path, doc, item_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
-    legacy_path = directory_path / "items" / _legacy_item_filename(doc, item_id)
-    if legacy_path != path and legacy_path.exists():
-        legacy_path.unlink()
-====
     payload = dict(data)
     validate_item_links(root, doc, payload, docs)
     _prepare_links_for_storage(root, docs, payload)
-    path = item_path(directory, doc, int(payload["id"]))
+    directory_path = Path(directory)
+    item_id = int(payload["id"])
+    path = item_path(directory_path, doc, item_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2, sort_keys=True)
->>>>> m
+    legacy_path = directory_path / "items" / _legacy_item_filename(doc, item_id)
+    if legacy_path != path and legacy_path.exists():
+        legacy_path.unlink()
     return path
 
 

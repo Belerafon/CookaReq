@@ -14,21 +14,24 @@ from typing import Any, Callable, TextIO
 from app.confirm import confirm
 from app.core.doc_store import (
     Document,
+    DocumentNotFoundError,
+    ValidationError,
+    create_requirement,
+    delete_document,
+    delete_item,
     is_ancestor,
-    load_documents,
     iter_links,
     item_path,
     load_document,
+    load_documents,
     load_item,
     next_item_id,
     parse_rid,
+    plan_delete_document,
+    plan_delete_item,
     rid_for,
     save_document,
     save_item,
-    delete_document,
-    delete_item,
-    plan_delete_document,
-    plan_delete_item,
     validate_labels,
 )
 from app.core.model import (
@@ -141,11 +144,6 @@ def add_doc_arguments(p: argparse.ArgumentParser) -> None:
 
 def cmd_item_add(args: argparse.Namespace) -> None:
     """Create a new requirement item under a document."""
-    docs = load_documents(args.directory)
-    doc = docs.get(args.prefix)
-    if doc is None:
-        sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=args.prefix))
-        return
     base: dict[str, Any] = {}
     data_path = getattr(args, "data", None)
     if data_path:
@@ -155,10 +153,6 @@ def cmd_item_add(args: argparse.Namespace) -> None:
     labels_arg = getattr(args, "labels", None)
     if labels_arg is not None:
         labels = [t.strip() for t in labels_arg.split(",") if t.strip()]
-    err = validate_labels(args.prefix, labels, docs)
-    if err:
-        sys.stdout.write(_("{msg}\n").format(msg=err))
-        return
     links: list[str] = list(base.get("links", []))
     links_arg = getattr(args, "links", None)
     if links_arg:
@@ -167,9 +161,7 @@ def cmd_item_add(args: argparse.Namespace) -> None:
     attachments_arg = getattr(args, "attachments", None)
     if attachments_arg:
         attachments = json.loads(attachments_arg)
-    item_id = next_item_id(Path(args.directory) / args.prefix, doc)
-    data = {
-        "id": item_id,
+    payload: dict[str, Any] = {
         "title": getattr(args, "title", None) or base.get("title", ""),
         "statement": getattr(args, "statement", None) or base.get("statement", ""),
         "type": getattr(args, "type", None)
@@ -192,16 +184,24 @@ def cmd_item_add(args: argparse.Namespace) -> None:
         "modified_at": getattr(args, "modified_at", None) or base.get("modified_at", ""),
         "labels": labels,
         "attachments": attachments,
-        "revision": base.get("revision", 1),
         "approved_at": getattr(args, "approved_at", None)
         if getattr(args, "approved_at", None) is not None
         else base.get("approved_at"),
         "notes": getattr(args, "notes", None) or base.get("notes", ""),
         "links": links,
     }
-    doc_dir = Path(args.directory) / args.prefix
-    req = requirement_from_dict(data, doc_prefix=args.prefix, rid=rid_for(doc, item_id))
-    save_item(doc_dir, doc, requirement_to_dict(req))
+    if "revision" in base:
+        payload["revision"] = base.get("revision", 1)
+    try:
+        req = create_requirement(args.directory, prefix=args.prefix, data=payload)
+    except DocumentNotFoundError:
+        sys.stdout.write(
+            _("unknown document prefix: {prefix}\n").format(prefix=args.prefix)
+        )
+        return
+    except ValidationError as exc:
+        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
+        return
     sys.stdout.write(f"{req.rid}\n")
 
 

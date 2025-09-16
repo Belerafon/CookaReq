@@ -14,6 +14,7 @@ from ..settings import LLMSettings
 # реальных сетевых запросов.
 from ..telemetry import log_event
 from .spec import SYSTEM_PROMPT, TOOLS
+from .validation import validate_tool_call
 
 # When конфигурация не задаёт явное ограничение, используем консервативный
 # дефолт, чтобы не отдавать бесконечно длинные ответы и не зависеть от
@@ -135,6 +136,7 @@ class LLMClient:
                 tool_call = message.tool_calls[0]
                 name = tool_call.function.name
                 arguments = json.loads(tool_call.function.arguments or "{}")
+            arguments = validate_tool_call(name, arguments)
         except Exception as exc:  # pragma: no cover - network errors
             log_event(
                 "LLM_RESPONSE",

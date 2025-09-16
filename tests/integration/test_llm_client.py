@@ -125,7 +125,7 @@ def test_parse_command_uses_default_when_no_limit(tmp_path: Path, monkeypatch) -
                                 tool_calls=[
                                     SimpleNamespace(
                                         function=SimpleNamespace(
-                                            name="noop",
+                                            name="list_requirements",
                                             arguments="{}",
                                         )
                                     )
@@ -142,6 +142,6 @@ def test_parse_command_uses_default_when_no_limit(tmp_path: Path, monkeypatch) -
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = LLMClient(settings.llm)
     tool, args = client.parse_command("anything")
-    assert tool == "noop"
+    assert tool == "list_requirements"
     assert args == {}
     assert captured["max_output_tokens"] == DEFAULT_MAX_OUTPUT_TOKENS

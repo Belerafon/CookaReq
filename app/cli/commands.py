@@ -37,10 +37,12 @@ from app.core.document_store import (
     validate_labels,
 )
 from app.core.model import (
+    Link,
     Priority,
     RequirementType,
     Status,
     Verification,
+    requirement_fingerprint,
     requirement_from_dict,
     requirement_to_dict,
 )
@@ -202,7 +204,20 @@ def _resolve_links(
         return list(default)
     if not isinstance(base_value, list):
         raise ValidationError(_("links must be a list"))
-    return [str(token) for token in base_value]
+    resolved: list[str] = []
+    for entry in base_value:
+        if isinstance(entry, str):
+            token = entry.strip()
+            if token:
+                resolved.append(token)
+            continue
+        if isinstance(entry, Mapping):
+            rid = entry.get("rid")
+            if isinstance(rid, str) and rid.strip():
+                resolved.append(rid.strip())
+            continue
+        raise ValidationError(_("links must be a list"))
+    return resolved
 
 
 def _resolve_attachments(
@@ -534,6 +549,7 @@ def cmd_link(args: argparse.Namespace) -> None:
     except FileNotFoundError:
         sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
         return
+    parent_payloads: dict[str, dict] = {}
     for rid in args.parents:
         if rid == args.rid:
             sys.stdout.write(_("invalid link target: {rid}\n").format(rid=rid))
@@ -552,16 +568,24 @@ def cmd_link(args: argparse.Namespace) -> None:
         parent_dir = Path(args.directory) / parent_prefix
         parent_doc = docs[parent_prefix]
         try:
-            load_item(parent_dir, parent_doc, parent_id)
+            parent_data, _parent_mtime = load_item(parent_dir, parent_doc, parent_id)
         except FileNotFoundError:
             sys.stdout.write(_("linked item not found: {rid}\n").format(rid=rid))
             return
-    links = set(data.get("links", []))
+        parent_payloads[rid] = parent_data
+
+    req = requirement_from_dict(data, doc_prefix=doc.prefix, rid=args.rid)
+    existing_links = {link.rid: link for link in getattr(req, "links", [])}
     if args.replace:
-        links.clear()
-    links.update(args.parents)
-    data["links"] = sorted(links)
-    save_item(item_dir, doc, data)
+        existing_links.clear()
+    for rid, parent_data in parent_payloads.items():
+        existing_links[rid] = Link(
+            rid=rid,
+            fingerprint=requirement_fingerprint(parent_data),
+            suspect=False,
+        )
+    req.links = [existing_links[rid] for rid in sorted(existing_links)]
+    save_item(item_dir, doc, requirement_to_dict(req))
     sys.stdout.write(f"{args.rid}\n")
 
 

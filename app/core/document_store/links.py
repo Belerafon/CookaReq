@@ -4,11 +4,12 @@ import shutil
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from ..model import Requirement, requirement_from_dict, requirement_to_dict
+from ..model import Link, Requirement, requirement_fingerprint, requirement_from_dict, requirement_to_dict
 from . import Document, RevisionMismatchError, ValidationError
 from .documents import is_ancestor, load_documents
 from .items import (
     _ensure_documents,
+    _update_link_suspicions,
     _resolve_requirement,
     item_path,
     list_item_ids,
@@ -29,7 +30,14 @@ def validate_item_links(
         return
     if not isinstance(links, list):
         raise ValidationError("links must be a list")
-    for rid in links:
+    for entry in links:
+        try:
+            link = Link.from_raw(entry)
+        except TypeError as exc:
+            raise ValidationError(str(exc)) from exc
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+        rid = link.rid
         try:
             prefix, item_id = parse_rid(rid)
         except ValueError as exc:
@@ -56,7 +64,17 @@ def iter_links(root: str | Path) -> Iterable[tuple[str, str]]:
         for item_id in sorted(list_item_ids(directory, doc)):
             data, _ = load_item(directory, doc, item_id)
             rid = rid_for(doc, item_id)
-            for parent in sorted(data.get("links", [])):
+            raw_links = data.get("links")
+            if not isinstance(raw_links, list):
+                continue
+            parents: list[str] = []
+            for entry in raw_links:
+                try:
+                    link = Link.from_raw(entry)
+                except (TypeError, ValueError):  # pragma: no cover - defensive
+                    continue
+                parents.append(link.rid)
+            for parent in sorted(parents):
                 yield rid, parent
 
 
@@ -86,8 +104,16 @@ def plan_delete_item(
         for other_id in list_item_ids(dir_path, d):
             data, _ = load_item(dir_path, d, other_id)
             links = data.get("links")
-            if isinstance(links, list) and rid in links:
-                affected.append(rid_for(d, other_id))
+            if not isinstance(links, list):
+                continue
+            for entry in links:
+                try:
+                    link = Link.from_raw(entry)
+                except (TypeError, ValueError):  # pragma: no cover - defensive
+                    continue
+                if link.rid == rid:
+                    affected.append(rid_for(d, other_id))
+                    break
     return True, sorted(affected)
 
 
@@ -151,8 +177,22 @@ def delete_item(
         for other_id in list_item_ids(dir_path, d):
             data, _ = load_item(dir_path, d, other_id)
             links = data.get("links")
-            if isinstance(links, list) and rid in links:
-                data["links"] = [link for link in links if link != rid]
+            if not isinstance(links, list):
+                continue
+            changed = False
+            new_links: list[dict[str, Any]] = []
+            for entry in links:
+                try:
+                    link = Link.from_raw(entry)
+                except (TypeError, ValueError):  # pragma: no cover - defensive
+                    new_links.append(entry)
+                    continue
+                if link.rid == rid:
+                    changed = True
+                    continue
+                new_links.append(link.to_dict())
+            if changed:
+                data["links"] = new_links
                 save_item(dir_path, d, data)
     return True
 
@@ -203,9 +243,13 @@ def link_requirements(
     docs_map = _ensure_documents(root_path, docs)
 
     try:
-        source_prefix, _source_id, _source_doc, _source_dir, _ = _resolve_requirement(
-            root_path, source_rid, docs_map
-        )
+        (
+            source_prefix,
+            _source_id,
+            source_doc,
+            source_dir,
+            source_data,
+        ) = _resolve_requirement(root_path, source_rid, docs_map)
     except ValueError as exc:  # pragma: no cover - defensive
         raise ValidationError(str(exc)) from exc
 
@@ -228,16 +272,29 @@ def link_requirements(
     if current != expected_revision:
         raise RevisionMismatchError(expected_revision, current)
 
-    existing = data.get("links")
-    if existing is None:
-        existing_links: list[str] = []
-    elif isinstance(existing, list):
-        existing_links = [str(link) for link in existing]
-    else:  # pragma: no cover - defensive
-        raise ValidationError("links must be a list")
+    existing_raw = data.get("links")
+    existing_links: dict[str, Link] = {}
+    if existing_raw is not None:
+        if not isinstance(existing_raw, list):
+            raise ValidationError("links must be a list")
+        for entry in existing_raw:
+            try:
+                link = Link.from_raw(entry)
+            except (TypeError, ValueError) as exc:
+                raise ValidationError("invalid link entry") from exc
+            existing_links[link.rid] = link
+
+    new_link = Link(
+        rid=source_rid,
+        fingerprint=requirement_fingerprint(source_data),
+        suspect=False,
+    )
+    existing_links[source_rid] = new_link
 
     updated = dict(data)
-    updated["links"] = sorted(set(existing_links) | {source_rid})
+    updated_links = [link.to_dict() for link in existing_links.values()]
+    updated_links.sort(key=lambda item: item.get("rid", ""))
+    updated["links"] = updated_links
     revision_value = updated.get("revision", current)
     try:
         revision = int(revision_value)
@@ -248,5 +305,6 @@ def link_requirements(
     updated["revision"] = revision
 
     req = requirement_from_dict(updated, doc_prefix=derived_prefix, rid=derived_rid)
+    _update_link_suspicions(root_path, docs_map, req)
     save_item(derived_dir, derived_doc, requirement_to_dict(req))
     return req

@@ -4,11 +4,13 @@ import pytest
 
 from app.core.model import (
     Attachment,
+    Link,
     Priority,
     Requirement,
     RequirementType,
     Status,
     Verification,
+    requirement_fingerprint,
     requirement_from_dict,
     requirement_to_dict,
 )
@@ -107,6 +109,46 @@ def test_requirement_extended_roundtrip():
     assert again.notes == "extra"
     assert again.rationale == "because"
     assert again.assumptions == "if ready"
+
+
+def test_requirement_links_roundtrip():
+    req = Requirement(
+        id=1,
+        title="Parent",
+        statement="Statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        links=[Link(rid="SYS001", fingerprint="abc", suspect=True)],
+    )
+    data = requirement_to_dict(req)
+    assert data["links"] == [{"rid": "SYS001", "fingerprint": "abc", "suspect": True}]
+    again = requirement_from_dict(data)
+    assert len(again.links) == 1
+    assert again.links[0].rid == "SYS001"
+    assert again.links[0].fingerprint == "abc"
+    assert again.links[0].suspect is True
+
+
+def test_requirement_fingerprint_changes_on_text_update():
+    req = Requirement(
+        id=5,
+        title="Title",
+        statement="Alpha",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+    )
+    fp1 = requirement_fingerprint(req)
+    req.statement = "Beta"
+    fp2 = requirement_fingerprint(req)
+    assert fp1 != fp2
 
 
 def test_requirement_from_dict_missing_statement():

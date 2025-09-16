@@ -163,7 +163,7 @@ def test_delete_requirement_removes_links(tmp_path: Path):
     controller.delete_requirement("SYS", 1)
     assert not item_path(sys_dir, sys_doc, 1).exists()
     data2, _ = load_item(hlr_dir, hlr_doc, 1)
-    assert data2.get("links") == []
+    assert data2.get("links") in (None, [])
 
 
 def test_delete_document_recursively(tmp_path: Path):

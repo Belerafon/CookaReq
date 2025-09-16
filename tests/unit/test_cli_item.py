@@ -166,7 +166,8 @@ def test_item_move_merges_sources(tmp_path, capsys):
     assert data_new["attachments"] == [{"path": "cli.txt", "note": "cli"}]
     assert data_new["approved_at"] == "2024-03-02 00:00:00"
     assert data_new["notes"] == "Template notes"
-    assert data_new["links"] == ["SYS002", "SYS003"]
+    assert [entry["rid"] for entry in data_new["links"]] == ["SYS002", "SYS003"]
+    assert all(entry.get("fingerprint") for entry in data_new["links"])
     assert data_new["revision"] == 7
 
 
@@ -280,7 +281,8 @@ def test_item_add_merges_base_and_arguments(tmp_path, capsys):
     assert data["attachments"] == [{"path": "cli.txt", "note": "n"}]
     assert data["approved_at"] == "2024-02-01 00:00:00"
     assert data["notes"] == "Base notes"
-    assert data["links"] == ["SYS001", "SYS002"]
+    assert [entry["rid"] for entry in data["links"]] == ["SYS001", "SYS002"]
+    assert all(entry.get("fingerprint") for entry in data["links"])
     assert data["revision"] == 5
 
 
@@ -330,10 +332,16 @@ def test_item_delete_removes_links(tmp_path, capsys):
     out = capsys.readouterr().out.strip()
     assert out == "SYS001"
 
+<<<<< codex/remove-redundant-names-in-files
     assert not item_path(tmp_path / "SYS", doc_sys, 1).exists()
     hlr_path = item_path(tmp_path / "HLR", doc_hlr, 1)
     data = json.loads(hlr_path.read_text())
     assert data.get("links") == []
+=====
+    assert not (tmp_path / "SYS" / "items" / "SYS001.json").exists()
+    data = json.loads((tmp_path / "HLR" / "items" / "HLR01.json").read_text())
+    assert data.get("links") in (None, [])
+>>>>> main
 
 
 @pytest.mark.unit
@@ -362,9 +370,15 @@ def test_item_delete_dry_run_lists_links(tmp_path, capsys):
     out = capsys.readouterr().out.splitlines()
     assert out == ["SYS001", "HLR01"]
     # nothing removed or updated
+<<<< codex/remove-redundant-names-in-files
     assert item_path(tmp_path / "SYS", doc_sys, 1).exists()
     data = json.loads(item_path(tmp_path / "HLR", doc_hlr, 1).read_text())
     assert data.get("links") == ["SYS001"]
+====
+    assert (tmp_path / "SYS" / "items" / "SYS001.json").exists()
+    data = json.loads((tmp_path / "HLR" / "items" / "HLR01.json").read_text())
+    assert [entry["rid"] for entry in data.get("links", [])] == ["SYS001"]
+>>>> main
 
 
 def test_item_delete_requires_confirmation(tmp_path, capsys):

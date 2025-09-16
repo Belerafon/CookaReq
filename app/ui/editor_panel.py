@@ -30,6 +30,7 @@ from ..core.model import (
     RequirementType,
     Status,
     Verification,
+    requirement_fingerprint,
     requirement_from_dict,
     requirement_to_dict,
 )
@@ -417,7 +418,14 @@ class EditorPanel(ScrolledPanel):
         for link in links_list:
             src_rid = link["rid"]
             idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), src_rid)
-            list_ctrl.SetItem(idx, 1, "")
+            note = str(link.get("title", ""))
+            if link.get("suspect"):
+                warning = _("Suspect link")
+                note = f"⚠ {warning}" + (f" — {note}" if note else "")
+                list_ctrl.SetItemTextColour(idx, wx.RED)
+            else:
+                list_ctrl.SetItemTextColour(idx, wx.NullColour)
+            list_ctrl.SetItem(idx, 1, note)
 
     # basic operations -------------------------------------------------
     def set_directory(self, directory: str | Path | None) -> None:
@@ -494,7 +502,31 @@ class EditorPanel(ScrolledPanel):
             for name, ctrl in self.fields.items():
                 ctrl.ChangeValue(str(data.get(name, "")))
             self.attachments = list(data.get("attachments", []))
-            self.links = [{"rid": rid} for rid in data.get("links", [])]
+            raw_links = data.get("links", [])
+            parsed_links: list[dict[str, Any]] = []
+            if isinstance(raw_links, list):
+                for entry in raw_links:
+                    if isinstance(entry, dict):
+                        rid = str(entry.get("rid", "")).strip()
+                        if not rid:
+                            continue
+                        link_info: dict[str, Any] = {"rid": rid}
+                        fingerprint = entry.get("fingerprint")
+                        if isinstance(fingerprint, str) and fingerprint:
+                            link_info["fingerprint"] = fingerprint
+                        elif fingerprint not in (None, ""):
+                            link_info["fingerprint"] = str(fingerprint)
+                        else:
+                            link_info["fingerprint"] = None
+                        link_info["suspect"] = bool(entry.get("suspect", False))
+                        if "title" in entry and entry["title"]:
+                            link_info["title"] = str(entry["title"])
+                        parsed_links.append(link_info)
+                    elif isinstance(entry, str):
+                        rid = entry.strip()
+                        if rid:
+                            parsed_links.append({"rid": rid, "fingerprint": None, "suspect": False})
+            self.links = parsed_links
             self._rebuild_links_list("links")
             self.links_id.ChangeValue("")
             self._refresh_links_visibility("links")
@@ -606,7 +638,21 @@ class EditorPanel(ScrolledPanel):
             revision_ctrl.ChangeValue(str(revision))
         data["revision"] = revision
         if self.links:
-            data["links"] = [link["rid"] for link in self.links]
+            serialized_links: list[dict[str, Any]] = []
+            for link in self.links:
+                rid = str(link.get("rid", "")).strip()
+                if not rid:
+                    continue
+                entry: dict[str, Any] = {"rid": rid}
+                fingerprint = link.get("fingerprint")
+                if isinstance(fingerprint, str) and fingerprint:
+                    entry["fingerprint"] = fingerprint
+                suspect = bool(link.get("suspect", False))
+                if suspect:
+                    entry["suspect"] = True
+                serialized_links.append(entry)
+            if serialized_links:
+                data["links"] = serialized_links
         dt = self.approved_picker.GetValue()
         approved_at = dt.FormatISODate() if dt.IsValid() else None
         data["approved_at"] = approved_at
@@ -760,8 +806,9 @@ class EditorPanel(ScrolledPanel):
         except ValueError:
             wx.MessageBox(_("Invalid requirement ID"), _("Error"), style=wx.ICON_ERROR)
             return
-        revision = 1
+        revision = 1  # preserved for compatibility but unused afterwards
         title = ""
+        fingerprint = None
         if self.directory:
             try:
                 root = Path(self.directory).parent
@@ -769,9 +816,17 @@ class EditorPanel(ScrolledPanel):
                 data, _ = load_item(root / prefix, doc, item_id)
                 revision = int(data.get("revision", 1))
                 title = str(data.get("title", ""))
+                fingerprint = requirement_fingerprint(data)
             except Exception:  # pragma: no cover - lookup errors
                 logger.exception("Failed to load requirement %s", value)
-        links_list.append({"rid": value, "revision": revision, "suspect": False})
+        links_list.append(
+            {
+                "rid": value,
+                "fingerprint": fingerprint,
+                "suspect": False,
+                "title": title,
+            }
+        )
         idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), value)
         list_ctrl.SetItem(idx, 1, title)
         id_ctrl.ChangeValue("")

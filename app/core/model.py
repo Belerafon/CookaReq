@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Mapping
 
 from ..util.time import normalize_timestamp
 
@@ -75,7 +77,7 @@ class Requirement:
     revision: int = 1
     approved_at: str | None = None
     notes: str = ""
-    links: list[str] = field(default_factory=list)
+    links: list[Link] = field(default_factory=list)
     # document-related metadata
     doc_prefix: str = ""
     rid: str = ""
@@ -130,11 +132,18 @@ def requirement_from_dict(
     attachments = [Attachment(**a) for a in attachments_data]
 
     raw_links = data.get("links")
+    links: list[Link] = []
     if raw_links in (None, ""):
         raw_links = []
-    if raw_links and not isinstance(raw_links, list):
-        raise TypeError("links must be a list")
-    links = [str(link) for link in raw_links] if raw_links else []
+    if raw_links:
+        if not isinstance(raw_links, list):
+            raise TypeError("links must be a list")
+        for entry in raw_links:
+            try:
+                link = Link.from_raw(entry)
+            except (TypeError, ValueError) as exc:
+                raise TypeError("invalid link entry") from exc
+            links.append(link)
 
     labels_data = data.get("labels")
     if labels_data in (None, ""):
@@ -216,10 +225,102 @@ def requirement_to_dict(req: Requirement) -> dict[str, Any]:
     # ``doc_prefix`` and ``rid`` are derived from file location; omit
     data.pop("doc_prefix", None)
     data.pop("rid", None)
-    if not data.get("links"):
+    if data.get("links"):
+        links: list[dict[str, Any]] = []
+        for link in req.links:
+            if isinstance(link, Link):
+                links.append(link.to_dict())
+            else:  # pragma: no cover - defensive
+                links.append({"rid": str(link)})
+        if links:
+            data["links"] = links
+        else:
+            data.pop("links", None)
+    else:
         data.pop("links", None)
     for key in ("type", "status", "priority", "verification"):
         value = data.get(key)
         if isinstance(value, Enum):
             data[key] = value.value
     return data
+
+
+FINGERPRINT_FIELDS = (
+    "title",
+    "statement",
+    "conditions",
+    "rationale",
+    "assumptions",
+    "acceptance",
+)
+
+
+def _fingerprint_value(payload: Requirement | Mapping[str, Any], field: str) -> str:
+    if isinstance(payload, Mapping):
+        value = payload.get(field, "")
+    else:
+        value = getattr(payload, field, "")
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def requirement_fingerprint(payload: Requirement | Mapping[str, Any]) -> str:
+    """Compute fingerprint for ``payload`` based on key textual fields."""
+
+    data = {field: _fingerprint_value(payload, field) for field in FINGERPRINT_FIELDS}
+    serialized = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+@dataclass
+class Link:
+    """Represent relationship to a parent requirement."""
+
+    rid: str
+    fingerprint: str | None = None
+    suspect: bool = False
+
+    @classmethod
+    def from_raw(cls, raw: Any) -> "Link":
+        """Create :class:`Link` from ``raw`` representation."""
+
+        if isinstance(raw, str):
+            rid = raw.strip()
+            if not rid:
+                raise ValueError("link rid cannot be empty")
+            return cls(rid=rid)
+        if isinstance(raw, Mapping):
+            rid = raw.get("rid")
+            if not isinstance(rid, str) or not rid.strip():
+                raise ValueError("link entry missing rid")
+            rid = rid.strip()
+            fingerprint_raw = raw.get("fingerprint")
+            if fingerprint_raw in (None, ""):
+                fingerprint = None
+            elif isinstance(fingerprint_raw, str):
+                fingerprint = fingerprint_raw
+            else:
+                fingerprint = str(fingerprint_raw)
+            suspect_raw = raw.get("suspect", False)
+            if isinstance(suspect_raw, bool):
+                suspect = suspect_raw
+            elif isinstance(suspect_raw, (int, float)):
+                suspect = bool(suspect_raw)
+            elif isinstance(suspect_raw, str):
+                suspect = suspect_raw.strip().lower() in {"1", "true", "yes", "on"}
+            else:
+                suspect = bool(suspect_raw)
+            return cls(rid=rid, fingerprint=fingerprint, suspect=suspect)
+        raise TypeError("link entry must be a string or mapping")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return JSON-friendly representation of the link."""
+
+        data: dict[str, Any] = {"rid": self.rid}
+        if self.fingerprint:
+            data["fingerprint"] = self.fingerprint
+        if self.suspect:
+            data["suspect"] = self.suspect
+        return data
+

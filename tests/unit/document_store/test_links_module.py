@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-from app.core.document_store import Document, ValidationError
+from app.core.document_store import Document, ValidationError, get_requirement
 from app.core.document_store.documents import load_documents, save_document
 from app.core.document_store.items import load_item, save_item
 from app.core.document_store.links import (
@@ -16,6 +16,7 @@ from app.core.model import (
     Status,
     Priority,
     Verification,
+    requirement_fingerprint,
     requirement_to_dict,
 )
 
@@ -65,11 +66,17 @@ def test_validate_and_link(tmp_path: Path) -> None:
         expected_revision=1,
         docs=docs,
     )
-    assert linked.links == ["SYS001"]
+    assert len(linked.links) == 1
+    link_obj = linked.links[0]
+    assert link_obj.rid == "SYS001"
+    assert link_obj.suspect is False
+    assert isinstance(link_obj.fingerprint, str) and link_obj.fingerprint
     assert linked.revision == 1
 
     data, _ = load_item(tmp_path / "HLR", hlr_doc, 1)
-    assert data["links"] == ["SYS001"]
+    parent_data, _ = load_item(tmp_path / "SYS", sys_doc, 1)
+    expected_fp = requirement_fingerprint(parent_data)
+    assert data["links"] == [{"rid": "SYS001", "fingerprint": expected_fp}]
 
     exists, references = plan_delete_item(tmp_path, "SYS001", docs)
     assert exists is True
@@ -88,3 +95,43 @@ def test_validate_and_link(tmp_path: Path) -> None:
             expected_revision=1,
             docs=docs,
         )
+
+
+def test_link_becomes_suspect_after_parent_change(tmp_path: Path) -> None:
+    sys_doc = Document(prefix="SYS", title="System", digits=3)
+    hlr_doc = Document(prefix="HLR", title="High", digits=2, parent="SYS")
+    save_document(tmp_path / "SYS", sys_doc)
+    save_document(tmp_path / "HLR", hlr_doc)
+
+    save_item(tmp_path / "SYS", sys_doc, requirement_to_dict(_requirement(1)))
+    child_payload = requirement_to_dict(_requirement(2))
+    save_item(tmp_path / "HLR", hlr_doc, child_payload)
+
+    docs = load_documents(tmp_path)
+    linked = link_requirements(
+        tmp_path,
+        source_rid="SYS001",
+        derived_rid="HLR02",
+        link_type="parent",
+        expected_revision=1,
+        docs=docs,
+    )
+    assert linked.links[0].suspect is False
+
+    child_data, _ = load_item(tmp_path / "HLR", hlr_doc, 2)
+    stored_fp = child_data["links"][0]["fingerprint"]
+
+    parent_data, _ = load_item(tmp_path / "SYS", sys_doc, 1)
+    parent_data["statement"] = "Updated body"
+    new_fp = requirement_fingerprint(parent_data)
+    assert new_fp != stored_fp
+    save_item(tmp_path / "SYS", sys_doc, parent_data)
+
+    updated = get_requirement(tmp_path, "HLR02", docs=docs)
+    link_obj = updated.links[0]
+    assert link_obj.suspect is True
+    assert link_obj.fingerprint == stored_fp
+
+    serialized = requirement_to_dict(updated)
+    assert serialized["links"][0]["fingerprint"] == stored_fp
+    assert serialized["links"][0]["suspect"] is True

@@ -18,6 +18,7 @@ from app.core.document_store import (
     plan_delete_document,
     plan_delete_item,
 )
+from app.core.model import requirement_fingerprint
 
 pytestmark = pytest.mark.unit
 
@@ -76,7 +77,7 @@ def test_delete_item_removes_links(tmp_path: Path):
     assert not (tmp_path / "SYS" / "items" / "SYS001.json").exists()
     # link cleaned
     data, _ = load_item(tmp_path / "HLR", hlr_doc, 1)
-    assert data.get("links") == []
+    assert data.get("links") in (None, [])
 
 
 def test_delete_document_recursively(tmp_path: Path):
@@ -114,7 +115,9 @@ def test_plan_delete_item_lists_references(tmp_path: Path):
     # nothing removed
     assert (tmp_path / "SYS" / "items" / "SYS001.json").exists()
     data, _ = load_item(tmp_path / "HLR", hlr_doc, 1)
-    assert data.get("links") == ["SYS001"]
+    parent_data, _ = load_item(tmp_path / "SYS", sys_doc, 1)
+    expected_fp = requirement_fingerprint(parent_data)
+    assert data.get("links") == [{"rid": "SYS001", "fingerprint": expected_fp}]
 
 
 def test_plan_delete_document_lists_subtree(tmp_path: Path):

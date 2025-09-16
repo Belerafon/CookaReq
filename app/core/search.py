@@ -122,7 +122,8 @@ def filter_has_derived(
     sources: set[str] = set()
     for req in all_requirements:
         for parent in getattr(req, "links", []):
-            sources.add(parent)
+            parent_rid = getattr(parent, "rid", parent)
+            sources.add(str(parent_rid))
 
     result: list[Requirement] = []
     for req in reqs:

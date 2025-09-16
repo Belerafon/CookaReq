@@ -403,7 +403,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             derived_map = {}
             for req in requirements:
                 for parent in getattr(req, "links", []):
-                    derived_map.setdefault(parent, []).append(req.id)
+                    parent_rid = getattr(parent, "rid", parent)
+                    derived_map.setdefault(parent_rid, []).append(req.id)
         self.derived_map = derived_map
         self._refresh()
 
@@ -530,7 +531,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     continue
                 if field == "links":
                     links = getattr(req, "links", [])
-                    value = ", ".join(str(l) for l in links)
+                    formatted: list[str] = []
+                    for link in links:
+                        rid = getattr(link, "rid", str(link))
+                        if getattr(link, "suspect", False):
+                            formatted.append(f"{rid} ⚠")
+                        else:
+                            formatted.append(str(rid))
+                    value = ", ".join(formatted)
                     self.list.SetItem(index, col, value)
                     continue
                 if field == "derived_count":
@@ -564,7 +572,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         derived_map: dict[str, list[int]] = {}
         for req in requirements:
             for parent in getattr(req, "links", []):
-                derived_map.setdefault(parent, []).append(req.id)
+                parent_rid = getattr(parent, "rid", parent)
+                derived_map.setdefault(parent_rid, []).append(req.id)
         self.derived_map = derived_map
         self._refresh()
 

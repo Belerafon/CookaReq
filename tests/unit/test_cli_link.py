@@ -6,6 +6,7 @@ import pytest
 
 from app.cli import commands
 from app.core.document_store import Document, save_document, save_item
+from app.core.model import requirement_fingerprint
 
 
 @pytest.mark.unit
@@ -27,7 +28,10 @@ def test_link_add(tmp_path, capsys):
 
     path = Path(tmp_path) / "HLR" / "items" / "HLR01.json"
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["links"] == ["SYS001"]
+    parent_path = Path(tmp_path) / "SYS" / "items" / "SYS001.json"
+    parent_data = json.loads(parent_path.read_text(encoding="utf-8"))
+    expected_fp = requirement_fingerprint(parent_data)
+    assert data["links"] == [{"rid": "SYS001", "fingerprint": expected_fp}]
 
 
 @pytest.mark.unit
@@ -50,7 +54,7 @@ def test_link_rejects_self_link(tmp_path, capsys):
 
     path = Path(tmp_path) / "SYS" / "items" / "SYS001.json"
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["links"] == []
+    assert data.get("links") in (None, [])
 
 
 @pytest.mark.unit
@@ -74,4 +78,4 @@ def test_link_rejects_non_ancestor(tmp_path, capsys):
 
     path = Path(tmp_path) / "HLR" / "items" / "HLR01.json"
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data.get("links") == []
+    assert data.get("links") in (None, [])

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from collections.abc import Sequence
 from typing import Any, Callable, Mapping
 
 from ..confirm import confirm as default_confirm
@@ -74,7 +75,12 @@ class LocalAgent:
         return await asyncio.to_thread(self._mcp.check_tools)
 
     # ------------------------------------------------------------------
-    def run_command(self, text: str) -> dict[str, Any]:
+    def run_command(
+        self,
+        text: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Use the LLM to parse *text* and execute the resulting tool call.
 
         Returns a dictionary following the same ``{"ok": bool, "error": ...}``
@@ -82,7 +88,7 @@ class LocalAgent:
         """
 
         try:
-            name, arguments = self._llm.parse_command(text)
+            name, arguments = self._llm.parse_command(text, history=history)
             arguments = validate_tool_call(name, arguments)
         except Exception as exc:
             err = exception_to_mcp_error(exc)["error"]
@@ -90,11 +96,16 @@ class LocalAgent:
             return {"ok": False, "error": err}
         return self._mcp.call_tool(name, arguments)
 
-    async def run_command_async(self, text: str) -> dict[str, Any]:
+    async def run_command_async(
+        self,
+        text: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Asynchronous variant of :meth:`run_command`."""
 
         try:
-            name, arguments = await self._parse_command_async(text)
+            name, arguments = await self._parse_command_async(text, history=history)
             arguments = validate_tool_call(name, arguments)
         except Exception as exc:
             err = exception_to_mcp_error(exc)["error"]
@@ -103,14 +114,18 @@ class LocalAgent:
         return await self._call_tool_async(name, arguments)
 
     # ------------------------------------------------------------------
-    async def _parse_command_async(self, text: str) -> tuple[str, Mapping[str, Any]]:
+    async def _parse_command_async(
+        self,
+        text: str,
+        history: Sequence[Mapping[str, Any]] | None = None,
+    ) -> tuple[str, Mapping[str, Any]]:
         method = getattr(self._llm, "parse_command_async", None)
         if method is not None:
-            result = method(text)
+            result = method(text, history=history)
             if inspect.isawaitable(result):
                 return await result
             return result
-        return await asyncio.to_thread(self._llm.parse_command, text)
+        return await asyncio.to_thread(self._llm.parse_command, text, history=history)
 
     async def _call_tool_async(
         self, name: str, arguments: Mapping[str, Any]

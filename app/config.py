@@ -9,7 +9,7 @@ from typing import Any, Callable, Generic, Literal, Protocol, TypeVar
 
 import wx
 
-from .llm.constants import DEFAULT_MAX_OUTPUT_TOKENS
+from .llm.constants import DEFAULT_MAX_CONTEXT_TOKENS, DEFAULT_MAX_OUTPUT_TOKENS
 from .settings import AppSettings, LLMSettings, MCPSettings, UISettings
 
 
@@ -115,6 +115,7 @@ ConfigFieldName = Literal[
     "llm_api_key",
     "llm_max_retries",
     "llm_max_output_tokens",
+    "llm_max_context_tokens",
     "llm_timeout_minutes",
     "llm_stream",
     "sort_column",
@@ -221,6 +222,11 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         key="llm_max_output_tokens",
         value_type=int,
         default=DEFAULT_MAX_OUTPUT_TOKENS,
+    ),
+    "llm_max_context_tokens": FieldSpec(
+        key="llm_max_context_tokens",
+        value_type=int,
+        default=DEFAULT_MAX_CONTEXT_TOKENS,
     ),
     "llm_timeout_minutes": FieldSpec(
         key="llm_timeout_minutes",
@@ -538,6 +544,7 @@ class ConfigManager:
             api_key=self.get_value("llm_api_key"),
             max_retries=self.get_value("llm_max_retries"),
             max_output_tokens=self.get_value("llm_max_output_tokens"),
+            max_context_tokens=self.get_value("llm_max_context_tokens"),
             timeout_minutes=self.get_value("llm_timeout_minutes"),
             stream=self.get_value("llm_stream"),
         )
@@ -550,6 +557,7 @@ class ConfigManager:
         self.set_value("llm_api_key", settings.api_key)
         self.set_value("llm_max_retries", settings.max_retries)
         self.set_value("llm_max_output_tokens", settings.max_output_tokens)
+        self.set_value("llm_max_context_tokens", settings.max_context_tokens)
         self.set_value("llm_timeout_minutes", settings.timeout_minutes)
         self.set_value("llm_stream", settings.stream)
         self.flush()

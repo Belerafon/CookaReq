@@ -3,7 +3,12 @@
 import pytest
 
 from app.config import ConfigManager, DEFAULT_LIST_COLUMNS
-from app.llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
+from app.llm.constants import (
+    DEFAULT_MAX_CONTEXT_TOKENS,
+    DEFAULT_MAX_OUTPUT_TOKENS,
+    MIN_MAX_CONTEXT_TOKENS,
+    MIN_MAX_OUTPUT_TOKENS,
+)
 from app.settings import AppSettings, LLMSettings, MCPSettings, UISettings
 
 pytestmark = pytest.mark.unit
@@ -57,6 +62,7 @@ def _recent_dirs_factory(tmp_path):
         ("mcp_auto_start", True),
         ("mcp_port", 59362),
         ("llm_max_output_tokens", DEFAULT_MAX_OUTPUT_TOKENS),
+        ("llm_max_context_tokens", DEFAULT_MAX_CONTEXT_TOKENS),
         ("sort_column", -1),
         ("sort_ascending", True),
         ("log_shown", False),
@@ -100,6 +106,12 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
             _const(8192),
             _const(8192),
             id="llm_max_output_tokens-custom",
+        ),
+        pytest.param(
+            "llm_max_context_tokens",
+            _const(DEFAULT_MAX_CONTEXT_TOKENS + 2048),
+            _const(DEFAULT_MAX_CONTEXT_TOKENS + 2048),
+            id="llm_max_context_tokens",
         ),
         pytest.param("llm_timeout_minutes", _const(12), _const(12), id="llm_timeout"),
         pytest.param("llm_stream", _const(True), _const(True), id="llm_stream"),
@@ -217,6 +229,7 @@ def test_app_settings_round_trip(tmp_path, wx_app):
             api_key="k",
             max_retries=2,
             max_output_tokens=2000,
+            max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS + 1024,
             timeout_minutes=42,
             stream=False,
         ),
@@ -262,6 +275,26 @@ def test_get_llm_settings_enforces_min(tmp_path, wx_app):
 
     settings = cfg.get_llm_settings()
     assert settings.max_output_tokens == MIN_MAX_OUTPUT_TOKENS
+
+
+def test_get_llm_settings_normalises_context_zero(tmp_path, wx_app):
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
+
+    cfg.set_value("llm_max_context_tokens", 0)
+    cfg.flush()
+
+    settings = cfg.get_llm_settings()
+    assert settings.max_context_tokens == DEFAULT_MAX_CONTEXT_TOKENS
+
+
+def test_get_llm_settings_enforces_context_min(tmp_path, wx_app):
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
+
+    cfg.set_value("llm_max_context_tokens", 1024)
+    cfg.flush()
+
+    settings = cfg.get_llm_settings()
+    assert settings.max_context_tokens == MIN_MAX_CONTEXT_TOKENS
 
 
 def test_sort_settings_round_trip(tmp_path, wx_app):

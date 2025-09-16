@@ -5,11 +5,15 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ..settings import LLMSettings
-from .constants import DEFAULT_MAX_OUTPUT_TOKENS
+from .constants import (
+    DEFAULT_MAX_CONTEXT_TOKENS,
+    DEFAULT_MAX_OUTPUT_TOKENS,
+    MIN_MAX_CONTEXT_TOKENS,
+)
 
 # ``OpenAI`` импортируется динамически в конструкторе, чтобы тесты могли
 # подменять ``openai.OpenAI`` до первого использования и тем самым избежать
@@ -55,7 +59,12 @@ class LLMClient:
         return await asyncio.to_thread(self._check_llm)
 
     # ------------------------------------------------------------------
-    def parse_command(self, text: str) -> tuple[str, Mapping[str, Any]]:
+    def parse_command(
+        self,
+        text: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+    ) -> tuple[str, Mapping[str, Any]]:
         """Use the LLM to turn *text* into an MCP tool call.
 
         The model is instructed to choose exactly one of the predefined tools
@@ -63,12 +72,17 @@ class LLMClient:
         set to ``0`` to keep the output deterministic.
         """
 
-        return self._parse_command(text)
+        return self._parse_command(text, history=history)
 
-    async def parse_command_async(self, text: str) -> tuple[str, Mapping[str, Any]]:
+    async def parse_command_async(
+        self,
+        text: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+    ) -> tuple[str, Mapping[str, Any]]:
         """Asynchronous counterpart to :meth:`parse_command`."""
 
-        return await asyncio.to_thread(self._parse_command, text)
+        return await asyncio.to_thread(self._parse_command, text, history=history)
 
     # ------------------------------------------------------------------
     def _check_llm(self) -> dict[str, Any]:
@@ -107,18 +121,21 @@ class LLMClient:
         return {"ok": True}
 
     # ------------------------------------------------------------------
-    def _parse_command(self, text: str) -> tuple[str, Mapping[str, Any]]:
+    def _parse_command(
+        self,
+        text: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+    ) -> tuple[str, Mapping[str, Any]]:
         """Implementation shared by sync and async ``parse_command`` variants."""
 
         max_output_tokens = self._resolved_max_output_tokens()
+        messages = self._build_messages(text, history)
         payload = {
             "base_url": self.settings.base_url,
             "model": self.settings.model,
             "api_key": self.settings.api_key,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": text},
-            ],
+            "messages": messages,
             "tools": TOOLS,
             "tool_choice": "required",
             "temperature": 0,
@@ -131,7 +148,7 @@ class LLMClient:
         try:
             completion = self._client.chat.completions.create(
                 model=self.settings.model,
-                messages=payload["messages"],
+                messages=messages,
                 tools=payload["tools"],
                 tool_choice="required",
                 temperature=0,
@@ -180,3 +197,99 @@ class LLMClient:
         if limit is None or limit <= 0:
             return DEFAULT_MAX_OUTPUT_TOKENS
         return limit
+
+    def _resolved_max_context_tokens(self) -> int:
+        """Return an explicit prompt context cap for requests."""
+
+        limit = getattr(self.settings, "max_context_tokens", None)
+        if limit is None or limit <= 0:
+            return DEFAULT_MAX_CONTEXT_TOKENS
+        if limit < MIN_MAX_CONTEXT_TOKENS:
+            return MIN_MAX_CONTEXT_TOKENS
+        return limit
+
+    @staticmethod
+    def _count_tokens(text: str) -> int:
+        """Very simple whitespace-based token counter."""
+
+        if not text:
+            return 0
+        return len(text.split())
+
+    def _build_messages(
+        self,
+        text: str,
+        history: Sequence[Mapping[str, Any]] | None,
+    ) -> list[dict[str, str]]:
+        sanitized_history = self._prepare_history(history)
+        limit = self._resolved_max_context_tokens()
+        reserved = self._count_tokens(SYSTEM_PROMPT) + self._count_tokens(text)
+        remaining = max(limit - reserved, 0)
+        trimmed_history, dropped_messages, dropped_tokens = self._trim_history(
+            sanitized_history,
+            remaining_tokens=remaining,
+        )
+        if dropped_messages:
+            log_event(
+                "LLM_CONTEXT_TRIMMED",
+                {
+                    "dropped_messages": dropped_messages,
+                    "dropped_tokens": dropped_tokens,
+                },
+            )
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            *trimmed_history,
+            {"role": "user", "content": text},
+        ]
+        return messages
+
+    def _prepare_history(
+        self,
+        history: Sequence[Mapping[str, Any]] | None,
+    ) -> list[dict[str, str]]:
+        if not history:
+            return []
+        sanitized: list[dict[str, str]] = []
+        for message in history:
+            if isinstance(message, Mapping):
+                role = message.get("role")
+                content = message.get("content")
+            else:  # pragma: no cover - defensive for duck typing
+                role = getattr(message, "role", None)
+                content = getattr(message, "content", None)
+            if role not in {"user", "assistant"}:
+                continue
+            sanitized.append(
+                {
+                    "role": str(role),
+                    "content": "" if content is None else str(content),
+                }
+            )
+        return sanitized
+
+    def _trim_history(
+        self,
+        history: list[dict[str, str]],
+        *,
+        remaining_tokens: int,
+    ) -> tuple[list[dict[str, str]], int, int]:
+        if not history:
+            return [], 0, 0
+        total_tokens = sum(self._count_tokens(msg["content"]) for msg in history)
+        if remaining_tokens <= 0:
+            return [], len(history), total_tokens
+
+        kept_rev: list[dict[str, str]] = []
+        kept_tokens = 0
+        for message in reversed(history):
+            tokens = self._count_tokens(message["content"])
+            if tokens > remaining_tokens:
+                break
+            kept_rev.append(message)
+            kept_tokens += tokens
+            remaining_tokens -= tokens
+        kept = list(reversed(kept_rev))
+        dropped_messages = len(history) - len(kept)
+        dropped_tokens = total_tokens - kept_tokens
+        return kept, dropped_messages, dropped_tokens

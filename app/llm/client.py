@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import Mapping
@@ -45,6 +46,34 @@ class LLMClient:
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
         """Perform a minimal request to verify connectivity."""
+
+        return self._check_llm()
+
+    async def check_llm_async(self) -> dict[str, Any]:
+        """Asynchronous counterpart to :meth:`check_llm`."""
+
+        return await asyncio.to_thread(self._check_llm)
+
+    # ------------------------------------------------------------------
+    def parse_command(self, text: str) -> tuple[str, Mapping[str, Any]]:
+        """Use the LLM to turn *text* into an MCP tool call.
+
+        The model is instructed to choose exactly one of the predefined tools
+        and provide JSON arguments for it via function calling.  Temperature is
+        set to ``0`` to keep the output deterministic.
+        """
+
+        return self._parse_command(text)
+
+    async def parse_command_async(self, text: str) -> tuple[str, Mapping[str, Any]]:
+        """Asynchronous counterpart to :meth:`parse_command`."""
+
+        return await asyncio.to_thread(self._parse_command, text)
+
+    # ------------------------------------------------------------------
+    def _check_llm(self) -> dict[str, Any]:
+        """Implementation shared by sync and async ``check_llm`` variants."""
+
         max_output_tokens = self._resolved_max_output_tokens()
         payload = {
             "base_url": self.settings.base_url,
@@ -78,13 +107,8 @@ class LLMClient:
         return {"ok": True}
 
     # ------------------------------------------------------------------
-    def parse_command(self, text: str) -> tuple[str, Mapping[str, Any]]:
-        """Use the LLM to turn *text* into an MCP tool call.
-
-        The model is instructed to choose exactly one of the predefined tools
-        and provide JSON arguments for it via function calling.  Temperature is
-        set to ``0`` to keep the output deterministic.
-        """
+    def _parse_command(self, text: str) -> tuple[str, Mapping[str, Any]]:
+        """Implementation shared by sync and async ``parse_command`` variants."""
 
         max_output_tokens = self._resolved_max_output_tokens()
         payload = {

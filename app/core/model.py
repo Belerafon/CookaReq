@@ -93,14 +93,7 @@ def requirement_from_dict(
     """
     required = [
         "id",
-        "title",
         "statement",
-        "type",
-        "status",
-        "owner",
-        "priority",
-        "source",
-        "verification",
     ]
     for field in required:
         if field not in data:
@@ -110,46 +103,103 @@ def requirement_from_dict(
         if field in data:
             raise KeyError(f"unsupported field: {field}")
 
-    attachments_data = data.get("attachments", [])
+    def _enum_value(field: str, enum_cls: type[Enum], default: Enum) -> Enum:
+        value = data.get(field, default)
+        if isinstance(value, enum_cls):
+            return value
+        if value in (None, ""):
+            return default
+        try:
+            return enum_cls(value)
+        except ValueError as exc:
+            raise ValueError(f"invalid {field}: {value}") from exc
+
+    def _text_value(field: str, default: str = "") -> str:
+        value = data.get(field, default)
+        if value is None:
+            return default
+        if isinstance(value, str):
+            return value
+        return str(value)
+
+    attachments_data = data.get("attachments")
+    if attachments_data in (None, ""):
+        attachments_data = []
     if not isinstance(attachments_data, list):
         raise TypeError("attachments must be a list")
     attachments = [Attachment(**a) for a in attachments_data]
 
-    raw_links = data.get("links", [])
-    if raw_links is not None and not isinstance(raw_links, list):
+    raw_links = data.get("links")
+    if raw_links in (None, ""):
+        raw_links = []
+    if raw_links and not isinstance(raw_links, list):
         raise TypeError("links must be a list")
     links = [str(link) for link in raw_links] if raw_links else []
 
-    labels_data = data.get("labels", [])
-    if labels_data is not None and not isinstance(labels_data, list):
-        raise TypeError("labels must be a list")
-    labels = list(labels_data or [])
+    labels_data = data.get("labels")
+    if labels_data in (None, ""):
+        labels = []
+    else:
+        if not isinstance(labels_data, list):
+            raise TypeError("labels must be a list")
+        labels = list(labels_data)
+
+    try:
+        req_id = int(data["id"])
+    except (TypeError, ValueError) as exc:
+        raise TypeError("id must be an integer") from exc
+
+    statement = data["statement"]
+    if statement is None:
+        raise TypeError("statement cannot be null")
+    if not isinstance(statement, str):
+        statement = str(statement)
+
+    title = _text_value("title")
+
+    owner = _text_value("owner")
+    source = _text_value("source")
+    conditions = _text_value("conditions")
+    rationale = _text_value("rationale")
+    assumptions = _text_value("assumptions")
+    version = _text_value("version")
+    notes = _text_value("notes")
+
+    acceptance = data.get("acceptance")
+
+    revision_raw = data.get("revision", 1)
+    try:
+        revision = int(revision_raw)
+    except (TypeError, ValueError) as exc:
+        raise TypeError("revision must be an integer") from exc
+
+    modified_at = normalize_timestamp(data.get("modified_at"))
+    approved_raw = data.get("approved_at")
+    approved_at = normalize_timestamp(approved_raw) if approved_raw else None
 
     return Requirement(
-        id=data["id"],
-        title=data["title"],
-        statement=data["statement"],
-        type=RequirementType(data["type"]),
-        status=Status(data["status"]),
-        owner=data["owner"],
-        priority=Priority(data["priority"]),
-        source=data["source"],
-        verification=Verification(data["verification"]),
-        acceptance=data.get("acceptance"),
-        conditions=data.get("conditions", ""),
-        rationale=data.get("rationale", ""),
-        assumptions=data.get("assumptions", ""),
-        version=data.get("version", ""),
-        modified_at=normalize_timestamp(data.get("modified_at")),
+        id=req_id,
+        title=title,
+        statement=statement,
+        type=_enum_value("type", RequirementType, RequirementType.REQUIREMENT),
+        status=_enum_value("status", Status, Status.DRAFT),
+        owner=owner,
+        priority=_enum_value("priority", Priority, Priority.MEDIUM),
+        source=source,
+        verification=_enum_value(
+            "verification", Verification, Verification.ANALYSIS
+        ),
+        acceptance=acceptance,
+        conditions=conditions,
+        rationale=rationale,
+        assumptions=assumptions,
+        version=version,
+        modified_at=modified_at,
         labels=labels,
         attachments=attachments,
-        revision=data.get("revision", 1),
-        approved_at=(
-            normalize_timestamp(data.get("approved_at"))
-            if data.get("approved_at")
-            else None
-        ),
-        notes=data.get("notes", ""),
+        revision=revision,
+        approved_at=approved_at,
+        notes=notes,
         links=links,
         doc_prefix=doc_prefix,
         rid=rid,

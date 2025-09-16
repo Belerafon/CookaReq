@@ -42,6 +42,16 @@ class RevisionMismatchError(RequirementError):
         super().__init__(f"revision mismatch: expected {expected}, have {actual}")
 
 
+class RequirementIDCollisionError(RequirementError):
+    """Raised when attempting to reuse an existing requirement identifier."""
+
+    def __init__(self, doc_prefix: str, req_id: int, *, rid: str | None = None) -> None:
+        self.doc_prefix = doc_prefix
+        self.req_id = req_id
+        self.rid = rid or f"{doc_prefix}{req_id}"
+        super().__init__(f"requirement {self.rid} already exists")
+
+
 @dataclass
 class LabelDef:
     """Definition of a label available to document items."""
@@ -122,6 +132,7 @@ __all__ = [
     "DocumentNotFoundError",
     "RequirementNotFoundError",
     "RevisionMismatchError",
+    "RequirementIDCollisionError",
     "LabelDef",
     "DocumentLabels",
     "Document",

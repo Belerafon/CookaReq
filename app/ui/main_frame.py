@@ -11,7 +11,12 @@ from ..agent import LocalAgent
 from ..config import ConfigManager
 from ..confirm import confirm
 from ..core.model import Requirement
-from ..core.document_store import Document, LabelDef, save_document
+from ..core.document_store import (
+    Document,
+    LabelDef,
+    RequirementIDCollisionError,
+    save_document,
+)
 from ..i18n import _
 from ..log import logger
 from ..mcp.controller import MCPController
@@ -642,6 +647,8 @@ class MainFrame(wx.Frame):
             self.editor.save(
                 self.current_dir / self.current_doc_prefix, doc=doc
             )
+        except RequirementIDCollisionError:
+            return
         except Exception as exc:  # pragma: no cover - GUI event
             wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
             return

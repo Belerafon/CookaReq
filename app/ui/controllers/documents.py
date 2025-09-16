@@ -8,11 +8,13 @@ from typing import Dict, Iterable, Tuple
 from ...core.document_store import (
     Document,
     LabelDef,
+    RequirementIDCollisionError,
     collect_label_defs,
     iter_links as doc_iter_links,
     load_documents,
     list_item_ids,
     load_item,
+    parse_rid,
     save_document,
     save_item,
     rid_for,
@@ -68,6 +70,55 @@ class DocumentsController:
 
         return collect_label_defs(prefix, self.documents)
 
+    # helpers ---------------------------------------------------------
+    @staticmethod
+    def _parse_original_id(doc: Document, rid: str | None) -> int | None:
+        if not rid:
+            return None
+        try:
+            prefix, item_id = parse_rid(rid)
+        except ValueError:
+            return None
+        if prefix != doc.prefix:
+            return None
+        return item_id
+
+    def _ensure_unique_id(
+        self,
+        prefix: str,
+        doc: Document,
+        req: Requirement,
+        *,
+        original_id: int | None = None,
+        original_rid: str | None = None,
+    ) -> None:
+        directory = self.root / prefix
+        existing_ids = set(list_item_ids(directory, doc))
+        if original_id is not None:
+            existing_ids.discard(original_id)
+        if req.id in existing_ids:
+            raise RequirementIDCollisionError(prefix, req.id, rid=rid_for(doc, req.id))
+
+        target_rid = original_rid or ""
+        for existing in self.model.get_all():
+            existing_prefix = getattr(existing, "doc_prefix", prefix) or prefix
+            if existing_prefix != prefix:
+                continue
+            if existing is req:
+                continue
+            existing_rid = getattr(existing, "rid", "") or rid_for(doc, existing.id)
+            if target_rid and existing_rid == target_rid:
+                continue
+            if (
+                original_id is not None
+                and req.id == original_id
+                and existing.id == original_id
+                and existing_rid == target_rid
+            ):
+                continue
+            if existing.id == req.id:
+                raise RequirementIDCollisionError(prefix, req.id, rid=rid_for(doc, req.id))
+
     # requirement operations -----------------------------------------
     def next_item_id(self, prefix: str) -> int:
         """Return next available requirement id for document ``prefix``."""
@@ -79,6 +130,7 @@ class DocumentsController:
         """Add ``req`` to the in-memory model for document ``prefix``."""
 
         doc = self.documents[prefix]
+        self._ensure_unique_id(prefix, doc, req)
         req.doc_prefix = prefix
         req.rid = rid_for(doc, req.id)
         self.model.add(req)
@@ -87,6 +139,15 @@ class DocumentsController:
         """Persist ``req`` within document ``prefix`` and return file path."""
 
         doc = self.documents[prefix]
+        original_rid = getattr(req, "rid", "")
+        original_id = self._parse_original_id(doc, original_rid)
+        self._ensure_unique_id(
+            prefix,
+            doc,
+            req,
+            original_id=original_id,
+            original_rid=original_rid,
+        )
         req.doc_prefix = prefix
         req.rid = rid_for(doc, req.id)
         data = requirement_to_dict(req)

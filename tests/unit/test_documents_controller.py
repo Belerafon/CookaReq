@@ -7,6 +7,7 @@ from app.core.document_store import (
     Document,
     DocumentLabels,
     LabelDef,
+    RequirementIDCollisionError,
     load_document,
     save_document,
     save_item,
@@ -88,6 +89,42 @@ def test_next_id_save_and_delete(tmp_path: Path):
 
     controller.delete_requirement("SYS", req.id)
     assert not path.exists()
+
+
+def test_add_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System", digits=3)
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    save_item(doc_dir, doc, requirement_to_dict(_req(1)))
+
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    controller.load_items("SYS")
+
+    duplicate = _req(1)
+    with pytest.raises(RequirementIDCollisionError):
+        controller.add_requirement("SYS", duplicate)
+
+
+def test_save_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System", digits=3)
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    save_item(doc_dir, doc, requirement_to_dict(_req(1)))
+    save_item(doc_dir, doc, requirement_to_dict(_req(2)))
+
+    model = RequirementModel()
+    controller = DocumentsController(tmp_path, model)
+    controller.load_documents()
+    controller.load_items("SYS")
+
+    existing = model.get_all()[0]
+    assert existing.id == 1
+    existing.id = 2
+
+    with pytest.raises(RequirementIDCollisionError):
+        controller.save_requirement("SYS", existing)
 
 
 def test_iter_links(tmp_path: Path):

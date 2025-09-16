@@ -15,7 +15,7 @@ def test_command_dialog_shows_result_and_saves_history(tmp_path, wx_app):
 
     class DummyLLM:
         def parse_command(self, text):
-            return "tool", {"a": 1}
+            return "list_requirements", {"per_page": 1}
 
     class DummyMCP:
         def call_tool(self, name, arguments):
@@ -50,7 +50,7 @@ def test_command_dialog_shows_error(tmp_path, wx_app):
 
     class DummyLLM:
         def parse_command(self, text):
-            return "tool", {}
+            return "list_requirements", {}
 
     class DummyMCP:
         def call_tool(self, name, arguments):

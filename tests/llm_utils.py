@@ -40,13 +40,15 @@ def make_openai_mock(responses: dict[str, tuple[str, dict] | Exception]):
 
     Это позволит детерминированно эмулировать ответ LLM без сетевых
     запросов. Для простых ping-запросов достаточно указать ключ ``"ping"``
-    c произвольным значением, например ``("noop", {})``.
+    c произвольным значением, например ``("noop", {})``. Если подходящего
+    ключа нет, мок возвращает валидный по MCP контракту вызов
+    ``list_requirements`` с пустыми аргументами.
     """
 
     class _Completions:
         def create(self, *, model, messages, tools=None, **kwargs):
             user_msg = messages[-1]["content"]
-            result = responses.get(user_msg, ("noop", {}))
+            result = responses.get(user_msg, ("list_requirements", {}))
             if isinstance(result, Exception):
                 raise result
             name, args = result

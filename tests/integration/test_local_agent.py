@@ -33,7 +33,7 @@ class DummyMCP:
 
 class DummyLLM:
     def parse_command(self, text: str):
-        return "some_tool", {}
+        return "list_requirements", {}
 
 
 def test_check_llm_and_check_tools_propagate_errors():
@@ -58,6 +58,50 @@ def test_run_command_propagates_mcp_exception():
         agent.run_command("text")
 
 
+def test_run_command_rejects_unknown_tool():
+    class StubLLM:
+        def parse_command(self, text: str):
+            return "unknown_tool", {}
+
+    class RecordingMCP:
+        def __init__(self) -> None:
+            self.called = False
+
+        def call_tool(self, name, arguments):
+            self.called = True
+            return {"ok": True, "error": None, "result": {}}
+
+    mcp = RecordingMCP()
+    agent = LocalAgent(llm=StubLLM(), mcp=mcp)
+    result = agent.run_command("text")
+    assert result["ok"] is False
+    assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR
+    assert "Unknown MCP tool" in result["error"]["message"]
+    assert mcp.called is False
+
+
+def test_run_command_rejects_invalid_arguments():
+    class StubLLM:
+        def parse_command(self, text: str):
+            return "delete_requirement", {"rid": "SYS-1"}
+
+    class RecordingMCP:
+        def __init__(self) -> None:
+            self.called = False
+
+        def call_tool(self, name, arguments):
+            self.called = True
+            return {"ok": True, "error": None, "result": {}}
+
+    mcp = RecordingMCP()
+    agent = LocalAgent(llm=StubLLM(), mcp=mcp)
+    result = agent.run_command("text")
+    assert result["ok"] is False
+    assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR
+    assert "rev" in result["error"]["message"]
+    assert mcp.called is False
+
+
 def test_custom_confirm_message(monkeypatch):
     messages = []
 
@@ -70,7 +114,7 @@ def test_custom_confirm_message(monkeypatch):
             pass
 
         def parse_command(self, text: str):
-            return "delete_requirement", {}
+            return "delete_requirement", {"rid": "SYS-1", "rev": 3}
 
     class StubMCP:
         def __init__(self, settings, *, confirm):

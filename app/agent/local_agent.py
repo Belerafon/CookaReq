@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from ..confirm import confirm as default_confirm
 from ..llm.client import LLMClient
+from ..llm.validation import validate_tool_call
 from ..mcp.client import MCPClient
 from ..mcp.utils import ErrorCode, mcp_error
 from ..settings import AppSettings
@@ -58,6 +59,7 @@ class LocalAgent:
 
         try:
             name, arguments = self._llm.parse_command(text)
+            arguments = validate_tool_call(name, arguments)
         except Exception as exc:
             err = mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))["error"]
             log_event("ERROR", {"error": err})

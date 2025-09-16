@@ -59,6 +59,25 @@ def test_requirement_prefix_and_rid():
     assert "rid" not in roundtrip
 
 
+def test_requirement_from_dict_missing_metadata_defaults():
+    data = {
+        "id": "7",
+        "statement": "Legacy statement",
+    }
+    req = requirement_from_dict(data)
+    assert req.id == 7
+    assert req.title == ""
+    assert req.type is RequirementType.REQUIREMENT
+    assert req.status is Status.DRAFT
+    assert req.owner == ""
+    assert req.priority is Priority.MEDIUM
+    assert req.source == ""
+    assert req.verification is Verification.ANALYSIS
+    assert req.labels == []
+    assert req.links == []
+    assert req.revision == 1
+
+
 def test_requirement_extended_roundtrip():
     req = Requirement(
         id=7,
@@ -118,4 +137,14 @@ def test_requirement_from_dict_rejects_text_field():
         "verification": "analysis",
     }
     with pytest.raises(KeyError):
+        requirement_from_dict(data)
+
+
+def test_requirement_from_dict_rejects_invalid_revision():
+    data = {
+        "id": 1,
+        "statement": "S",
+        "revision": "beta",
+    }
+    with pytest.raises(TypeError):
         requirement_from_dict(data)

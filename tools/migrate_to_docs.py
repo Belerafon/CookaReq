@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List
 
+from app.core.model import requirement_from_dict, requirement_to_dict
+
 RULE_RE = re.compile(r"^label:([^=]+)=([^->]+)->([A-Z][A-Z0-9_]*)$")
 LEGACY_ID_RE = re.compile(
     r"^(?:(?P<prefix>(?=.*[A-Za-z_])[A-Za-z0-9_]+?)[-_]?)?(?P<num>[0-9]+)$"
@@ -128,14 +130,15 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
         statement = info["data"].get("statement")
         if statement is None:
             raise ValueError(f"missing statement in {info['fp']}")
-        item = {
-            "id": info["num"],
-            "title": info["data"].get("title", ""),
-            "statement": statement,
-            "labels": [
-                lbl for lbl in info["labels"] if not lbl.startswith("doc=")
-            ],
-        }
+        legacy = dict(info["data"])
+        legacy["id"] = info["num"]
+        legacy["statement"] = statement
+        legacy["title"] = legacy.get("title", "") or ""
+        legacy.pop("text", None)
+        legacy.pop("tags", None)
+        legacy["labels"] = [
+            lbl for lbl in info["labels"] if not lbl.startswith("doc=")
+        ]
         if info["links"]:
             remapped_links = []
             for link in info["links"]:
@@ -143,9 +146,15 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
                 if new_link is None and not isinstance(link, str):
                     new_link = id_map.get(str(link))
                 remapped_links.append(new_link if new_link is not None else link)
-            item["links"] = remapped_links
-        if "revision" in info["data"]:
-            item["revision"] = info["data"]["revision"]
+            legacy["links"] = remapped_links
+        else:
+            legacy.pop("links", None)
+        req = requirement_from_dict(
+            legacy,
+            doc_prefix=info["prefix"],
+            rid=info["rid"],
+        )
+        item = requirement_to_dict(req)
         items.append((info["prefix"], info["rid"], item, info["fp"]))
 
     # Write new items and remove legacy files

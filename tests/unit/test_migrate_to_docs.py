@@ -46,9 +46,16 @@ def test_migrate_to_docs_basic(tmp_path: Path):
     assert sys_data["title"] == "One"
     assert sys_data["statement"] == "First"
     assert sys_data["labels"] == ["alpha"]
+    assert sys_data["type"] == "requirement"
+    assert sys_data["status"] == "draft"
+    assert sys_data["owner"] == ""
+    assert sys_data["priority"] == "medium"
+    assert sys_data["source"] == ""
+    assert sys_data["verification"] == "analysis"
 
     assert hlr_data["id"] == 2
     assert hlr_data["labels"] == ["beta"]
+    assert hlr_data["status"] == "draft"
 
     doc = json.loads((tmp_path / "SYS" / "document.json").read_text(encoding="utf-8"))
     assert doc["prefix"] == "SYS"
@@ -151,6 +158,37 @@ def test_migrate_to_docs_numeric_ids(tmp_path: Path, legacy_id):
     assert consumer_data["id"] == 2
     assert consumer_data["labels"] == []
     assert consumer_data["links"] == [expected_numeric_rid, "EXT-9"]
+
+
+def test_migrate_to_docs_preserves_metadata(tmp_path: Path):
+    legacy = {
+        "id": "CR-010",
+        "title": "Legacy",
+        "statement": "Detailed statement",
+        "labels": ["doc=SYS"],
+        "status": "approved",
+        "owner": "Lead",
+        "priority": "high",
+        "source": "spec",
+        "verification": "test",
+        "acceptance": "All tests pass",
+        "notes": "Migrated",
+        "revision": 3,
+    }
+    write_req(tmp_path / "legacy.json", legacy)
+
+    migrate_to_docs(tmp_path, rules="label:doc=SYS->SYS", default="SYS")
+
+    item_path = tmp_path / "SYS" / "items" / "SYS010.json"
+    data = json.loads(item_path.read_text(encoding="utf-8"))
+    assert data["status"] == "approved"
+    assert data["owner"] == "Lead"
+    assert data["priority"] == "high"
+    assert data["source"] == "spec"
+    assert data["verification"] == "test"
+    assert data["acceptance"] == "All tests pass"
+    assert data["notes"] == "Migrated"
+    assert data["revision"] == 3
 
 
 def test_parse_rules_reject_tag_prefix():

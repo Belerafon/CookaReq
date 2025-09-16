@@ -90,6 +90,9 @@ class DocumentTree(wx.Panel):
 
     def _handle_select(self, event: wx.TreeEvent) -> None:
         item = event.GetItem()
+        if not item or not getattr(item, "IsOk", lambda: False)():
+            event.Skip()
+            return
         prefix = self._prefix_for_id.get(item)
         if prefix and self._on_select:
             self._on_select(prefix)

@@ -209,3 +209,15 @@ def test_root_context_keeps_existing_selection(document_tree_module):
     tree.tree.SelectItem(node)
     tree._show_menu_for_item(None, allow_selection_fallback=False)
     assert tree.tree.GetSelection() is node
+
+
+def test_document_tree_ignores_invalid_selection(document_tree_module):
+    wx_stub, module = document_tree_module
+    parent = wx_stub.Panel(None)
+    selected: list[str] = []
+
+    tree = module.DocumentTree(parent, on_select=selected.append)
+    event = wx_stub.TreeEvent()
+    tree._handle_select(event)
+
+    assert selected == []

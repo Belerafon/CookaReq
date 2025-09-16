@@ -4,9 +4,29 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, List
+from typing import Any, Iterable
+
+
+def _ensure_project_root() -> Path:
+    """Ensure the repository root is on :data:`sys.path`."""
+
+    script_dir = Path(__file__).resolve().parent
+    for candidate in (script_dir, *script_dir.parents):
+        if (candidate / "pyproject.toml").is_file() and (candidate / "app").is_dir():
+            candidate_str = str(candidate)
+            if candidate_str not in sys.path:
+                sys.path.insert(0, candidate_str)
+            return candidate
+    raise RuntimeError(
+        "Не удалось найти корень проекта. Ожидается, что рядом с файлом migrate_to_docs.py "
+        "будет каталог с 'pyproject.toml' и пакетом 'app'."
+    )
+
+
+_PROJECT_ROOT = _ensure_project_root()
 
 from app.core.document_store import Document, DocumentLabels, item_path, save_document
 from app.core.model import (
@@ -88,7 +108,7 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
 
     rule_objs = parse_rules(rules)
     digits_map: dict[str, int] = {default: 0}
-    parsed: List[dict] = []
+    parsed: list[dict[str, Any]] = []
     max_width = 0
 
     # First pass: read legacy files and collect metadata

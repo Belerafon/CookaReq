@@ -1,0 +1,184 @@
+{
+  "text_fields": [
+    {
+      "name": "id",
+      "control": "text",
+      "multiline": false,
+      "hint": "Unique integer identifier",
+      "help": [
+        "The 'Requirement ID' is a unique integer used as the stable anchor for a requirement.",
+        "Teams refer to it in traceability matrices, change requests and test reports to ensure everyone talks about the same item.",
+        "Once the identifier appears in external documents it should not be changed to avoid broken references."
+      ]
+    },
+    {
+      "name": "title",
+      "control": "text",
+      "multiline": false,
+      "help": [
+        "A concise human-readable summary shown in lists and diagrams.",
+        "It lets stakeholders skim large sets of requirements and quickly find relevant topics.",
+        "Use clear keywords so search and sorting produce meaningful results."
+      ]
+    },
+    {
+      "name": "statement",
+      "control": "text",
+      "multiline": true,
+      "help": [
+        "The full requirement statement describing what the system must do or the constraint it imposes.",
+        "This wording becomes the authoritative baseline for implementation and contractual obligations.",
+        "Detailed phrasing here prevents ambiguity during design and review."
+      ]
+    },
+    {
+      "name": "acceptance",
+      "control": "text",
+      "multiline": true,
+      "help": [
+        "Acceptance criteria explain how to verify that the requirement is satisfied.",
+        "They may include test scenarios, measurable thresholds or review checklists.",
+        "Well-defined criteria let QA teams plan tests and give product owners a clear basis for acceptance."
+      ]
+    },
+    {
+      "name": "conditions",
+      "control": "text",
+      "multiline": true,
+      "help": [
+        "Operating conditions and modes under which the requirement applies.",
+        "Describe environments, performance ranges or user roles that influence validity.",
+        "Such context helps engineers design correctly and testers reproduce the right setup."
+      ]
+    },
+    {
+      "name": "rationale",
+      "control": "text",
+      "multiline": true,
+      "help": [
+        "Explanation of why the requirement exists or how it was derived.",
+        "Capturing rationale preserves design intent and helps future maintainers understand trade-offs.",
+        "This background is valuable during change discussions or audits."
+      ]
+    },
+    {
+      "name": "assumptions",
+      "control": "text",
+      "multiline": true,
+      "help": [
+        "Assumptions made while formulating the requirement, such as available technologies or expected user behavior.",
+        "Listing assumptions exposes risks and clarifies the context that might change.",
+        "Revisit them regularly to ensure the requirement remains valid."
+      ]
+    },
+    {
+      "name": "source",
+      "control": "text",
+      "multiline": true,
+      "help": [
+        "Origin of the requirement such as a customer request, regulation or design document.",
+        "Recording the source explains why the requirement exists and where to look for additional context.",
+        "This trace is essential when validating compliance or revisiting negotiations."
+      ]
+    }
+  ],
+  "grid_fields": [
+    {
+      "name": "type",
+      "control": "enum",
+      "multiline": false,
+      "help": [
+        "Classification of the requirement: functional, constraint, interface or quality attribute.",
+        "Types help filter large sets, assign specialists and apply different review processes.",
+        "Consistent categorization improves reporting and reuse."
+      ]
+    },
+    {
+      "name": "status",
+      "control": "enum",
+      "multiline": false,
+      "help": [
+        "Lifecycle state like draft, in review, approved or retired.",
+        "The status communicates readiness and controls workflow gates.",
+        "Dashboards and metrics rely on it to show project progress."
+      ]
+    },
+    {
+      "name": "priority",
+      "control": "enum",
+      "multiline": false,
+      "help": [
+        "Relative importance or urgency of the requirement.",
+        "High-priority items drive planning and resource allocation.",
+        "Use priority to focus effort on the capabilities that deliver most value."
+      ]
+    },
+    {
+      "name": "verification",
+      "control": "enum",
+      "multiline": false,
+      "help": [
+        "Preferred method to prove compliance: inspection, analysis, demonstration or test.",
+        "Selecting a method early guides preparation of verification activities and needed tools.",
+        "It also clarifies expectations for acceptance."
+      ]
+    },
+    {
+      "name": "modified_at",
+      "control": "text",
+      "multiline": false,
+      "help": [
+        "Date and time of the last edit.",
+        "The value is filled automatically and aids audit trails.",
+        "Reviewers can sort by this field to focus on recently modified items."
+      ]
+    },
+    {
+      "name": "owner",
+      "control": "text",
+      "multiline": false,
+      "help": [
+        "Person or team responsible for the requirement.",
+        "The owner coordinates discussions, approves updates and answers questions from other stakeholders.",
+        "Assigning ownership clarifies accountability and speeds up decisions."
+      ]
+    },
+    {
+      "name": "version",
+      "control": "text",
+      "multiline": false,
+      "help": [
+        "Sequential version number for change control.",
+        "Increase it whenever the requirement text changes to keep a revision history.",
+        "Versioning enables baselining and comparison of snapshots during reviews."
+      ]
+    }
+  ],
+  "extra_help": {
+    "attachments": [
+      "Supplementary files that give additional context like diagrams, logs or calculations.",
+      "Attachments travel with the requirement so reviewers and implementers see the same supporting evidence.",
+      "Keep file notes concise to explain relevance."
+    ],
+    "approved_at": [
+      "Date when the requirement was formally accepted by stakeholders.",
+      "Recording the approval moment is useful for audits and for tracking baselines.",
+      "Leave empty while the requirement is still under discussion."
+    ],
+    "notes": [
+      "Free-form remarks that do not fit other fields.",
+      "Use notes to capture review feedback, open questions or implementation hints.",
+      "Unlike acceptance criteria they are not part of the requirement contract."
+    ],
+    "labels": [
+      "Labels that categorize the requirement.",
+      "Consistent labeling enables powerful filtering and helps group related items.",
+      "Use shared presets to avoid typos and duplicates."
+    ],
+    "links": [
+      "Links to higher-level requirements or stakeholder needs.",
+      "Upward traceability shows why this requirement exists and simplifies impact analysis when parents change.",
+      "Use it to prove coverage of system objectives."
+    ]
+  }
+}

@@ -263,7 +263,7 @@ class MainFrame(wx.Frame):
             model=self.llm_settings.model,
             api_key=self.llm_settings.api_key or "",
             max_retries=self.llm_settings.max_retries,
-            max_output_tokens=self.llm_settings.max_output_tokens or 0,
+            max_output_tokens=self.llm_settings.max_output_tokens,
             timeout_minutes=self.llm_settings.timeout_minutes,
             stream=self.llm_settings.stream,
             auto_start=self.mcp_settings.auto_start,
@@ -298,7 +298,7 @@ class MainFrame(wx.Frame):
                 model=model,
                 api_key=api_key or None,
                 max_retries=max_retries,
-                max_output_tokens=max_output_tokens or None,
+                max_output_tokens=max_output_tokens,
                 timeout_minutes=timeout_minutes,
                 stream=stream,
             )

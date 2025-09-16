@@ -6,21 +6,49 @@ import json
 from pathlib import Path
 
 import tomllib
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from .llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
 
 
 class LLMSettings(BaseModel):
     """Settings for connecting to an LLM service."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
     base_url: str = Field("", alias="api_base")
     model: str = ""
     api_key: str | None = None
     max_retries: int = 3
-    max_output_tokens: int | None = None
+    max_output_tokens: int = Field(
+        DEFAULT_MAX_OUTPUT_TOKENS,
+        ge=MIN_MAX_OUTPUT_TOKENS,
+    )
     timeout_minutes: int = 60
     stream: bool = False
+
+    @field_validator("max_output_tokens", mode="before")
+    @classmethod
+    def _normalize_max_output_tokens(cls, value: int | str | None) -> int:
+        """Clamp misconfigured limits to supported ranges."""
+
+        if value is None:
+            return DEFAULT_MAX_OUTPUT_TOKENS
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return DEFAULT_MAX_OUTPUT_TOKENS
+            try:
+                numeric = int(raw)
+            except ValueError:  # pragma: no cover - delegated to Pydantic
+                return value
+        else:
+            numeric = int(value)
+        if numeric <= 0:
+            return DEFAULT_MAX_OUTPUT_TOKENS
+        if numeric < MIN_MAX_OUTPUT_TOKENS:
+            return MIN_MAX_OUTPUT_TOKENS
+        return numeric
 
 
 class MCPSettings(BaseModel):

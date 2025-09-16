@@ -2,6 +2,8 @@
 
 import pytest
 
+from app.llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
+
 pytestmark = [pytest.mark.gui, pytest.mark.integration]
 
 
@@ -60,6 +62,54 @@ def test_settings_dialog_returns_language(wx_app):
     dlg.Destroy()
 
 
+def test_max_output_tokens_text_input(wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.settings_dialog import SettingsDialog
+
+    dlg = SettingsDialog(
+        None,
+        open_last=False,
+        remember_sort=False,
+        language="en",
+        base_url="http://api",
+        model="gpt",
+        api_key="key",
+        max_retries=3,
+        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
+        timeout_minutes=10,
+        stream=False,
+        auto_start=True,
+        host="localhost",
+        port=8123,
+        base_path="/tmp",
+        require_token=False,
+        token="",
+    )
+
+    assert isinstance(dlg._max_output_tokens, wx.TextCtrl)
+
+    dlg._max_output_tokens.SetValue("12abc")
+    wx.GetApp().Yield()
+    assert dlg._max_output_tokens.GetValue() == "12"
+
+    dlg._max_output_tokens.SetValue("")
+    wx.GetApp().Yield()
+    max_tokens = dlg.get_values()[7]
+    assert max_tokens == DEFAULT_MAX_OUTPUT_TOKENS
+
+    dlg._max_output_tokens.SetValue("500")
+    wx.GetApp().Yield()
+    max_tokens = dlg.get_values()[7]
+    assert max_tokens == MIN_MAX_OUTPUT_TOKENS
+
+    dlg._max_output_tokens.SetValue("7500")
+    wx.GetApp().Yield()
+    max_tokens = dlg.get_values()[7]
+    assert max_tokens == 7500
+
+    dlg.Destroy()
+
+
 def test_mcp_start_stop_server(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.settings_dialog as sd
@@ -97,7 +147,7 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         model="",
         api_key="",
         max_retries=3,
-        max_output_tokens=0,
+        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
         timeout_minutes=60,
         stream=False,
         auto_start=True,
@@ -174,7 +224,7 @@ def test_mcp_check_status(monkeypatch, wx_app):
         model="",
         api_key="",
         max_retries=3,
-        max_output_tokens=0,
+        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
         timeout_minutes=60,
         stream=False,
         auto_start=True,
@@ -240,7 +290,7 @@ def test_llm_agent_checks(monkeypatch, wx_app):
         model="gpt",
         api_key="key",
         max_retries=3,
-        max_output_tokens=0,
+        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
         timeout_minutes=30,
         stream=False,
         auto_start=True,
@@ -281,7 +331,7 @@ def test_settings_help_buttons(monkeypatch, wx_app):
         model="",
         api_key="",
         max_retries=3,
-        max_output_tokens=0,
+        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
         timeout_minutes=10,
         stream=False,
         auto_start=True,

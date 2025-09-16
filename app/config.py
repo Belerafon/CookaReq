@@ -9,6 +9,7 @@ from typing import Any, Callable, Generic, Literal, Protocol, TypeVar
 
 import wx
 
+from .llm.constants import DEFAULT_MAX_OUTPUT_TOKENS
 from .settings import AppSettings, LLMSettings, MCPSettings, UISettings
 
 
@@ -86,26 +87,6 @@ def _optional_string_writer(
     value: str | None,
 ) -> None:
     manager._cfg.Write(spec.key, "" if value is None else str(value))
-
-
-def _optional_int_reader(
-    manager: "ConfigManager",
-    spec: FieldSpec[int | None],
-    default: int | None,
-) -> int | None:
-    fallback = 0 if default is None else int(default)
-    value = manager._cfg.ReadInt(spec.key, fallback)
-    if value == 0 and default is None:
-        return None
-    return value
-
-
-def _optional_int_writer(
-    manager: "ConfigManager",
-    spec: FieldSpec[int | None],
-    value: int | None,
-) -> None:
-    manager._cfg.WriteInt(spec.key, 0 if value is None else int(value))
 
 
 def _llm_base_url_reader(
@@ -238,10 +219,8 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
     ),
     "llm_max_output_tokens": FieldSpec(
         key="llm_max_output_tokens",
-        value_type=int | None,
-        default=None,
-        reader=_optional_int_reader,
-        writer=_optional_int_writer,
+        value_type=int,
+        default=DEFAULT_MAX_OUTPUT_TOKENS,
     ),
     "llm_timeout_minutes": FieldSpec(
         key="llm_timeout_minutes",

@@ -33,6 +33,9 @@ LLM_HELP: dict[str, str] = {
 }
 
 MCP_HELP: dict[str, str] = {
+    "auto_start": _(
+        "Запускать MCP-сервер автоматически при старте CookaReq.",
+    ),
     "host": _(
         "Адрес хоста MCP-сервера. Пример: 127.0.0.1\n"
         "Обязательное поле; определяет, где запускать сервер.",
@@ -84,6 +87,7 @@ class SettingsDialog(wx.Dialog):
         max_output_tokens: int,
         timeout_minutes: int,
         stream: bool,
+        auto_start: bool,
         host: str,
         port: int,
         base_path: str,
@@ -245,6 +249,8 @@ class SettingsDialog(wx.Dialog):
 
         # MCP settings ----------------------------------------------------
         mcp = wx.Panel(nb)
+        self._auto_start = wx.CheckBox(mcp, label=_("Run MCP server on startup"))
+        self._auto_start.SetValue(auto_start)
         self._host = wx.TextCtrl(mcp, value=host)
         self._port = wx.SpinCtrl(mcp, min=1, max=65535, initial=port)
         self._base_path = wx.TextCtrl(mcp, value=base_path)
@@ -272,6 +278,15 @@ class SettingsDialog(wx.Dialog):
         self._check.Bind(wx.EVT_BUTTON, self._on_check)
 
         mcp_sizer = wx.BoxSizer(wx.VERTICAL)
+        auto_start_sz = wx.BoxSizer(wx.HORIZONTAL)
+        auto_start_sz.Add(self._auto_start, 0, wx.ALIGN_CENTER_VERTICAL)
+        auto_start_sz.Add(
+            make_help_button(mcp, MCP_HELP["auto_start"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        mcp_sizer.Add(auto_start_sz, 0, wx.ALL | wx.EXPAND, 5)
         host_sz = wx.BoxSizer(wx.HORIZONTAL)
         host_sz.Add(
             wx.StaticText(mcp, label=_("Host")),
@@ -390,6 +405,7 @@ class SettingsDialog(wx.Dialog):
 
     def _current_settings(self) -> MCPSettings:
         return MCPSettings(
+            auto_start=self._auto_start.GetValue(),
             host=self._host.GetValue(),
             port=self._port.GetValue(),
             base_path=self._base_path.GetValue(),
@@ -519,6 +535,7 @@ class SettingsDialog(wx.Dialog):
         int,
         bool,
         str,
+        bool,
         int,
         str,
         bool,
@@ -537,6 +554,7 @@ class SettingsDialog(wx.Dialog):
             self._max_output_tokens.GetValue(),
             self._timeout.GetValue(),
             self._stream.GetValue(),
+            self._auto_start.GetValue(),
             self._host.GetValue(),
             self._port.GetValue(),
             self._base_path.GetValue(),

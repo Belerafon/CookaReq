@@ -94,7 +94,8 @@ class MainFrame(wx.Frame):
         self.llm_settings = self.config.get_llm_settings()
         self.mcp_settings = self.config.get_mcp_settings()
         self.mcp = MCPController()
-        self.mcp.start(self.mcp_settings)
+        if self.mcp_settings.auto_start:
+            self.mcp.start(self.mcp_settings)
         self.docs_controller: DocumentsController | None = None
         super().__init__(parent=parent, title=self._base_title)
         # Load all available icon sizes so that Windows taskbar and other
@@ -252,6 +253,7 @@ class MainFrame(wx.Frame):
             max_output_tokens=self.llm_settings.max_output_tokens or 0,
             timeout_minutes=self.llm_settings.timeout_minutes,
             stream=self.llm_settings.stream,
+            auto_start=self.mcp_settings.auto_start,
             host=self.mcp_settings.host,
             port=self.mcp_settings.port,
             base_path=self.mcp_settings.base_path,
@@ -270,19 +272,14 @@ class MainFrame(wx.Frame):
                 max_output_tokens,
                 timeout_minutes,
                 stream,
+                auto_start,
                 host,
                 port,
                 base_path,
                 require_token,
                 token,
             ) = dlg.get_values()
-            changed = (
-                host != self.mcp_settings.host
-                or port != self.mcp_settings.port
-                or base_path != self.mcp_settings.base_path
-                or require_token != self.mcp_settings.require_token
-                or token != self.mcp_settings.token
-            )
+            previous_mcp = self.mcp_settings
             self.llm_settings = LLMSettings(
                 base_url=base_url,
                 model=model,
@@ -293,6 +290,7 @@ class MainFrame(wx.Frame):
                 stream=stream,
             )
             self.mcp_settings = MCPSettings(
+                auto_start=auto_start,
                 host=host,
                 port=port,
                 base_path=base_path,
@@ -304,7 +302,19 @@ class MainFrame(wx.Frame):
             self.config.set_language(self.language)
             self.config.set_llm_settings(self.llm_settings)
             self.config.set_mcp_settings(self.mcp_settings)
-            if changed:
+            auto_start_changed = (
+                previous_mcp.auto_start != self.mcp_settings.auto_start
+            )
+            server_config_changed = (
+                previous_mcp.model_dump(exclude={"auto_start"})
+                != self.mcp_settings.model_dump(exclude={"auto_start"})
+            )
+            if auto_start_changed:
+                if self.mcp_settings.auto_start:
+                    self.mcp.start(self.mcp_settings)
+                else:
+                    self.mcp.stop()
+            elif self.mcp_settings.auto_start and server_config_changed:
                 self.mcp.stop()
                 self.mcp.start(self.mcp_settings)
             self._apply_language()

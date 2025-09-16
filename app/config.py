@@ -113,6 +113,7 @@ ConfigFieldName = Literal[
     "auto_open_last",
     "remember_sort",
     "language",
+    "mcp_auto_start",
     "mcp_host",
     "mcp_port",
     "mcp_base_path",
@@ -168,6 +169,11 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         default=None,
         reader=_optional_string_reader,
         writer=_optional_string_writer,
+    ),
+    "mcp_auto_start": FieldSpec(
+        key="mcp_auto_start",
+        value_type=bool,
+        default=True,
     ),
     "mcp_host": FieldSpec(
         key="mcp_host",
@@ -495,6 +501,7 @@ class ConfigManager:
         """Return stored MCP server settings."""
 
         return MCPSettings(
+            auto_start=self.get_value("mcp_auto_start"),
             host=self.get_value("mcp_host"),
             port=self.get_value("mcp_port"),
             base_path=self.get_value("mcp_base_path"),
@@ -505,6 +512,7 @@ class ConfigManager:
     def set_mcp_settings(self, settings: MCPSettings) -> None:
         """Persist MCP server settings."""
 
+        self.set_value("mcp_auto_start", settings.auto_start)
         self.set_value("mcp_host", settings.host)
         self.set_value("mcp_port", settings.port)
         self.set_value("mcp_base_path", settings.base_path)

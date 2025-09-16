@@ -457,6 +457,9 @@ msgstr "Показать граф выводов"
 msgid "Start MCP"
 msgstr "Запустить MCP"
 
+msgid "Run MCP server on startup"
+msgstr "Запускать MCP-сервер при старте приложения"
+
 msgid "Stop MCP"
 msgstr "Остановить MCP"
 

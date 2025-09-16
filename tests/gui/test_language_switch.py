@@ -43,6 +43,7 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app):
                 frame.llm_settings.max_output_tokens or 0,
                 frame.llm_settings.timeout_minutes,
                 frame.llm_settings.stream,
+                frame.mcp_settings.auto_start,
                 frame.mcp_settings.host,
                 frame.mcp_settings.port,
                 frame.mcp_settings.base_path,

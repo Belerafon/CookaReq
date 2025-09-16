@@ -13,11 +13,26 @@ from typing import Any
 __all__ = ["SYSTEM_PROMPT", "TOOLS"]
 
 
+_STATUS_VALUES = [
+    "draft",
+    "in_review",
+    "approved",
+    "baselined",
+    "retired",
+]
+_STATUS_VALUES_WITH_NULL = _STATUS_VALUES + [None]
+
+
 # Prompt instructing the model to always return a tool call in the
 # OpenAI-compatible "function calling" format.
 SYSTEM_PROMPT = (
     "Translate the user request into a call to one of the MCP tools. "
-    "Always respond with a tool call and use the provided function schemas."
+    "Always respond with a tool call and use the provided function schemas. "
+    "When listing or searching requirements you may combine filters: "
+    "`list_requirements` accepts optional `page`, `per_page`, `status` and "
+    "`labels`; `search_requirements` accepts `query`, `labels`, `status`, "
+    "`page` and `per_page`. Status values: draft, in_review, approved, "
+    "baselined, retired. Labels must be arrays of strings."
 )
 
 
@@ -32,9 +47,25 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "page": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "page number (1-based)",
+                    },
                     "per_page": {
                         "type": "integer",
+                        "minimum": 1,
                         "description": "number of items per page",
+                    },
+                    "status": {
+                        "type": ["string", "null"],
+                        "enum": _STATUS_VALUES_WITH_NULL,
+                        "description": "filter by lifecycle status",
+                    },
+                    "labels": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                        "description": "return requirements containing all labels",
                     },
                 },
                 "required": [],
@@ -63,10 +94,25 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string"},
+                    "query": {"type": ["string", "null"]},
                     "labels": {
-                        "type": "array",
+                        "type": ["array", "null"],
                         "items": {"type": "string"},
+                    },
+                    "status": {
+                        "type": ["string", "null"],
+                        "enum": _STATUS_VALUES_WITH_NULL,
+                        "description": "filter search results by lifecycle status",
+                    },
+                    "page": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "page number (1-based)",
+                    },
+                    "per_page": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "number of items per page",
                     },
                 },
                 "required": [],
@@ -96,13 +142,7 @@ TOOLS: list[dict[str, Any]] = [
                                 ],
                             },
                             "status": {
-                                "enum": [
-                                    "draft",
-                                    "in_review",
-                                    "approved",
-                                    "baselined",
-                                    "retired",
-                                ],
+                                "enum": _STATUS_VALUES,
                             },
                             "owner": {"type": "string"},
                             "priority": {

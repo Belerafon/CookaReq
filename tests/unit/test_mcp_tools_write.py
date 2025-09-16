@@ -39,6 +39,14 @@ def test_create_rejects_unknown_label(tmp_path: Path) -> None:
     assert res["error"]["code"] == "VALIDATION_ERROR"
 
 
+def test_create_rejects_string_labels(tmp_path: Path) -> None:
+    save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc", digits=3))
+    res = tools_write.create_requirement(
+        tmp_path, prefix="SYS", data={**_base_req(), "labels": "oops"}
+    )
+    assert res["error"]["code"] == "VALIDATION_ERROR"
+
+
 def test_create_accepts_inherited_label(tmp_path: Path) -> None:
     save_document(
         tmp_path / "SYS",
@@ -64,6 +72,14 @@ def test_patch_rejects_unknown_label(tmp_path: Path) -> None:
     save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc", digits=3))
     created = tools_write.create_requirement(tmp_path, prefix="SYS", data=_base_req())
     patch = [{"op": "replace", "path": "/labels", "value": ["bad"]}]
+    res = tools_write.patch_requirement(tmp_path, created["rid"], patch, rev=1)
+    assert res["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_patch_rejects_string_labels(tmp_path: Path) -> None:
+    save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc", digits=3))
+    created = tools_write.create_requirement(tmp_path, prefix="SYS", data=_base_req())
+    patch = [{"op": "replace", "path": "/labels", "value": "oops"}]
     res = tools_write.patch_requirement(tmp_path, created["rid"], patch, rev=1)
     assert res["error"]["code"] == "VALIDATION_ERROR"
 
@@ -100,3 +116,21 @@ def test_link_requirements(tmp_path: Path) -> None:
         rev=1,
     )
     assert parent["rid"] in linked["links"]
+
+
+def test_link_requirements_rejects_invalid_type(tmp_path: Path) -> None:
+    save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc", digits=3))
+    save_document(
+        tmp_path / "HLR",
+        Document(prefix="HLR", title="H", digits=3, parent="SYS"),
+    )
+    parent = tools_write.create_requirement(tmp_path, prefix="SYS", data=_base_req())
+    child = tools_write.create_requirement(tmp_path, prefix="HLR", data=_base_req())
+    res = tools_write.link_requirements(
+        tmp_path,
+        source_rid=parent["rid"],
+        derived_rid=child["rid"],
+        link_type="child",
+        rev=1,
+    )
+    assert res["error"]["code"] == "VALIDATION_ERROR"

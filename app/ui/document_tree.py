@@ -27,7 +27,8 @@ class DocumentTree(wx.Panel):
         self._on_new_document = on_new_document
         self._on_rename_document = on_rename_document
         self._on_delete_document = on_delete_document
-        self.tree = wx.TreeCtrl(self)
+        style = getattr(wx, "TR_DEFAULT_STYLE", 0) | getattr(wx, "TR_HIDE_ROOT", 0)
+        self.tree = wx.TreeCtrl(self, style=style)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.tree, 1, wx.EXPAND)
         self.SetSizer(sizer)
@@ -36,6 +37,8 @@ class DocumentTree(wx.Panel):
         self.root = self.tree.AddRoot(_("Documents"))
         self.tree.Bind(wx.EVT_TREE_SEL_CHANGED, self._handle_select)
         self.tree.Bind(wx.EVT_TREE_ITEM_MENU, self._show_context_menu)
+        if hasattr(wx, "EVT_CONTEXT_MENU"):
+            self.tree.Bind(wx.EVT_CONTEXT_MENU, self._show_background_menu)
         self._menu_target_prefix: str | None = None
         self._menu_ids = {
             "new": wx.Window.NewControlId(),
@@ -93,13 +96,29 @@ class DocumentTree(wx.Panel):
         event.Skip()
 
     def _show_context_menu(self, event: wx.TreeEvent) -> None:
-        item = event.GetItem()
-        if not item or not item.IsOk():
-            item = self.tree.GetSelection()
-        if not item or not item.IsOk():
-            item = self.root
-        self.tree.SelectItem(item)
-        prefix = self._prefix_for_id.get(item)
+        self._show_menu_for_item(event.GetItem())
+
+    def _show_menu_for_item(
+        self,
+        item: wx.TreeItemId | None,
+        *,
+        allow_selection_fallback: bool = True,
+    ) -> None:
+        target: wx.TreeItemId | None = None
+        prefix: str | None = None
+        if item and item.IsOk():
+            prefix = self._prefix_for_id.get(item)
+            if prefix:
+                target = item
+        if prefix is None and allow_selection_fallback:
+            selected = self.tree.GetSelection()
+            if selected and selected.IsOk():
+                selected_prefix = self._prefix_for_id.get(selected)
+                if selected_prefix:
+                    target = selected
+                    prefix = selected_prefix
+        if target:
+            self.tree.SelectItem(target)
         self._menu_target_prefix = prefix
         menu = wx.Menu()
         new_item = menu.Append(self._menu_ids["new"], _("New document"))
@@ -114,6 +133,31 @@ class DocumentTree(wx.Panel):
         self.tree.PopupMenu(menu)
         menu.Destroy()
         self._menu_target_prefix = None
+
+    def _show_background_menu(self, event: wx.ContextMenuEvent) -> None:
+        hit_item: wx.TreeItemId | None = None
+        get_position = getattr(event, "GetPosition", None)
+        hit_test = getattr(self.tree, "HitTest", None)
+        if get_position and hit_test:
+            pos = get_position()
+            screen_to_client = getattr(self.tree, "ScreenToClient", None)
+            if screen_to_client and pos is not None:
+                try:
+                    pos = screen_to_client(pos)
+                except Exception:  # pragma: no cover - backend quirks
+                    pass
+            hit = hit_test(pos)
+            if isinstance(hit, tuple):
+                hit_item = hit[0]
+            else:
+                hit_item = hit
+            if hit_item and hasattr(hit_item, "IsOk") and hit_item.IsOk():
+                if hasattr(event, "Skip"):
+                    event.Skip()
+                return
+        if hasattr(event, "Skip"):
+            event.Skip(False)
+        self._show_menu_for_item(None, allow_selection_fallback=False)
 
     def _handle_menu_new(self, _event: wx.CommandEvent) -> None:
         if self._on_new_document is None:

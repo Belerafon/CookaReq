@@ -144,20 +144,53 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         return stable_color(name)
 
     def _ensure_image_list_size(self, width: int, height: int) -> None:
+        width = max(width, 1)
+        height = max(height, 1)
         if self._image_list is None:
-            self._image_list = wx.ImageList(width or 1, height or 1)
+            self._image_list = wx.ImageList(width, height)
             self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
             return
         cur_w, cur_h = self._image_list.GetSize()
         if width <= cur_w and height <= cur_h:
             return
-        new_list = wx.ImageList(max(width, cur_w), max(height, cur_h))
+        new_w = max(width, cur_w)
+        new_h = max(height, cur_h)
+        new_list = wx.ImageList(new_w, new_h)
         count = self._image_list.GetImageCount()
         for idx in range(count):
             bmp = self._image_list.GetBitmap(idx)
+            bmp = self._pad_bitmap(bmp, new_w, new_h)
             new_list.Add(bmp)
         self._image_list = new_list
         self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
+
+    def _pad_bitmap(self, bmp: wx.Bitmap, width: int, height: int) -> wx.Bitmap:
+        if bmp.GetWidth() == width and bmp.GetHeight() == height:
+            return bmp
+        padded = wx.Bitmap(max(width, 1), max(height, 1))
+        dc = wx.MemoryDC()
+        dc.SelectObject(padded)
+        try:
+            bg = self.list.GetBackgroundColour()
+            dc.SetBackground(wx.Brush(bg))
+            dc.Clear()
+            dc.DrawBitmap(bmp, 0, 0, True)
+        finally:
+            dc.SelectObject(wx.NullBitmap)
+        return padded
+
+    def _set_label_text(self, index: int, col: int, labels: list[str]) -> None:
+        text = ", ".join(labels)
+        self.list.SetItem(index, col, text)
+        if col == 0 and hasattr(self.list, "SetItemImage"):
+            with suppress(Exception):
+                self.list.SetItemImage(index, -1)
+        else:
+            with suppress(Exception):
+                self.list.SetItemColumnImage(index, col, -1)
+            if hasattr(self.list, "SetItemImage"):
+                with suppress(Exception):
+                    self.list.SetItemImage(index, -1)
 
     def _create_label_bitmap(self, names: list[str]) -> wx.Bitmap:
         padding_x, padding_y, gap = 4, 2, 2
@@ -199,10 +232,28 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             return
         key = tuple(labels)
         img_id = self._label_images.get(key)
+        if img_id == -1:
+            self._set_label_text(index, col, labels)
+            return
         if img_id is None:
             bmp = self._create_label_bitmap(labels)
             self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
-            img_id = self._image_list.Add(bmp)
+            if self._image_list is None:
+                self._label_images[key] = -1
+                self._set_label_text(index, col, labels)
+                return
+            list_w, list_h = self._image_list.GetSize()
+            bmp = self._pad_bitmap(bmp, list_w, list_h)
+            try:
+                img_id = self._image_list.Add(bmp)
+            except Exception:
+                logger.exception("Failed to add labels image; using text fallback")
+                img_id = -1
+            if img_id == -1:
+                logger.warning("Image list rejected labels bitmap; using text fallback")
+                self._label_images[key] = -1
+                self._set_label_text(index, col, labels)
+                return
             self._label_images[key] = img_id
         if col == 0:
             # Column 0 uses the main item image slot

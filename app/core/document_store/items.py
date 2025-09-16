@@ -120,6 +120,14 @@ def rid_for(doc: Document, item_id: int) -> str:
     return f"{doc.prefix}{item_id:0{doc.digits}d}"
 
 
+def _item_filename(doc: Document, item_id: int) -> str:
+    return f"{item_id:0{doc.digits}d}.json"
+
+
+def _legacy_item_filename(doc: Document, item_id: int) -> str:
+    return f"{rid_for(doc, item_id)}.json"
+
+
 def parse_rid(rid: str) -> tuple[str, int]:
     """Split ``rid`` into document prefix and numeric id."""
 
@@ -131,9 +139,23 @@ def parse_rid(rid: str) -> tuple[str, int]:
 
 
 def item_path(directory: str | Path, doc: Document, item_id: int) -> Path:
-    """Return filesystem path for ``item_id`` inside ``doc``."""
+    """Return filesystem path for ``item_id`` inside ``doc`` using new naming."""
 
-    return Path(directory) / "items" / f"{rid_for(doc, item_id)}.json"
+    directory_path = Path(directory)
+    return directory_path / "items" / _item_filename(doc, item_id)
+
+
+def locate_item_path(directory: str | Path, doc: Document, item_id: int) -> Path:
+    """Return actual filesystem path for ``item_id`` supporting legacy layouts."""
+
+    directory_path = Path(directory)
+    new_path = item_path(directory_path, doc, item_id)
+    if new_path.exists():
+        return new_path
+    legacy_path = directory_path / "items" / _legacy_item_filename(doc, item_id)
+    if legacy_path.exists():
+        return legacy_path
+    return new_path
 
 
 def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
@@ -143,6 +165,18 @@ def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
     docs = load_documents(root)
     from .links import validate_item_links  # local import to avoid cycle
 
+<<<<<codex/remove-redundant-names-in-files
+    validate_item_links(root, doc, data, docs)
+    directory_path = Path(directory)
+    item_id = int(data["id"])
+    path = item_path(directory_path, doc, item_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
+    legacy_path = directory_path / "items" / _legacy_item_filename(doc, item_id)
+    if legacy_path != path and legacy_path.exists():
+        legacy_path.unlink()
+====
     payload = dict(data)
     validate_item_links(root, doc, payload, docs)
     _prepare_links_for_storage(root, docs, payload)
@@ -150,13 +184,14 @@ def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2, sort_keys=True)
+>>>>> m
     return path
 
 
 def load_item(directory: str | Path, doc: Document, item_id: int) -> tuple[dict, float]:
     """Load requirement ``item_id`` from ``doc`` and return data with mtime."""
 
-    path = item_path(directory, doc, item_id)
+    path = locate_item_path(directory, doc, item_id)
     data = _read_json(path)
     mtime = path.stat().st_mtime
     return data, mtime
@@ -169,9 +204,12 @@ def list_item_ids(directory: str | Path, doc: Document) -> set[int]:
     ids: set[int] = set()
     if not items_dir.is_dir():
         return ids
-    for fp in items_dir.glob(f"{doc.prefix}*.json"):
+    for fp in items_dir.glob("*.json"):
+        stem = fp.stem
+        if stem.startswith(doc.prefix):
+            stem = stem[len(doc.prefix) :]
         try:
-            ids.add(int(fp.stem[len(doc.prefix) :]))
+            ids.add(int(stem))
         except ValueError:
             continue
     return ids

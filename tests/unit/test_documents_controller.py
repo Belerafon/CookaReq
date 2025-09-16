@@ -8,6 +8,7 @@ from app.core.document_store import (
     DocumentLabels,
     LabelDef,
     RequirementIDCollisionError,
+    item_path,
     load_document,
     save_document,
     save_item,
@@ -82,7 +83,7 @@ def test_next_id_save_and_delete(tmp_path: Path):
     req = _req(new_id)
     controller.add_requirement("SYS", req)
     controller.save_requirement("SYS", req)
-    path = doc_dir / "items" / "SYS001.json"
+    path = item_path(doc_dir, doc, 1)
     assert path.is_file()
     assert req.doc_prefix == "SYS"
     assert req.rid == "SYS001"
@@ -160,7 +161,7 @@ def test_delete_requirement_removes_links(tmp_path: Path):
     controller = DocumentsController(tmp_path, model)
     controller.load_documents()
     controller.delete_requirement("SYS", 1)
-    assert not (sys_dir / "items" / "SYS001.json").exists()
+    assert not item_path(sys_dir, sys_doc, 1).exists()
     data2, _ = load_item(hlr_dir, hlr_doc, 1)
     assert data2.get("links") in (None, [])
 

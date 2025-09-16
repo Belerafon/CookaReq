@@ -9,6 +9,7 @@ from app.core.document_store import (
     Document,
     DocumentLabels,
     LabelDef,
+    item_path,
     save_document,
     load_documents,
     validate_labels,
@@ -56,7 +57,7 @@ def test_item_add_accepts_inherited_label(tmp_path, capsys):
     commands.cmd_item_add(args)
     out = capsys.readouterr().out.strip()
     assert out == "HLR01"
-    path = Path(tmp_path) / "HLR" / "items" / "HLR01.json"
+    path = item_path(tmp_path / "HLR", doc_hlr, 1)
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["labels"] == ["ui"]
 

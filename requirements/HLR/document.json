@@ -1,5 +1,4 @@
 {
-  "prefix": "HLR",
   "title": "High-Level Requirements",
   "digits": 3,
   "parent": "SYS",

@@ -6,6 +6,7 @@ from app.core.document_store import (
     Document,
     delete_document,
     next_item_id,
+    item_path,
     parse_rid,
     load_document,
     load_item,
@@ -38,7 +39,7 @@ def test_document_store_roundtrip(tmp_path: Path):
     save_item(doc_dir, doc, item2)
 
     assert rid_for(doc, 2) == "SYS002"
-    assert (doc_dir / "items" / "SYS002.json").is_file()
+    assert item_path(doc_dir, doc, 2).is_file()
 
     ids = list_item_ids(doc_dir, doc)
     assert ids == {1, 2}
@@ -74,7 +75,7 @@ def test_delete_item_removes_links(tmp_path: Path):
     docs = load_documents(tmp_path)
     assert delete_item(tmp_path, "SYS001", docs) is True
     # parent file removed
-    assert not (tmp_path / "SYS" / "items" / "SYS001.json").exists()
+    assert not item_path(tmp_path / "SYS", sys_doc, 1).exists()
     # link cleaned
     data, _ = load_item(tmp_path / "HLR", hlr_doc, 1)
     assert data.get("links") in (None, [])
@@ -113,7 +114,7 @@ def test_plan_delete_item_lists_references(tmp_path: Path):
     assert exists is True
     assert refs == ["HLR01"]
     # nothing removed
-    assert (tmp_path / "SYS" / "items" / "SYS001.json").exists()
+    assert item_path(tmp_path / "SYS", sys_doc, 1).exists()
     data, _ = load_item(tmp_path / "HLR", hlr_doc, 1)
     parent_data, _ = load_item(tmp_path / "SYS", sys_doc, 1)
     expected_fp = requirement_fingerprint(parent_data)

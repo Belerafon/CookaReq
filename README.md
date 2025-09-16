@@ -6,8 +6,9 @@ CookaReq (Cook a requirement) is a wibecoded desktop application built with wxPy
 
 - Organize requirements into hierarchical documents. Each document stores
   its configuration in `document.json` and individual items as
-  `items/<RID>.json` files. File names combine the document prefix with a
-  padded numeric identifier (RID) and revisions are tracked per item.
+  `items/<ID>.json` files. File names use only the zero-padded numeric
+  identifier, while the full requirement ID (RID) is composed at runtime
+  from the document prefix and that number. Revisions are tracked per item.
 - Search by text, status and labels with advanced filters
 - Create, clone, edit and delete requirements; attach files and manage user labels
 - Navigate links between requirements and visualise derivation graphs
@@ -81,11 +82,11 @@ requirements/
   SYS/
     document.json
     items/
-      SYS001.json
+      001.json
   HLR/
     document.json
     items/
-      HLR001.json
+      001.json
 ```
 
 The repository layer loads and saves items, manages label presets defined by each document and resolves links across documents. Advanced search parameters allow filtering by status, label combinations, field-specific queries and derived relationships.
@@ -94,14 +95,15 @@ The repository layer loads and saves items, manages label presets defined by eac
 
 Each document file (`document.json`) includes:
 
-- `prefix` *(str)* — document identifier (e.g. `SYS`)
 - `title` *(str)* — human-readable name
 - `digits` *(int)* — width of numeric identifier padding
 - `parent` *(str|null)* — parent document prefix or `null`
 - `labels` *(object)* — label definitions and an `allowFreeform` flag
 - `attributes` *(object)* — additional metadata
 
-Each requirement item (`items/<RID>.json`) includes:
+The document prefix matches the folder name under `requirements/` and is no longer duplicated inside `document.json`, keeping the identifier as a single source of truth.
+
+Each requirement item (`items/<ID>.json`, where `<ID>` is the zero-padded numeric identifier) includes:
 
 - `id` *(int)* — numeric identifier unique within the document
 - `title` *(str)* — short name

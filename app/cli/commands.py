@@ -26,6 +26,7 @@ from app.core.document_store import (
     load_document,
     load_documents,
     load_item,
+    locate_item_path,
     next_item_id,
     parse_rid,
     plan_delete_document,
@@ -391,7 +392,7 @@ def cmd_item_move(args: argparse.Namespace) -> None:
     src_dir = Path(args.directory) / prefix
     src_doc = load_document(src_dir)
     data, _mtime = load_item(src_dir, src_doc, item_id)
-    src_path = item_path(src_dir, src_doc, item_id)
+    src_path = locate_item_path(src_dir, src_doc, item_id)
 
     template: Mapping[str, Any] = {}
     data_path = getattr(args, "data", None)
@@ -434,6 +435,9 @@ def cmd_item_move(args: argparse.Namespace) -> None:
     )
     save_item(dst_dir, dst_doc, requirement_to_dict(req))
     src_path.unlink()
+    alt_path = item_path(src_dir, src_doc, item_id)
+    if alt_path != src_path and alt_path.exists():
+        alt_path.unlink()
     sys.stdout.write(f"{req.rid}\n")
 
 

@@ -32,6 +32,20 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     MIN_COL_WIDTH = 50
     MAX_COL_WIDTH = 1000
+    DEFAULT_COLUMN_WIDTH = 160
+    DEFAULT_COLUMN_WIDTHS: dict[str, int] = {
+        "title": 340,
+        "labels": 200,
+        "id": 90,
+        "status": 140,
+        "priority": 130,
+        "type": 150,
+        "owner": 180,
+        "doc_prefix": 140,
+        "rid": 150,
+        "derived_count": 120,
+        "modified_at": 180,
+    }
 
     def __init__(
         self,
@@ -304,9 +318,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         count = self.list.GetColumnCount()
         for i in range(count):
             width = config.read_int(f"col_width_{i}", -1)
-            if width != -1:
-                width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
-                self.list.SetColumnWidth(i, width)
+            if width <= 0:
+                field = self._field_order[i] if i < len(self._field_order) else ""
+                width = self._default_column_width(field)
+            width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
+            self.list.SetColumnWidth(i, width)
 
     def save_column_widths(self, config: ConfigManager) -> None:
         """Persist current column widths to config."""
@@ -315,6 +331,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             width = self.list.GetColumnWidth(i)
             width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
             config.write_int(f"col_width_{i}", width)
+
+    def _default_column_width(self, field: str) -> int:
+        """Return sensible default width for a given column field."""
+
+        width = self.DEFAULT_COLUMN_WIDTHS.get(field)
+        if width is not None:
+            return width
+        if field.endswith("_at"):
+            return 180
+        if field in {"revision", "id", "doc_prefix", "derived_count"}:
+            return 90
+        return self.DEFAULT_COLUMN_WIDTH
 
     def load_column_order(self, config: ConfigManager) -> None:
         """Restore column ordering from config."""

@@ -15,6 +15,16 @@ from .settings import AppSettings, LLMSettings, MCPSettings, UISettings
 T = TypeVar("T")
 
 
+DEFAULT_LIST_COLUMNS: list[str] = [
+    "labels",
+    "id",
+    "status",
+    "priority",
+    "type",
+    "owner",
+]
+
+
 @dataclass(frozen=True)
 class FieldSpec(Generic[T]):
     """Describe a configuration entry stored in :class:`wx.Config`."""
@@ -142,7 +152,7 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
     "list_columns": FieldSpec(
         key="list_columns",
         value_type=list[str],
-        default_factory=list,
+        default_factory=lambda: list(DEFAULT_LIST_COLUMNS),
         reader=_list_reader(","),
         writer=_list_writer(","),
     ),

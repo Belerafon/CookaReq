@@ -15,44 +15,44 @@ from .helpers import format_error_message, make_help_button
 
 LLM_HELP: dict[str, str] = {
     "base_url": _(
-        "Базовый URL LLM API. Пример: https://api.openai.com/v1\n"
-        "Обязательное поле; определяет, куда отправляются запросы.",
+        "Base URL of the LLM API. Example: https://api.openai.com/v1\n"
+        "Required; defines where requests are sent.",
     ),
     "model": _(
-        "Имя модели LLM. Пример: gpt-4-turbo\n"
-        "Обязательное поле, определяет используемую модель.",
+        "LLM model name. Example: gpt-4-turbo\n"
+        "Required; selects which model to use.",
     ),
     "api_key": _(
-        "Ключ доступа к LLM. Пример: sk-XXXX\n"
-        "Обязателен, если сервис требует авторизации.",
+        "LLM access key. Example: sk-XXXX\n"
+        "Required when the service needs authentication.",
     ),
     "timeout_minutes": _(
-        "Тайм-аут HTTP-запроса в минутах. Пример: 1\n"
-        "Необязательное поле; по умолчанию 60 секунд.",
+        "HTTP request timeout in minutes. Example: 1\n"
+        "Optional; defaults to 60 minutes.",
     ),
 }
 
 MCP_HELP: dict[str, str] = {
     "auto_start": _(
-        "Запускать MCP-сервер автоматически при старте CookaReq.",
+        "Start the MCP server automatically when CookaReq launches.",
     ),
     "host": _(
-        "Адрес хоста MCP-сервера. Пример: 127.0.0.1\n"
-        "Обязательное поле; определяет, где запускать сервер.",
+        "Hostname for the MCP server. Example: 127.0.0.1\n"
+        "Required; defines where to run the server.",
     ),
     "port": _(
-        "Порт MCP-сервера. Пример: 8123\nОбязательное поле.",
+        "MCP server port. Example: 8123\nRequired field.",
     ),
     "base_path": _(
-        "Базовая папка с требованиями. Пример: /tmp/reqs\n"
-        "Обязательное поле; сервер обслуживает файлы из этой директории.",
+        "Base folder with requirements. Example: /tmp/reqs\n"
+        "Required; the server serves files from this directory.",
     ),
     "require_token": _(
-        "Если включено, сервер требует токен аутентификации.",
+        "When enabled, the server requires an authentication token.",
     ),
     "token": _(
-        "Токен доступа для MCP. Пример: secret123\n"
-        "Обязателен, если включено 'Require token'.",
+        "Access token for MCP. Example: secret123\n"
+        "Required when \"Require token\" is enabled.",
     ),
 }
 

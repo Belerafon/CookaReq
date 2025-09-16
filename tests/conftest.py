@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import types
 from pathlib import Path
 
 # Ensure project root is on sys.path for imports
@@ -12,9 +13,23 @@ import socket
 
 import pytest
 
+from app import i18n
 from app.confirm import auto_confirm, set_confirm
 from app.mcp.server import start_server, stop_server
 from tests.mcp_utils import _wait_until_ready
+
+
+APP_NAME = "CookaReq"
+LOCALE_DIR = Path(__file__).resolve().parents[1] / "app" / "locale"
+
+
+@pytest.fixture(autouse=True)
+def _reset_locale():
+    """Ensure English translations are active for each test."""
+
+    i18n.install(APP_NAME, str(LOCALE_DIR), ["en"])
+    yield
+    i18n.install(APP_NAME, str(LOCALE_DIR), ["en"])
 
 
 @pytest.fixture(autouse=True)
@@ -53,6 +68,20 @@ def wx_app():
             display.start()
     wx = pytest.importorskip("wx")
     app = wx.App()
+
+    def _safe_yield(self=None, *args, **kwargs):
+        target = self if self is not None else app
+        if target is None:
+            return False
+        target.ProcessPendingEvents()
+        return True
+
+    app.Yield = types.MethodType(_safe_yield, app)
+
+    def _module_safe_yield(*args, **kwargs):
+        return _safe_yield(app, *args, **kwargs)
+
+    wx.Yield = _module_safe_yield
     yield app
     app.Destroy()
     if display is not None:

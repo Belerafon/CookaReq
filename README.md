@@ -78,6 +78,12 @@ into the document-based layout:
 python3 -m app.cli migrate to-docs <legacy_dir> --default SYS --rules "label:doc=HLR->HLR"
 ```
 
+Для быстрых проверок можно запускать скрипт напрямую:
+
+```bash
+python tools/migrate_to_docs.py requirements --rules 'label:doc=SYS->SYS' --default SYS
+```
+
 Files are assigned to documents according to label rules. Links between
 requirements are rewritten to the new RIDs. The resulting layout follows
 `requirements/<PREFIX>/items/<RID>.json`.

@@ -60,6 +60,7 @@ def _recent_dirs_factory(tmp_path):
         ("sort_ascending", True),
         ("log_shown", False),
         ("win_w", 800),
+        ("editor_sash_pos", 600),
     ],
 )
 def test_schema_default_values(tmp_path, wx_app, name, expected):
@@ -96,6 +97,7 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
         pytest.param("log_sash", _const(512), _const(512), id="log_sash"),
         pytest.param("log_shown", _const(True), _const(True), id="log_shown"),
         pytest.param("win_w", _const(1024), _const(1024), id="win_w"),
+        pytest.param("editor_sash_pos", _const(456), _const(456), id="editor_sash_pos"),
     ],
 )
 def test_schema_round_trip(tmp_path, wx_app, name, value_factory, expected_factory):
@@ -130,47 +132,66 @@ def test_save_and_restore_layout(tmp_path, log_shown, wx_app):
 
     frame = wx.Frame(None)
     main_splitter = wx.SplitterWindow(frame)
-    splitter = wx.SplitterWindow(main_splitter)
-    splitter.SplitVertically(wx.Panel(splitter), wx.Panel(splitter))
+    doc_splitter = wx.SplitterWindow(main_splitter)
+    editor_splitter = wx.SplitterWindow(doc_splitter)
+    editor_splitter.SplitVertically(wx.Panel(editor_splitter), wx.Panel(editor_splitter))
+    doc_splitter.SplitVertically(wx.Panel(doc_splitter), editor_splitter)
     panel = DummyListPanel()
     log_console = wx.TextCtrl(main_splitter)
 
     if log_shown:
         log_console.Show()
-        main_splitter.SplitHorizontally(splitter, log_console, 180)
+        main_splitter.SplitHorizontally(doc_splitter, log_console, 180)
     else:
         log_console.Hide()
-        main_splitter.Initialize(splitter)
+        main_splitter.Initialize(doc_splitter)
 
     frame.SetSize((900, 700))
     frame.SetPosition((10, 20))
-    splitter.SetSashPosition(222)
+    doc_splitter.SetSashPosition(222)
+    editor_splitter.SetSashPosition(333)
 
-    cfg.save_layout(frame, splitter, main_splitter, panel)
+    cfg.save_layout(
+        frame,
+        doc_splitter,
+        main_splitter,
+        panel,
+        editor_splitter=editor_splitter,
+    )
 
     assert panel.saved_widths and panel.saved_order
     assert cfg.read_bool("log_shown") is log_shown
 
     new_frame = wx.Frame(None)
     new_main_splitter = wx.SplitterWindow(new_frame)
-    new_splitter = wx.SplitterWindow(new_main_splitter)
-    new_splitter.SplitVertically(wx.Panel(new_splitter), wx.Panel(new_splitter))
+    new_doc_splitter = wx.SplitterWindow(new_main_splitter)
+    new_editor_splitter = wx.SplitterWindow(new_doc_splitter)
+    new_editor_splitter.SplitVertically(wx.Panel(new_editor_splitter), wx.Panel(new_editor_splitter))
+    new_doc_splitter.SplitVertically(wx.Panel(new_doc_splitter), new_editor_splitter)
     new_panel = DummyListPanel()
     new_log = wx.TextCtrl(new_main_splitter)
     new_frame.Show()
 
-    cfg.restore_layout(new_frame, new_splitter, new_main_splitter, new_panel, new_log)
+    cfg.restore_layout(
+        new_frame,
+        new_doc_splitter,
+        new_main_splitter,
+        new_panel,
+        new_log,
+        editor_splitter=new_editor_splitter,
+    )
 
     assert new_frame.GetSize() == (900, 700)
     assert new_frame.GetPosition() == (10, 20)
     assert new_panel.loaded_widths and new_panel.loaded_order
 
     if log_shown:
-        assert new_splitter.GetSashPosition() == 222
+        assert new_doc_splitter.GetSashPosition() == 222
+        assert new_editor_splitter.GetSashPosition() == 333
         assert new_main_splitter.IsSplit()
         assert new_log.IsShown()
     else:
-        assert new_splitter.GetSashPosition() > 0
+        assert new_doc_splitter.GetSashPosition() > 0
         assert not new_main_splitter.IsSplit()
         assert not new_log.IsShown()
 
@@ -228,25 +249,78 @@ def test_restore_layout_without_show(tmp_path, wx_app):
     # Save initial layout with a known sash position
     frame = wx.Frame(None)
     main_splitter = wx.SplitterWindow(frame)
-    splitter = wx.SplitterWindow(main_splitter)
-    splitter.SplitVertically(wx.Panel(splitter), wx.Panel(splitter))
+    doc_splitter = wx.SplitterWindow(main_splitter)
+    editor_splitter = wx.SplitterWindow(doc_splitter)
+    editor_splitter.SplitVertically(wx.Panel(editor_splitter), wx.Panel(editor_splitter))
+    doc_splitter.SplitVertically(wx.Panel(doc_splitter), editor_splitter)
     panel = DummyListPanel()
     log_console = wx.TextCtrl(main_splitter)
 
     log_console.Hide()
-    main_splitter.Initialize(splitter)
+    main_splitter.Initialize(doc_splitter)
     frame.SetSize((800, 600))
-    splitter.SetSashPosition(240)
-    cfg.save_layout(frame, splitter, main_splitter, panel)
+    doc_splitter.SetSashPosition(240)
+    editor_splitter.SetSashPosition(350)
+    cfg.save_layout(
+        frame,
+        doc_splitter,
+        main_splitter,
+        panel,
+        editor_splitter=editor_splitter,
+    )
 
     # Restore layout into a new frame without calling Show()
     new_frame = wx.Frame(None)
     new_main_splitter = wx.SplitterWindow(new_frame)
-    new_splitter = wx.SplitterWindow(new_main_splitter)
-    new_splitter.SplitVertically(wx.Panel(new_splitter), wx.Panel(new_splitter))
+    new_doc_splitter = wx.SplitterWindow(new_main_splitter)
+    new_editor_splitter = wx.SplitterWindow(new_doc_splitter)
+    new_editor_splitter.SplitVertically(wx.Panel(new_editor_splitter), wx.Panel(new_editor_splitter))
+    new_doc_splitter.SplitVertically(wx.Panel(new_doc_splitter), new_editor_splitter)
     new_panel = DummyListPanel()
     new_log = wx.TextCtrl(new_main_splitter)
 
-    cfg.restore_layout(new_frame, new_splitter, new_main_splitter, new_panel, new_log)
+    cfg.restore_layout(
+        new_frame,
+        new_doc_splitter,
+        new_main_splitter,
+        new_panel,
+        new_log,
+        editor_splitter=new_editor_splitter,
+    )
 
-    assert new_splitter.GetSashPosition() == 240
+    assert new_doc_splitter.GetSashPosition() == 240
+    assert new_editor_splitter.GetSashPosition() == 350
+
+
+def test_restore_layout_clamps_minimum(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
+
+    cfg.set_value("sash_pos", 0)
+    cfg.set_value("editor_sash_pos", 0)
+    cfg.flush()
+
+    frame = wx.Frame(None)
+    main_splitter = wx.SplitterWindow(frame)
+    doc_splitter = wx.SplitterWindow(main_splitter)
+    doc_splitter.SetMinimumPaneSize(180)
+    editor_splitter = wx.SplitterWindow(doc_splitter)
+    editor_splitter.SetMinimumPaneSize(200)
+    editor_splitter.SplitVertically(wx.Panel(editor_splitter), wx.Panel(editor_splitter))
+    doc_splitter.SplitVertically(wx.Panel(doc_splitter), editor_splitter)
+    panel = DummyListPanel()
+    log_console = wx.TextCtrl(main_splitter)
+    log_console.Hide()
+    main_splitter.Initialize(doc_splitter)
+
+    cfg.restore_layout(
+        frame,
+        doc_splitter,
+        main_splitter,
+        panel,
+        log_console,
+        editor_splitter=editor_splitter,
+    )
+
+    assert doc_splitter.GetSashPosition() >= 180
+    assert editor_splitter.GetSashPosition() >= 200

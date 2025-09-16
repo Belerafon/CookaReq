@@ -385,6 +385,44 @@ def cmd_item_add(args: argparse.Namespace) -> None:
     sys.stdout.write(f"{req.rid}\n")
 
 
+def cmd_item_edit(args: argparse.Namespace) -> None:
+    """Update an existing requirement without changing its RID."""
+
+    prefix, item_id = parse_rid(args.rid)
+    item_dir = Path(args.directory) / prefix
+    doc = load_document(item_dir)
+    data, _mtime = load_item(item_dir, doc, item_id)
+
+    template: Mapping[str, Any] = {}
+    data_path = getattr(args, "data", None)
+    if data_path:
+        with open(data_path, encoding="utf-8") as fh:
+            template = json.load(fh)
+
+    base_payload: dict[str, Any] = dict(data)
+    base_payload.update(template)
+
+    try:
+        payload = build_item_payload(args, base_payload)
+    except ValidationError as exc:
+        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
+        return
+
+    docs = load_documents(args.directory)
+    labels = list(payload.get("labels", []))
+    err = validate_labels(prefix, labels, docs)
+    if err:
+        sys.stdout.write(_("{msg}\n").format(msg=err))
+        return
+    payload["labels"] = labels
+
+    payload["id"] = int(data["id"])
+
+    req = requirement_from_dict(payload, doc_prefix=doc.prefix, rid=args.rid)
+    save_item(item_dir, doc, requirement_to_dict(req))
+    sys.stdout.write(f"{req.rid}\n")
+
+
 def cmd_item_move(args: argparse.Namespace) -> None:
     """Move existing item ``rid`` to document ``new_prefix``."""
 
@@ -465,6 +503,46 @@ def cmd_item_delete(args: argparse.Namespace) -> None:
         sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
 
 
+def _add_item_payload_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add common requirement field arguments to ``parser``."""
+
+    parser.add_argument("--title", help=_("item title"))
+    parser.add_argument("--statement", help=_("item statement"))
+    parser.add_argument(
+        "--type",
+        choices=REQ_TYPE_CHOICES,
+        default=RequirementType.REQUIREMENT.value,
+    )
+    parser.add_argument(
+        "--status", choices=STATUS_CHOICES, default=Status.DRAFT.value
+    )
+    parser.add_argument("--owner", default="")
+    parser.add_argument(
+        "--priority", choices=PRIORITY_CHOICES, default=Priority.MEDIUM.value
+    )
+    parser.add_argument("--source", default="")
+    parser.add_argument(
+        "--verification",
+        choices=VERIFICATION_CHOICES,
+        default=Verification.ANALYSIS.value,
+    )
+    parser.add_argument("--acceptance")
+    parser.add_argument("--conditions")
+    parser.add_argument("--rationale")
+    parser.add_argument("--assumptions")
+    parser.add_argument("--modified-at", dest="modified_at")
+    parser.add_argument("--approved-at", dest="approved_at")
+    parser.add_argument("--notes")
+    parser.add_argument("--attachments", help=_("JSON list of attachments"))
+    parser.add_argument(
+        "--labels", dest="labels", help=_("comma-separated labels")
+    )
+    parser.add_argument(
+        "--links", help=_("comma-separated parent requirement IDs")
+    )
+    parser.add_argument("--data", help=_("JSON template file"))
+
+
 def add_item_arguments(p: argparse.ArgumentParser) -> None:
     """Configure parser for ``item`` subcommands."""
 
@@ -473,26 +551,14 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     add_p = sub.add_parser("add", help=_("create new item"))
     add_p.add_argument("directory", help=_("requirements root"))
     add_p.add_argument("prefix", help=_("document prefix"))
-    add_p.add_argument("--title", help=_("item title"))
-    add_p.add_argument("--statement", help=_("item statement"))
-    add_p.add_argument("--type", choices=REQ_TYPE_CHOICES, default=RequirementType.REQUIREMENT.value)
-    add_p.add_argument("--status", choices=STATUS_CHOICES, default=Status.DRAFT.value)
-    add_p.add_argument("--owner", default="")
-    add_p.add_argument("--priority", choices=PRIORITY_CHOICES, default=Priority.MEDIUM.value)
-    add_p.add_argument("--source", default="")
-    add_p.add_argument("--verification", choices=VERIFICATION_CHOICES, default=Verification.ANALYSIS.value)
-    add_p.add_argument("--acceptance")
-    add_p.add_argument("--conditions")
-    add_p.add_argument("--rationale")
-    add_p.add_argument("--assumptions")
-    add_p.add_argument("--modified-at", dest="modified_at")
-    add_p.add_argument("--approved-at", dest="approved_at")
-    add_p.add_argument("--notes")
-    add_p.add_argument("--attachments", help=_("JSON list of attachments"))
-    add_p.add_argument("--labels", dest="labels", help=_("comma-separated labels"))
-    add_p.add_argument("--links", help=_("comma-separated parent requirement IDs"))
-    add_p.add_argument("--data", help=_("JSON template file"))
+    _add_item_payload_arguments(add_p)
     add_p.set_defaults(func=cmd_item_add)
+
+    edit_p = sub.add_parser("edit", help=_("edit existing item"))
+    edit_p.add_argument("directory", help=_("requirements root"))
+    edit_p.add_argument("rid", help=_("requirement identifier"))
+    _add_item_payload_arguments(edit_p)
+    edit_p.set_defaults(func=cmd_item_edit)
 
     move_p = sub.add_parser("move", help=_("move item"))
     move_p.add_argument("directory", help=_("requirements root"))

@@ -8,7 +8,7 @@ from ..confirm import confirm as default_confirm
 from ..llm.client import LLMClient
 from ..llm.validation import validate_tool_call
 from ..mcp.client import MCPClient
-from ..mcp.utils import ErrorCode, mcp_error
+from ..mcp.utils import exception_to_mcp_error
 from ..settings import AppSettings
 from ..telemetry import log_event
 
@@ -61,7 +61,7 @@ class LocalAgent:
             name, arguments = self._llm.parse_command(text)
             arguments = validate_tool_call(name, arguments)
         except Exception as exc:
-            err = mcp_error(ErrorCode.VALIDATION_ERROR, str(exc))["error"]
+            err = exception_to_mcp_error(exc)["error"]
             log_event("ERROR", {"error": err})
             return {"ok": False, "error": err}
         return self._mcp.call_tool(name, arguments)

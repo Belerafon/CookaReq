@@ -90,6 +90,7 @@ def requirement_from_dict(
     into their respective dataclasses. Missing optional fields fall back to
     sensible defaults.
     """
+
     required = [
         "id",
         "statement",
@@ -137,11 +138,11 @@ def requirement_from_dict(
 
     labels_data = data.get("labels")
     if labels_data in (None, ""):
-        labels = []
+        labels: list[str] = []
     else:
         if not isinstance(labels_data, list):
             raise TypeError("labels must be a list")
-        labels = list(labels_data)
+        labels = [str(label) for label in labels_data]
 
     try:
         req_id = int(data["id"])
@@ -155,61 +156,34 @@ def requirement_from_dict(
         statement = str(statement)
 
     title = _text_value("title")
-
     owner = _text_value("owner")
     source = _text_value("source")
     conditions = _text_value("conditions")
     rationale = _text_value("rationale")
     assumptions = _text_value("assumptions")
-    version = _text_value("version")
     notes = _text_value("notes")
 
-    acceptance = data.get("acceptance")
+    acceptance_raw = data.get("acceptance")
+    if acceptance_raw is None:
+        acceptance = None
+    elif isinstance(acceptance_raw, str):
+        acceptance = acceptance_raw
+    else:
+        acceptance = str(acceptance_raw)
 
     revision_raw = data.get("revision", 1)
     try:
         revision = int(revision_raw)
     except (TypeError, ValueError) as exc:
         raise TypeError("revision must be an integer") from exc
+    if revision <= 0:
+        raise ValueError("revision must be positive")
 
     modified_at = normalize_timestamp(data.get("modified_at"))
     approved_raw = data.get("approved_at")
     approved_at = normalize_timestamp(approved_raw) if approved_raw else None
 
-    raw_revision = data.get("revision", 1)
-    try:
-        revision = int(raw_revision)
-    except (TypeError, ValueError) as exc:
-        raise TypeError("revision must be an integer") from exc
-    if revision <= 0:
-        raise ValueError("revision must be positive")
-
     return Requirement(
-<<<<<codex/fix-revision-handling-in-editorpanel
-        id=data["id"],
-        title=data["title"],
-        statement=data["statement"],
-        type=RequirementType(data["type"]),
-        status=Status(data["status"]),
-        owner=data["owner"],
-        priority=Priority(data["priority"]),
-        source=data["source"],
-        verification=Verification(data["verification"]),
-        acceptance=data.get("acceptance"),
-        conditions=data.get("conditions", ""),
-        rationale=data.get("rationale", ""),
-        assumptions=data.get("assumptions", ""),
-        modified_at=normalize_timestamp(data.get("modified_at")),
-        labels=labels,
-        attachments=attachments,
-        revision=revision,
-        approved_at=(
-            normalize_timestamp(data.get("approved_at"))
-            if data.get("approved_at")
-            else None
-        ),
-        notes=data.get("notes", ""),
-======
         id=req_id,
         title=title,
         statement=statement,
@@ -225,19 +199,16 @@ def requirement_from_dict(
         conditions=conditions,
         rationale=rationale,
         assumptions=assumptions,
-        version=version,
         modified_at=modified_at,
         labels=labels,
         attachments=attachments,
         revision=revision,
         approved_at=approved_at,
         notes=notes,
->>>>> main
         links=links,
         doc_prefix=doc_prefix,
         rid=rid,
     )
-
 
 def requirement_to_dict(req: Requirement) -> dict[str, Any]:
     """Convert ``req`` into a plain ``dict`` suitable for JSON storage."""

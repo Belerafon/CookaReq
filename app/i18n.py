@@ -55,6 +55,21 @@ def gettext(message: str) -> str:
 _ = gettext  # public alias used by UI modules
 
 
+def translate_resource(message: str | Iterable[str]) -> str:
+    """Translate text loaded from external resources.
+
+    ``message`` may be a single string or an iterable of string fragments.  In
+    the latter case the fragments are joined with a single space before being
+    translated so that PO files see the complete sentence.
+    """
+
+    if isinstance(message, str):
+        combined = message
+    else:
+        combined = " ".join(str(part) for part in message)
+    return gettext(combined)
+
+
 def _parse_po(path: Path) -> dict[str, str]:
     """Parse a very small subset of the PO file format.
 

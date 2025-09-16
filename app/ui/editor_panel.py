@@ -36,6 +36,7 @@ from . import locale
 from .enums import ENUMS
 from .helpers import AutoHeightListCtrl, HelpStaticBox, make_help_button
 from .label_selection_dialog import LabelSelectionDialog
+from .resources import load_editor_config
 
 logger = logging.getLogger(__name__)
 
@@ -60,207 +61,63 @@ class EditorPanel(ScrolledPanel):
         self.original_id: int | None = None
         self._saved_state: dict[str, Any] | None = None
 
-        field_names = [
-            "id",
-            "title",
-            "statement",
-            "acceptance",
-            "conditions",
-            "version",
-            "modified_at",
-            "owner",
-            "source",
-            "type",
-            "status",
-            "priority",
-            "verification",
-            "rationale",
-            "assumptions",
-        ]
-        labels = {name: locale.field_label(name) for name in field_names}
-
-        help_texts = {
-            "id": _(
-                "The 'Requirement ID' is a unique integer used as the stable anchor for a requirement. "
-                "Teams refer to it in traceability matrices, change requests and test reports to ensure everyone talks about the same item. "
-                "Once the identifier appears in external documents it should not be changed to avoid broken references.",
-            ),
-            "title": _(
-                "A concise human-readable summary shown in lists and diagrams. "
-                "It lets stakeholders skim large sets of requirements and quickly find relevant topics. "
-                "Use clear keywords so search and sorting produce meaningful results.",
-            ),
-            "statement": _(
-                "The full requirement statement describing what the system must do or the constraint it imposes. "
-                "This wording becomes the authoritative baseline for implementation and contractual obligations. "
-                "Detailed phrasing here prevents ambiguity during design and review.",
-            ),
-            "acceptance": _(
-                "Acceptance criteria explain how to verify that the requirement is satisfied. "
-                "They may include test scenarios, measurable thresholds or review checklists. "
-                "Well-defined criteria let QA teams plan tests and give product owners a clear basis for acceptance.",
-            ),
-            "conditions": _(
-                "Operating conditions and modes under which the requirement applies. "
-                "Describe environments, performance ranges or user roles that influence validity. "
-                "Such context helps engineers design correctly and testers reproduce the right setup.",
-            ),
-            "version": _(
-                "Sequential version number for change control. "
-                "Increase it whenever the requirement text changes to keep a revision history. "
-                "Versioning enables baselining and comparison of snapshots during reviews.",
-            ),
-            "modified_at": _(
-                "Date and time of the last edit. "
-                "The value is filled automatically and aids audit trails. "
-                "Reviewers can sort by this field to focus on recently modified items.",
-            ),
-            "owner": _(
-                "Person or team responsible for the requirement. "
-                "The owner coordinates discussions, approves updates and answers questions from other stakeholders. "
-                "Assigning ownership clarifies accountability and speeds up decisions.",
-            ),
-            "source": _(
-                "Origin of the requirement such as a customer request, regulation or design document. "
-                "Recording the source explains why the requirement exists and where to look for additional context. "
-                "This trace is essential when validating compliance or revisiting negotiations.",
-            ),
-            "type": _(
-                "Classification of the requirement: functional, constraint, interface or quality attribute. "
-                "Types help filter large sets, assign specialists and apply different review processes. "
-                "Consistent categorization improves reporting and reuse.",
-            ),
-            "status": _(
-                "Lifecycle state like draft, in review, approved or retired. "
-                "The status communicates readiness and controls workflow gates. "
-                "Dashboards and metrics rely on it to show project progress.",
-            ),
-            "priority": _(
-                "Relative importance or urgency of the requirement. "
-                "High-priority items drive planning and resource allocation. "
-                "Use priority to focus effort on the capabilities that deliver most value.",
-            ),
-            "verification": _(
-                "Preferred method to prove compliance: inspection, analysis, demonstration or test. "
-                "Selecting a method early guides preparation of verification activities and needed tools. "
-                "It also clarifies expectations for acceptance.",
-            ),
-            "rationale": _(
-                "Explanation of why the requirement exists or how it was derived. "
-                "Capturing rationale preserves design intent and helps future maintainers understand trade-offs. "
-                "This background is valuable during change discussions or audits.",
-            ),
-            "assumptions": _(
-                "Assumptions made while formulating the requirement, such as available technologies or expected user behavior. "
-                "Listing assumptions exposes risks and clarifies the context that might change. "
-                "Revisit them regularly to ensure the requirement remains valid.",
-            ),
-            "attachments": _(
-                "Supplementary files that give additional context like diagrams, logs or calculations. "
-                "Attachments travel with the requirement so reviewers and implementers see the same supporting evidence. "
-                "Keep file notes concise to explain relevance.",
-            ),
-            "approved_at": _(
-                "Date when the requirement was formally accepted by stakeholders. "
-                "Recording the approval moment is useful for audits and for tracking baselines. "
-                "Leave empty while the requirement is still under discussion.",
-            ),
-            "notes": _(
-                "Free-form remarks that do not fit other fields. "
-                "Use notes to capture review feedback, open questions or implementation hints. "
-                "Unlike acceptance criteria they are not part of the requirement contract.",
-            ),
-            "labels": _(
-                "Labels that categorize the requirement. "
-                "Consistent labeling enables powerful filtering and helps group related items. "
-                "Use shared presets to avoid typos and duplicates.",
-            ),
-            "links": _(
-                "Links to higher-level requirements or stakeholder needs. "
-                "Upward traceability shows why this requirement exists and simplifies impact analysis when parents change. "
-                "Use it to prove coverage of system objectives.",
-            ),
-        }
-
-        self._help_texts = help_texts
+        config = load_editor_config()
+        labels = {name: locale.field_label(name) for name in config.field_names}
+        self._help_texts = config.localized_help()
 
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        for name, multiline in [
-            ("id", False),
-            ("title", False),
-            ("statement", True),
-            ("acceptance", True),
-            ("conditions", True),
-            ("rationale", True),
-            ("assumptions", True),
-            ("source", True),
-        ]:
-            label = wx.StaticText(self, label=labels[name])
-            help_btn = make_help_button(self, self._help_texts[name])
+        for spec in config.text_fields:
+            label = wx.StaticText(self, label=labels[spec.name])
+            help_btn = make_help_button(self, self._help_texts[spec.name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
             sizer.Add(row, 0, wx.ALL, 5)
 
-            style = wx.TE_MULTILINE if multiline else 0
+            style = wx.TE_MULTILINE if spec.multiline else 0
             ctrl = wx.TextCtrl(self, style=style)
-            if multiline:
+            if spec.multiline:
                 self._bind_autosize(ctrl)
-            self.fields[name] = ctrl
+            self.fields[spec.name] = ctrl
             # Высоту многострочных полей мы управляем вручную,
             # поэтому не передаём sizer'у коэффициент роста.
             sizer.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
-            if name == "id":
-                ctrl.SetHint(_("Unique integer identifier"))
+            if spec.hint:
+                ctrl.SetHint(_(spec.hint))
+            if spec.name == "id":
                 ctrl.Bind(wx.EVT_TEXT, self._on_id_change)
-
-        def add_text_field(name: str) -> None:
-            container = wx.BoxSizer(wx.VERTICAL)
-            label = wx.StaticText(self, label=labels[name])
-            help_btn = make_help_button(self, self._help_texts[name])
-            row = wx.BoxSizer(wx.HORIZONTAL)
-            row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
-            row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-            container.Add(row, 0, wx.ALL, 5)
-            ctrl = wx.TextCtrl(self)
-            self.fields[name] = ctrl
-            container.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
-            grid.Add(container, 1, wx.EXPAND)
-
-        def add_enum_field(name: str) -> None:
-            container = wx.BoxSizer(wx.VERTICAL)
-            label = wx.StaticText(self, label=labels[name])
-            enum_cls = ENUMS[name]
-            choices = [locale.code_to_label(name, e.value) for e in enum_cls]
-            choice = wx.Choice(self, choices=choices)
-            help_btn = make_help_button(self, self._help_texts[name])
-            row = wx.BoxSizer(wx.HORIZONTAL)
-            row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
-            row.Add(choice, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-            row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-            self.enums[name] = choice
-            container.Add(row, 0, wx.EXPAND | wx.ALL, 5)
-            grid.Add(container, 1, wx.EXPAND)
 
         grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
         grid.AddGrowableCol(0, 1)
         grid.AddGrowableCol(1, 1)
 
-        items = [
-            ("type", "enum"),
-            ("status", "enum"),
-            ("priority", "enum"),
-            ("verification", "enum"),
-            ("modified_at", "text"),
-            ("owner", "text"),
-            ("version", "text"),
-        ]
-        for name, kind in items:
-            if kind == "enum":
-                add_enum_field(name)
+        for spec in config.grid_fields:
+            container = wx.BoxSizer(wx.VERTICAL)
+            label = wx.StaticText(self, label=labels[spec.name])
+            help_btn = make_help_button(self, self._help_texts[spec.name])
+            if spec.control == "enum":
+                enum_cls = ENUMS[spec.name]
+                choices = [locale.code_to_label(spec.name, e.value) for e in enum_cls]
+                choice = wx.Choice(self, choices=choices)
+                row = wx.BoxSizer(wx.HORIZONTAL)
+                row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+                row.Add(choice, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+                row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+                self.enums[spec.name] = choice
+                container.Add(row, 0, wx.EXPAND | wx.ALL, 5)
             else:
-                add_text_field(name)
+                row = wx.BoxSizer(wx.HORIZONTAL)
+                row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+                row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+                container.Add(row, 0, wx.ALL, 5)
+                ctrl = wx.TextCtrl(self)
+                if spec.hint:
+                    ctrl.SetHint(_(spec.hint))
+                self.fields[spec.name] = ctrl
+                container.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
+
+            grid.Add(container, 1, wx.EXPAND)
 
         sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
 

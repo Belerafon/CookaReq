@@ -42,3 +42,18 @@ def test_install_selects_locale_and_falls_back(tmp_path, monkeypatch):
     i18n.install("app", str(tmp_path), languages=["es"])
     assert i18n._translations == {}
     assert i18n.gettext("hello") == "hello"
+
+
+def test_translate_resource_combines_fragments(monkeypatch):
+    captured: dict[str, str] = {}
+
+    def fake_gettext(message: str) -> str:
+        captured["message"] = message
+        return f"translated:{message}"
+
+    monkeypatch.setattr(i18n, "gettext", fake_gettext)
+
+    result = i18n.translate_resource(["first", "second"])
+
+    assert captured["message"] == "first second"
+    assert result == "translated:first second"

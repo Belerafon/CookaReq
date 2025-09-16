@@ -159,7 +159,7 @@ class SettingsDialog(wx.Dialog):
         )
         base_sz.Add(self._base_url, 1, wx.ALIGN_CENTER_VERTICAL)
         base_sz.Add(
-            make_help_button(llm, LLM_HELP["base_url"]),
+            make_help_button(llm, LLM_HELP["base_url"], dialog_parent=self),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -174,7 +174,7 @@ class SettingsDialog(wx.Dialog):
         )
         model_sz.Add(self._model, 1, wx.ALIGN_CENTER_VERTICAL)
         model_sz.Add(
-            make_help_button(llm, LLM_HELP["model"]),
+            make_help_button(llm, LLM_HELP["model"], dialog_parent=self),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -189,7 +189,7 @@ class SettingsDialog(wx.Dialog):
         )
         key_sz.Add(self._api_key, 1, wx.ALIGN_CENTER_VERTICAL)
         key_sz.Add(
-            make_help_button(llm, LLM_HELP["api_key"]),
+            make_help_button(llm, LLM_HELP["api_key"], dialog_parent=self),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -222,7 +222,7 @@ class SettingsDialog(wx.Dialog):
         )
         timeout_sz.Add(self._timeout, 1, wx.ALIGN_CENTER_VERTICAL)
         timeout_sz.Add(
-            make_help_button(llm, LLM_HELP["timeout_minutes"]),
+            make_help_button(llm, LLM_HELP["timeout_minutes"], dialog_parent=self),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -281,7 +281,7 @@ class SettingsDialog(wx.Dialog):
         )
         host_sz.Add(self._host, 1, wx.ALIGN_CENTER_VERTICAL)
         host_sz.Add(
-            make_help_button(mcp, MCP_HELP["host"]),
+            make_help_button(mcp, MCP_HELP["host"], dialog_parent=self),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -296,7 +296,7 @@ class SettingsDialog(wx.Dialog):
         )
         port_sz.Add(self._port, 1, wx.ALIGN_CENTER_VERTICAL)
         port_sz.Add(
-            make_help_button(mcp, MCP_HELP["port"]),
+            make_help_button(mcp, MCP_HELP["port"], dialog_parent=self),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -311,7 +311,7 @@ class SettingsDialog(wx.Dialog):
         )
         base_sz.Add(self._base_path, 1, wx.ALIGN_CENTER_VERTICAL)
         base_sz.Add(
-            make_help_button(mcp, MCP_HELP["base_path"]),
+            make_help_button(mcp, MCP_HELP["base_path"], dialog_parent=self),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -320,7 +320,7 @@ class SettingsDialog(wx.Dialog):
         token_toggle_sz = wx.BoxSizer(wx.HORIZONTAL)
         token_toggle_sz.Add(self._require_token, 0, wx.ALIGN_CENTER_VERTICAL)
         token_toggle_sz.Add(
-            make_help_button(mcp, MCP_HELP["require_token"]),
+            make_help_button(mcp, MCP_HELP["require_token"], dialog_parent=self),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -335,7 +335,7 @@ class SettingsDialog(wx.Dialog):
         )
         token_sz.Add(self._token, 1, wx.ALIGN_CENTER_VERTICAL)
         token_sz.Add(
-            make_help_button(mcp, MCP_HELP["token"]),
+            make_help_button(mcp, MCP_HELP["token"], dialog_parent=self),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,

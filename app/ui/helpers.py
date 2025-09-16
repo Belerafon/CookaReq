@@ -22,7 +22,7 @@ class HelpStaticBox(wx.StaticBoxSizer):
         parent: wx.Window,
         label: str,
         help_text: str,
-        on_help: Callable[[str], None],
+        on_help: Callable[[wx.Window, str], None] | None = None,
         *,
         orient: int = wx.VERTICAL,
         border: int = 5,
@@ -33,7 +33,18 @@ class HelpStaticBox(wx.StaticBoxSizer):
 
         self._border = border
         self._btn = wx.Button(box, label="?", style=wx.BU_EXACTFIT)
-        self._btn.Bind(wx.EVT_BUTTON, lambda _evt: on_help(help_text))
+        self._help_text = help_text
+        self._on_help: Callable[[wx.Window, str], None]
+        if on_help is None:
+            parent_window = parent
+
+            def _default_help(anchor: wx.Window, message: str) -> None:
+                show_help(parent_window, message, anchor=anchor)
+
+            self._on_help = _default_help
+        else:
+            self._on_help = on_help
+        self._btn.Bind(wx.EVT_BUTTON, self._handle_help)
         self._has_header = False
 
     def _wrap_first(self, item: wx.Window | wx.Sizer, flag: int) -> wx.Sizer:
@@ -43,6 +54,11 @@ class HelpStaticBox(wx.StaticBoxSizer):
         row.Add(item, 1, flag & ~wx.ALL, 0)
         row.Add(self._btn, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, self._border)
         return row
+
+    def _handle_help(self, _evt: wx.CommandEvent) -> None:
+        """Invoke the configured help callback for this static box."""
+
+        self._on_help(self._btn, self._help_text)
 
     def Add(
         self,
@@ -159,40 +175,151 @@ class AutoHeightListCtrl(wx.ListCtrl):
         return wx.Size(best.width, height)
 
 
-def show_help(parent: wx.Window, message: str, *, title: str | None = None) -> None:
-    """Display a modal dialog with ``message``.
+def _client_display_rect_for(window: wx.Window | None) -> wx.Rect:
+    """Return the usable display area for the monitor containing ``window``."""
 
-    Parameters
-    ----------
-    parent:
-        Parent window for the dialog.
-    message:
-        Help text to show.
-    title:
-        Optional dialog title; defaults to ``"Hint"``.
-    """
+    if window is not None:
+        index = wx.Display.GetFromWindow(window)
+        if index != wx.NOT_FOUND:
+            return wx.Display(index).GetClientArea()
+    x, y, width, height = wx.ClientDisplayRect()
+    return wx.Rect(x, y, width, height)
+
+
+def _calculate_popup_position(
+    anchor_rect: wx.Rect,
+    popup_size: wx.Size,
+    display_rect: wx.Rect,
+    pad: int = 8,
+) -> tuple[int, int]:
+    """Compute where to place a popup so it stays close to ``anchor_rect``."""
+
+    width = popup_size.width
+    height = popup_size.height
+
+    anchor_left = anchor_rect.x
+    anchor_top = anchor_rect.y
+    anchor_right = anchor_rect.x + anchor_rect.width
+    anchor_bottom = anchor_rect.y + anchor_rect.height
+
+    display_left = display_rect.x
+    display_top = display_rect.y
+    display_right = display_rect.x + display_rect.width
+    display_bottom = display_rect.y + display_rect.height
+
+    def clamp_x(x: int) -> int:
+        usable = display_rect.width - width - 2 * pad
+        if usable < 0:
+            return display_left + pad
+        return max(display_left + pad, min(x, display_right - width - pad))
+
+    def clamp_y(y: int) -> int:
+        usable = display_rect.height - height - 2 * pad
+        if usable < 0:
+            return display_top + pad
+        return max(display_top + pad, min(y, display_bottom - height - pad))
+
+    space_right = display_right - anchor_right - pad
+    if space_right >= width:
+        return anchor_right + pad, clamp_y(anchor_top)
+
+    space_left = anchor_left - display_left - pad
+    if space_left >= width:
+        return anchor_left - width - pad, clamp_y(anchor_top)
+
+    space_below = display_bottom - anchor_bottom - pad
+    if space_below >= height:
+        return clamp_x(anchor_left), anchor_bottom + pad
+
+    space_above = anchor_top - display_top - pad
+    if space_above >= height:
+        return clamp_x(anchor_left), anchor_top - height - pad
+
+    return clamp_x(anchor_right + pad), clamp_y(anchor_top)
+
+
+def _position_window_near_anchor(window: wx.Window, anchor: wx.Window | None) -> None:
+    """Place ``window`` close to ``anchor`` while keeping it on-screen."""
+
+    if anchor is None or not anchor.IsShownOnScreen():
+        window.CenterOnParent()
+        return
+
+    anchor_rect = anchor.GetScreenRect()
+    if anchor_rect.width <= 0 and anchor_rect.height <= 0:
+        window.CenterOnParent()
+        return
+
+    display_rect = _client_display_rect_for(anchor)
+    position = _calculate_popup_position(anchor_rect, window.GetSize(), display_rect)
+    window.SetPosition(position)
+
+
+def show_help(
+    parent: wx.Window,
+    message: str,
+    *,
+    title: str | None = None,
+    anchor: wx.Window | None = None,
+) -> None:
+    """Display a modal dialog with ``message`` near the triggering control."""
+
+    top_level = parent.GetTopLevelParent() if parent else None
+    dialog_parent = top_level or parent
 
     dlg = wx.Dialog(
-        parent,
+        dialog_parent,
         title=title or _("Hint"),
         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
     )
-    text = wx.TextCtrl(dlg, value=message, style=wx.TE_MULTILINE | wx.TE_READONLY)
+    text = wx.TextCtrl(
+        dlg,
+        value=message,
+        style=wx.TE_MULTILINE | wx.TE_READONLY,
+    )
+    text.SetMinSize(wx.Size(320, 160))
+    text.SetInsertionPoint(0)
+
     sizer = wx.BoxSizer(wx.VERTICAL)
     sizer.Add(text, 1, wx.ALL | wx.EXPAND, 10)
     btns = dlg.CreateStdDialogButtonSizer(wx.OK)
     if btns:
         sizer.Add(btns, 0, wx.ALL | wx.ALIGN_CENTER, 5)
     dlg.SetSizerAndFit(sizer)
+    dlg.Layout()
+    _position_window_near_anchor(dlg, anchor or parent)
     dlg.ShowModal()
     dlg.Destroy()
 
 
-def make_help_button(parent: wx.Window, message: str) -> wx.Button:
-    """Return a small question-mark button displaying ``message`` when clicked."""
+def make_help_button(
+    parent: wx.Window,
+    message: str,
+    *,
+    dialog_parent: wx.Window | None = None,
+) -> wx.Button:
+    """Return a small question-mark button displaying ``message`` when clicked.
+
+    Parameters
+    ----------
+    parent:
+        The container that owns the button.  This is typically the panel that
+        hosts the form controls.
+    message:
+        Text shown inside the help popup.
+    dialog_parent:
+        Optional window that should own the help dialog.  Providing a
+        top-level dialog avoids centering behaviour of intermediate container
+        widgets (e.g. notebook pages) and guarantees the popup stays near the
+        triggering button.
+    """
 
     btn = wx.Button(parent, label="?", style=wx.BU_EXACTFIT)
-    btn.Bind(wx.EVT_BUTTON, lambda _evt: show_help(parent, message))
+
+    def _on_click(_evt: wx.CommandEvent) -> None:
+        show_help(dialog_parent or parent, message, anchor=btn)
+
+    btn.Bind(wx.EVT_BUTTON, _on_click)
     return btn
 
 

@@ -15,6 +15,7 @@ from ..core.document_store import (
     Document,
     LabelDef,
     RequirementIDCollisionError,
+    ValidationError,
     save_document,
 )
 from ..i18n import _
@@ -476,9 +477,24 @@ class MainFrame(wx.Frame):
 
     def _load_directory(self, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""
-        self.docs_controller = DocumentsController(path, self.model)
+        controller = DocumentsController(path, self.model)
+        try:
+            docs = controller.load_documents()
+        except ValidationError as exc:
+            logger.error(
+                "validation error while loading requirements folder %s: %s", path, exc
+            )
+            self._show_directory_error(path, exc)
+            return
+        except Exception as exc:  # pragma: no cover - unexpected GUI failure
+            logger.exception(
+                "unexpected error while loading requirements folder %s", path
+            )
+            self._show_directory_error(path, exc)
+            return
+
+        self.docs_controller = controller
         self.panel.set_documents_controller(self.docs_controller)
-        docs = self.docs_controller.load_documents()
         self.doc_tree.set_documents(docs)
         self.config.add_recent_dir(path)
         self.navigation.update_recent_menu()
@@ -502,6 +518,14 @@ class MainFrame(wx.Frame):
             self.panel.sort(self.sort_column, self.sort_ascending)
         self._selected_requirement_id = None
         self.editor.Hide()
+
+    def _show_directory_error(self, path: Path, error: Exception) -> None:
+        """Display error message for a failed directory load."""
+
+        message = _(
+            "Failed to load requirements folder \"{path}\": {error}"
+        ).format(path=path, error=error)
+        wx.MessageBox(message, _("Error"), wx.ICON_ERROR)
 
     def _refresh_documents(
         self,

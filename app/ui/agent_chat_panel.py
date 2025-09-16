@@ -63,6 +63,7 @@ class AgentChatPanel(wx.Panel):
         self._timer.Bind(wx.EVT_TIMER, self._on_timer)
         self._start_time: float | None = None
         self._current_tokens: int = 0
+        self._clear_history_btn: wx.Button | None = None
         self._load_history()
 
         self._build_ui()
@@ -112,9 +113,12 @@ class AgentChatPanel(wx.Panel):
         buttons = wx.BoxSizer(wx.HORIZONTAL)
         self._send_btn = wx.Button(self, label=_("Send"))
         self._send_btn.Bind(wx.EVT_BUTTON, self._on_send)
+        self._clear_history_btn = wx.Button(self, label=_("Clear history"))
+        self._clear_history_btn.Bind(wx.EVT_BUTTON, self._on_clear_history)
         clear_btn = wx.Button(self, label=_("Clear input"))
         clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_input)
         buttons.AddStretchSpacer()
+        buttons.Add(self._clear_history_btn, 0, wx.RIGHT, 5)
         buttons.Add(clear_btn, 0, wx.RIGHT, 5)
         buttons.Add(self._send_btn, 0)
 
@@ -148,6 +152,7 @@ class AgentChatPanel(wx.Panel):
 
         prompt = text
         tokens = _token_count(prompt)
+        history_messages = self._conversation_messages()
         self._set_wait_state(True, tokens)
 
         app = wx.GetApp()
@@ -160,7 +165,7 @@ class AgentChatPanel(wx.Panel):
         def worker() -> None:
             try:
                 agent = self._agent_supplier()
-                result = agent.run_command(prompt)
+                result = agent.run_command(prompt, history=history_messages)
             except Exception as exc:  # pragma: no cover - defensive
                 result = {
                     "ok": False,
@@ -191,6 +196,18 @@ class AgentChatPanel(wx.Panel):
         self.history_list.SetSelection(wx.NOT_FOUND)
         self.input.SetFocus()
 
+    def _on_clear_history(self, _event: wx.Event) -> None:
+        """Remove all stored conversation entries."""
+
+        if self._is_running or not self.history:
+            return
+        self.history.clear()
+        self._save_history()
+        self._refresh_history_list()
+        self.history_list.SetSelection(wx.NOT_FOUND)
+        self._render_transcript()
+        self.input.SetFocus()
+
     def _on_select_history(self, event: wx.CommandEvent) -> None:
         """Load prompt from history selection."""
 
@@ -209,6 +226,8 @@ class AgentChatPanel(wx.Panel):
         self._send_btn.Enable(not active)
         self.input.Enable(not active)
         self.history_list.Enable(not active)
+        if self._clear_history_btn is not None:
+            self._clear_history_btn.Enable(not active)
         if active:
             self._current_tokens = tokens
             self._start_time = time.monotonic()
@@ -278,6 +297,15 @@ class AgentChatPanel(wx.Panel):
             return str(payload)
 
     # ------------------------------------------------------------------
+    def _conversation_messages(self) -> list[dict[str, str]]:
+        messages: list[dict[str, str]] = []
+        for entry in self.history:
+            if entry.prompt:
+                messages.append({"role": "user", "content": entry.prompt})
+            if entry.response:
+                messages.append({"role": "assistant", "content": entry.response})
+        return messages
+
     def _append_history(self, prompt: str, response: str) -> None:
         tokens = _token_count(prompt) + _token_count(response)
         entry = ChatEntry(prompt=prompt, response=response, tokens=tokens)

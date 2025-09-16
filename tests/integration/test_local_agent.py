@@ -35,17 +35,17 @@ class DummyMCP:
 
 
 class DummyLLM:
-    def parse_command(self, text: str):
+    def parse_command(self, text: str, *, history=None):
         return "list_requirements", {}
 
 
 class JSONFailingLLM:
-    def parse_command(self, text: str):
+    def parse_command(self, text: str, *, history=None):
         raise json.JSONDecodeError("Expecting value", text, 0)
 
 
 class OpenAINetworkLLM:
-    def parse_command(self, text: str):
+    def parse_command(self, text: str, *, history=None):
         request = httpx.Request("GET", "https://example.com")
         raise openai.APIConnectionError(
             message="temporary outage",
@@ -87,7 +87,7 @@ def test_run_command_propagates_mcp_exception():
 
 def test_run_command_rejects_unknown_tool():
     class StubLLM:
-        def parse_command(self, text: str):
+        def parse_command(self, text: str, *, history=None):
             return "unknown_tool", {}
 
     class RecordingMCP:
@@ -109,7 +109,7 @@ def test_run_command_rejects_unknown_tool():
 
 def test_run_command_rejects_invalid_arguments():
     class StubLLM:
-        def parse_command(self, text: str):
+        def parse_command(self, text: str, *, history=None):
             return "delete_requirement", {"rid": "SYS-1"}
 
     class RecordingMCP:
@@ -129,6 +129,30 @@ def test_run_command_rejects_invalid_arguments():
     assert mcp.called is False
 
 
+def test_run_command_passes_history_to_llm():
+    class RecordingLLM:
+        def __init__(self) -> None:
+            self.calls: list[list[dict[str, str]]] = []
+
+        def parse_command(self, text: str, *, history=None):
+            self.calls.append(list(history or []))
+            return "list_requirements", {}
+
+    class DummyMCP:
+        def call_tool(self, name, arguments):
+            return {"ok": True, "error": None, "result": {}}
+
+    llm = RecordingLLM()
+    agent = LocalAgent(llm=llm, mcp=DummyMCP())
+    history = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}]
+
+    agent.run_command("next", history=history)
+    assert llm.calls[0] == history
+
+    asyncio.run(agent.run_command_async("again", history=history))
+    assert llm.calls[1] == history
+
+
 def test_custom_confirm_message(monkeypatch):
     messages = []
 
@@ -140,7 +164,7 @@ def test_custom_confirm_message(monkeypatch):
         def __init__(self, settings):
             pass
 
-        def parse_command(self, text: str):
+        def parse_command(self, text: str, *, history=None):
             return "delete_requirement", {"rid": "SYS-1", "rev": 3}
 
     class StubMCP:
@@ -171,7 +195,7 @@ def test_async_methods_offload_to_threads():
             self.check_thread = threading.get_ident()
             return {"ok": True}
 
-        def parse_command(self, text: str):
+        def parse_command(self, text: str, *, history=None):
             self.parse_thread = threading.get_ident()
             return "list_requirements", {}
 
@@ -216,7 +240,7 @@ def test_async_methods_prefer_native_coroutines():
             self.check_called = True
             return {"ok": True}
 
-        async def parse_command_async(self, text: str):
+        async def parse_command_async(self, text: str, *, history=None):
             self.parse_called = True
             return "list_requirements", {}
 

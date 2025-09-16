@@ -8,7 +8,12 @@ from pathlib import Path
 import tomllib
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from .llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
+from .llm.constants import (
+    DEFAULT_MAX_CONTEXT_TOKENS,
+    DEFAULT_MAX_OUTPUT_TOKENS,
+    MIN_MAX_CONTEXT_TOKENS,
+    MIN_MAX_OUTPUT_TOKENS,
+)
 
 
 class LLMSettings(BaseModel):
@@ -24,20 +29,26 @@ class LLMSettings(BaseModel):
         DEFAULT_MAX_OUTPUT_TOKENS,
         ge=MIN_MAX_OUTPUT_TOKENS,
     )
+    max_context_tokens: int = Field(
+        DEFAULT_MAX_CONTEXT_TOKENS,
+        ge=MIN_MAX_CONTEXT_TOKENS,
+    )
     timeout_minutes: int = 60
     stream: bool = False
 
-    @field_validator("max_output_tokens", mode="before")
-    @classmethod
-    def _normalize_max_output_tokens(cls, value: int | str | None) -> int:
-        """Clamp misconfigured limits to supported ranges."""
-
+    @staticmethod
+    def _normalize_token_limit(
+        value: int | str | None,
+        *,
+        default: int,
+        minimum: int,
+    ) -> int:
         if value is None:
-            return DEFAULT_MAX_OUTPUT_TOKENS
+            return default
         if isinstance(value, str):
             raw = value.strip()
             if not raw:
-                return DEFAULT_MAX_OUTPUT_TOKENS
+                return default
             try:
                 numeric = int(raw)
             except ValueError:  # pragma: no cover - delegated to Pydantic
@@ -45,10 +56,32 @@ class LLMSettings(BaseModel):
         else:
             numeric = int(value)
         if numeric <= 0:
-            return DEFAULT_MAX_OUTPUT_TOKENS
-        if numeric < MIN_MAX_OUTPUT_TOKENS:
-            return MIN_MAX_OUTPUT_TOKENS
+            return default
+        if numeric < minimum:
+            return minimum
         return numeric
+
+    @field_validator("max_output_tokens", mode="before")
+    @classmethod
+    def _normalize_max_output_tokens(cls, value: int | str | None) -> int:
+        """Clamp misconfigured response limits to supported ranges."""
+
+        return cls._normalize_token_limit(
+            value,
+            default=DEFAULT_MAX_OUTPUT_TOKENS,
+            minimum=MIN_MAX_OUTPUT_TOKENS,
+        )
+
+    @field_validator("max_context_tokens", mode="before")
+    @classmethod
+    def _normalize_max_context_tokens(cls, value: int | str | None) -> int:
+        """Clamp misconfigured prompt context limits to supported ranges."""
+
+        return cls._normalize_token_limit(
+            value,
+            default=DEFAULT_MAX_CONTEXT_TOKENS,
+            minimum=MIN_MAX_CONTEXT_TOKENS,
+        )
 
 
 class MCPSettings(BaseModel):

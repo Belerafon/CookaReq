@@ -446,11 +446,7 @@ class MainFrame(wx.Frame):
             self.current_doc_prefix = first
             self.panel.set_active_document(first)
             self.editor.set_directory(self.current_dir / first)
-            derived_map = self.docs_controller.load_items(first)
-            labels, freeform = self.docs_controller.collect_labels(first)
-            self.panel.set_requirements(self.model.get_all(), derived_map)
-            self.editor.update_labels_list(labels, freeform)
-            self.panel.update_labels_list(labels)
+            self._load_document_contents(first)
             self.doc_tree.select(first)
         else:
             self.current_doc_prefix = None
@@ -497,6 +493,36 @@ class MainFrame(wx.Frame):
             self.panel.update_labels_list([])
             self._selected_requirement_id = None
             self.editor.Hide()
+
+    def _load_document_contents(self, prefix: str) -> bool:
+        """Load items and labels for ``prefix`` and update the views."""
+
+        if not self.docs_controller:
+            return False
+        try:
+            derived_map = self.docs_controller.load_items(prefix)
+        except Exception as exc:  # pragma: no cover - GUI side effect
+            logger.exception("failed to load requirements for document %s", prefix)
+            message = _(
+                "Failed to load requirements for document \"{prefix}\": {error}"
+            ).format(prefix=prefix, error=exc)
+            wx.MessageBox(message, _("Error"), wx.ICON_ERROR)
+            self.model.set_requirements([])
+            self.panel.set_requirements([], {})
+            self.editor.update_labels_list([], False)
+            self.panel.update_labels_list([])
+            self._selected_requirement_id = None
+            self.editor.Hide()
+            self.splitter.UpdateSize()
+            return False
+        labels, freeform = self.docs_controller.collect_labels(prefix)
+        self.panel.set_requirements(self.model.get_all(), derived_map)
+        self.editor.update_labels_list(labels, freeform)
+        self.panel.update_labels_list(labels)
+        self._selected_requirement_id = None
+        self.editor.Hide()
+        self.splitter.UpdateSize()
+        return True
 
     # recent directories -------------------------------------------------
 
@@ -603,14 +629,7 @@ class MainFrame(wx.Frame):
         self.panel.set_active_document(prefix)
         if self.current_dir:
             self.editor.set_directory(self.current_dir / prefix)
-        derived_map = self.docs_controller.load_items(prefix)
-        labels, freeform = self.docs_controller.collect_labels(prefix)
-        self.panel.set_requirements(self.model.get_all(), derived_map)
-        self.editor.update_labels_list(labels, freeform)
-        self.panel.update_labels_list(labels)
-        self._selected_requirement_id = None
-        self.editor.Hide()
-        self.splitter.UpdateSize()
+        self._load_document_contents(prefix)
 
     def on_requirement_selected(self, event: wx.ListEvent) -> None:
         """Load requirement into editor when selected in list."""

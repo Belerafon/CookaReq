@@ -56,6 +56,29 @@ def test_migrate_to_docs_basic(tmp_path: Path):
     assert doc["labels"]["allowFreeform"] is True
 
 
+def test_migrate_to_docs_creates_default_document(tmp_path: Path):
+    lone = {
+        "id": "HLR-001",
+        "title": "Lone HLR",
+        "statement": "Only high-level requirement",
+        "labels": ["doc=HLR"],
+    }
+
+    write_req(tmp_path / "HLR-001.json", lone)
+
+    migrate_to_docs(tmp_path, rules="label:doc=HLR->HLR", default="SYS")
+
+    sys_doc_path = tmp_path / "SYS" / "document.json"
+    assert sys_doc_path.exists()
+    sys_doc = json.loads(sys_doc_path.read_text(encoding="utf-8"))
+    assert sys_doc["prefix"] == "SYS"
+    assert sys_doc["digits"] == 3
+
+    sys_items_dir = tmp_path / "SYS" / "items"
+    assert sys_items_dir.is_dir()
+    assert not any(sys_items_dir.iterdir())
+
+
 def test_migrate_to_docs_links(tmp_path: Path):
     r1 = {
         "id": "CR-001",

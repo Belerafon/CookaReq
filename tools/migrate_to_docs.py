@@ -57,8 +57,9 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
         raise FileNotFoundError(str(directory))
 
     rule_objs = parse_rules(rules)
-    digits_map: dict[str, int] = {}
+    digits_map: dict[str, int] = {default: 0}
     parsed: List[dict] = []
+    max_width = 0
 
     # First pass: read legacy files and collect metadata
     for fp in root.glob("*.json"):
@@ -94,6 +95,8 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
         num_str = match.group("num")
         num = int(num_str)
         width = len(num_str)
+        if width > max_width:
+            max_width = width
         labels = list(data.get("labels", []))
         prefix = select_prefix(labels, rule_objs, default)
         digits_map[prefix] = max(digits_map.get(prefix, 0), width)
@@ -106,6 +109,9 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
             "labels": labels,
             "links": list(data.get("links", [])),
         })
+
+    if digits_map[default] == 0:
+        digits_map[default] = max_width or 3
 
     # Determine new identifiers and build mapping
     id_map: dict[str, str] = {}
@@ -153,6 +159,8 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
     # Create document descriptors
     for prefix, digits in digits_map.items():
         doc_dir = root / prefix
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        (doc_dir / "items").mkdir(exist_ok=True)
         doc = {
             "prefix": prefix,
             "title": prefix,

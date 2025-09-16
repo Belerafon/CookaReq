@@ -26,6 +26,7 @@ class LLMSettings(BaseModel):
 class MCPSettings(BaseModel):
     """Settings for configuring the MCP server and client."""
 
+    auto_start: bool = True
     host: str = "127.0.0.1"
     port: int = 59362
     base_path: str = ""

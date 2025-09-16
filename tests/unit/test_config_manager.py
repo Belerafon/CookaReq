@@ -53,6 +53,7 @@ def _recent_dirs_factory(tmp_path):
         ("auto_open_last", False),
         ("remember_sort", False),
         ("language", None),
+        ("mcp_auto_start", True),
         ("mcp_port", 59362),
         ("llm_max_output_tokens", None),
         ("sort_column", -1),
@@ -76,6 +77,7 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
         pytest.param("remember_sort", _const(True), _const(True), id="remember_sort"),
         pytest.param("language", _const("fr"), _const("fr"), id="language-set"),
         pytest.param("language", _const(None), _const(None), id="language-none"),
+        pytest.param("mcp_auto_start", _const(False), _const(False), id="mcp_auto_start"),
         pytest.param("mcp_host", _const("10.0.0.1"), _const("10.0.0.1"), id="mcp_host"),
         pytest.param("mcp_port", _const(6543), _const(6543), id="mcp_port"),
         pytest.param("mcp_require_token", _const(True), _const(True), id="mcp_require_token"),
@@ -187,6 +189,7 @@ def test_app_settings_round_trip(tmp_path, wx_app):
             stream=False,
         ),
         mcp=MCPSettings(
+            auto_start=False,
             host="1.2.3.4",
             port=9999,
             base_path="/m",

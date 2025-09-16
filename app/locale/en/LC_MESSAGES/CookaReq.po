@@ -504,9 +504,6 @@ msgstr "running"
 msgid "MCP is a local server providing tools for requirement management used by agents and the LLM."
 msgstr "MCP is a local server providing tools for requirement management used by agents and the LLM."
 
-msgid "Запускать MCP-сервер автоматически при старте CookaReq."
-msgstr "Start the MCP server automatically when CookaReq launches."
-
 msgid "path to JSON/TOML settings"
 msgstr "path to JSON/TOML settings"
 
@@ -515,6 +512,36 @@ msgstr "ready"
 
 msgid "verify LLM and MCP settings"
 msgstr "verify LLM and MCP settings"
+
+msgid "Base URL of the LLM API. Example: https://api.openai.com/v1\nRequired; defines where requests are sent."
+msgstr "Base URL of the LLM API. Example: https://api.openai.com/v1\nRequired; defines where requests are sent."
+
+msgid "LLM model name. Example: gpt-4-turbo\nRequired; selects which model to use."
+msgstr "LLM model name. Example: gpt-4-turbo\nRequired; selects which model to use."
+
+msgid "LLM access key. Example: sk-XXXX\nRequired when the service needs authentication."
+msgstr "LLM access key. Example: sk-XXXX\nRequired when the service needs authentication."
+
+msgid "HTTP request timeout in minutes. Example: 1\nOptional; defaults to 60 minutes."
+msgstr "HTTP request timeout in minutes. Example: 1\nOptional; defaults to 60 minutes."
+
+msgid "Start the MCP server automatically when CookaReq launches."
+msgstr "Start the MCP server automatically when CookaReq launches."
+
+msgid "Hostname for the MCP server. Example: 127.0.0.1\nRequired; defines where to run the server."
+msgstr "Hostname for the MCP server. Example: 127.0.0.1\nRequired; defines where to run the server."
+
+msgid "MCP server port. Example: 8123\nRequired field."
+msgstr "MCP server port. Example: 8123\nRequired field."
+
+msgid "Base folder with requirements. Example: /tmp/reqs\nRequired; the server serves files from this directory."
+msgstr "Base folder with requirements. Example: /tmp/reqs\nRequired; the server serves files from this directory."
+
+msgid "When enabled, the server requires an authentication token."
+msgstr "When enabled, the server requires an authentication token."
+
+msgid "Access token for MCP. Example: secret123\nRequired when \"Require token\" is enabled."
+msgstr "Access token for MCP. Example: secret123\nRequired when \"Require token\" is enabled."
 
 # Updated help texts for requirement fields
 msgid ""

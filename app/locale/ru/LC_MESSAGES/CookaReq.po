@@ -516,6 +516,36 @@ msgstr "готов"
 msgid "verify LLM and MCP settings"
 msgstr "проверить настройки LLM и MCP"
 
+msgid "Base URL of the LLM API. Example: https://api.openai.com/v1\nRequired; defines where requests are sent."
+msgstr "Базовый URL LLM API. Пример: https://api.openai.com/v1\nОбязательное поле; определяет, куда отправляются запросы."
+
+msgid "LLM model name. Example: gpt-4-turbo\nRequired; selects which model to use."
+msgstr "Имя модели LLM. Пример: gpt-4-turbo\nОбязательное поле; определяет используемую модель."
+
+msgid "LLM access key. Example: sk-XXXX\nRequired when the service needs authentication."
+msgstr "Ключ доступа к LLM. Пример: sk-XXXX\nОбязателен, если сервис требует авторизации."
+
+msgid "HTTP request timeout in minutes. Example: 1\nOptional; defaults to 60 minutes."
+msgstr "Тайм-аут HTTP-запроса в минутах. Пример: 1\nНеобязательное поле; по умолчанию 60 минут."
+
+msgid "Start the MCP server automatically when CookaReq launches."
+msgstr "Запускать MCP-сервер автоматически при старте CookaReq."
+
+msgid "Hostname for the MCP server. Example: 127.0.0.1\nRequired; defines where to run the server."
+msgstr "Адрес хоста MCP-сервера. Пример: 127.0.0.1\nОбязательное поле; определяет, где запускать сервер."
+
+msgid "MCP server port. Example: 8123\nRequired field."
+msgstr "Порт MCP-сервера. Пример: 8123\nОбязательное поле."
+
+msgid "Base folder with requirements. Example: /tmp/reqs\nRequired; the server serves files from this directory."
+msgstr "Базовая папка с требованиями. Пример: /tmp/reqs\nОбязательное поле; сервер обслуживает файлы из этой директории."
+
+msgid "When enabled, the server requires an authentication token."
+msgstr "Если включено, сервер требует токен аутентификации."
+
+msgid "Access token for MCP. Example: secret123\nRequired when \"Require token\" is enabled."
+msgstr "Токен доступа для MCP. Пример: secret123\nОбязателен, если включено \"Требуется токен\"."
+
 # Updated help texts for requirement fields
 msgid ""
 "The 'Requirement ID' is a unique integer used as the stable anchor for a "

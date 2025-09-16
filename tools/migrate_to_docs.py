@@ -162,3 +162,19 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
         }
         with (doc_dir / "document.json").open("w", encoding="utf-8") as fh:
             json.dump(doc, fh, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Convert legacy flat requirements into document-based hierarchy.",
+    )
+    parser.add_argument("directory", help="Directory with legacy requirement files")
+    parser.add_argument(
+        "--rules",
+        help="Assignment rules in the form 'label:key=value->PREFIX;...'",
+    )
+    parser.add_argument("--default", required=True, help="Default document prefix")
+    cli_args = parser.parse_args()
+    migrate_to_docs(cli_args.directory, rules=cli_args.rules, default=cli_args.default)

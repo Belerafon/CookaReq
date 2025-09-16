@@ -74,6 +74,17 @@ def _serialize_requirement(req: Requirement) -> dict[str, Any]:
     for key, value in list(data.items()):
         if isinstance(value, Enum):
             data[key] = value.value
+    if req.links:
+        serialized_links: list[Any] = []
+        for link in req.links:
+            payload = link.to_dict()
+            if len(payload) == 1:
+                serialized_links.append(payload["rid"])
+            else:
+                serialized_links.append(payload)
+        data["links"] = serialized_links
+    else:
+        data["links"] = []
     return data
 
 

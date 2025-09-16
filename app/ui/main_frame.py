@@ -133,8 +133,10 @@ class MainFrame(wx.Frame):
         self._disable_splitter_unsplit(self.main_splitter)
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         self._disable_splitter_unsplit(self.doc_splitter)
+        self.doc_splitter.SetMinimumPaneSize(160)
         self.splitter = wx.SplitterWindow(self.doc_splitter)
         self._disable_splitter_unsplit(self.splitter)
+        self.splitter.SetMinimumPaneSize(200)
         self.doc_tree = DocumentTree(
             self.doc_splitter,
             on_select=self.on_document_selected,
@@ -729,12 +731,18 @@ class MainFrame(wx.Frame):
             self.panel,
             self.log_panel,
             self.log_menu_item,
+            editor_splitter=self.splitter,
         )
-        self.splitter.SetSashPosition(300)
 
     def _save_layout(self) -> None:
         """Persist window geometry, splitter, console, and column widths."""
-        self.config.save_layout(self, self.doc_splitter, self.main_splitter, self.panel)
+        self.config.save_layout(
+            self,
+            self.doc_splitter,
+            self.main_splitter,
+            self.panel,
+            editor_splitter=self.splitter,
+        )
 
     def _disable_splitter_unsplit(self, splitter: wx.SplitterWindow) -> None:
         """Attach handlers preventing ``splitter`` from unsplitting on double click."""

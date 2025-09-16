@@ -145,6 +145,7 @@ ConfigFieldName = Literal[
     "win_x",
     "win_y",
     "sash_pos",
+    "editor_sash_pos",
 ]
 
 
@@ -294,6 +295,11 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         key="sash_pos",
         value_type=int,
         default=300,
+    ),
+    "editor_sash_pos": FieldSpec(
+        key="editor_sash_pos",
+        value_type=int,
+        default=600,
     ),
 }
 
@@ -640,11 +646,13 @@ class ConfigManager:
     def restore_layout(
         self,
         frame: wx.Frame,
-        splitter: wx.SplitterWindow,
+        doc_splitter: wx.SplitterWindow,
         main_splitter: wx.SplitterWindow,
         panel: ListPanelLike,
         log_console: wx.Window,
         log_menu_item: wx.MenuItem | None = None,
+        *,
+        editor_splitter: wx.SplitterWindow | None = None,
     ) -> None:
         """Restore window geometry and splitter positions."""
         w = self.get_value("win_w")
@@ -669,21 +677,34 @@ class ConfigManager:
         if client_size.width <= 1 or client_size.height <= 1:
             client_size = wx.Size(w, h)
         main_splitter.SetSize(client_size)
-        splitter.SetSize(client_size)
-        sash = self.get_value("sash_pos")
-        sash = max(100, min(sash, max(client_size.width - 100, 100)))
-        splitter.SetSashPosition(sash)
+        doc_splitter.SetSize(client_size)
+        doc_min = max(doc_splitter.GetMinimumPaneSize(), 100)
+        doc_max = max(client_size.width - doc_min, doc_min)
+        doc_sash = self.get_value("sash_pos")
+        doc_sash = max(doc_min, min(doc_sash, doc_max))
+        doc_splitter.SetSashPosition(doc_sash)
+        if editor_splitter is not None and editor_splitter.IsSplit():
+            editor_default = editor_splitter.GetSashPosition()
+            editor_min = max(editor_splitter.GetMinimumPaneSize(), 100)
+            available_width = max(client_size.width - doc_sash, editor_min * 2)
+            editor_max = max(available_width - editor_min, editor_min)
+            editor_sash = self.get_value(
+                "editor_sash_pos", default=editor_default
+            )
+            editor_sash = max(editor_min, min(editor_sash, editor_max))
+            editor_splitter.SetSize(wx.Size(available_width, client_size.height))
+            editor_splitter.SetSashPosition(editor_sash)
         panel.load_column_widths(self)
         panel.load_column_order(self)
         log_shown = self.get_value("log_shown")
         log_sash = self.get_value("log_sash", default=client_size.height - 150)
         if log_shown:
             log_console.Show()
-            main_splitter.SplitHorizontally(splitter, log_console, log_sash)
+            main_splitter.SplitHorizontally(doc_splitter, log_console, log_sash)
             if log_menu_item:
                 log_menu_item.Check(True)
         else:
-            main_splitter.Initialize(splitter)
+            main_splitter.Initialize(doc_splitter)
             log_console.Hide()
             if log_menu_item:
                 log_menu_item.Check(False)
@@ -691,9 +712,11 @@ class ConfigManager:
     def save_layout(
         self,
         frame: wx.Frame,
-        splitter: wx.SplitterWindow,
+        doc_splitter: wx.SplitterWindow,
         main_splitter: wx.SplitterWindow,
         panel: ListPanelLike,
+        *,
+        editor_splitter: wx.SplitterWindow | None = None,
     ) -> None:
         """Persist window geometry and splitter positions."""
         w, h = frame.GetSize()
@@ -702,7 +725,9 @@ class ConfigManager:
         self.set_value("win_h", h)
         self.set_value("win_x", x)
         self.set_value("win_y", y)
-        self.set_value("sash_pos", splitter.GetSashPosition())
+        self.set_value("sash_pos", doc_splitter.GetSashPosition())
+        if editor_splitter is not None and editor_splitter.IsSplit():
+            self.set_value("editor_sash_pos", editor_splitter.GetSashPosition())
         if main_splitter.IsSplit():
             self.set_value("log_shown", True)
             self.set_value("log_sash", main_splitter.GetSashPosition())

@@ -1029,7 +1029,14 @@ def test_reorder_columns(monkeypatch):
     panel.set_columns(["id", "status", "priority"])
     panel.reorder_columns(1, 3)
     assert panel.columns == ["status", "priority", "id"]
-    assert panel.list._cols == ["Title", "status", "priority", "id"]
+    _ = list_panel_module._
+    field_label = list_panel_module.locale.field_label
+    assert panel.list._cols == [
+        _("Title"),
+        field_label("status"),
+        field_label("priority"),
+        field_label("id"),
+    ]
 
 
 def test_load_column_widths_assigns_defaults(monkeypatch):

@@ -181,6 +181,12 @@ msgstr "Requirement type"
 msgid "Requirement revision"
 msgstr "Requirement revision"
 
+msgid "Document prefix"
+msgstr "Document prefix"
+
+msgid "Requirement RID"
+msgstr "Requirement RID"
+
 msgid "Retired"
 msgstr "Retired"
 
@@ -374,6 +380,9 @@ msgstr "MCP"
 
 msgid "Manage Labels"
 msgstr "Manage Labels"
+
+msgid "Links"
+msgstr "Links"
 
 
 msgid "Match any labels"

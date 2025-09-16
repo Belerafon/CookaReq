@@ -30,6 +30,12 @@ FIELD_LABELS = {
     "assumptions": _("Assumptions"),
     "labels": _("Labels"),
     "derived_count": _("Derived count"),
+    "attachments": _("Attachments"),
+    "approved_at": _("Approved at"),
+    "notes": _("Notes"),
+    "links": _("Links"),
+    "doc_prefix": _("Document prefix"),
+    "rid": _("Requirement RID"),
 }
 
 

@@ -4,9 +4,11 @@ from pathlib import Path
 import pytest
 
 from app.llm.client import LLMClient
-from tests.llm_utils import settings_with_llm
+from tests.llm_utils import require_real_llm_tests_flag, settings_with_llm
 
-pytestmark = pytest.mark.integration
+REQUIRES_REAL_LLM = True
+
+pytestmark = [pytest.mark.integration, pytest.mark.real_llm]
 
 
 def _load_openrouter_key() -> str | None:
@@ -21,10 +23,8 @@ def _load_openrouter_key() -> str | None:
     return None
 
 
-@pytest.mark.real_llm
 def test_openrouter_check_llm(tmp_path):
-    if not os.getenv("COOKAREQ_RUN_REAL_LLM_TESTS"):
-        pytest.skip("Set COOKAREQ_RUN_REAL_LLM_TESTS=1 to enable this test")
+    require_real_llm_tests_flag()
     key = _load_openrouter_key()
     if not key:
         pytest.skip("OPEN_ROUTER key not available")

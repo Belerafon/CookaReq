@@ -1,10 +1,28 @@
 """Utilities for LLM-related tests."""
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from app.settings import AppSettings, load_app_settings
+
+
+def require_real_llm_tests_flag(*, env_var: str = "COOKAREQ_RUN_REAL_LLM_TESTS") -> None:
+    """Ensure the opt-in flag for real LLM tests is present or skip.
+
+    ``pytest.skip`` is raised when the environment variable designated by
+    ``env_var`` is absent or false-y, guaranteeing consistent behaviour across
+    tests and fixtures that depend on the real LLM backend.
+    """
+
+    if os.getenv(env_var):
+        return
+    pytest.skip(
+        "Set COOKAREQ_RUN_REAL_LLM_TESTS=1 to run tests hitting real LLM",
+    )
 
 
 def make_openai_mock(responses: dict[str, tuple[str, dict] | Exception]):

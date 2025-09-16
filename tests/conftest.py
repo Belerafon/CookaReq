@@ -16,6 +16,7 @@ import pytest
 from app import i18n
 from app.confirm import auto_confirm, set_confirm
 from app.mcp.server import start_server, stop_server
+from tests.llm_utils import make_openai_mock, require_real_llm_tests_flag
 from tests.mcp_utils import _wait_until_ready
 
 
@@ -36,13 +37,8 @@ def _reset_locale():
 def _mock_openrouter(monkeypatch, request):
     """Подменить OpenAI на мок, исключив реальные сетевые вызовы."""
     if request.node.get_closest_marker("real_llm"):
-        if not os.getenv("COOKAREQ_RUN_REAL_LLM_TESTS"):
-            pytest.skip(
-                "Set COOKAREQ_RUN_REAL_LLM_TESTS=1 to run tests hitting real LLM",
-            )
+        require_real_llm_tests_flag()
         return
-    from tests.llm_utils import make_openai_mock
-
     monkeypatch.setattr("openai.OpenAI", make_openai_mock({}))
 
 
@@ -50,6 +46,21 @@ def _mock_openrouter(monkeypatch, request):
 def _auto_confirm():
     set_confirm(auto_confirm)
     yield
+
+
+def pytest_collection_modifyitems(config, items):
+    """Automatically add markers based on module-level requirements flags."""
+
+    for item in items:
+        module = getattr(item, "module", None)
+        if module is None:
+            continue
+        if getattr(module, "REQUIRES_REAL_LLM", False) and not item.get_closest_marker(
+            "real_llm"
+        ):
+            item.add_marker("real_llm")
+        if getattr(module, "REQUIRES_GUI", False) and not item.get_closest_marker("gui"):
+            item.add_marker("gui")
 
 
 @pytest.fixture(scope="session")

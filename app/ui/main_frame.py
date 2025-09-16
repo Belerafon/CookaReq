@@ -129,8 +129,11 @@ class MainFrame(wx.Frame):
 
         # split horizontally: top is main content, bottom is log console
         self.main_splitter = wx.SplitterWindow(self)
+        self._disable_splitter_unsplit(self.main_splitter)
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
+        self._disable_splitter_unsplit(self.doc_splitter)
         self.splitter = wx.SplitterWindow(self.doc_splitter)
+        self._disable_splitter_unsplit(self.splitter)
         self.doc_tree = DocumentTree(
             self.doc_splitter,
             on_select=self.on_document_selected,
@@ -722,6 +725,17 @@ class MainFrame(wx.Frame):
     def _save_layout(self) -> None:
         """Persist window geometry, splitter, console, and column widths."""
         self.config.save_layout(self, self.doc_splitter, self.main_splitter, self.panel)
+
+    def _disable_splitter_unsplit(self, splitter: wx.SplitterWindow) -> None:
+        """Attach handlers preventing ``splitter`` from unsplitting on double click."""
+
+        splitter.Bind(wx.EVT_SPLITTER_DOUBLECLICKED, self._prevent_splitter_unsplit)
+        splitter.Bind(wx.EVT_SPLITTER_DCLICK, self._prevent_splitter_unsplit)
+
+    def _prevent_splitter_unsplit(self, event: wx.SplitterEvent) -> None:
+        """Block attempts to unsplit panes initiated by double clicks."""
+
+        event.Veto()
 
     def _on_close(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
         if not self._confirm_discard_changes():

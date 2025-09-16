@@ -13,6 +13,22 @@ from ..mcp.controller import MCPController, MCPStatus
 from ..settings import LLMSettings, MCPSettings
 from .helpers import format_error_message, make_help_button
 
+GENERAL_HELP: dict[str, str] = {
+    "open_last": _(
+        "Automatically reopen the most recently used requirements folder on startup.\n"
+        "Disable to always choose a folder manually.",
+    ),
+    "remember_sort": _(
+        "Remember the last column and direction used to sort requirements.\n"
+        "Keeps the list ordering consistent between sessions.",
+    ),
+    "language": _(
+        "Language for menus and dialogs.\n"
+        "Changes apply after restarting CookaReq.",
+    ),
+}
+
+
 LLM_HELP: dict[str, str] = {
     "base_url": _(
         "Base URL of the LLM API. Example: https://api.openai.com/v1\n"
@@ -26,9 +42,21 @@ LLM_HELP: dict[str, str] = {
         "LLM access key. Example: sk-XXXX\n"
         "Required when the service needs authentication.",
     ),
+    "max_retries": _(
+        "Number of times to retry a failed HTTP request. Example: 3\n"
+        "Optional; defaults to 3 retries.",
+    ),
+    "max_output_tokens": _(
+        "Maximum number of tokens returned by the model. Example: 2048\n"
+        "Set to 0 to use the provider default.",
+    ),
     "timeout_minutes": _(
         "HTTP request timeout in minutes. Example: 1\n"
         "Optional; defaults to 60 minutes.",
+    ),
+    "stream": _(
+        "Stream partial responses from the LLM as they arrive.\n"
+        "Disable to wait for the full reply before showing it.",
     ),
 }
 
@@ -115,8 +143,29 @@ class SettingsDialog(wx.Dialog):
         self._language_choice.SetSelection(idx)
 
         gen_sizer = wx.BoxSizer(wx.VERTICAL)
-        gen_sizer.Add(self._open_last, 0, wx.ALL, 5)
-        gen_sizer.Add(self._remember_sort, 0, wx.ALL, 5)
+        open_last_sz = wx.BoxSizer(wx.HORIZONTAL)
+        open_last_sz.Add(self._open_last, 0, wx.ALIGN_CENTER_VERTICAL)
+        open_last_sz.Add(
+            make_help_button(general, GENERAL_HELP["open_last"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        gen_sizer.Add(open_last_sz, 0, wx.ALL | wx.EXPAND, 5)
+
+        remember_sort_sz = wx.BoxSizer(wx.HORIZONTAL)
+        remember_sort_sz.Add(self._remember_sort, 0, wx.ALIGN_CENTER_VERTICAL)
+        remember_sort_sz.Add(
+            make_help_button(
+                general,
+                GENERAL_HELP["remember_sort"],
+                dialog_parent=self,
+            ),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        gen_sizer.Add(remember_sort_sz, 0, wx.ALL | wx.EXPAND, 5)
         lang_sizer = wx.BoxSizer(wx.HORIZONTAL)
         lang_sizer.Add(
             wx.StaticText(general, label=_("Language")),
@@ -125,6 +174,12 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         lang_sizer.Add(self._language_choice, 1, wx.ALIGN_CENTER_VERTICAL)
+        lang_sizer.Add(
+            make_help_button(general, GENERAL_HELP["language"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
         gen_sizer.Add(lang_sizer, 0, wx.ALL | wx.EXPAND, 5)
         general.SetSizer(gen_sizer)
 
@@ -207,6 +262,12 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         retries_sz.Add(self._max_retries, 1, wx.ALIGN_CENTER_VERTICAL)
+        retries_sz.Add(
+            make_help_button(llm, LLM_HELP["max_retries"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
         llm_sizer.Add(retries_sz, 0, wx.ALL | wx.EXPAND, 5)
         tokens_sz = wx.BoxSizer(wx.HORIZONTAL)
         tokens_sz.Add(
@@ -216,6 +277,16 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         tokens_sz.Add(self._max_output_tokens, 1, wx.ALIGN_CENTER_VERTICAL)
+        tokens_sz.Add(
+            make_help_button(
+                llm,
+                LLM_HELP["max_output_tokens"],
+                dialog_parent=self,
+            ),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
         llm_sizer.Add(tokens_sz, 0, wx.ALL | wx.EXPAND, 5)
         timeout_sz = wx.BoxSizer(wx.HORIZONTAL)
         timeout_sz.Add(
@@ -234,6 +305,12 @@ class SettingsDialog(wx.Dialog):
         llm_sizer.Add(timeout_sz, 0, wx.ALL | wx.EXPAND, 5)
         stream_sz = wx.BoxSizer(wx.HORIZONTAL)
         stream_sz.Add(self._stream, 0, wx.ALIGN_CENTER_VERTICAL)
+        stream_sz.Add(
+            make_help_button(llm, LLM_HELP["stream"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
         llm_sizer.Add(stream_sz, 0, wx.ALL | wx.EXPAND, 5)
         btn_sz = wx.BoxSizer(wx.HORIZONTAL)
         llm_btn_sz = wx.BoxSizer(wx.VERTICAL)

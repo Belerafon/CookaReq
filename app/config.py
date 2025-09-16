@@ -640,9 +640,13 @@ class ConfigManager:
             frame.SetPosition((x, y))
         else:
             frame.Centre()
-        # Ensure layout calculations are performed even if the frame is not shown yet
+        # Ensure layout calculations are performed even if the frame is not shown yet.
+        # ``wx.Yield`` has been observed to segfault when called in quick succession
+        # during automated tests, so prefer processing the pending events directly.
         frame.SendSizeEvent()
-        wx.Yield()
+        app = wx.GetApp()
+        if app is not None:
+            app.ProcessPendingEvents()
         client_size = frame.GetClientSize()
         if client_size.width <= 1 or client_size.height <= 1:
             client_size = wx.Size(w, h)

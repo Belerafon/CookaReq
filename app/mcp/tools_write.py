@@ -1,66 +1,42 @@
 from __future__ import annotations
 
-from dataclasses import fields
 from pathlib import Path
 from typing import Any, Mapping
 
-import jsonpatch
-
-from ..core.doc_store import (
-    validate_labels,
-    delete_item,
-    is_ancestor,
-    load_documents,
-    load_item,
-    next_item_id,
-    parse_rid,
-    rid_for,
-    save_item,
-)
-from ..core.model import Requirement, requirement_from_dict, requirement_to_dict
+from ..core import doc_store
+from ..core.doc_store import is_ancestor, load_documents, load_item, parse_rid, save_item
+from ..core.model import requirement_from_dict, requirement_to_dict
 from .utils import ErrorCode, log_tool, mcp_error
 
-# Fields that cannot be modified via JSON Patch
-UNPATCHABLE_FIELDS = {"id", "revision", "links"}
 
-# Known top-level fields for validation
-KNOWN_FIELDS = {f.name for f in fields(Requirement)}
+def _result_payload(req) -> dict:
+    data = requirement_to_dict(req)
+    data["rid"] = req.rid
+    return data
 
 
 def create_requirement(directory: str | Path, *, prefix: str, data: Mapping[str, Any]) -> dict:
     """Create a new requirement under *prefix* document."""
     params = {"directory": str(directory), "prefix": prefix, "data": dict(data)}
     try:
-        docs = load_documents(directory)
-        doc = docs.get(prefix)
-        if doc is None:
-            return log_tool(
-                "create_requirement",
-                params,
-                mcp_error(ErrorCode.NOT_FOUND, f"unknown document prefix: {prefix}"),
-            )
-        labels = list(data.get("labels", []))
-        err = validate_labels(prefix, labels, docs)
-        if err:
-            return log_tool(
-                "create_requirement",
-                params,
-                mcp_error(ErrorCode.VALIDATION_ERROR, err),
-            )
-        doc_dir = Path(directory) / prefix
-        item_id = next_item_id(doc_dir, doc)
-        req_dict = dict(data)
-        req_dict["id"] = item_id
-        req_dict["revision"] = 1
-        req = requirement_from_dict(req_dict, doc_prefix=prefix, rid=rid_for(doc, item_id))
-        save_item(doc_dir, doc, requirement_to_dict(req))
+        req = doc_store.create_requirement(directory, prefix=prefix, data=data)
+    except doc_store.DocumentNotFoundError as exc:
+        return log_tool(
+            "create_requirement",
+            params,
+            mcp_error(ErrorCode.NOT_FOUND, str(exc)),
+        )
+    except doc_store.ValidationError as exc:
+        return log_tool(
+            "create_requirement",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+        )
     except Exception as exc:  # pragma: no cover - defensive
         return log_tool(
             "create_requirement", params, mcp_error(ErrorCode.INTERNAL, str(exc))
         )
-    result = requirement_to_dict(req)
-    result["rid"] = req.rid
-    return log_tool("create_requirement", params, result)
+    return log_tool("create_requirement", params, _result_payload(req))
 
 
 def patch_requirement(
@@ -73,124 +49,66 @@ def patch_requirement(
     """Apply JSON Patch *patch* to requirement *rid* if revision matches."""
     params = {"directory": str(directory), "rid": rid, "patch": patch, "rev": rev}
     try:
-        prefix, item_id = parse_rid(rid)
+        req = doc_store.patch_requirement(
+            directory,
+            rid,
+            patch,
+            expected_revision=rev,
+        )
     except ValueError as exc:
         return log_tool(
             "patch_requirement",
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
         )
-    try:
-        docs = load_documents(directory)
-        doc = docs.get(prefix)
-        if doc is None:
-            raise FileNotFoundError
-        dir_path = Path(directory) / prefix
-        data, _mtime = load_item(dir_path, doc, item_id)
-    except FileNotFoundError:
+    except doc_store.RevisionMismatchError as exc:
         return log_tool(
             "patch_requirement",
             params,
-            mcp_error(ErrorCode.NOT_FOUND, f"requirement {rid} not found"),
+            mcp_error(ErrorCode.CONFLICT, str(exc)),
         )
-
-    current = data.get("revision", 1)
-    if current != rev:
+    except doc_store.RequirementNotFoundError as exc:
         return log_tool(
             "patch_requirement",
             params,
-            mcp_error(
-                ErrorCode.CONFLICT,
-                f"revision mismatch: expected {rev}, have {current}",
-            ),
+            mcp_error(ErrorCode.NOT_FOUND, str(exc)),
         )
-
-    for op in patch:
-        for key in ("path", "from"):
-            p = op.get(key)
-            if not p:
-                continue
-            target = p.lstrip("/").split("/", 1)[0]
-            if target in UNPATCHABLE_FIELDS:
-                return log_tool(
-                    "patch_requirement",
-                    params,
-                    mcp_error(ErrorCode.VALIDATION_ERROR, f"field is read-only: {target}"),
-                )
-            if target and target not in KNOWN_FIELDS:
-                return log_tool(
-                    "patch_requirement",
-                    params,
-                    mcp_error(ErrorCode.VALIDATION_ERROR, f"unknown field: {target}"),
-                )
-    try:
-        data = jsonpatch.apply_patch(data, patch, in_place=False)
-    except jsonpatch.JsonPatchException as exc:
+    except doc_store.ValidationError as exc:
         return log_tool(
             "patch_requirement",
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
         )
-
-    data["revision"] = current + 1
-    err = validate_labels(prefix, data.get("labels", []), docs)
-    if err:
-        return log_tool(
-            "patch_requirement",
-            params,
-            mcp_error(ErrorCode.VALIDATION_ERROR, err),
-        )
-    try:
-        req = requirement_from_dict(data, doc_prefix=prefix, rid=rid)
-        save_item(dir_path, doc, requirement_to_dict(req))
     except Exception as exc:  # pragma: no cover - defensive
         return log_tool(
             "patch_requirement", params, mcp_error(ErrorCode.INTERNAL, str(exc))
         )
-    result = requirement_to_dict(req)
-    result["rid"] = rid
-    return log_tool("patch_requirement", params, result)
+    return log_tool("patch_requirement", params, _result_payload(req))
 
 
 def delete_requirement(directory: str | Path, rid: str, *, rev: int) -> dict:
     """Delete requirement *rid* if revision matches."""
     params = {"directory": str(directory), "rid": rid, "rev": rev}
     try:
-        prefix, _ = parse_rid(rid)
+        doc_store.delete_requirement(directory, rid, expected_revision=rev)
     except ValueError as exc:
         return log_tool(
             "delete_requirement",
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
         )
-    docs = load_documents(directory)
-    doc = docs.get(prefix)
-    if doc is None:
+    except doc_store.RevisionMismatchError as exc:
         return log_tool(
             "delete_requirement",
             params,
-            mcp_error(ErrorCode.NOT_FOUND, f"requirement {rid} not found"),
+            mcp_error(ErrorCode.CONFLICT, str(exc)),
         )
-    try:
-        data, _ = load_item(Path(directory) / prefix, doc, parse_rid(rid)[1])
-    except FileNotFoundError:
+    except doc_store.RequirementNotFoundError as exc:
         return log_tool(
             "delete_requirement",
             params,
-            mcp_error(ErrorCode.NOT_FOUND, f"requirement {rid} not found"),
+            mcp_error(ErrorCode.NOT_FOUND, str(exc)),
         )
-    current = data.get("revision", 1)
-    if current != rev:
-        return log_tool(
-            "delete_requirement",
-            params,
-            mcp_error(
-                ErrorCode.CONFLICT,
-                f"revision mismatch: expected {rev}, have {current}",
-            ),
-        )
-    try:
-        delete_item(directory, rid, docs)
     except Exception as exc:  # pragma: no cover - defensive
         return log_tool(
             "delete_requirement", params, mcp_error(ErrorCode.INTERNAL, str(exc))
@@ -275,6 +193,4 @@ def link_requirements(
         return log_tool(
             "link_requirements", params, mcp_error(ErrorCode.INTERNAL, str(exc))
         )
-    result = requirement_to_dict(req)
-    result["rid"] = derived_rid
-    return log_tool("link_requirements", params, result)
+    return log_tool("link_requirements", params, _result_payload(req))

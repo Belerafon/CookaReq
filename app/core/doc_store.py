@@ -4,9 +4,14 @@ import json
 import re
 import shutil
 from hashlib import sha256
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
+
+import jsonpatch
+
+from .model import Requirement, requirement_from_dict, requirement_to_dict
+from .search import filter_by_labels, filter_by_status, search
 
 
 @dataclass
@@ -56,6 +61,45 @@ class Document:
 
 class ValidationError(Exception):
     """Raised when requirement links violate business rules."""
+
+
+class RequirementError(Exception):
+    """Base class for requirement service exceptions."""
+
+
+class DocumentNotFoundError(RequirementError):
+    """Raised when a document prefix is unknown."""
+
+    def __init__(self, prefix: str) -> None:
+        self.prefix = prefix
+        super().__init__(f"unknown document prefix: {prefix}")
+
+
+class RequirementNotFoundError(RequirementError):
+    """Raised when an individual requirement cannot be located."""
+
+    def __init__(self, rid: str) -> None:
+        self.rid = rid
+        super().__init__(f"requirement {rid} not found")
+
+
+class RevisionMismatchError(RequirementError):
+    """Raised when the caller provides an outdated revision."""
+
+    def __init__(self, expected: int, actual: int) -> None:
+        self.expected = expected
+        self.actual = actual
+        super().__init__(f"revision mismatch: expected {expected}, have {actual}")
+
+
+@dataclass
+class RequirementPage:
+    """Represent a paginated slice of requirements."""
+
+    items: list[Requirement]
+    total: int
+    page: int
+    per_page: int
 
 
 def _read_json(path: Path) -> dict:
@@ -453,3 +497,205 @@ def delete_document(
     shutil.rmtree(directory, ignore_errors=True)
     docs.pop(prefix, None)
     return True
+
+
+READ_ONLY_PATCH_FIELDS = {"id", "revision", "links"}
+KNOWN_REQUIREMENT_FIELDS = {f.name for f in fields(Requirement)}
+
+
+def _ensure_documents(
+    root: Path, docs: Mapping[str, Document] | None
+) -> Mapping[str, Document]:
+    return docs if docs is not None else load_documents(root)
+
+
+def _iter_requirements(root: Path, docs: Mapping[str, Document]) -> list[Requirement]:
+    requirements: list[Requirement] = []
+    for prefix, doc in docs.items():
+        directory = root / prefix
+        for item_id in sorted(list_item_ids(directory, doc)):
+            data, _ = load_item(directory, doc, item_id)
+            requirements.append(
+                requirement_from_dict(
+                    data,
+                    doc_prefix=prefix,
+                    rid=rid_for(doc, item_id),
+                )
+            )
+    return requirements
+
+
+def _normalize_labels(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+    return list(raw)
+
+
+def _paginate_requirements(
+    requirements: Sequence[Requirement], page: int, per_page: int
+) -> RequirementPage:
+    page = 1 if page < 1 else page
+    per_page = 1 if per_page < 1 else per_page
+    items = list(requirements)
+    total = len(items)
+    start = (page - 1) * per_page
+    end = start + per_page
+    return RequirementPage(items=items[start:end], total=total, page=page, per_page=per_page)
+
+
+def _resolve_requirement(
+    root: Path, rid: str, docs: Mapping[str, Document]
+) -> tuple[str, int, Document, Path, dict]:
+    prefix, item_id = parse_rid(rid)
+    doc = docs.get(prefix)
+    if doc is None:
+        raise RequirementNotFoundError(rid)
+    directory = root / prefix
+    try:
+        data, _ = load_item(directory, doc, item_id)
+    except FileNotFoundError as exc:  # pragma: no cover - defensive
+        raise RequirementNotFoundError(rid) from exc
+    return prefix, item_id, doc, directory, data
+
+
+def list_requirements(
+    root: str | Path,
+    *,
+    page: int = 1,
+    per_page: int = 50,
+    status: str | None = None,
+    labels: Sequence[str] | None = None,
+    docs: Mapping[str, Document] | None = None,
+) -> RequirementPage:
+    root_path = Path(root)
+    if docs is None and not root_path.is_dir():
+        raise FileNotFoundError(root_path)
+    docs_map = _ensure_documents(root_path, docs)
+    requirements = _iter_requirements(root_path, docs_map)
+    requirements = filter_by_status(requirements, status)
+    requirements = filter_by_labels(requirements, list(labels or []))
+    return _paginate_requirements(requirements, page, per_page)
+
+
+def search_requirements(
+    root: str | Path,
+    *,
+    query: str | None = None,
+    labels: Sequence[str] | None = None,
+    status: str | None = None,
+    page: int = 1,
+    per_page: int = 50,
+    docs: Mapping[str, Document] | None = None,
+) -> RequirementPage:
+    root_path = Path(root)
+    if docs is None and not root_path.is_dir():
+        raise FileNotFoundError(root_path)
+    docs_map = _ensure_documents(root_path, docs)
+    all_requirements = _iter_requirements(root_path, docs_map)
+    filtered = filter_by_status(all_requirements, status)
+    filtered = search(filtered, labels=labels, query=query)
+    return _paginate_requirements(filtered, page, per_page)
+
+
+def get_requirement(
+    root: str | Path,
+    rid: str,
+    *,
+    docs: Mapping[str, Document] | None = None,
+) -> Requirement:
+    root_path = Path(root)
+    docs_map = _ensure_documents(root_path, docs)
+    prefix, item_id, doc, _directory, data = _resolve_requirement(root_path, rid, docs_map)
+    return requirement_from_dict(data, doc_prefix=prefix, rid=rid)
+
+
+def create_requirement(
+    root: str | Path,
+    *,
+    prefix: str,
+    data: Mapping[str, Any],
+    docs: Mapping[str, Document] | None = None,
+) -> Requirement:
+    root_path = Path(root)
+    docs_map = _ensure_documents(root_path, docs)
+    doc = docs_map.get(prefix)
+    if doc is None:
+        raise DocumentNotFoundError(prefix)
+    payload = dict(data)
+    labels = _normalize_labels(payload.get("labels"))
+    err = validate_labels(prefix, labels, docs_map)
+    if err:
+        raise ValidationError(err)
+    payload["labels"] = labels
+    directory = root_path / prefix
+    item_id = next_item_id(directory, doc)
+    payload["id"] = item_id
+    if "revision" not in payload:
+        payload["revision"] = 1
+    req = requirement_from_dict(payload, doc_prefix=prefix, rid=rid_for(doc, item_id))
+    save_item(directory, doc, requirement_to_dict(req))
+    return req
+
+
+def _validate_patch_operations(patch: Sequence[Mapping[str, Any]]) -> None:
+    for op in patch:
+        for key in ("path", "from"):
+            path = op.get(key)
+            if not path:
+                continue
+            target = path.lstrip("/").split("/", 1)[0]
+            if target in READ_ONLY_PATCH_FIELDS:
+                raise ValidationError(f"field is read-only: {target}")
+            if target and target not in KNOWN_REQUIREMENT_FIELDS:
+                raise ValidationError(f"unknown field: {target}")
+
+
+def patch_requirement(
+    root: str | Path,
+    rid: str,
+    patch: Sequence[Mapping[str, Any]],
+    *,
+    expected_revision: int,
+    docs: Mapping[str, Document] | None = None,
+) -> Requirement:
+    root_path = Path(root)
+    docs_map = _ensure_documents(root_path, docs)
+    prefix, item_id, doc, directory, data = _resolve_requirement(root_path, rid, docs_map)
+    current = int(data.get("revision", 1))
+    if current != expected_revision:
+        raise RevisionMismatchError(expected_revision, current)
+    _validate_patch_operations(patch)
+    try:
+        updated = jsonpatch.apply_patch(data, patch, in_place=False)
+    except jsonpatch.JsonPatchException as exc:
+        raise ValidationError(str(exc)) from exc
+    updated = dict(updated)
+    updated["id"] = item_id
+    labels = _normalize_labels(updated.get("labels"))
+    err = validate_labels(prefix, labels, docs_map)
+    if err:
+        raise ValidationError(err)
+    updated["labels"] = labels
+    updated["revision"] = current + 1
+    req = requirement_from_dict(updated, doc_prefix=prefix, rid=rid)
+    save_item(directory, doc, requirement_to_dict(req))
+    return req
+
+
+def delete_requirement(
+    root: str | Path,
+    rid: str,
+    *,
+    expected_revision: int,
+    docs: Mapping[str, Document] | None = None,
+) -> str:
+    root_path = Path(root)
+    docs_map = _ensure_documents(root_path, docs)
+    _prefix, _item_id, _doc, _directory, data = _resolve_requirement(root_path, rid, docs_map)
+    current = int(data.get("revision", 1))
+    if current != expected_revision:
+        raise RevisionMismatchError(expected_revision, current)
+    deleted = delete_item(root_path, rid, docs_map)
+    if not deleted:  # pragma: no cover - defensive
+        raise RequirementNotFoundError(rid)
+    return rid

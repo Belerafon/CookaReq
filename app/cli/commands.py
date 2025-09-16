@@ -77,7 +77,6 @@ class ItemPayload:
     conditions: str = ""
     rationale: str = ""
     assumptions: str = ""
-    version: str = ""
     modified_at: str = ""
     labels: list[str] = field(default_factory=list)
     attachments: list[Any] = field(default_factory=list)
@@ -468,7 +467,6 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     add_p.add_argument("--conditions")
     add_p.add_argument("--rationale")
     add_p.add_argument("--assumptions")
-    add_p.add_argument("--version")
     add_p.add_argument("--modified-at", dest="modified_at")
     add_p.add_argument("--approved-at", dest="approved_at")
     add_p.add_argument("--notes")
@@ -494,7 +492,6 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     move_p.add_argument("--conditions")
     move_p.add_argument("--rationale")
     move_p.add_argument("--assumptions")
-    move_p.add_argument("--version")
     move_p.add_argument("--modified-at", dest="modified_at")
     move_p.add_argument("--approved-at", dest="approved_at")
     move_p.add_argument("--notes")

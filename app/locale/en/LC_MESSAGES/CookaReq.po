@@ -112,6 +112,9 @@ msgstr "ID must be an integer"
 msgid "ID must be positive"
 msgstr "ID must be positive"
 
+msgid "Revision must be a positive integer"
+msgstr "Revision must be a positive integer"
+
 msgid "In review"
 msgstr "In review"
 
@@ -175,8 +178,8 @@ msgstr "Requirement text"
 msgid "Requirement type"
 msgstr "Requirement type"
 
-msgid "Requirement version"
-msgstr "Requirement version"
+msgid "Requirement revision"
+msgstr "Requirement revision"
 
 msgid "Retired"
 msgstr "Retired"
@@ -574,13 +577,13 @@ msgstr ""
 
 
 msgid ""
-"Sequential version number for change control. Increase it whenever the "
-"requirement text changes to keep a revision history. Versioning enables "
-"baselining and comparison of snapshots during reviews."
+"Manual revision identifier that teams adjust themselves. Update it whenever "
+"you want to mark a new baseline for the requirement. CookaReq does not change "
+"this value automatically."
 msgstr ""
-"Sequential version number for change control. Increase it whenever the "
-"requirement text changes to keep a revision history. Versioning enables "
-"baselining and comparison of snapshots during reviews."
+"Manual revision identifier that teams adjust themselves. Update it whenever "
+"you want to mark a new baseline for the requirement. CookaReq does not change "
+"this value automatically."
 
 msgid ""
 "Date and time of the last edit. The value is filled automatically and aids "

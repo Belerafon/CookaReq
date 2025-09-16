@@ -18,7 +18,7 @@ FIELD_LABELS = {
     "statement": _("Requirement text"),
     "acceptance": _("Acceptance criteria"),
     "conditions": _("Conditions"),
-    "version": _("Requirement version"),
+    "revision": _("Requirement revision"),
     "modified_at": _("Modified at"),
     "owner": _("Owner"),
     "source": _("Source"),

@@ -70,12 +70,13 @@ def test_create_patch_and_delete_requirement(tmp_path: Path, _document: Document
         created.rid,
         [
             {"op": "replace", "path": "/statement", "value": "Updated"},
+            {"op": "replace", "path": "/revision", "value": 5},
         ],
         expected_revision=created.revision,
         docs=docs,
     )
     assert patched.statement == "Updated"
-    assert patched.revision == created.revision + 1
+    assert patched.revision == 5
 
     fetched = get_requirement(tmp_path, created.rid, docs=docs)
     assert fetched.statement == "Updated"

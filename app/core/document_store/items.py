@@ -21,7 +21,7 @@ from . import (
 from .documents import load_documents, validate_labels
 
 RID_RE = re.compile(r"^([A-Z][A-Z0-9_]*?)(\d+)$")
-READ_ONLY_PATCH_FIELDS = {"id", "revision", "links"}
+READ_ONLY_PATCH_FIELDS = {"id", "links"}
 KNOWN_REQUIREMENT_FIELDS = {f.name for f in fields(Requirement)}
 
 
@@ -263,7 +263,12 @@ def patch_requirement(
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
     prefix, item_id, doc, directory, data = _resolve_requirement(root_path, rid, docs_map)
-    current = int(data.get("revision", 1))
+    try:
+        current = int(data.get("revision", 1))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("revision must be an integer") from exc
+    if current <= 0:
+        raise ValidationError("revision must be positive")
     if current != expected_revision:
         raise RevisionMismatchError(expected_revision, current)
     _validate_patch_operations(patch)
@@ -278,7 +283,14 @@ def patch_requirement(
     if err:
         raise ValidationError(err)
     updated["labels"] = labels
-    updated["revision"] = current + 1
+    revision_value = updated.get("revision", current)
+    try:
+        revision = int(revision_value)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("revision must be an integer") from exc
+    if revision <= 0:
+        raise ValidationError("revision must be positive")
+    updated["revision"] = revision
     req = requirement_from_dict(updated, doc_prefix=prefix, rid=rid)
     save_item(directory, doc, requirement_to_dict(req))
     return req
@@ -294,7 +306,12 @@ def delete_requirement(
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
     _prefix, _item_id, _doc, _directory, data = _resolve_requirement(root_path, rid, docs_map)
-    current = int(data.get("revision", 1))
+    try:
+        current = int(data.get("revision", 1))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("revision must be an integer") from exc
+    if current <= 0:
+        raise ValidationError("revision must be positive")
     if current != expected_revision:
         raise RevisionMismatchError(expected_revision, current)
     from .links import delete_item  # local import to avoid cycle

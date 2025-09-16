@@ -135,7 +135,7 @@ Each requirement item (`items/<RID>.json`) includes:
 - `labels` *(list[str])* — labels including inherited ones
 - `links` *(list[str])* — linked higher-level requirement IDs
 - `attachments` *(list[obj])* — attachments `{path, note}`
-- `revision` *(int)* — revision number (starting at 1)
+- `revision` *(int)* — manual revision number maintained by the author; CookaReq keeps the value as provided
 - `notes` *(str)* — additional comments
 
 ## Localization

@@ -229,7 +229,6 @@ class EditorPanel(ScrolledPanel):
         self.attachments: list[dict[str, str]] = []
         self.extra: dict[str, Any] = {
             "labels": [],
-            "revision": 1,
             "approved_at": None,
             "notes": "",
         }
@@ -435,6 +434,8 @@ class EditorPanel(ScrolledPanel):
         with self._bulk_update():
             for ctrl in self.fields.values():
                 ctrl.ChangeValue("")
+            if "revision" in self.fields:
+                self.fields["revision"].ChangeValue("1")
             defaults = {
                 "type": locale.code_to_label("type", RequirementType.REQUIREMENT.value),
                 "status": locale.code_to_label("status", Status.DRAFT.value),
@@ -454,7 +455,6 @@ class EditorPanel(ScrolledPanel):
             self.extra.update(
                 {
                     "labels": [],
-                    "revision": 1,
                     "approved_at": None,
                     "notes": "",
                     "doc_prefix": "",
@@ -504,12 +504,13 @@ class EditorPanel(ScrolledPanel):
                 code = data.get(name, default_code)
                 choice.SetStringSelection(locale.code_to_label(name, code))
             labels = data.get("labels")
-            self.extra = {
-                "labels": list(labels) if isinstance(labels, list) else [],
-                "revision": data.get("revision", 1),
-                "approved_at": data.get("approved_at"),
-                "notes": data.get("notes", ""),
-            }
+            self.extra.update(
+                {
+                    "labels": list(labels) if isinstance(labels, list) else [],
+                    "approved_at": data.get("approved_at"),
+                    "notes": data.get("notes", ""),
+                },
+            )
             if self.extra.get("approved_at"):
                 dt = wx.DateTime()
                 dt.ParseISODate(str(self.extra["approved_at"]))
@@ -586,12 +587,24 @@ class EditorPanel(ScrolledPanel):
             "conditions": self.fields["conditions"].GetValue(),
             "rationale": self.fields["rationale"].GetValue(),
             "assumptions": self.fields["assumptions"].GetValue(),
-            "version": self.fields["version"].GetValue(),
             "modified_at": self.fields["modified_at"].GetValue(),
             "labels": list(self.extra.get("labels", [])),
             "attachments": list(self.attachments),
-            "revision": self.extra.get("revision", 1),
         }
+        revision_ctrl = self.fields.get("revision")
+        revision_text = revision_ctrl.GetValue().strip() if revision_ctrl else ""
+        if revision_text:
+            try:
+                revision = int(revision_text)
+            except (TypeError, ValueError):
+                raise ValueError(_("Revision must be a positive integer"))
+        else:
+            revision = 1
+        if revision <= 0:
+            raise ValueError(_("Revision must be a positive integer"))
+        if revision_ctrl:
+            revision_ctrl.ChangeValue(str(revision))
+        data["revision"] = revision
         if self.links:
             data["links"] = [link["rid"] for link in self.links]
         dt = self.approved_picker.GetValue()
@@ -870,7 +883,6 @@ class EditorPanel(ScrolledPanel):
             "labels": list(self.extra.get("labels", [])),
             "approved_at": approved_at,
             "notes": self.notes_ctrl.GetValue(),
-            "revision": self.extra.get("revision", 1),
         }
         return snapshot
 

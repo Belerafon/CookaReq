@@ -36,7 +36,6 @@ def test_requirement_defaults():
     assert req.conditions == ""
     assert req.rationale == ""
     assert req.assumptions == ""
-    assert req.version == ""
     assert req.modified_at == ""
 
 

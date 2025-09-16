@@ -144,13 +144,13 @@
       ]
     },
     {
-      "name": "version",
+      "name": "revision",
       "control": "text",
       "multiline": false,
       "help": [
-        "Sequential version number for change control.",
-        "Increase it whenever the requirement text changes to keep a revision history.",
-        "Versioning enables baselining and comparison of snapshots during reviews."
+        "Manual revision identifier that teams adjust themselves.",
+        "Update it whenever you want to mark a new baseline for the requirement.",
+        "CookaReq does not change this value automatically."
       ]
     }
   ],

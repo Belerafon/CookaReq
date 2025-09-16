@@ -69,7 +69,6 @@ class Requirement:
     conditions: str = ""
     rationale: str = ""
     assumptions: str = ""
-    version: str = ""
     modified_at: str = ""
     labels: list[str] = field(default_factory=list)
     attachments: list[Attachment] = field(default_factory=list)
@@ -125,6 +124,14 @@ def requirement_from_dict(
         raise TypeError("labels must be a list")
     labels = list(labels_data or [])
 
+    raw_revision = data.get("revision", 1)
+    try:
+        revision = int(raw_revision)
+    except (TypeError, ValueError) as exc:
+        raise TypeError("revision must be an integer") from exc
+    if revision <= 0:
+        raise ValueError("revision must be positive")
+
     return Requirement(
         id=data["id"],
         title=data["title"],
@@ -139,11 +146,10 @@ def requirement_from_dict(
         conditions=data.get("conditions", ""),
         rationale=data.get("rationale", ""),
         assumptions=data.get("assumptions", ""),
-        version=data.get("version", ""),
         modified_at=normalize_timestamp(data.get("modified_at")),
         labels=labels,
         attachments=attachments,
-        revision=data.get("revision", 1),
+        revision=revision,
         approved_at=(
             normalize_timestamp(data.get("approved_at"))
             if data.get("approved_at")

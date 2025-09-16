@@ -1,5 +1,9 @@
 """Tests for local agent."""
 
+import json
+
+import httpx
+import openai
 import pytest
 
 from app.agent import local_agent as la
@@ -13,9 +17,6 @@ pytestmark = pytest.mark.integration
 class FailingLLM:
     def check_llm(self):
         raise RuntimeError("llm failure")
-
-    def parse_command(self, text: str):
-        raise RuntimeError("parse fail")
 
 
 class FailingMCP:
@@ -36,6 +37,20 @@ class DummyLLM:
         return "some_tool", {}
 
 
+class JSONFailingLLM:
+    def parse_command(self, text: str):
+        raise json.JSONDecodeError("Expecting value", text, 0)
+
+
+class OpenAINetworkLLM:
+    def parse_command(self, text: str):
+        request = httpx.Request("GET", "https://example.com")
+        raise openai.APIConnectionError(
+            message="temporary outage",
+            request=request,
+        )
+
+
 def test_check_llm_and_check_tools_propagate_errors():
     agent = LocalAgent(llm=FailingLLM(), mcp=FailingMCP())
     with pytest.raises(RuntimeError, match="llm failure"):
@@ -44,12 +59,22 @@ def test_check_llm_and_check_tools_propagate_errors():
         agent.check_tools()
 
 
-def test_run_command_handles_llm_error():
-    agent = LocalAgent(llm=FailingLLM(), mcp=DummyMCP())
-    result = agent.run_command("whatever")
+def test_run_command_reports_validation_error_for_json_failure():
+    agent = LocalAgent(llm=JSONFailingLLM(), mcp=DummyMCP())
+    result = agent.run_command("not json")
     assert result["ok"] is False
     assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR
-    assert result["error"]["message"] == "parse fail"
+    assert "Expecting value" in result["error"]["message"]
+    assert result["error"]["details"]["type"] == "JSONDecodeError"
+
+
+def test_run_command_reports_internal_error_for_openai_failure():
+    agent = LocalAgent(llm=OpenAINetworkLLM(), mcp=DummyMCP())
+    result = agent.run_command("anything")
+    assert result["ok"] is False
+    assert result["error"]["code"] == ErrorCode.INTERNAL
+    assert result["error"]["message"] == "temporary outage"
+    assert result["error"]["details"]["type"] == "APIConnectionError"
 
 
 def test_run_command_propagates_mcp_exception():

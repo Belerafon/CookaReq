@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-from app.core.doc_store import Document, save_document, save_item, load_item
+from app.core.document_store import Document, save_document, save_item, load_item
 from app.core.model import (
     Attachment,
     Priority,

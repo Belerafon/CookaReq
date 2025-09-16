@@ -11,7 +11,7 @@ import wx
 import wx.adv
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from ..core.doc_store import (
+from ..core.document_store import (
     Document,
     LabelDef,
     label_color,

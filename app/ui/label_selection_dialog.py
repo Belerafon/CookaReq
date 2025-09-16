@@ -3,7 +3,7 @@
 import wx
 from contextlib import suppress
 
-from ..core.doc_store import LabelDef, label_color
+from ..core.document_store import LabelDef, label_color
 from ..i18n import _
 
 

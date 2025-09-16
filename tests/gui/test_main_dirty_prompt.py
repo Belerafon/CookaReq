@@ -47,7 +47,7 @@ def test_document_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path):
     import wx
 
     import app.ui.main_frame as main_frame_mod
-    from app.core.doc_store import Document
+    from app.core.document_store import Document
 
     frame = main_frame_mod.MainFrame(None)
     try:
@@ -112,7 +112,7 @@ def test_requirement_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path
     import wx
 
     import app.ui.main_frame as main_frame_mod
-    from app.core.doc_store import Document
+    from app.core.document_store import Document
     from app.core.model import (
         Requirement,
         RequirementType,

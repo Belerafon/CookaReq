@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from app.core.doc_store import Document, load_document, save_document
+from app.core.document_store import Document, load_document, save_document
 from app.core.model import requirement_from_dict, requirement_to_dict
 
 

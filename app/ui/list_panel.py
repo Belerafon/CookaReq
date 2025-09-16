@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
-from ..core.doc_store import LabelDef, label_color, stable_color
+from ..core.document_store import LabelDef, label_color, stable_color
 from ..core.model import Requirement
 from ..i18n import _
 from ..log import logger

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .doc_store import LabelDef, stable_color
+from .document_store import LabelDef, stable_color
 
 
 def _preset(keys: list[str]) -> list[LabelDef]:

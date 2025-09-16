@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
-from ..core import doc_store
+from ..core import document_store as doc_store
 from ..core.model import requirement_to_dict
 from .utils import ErrorCode, log_tool, mcp_error
 

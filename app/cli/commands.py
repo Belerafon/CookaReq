@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from app.confirm import confirm
-from app.core.doc_store import (
+from app.core.document_store import (
     Document,
     DocumentNotFoundError,
     ValidationError,

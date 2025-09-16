@@ -6,7 +6,7 @@ from typing import Callable, Dict
 
 import wx
 
-from ..core.doc_store import Document
+from ..core.document_store import Document
 from ..i18n import _
 
 

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.core.doc_store import (
+from app.core.document_store import (
     Document,
     delete_document,
     next_item_id,

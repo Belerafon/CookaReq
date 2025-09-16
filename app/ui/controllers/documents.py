@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Dict, Iterable, Tuple
 
-from ...core.doc_store import (
+from ...core.document_store import (
     Document,
     LabelDef,
     collect_label_defs,

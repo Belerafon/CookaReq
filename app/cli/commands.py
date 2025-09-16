@@ -7,9 +7,10 @@ import csv
 import html
 import json
 import sys
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import MISSING, asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Any, Callable, TextIO
+from typing import Any, Callable, Mapping, TextIO
 
 from app.confirm import confirm
 from app.core.document_store import (
@@ -58,6 +59,213 @@ class Command:
     func: Callable[[argparse.Namespace], None]
     help: str
     add_arguments: Callable[[argparse.ArgumentParser], None]
+
+
+@dataclass
+class ItemPayload:
+    """Intermediate representation of arguments for ``cmd_item_add``."""
+
+    title: str = ""
+    statement: str = ""
+    type: str = RequirementType.REQUIREMENT.value
+    status: str = Status.DRAFT.value
+    owner: str = ""
+    priority: str = Priority.MEDIUM.value
+    source: str = ""
+    verification: str = Verification.ANALYSIS.value
+    acceptance: str | None = None
+    conditions: str = ""
+    rationale: str = ""
+    assumptions: str = ""
+    version: str = ""
+    modified_at: str = ""
+    labels: list[str] = field(default_factory=list)
+    attachments: list[Any] = field(default_factory=list)
+    approved_at: str | None = None
+    notes: str = ""
+    links: list[str] = field(default_factory=list)
+    revision: int | None = None
+
+    def validate(self) -> None:
+        """Ensure payload contains supported values."""
+
+        errors: list[str] = []
+        for field_name, enum_cls, message in (
+            ("type", RequirementType, _("unknown requirement type: {value}")),
+            ("status", Status, _("unknown status: {value}")),
+            ("priority", Priority, _("unknown priority: {value}")),
+            (
+                "verification",
+                Verification,
+                _("unknown verification method: {value}"),
+            ),
+        ):
+            value = getattr(self, field_name)
+            try:
+                enum_cls(value)
+            except ValueError:
+                errors.append(message.format(value=value))
+
+        if not isinstance(self.labels, list):
+            errors.append(_("labels must be a list"))
+        if not isinstance(self.links, list):
+            errors.append(_("links must be a list"))
+        if not isinstance(self.attachments, list):
+            errors.append(_("attachments must be a list"))
+        if self.revision is not None and not isinstance(self.revision, int):
+            errors.append(_("revision must be an integer"))
+
+        if errors:
+            raise ValidationError("; ".join(errors))
+
+    def to_payload(self) -> dict[str, Any]:
+        """Convert dataclass into dictionary suitable for persistence."""
+
+        data = asdict(self)
+        if self.revision is None:
+            data.pop("revision", None)
+        return data
+
+
+def _default_for(field_def: Any) -> Any:
+    if field_def.default is not MISSING:
+        return field_def.default
+    if field_def.default_factory is not MISSING:
+        return field_def.default_factory()
+    return None
+
+
+def _split_csv(value: str) -> list[str]:
+    return [token.strip() for token in value.split(",") if token.strip()]
+
+
+def _resolve_text_field(
+    args: argparse.Namespace,
+    base: Mapping[str, Any],
+    name: str,
+    default: Any,
+) -> Any:
+    sentinel = object()
+    arg_value = getattr(args, name, sentinel)
+    if arg_value is not sentinel and arg_value not in (None, ""):
+        return str(arg_value)
+    base_value = base.get(name, sentinel)
+    if base_value is not sentinel and base_value not in (None, ""):
+        return base_value
+    return default
+
+
+def _resolve_optional_field(
+    args: argparse.Namespace,
+    base: Mapping[str, Any],
+    name: str,
+    default: Any,
+) -> Any:
+    sentinel = object()
+    arg_value = getattr(args, name, sentinel)
+    if arg_value is not sentinel:
+        return arg_value
+    return base.get(name, default)
+
+
+def _resolve_labels(
+    args: argparse.Namespace, base: Mapping[str, Any], default: list[str]
+) -> list[str]:
+    sentinel = object()
+    arg_value = getattr(args, "labels", sentinel)
+    if arg_value is not sentinel:
+        if arg_value is None:
+            return list(default)
+        if isinstance(arg_value, str):
+            return _split_csv(arg_value)
+        if isinstance(arg_value, (list, tuple)):
+            return [str(token) for token in arg_value if str(token).strip()]
+    base_value = base.get("labels")
+    if base_value is None:
+        return list(default)
+    if not isinstance(base_value, list):
+        raise ValidationError(_("labels must be a list"))
+    return [str(token) for token in base_value]
+
+
+def _resolve_links(
+    args: argparse.Namespace, base: Mapping[str, Any], default: list[str]
+) -> list[str]:
+    sentinel = object()
+    arg_value = getattr(args, "links", sentinel)
+    if arg_value not in (sentinel, None, ""):
+        if isinstance(arg_value, str):
+            return _split_csv(arg_value)
+        if isinstance(arg_value, (list, tuple)):
+            return [str(token) for token in arg_value if str(token).strip()]
+    base_value = base.get("links")
+    if base_value is None:
+        return list(default)
+    if not isinstance(base_value, list):
+        raise ValidationError(_("links must be a list"))
+    return [str(token) for token in base_value]
+
+
+def _resolve_attachments(
+    args: argparse.Namespace, base: Mapping[str, Any], default: list[Any]
+) -> list[Any]:
+    sentinel = object()
+    arg_value = getattr(args, "attachments", sentinel)
+    if arg_value not in (sentinel, None, ""):
+        parsed = json.loads(arg_value)
+        return parsed
+    base_value = base.get("attachments")
+    if base_value is None:
+        return list(default)
+    if not isinstance(base_value, list):
+        raise ValidationError(_("attachments must be a list"))
+    return deepcopy(base_value)
+
+
+def _resolve_revision(
+    args: argparse.Namespace, base: Mapping[str, Any]
+) -> int | None:
+    sentinel = object()
+    arg_value = getattr(args, "revision", sentinel)
+    value = arg_value
+    if arg_value is sentinel or arg_value is None:
+        value = base.get("revision")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+        raise ValidationError(_("revision must be an integer")) from exc
+
+
+def build_item_payload(
+    args: argparse.Namespace, base: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """Combine CLI arguments and base data into payload for creation."""
+
+    base_data: Mapping[str, Any] = base or {}
+    values: dict[str, Any] = {}
+    for field_def in fields(ItemPayload):
+        default = _default_for(field_def)
+        if field_def.name == "labels":
+            values[field_def.name] = _resolve_labels(args, base_data, default)
+        elif field_def.name == "links":
+            values[field_def.name] = _resolve_links(args, base_data, default)
+        elif field_def.name == "attachments":
+            values[field_def.name] = _resolve_attachments(args, base_data, default)
+        elif field_def.name in {"acceptance", "approved_at"}:
+            values[field_def.name] = _resolve_optional_field(
+                args, base_data, field_def.name, default
+            )
+        elif field_def.name == "revision":
+            values[field_def.name] = _resolve_revision(args, base_data)
+        else:
+            values[field_def.name] = _resolve_text_field(
+                args, base_data, field_def.name, default
+            )
+    payload = ItemPayload(**values)
+    payload.validate()
+    return payload.to_payload()
 
 
 def cmd_doc_create(args: argparse.Namespace) -> None:
@@ -149,50 +357,8 @@ def cmd_item_add(args: argparse.Namespace) -> None:
     if data_path:
         with open(data_path, encoding="utf-8") as fh:
             base = json.load(fh)
-    labels: list[str] = list(base.get("labels", []))
-    labels_arg = getattr(args, "labels", None)
-    if labels_arg is not None:
-        labels = [t.strip() for t in labels_arg.split(",") if t.strip()]
-    links: list[str] = list(base.get("links", []))
-    links_arg = getattr(args, "links", None)
-    if links_arg:
-        links = [t.strip() for t in links_arg.split(",") if t.strip()]
-    attachments = base.get("attachments", [])
-    attachments_arg = getattr(args, "attachments", None)
-    if attachments_arg:
-        attachments = json.loads(attachments_arg)
-    payload: dict[str, Any] = {
-        "title": getattr(args, "title", None) or base.get("title", ""),
-        "statement": getattr(args, "statement", None) or base.get("statement", ""),
-        "type": getattr(args, "type", None)
-        or base.get("type", RequirementType.REQUIREMENT.value),
-        "status": getattr(args, "status", None)
-        or base.get("status", Status.DRAFT.value),
-        "owner": getattr(args, "owner", None) or base.get("owner", ""),
-        "priority": getattr(args, "priority", None)
-        or base.get("priority", Priority.MEDIUM.value),
-        "source": getattr(args, "source", None) or base.get("source", ""),
-        "verification": getattr(args, "verification", None)
-        or base.get("verification", Verification.ANALYSIS.value),
-        "acceptance": getattr(args, "acceptance", None)
-        if getattr(args, "acceptance", None) is not None
-        else base.get("acceptance"),
-        "conditions": getattr(args, "conditions", None) or base.get("conditions", ""),
-        "rationale": getattr(args, "rationale", None) or base.get("rationale", ""),
-        "assumptions": getattr(args, "assumptions", None) or base.get("assumptions", ""),
-        "version": getattr(args, "version", None) or base.get("version", ""),
-        "modified_at": getattr(args, "modified_at", None) or base.get("modified_at", ""),
-        "labels": labels,
-        "attachments": attachments,
-        "approved_at": getattr(args, "approved_at", None)
-        if getattr(args, "approved_at", None) is not None
-        else base.get("approved_at"),
-        "notes": getattr(args, "notes", None) or base.get("notes", ""),
-        "links": links,
-    }
-    if "revision" in base:
-        payload["revision"] = base.get("revision", 1)
     try:
+        payload = build_item_payload(args, base)
         req = create_requirement(args.directory, prefix=args.prefix, data=payload)
     except DocumentNotFoundError:
         sys.stdout.write(
@@ -207,74 +373,54 @@ def cmd_item_add(args: argparse.Namespace) -> None:
 
 def cmd_item_move(args: argparse.Namespace) -> None:
     """Move existing item ``rid`` to document ``new_prefix``."""
+
     prefix, item_id = parse_rid(args.rid)
     src_dir = Path(args.directory) / prefix
     src_doc = load_document(src_dir)
     data, _mtime = load_item(src_dir, src_doc, item_id)
-    item_path(src_dir, src_doc, item_id).unlink()
-    base: dict[str, Any] = {}
+    src_path = item_path(src_dir, src_doc, item_id)
+
+    template: Mapping[str, Any] = {}
     data_path = getattr(args, "data", None)
     if data_path:
         with open(data_path, encoding="utf-8") as fh:
-            base = json.load(fh)
-    data.update(base)
-    if getattr(args, "title", None) is not None:
-        data["title"] = args.title
-    if getattr(args, "statement", None) is not None:
-        data["statement"] = args.statement
-    if getattr(args, "type", None) is not None:
-        data["type"] = args.type
-    if getattr(args, "status", None) is not None:
-        data["status"] = args.status
-    if getattr(args, "owner", None) is not None:
-        data["owner"] = args.owner
-    if getattr(args, "priority", None) is not None:
-        data["priority"] = args.priority
-    if getattr(args, "source", None) is not None:
-        data["source"] = args.source
-    if getattr(args, "verification", None) is not None:
-        data["verification"] = args.verification
-    if getattr(args, "acceptance", None) is not None:
-        data["acceptance"] = args.acceptance
-    if getattr(args, "conditions", None) is not None:
-        data["conditions"] = args.conditions
-    if getattr(args, "rationale", None) is not None:
-        data["rationale"] = args.rationale
-    if getattr(args, "assumptions", None) is not None:
-        data["assumptions"] = args.assumptions
-    if getattr(args, "version", None) is not None:
-        data["version"] = args.version
-    if getattr(args, "modified_at", None) is not None:
-        data["modified_at"] = args.modified_at
-    if getattr(args, "approved_at", None) is not None:
-        data["approved_at"] = args.approved_at
-    if getattr(args, "notes", None) is not None:
-        data["notes"] = args.notes
-    links_arg = getattr(args, "links", None)
-    if links_arg:
-        data["links"] = [t.strip() for t in links_arg.split(",") if t.strip()]
-    attachments_arg = getattr(args, "attachments", None)
-    if attachments_arg:
-        data["attachments"] = json.loads(attachments_arg)
+            template = json.load(fh)
+
+    base_payload: dict[str, Any] = dict(data)
+    base_payload.update(template)
+
+    try:
+        payload = build_item_payload(args, base_payload)
+    except ValidationError as exc:
+        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
+        return
+
     docs = load_documents(args.directory)
     dst_doc = docs.get(args.new_prefix)
     if dst_doc is None:
-        sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=args.new_prefix))
+        sys.stdout.write(
+            _("unknown document prefix: {prefix}\n").format(prefix=args.new_prefix)
+        )
         return
-    labels = list(data.get("labels", []))
-    labels_arg = getattr(args, "labels", None)
-    if labels_arg is not None:
-        labels = [t.strip() for t in labels_arg.split(",") if t.strip()]
+
+    labels = list(payload.get("labels", []))
     err = validate_labels(args.new_prefix, labels, docs)
     if err:
         sys.stdout.write(_("{msg}\n").format(msg=err))
         return
-    data["labels"] = labels
+    payload["labels"] = labels
+
     dst_dir = Path(args.directory) / args.new_prefix
     new_id = next_item_id(dst_dir, dst_doc)
-    data["id"] = new_id
-    req = requirement_from_dict(data, doc_prefix=args.new_prefix, rid=rid_for(dst_doc, new_id))
+    payload["id"] = new_id
+    if "revision" not in payload and "revision" in data:
+        payload["revision"] = data["revision"]
+
+    req = requirement_from_dict(
+        payload, doc_prefix=args.new_prefix, rid=rid_for(dst_doc, new_id)
+    )
     save_item(dst_dir, dst_doc, requirement_to_dict(req))
+    src_path.unlink()
     sys.stdout.write(f"{req.rid}\n")
 
 

@@ -260,8 +260,12 @@ def test_settings_help_buttons(monkeypatch, wx_app):
     from app.ui import helpers
     from app.ui.settings_dialog import LLM_HELP, MCP_HELP, SettingsDialog
 
-    shown: list[str] = []
-    monkeypatch.setattr(helpers, "show_help", lambda parent, msg: shown.append(msg))
+    shown: list[tuple[wx.Window | None, wx.Window | None, str]] = []
+
+    def _fake_show_help(parent, msg, *, anchor=None, **_kwargs):
+        shown.append((parent, anchor, msg))
+
+    monkeypatch.setattr(helpers, "show_help", _fake_show_help)
 
     dlg = SettingsDialog(
         None,
@@ -288,7 +292,7 @@ def test_settings_help_buttons(monkeypatch, wx_app):
         if isinstance(item.GetWindow(), wx.Button)
     )
     base_btn.GetEventHandler().ProcessEvent(wx.CommandEvent(wx.EVT_BUTTON.typeId))
-    assert shown[-1] == LLM_HELP["base_url"]
+    assert shown[-1] == (dlg, base_btn, LLM_HELP["base_url"])
 
     host_btn = next(
         item.GetWindow()
@@ -296,6 +300,6 @@ def test_settings_help_buttons(monkeypatch, wx_app):
         if isinstance(item.GetWindow(), wx.Button)
     )
     host_btn.GetEventHandler().ProcessEvent(wx.CommandEvent(wx.EVT_BUTTON.typeId))
-    assert shown[-1] == MCP_HELP["host"]
+    assert shown[-1] == (dlg, host_btn, MCP_HELP["host"])
 
     dlg.Destroy()

@@ -34,7 +34,7 @@ from ..util.time import local_now_str, normalize_timestamp
 from ..i18n import _
 from . import locale
 from .enums import ENUMS
-from .helpers import AutoHeightListCtrl, HelpStaticBox, make_help_button, show_help
+from .helpers import AutoHeightListCtrl, HelpStaticBox, make_help_button
 from .label_selection_dialog import LabelSelectionDialog
 
 logger = logging.getLogger(__name__)
@@ -269,7 +269,6 @@ class EditorPanel(ScrolledPanel):
             self,
             _("Attachments"),
             self._help_texts["attachments"],
-            lambda msg: show_help(self, msg),
         )
         a_box = a_sizer.GetStaticBox()
         self.attachments_list = AutoHeightListCtrl(
@@ -327,7 +326,6 @@ class EditorPanel(ScrolledPanel):
             self,
             _("Labels"),
             self._help_texts["labels"],
-            lambda msg: show_help(self, msg),
         )
         box = box_sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -432,7 +430,6 @@ class EditorPanel(ScrolledPanel):
             self,
             label,
             self._help_texts[help_key],
-            lambda msg: show_help(self, msg),
         )
         box = sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)

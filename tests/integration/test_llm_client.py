@@ -1,7 +1,9 @@
 """Tests for llm client."""
 
+import asyncio
 import json
 import logging
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -146,3 +148,36 @@ def test_parse_command_uses_default_when_no_limit(tmp_path: Path, monkeypatch) -
     assert tool == "list_requirements"
     assert args == {}
     assert captured["max_output_tokens"] == DEFAULT_MAX_OUTPUT_TOKENS
+
+
+def test_check_llm_async_uses_thread(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    captured: dict[str, object] = {}
+    main_thread = threading.get_ident()
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, **kwargs):  # noqa: ANN001
+                captured.update(kwargs)
+                captured["thread"] = threading.get_ident()
+                return SimpleNamespace()
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    result = asyncio.run(client.check_llm_async())
+    assert result == {"ok": True}
+    assert captured["thread"] != main_thread
+
+
+def test_parse_command_async(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    responses = {"anything": ("list_requirements", {"per_page": 2})}
+    monkeypatch.setattr("openai.OpenAI", make_openai_mock(responses))
+    client = LLMClient(settings.llm)
+    tool, args = asyncio.run(client.parse_command_async("anything"))
+    assert tool == "list_requirements"
+    assert args == {"per_page": 2}

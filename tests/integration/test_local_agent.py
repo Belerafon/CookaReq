@@ -1,6 +1,8 @@
 """Tests for local agent."""
 
+import asyncio
 import json
+import threading
 
 import httpx
 import openai
@@ -155,3 +157,95 @@ def test_custom_confirm_message(monkeypatch):
     agent = LocalAgent(settings=AppSettings(), confirm=custom_confirm)
     assert agent.run_command("remove") == {"ok": True, "error": None, "result": {}}
     assert messages == ["Delete requirement?"]
+
+
+def test_async_methods_offload_to_threads():
+    main_thread = threading.get_ident()
+
+    class RecordingLLM:
+        def __init__(self) -> None:
+            self.check_thread: int | None = None
+            self.parse_thread: int | None = None
+
+        def check_llm(self):
+            self.check_thread = threading.get_ident()
+            return {"ok": True}
+
+        def parse_command(self, text: str):
+            self.parse_thread = threading.get_ident()
+            return "list_requirements", {}
+
+    class RecordingMCP:
+        def __init__(self) -> None:
+            self.check_thread: int | None = None
+            self.call_thread: int | None = None
+
+        def check_tools(self):
+            self.check_thread = threading.get_ident()
+            return {"ok": True, "error": None}
+
+        def call_tool(self, name, arguments):
+            self.call_thread = threading.get_ident()
+            return {"ok": True, "error": None, "result": {}}
+
+    llm = RecordingLLM()
+    mcp = RecordingMCP()
+    agent = LocalAgent(llm=llm, mcp=mcp)
+
+    async def exercise() -> None:
+        assert await agent.check_llm_async() == {"ok": True}
+        assert await agent.check_tools_async() == {"ok": True, "error": None}
+        result = await agent.run_command_async("anything")
+        assert result == {"ok": True, "error": None, "result": {}}
+
+    asyncio.run(exercise())
+
+    assert llm.check_thread is not None and llm.check_thread != main_thread
+    assert llm.parse_thread is not None and llm.parse_thread != main_thread
+    assert mcp.check_thread is not None and mcp.check_thread != main_thread
+    assert mcp.call_thread is not None and mcp.call_thread != main_thread
+
+
+def test_async_methods_prefer_native_coroutines():
+    class AsyncLLM:
+        def __init__(self) -> None:
+            self.check_called = False
+            self.parse_called = False
+
+        async def check_llm_async(self):
+            self.check_called = True
+            return {"ok": True}
+
+        async def parse_command_async(self, text: str):
+            self.parse_called = True
+            return "list_requirements", {}
+
+    class AsyncMCP:
+        def __init__(self) -> None:
+            self.check_called = False
+            self.call_called = False
+
+        async def check_tools_async(self):
+            self.check_called = True
+            return {"ok": True, "error": None}
+
+        async def call_tool_async(self, name, arguments):
+            self.call_called = True
+            return {"ok": True, "error": None, "result": {}}
+
+    llm = AsyncLLM()
+    mcp = AsyncMCP()
+    agent = LocalAgent(llm=llm, mcp=mcp)
+
+    async def exercise() -> None:
+        assert await agent.check_llm_async() == {"ok": True}
+        assert await agent.check_tools_async() == {"ok": True, "error": None}
+        result = await agent.run_command_async("text")
+        assert result == {"ok": True, "error": None, "result": {}}
+
+    asyncio.run(exercise())
+
+    assert llm.check_called is True
+    assert llm.parse_called is True
+    assert mcp.check_called is True
+    assert mcp.call_called is True

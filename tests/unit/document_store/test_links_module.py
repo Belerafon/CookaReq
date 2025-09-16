@@ -66,7 +66,7 @@ def test_validate_and_link(tmp_path: Path) -> None:
         docs=docs,
     )
     assert linked.links == ["SYS001"]
-    assert linked.revision == 2
+    assert linked.revision == 1
 
     data, _ = load_item(tmp_path / "HLR", hlr_doc, 1)
     assert data["links"] == ["SYS001"]
@@ -85,6 +85,6 @@ def test_validate_and_link(tmp_path: Path) -> None:
             source_rid="SYS001",
             derived_rid="HLR01",
             link_type="child",
-            expected_revision=2,
+            expected_revision=1,
             docs=docs,
         )

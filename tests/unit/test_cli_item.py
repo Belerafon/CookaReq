@@ -77,7 +77,6 @@ def test_item_move_merges_sources(tmp_path, capsys):
         "conditions": "Existing conditions",
         "rationale": "Existing rationale",
         "assumptions": "Existing assumptions",
-        "version": "0.1",
         "modified_at": "2024-03-01T00:00:00Z",
         "labels": ["seed"],
         "attachments": [{"path": "seed.txt", "note": "seed"}],
@@ -156,7 +155,6 @@ def test_item_move_merges_sources(tmp_path, capsys):
     assert data_new["conditions"] == "Existing conditions"
     assert data_new["rationale"] == "Existing rationale"
     assert data_new["assumptions"] == "Existing assumptions"
-    assert data_new["version"] == "0.1"
     assert data_new["modified_at"] == "2024-03-01 00:00:00"
     assert data_new["labels"] == ["cli", "label"]
     assert data_new["attachments"] == [{"path": "cli.txt", "note": "cli"}]
@@ -230,7 +228,6 @@ def test_item_add_merges_base_and_arguments(tmp_path, capsys):
         "conditions": "Base conditions",
         "rationale": "Base rationale",
         "assumptions": "Base assumptions",
-        "version": "1.0",
         "modified_at": "2024-01-01T00:00:00Z",
         "labels": ["base"],
         "attachments": [{"path": "base.txt"}],
@@ -271,7 +268,6 @@ def test_item_add_merges_base_and_arguments(tmp_path, capsys):
     assert data["conditions"] == "Base conditions"
     assert data["rationale"] == "Base rationale"
     assert data["assumptions"] == "Base assumptions"
-    assert data["version"] == "1.0"
     assert data["modified_at"] == "2024-01-01 00:00:00"
     assert data["labels"] == ["cli", "labels"]
     assert data["attachments"] == [{"path": "cli.txt", "note": "n"}]

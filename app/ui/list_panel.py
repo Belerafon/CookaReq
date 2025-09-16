@@ -674,6 +674,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if idx >= len(items):
                 continue
             req = items[idx]
+            if field == "revision":
+                try:
+                    numeric = int(str(value).strip())
+                except (TypeError, ValueError):
+                    continue
+                if numeric <= 0:
+                    continue
+                value = numeric
             setattr(req, field, value)
             self.model.update(req)
             if isinstance(value, Enum):

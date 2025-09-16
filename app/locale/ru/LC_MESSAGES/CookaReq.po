@@ -122,8 +122,8 @@ msgid "Conditions"
 msgstr "Условия и режимы"
 
 
-msgid "Requirement version"
-msgstr "Версия требования"
+msgid "Requirement revision"
+msgstr "Ревизия требования"
 
 msgid "Modified at"
 msgstr "Дата изменения"
@@ -160,6 +160,9 @@ msgstr "идентификатор должен быть целым числом
 
 msgid "ID must be positive"
 msgstr "идентификатор должен быть положительным"
+
+msgid "Revision must be a positive integer"
+msgstr "ревизия должна быть положительным целым числом"
 
 msgid "Hint"
 msgstr "Подсказка"
@@ -579,14 +582,13 @@ msgstr ""
 
 
 msgid ""
-"Sequential version number for change control. Increase it whenever the "
-"requirement text changes to keep a revision history. Versioning enables "
-"baselining and comparison of snapshots during reviews."
+"Manual revision identifier that teams adjust themselves. Update it whenever "
+"you want to mark a new baseline for the requirement. CookaReq does not change "
+"this value automatically."
 msgstr ""
-"Последовательный номер версии для управления изменениями. Увеличивайте его "
-"при каждом изменении текста требования, чтобы вести историю правок. "
-"Версионирование позволяет фиксировать базовые линии и сравнивать разные "
-"редакции на обзорах."
+"Ручной идентификатор ревизии, который команда обновляет самостоятельно. "
+"Меняйте его, когда хотите зафиксировать новую базовую версию требования. "
+"CookaReq не изменяет это значение автоматически."
 
 msgid ""
 "Date and time of the last edit. The value is filled automatically and aids "

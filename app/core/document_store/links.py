@@ -215,7 +215,12 @@ def link_requirements(
     if not is_ancestor(derived_prefix, source_prefix, docs_map):
         raise ValidationError(f"invalid link target: {source_rid}")
 
-    current = int(data.get("revision", 1))
+    try:
+        current = int(data.get("revision", 1))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("revision must be an integer") from exc
+    if current <= 0:
+        raise ValidationError("revision must be positive")
     if current != expected_revision:
         raise RevisionMismatchError(expected_revision, current)
 
@@ -229,7 +234,14 @@ def link_requirements(
 
     updated = dict(data)
     updated["links"] = sorted(set(existing_links) | {source_rid})
-    updated["revision"] = current + 1
+    revision_value = updated.get("revision", current)
+    try:
+        revision = int(revision_value)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("revision must be an integer") from exc
+    if revision <= 0:
+        raise ValidationError("revision must be positive")
+    updated["revision"] = revision
 
     req = requirement_from_dict(updated, doc_prefix=derived_prefix, rid=derived_rid)
     save_item(derived_dir, derived_doc, requirement_to_dict(req))

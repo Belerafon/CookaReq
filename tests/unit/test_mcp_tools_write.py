@@ -23,11 +23,14 @@ def test_create_patch_delete(tmp_path: Path) -> None:
     res = tools_write.create_requirement(tmp_path, prefix="SYS", data=_base_req())
     assert res["rid"] == "SYS001"
     assert res["revision"] == 1
-    patch = [{"op": "replace", "path": "/title", "value": "N"}]
+    patch = [
+        {"op": "replace", "path": "/title", "value": "N"},
+        {"op": "replace", "path": "/revision", "value": 4},
+    ]
     res2 = tools_write.patch_requirement(tmp_path, "SYS001", patch, rev=1)
     assert res2["title"] == "N"
-    assert res2["revision"] == 2
-    res3 = tools_write.delete_requirement(tmp_path, "SYS001", rev=2)
+    assert res2["revision"] == 4
+    res3 = tools_write.delete_requirement(tmp_path, "SYS001", rev=4)
     assert res3 == {"rid": "SYS001"}
 
 

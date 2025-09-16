@@ -99,8 +99,8 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
         on_clone=on_clone,
         on_delete=on_delete,
     )
-    panel.set_columns(["version"])
-    reqs = [_req(1, "T", version="1")]
+    panel.set_columns(["revision"])
+    reqs = [_req(1, "T", revision=1)]
     panel.set_requirements(reqs)
     monkeypatch.setattr(panel, "_prompt_value", lambda field: "2")
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
@@ -121,7 +121,7 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     menu.Destroy()
 
     assert called == {"clone": 1, "delete": 1}
-    assert reqs[0].version == "2"
+    assert reqs[0].revision == 2
 
     frame.Destroy()
 
@@ -135,8 +135,8 @@ def test_list_panel_context_menu_via_event(monkeypatch, wx_app):
     from app.ui.requirement_model import RequirementModel
 
     panel = list_panel.ListPanel(frame, model=RequirementModel())
-    panel.set_columns(["version"])
-    panel.set_requirements([_req(1, "T", version="1")])
+    panel.set_columns(["revision"])
+    panel.set_requirements([_req(1, "T", revision=1)])
     frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
     frame.GetSizer().Add(panel, 1, wx.EXPAND)
     frame.Layout()
@@ -170,10 +170,10 @@ def test_bulk_edit_updates_selected_items(monkeypatch, wx_app):
     from app.ui.requirement_model import RequirementModel
 
     panel = list_panel.ListPanel(frame, model=RequirementModel())
-    panel.set_columns(["version", "type"])
+    panel.set_columns(["revision", "type"])
     reqs = [
-        _req(1, "A", version="1", type=RequirementType.REQUIREMENT),
-        _req(2, "B", version="1", type=RequirementType.REQUIREMENT),
+        _req(1, "A", revision=1, type=RequirementType.REQUIREMENT),
+        _req(2, "B", revision=1, type=RequirementType.REQUIREMENT),
     ]
     panel.set_requirements(reqs)
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
@@ -181,11 +181,11 @@ def test_bulk_edit_updates_selected_items(monkeypatch, wx_app):
     monkeypatch.setattr(
         panel,
         "_prompt_value",
-        lambda field: "2" if field == "version" else RequirementType.CONSTRAINT,
+        lambda field: "2" if field == "revision" else RequirementType.CONSTRAINT,
     )
     panel._on_edit_field(1)
     panel._on_edit_field(2)
-    assert [r.version for r in reqs] == ["2", "2"]
+    assert [r.revision for r in reqs] == [2, 2]
     assert [r.type for r in reqs] == [
         RequirementType.CONSTRAINT,
         RequirementType.CONSTRAINT,

@@ -900,16 +900,16 @@ def test_bulk_edit_updates_requirements(monkeypatch):
 
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
-    panel.set_columns(["version"])
+    panel.set_columns(["revision"])
     reqs = [
-        _req(1, "A", version="1"),
-        _req(2, "B", version="1"),
+        _req(1, "A", revision=1),
+        _req(2, "B", revision=1),
     ]
     panel.set_requirements(reqs)
     monkeypatch.setattr(panel, "_get_selected_indices", lambda: [0, 1])
     monkeypatch.setattr(panel, "_prompt_value", lambda field: "2")
     panel._on_edit_field(1)
-    assert [r.version for r in reqs] == ["2", "2"]
+    assert [r.revision for r in reqs] == [2, 2]
 
 
 def test_context_edit_saves_to_disk(monkeypatch, tmp_path):

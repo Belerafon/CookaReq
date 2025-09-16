@@ -72,8 +72,27 @@ def _normalize_source(value: Any) -> str:
 def _serialize_requirement(req: Requirement) -> dict[str, Any]:
     """Convert ``req`` into JSON-serializable dictionary with all schema fields."""
 
+<<<<< codex/fix-merge-issues-in-remove-redundant-names-in-files
     data = requirement_to_dict(req)
     if "links" not in data:
+=====
+    data = asdict(req)
+    data.pop("doc_prefix", None)
+    data.pop("rid", None)
+    for key, value in list(data.items()):
+        if isinstance(value, Enum):
+            data[key] = value.value
+    if req.links:
+        serialized_links: list[Any] = []
+        for link in req.links:
+            payload = link.to_dict()
+            if len(payload) == 1:
+                serialized_links.append(payload["rid"])
+            else:
+                serialized_links.append(payload)
+        data["links"] = serialized_links
+    else:
+>>>>> main
         data["links"] = []
     return data
 

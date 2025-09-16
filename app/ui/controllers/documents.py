@@ -61,7 +61,8 @@ class DocumentsController:
             req = requirement_from_dict(data, doc_prefix=doc.prefix, rid=rid)
             items.append(req)
             for parent in getattr(req, "links", []):
-                derived_map.setdefault(parent, []).append(req.id)
+                parent_rid = getattr(parent, "rid", parent)
+                derived_map.setdefault(parent_rid, []).append(req.id)
         self.model.set_requirements(items)
         return derived_map
 

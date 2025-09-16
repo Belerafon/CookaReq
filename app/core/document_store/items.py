@@ -8,7 +8,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import jsonpatch
 
-from ..model import Requirement, requirement_from_dict, requirement_to_dict
+from ..model import Link, Requirement, requirement_fingerprint, requirement_from_dict, requirement_to_dict
 from ..search import filter_by_labels, filter_by_status, search
 from . import (
     Document,
@@ -23,6 +23,90 @@ from .documents import load_documents, validate_labels
 RID_RE = re.compile(r"^([A-Z][A-Z0-9_]*?)(\d+)$")
 READ_ONLY_PATCH_FIELDS = {"id", "links"}
 KNOWN_REQUIREMENT_FIELDS = {f.name for f in fields(Requirement)}
+
+
+def _load_fingerprint_for_rid(
+    root: Path,
+    docs: Mapping[str, Document],
+    rid: str,
+    cache: dict[str, str | None],
+) -> str | None:
+    if rid in cache:
+        return cache[rid]
+    try:
+        prefix, item_id = parse_rid(rid)
+    except ValueError:
+        cache[rid] = None
+        return None
+    doc = docs.get(prefix)
+    if doc is None:
+        cache[rid] = None
+        return None
+    path = root / prefix
+    try:
+        data, _ = load_item(path, doc, item_id)
+    except FileNotFoundError:
+        cache[rid] = None
+        return None
+    fingerprint = requirement_fingerprint(data)
+    cache[rid] = fingerprint
+    return fingerprint
+
+
+def _prepare_links_for_storage(
+    root: Path, docs: Mapping[str, Document], data: dict[str, Any]
+) -> None:
+    raw_links = data.get("links")
+    if raw_links in (None, ""):
+        data.pop("links", None)
+        return
+    if not isinstance(raw_links, list):
+        raise ValidationError("links must be a list")
+    cache: dict[str, str | None] = {}
+    prepared: list[dict[str, Any]] = []
+    for entry in raw_links:
+        try:
+            link = Link.from_raw(entry)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("invalid link entry") from exc
+        fingerprint = _load_fingerprint_for_rid(root, docs, link.rid, cache)
+        if fingerprint is None:
+            link.suspect = True
+        elif link.fingerprint is None:
+            link.fingerprint = fingerprint
+            link.suspect = False
+        else:
+            link.suspect = link.fingerprint != fingerprint
+        prepared.append(link.to_dict())
+    if prepared:
+        prepared.sort(key=lambda item: item.get("rid", ""))
+        data["links"] = prepared
+    else:
+        data.pop("links", None)
+
+
+def _update_link_suspicions(
+    root: Path,
+    docs: Mapping[str, Document],
+    req: Requirement,
+    cache: dict[str, str | None] | None = None,
+) -> None:
+    if not req.links:
+        return
+    if cache is None:
+        cache = {}
+    for link in req.links:
+        if not isinstance(link, Link):
+            continue
+        fingerprint = _load_fingerprint_for_rid(root, docs, link.rid, cache)
+        if fingerprint is None:
+            link.suspect = True
+            continue
+        if link.fingerprint is None:
+            link.fingerprint = fingerprint
+            link.suspect = False
+        else:
+            link.suspect = link.fingerprint != fingerprint
 
 
 def _read_json(path: Path) -> dict:
@@ -59,11 +143,13 @@ def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
     docs = load_documents(root)
     from .links import validate_item_links  # local import to avoid cycle
 
-    validate_item_links(root, doc, data, docs)
-    path = item_path(directory, doc, int(data["id"]))
+    payload = dict(data)
+    validate_item_links(root, doc, payload, docs)
+    _prepare_links_for_storage(root, docs, payload)
+    path = item_path(directory, doc, int(payload["id"]))
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
+        json.dump(payload, fh, ensure_ascii=False, indent=2, sort_keys=True)
     return path
 
 
@@ -104,17 +190,22 @@ def _ensure_documents(root: Path, docs: Mapping[str, Document] | None) -> Mappin
 
 def _iter_requirements(root: Path, docs: Mapping[str, Document]) -> list[Requirement]:
     requirements: list[Requirement] = []
+    cache: dict[str, str | None] = {}
     for prefix, doc in docs.items():
         directory = root / prefix
         for item_id in sorted(list_item_ids(directory, doc)):
             data, _ = load_item(directory, doc, item_id)
+            rid = rid_for(doc, item_id)
+            cache[rid] = requirement_fingerprint(data)
             requirements.append(
                 requirement_from_dict(
                     data,
                     doc_prefix=prefix,
-                    rid=rid_for(doc, item_id),
+                    rid=rid,
                 )
             )
+    for req in requirements:
+        _update_link_suspicions(root, docs, req, cache)
     return requirements
 
 
@@ -208,7 +299,9 @@ def get_requirement(
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
     prefix, item_id, doc, _directory, data = _resolve_requirement(root_path, rid, docs_map)
-    return requirement_from_dict(data, doc_prefix=prefix, rid=rid)
+    req = requirement_from_dict(data, doc_prefix=prefix, rid=rid)
+    _update_link_suspicions(root_path, docs_map, req)
+    return req
 
 
 def create_requirement(
@@ -235,6 +328,7 @@ def create_requirement(
     if "revision" not in payload:
         payload["revision"] = 1
     req = requirement_from_dict(payload, doc_prefix=prefix, rid=rid_for(doc, item_id))
+    _update_link_suspicions(root_path, docs_map, req)
     save_item(directory, doc, requirement_to_dict(req))
     return req
 
@@ -292,6 +386,7 @@ def patch_requirement(
         raise ValidationError("revision must be positive")
     updated["revision"] = revision
     req = requirement_from_dict(updated, doc_prefix=prefix, rid=rid)
+    _update_link_suspicions(root_path, docs_map, req)
     save_item(directory, doc, requirement_to_dict(req))
     return req
 

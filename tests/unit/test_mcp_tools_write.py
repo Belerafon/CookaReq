@@ -118,7 +118,7 @@ def test_link_requirements(tmp_path: Path) -> None:
         link_type="parent",
         rev=1,
     )
-    assert parent["rid"] in linked["links"]
+    assert any(entry["rid"] == parent["rid"] for entry in linked["links"])
 
 
 def test_link_requirements_rejects_invalid_type(tmp_path: Path) -> None:

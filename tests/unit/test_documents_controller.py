@@ -162,7 +162,7 @@ def test_delete_requirement_removes_links(tmp_path: Path):
     controller.delete_requirement("SYS", 1)
     assert not (sys_dir / "items" / "SYS001.json").exists()
     data2, _ = load_item(hlr_dir, hlr_doc, 1)
-    assert data2.get("links") == []
+    assert data2.get("links") in (None, [])
 
 
 def test_delete_document_recursively(tmp_path: Path):

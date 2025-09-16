@@ -21,7 +21,7 @@ from ..i18n import _
 from ..log import logger
 from ..mcp.controller import MCPController
 from ..settings import AppSettings, LLMSettings, MCPSettings
-from .command_dialog import CommandDialog
+from .agent_chat_panel import AgentChatPanel
 from .controllers import DocumentsController
 from .document_dialog import DocumentPropertiesDialog
 from .document_tree import DocumentTree
@@ -118,6 +118,7 @@ class MainFrame(wx.Frame):
             on_open_recent=self.on_open_recent,
             on_toggle_column=self.on_toggle_column,
             on_toggle_log_console=self.on_toggle_log_console,
+            on_toggle_agent_chat=self.on_toggle_agent_chat,
             on_show_derivation_graph=self.on_show_derivation_graph,
             on_show_trace_matrix=self.on_show_trace_matrix,
             on_new_requirement=self.on_new_requirement,
@@ -126,6 +127,7 @@ class MainFrame(wx.Frame):
         self._recent_menu = self.navigation.recent_menu
         self._recent_menu_item = self.navigation.recent_menu_item
         self.log_menu_item = self.navigation.log_menu_item
+        self.agent_chat_menu_item = self.navigation.agent_chat_menu_item
         self.manage_labels_id = self.navigation.manage_labels_id
 
         # split horizontally: top is main content, bottom is log console
@@ -134,7 +136,10 @@ class MainFrame(wx.Frame):
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         self._disable_splitter_unsplit(self.doc_splitter)
         self.doc_splitter.SetMinimumPaneSize(160)
-        self.splitter = wx.SplitterWindow(self.doc_splitter)
+        self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
+        self._disable_splitter_unsplit(self.agent_splitter)
+        self.agent_splitter.SetMinimumPaneSize(280)
+        self.splitter = wx.SplitterWindow(self.agent_splitter)
         self._disable_splitter_unsplit(self.splitter)
         self.splitter.SetMinimumPaneSize(200)
         self.doc_tree = DocumentTree(
@@ -159,7 +164,13 @@ class MainFrame(wx.Frame):
             on_save=self._on_editor_save,
         )
         self.splitter.SplitVertically(self.panel, self.editor, 300)
-        self.doc_splitter.SplitVertically(self.doc_tree, self.splitter, 200)
+        self.agent_panel = AgentChatPanel(
+            self.agent_splitter,
+            agent_supplier=self._create_agent,
+        )
+        self.agent_panel.Hide()
+        self.agent_splitter.Initialize(self.splitter)
+        self.doc_splitter.SplitVertically(self.doc_tree, self.agent_splitter, 200)
         self.editor.Hide()
 
         self.log_panel = wx.Panel(self.main_splitter)
@@ -323,20 +334,15 @@ class MainFrame(wx.Frame):
         dlg.Destroy()
 
     def on_run_command(self, _event: wx.Event) -> None:
-        """Invoke agent command dialog."""
+        """Ensure agent chat panel is visible and focused."""
 
-        settings = AppSettings(llm=self.llm_settings, mcp=self.mcp_settings)
-        try:
-            agent = LocalAgent(settings=settings, confirm=confirm)
-        except ValueError as exc:
-            wx.MessageBox(str(exc), _("Warning"), style=wx.ICON_WARNING)
+        if not self.agent_chat_menu_item:
             return
-        except Exception as exc:
-            wx.MessageBox(str(exc), _("Error"), style=wx.ICON_ERROR)
-            return
-        dlg = CommandDialog(self, agent=agent)
-        dlg.ShowModal()
-        dlg.Destroy()
+        if not self.agent_chat_menu_item.IsChecked():
+            self.agent_chat_menu_item.Check(True)
+            self.on_toggle_agent_chat(None)
+        else:
+            self._ensure_agent_chat_visible()
 
     def _apply_language(self) -> None:
         """Reinitialize locale and rebuild UI after language change."""
@@ -376,6 +382,22 @@ class MainFrame(wx.Frame):
         old_panel.Destroy()
         old_editor.Destroy()
 
+        old_agent_panel = getattr(self, "agent_panel", None)
+        if old_agent_panel is not None:
+            was_visible = self.agent_splitter.IsSplit() and old_agent_panel.IsShown()
+            sash_pos = self.agent_splitter.GetSashPosition() if was_visible else None
+            self.agent_panel = AgentChatPanel(
+                self.agent_splitter,
+                agent_supplier=self._create_agent,
+            )
+            if was_visible:
+                self.agent_splitter.ReplaceWindow(old_agent_panel, self.agent_panel)
+                if sash_pos is not None:
+                    self.agent_splitter.SetSashPosition(sash_pos)
+            else:
+                self.agent_panel.Hide()
+            old_agent_panel.Destroy()
+
         # Restore layout and reload data if any directory is open
         self._load_layout()
         if self.current_dir:
@@ -384,6 +406,12 @@ class MainFrame(wx.Frame):
             self.panel.set_requirements(self.model.get_all(), {})
 
         self.Layout()
+
+    def _create_agent(self) -> LocalAgent:
+        """Construct ``LocalAgent`` using current settings."""
+
+        settings = AppSettings(llm=self.llm_settings, mcp=self.mcp_settings)
+        return LocalAgent(settings=settings, confirm=confirm)
 
     def on_manage_labels(
         self,
@@ -722,6 +750,50 @@ class MainFrame(wx.Frame):
             self.log_panel.Hide()
         self.config.set_log_shown(self.navigation.log_menu_item.IsChecked())
 
+    def on_toggle_agent_chat(self, _event: wx.CommandEvent | None) -> None:
+        """Toggle agent chat panel visibility."""
+
+        if not self.agent_chat_menu_item:
+            return
+        if self.agent_chat_menu_item.IsChecked():
+            self._ensure_agent_chat_visible()
+        else:
+            self._hide_agent_chat()
+
+    def _default_agent_chat_sash(self) -> int:
+        width = self.agent_splitter.GetClientSize().width
+        if width <= 0:
+            width = self.doc_splitter.GetClientSize().width
+        if width <= 0:
+            width = self.GetClientSize().width
+        if width <= 0:
+            width = 1000
+        min_size = max(self.agent_splitter.GetMinimumPaneSize(), 200)
+        max_left = max(width - min_size, min_size)
+        desired = width - 320
+        desired = max(min_size, desired)
+        desired = min(desired, max_left)
+        return desired
+
+    def _ensure_agent_chat_visible(self) -> None:
+        if not self.agent_splitter.IsSplit():
+            default = self.config.get_agent_chat_sash(self._default_agent_chat_sash())
+            self.agent_panel.Show()
+            self.agent_splitter.SplitVertically(
+                self.splitter,
+                self.agent_panel,
+                default,
+            )
+        self.agent_panel.focus_input()
+        self.config.set_agent_chat_shown(True)
+
+    def _hide_agent_chat(self) -> None:
+        if self.agent_splitter.IsSplit():
+            self.config.set_agent_chat_sash(self.agent_splitter.GetSashPosition())
+            self.agent_splitter.Unsplit(self.agent_panel)
+        self.agent_panel.Hide()
+        self.config.set_agent_chat_shown(False)
+
     def _load_layout(self) -> None:
         """Restore window geometry, splitter, console, and column widths."""
         self.config.restore_layout(
@@ -733,6 +805,21 @@ class MainFrame(wx.Frame):
             self.log_menu_item,
             editor_splitter=self.splitter,
         )
+        if self.agent_chat_menu_item:
+            if self.config.get_agent_chat_shown():
+                self.agent_chat_menu_item.Check(True)
+                sash = self.config.get_agent_chat_sash(self._default_agent_chat_sash())
+                self.agent_panel.Show()
+                self.agent_splitter.SplitVertically(
+                    self.splitter,
+                    self.agent_panel,
+                    sash,
+                )
+            else:
+                self.agent_chat_menu_item.Check(False)
+                if self.agent_splitter.IsSplit():
+                    self.agent_splitter.Unsplit(self.agent_panel)
+                self.agent_panel.Hide()
 
     def _save_layout(self) -> None:
         """Persist window geometry, splitter, console, and column widths."""
@@ -742,6 +829,7 @@ class MainFrame(wx.Frame):
             self.main_splitter,
             self.panel,
             editor_splitter=self.splitter,
+            agent_splitter=self.agent_splitter,
         )
 
     def _disable_splitter_unsplit(self, splitter: wx.SplitterWindow) -> None:

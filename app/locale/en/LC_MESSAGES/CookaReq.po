@@ -208,6 +208,9 @@ msgstr "Short title"
 msgid "Show Error Console"
 msgstr "Show Error Console"
 
+msgid "Show Agent Chat"
+msgstr "Show Agent Chat"
+
 msgid "Error Console"
 msgstr "Error Console"
 
@@ -445,8 +448,8 @@ msgstr "Require token"
 msgid "Run"
 msgstr "Run"
 
-msgid "Run Agent Command\tCtrl+K"
-msgstr "Run Agent Command\tCtrl+K"
+msgid "Open Agent Chat\tCtrl+K"
+msgstr "Open Agent Chat\tCtrl+K"
 
 msgid "Select attachment"
 msgstr "Select attachment"
@@ -518,6 +521,42 @@ msgstr "path to JSON/TOML settings"
 
 msgid "ready"
 msgstr "ready"
+
+msgid "Chat History"
+msgstr "Chat History"
+
+msgid "Conversation"
+msgstr "Conversation"
+
+msgid "Ask the agent"
+msgstr "Ask the agent"
+
+msgid "Describe what you need the agent to do"
+msgstr "Describe what you need the agent to do"
+
+msgid "Send"
+msgstr "Send"
+
+msgid "Clear input"
+msgstr "Clear input"
+
+msgid "Ready"
+msgstr "Ready"
+
+msgid "Waiting for agent… {time} • {tokens:.2f} ktok"
+msgstr "Waiting for agent… {time} • {tokens:.2f} ktok"
+
+msgid "Received response in {time} • {tokens:.2f} ktok"
+msgstr "Received response in {time} • {tokens:.2f} ktok"
+
+msgid "Start chatting with the agent to see responses here."
+msgstr "Start chatting with the agent to see responses here."
+
+msgid "You:"
+msgstr "You:"
+
+msgid "Agent:"
+msgstr "Agent:"
 
 msgid "verify LLM and MCP settings"
 msgstr "verify LLM and MCP settings"

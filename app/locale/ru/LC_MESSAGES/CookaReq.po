@@ -192,6 +192,9 @@ msgstr "&Файл"
 msgid "Show Error Console"
 msgstr "Показать консоль ошибок"
 
+msgid "Show Agent Chat"
+msgstr "Показать чат с агентом"
+
 msgid "Error Console"
 msgstr "Консоль ошибок"
 
@@ -448,8 +451,8 @@ msgstr "Требуется токен"
 msgid "Run"
 msgstr "Запустить"
 
-msgid "Run Agent Command\tCtrl+K"
-msgstr "Выполнить команду агента\tCtrl+K"
+msgid "Open Agent Chat\tCtrl+K"
+msgstr "Открыть чат с агентом\tCtrl+K"
 
 msgid "Select attachment"
 msgstr "Выберите вложение"
@@ -521,6 +524,42 @@ msgstr "путь к настройкам JSON/TOML"
 
 msgid "ready"
 msgstr "готов"
+
+msgid "Chat History"
+msgstr "История запросов"
+
+msgid "Conversation"
+msgstr "Диалог"
+
+msgid "Ask the agent"
+msgstr "Спросите агента"
+
+msgid "Describe what you need the agent to do"
+msgstr "Опишите, что должен сделать агент"
+
+msgid "Send"
+msgstr "Отправить"
+
+msgid "Clear input"
+msgstr "Очистить ввод"
+
+msgid "Ready"
+msgstr "Готово"
+
+msgid "Waiting for agent… {time} • {tokens:.2f} ktok"
+msgstr "Ожидание ответа… {time} • {tokens:.2f} кток"
+
+msgid "Received response in {time} • {tokens:.2f} ktok"
+msgstr "Ответ получен за {time} • {tokens:.2f} кток"
+
+msgid "Start chatting with the agent to see responses here."
+msgstr "Начните чат с агентом, чтобы увидеть ответы здесь."
+
+msgid "You:"
+msgstr "Вы:"
+
+msgid "Agent:"
+msgstr "Агент:"
 
 msgid "verify LLM and MCP settings"
 msgstr "проверить настройки LLM и MCP"

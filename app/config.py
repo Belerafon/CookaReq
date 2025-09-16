@@ -140,6 +140,8 @@ ConfigFieldName = Literal[
     "sort_ascending",
     "log_sash",
     "log_shown",
+    "agent_chat_sash",
+    "agent_chat_shown",
     "win_w",
     "win_h",
     "win_x",
@@ -268,6 +270,16 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
     ),
     "log_shown": FieldSpec(
         key="log_shown",
+        value_type=bool,
+        default=False,
+    ),
+    "agent_chat_sash": FieldSpec(
+        key="agent_chat_sash",
+        value_type=int,
+        default=400,
+    ),
+    "agent_chat_shown": FieldSpec(
+        key="agent_chat_shown",
         value_type=bool,
         default=False,
     ),
@@ -642,6 +654,30 @@ class ConfigManager:
         self.flush()
 
     # ------------------------------------------------------------------
+    # agent chat panel
+    def get_agent_chat_sash(self, default: int) -> int:
+        """Return stored splitter position for agent chat panel."""
+
+        return self.get_value("agent_chat_sash", default=default)
+
+    def set_agent_chat_sash(self, pos: int) -> None:
+        """Persist splitter position for agent chat panel."""
+
+        self.set_value("agent_chat_sash", pos)
+        self.flush()
+
+    def get_agent_chat_shown(self) -> bool:
+        """Check whether agent chat panel is visible."""
+
+        return self.get_value("agent_chat_shown")
+
+    def set_agent_chat_shown(self, shown: bool) -> None:
+        """Persist visibility flag for agent chat panel."""
+
+        self.set_value("agent_chat_shown", shown)
+        self.flush()
+
+    # ------------------------------------------------------------------
     # layout helpers
     def restore_layout(
         self,
@@ -717,6 +753,7 @@ class ConfigManager:
         panel: ListPanelLike,
         *,
         editor_splitter: wx.SplitterWindow | None = None,
+        agent_splitter: wx.SplitterWindow | None = None,
     ) -> None:
         """Persist window geometry and splitter positions."""
         w, h = frame.GetSize()
@@ -733,6 +770,12 @@ class ConfigManager:
             self.set_value("log_sash", main_splitter.GetSashPosition())
         else:
             self.set_value("log_shown", False)
+        if agent_splitter is not None:
+            if agent_splitter.IsSplit():
+                self.set_value("agent_chat_shown", True)
+                self.set_value("agent_chat_sash", agent_splitter.GetSashPosition())
+            else:
+                self.set_value("agent_chat_shown", False)
         panel.save_column_widths(self)
         panel.save_column_order(self)
         self.flush()

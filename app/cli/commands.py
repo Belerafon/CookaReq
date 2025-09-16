@@ -44,7 +44,6 @@ from app.core.model import (
     requirement_to_dict,
 )
 from app.i18n import _
-from tools.migrate_to_docs import migrate_to_docs
 
 REQ_TYPE_CHOICES = [e.value for e in RequirementType]
 STATUS_CHOICES = [e.value for e in Status]
@@ -631,32 +630,6 @@ def add_trace_arguments(p: argparse.ArgumentParser) -> None:
     )
 
 
-def cmd_migrate_to_docs(args: argparse.Namespace) -> None:
-    """Migrate flat requirements to document structure."""
-
-    migrate_to_docs(
-        args.directory,
-        rules=args.rules,
-        default=args.default,
-    )
-
-
-def add_migrate_arguments(p: argparse.ArgumentParser) -> None:
-    """Configure parser for the ``migrate`` command."""
-
-    sub = p.add_subparsers(dest="migrate_command", required=True)
-    to_docs = sub.add_parser(
-        "to-docs", help=_("convert flat requirements to documents"),
-    )
-    to_docs.add_argument("directory", help=_("requirements directory"))
-    to_docs.add_argument(
-        "--rules",
-        help=_("assignment rules 'label:key=value->PREFIX;...'"),
-    )
-    to_docs.add_argument("--default", required=True, help=_("default prefix"))
-    to_docs.set_defaults(func=cmd_migrate_to_docs)
-
-
 def cmd_check(args: argparse.Namespace) -> None:
     """Verify LLM and MCP connectivity using loaded settings."""
     from app.agent import LocalAgent
@@ -684,5 +657,4 @@ COMMANDS: dict[str, Command] = {
     "link": Command(cmd_link, _("link requirements"), add_link_arguments),
     "trace": Command(cmd_trace, _("export trace links"), add_trace_arguments),
     "check": Command(cmd_check, _("verify LLM and MCP settings"), add_check_arguments),
-    "migrate": Command(lambda args: args.func(args), _("migrate data"), add_migrate_arguments),
 }

@@ -63,30 +63,10 @@ Subcommands:
 
 - `link <root> <RID> <PARENT...> [--replace]` — connect a requirement to ancestor items
 - `trace <root> [--format plain|csv|html] [-o FILE]` — export links as a trace matrix
-- `migrate to-docs <legacy_dir> --default PREFIX [--rules RULES]` — convert flat files to the document tree
 - `check [--llm|--mcp]` — verify LLM and MCP connectivity according to loaded settings
 
 Commands that modify data validate input JSON and labels before saving. If validation fails, no changes are written to disk. The `check` command uses the same LocalAgent as the GUI to test LLM and MCP access. This agent is imported lazily, so running `--help` or unrelated commands does not require LLM/MCP dependencies.
 
-### Migrating legacy requirements
-
-Older repositories may store all requirement files in a single directory with
-identifiers such as `CR-001.json`. Use the migration utility to reorganize them
-into the document-based layout:
-
-```bash
-python3 -m app.cli migrate to-docs <legacy_dir> --default SYS --rules "label:doc=HLR->HLR"
-```
-
-Для быстрых проверок можно запускать скрипт напрямую:
-
-```bash
-python tools/migrate_to_docs.py requirements --rules 'label:doc=SYS->SYS' --default SYS
-```
-
-Files are assigned to documents according to label rules. Links between
-requirements are rewritten to the new RIDs. The resulting layout follows
-`requirements/<PREFIX>/items/<RID>.json`.
 
 ## MCP Integration
 

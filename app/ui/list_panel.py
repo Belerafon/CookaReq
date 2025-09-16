@@ -305,7 +305,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if field == "labels":
                 continue
             idx = self.list.GetColumnCount()
-            self.list.InsertColumn(idx, field)
+            self.list.InsertColumn(idx, locale.field_label(field))
             self._field_order.append(field)
         ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
         with suppress(Exception):  # remove mixin's default binding and use our own

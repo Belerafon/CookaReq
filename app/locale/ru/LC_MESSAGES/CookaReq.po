@@ -125,6 +125,12 @@ msgstr "Условия и режимы"
 msgid "Requirement revision"
 msgstr "Ревизия требования"
 
+msgid "Document prefix"
+msgstr "Префикс документа"
+
+msgid "Requirement RID"
+msgstr "RID требования"
+
 msgid "Modified at"
 msgstr "Дата изменения"
 
@@ -380,6 +386,9 @@ msgstr "MCP"
 
 msgid "Manage Labels"
 msgstr "Управление метками"
+
+msgid "Links"
+msgstr "Связи"
 
 msgid "Match any labels"
 msgstr "Совпадает с любой меткой"

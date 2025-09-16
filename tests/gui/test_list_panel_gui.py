@@ -225,5 +225,5 @@ def test_reorder_columns_gui(wx_app):
     panel.set_columns(["id", "status"])
     panel.reorder_columns(1, 2)
     assert panel.columns == ["status", "id"]
-    assert panel.list.GetColumn(1).GetText() == "status"
+    assert panel.list.GetColumn(1).GetText() == list_panel.locale.field_label("status")
     frame.Destroy()

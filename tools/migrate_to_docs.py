@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, List
 
+from app.core.document_store import Document, DocumentLabels, item_path, save_document
 from app.core.model import (
     Requirement,
     requirement_fingerprint,
@@ -153,8 +154,18 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
         for alias in info["aliases"]:
             id_map[alias] = rid
 
+    # Prepare document descriptors once digits are known
+    documents: dict[str, Document] = {}
+    for prefix, digits in digits_map.items():
+        documents[prefix] = Document(
+            prefix=prefix,
+            title=prefix,
+            digits=digits,
+            labels=DocumentLabels(allow_freeform=True),
+        )
+
     # Second pass: rewrite items and links
-    items: list[tuple[str, int, dict]] = []
+    items: list[tuple[str, int, dict, Path]] = []
     fingerprints: dict[str, str] = {}
     for info in parsed:
         statement = info["data"].get("statement")
@@ -210,28 +221,19 @@ def migrate_to_docs(directory: str | Path, *, rules: str | None = None, default:
 
     # Write new items and remove legacy files
     for prefix, num, item, fp in items:
-        items_dir = root / prefix / "items"
-        items_dir.mkdir(parents=True, exist_ok=True)
-        digits = digits_map[prefix]
-        filename = f"{num:0{digits}d}.json"
-        with (items_dir / filename).open("w", encoding="utf-8") as fh:
+        doc = documents[prefix]
+        doc_dir = root / prefix
+        path = item_path(doc_dir, doc, num)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as fh:
             json.dump(item, fh, ensure_ascii=False, indent=2, sort_keys=True)
         fp.unlink()
 
     # Create document descriptors
-    for prefix, digits in digits_map.items():
+    for prefix, doc in documents.items():
         doc_dir = root / prefix
-        doc_dir.mkdir(parents=True, exist_ok=True)
+        save_document(doc_dir, doc)
         (doc_dir / "items").mkdir(exist_ok=True)
-        doc = {
-            "title": prefix,
-            "digits": digits,
-            "parent": None,
-            "labels": {"allowFreeform": True, "defs": []},
-            "attributes": {},
-        }
-        with (doc_dir / "document.json").open("w", encoding="utf-8") as fh:
-            json.dump(doc, fh, ensure_ascii=False, indent=2, sort_keys=True)
 
 
 if __name__ == "__main__":

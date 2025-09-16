@@ -3,7 +3,7 @@ from pathlib import Path
 
 from app.ui.controllers.documents import DocumentsController
 from app.ui.requirement_model import RequirementModel
-from app.core.doc_store import (
+from app.core.document_store import (
     Document,
     DocumentLabels,
     LabelDef,

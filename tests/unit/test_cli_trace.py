@@ -7,7 +7,7 @@ import argparse
 import pytest
 
 from app.cli import commands
-from app.core.doc_store import Document, save_document, save_item
+from app.core.document_store import Document, save_document, save_item
 
 
 def _prepare(root):

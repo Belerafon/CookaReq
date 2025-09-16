@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 
 from app.cli import commands
-from app.core.doc_store import load_document
+from app.core.document_store import load_document
 
 
 def test_doc_create_and_list(tmp_path, capsys):

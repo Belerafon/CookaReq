@@ -1,7 +1,7 @@
 import pytest
 
 from app.ui.label_selection_dialog import LabelSelectionDialog
-from app.core.doc_store import LabelDef
+from app.core.document_store import LabelDef
 
 pytestmark = pytest.mark.unit
 

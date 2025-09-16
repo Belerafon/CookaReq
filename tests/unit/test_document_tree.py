@@ -8,7 +8,7 @@ import types
 
 import pytest
 
-from app.core.doc_store import Document
+from app.core.document_store import Document
 
 
 def _build_wx_stub() -> types.SimpleNamespace:

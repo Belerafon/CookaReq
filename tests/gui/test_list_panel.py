@@ -7,7 +7,7 @@ import types
 
 import pytest
 
-from app.core.doc_store import Document, save_document, save_item
+from app.core.document_store import Document, save_document, save_item
 from app.core.model import (
     Priority,
     Requirement,

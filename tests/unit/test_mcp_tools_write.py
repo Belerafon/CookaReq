@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.core.doc_store import Document, DocumentLabels, LabelDef, save_document
+from app.core.document_store import Document, DocumentLabels, LabelDef, save_document
 from app.mcp import tools_write
 
 

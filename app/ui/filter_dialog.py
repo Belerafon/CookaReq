@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import wx
 
-from ..core.doc_store import LabelDef, label_color
+from ..core.document_store import LabelDef, label_color
 from ..core.search import SEARCHABLE_FIELDS
 from ..i18n import _
 from . import locale

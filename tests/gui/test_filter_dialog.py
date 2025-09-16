@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.doc_store import LabelDef
+from app.core.document_store import LabelDef
 from app.ui.filter_dialog import FilterDialog
 
 pytestmark = pytest.mark.gui

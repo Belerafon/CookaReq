@@ -220,6 +220,7 @@ def _build_wx_stub():
             self._col_images = {}
             self._item_images = []
             self._cells = {}
+            self._col_widths = {}
 
         def InsertColumn(self, col, heading):
             if col >= len(self._cols):
@@ -302,6 +303,12 @@ def _build_wx_stub():
 
         def GetImageList(self, which):
             return self._imagelist
+
+        def SetColumnWidth(self, col, width):
+            self._col_widths[col] = width
+
+        def GetColumnWidth(self, col):
+            return self._col_widths.get(col, 0)
 
     class UltimateListItem:
         def __init__(self):
@@ -1023,3 +1030,34 @@ def test_reorder_columns(monkeypatch):
     panel.reorder_columns(1, 3)
     assert panel.columns == ["status", "priority", "id"]
     assert panel.list._cols == ["Title", "status", "priority", "id"]
+
+
+def test_load_column_widths_assigns_defaults(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_cls(frame, model=requirement_model_cls())
+    panel.set_columns(["labels", "id", "status", "priority"])
+
+    config = types.SimpleNamespace(read_int=lambda key, default: -1)
+    panel.load_column_widths(config)
+
+    assert panel.list._col_widths == {
+        0: list_panel_cls.DEFAULT_COLUMN_WIDTHS["labels"],
+        1: list_panel_cls.DEFAULT_COLUMN_WIDTHS["title"],
+        2: list_panel_cls.DEFAULT_COLUMN_WIDTHS["id"],
+        3: list_panel_cls.DEFAULT_COLUMN_WIDTHS["status"],
+        4: list_panel_cls.DEFAULT_COLUMN_WIDTHS["priority"],
+    }

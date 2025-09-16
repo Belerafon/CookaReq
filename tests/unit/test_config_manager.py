@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.config import ConfigManager
+from app.config import ConfigManager, DEFAULT_LIST_COLUMNS
 from app.settings import AppSettings, LLMSettings, MCPSettings, UISettings
 
 pytestmark = pytest.mark.unit
@@ -48,7 +48,7 @@ def _recent_dirs_factory(tmp_path):
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
-        ("list_columns", []),
+        ("list_columns", DEFAULT_LIST_COLUMNS),
         ("recent_dirs", []),
         ("auto_open_last", False),
         ("remember_sort", False),

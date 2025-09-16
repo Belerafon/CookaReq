@@ -5,8 +5,9 @@ import re
 import shutil
 from hashlib import sha256
 from dataclasses import asdict, dataclass, field, fields
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
+from typing import Any, Optional
 
 import jsonpatch
 
@@ -528,7 +529,16 @@ def _iter_requirements(root: Path, docs: Mapping[str, Document]) -> list[Require
 def _normalize_labels(raw: Any) -> list[str]:
     if raw is None:
         return []
-    return list(raw)
+    if isinstance(raw, (str, bytes)):
+        raise ValidationError("labels must be a list of strings")
+    if not isinstance(raw, Sequence):
+        raise ValidationError("labels must be a list of strings")
+    labels: list[str] = []
+    for label in raw:
+        if not isinstance(label, str):
+            raise ValidationError("labels must be a list of strings")
+        labels.append(label)
+    return labels
 
 
 def _paginate_requirements(
@@ -699,3 +709,58 @@ def delete_requirement(
     if not deleted:  # pragma: no cover - defensive
         raise RequirementNotFoundError(rid)
     return rid
+
+
+def link_requirements(
+    root: str | Path,
+    *,
+    source_rid: str,
+    derived_rid: str,
+    link_type: str,
+    expected_revision: int,
+    docs: Mapping[str, Document] | None = None,
+) -> Requirement:
+    """Link ``derived_rid`` to ``source_rid`` when hierarchy permits."""
+
+    if link_type != "parent":
+        raise ValidationError(f"invalid link_type: {link_type}")
+
+    root_path = Path(root)
+    docs_map = _ensure_documents(root_path, docs)
+
+    try:
+        source_prefix, _source_id, _source_doc, _source_dir, _ = _resolve_requirement(
+            root_path, source_rid, docs_map
+        )
+    except ValueError as exc:  # pragma: no cover - defensive
+        raise ValidationError(str(exc)) from exc
+
+    try:
+        derived_prefix, _derived_id, derived_doc, derived_dir, data = _resolve_requirement(
+            root_path, derived_rid, docs_map
+        )
+    except ValueError as exc:  # pragma: no cover - defensive
+        raise ValidationError(str(exc)) from exc
+
+    if not is_ancestor(derived_prefix, source_prefix, docs_map):
+        raise ValidationError(f"invalid link target: {source_rid}")
+
+    current = int(data.get("revision", 1))
+    if current != expected_revision:
+        raise RevisionMismatchError(expected_revision, current)
+
+    existing = data.get("links")
+    if existing is None:
+        existing_links: list[str] = []
+    elif isinstance(existing, list):
+        existing_links = [str(link) for link in existing]
+    else:  # pragma: no cover - defensive
+        raise ValidationError("links must be a list")
+
+    updated = dict(data)
+    updated["links"] = sorted(set(existing_links) | {source_rid})
+    updated["revision"] = current + 1
+
+    req = requirement_from_dict(updated, doc_prefix=derived_prefix, rid=derived_rid)
+    save_item(derived_dir, derived_doc, requirement_to_dict(req))
+    return req

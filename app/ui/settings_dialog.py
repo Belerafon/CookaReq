@@ -58,6 +58,15 @@ LLM_HELP: dict[str, str] = {
         "Stream partial responses from the LLM as they arrive.\n"
         "Disable to wait for the full reply before showing it.",
     ),
+    "check_llm": _(
+        "Send a test request to the configured LLM using the current settings.\n"
+        "Use this to verify credentials and network connectivity.",
+    ),
+    "check_tools": _(
+        "Contact the MCP server with the current connection settings and"
+        " list the available tools.\n"
+        "Ensures the agent integration is configured correctly.",
+    ),
 }
 
 MCP_HELP: dict[str, str] = {
@@ -81,6 +90,21 @@ MCP_HELP: dict[str, str] = {
     "token": _(
         "Access token for MCP. Example: secret123\n"
         "Required when \"Require token\" is enabled.",
+    ),
+    "start": _(
+        "Launch the MCP server in the background using the current"
+        " connection settings.",
+    ),
+    "stop": _(
+        "Stop the MCP server instance that was started from CookaReq.",
+    ),
+    "check": _(
+        "Connect to the MCP server and report whether it is reachable.\n"
+        "Displays diagnostic information about the running instance.",
+    ),
+    "status": _(
+        "Shows whether the MCP server is currently running according to"
+        " CookaReq and the result of the last check.",
     ),
 }
 
@@ -314,10 +338,28 @@ class SettingsDialog(wx.Dialog):
         llm_sizer.Add(stream_sz, 0, wx.ALL | wx.EXPAND, 5)
         btn_sz = wx.BoxSizer(wx.HORIZONTAL)
         llm_btn_sz = wx.BoxSizer(wx.VERTICAL)
-        llm_btn_sz.Add(self._check_llm, 0, wx.BOTTOM, 2)
+        llm_btn_sz.Add(
+            self._make_control_with_help(
+                parent=llm,
+                control=self._check_llm,
+                help_text=LLM_HELP["check_llm"],
+            ),
+            0,
+            wx.BOTTOM,
+            2,
+        )
         llm_btn_sz.Add(self._llm_status, 0, wx.ALIGN_CENTER)
         tools_btn_sz = wx.BoxSizer(wx.VERTICAL)
-        tools_btn_sz.Add(self._check_tools, 0, wx.BOTTOM, 2)
+        tools_btn_sz.Add(
+            self._make_control_with_help(
+                parent=llm,
+                control=self._check_tools,
+                help_text=LLM_HELP["check_tools"],
+            ),
+            0,
+            wx.BOTTOM,
+            2,
+        )
         tools_btn_sz.Add(self._tools_status, 0, wx.ALIGN_CENTER)
         btn_sz.Add(llm_btn_sz, 0, wx.RIGHT, 5)
         btn_sz.Add(tools_btn_sz, 0)
@@ -434,11 +476,45 @@ class SettingsDialog(wx.Dialog):
         )
         mcp_sizer.Add(token_sz, 0, wx.ALL | wx.EXPAND, 5)
         btn_sz = wx.BoxSizer(wx.HORIZONTAL)
-        btn_sz.Add(self._start, 0, wx.RIGHT, 5)
-        btn_sz.Add(self._stop, 0, wx.RIGHT, 5)
-        btn_sz.Add(self._check, 0)
+        btn_sz.Add(
+            self._make_control_with_help(
+                parent=mcp,
+                control=self._start,
+                help_text=MCP_HELP["start"],
+            ),
+            0,
+            wx.RIGHT,
+            5,
+        )
+        btn_sz.Add(
+            self._make_control_with_help(
+                parent=mcp,
+                control=self._stop,
+                help_text=MCP_HELP["stop"],
+            ),
+            0,
+            wx.RIGHT,
+            5,
+        )
+        btn_sz.Add(
+            self._make_control_with_help(
+                parent=mcp,
+                control=self._check,
+                help_text=MCP_HELP["check"],
+            ),
+            0,
+        )
         mcp_sizer.Add(btn_sz, 0, wx.ALL, 5)
-        mcp_sizer.Add(self._status, 0, wx.ALL, 5)
+        mcp_sizer.Add(
+            self._make_control_with_help(
+                parent=mcp,
+                control=self._status,
+                help_text=MCP_HELP["status"],
+            ),
+            0,
+            wx.ALL,
+            5,
+        )
         mcp_sizer.Add(help_txt, 0, wx.ALL | wx.EXPAND, 5)
         mcp.SetSizer(mcp_sizer)
         self._update_mcp_controls()
@@ -468,6 +544,24 @@ class SettingsDialog(wx.Dialog):
         self._stop.Enable(running)
         status = _("running") if running else _("not running")
         self._status.SetLabel(f"{_('Status')}: {status}")
+
+    def _make_control_with_help(
+        self,
+        *,
+        parent: wx.Window,
+        control: wx.Window,
+        help_text: str,
+        border: int = 5,
+    ) -> wx.BoxSizer:
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        row.Add(control, 0, wx.ALIGN_CENTER_VERTICAL)
+        row.Add(
+            make_help_button(parent, help_text, dialog_parent=self),
+            0,
+            wx.LEFT | wx.ALIGN_CENTER_VERTICAL,
+            border,
+        )
+        return row
 
     def _current_llm_settings(self) -> LLMSettings:
         return LLMSettings(

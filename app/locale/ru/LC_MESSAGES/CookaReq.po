@@ -594,6 +594,24 @@ msgstr "Если включено, сервер требует токен аут
 msgid "Access token for MCP. Example: secret123\nRequired when \"Require token\" is enabled."
 msgstr "Токен доступа для MCP. Пример: secret123\nОбязателен, если включено \"Требуется токен\"."
 
+msgid "Send a test request to the configured LLM using the current settings.\nUse this to verify credentials and network connectivity."
+msgstr "Отправляет тестовый запрос в настроенную LLM с текущими параметрами.\nИспользуйте его, чтобы убедиться в корректности ключей и сетевого соединения."
+
+msgid "Contact the MCP server with the current connection settings and list the available tools.\nEnsures the agent integration is configured correctly."
+msgstr "Подключается к серверу MCP с указанными параметрами и запрашивает список доступных инструментов.\nПомогает убедиться, что интеграция агента настроена правильно."
+
+msgid "Launch the MCP server in the background using the current connection settings."
+msgstr "Запускает сервер MCP в фоне с текущими параметрами подключения."
+
+msgid "Stop the MCP server instance that was started from CookaReq."
+msgstr "Останавливает экземпляр сервера MCP, запущенный из CookaReq."
+
+msgid "Connect to the MCP server and report whether it is reachable.\nDisplays diagnostic information about the running instance."
+msgstr "Подключается к серверу MCP и сообщает, доступен ли он.\nПоказывает диагностическую информацию о работающем экземпляре."
+
+msgid "Shows whether the MCP server is currently running according to CookaReq and the result of the last check."
+msgstr "Показывает, считает ли CookaReq сервер MCP запущенным, и результат последней проверки."
+
 # Updated help texts for requirement fields
 msgid ""
 "The 'Requirement ID' is a unique integer used as the stable anchor for a "

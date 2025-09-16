@@ -48,6 +48,10 @@ def test_migrate_to_docs_basic(tmp_path: Path) -> None:
     hlr_item = tmp_path / "HLR" / "items" / "002.json"
     assert sys_item.is_file()
     assert hlr_item.is_file()
+    sys_names = [p.stem for p in (tmp_path / "SYS" / "items").glob("*.json")]
+    hlr_names = [p.stem for p in (tmp_path / "HLR" / "items").glob("*.json")]
+    assert all(name.isdigit() for name in sys_names)
+    assert all(name.isdigit() for name in hlr_names)
 
     sys_data = json.loads(sys_item.read_text(encoding="utf-8"))
     hlr_data = json.loads(hlr_item.read_text(encoding="utf-8"))

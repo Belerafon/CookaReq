@@ -332,16 +332,10 @@ def test_item_delete_removes_links(tmp_path, capsys):
     out = capsys.readouterr().out.strip()
     assert out == "SYS001"
 
-<<<<< codex/remove-redundant-names-in-files
     assert not item_path(tmp_path / "SYS", doc_sys, 1).exists()
     hlr_path = item_path(tmp_path / "HLR", doc_hlr, 1)
-    data = json.loads(hlr_path.read_text())
-    assert data.get("links") == []
-=====
-    assert not (tmp_path / "SYS" / "items" / "SYS001.json").exists()
-    data = json.loads((tmp_path / "HLR" / "items" / "HLR01.json").read_text())
+    data = json.loads(hlr_path.read_text(encoding="utf-8"))
     assert data.get("links") in (None, [])
->>>>> main
 
 
 @pytest.mark.unit
@@ -370,15 +364,10 @@ def test_item_delete_dry_run_lists_links(tmp_path, capsys):
     out = capsys.readouterr().out.splitlines()
     assert out == ["SYS001", "HLR01"]
     # nothing removed or updated
-<<<< codex/remove-redundant-names-in-files
     assert item_path(tmp_path / "SYS", doc_sys, 1).exists()
-    data = json.loads(item_path(tmp_path / "HLR", doc_hlr, 1).read_text())
-    assert data.get("links") == ["SYS001"]
-====
-    assert (tmp_path / "SYS" / "items" / "SYS001.json").exists()
-    data = json.loads((tmp_path / "HLR" / "items" / "HLR01.json").read_text())
+    data = json.loads(item_path(tmp_path / "HLR", doc_hlr, 1).read_text(encoding="utf-8"))
     assert [entry["rid"] for entry in data.get("links", [])] == ["SYS001"]
->>>> main
+    assert all(entry.get("fingerprint") for entry in data.get("links", []))
 
 
 def test_item_delete_requires_confirmation(tmp_path, capsys):

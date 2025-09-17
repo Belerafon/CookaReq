@@ -166,6 +166,7 @@ class MainFrame(wx.Frame):
         self.manage_labels_id = self.navigation.manage_labels_id
         self._detached_editors: dict[tuple[str, int], DetachedEditorFrame] = {}
         self._auxiliary_frames: set[wx.Frame] = set()
+        self._shutdown_in_progress = False
 
         # split horizontally: top is main content, bottom is log console
         self.main_splitter = wx.SplitterWindow(self)
@@ -1707,6 +1708,15 @@ class MainFrame(wx.Frame):
         logger.info("Shutdown step completed: auxiliary windows closed")
 
     def _on_close(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+        if self._shutdown_in_progress:
+            logger.debug(
+                "Close requested while shutdown already in progress; forwarding to wx",
+            )
+            if event is not None:
+                event.Skip()
+            return
+
+        self._shutdown_in_progress = True
         event_type = type(event).__name__ if event is not None else "<none>"
         can_veto = False
         if event is not None and hasattr(event, "CanVeto"):
@@ -1772,8 +1782,17 @@ class MainFrame(wx.Frame):
         if event is not None:
             event.Skip()
             logger.info("Shutdown sequence handed off to wx for finalization")
+
+            def _finalize_close() -> None:
+                if not self.IsBeingDeleted():
+                    logger.debug("Explicitly destroying MainFrame after close event")
+                    self.Destroy()
+
+            wx.CallAfter(_finalize_close)
         else:
             logger.info("Shutdown sequence completed without wx event object")
+            if not self.IsBeingDeleted():
+                self.Destroy()
 
     def _on_sort_changed(self, column: int, ascending: bool) -> None:
         if not self.remember_sort:

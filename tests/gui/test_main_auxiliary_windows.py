@@ -59,5 +59,6 @@ def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path):
 
         assert message_calls == []
     finally:
-        frame.Destroy()
+        if not frame.IsBeingDeleted():
+            frame.Destroy()
         wx_app.Yield()

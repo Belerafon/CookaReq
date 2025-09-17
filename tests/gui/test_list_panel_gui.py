@@ -126,6 +126,70 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     frame.Destroy()
 
 
+def test_list_panel_delete_many_uses_batch_handler(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    called: dict[str, object] = {}
+
+    def on_delete_many(req_ids):
+        called["many"] = list(req_ids)
+
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(
+        frame,
+        model=RequirementModel(),
+        on_delete_many=on_delete_many,
+    )
+    panel.set_columns(["revision"])
+    panel.set_requirements([_req(1, "A", revision=1), _req(2, "B", revision=1)])
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+    panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 0)
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, delete_item.GetId())
+    menu.ProcessEvent(evt)
+    menu.Destroy()
+
+    assert called["many"] == [1, 2]
+    frame.Destroy()
+
+
+def test_list_panel_delete_many_falls_back_to_single_handler(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    called: list[int] = []
+
+    def on_delete(req_id: int) -> None:
+        called.append(req_id)
+
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(
+        frame,
+        model=RequirementModel(),
+        on_delete=on_delete,
+    )
+    panel.set_columns(["revision"])
+    panel.set_requirements([_req(1, "A", revision=1), _req(2, "B", revision=1)])
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+    panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 0)
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, delete_item.GetId())
+    menu.ProcessEvent(evt)
+    menu.Destroy()
+
+    assert called == [1, 2]
+    frame.Destroy()
+
+
 def test_list_panel_refresh_selects_new_row(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

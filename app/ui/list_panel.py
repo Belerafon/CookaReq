@@ -55,6 +55,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         docs_controller: DocumentsController | None = None,
         on_clone: Callable[[int], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
+        on_delete_many: Callable[[Sequence[int]], None] | None = None,
         on_sort_changed: Callable[[int, bool], None] | None = None,
         on_derive: Callable[[int], None] | None = None,
     ):
@@ -97,6 +98,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.columns: list[str] = []
         self._on_clone = on_clone
         self._on_delete = on_delete
+        self._on_delete_many = on_delete_many
         self._on_sort_changed = on_sort_changed
         self._on_derive = on_derive
         self.derived_map: dict[str, list[int]] = {}
@@ -129,6 +131,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         *,
         on_clone: Callable[[int], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
+        on_delete_many: Callable[[Sequence[int]], None] | None = None,
         on_derive: Callable[[int], None] | None = None,
     ) -> None:
         """Set callbacks for context menu actions."""
@@ -136,6 +139,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._on_clone = on_clone
         if on_delete is not None:
             self._on_delete = on_delete
+        if on_delete_many is not None:
+            self._on_delete_many = on_delete_many
         if on_derive is not None:
             self._on_derive = on_derive
 
@@ -697,15 +702,16 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _create_context_menu(self, index: int, column: int | None):
         menu = wx.Menu()
         selected_indices = self._get_selected_indices()
-        if not selected_indices and index != wx.NOT_FOUND:
+        if index != wx.NOT_FOUND and (not selected_indices or index not in selected_indices):
             selected_indices = [index]
         single_selection = len(selected_indices) == 1
+        selected_ids = self._indices_to_ids(selected_indices)
+        req_id = selected_ids[0] if selected_ids else None
         derive_item = clone_item = None
         if single_selection:
             derive_item = menu.Append(wx.ID_ANY, _("Derive"))
             clone_item = menu.Append(wx.ID_ANY, _("Clone"))
         delete_item = menu.Append(wx.ID_ANY, _("Delete"))
-        req_id = self.list.GetItemData(index)
         field = self._field_from_column(column)
         edit_item = None
         if field and field != "title":
@@ -715,15 +721,28 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 lambda _evt, c=column: self._on_edit_field(c),
                 edit_item,
             )
-        if clone_item and self._on_clone:
+        if clone_item and self._on_clone and req_id is not None:
             menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_clone(i), clone_item)
-        if self._on_delete:
+        if len(selected_ids) > 1:
+            if self._on_delete_many:
+                menu.Bind(
+                    wx.EVT_MENU,
+                    lambda _evt, ids=tuple(selected_ids): self._on_delete_many(ids),
+                    delete_item,
+                )
+            elif self._on_delete:
+                menu.Bind(
+                    wx.EVT_MENU,
+                    lambda _evt, ids=tuple(selected_ids): self._invoke_delete_each(ids),
+                    delete_item,
+                )
+        elif self._on_delete and req_id is not None:
             menu.Bind(
                 wx.EVT_MENU,
                 lambda _evt, i=req_id: self._on_delete(i),
                 delete_item,
             )
-        if derive_item and self._on_derive:
+        if derive_item and self._on_derive and req_id is not None:
             menu.Bind(
                 wx.EVT_MENU,
                 lambda _evt, i=req_id: self._on_derive(i),
@@ -738,6 +757,27 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             indices.append(idx)
             idx = self.list.GetNextSelected(idx)
         return indices
+
+    def _indices_to_ids(self, indices: Sequence[int]) -> list[int]:
+        ids: list[int] = []
+        for idx in indices:
+            if idx == wx.NOT_FOUND:
+                continue
+            try:
+                raw_id = self.list.GetItemData(idx)
+            except Exception:
+                continue
+            try:
+                ids.append(int(raw_id))
+            except (TypeError, ValueError):
+                continue
+        return ids
+
+    def _invoke_delete_each(self, req_ids: Sequence[int]) -> None:
+        if not self._on_delete:
+            return
+        for req_id in req_ids:
+            self._on_delete(req_id)
 
     def _prompt_value(self, field: str) -> object | None:
         if field in ENUMS:

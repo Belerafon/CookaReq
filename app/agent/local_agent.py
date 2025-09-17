@@ -201,7 +201,7 @@ class LocalAgent:
             messages.append(self._tool_message(call, result))
             if not result.get("ok", False):
                 return messages, dict(result), successful
-            successful.append(dict(result))
+            successful.append(self._enrich_tool_result(call, result))
         return messages, None, successful
 
     async def _execute_tool_calls_async(
@@ -231,7 +231,7 @@ class LocalAgent:
             messages.append(self._tool_message(call, result))
             if not result.get("ok", False):
                 return messages, dict(result), successful
-            successful.append(dict(result))
+            successful.append(self._enrich_tool_result(call, result))
         return messages, None, successful
 
     @staticmethod
@@ -245,6 +245,20 @@ class LocalAgent:
         }
         if tool_results:
             payload["tool_results"] = [dict(result) for result in tool_results]
+        return payload
+
+    def _enrich_tool_result(
+        self, call: LLMToolCall, result: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        payload = dict(result)
+        payload.setdefault("tool_name", call.name)
+        if "tool_arguments" not in payload:
+            try:
+                payload["tool_arguments"] = json.loads(
+                    self._format_tool_arguments(call.arguments)
+                )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload["tool_arguments"] = dict(call.arguments)
         return payload
 
     def _assistant_message(self, response: LLMResponse) -> dict[str, Any]:

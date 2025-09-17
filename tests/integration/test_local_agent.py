@@ -131,8 +131,14 @@ def test_run_command_executes_tool_and_returns_final_message():
     assert result["ok"] is True
     assert result["result"] == "Нашёл 0 записей"
     assert result.get("tool_results")
-    assert result["tool_results"][0]["result"]["items"] == []
-    assert result["tool_results"][0]["ok"] is True
+    first_tool = result["tool_results"][0]
+    assert first_tool["result"]["items"] == []
+    assert first_tool["ok"] is True
+    assert first_tool["tool_name"] == "list_requirements"
+    assert first_tool["tool_arguments"] == {"per_page": 1}
+    for tool_payload in result["tool_results"]:
+        assert "tool_name" in tool_payload
+        assert "tool_arguments" in tool_payload
     assert mcp.calls == [("list_requirements", {"per_page": 1})]
     assert llm.last_conversation is not None
     assert llm.last_conversation[-1]["role"] == "tool"
@@ -295,6 +301,9 @@ def test_custom_confirm_message(monkeypatch):
     assert result["result"] == "Удалено"
     assert result.get("tool_results")
     assert result["tool_results"][0]["ok"] is True
+    for tool_payload in result["tool_results"]:
+        assert "tool_name" in tool_payload
+        assert "tool_arguments" in tool_payload
     assert messages == ["Delete requirement?"]
 
 
@@ -352,6 +361,9 @@ def test_async_methods_offload_to_threads():
         assert result["result"] == "готово"
         assert result.get("tool_results")
         assert result["tool_results"][0]["ok"] is True
+        for tool_payload in result["tool_results"]:
+            assert "tool_name" in tool_payload
+            assert "tool_arguments" in tool_payload
 
     asyncio.run(exercise())
 
@@ -413,6 +425,9 @@ def test_async_methods_prefer_native_coroutines():
         assert result["result"] == "готово"
         assert result.get("tool_results")
         assert result["tool_results"][0]["ok"] is True
+        for tool_payload in result["tool_results"]:
+            assert "tool_name" in tool_payload
+            assert "tool_arguments" in tool_payload
 
     asyncio.run(exercise())
 

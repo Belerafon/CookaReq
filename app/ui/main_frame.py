@@ -40,6 +40,7 @@ from .navigation import Navigation
 from .requirement_model import RequirementModel
 from .settings_dialog import SettingsDialog
 from .splitter_utils import refresh_splitter_highlight, style_splitter
+from .widgets import SectionContainer
 
 
 class WxLogHandler(logging.Handler):
@@ -384,17 +385,15 @@ class MainFrame(wx.Frame):
     ) -> tuple[wx.Panel, wx.StaticText, wx.Window]:
         """Build a titled container holding the widget returned by ``factory``."""
 
-        border_style = wx.BORDER_THEME if hasattr(wx, "BORDER_THEME") else wx.BORDER_SIMPLE
-        container = wx.Panel(parent, style=border_style)
-        background = parent.GetBackgroundColour()
-        if background.IsOk():
-            container.SetBackgroundColour(background)
-        container.SetDoubleBuffered(True)
+        container = SectionContainer(parent)
+        background = container.GetBackgroundColour()
         sizer = wx.BoxSizer(wx.VERTICAL)
         label_style = 0
         if allow_label_shrink and hasattr(wx, "ST_NO_AUTORESIZE"):
             label_style |= wx.ST_NO_AUTORESIZE
         label_ctrl = wx.StaticText(container, label=label, style=label_style)
+        if background.IsOk():
+            label_ctrl.SetBackgroundColour(background)
         if allow_label_shrink:
             best = label_ctrl.GetBestSize()
             min_height = best.height if best.height > 0 else -1
@@ -403,6 +402,8 @@ class MainFrame(wx.Frame):
             header = wx.BoxSizer(wx.HORIZONTAL)
             header.Add(label_ctrl, 1, wx.ALIGN_CENTER_VERTICAL)
             for ctrl in header_factory(container):
+                if background.IsOk():
+                    ctrl.SetBackgroundColour(background)
                 header.Add(ctrl, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 4)
             sizer.Add(header, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 4)
         else:

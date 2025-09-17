@@ -232,7 +232,7 @@ class MainFrame(wx.Frame):
         )
         self._doc_tree_collapsed = False
         self._doc_tree_saved_sash = self.doc_splitter.GetSashPosition()
-        self._hide_editor_panel()
+        self._clear_editor_panel()
 
         self.log_panel = wx.Panel(self.main_splitter)
         log_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -617,6 +617,17 @@ class MainFrame(wx.Frame):
         self.editor.Hide()
         self.editor_container.Hide()
 
+    def _clear_editor_panel(self) -> None:
+        """Reset editor contents and reflect current visibility setting."""
+
+        if not getattr(self, "editor", None):
+            return
+        self.editor.new_requirement()
+        if self._is_editor_visible():
+            self._show_editor_panel()
+        else:
+            self._hide_editor_panel()
+
     def _is_editor_visible(self) -> bool:
         """Return ``True`` when the main editor pane is enabled."""
 
@@ -976,7 +987,7 @@ class MainFrame(wx.Frame):
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
         self._selected_requirement_id = None
-        self._hide_editor_panel()
+        self._clear_editor_panel()
 
     def _show_directory_error(self, path: Path, error: Exception) -> None:
         """Display error message for a failed directory load."""
@@ -1018,7 +1029,7 @@ class MainFrame(wx.Frame):
             self.editor.update_labels_list([])
             self.panel.update_labels_list([])
             self._selected_requirement_id = None
-            self._hide_editor_panel()
+            self._clear_editor_panel()
 
     def _load_document_contents(self, prefix: str) -> bool:
         """Load items and labels for ``prefix`` and update the views."""
@@ -1038,7 +1049,7 @@ class MainFrame(wx.Frame):
             self.editor.update_labels_list([], False)
             self.panel.update_labels_list([])
             self._selected_requirement_id = None
-            self._hide_editor_panel()
+            self._clear_editor_panel()
             self.splitter.UpdateSize()
             return False
         labels, freeform = self.docs_controller.collect_labels(prefix)
@@ -1046,7 +1057,7 @@ class MainFrame(wx.Frame):
         self.editor.update_labels_list(labels, freeform)
         self.panel.update_labels_list(labels)
         self._selected_requirement_id = None
-        self._hide_editor_panel()
+        self._clear_editor_panel()
         self.splitter.UpdateSize()
         return True
 
@@ -1681,7 +1692,7 @@ class MainFrame(wx.Frame):
 
         self._selected_requirement_id = None
         self.panel.recalc_derived_map(self.model.get_all())
-        self._hide_editor_panel()
+        self._clear_editor_panel()
         self.splitter.UpdateSize()
         labels, freeform = self.docs_controller.collect_labels(
             self.current_doc_prefix

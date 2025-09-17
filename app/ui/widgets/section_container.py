@@ -12,8 +12,6 @@ _SHADOW_BLEND_LIGHT = 0.18
 _SHADOW_BLEND_DARK = 0.36
 _EDGE_BLEND_LIGHT = 0.28
 _EDGE_BLEND_DARK = 0.52
-_BACKGROUND_BLEND_LIGHT = 0.08
-_BACKGROUND_BLEND_DARK = 0.2
 
 
 class SectionContainer(wx.Panel):
@@ -150,14 +148,7 @@ def _resolve_background(window: wx.Window) -> wx.Colour:
             colour = system_colour
     if not colour.IsOk():
         colour = wx.Colour(255, 255, 255)
-    base = wx.Colour(colour)
-    highlight = wx.SystemSettings.GetColour(wx.SYS_COLOUR_3DFACE)
-    if not highlight.IsOk():
-        highlight = wx.SystemSettings.GetColour(wx.SYS_COLOUR_3DHILIGHT)
-    if not highlight.IsOk():
-        highlight = wx.Colour(255, 255, 255)
-    mix = _BACKGROUND_BLEND_DARK if _is_dark_colour(base) else _BACKGROUND_BLEND_LIGHT
-    return _blend(base, highlight, mix)
+    return wx.Colour(colour)
 
 
 def _blend(base: wx.Colour, target: wx.Colour, factor: float) -> wx.Colour:

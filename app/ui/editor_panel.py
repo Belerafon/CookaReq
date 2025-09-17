@@ -38,7 +38,7 @@ from ..util.time import local_now_str, normalize_timestamp
 from ..i18n import _
 from . import locale
 from .enums import ENUMS
-from .helpers import AutoHeightListCtrl, HelpStaticBox, make_help_button
+from .helpers import AutoHeightListCtrl, HelpStaticBox, dip, inherit_background, make_help_button
 from .label_selection_dialog import LabelSelectionDialog
 from .resources import load_editor_config
 
@@ -56,6 +56,7 @@ class EditorPanel(wx.Panel):
     ):
         """Initialize requirement editor widgets."""
         super().__init__(parent)
+        inherit_background(self, parent)
         self.fields: dict[str, wx.TextCtrl] = {}
         self.enums: dict[str, wx.Choice] = {}
         self._autosize_fields: list[wx.TextCtrl] = []
@@ -77,8 +78,10 @@ class EditorPanel(wx.Panel):
 
         self._content_panel = ScrolledPanel(self)
         self._content_panel.SetAutoLayout(True)
+        inherit_background(self._content_panel, self)
         content = self._content_panel
         content_sizer = wx.BoxSizer(wx.VERTICAL)
+        border = dip(self, 5)
 
         for spec in config.text_fields:
             label = wx.StaticText(content, label=labels[spec.name])
@@ -86,7 +89,7 @@ class EditorPanel(wx.Panel):
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-            content_sizer.Add(row, 0, wx.ALL, 5)
+            content_sizer.Add(row, 0, wx.TOP, border)
 
             style = wx.TE_MULTILINE if spec.multiline else 0
             ctrl = wx.TextCtrl(content, style=style)
@@ -95,7 +98,7 @@ class EditorPanel(wx.Panel):
             self.fields[spec.name] = ctrl
             # Высоту многострочных полей мы управляем вручную,
             # поэтому не передаём sizer'у коэффициент роста.
-            content_sizer.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
+            content_sizer.Add(ctrl, 0, wx.EXPAND | wx.TOP, border)
             if spec.hint:
                 ctrl.SetHint(_(spec.hint))
             if spec.name == "id":
@@ -118,21 +121,21 @@ class EditorPanel(wx.Panel):
                 row.Add(choice, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
                 row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
                 self.enums[spec.name] = choice
-                container.Add(row, 0, wx.EXPAND | wx.ALL, 5)
+                container.Add(row, 0, wx.EXPAND | wx.TOP, border)
             else:
                 row = wx.BoxSizer(wx.HORIZONTAL)
                 row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
                 row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-                container.Add(row, 0, wx.ALL, 5)
+                container.Add(row, 0, wx.TOP, border)
                 ctrl = wx.TextCtrl(content)
                 if spec.hint:
                     ctrl.SetHint(_(spec.hint))
                 self.fields[spec.name] = ctrl
-                container.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
+                container.Add(ctrl, 0, wx.EXPAND | wx.TOP, border)
 
             grid.Add(container, 1, wx.EXPAND)
 
-        content_sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
+        content_sizer.Add(grid, 0, wx.EXPAND | wx.TOP, border)
 
         # attachments section --------------------------------------------
         a_sizer = HelpStaticBox(
@@ -154,9 +157,9 @@ class EditorPanel(wx.Panel):
         self.remove_attachment_btn.Bind(wx.EVT_BUTTON, self._on_remove_attachment)
         btn_row.Add(self.add_attachment_btn, 0)
         btn_row.Add(self.remove_attachment_btn, 0, wx.LEFT, 5)
-        a_sizer.Add(self.attachments_list, 0, wx.EXPAND | wx.ALL, 5)
-        a_sizer.Add(btn_row, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
-        content_sizer.Add(a_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        a_sizer.Add(self.attachments_list, 0, wx.EXPAND | wx.TOP, border)
+        a_sizer.Add(btn_row, 0, wx.ALIGN_RIGHT | wx.TOP, border)
+        content_sizer.Add(a_sizer, 0, wx.EXPAND | wx.TOP, border)
 
         # approval date and notes ---------------------------------------
         container = wx.BoxSizer(wx.VERTICAL)
@@ -165,13 +168,13 @@ class EditorPanel(wx.Panel):
         help_btn = make_help_button(content, self._help_texts["approved_at"])
         row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
         row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-        container.Add(row, 0, wx.ALL, 5)
+        container.Add(row, 0, wx.TOP, border)
         self.approved_picker = wx.adv.DatePickerCtrl(
             content,
             style=wx.adv.DP_ALLOWNONE,
         )
-        container.Add(self.approved_picker, 0, wx.ALL, 5)
-        content_sizer.Add(container, 0, wx.ALL, 5)
+        container.Add(self.approved_picker, 0, wx.TOP, border)
+        content_sizer.Add(container, 0, wx.TOP, border)
 
         container = wx.BoxSizer(wx.VERTICAL)
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -179,11 +182,11 @@ class EditorPanel(wx.Panel):
         help_btn = make_help_button(content, self._help_texts["notes"])
         row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
         row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-        container.Add(row, 0, wx.ALL, 5)
+        container.Add(row, 0, wx.TOP, border)
         self.notes_ctrl = wx.TextCtrl(content, style=wx.TE_MULTILINE)
         self._bind_autosize(self.notes_ctrl)
-        container.Add(self.notes_ctrl, 0, wx.EXPAND | wx.ALL, 5)
-        content_sizer.Add(container, 0, wx.EXPAND | wx.ALL, 5)
+        container.Add(self.notes_ctrl, 0, wx.EXPAND | wx.TOP, border)
+        content_sizer.Add(container, 0, wx.EXPAND | wx.TOP, border)
 
         # grouped links and metadata ------------------------------------
         links_grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
@@ -200,6 +203,7 @@ class EditorPanel(wx.Panel):
         box = box_sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
         self.labels_panel = wx.Panel(box)
+        self.labels_panel.SetBackgroundColour(box.GetBackgroundColour())
         self.labels_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
         # ограничиваем высоту меток одной строкой
         line_height = self.GetCharHeight() + 6
@@ -209,8 +213,8 @@ class EditorPanel(wx.Panel):
         edit_labels_btn = wx.Button(box, label=_("Edit..."))
         edit_labels_btn.Bind(wx.EVT_BUTTON, self._on_labels_click)
         row.Add(edit_labels_btn, 0)
-        box_sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
-        links_grid.Add(box_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        box_sizer.Add(row, 0, wx.EXPAND | wx.TOP, border)
+        links_grid.Add(box_sizer, 0, wx.EXPAND | wx.TOP, border)
         self._label_defs: list[LabelDef] = []
         self._labels_allow_freeform = False
 
@@ -220,25 +224,25 @@ class EditorPanel(wx.Panel):
             "links",
             help_key="links",
         )
-        links_grid.Add(ln_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        links_grid.Add(ln_sizer, 0, wx.EXPAND | wx.TOP, border)
 
-        content_sizer.Add(links_grid, 0, wx.EXPAND | wx.ALL, 5)
+        content_sizer.Add(links_grid, 0, wx.EXPAND | wx.TOP, border)
 
         self._content_panel.SetSizer(content_sizer)
         self._content_panel.SetupScrolling()
 
         separator = wx.StaticLine(self)
         footer = wx.Panel(self)
-        footer.SetBackgroundColour(self.GetBackgroundColour())
+        inherit_background(footer, self)
         footer_sizer = wx.BoxSizer(wx.HORIZONTAL)
         footer.SetSizer(footer_sizer)
         footer_sizer.AddStretchSpacer()
         self.cancel_btn = wx.Button(footer, label=_("Cancel"))
         self.cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel_button)
-        footer_sizer.Add(self.cancel_btn, 0, wx.ALL, 5)
+        footer_sizer.Add(self.cancel_btn, 0, wx.RIGHT, border)
         self.save_btn = wx.Button(footer, label=_("Save"))
         self.save_btn.Bind(wx.EVT_BUTTON, self._on_save_button)
-        footer_sizer.Add(self.save_btn, 0, wx.ALL, 5)
+        footer_sizer.Add(self.save_btn, 0)
 
         root_sizer = wx.BoxSizer(wx.VERTICAL)
         root_sizer.Add(self._content_panel, 1, wx.EXPAND)
@@ -362,6 +366,7 @@ class EditorPanel(wx.Panel):
         id_name: str | None = None,
         list_name: str | None = None,
     ) -> wx.StaticBoxSizer:
+        pad = dip(self, 5)
         sizer = HelpStaticBox(
             self._content_panel,
             label,
@@ -381,7 +386,7 @@ class EditorPanel(wx.Panel):
             lambda _evt, a=attr: self._on_remove_link_generic(a),
         )
         row.Add(remove_btn, 0)
-        sizer.Add(row, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(row, 0, wx.EXPAND | wx.TOP, pad)
         lst = wx.ListCtrl(box, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         lst.InsertColumn(0, _("ID"))
         lst.InsertColumn(1, _("Title"))
@@ -395,7 +400,7 @@ class EditorPanel(wx.Panel):
             wx.EVT_CONTEXT_MENU,
             lambda evt, a=attr: self._on_links_context_menu(a, evt),
         )
-        sizer.Add(lst, 1, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(lst, 1, wx.EXPAND | wx.TOP, pad)
         # по умолчанию список и кнопка удаления скрыты
         lst.Hide()
         sizer.Show(lst, False)

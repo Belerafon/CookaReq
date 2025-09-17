@@ -219,6 +219,7 @@ class MainFrame(wx.Frame):
             factory=lambda parent: EditorPanel(
                 parent,
                 on_save=self._on_editor_save,
+                on_discard=self._handle_editor_discard,
             ),
         )
         self.splitter.SplitVertically(self.list_container, self.editor_container, 300)
@@ -678,7 +679,7 @@ class MainFrame(wx.Frame):
         if not self.editor.is_dirty():
             return True
         if confirm(_("Discard unsaved changes?")):
-            self.editor.mark_clean()
+            self.editor.discard_changes()
             return True
         return False
 
@@ -846,6 +847,7 @@ class MainFrame(wx.Frame):
         self.editor = EditorPanel(
             self.editor_container,
             on_save=self._on_editor_save,
+            on_discard=self._handle_editor_discard,
         )
         editor_sizer = self.editor_container.GetSizer()
         if editor_sizer is not None:
@@ -1275,6 +1277,17 @@ class MainFrame(wx.Frame):
         if not self.docs_controller:
             return
         self._save_editor_contents(self.editor, doc_prefix=self.current_doc_prefix)
+
+    def _handle_editor_discard(self) -> bool:
+        """Reload currently selected requirement into the editor."""
+
+        if self._selected_requirement_id is None:
+            return False
+        requirement = self.model.get_by_id(self._selected_requirement_id)
+        if not requirement:
+            return False
+        self.editor.load(requirement)
+        return True
 
     def _open_detached_editor(self, requirement: Requirement) -> None:
         if not (self.docs_controller and self.current_dir):

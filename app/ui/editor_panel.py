@@ -17,12 +17,12 @@ from ..core.document_store import (
     RequirementIDCollisionError,
     label_color,
     list_item_ids,
+    load_item,
     save_item,
     stable_color,
     parse_rid,
     rid_for,
     load_document,
-    load_item,
 )
 from ..core.model import (
     Priority,
@@ -52,6 +52,7 @@ class EditorPanel(wx.Panel):
         self,
         parent: wx.Window,
         on_save: Callable[[], None] | None = None,
+        on_discard: Callable[[], bool] | None = None,
     ):
         """Initialize requirement editor widgets."""
         super().__init__(parent)
@@ -61,6 +62,7 @@ class EditorPanel(wx.Panel):
         self._suspend_events = False
         self.original_modified_at = ""
         self._on_save_callback = on_save
+        self._on_discard_callback = on_discard
         self.directory: Path | None = None
         self.original_id: int | None = None
         self._document: Document | None = None
@@ -231,6 +233,9 @@ class EditorPanel(wx.Panel):
         footer_sizer = wx.BoxSizer(wx.HORIZONTAL)
         footer.SetSizer(footer_sizer)
         footer_sizer.AddStretchSpacer()
+        self.cancel_btn = wx.Button(footer, label=_("Cancel"))
+        self.cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel_button)
+        footer_sizer.Add(self.cancel_btn, 0, wx.ALL, 5)
         self.save_btn = wx.Button(footer, label=_("Save"))
         self.save_btn.Bind(wx.EVT_BUTTON, self._on_save_button)
         footer_sizer.Add(self.save_btn, 0, wx.ALL, 5)
@@ -1045,6 +1050,9 @@ class EditorPanel(wx.Panel):
         if self._on_save_callback:
             self._on_save_callback()
 
+    def _on_cancel_button(self, _evt: wx.Event) -> None:
+        self.discard_changes()
+
     def save(self, directory: str | Path, *, doc: Document) -> Path:
         """Persist editor contents to ``directory`` within ``doc`` and return path."""
 
@@ -1116,6 +1124,74 @@ class EditorPanel(wx.Panel):
         if self._saved_state is None:
             return False
         return self._snapshot_state() != self._saved_state
+
+    def discard_changes(self) -> None:
+        """Revert editor fields to the latest stored version."""
+
+        handled = False
+        if self._on_discard_callback:
+            handled = bool(self._on_discard_callback())
+        if handled:
+            return
+
+        state = self._saved_state
+        if state is None:
+            return
+
+        with self._bulk_update():
+            fields_state = state.get("fields", {})
+            for name, ctrl in self.fields.items():
+                value = fields_state.get(name, "")
+                ctrl.ChangeValue(str(value))
+
+            enums_state = state.get("enums", {})
+            for name, choice in self.enums.items():
+                code = enums_state.get(name)
+                if code is None:
+                    if choice.GetCount():
+                        choice.SetSelection(0)
+                    continue
+                label = locale.code_to_label(name, code)
+                if not choice.SetStringSelection(label) and choice.GetCount():
+                    choice.SetSelection(0)
+
+            self.attachments = [dict(att) for att in state.get("attachments", [])]
+            self._refresh_attachments()
+
+            if hasattr(self, "links"):
+                links_state = [dict(link) for link in state.get("links", [])]
+                self.links = self._augment_links_with_metadata(links_state)
+                try:
+                    id_ctrl, _list_ctrl, _links_list = self._link_widgets("links")
+                except AttributeError:
+                    id_ctrl = None
+                else:
+                    self._rebuild_links_list("links")
+                    if id_ctrl:
+                        id_ctrl.ChangeValue("")
+                    self._refresh_links_visibility("links")
+
+            labels_state = list(state.get("labels", []))
+            self.extra["labels"] = labels_state
+            self._refresh_labels_display()
+
+            approved_at = state.get("approved_at")
+            self.extra["approved_at"] = approved_at
+            if approved_at:
+                dt = wx.DateTime()
+                dt.ParseISODate(str(approved_at))
+                self.approved_picker.SetValue(dt if dt.IsValid() else wx.DefaultDateTime)
+            else:
+                self.approved_picker.SetValue(wx.DefaultDateTime)
+
+            notes = state.get("notes", "")
+            self.extra["notes"] = notes
+            self.notes_ctrl.ChangeValue(notes)
+
+        self._auto_resize_all()
+        self._on_id_change()
+        self.original_modified_at = self.fields["modified_at"].GetValue()
+        self.mark_clean()
 
     def add_attachment(self, path: str, note: str = "") -> None:
         """Append attachment with ``path`` and optional ``note``."""

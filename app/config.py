@@ -128,6 +128,8 @@ ConfigFieldName = Literal[
     "win_h",
     "win_x",
     "win_y",
+    "doc_tree_collapsed",
+    "doc_tree_saved_sash",
     "sash_pos",
     "editor_sash_pos",
 ]
@@ -287,6 +289,16 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         key="win_y",
         value_type=int,
         default=-1,
+    ),
+    "doc_tree_collapsed": FieldSpec(
+        key="doc_tree_collapsed",
+        value_type=bool,
+        default=False,
+    ),
+    "doc_tree_saved_sash": FieldSpec(
+        key="doc_tree_saved_sash",
+        value_type=int,
+        default=240,
     ),
     "sash_pos": FieldSpec(
         key="sash_pos",
@@ -665,6 +677,30 @@ class ConfigManager:
         self.flush()
 
     # ------------------------------------------------------------------
+    # document tree pane
+    def get_doc_tree_collapsed(self) -> bool:
+        """Return whether the document hierarchy pane is hidden."""
+
+        return self.get_value("doc_tree_collapsed")
+
+    def set_doc_tree_collapsed(self, collapsed: bool) -> None:
+        """Persist collapse state of the document hierarchy pane."""
+
+        self.set_value("doc_tree_collapsed", collapsed)
+        self.flush()
+
+    def get_doc_tree_saved_sash(self, default: int) -> int:
+        """Return stored sash position used when the tree is expanded."""
+
+        return self.get_value("doc_tree_saved_sash", default=default)
+
+    def set_doc_tree_saved_sash(self, pos: int) -> None:
+        """Persist sash position used when restoring the tree pane."""
+
+        self.set_value("doc_tree_saved_sash", pos)
+        self.flush()
+
+    # ------------------------------------------------------------------
     # layout helpers
     def restore_layout(
         self,
@@ -741,6 +777,8 @@ class ConfigManager:
         *,
         editor_splitter: wx.SplitterWindow | None = None,
         agent_splitter: wx.SplitterWindow | None = None,
+        doc_tree_collapsed: bool = False,
+        doc_tree_expanded_sash: int | None = None,
     ) -> None:
         """Persist window geometry and splitter positions."""
         w, h = frame.GetSize()
@@ -749,7 +787,14 @@ class ConfigManager:
         self.set_value("win_h", h)
         self.set_value("win_x", x)
         self.set_value("win_y", y)
-        self.set_value("sash_pos", doc_splitter.GetSashPosition())
+        sash_to_store = (
+            doc_tree_expanded_sash
+            if doc_tree_expanded_sash is not None
+            else doc_splitter.GetSashPosition()
+        )
+        self.set_value("sash_pos", sash_to_store)
+        self.set_value("doc_tree_saved_sash", sash_to_store)
+        self.set_value("doc_tree_collapsed", doc_tree_collapsed)
         if editor_splitter is not None and editor_splitter.IsSplit():
             self.set_value("editor_sash_pos", editor_splitter.GetSashPosition())
         if main_splitter.IsSplit():

@@ -137,7 +137,12 @@ class MainFrame(wx.Frame):
         self._disable_splitter_unsplit(self.main_splitter)
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         self._disable_splitter_unsplit(self.doc_splitter)
-        self.doc_splitter.SetMinimumPaneSize(160)
+        self._doc_tree_min_pane = 160
+        self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
+        self.doc_splitter.Bind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGED,
+            self._on_doc_splitter_sash_changed,
+        )
         self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
         self._disable_splitter_unsplit(self.agent_splitter)
         self.agent_splitter.SetMinimumPaneSize(280)
@@ -157,6 +162,9 @@ class MainFrame(wx.Frame):
                 on_new_document=self.on_new_document,
                 on_rename_document=self.on_rename_document,
                 on_delete_document=self.on_delete_document,
+            ),
+            header_factory=lambda parent: (
+                self._create_doc_tree_toggle(parent),
             ),
         )
         self.doc_tree.tree.Bind(wx.EVT_TREE_SEL_CHANGING, self._on_doc_changing)
@@ -210,6 +218,8 @@ class MainFrame(wx.Frame):
             self.agent_splitter,
             200,
         )
+        self._doc_tree_collapsed = False
+        self._doc_tree_saved_sash = self.doc_splitter.GetSashPosition()
         self._hide_editor_panel()
 
         self.log_panel = wx.Panel(self.main_splitter)
@@ -261,17 +271,115 @@ class MainFrame(wx.Frame):
         *,
         label: str,
         factory: Callable[[wx.Window], wx.Window],
+        header_factory: Callable[[wx.Window], Sequence[wx.Window]] | None = None,
     ) -> tuple[wx.Panel, wx.StaticText, wx.Window]:
         """Build a titled container holding the widget returned by ``factory``."""
 
         container = wx.Panel(parent)
         sizer = wx.BoxSizer(wx.VERTICAL)
         label_ctrl = wx.StaticText(container, label=label)
-        sizer.Add(label_ctrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
+        if header_factory is not None:
+            header = wx.BoxSizer(wx.HORIZONTAL)
+            header.Add(label_ctrl, 1, wx.ALIGN_CENTER_VERTICAL)
+            for ctrl in header_factory(container):
+                header.Add(ctrl, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 4)
+            sizer.Add(header, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 4)
+        else:
+            sizer.Add(label_ctrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
         content = factory(container)
         sizer.Add(content, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 3)
         container.SetSizer(sizer)
         return container, label_ctrl, content
+
+    def _create_doc_tree_toggle(self, parent: wx.Window) -> wx.Button:
+        """Create collapse/expand toggle for the document tree pane."""
+
+        self.doc_tree_toggle = wx.Button(
+            parent,
+            label="<<<",
+            style=wx.BU_EXACTFIT,
+        )
+        self.doc_tree_toggle.SetMinSize(self.doc_tree_toggle.GetBestSize())
+        self.doc_tree_toggle.SetToolTip(_("Hide hierarchy"))
+        self.doc_tree_toggle.Bind(wx.EVT_BUTTON, self._on_toggle_doc_tree)
+        return self.doc_tree_toggle
+
+    def _on_toggle_doc_tree(self, _event: wx.Event) -> None:
+        """Collapse or expand the document hierarchy panel."""
+
+        if self._doc_tree_collapsed:
+            self._expand_doc_tree(update_config=True)
+        else:
+            self._collapse_doc_tree(update_config=True)
+
+    def _collapse_doc_tree(self, *, update_config: bool) -> None:
+        """Hide the tree while keeping the toggle handle accessible."""
+
+        if self._doc_tree_collapsed:
+            return
+        sash = self.doc_splitter.GetSashPosition()
+        self._doc_tree_saved_sash = max(sash, self._doc_tree_min_pane)
+        self.doc_tree.Hide()
+        self.doc_tree_label.Hide()
+        self.doc_splitter.SetMinimumPaneSize(0)
+        handle = self._collapsed_doc_tree_width()
+        self.doc_tree_container.SetMinSize(wx.Size(handle, -1))
+        self.doc_tree_container.Layout()
+        self._doc_tree_collapsed = True
+        self.doc_splitter.SetSashPosition(handle, True)
+        self.doc_tree_toggle.SetLabel(">>>")
+        self.doc_tree_toggle.SetToolTip(_("Show hierarchy"))
+        if update_config:
+            self.config.set_doc_tree_saved_sash(self._doc_tree_saved_sash)
+            self.config.set_doc_tree_collapsed(True)
+
+    def _expand_doc_tree(self, *, update_config: bool) -> None:
+        """Restore the tree pane to its saved width."""
+
+        self.doc_tree_container.SetMinSize(wx.Size(-1, -1))
+        self.doc_tree_label.Show()
+        self.doc_tree.Show()
+        self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
+        width = self._desired_doc_tree_sash()
+        self._doc_tree_collapsed = False
+        self.doc_splitter.SetSashPosition(width, True)
+        self.doc_tree_toggle.SetLabel("<<<")
+        self.doc_tree_toggle.SetToolTip(_("Hide hierarchy"))
+        self.doc_tree_container.Layout()
+        if update_config:
+            self._doc_tree_saved_sash = width
+            self.config.set_doc_tree_saved_sash(self._doc_tree_saved_sash)
+            self.config.set_doc_tree_collapsed(False)
+
+    def _collapsed_doc_tree_width(self) -> int:
+        """Return minimal width required to display the toggle handle."""
+
+        margin = 8  # header padding (left/right = 4)
+        return self.doc_tree_toggle.GetBestSize().width + margin
+
+    def _desired_doc_tree_sash(self) -> int:
+        """Clamp saved sash position to current splitter dimensions."""
+
+        saved = max(self._doc_tree_saved_sash, self._doc_tree_min_pane)
+        width = self.doc_splitter.GetClientSize().width
+        if width <= 0:
+            width = self.agent_splitter.GetClientSize().width
+        if width <= 0:
+            width = self.GetClientSize().width
+        if width <= 0:
+            width = saved
+        max_left = max(width - self._doc_tree_min_pane, self._doc_tree_min_pane)
+        return max(self._doc_tree_min_pane, min(saved, max_left))
+
+    def _on_doc_splitter_sash_changed(self, event: wx.SplitterEvent) -> None:
+        """Remember latest sash position when the tree pane is visible."""
+
+        event.Skip()
+        if self._doc_tree_collapsed:
+            return
+        pos = event.GetSashPosition()
+        if pos > 0:
+            self._doc_tree_saved_sash = pos
 
     def _show_editor_panel(self) -> None:
         """Display the editor section alongside its container."""
@@ -946,6 +1054,13 @@ class MainFrame(wx.Frame):
             self.log_menu_item,
             editor_splitter=self.splitter,
         )
+        self._doc_tree_saved_sash = self.config.get_doc_tree_saved_sash(
+            self.doc_splitter.GetSashPosition()
+        )
+        if self.config.get_doc_tree_collapsed():
+            self._collapse_doc_tree(update_config=False)
+        else:
+            self._expand_doc_tree(update_config=False)
         if self.agent_chat_menu_item:
             if self.config.get_agent_chat_shown():
                 self.agent_chat_menu_item.Check(True)
@@ -971,6 +1086,8 @@ class MainFrame(wx.Frame):
             self.panel,
             editor_splitter=self.splitter,
             agent_splitter=self.agent_splitter,
+            doc_tree_collapsed=self._doc_tree_collapsed,
+            doc_tree_expanded_sash=self._doc_tree_saved_sash,
         )
 
     def _disable_splitter_unsplit(self, splitter: wx.SplitterWindow) -> None:

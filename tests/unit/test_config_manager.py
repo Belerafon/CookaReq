@@ -68,6 +68,7 @@ def _recent_dirs_factory(tmp_path):
         ("log_shown", False),
         ("win_w", 800),
         ("editor_sash_pos", 600),
+        ("editor_shown", True),
     ],
 )
 def test_schema_default_values(tmp_path, wx_app, name, expected):
@@ -121,6 +122,7 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
         pytest.param("log_shown", _const(True), _const(True), id="log_shown"),
         pytest.param("win_w", _const(1024), _const(1024), id="win_w"),
         pytest.param("editor_sash_pos", _const(456), _const(456), id="editor_sash_pos"),
+        pytest.param("editor_shown", _const(False), _const(False), id="editor_shown"),
     ],
 )
 def test_schema_round_trip(tmp_path, wx_app, name, value_factory, expected_factory):

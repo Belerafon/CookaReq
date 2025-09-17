@@ -30,6 +30,7 @@ FIELD_LABELS = {
     "assumptions": _("Assumptions"),
     "labels": _("Labels"),
     "derived_count": _("Derived count"),
+    "derived_from": _("Derived from"),
     "attachments": _("Attachments"),
     "approved_at": _("Approved at"),
     "notes": _("Notes"),

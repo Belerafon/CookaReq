@@ -19,6 +19,7 @@ T = TypeVar("T")
 DEFAULT_LIST_COLUMNS: list[str] = [
     "labels",
     "id",
+    "derived_from",
     "status",
     "priority",
     "type",

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
-from ..core.document_store import LabelDef, label_color, stable_color
+from ..core.document_store import LabelDef, label_color, load_item, parse_rid, stable_color
 from ..core.model import Requirement
 from ..i18n import _
 from ..log import logger
@@ -44,6 +44,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         "doc_prefix": 140,
         "rid": 150,
         "derived_count": 120,
+        "derived_from": 260,
         "modified_at": 180,
     }
 
@@ -94,6 +95,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.current_filters: dict = {}
         self._image_list: wx.ImageList | None = None
         self._label_images: dict[tuple[str, ...], int] = {}
+        self._derived_icon_id: int | None = None
+        self._rid_lookup: dict[str, Requirement] = {}
+        self._doc_titles: dict[str, str] = {}
+        self._link_display_cache: dict[str, str] = {}
         ColumnSorterMixin.__init__(self, 1)
         self.columns: list[str] = []
         self._on_clone = on_clone
@@ -150,6 +155,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Set documents controller used for persistence."""
 
         self._docs_controller = controller
+        self._doc_titles = {}
+        self._link_display_cache.clear()
+        self._derived_icon_id = None
+        if controller is not None:
+            with suppress(Exception):
+                all_requirements = self.model.get_all()
+            if isinstance(all_requirements, list):
+                self._rebuild_rid_lookup(all_requirements)
 
     def set_active_document(self, prefix: str | None) -> None:
         """Record currently active document prefix for persistence."""
@@ -197,6 +210,108 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         finally:
             dc.SelectObject(wx.NullBitmap)
         return padded
+
+    def _ensure_derived_icon(self) -> int:
+        if self._derived_icon_id is not None:
+            return self._derived_icon_id
+        size = (16, 16)
+        bmp = wx.ArtProvider.GetBitmap(wx.ART_GO_DOWN, wx.ART_MENU, size)
+        if not getattr(bmp, "IsOk", lambda: True)():
+            bmp = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_MENU, size)
+        if not getattr(bmp, "IsOk", lambda: True)():
+            self._derived_icon_id = -1
+            return -1
+        self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
+        if self._image_list is None:
+            self._image_list = wx.ImageList(bmp.GetWidth(), bmp.GetHeight())
+            self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
+        bmp = self._pad_bitmap(bmp, *self._image_list.GetSize())
+        try:
+            img_id = self._image_list.Add(bmp)
+        except Exception:
+            logger.exception("Failed to register derived icon; falling back to text marker")
+            img_id = -1
+        self._derived_icon_id = img_id
+        return img_id
+
+    def _apply_derived_marker(self, index: int, col: int, derived: bool) -> None:
+        img_id = self._ensure_derived_icon() if derived else -1
+        if col == 0 and hasattr(self.list, "SetItemImage"):
+            with suppress(Exception):
+                self.list.SetItemImage(index, img_id)
+        if hasattr(self.list, "SetItemColumnImage"):
+            with suppress(Exception):
+                self.list.SetItemColumnImage(index, col, img_id)
+
+    def _doc_title_for_prefix(self, prefix: str) -> str:
+        if not prefix:
+            return ""
+        if prefix in self._doc_titles:
+            return self._doc_titles[prefix]
+        if self._docs_controller:
+            doc = self._docs_controller.documents.get(prefix)
+            if doc:
+                self._doc_titles[prefix] = doc.title
+                return doc.title
+        self._doc_titles[prefix] = ""
+        return ""
+
+    def _rebuild_rid_lookup(self, requirements: list[Requirement]) -> None:
+        self._rid_lookup = {}
+        self._link_display_cache.clear()
+        self._doc_titles = {}
+        for req in requirements:
+            rid = getattr(req, "rid", "")
+            if rid:
+                self._rid_lookup[rid] = req
+            prefix = getattr(req, "doc_prefix", "")
+            if prefix and prefix not in self._doc_titles:
+                self._doc_titles[prefix] = self._doc_title_for_prefix(prefix)
+
+    def _link_display_text(self, rid: str) -> str:
+        rid = str(rid or "").strip()
+        if not rid:
+            return ""
+        cached = self._link_display_cache.get(rid)
+        if cached is not None:
+            return cached
+        title = ""
+        doc_title = ""
+        req = self._rid_lookup.get(rid)
+        if req is not None:
+            title = getattr(req, "title", "")
+            doc_title = self._doc_title_for_prefix(getattr(req, "doc_prefix", ""))
+        elif self._docs_controller:
+            try:
+                prefix, item_id = parse_rid(rid)
+            except ValueError:
+                self._link_display_cache[rid] = rid
+                return rid
+            doc = self._docs_controller.documents.get(prefix)
+            if doc:
+                doc_title = self._doc_title_for_prefix(prefix)
+                directory = self._docs_controller.root / prefix
+                try:
+                    data, _mtime = load_item(directory, doc, item_id)
+                except Exception:
+                    logger.exception("Failed to load linked requirement %s", rid)
+                else:
+                    title = str(data.get("title", ""))
+        base = rid
+        if title:
+            base = f"{rid} — {title}"
+        if doc_title and doc_title not in base:
+            base = f"{base} ({doc_title})"
+        self._link_display_cache[rid] = base
+        return base
+
+    def _first_parent_text(self, req: Requirement) -> str:
+        links = getattr(req, "links", []) or []
+        if not links:
+            return ""
+        parent = links[0]
+        rid = getattr(parent, "rid", str(parent))
+        return self._link_display_text(rid)
 
     def _set_label_text(self, index: int, col: int, labels: list[str]) -> None:
         text = ", ".join(labels)
@@ -404,6 +519,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     ) -> None:
         """Populate list control with requirement data via model."""
         self.model.set_requirements(requirements)
+        self._rebuild_rid_lookup(self.model.get_all())
         if derived_map is None:
             derived_map = {}
             for req in requirements:
@@ -528,11 +644,19 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self.list.SetItemData(index, 0)
             for col, field in enumerate(self._field_order):
                 if field == "title":
-                    self.list.SetItem(index, col, getattr(req, "title", ""))
+                    title = getattr(req, "title", "")
+                    derived = bool(getattr(req, "links", []))
+                    display = f"↳ {title}".strip() if derived else title
+                    self.list.SetItem(index, col, display)
+                    self._apply_derived_marker(index, col, derived)
                     continue
                 if field == "labels":
                     value = getattr(req, "labels", [])
                     self._set_label_image(index, col, value)
+                    continue
+                if field == "derived_from":
+                    value = self._first_parent_text(req)
+                    self.list.SetItem(index, col, value)
                     continue
                 if field == "links":
                     links = getattr(req, "links", [])
@@ -641,6 +765,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 parent_rid = getattr(parent, "rid", parent)
                 derived_map.setdefault(parent_rid, []).append(req.id)
         self.derived_map = derived_map
+        self._rebuild_rid_lookup(requirements)
         self._refresh()
 
     def _on_col_click(self, event: ListEvent) -> None:  # pragma: no cover - GUI event

@@ -116,6 +116,11 @@ def test_derive_creates_linked_requirement(monkeypatch, wx_app, tmp_path):
         selected = frame.panel.list.GetFirstSelected()
         assert selected != wx.NOT_FOUND
         assert frame.panel.list.GetItemData(selected) == 2
+        title_col = frame.panel._field_order.index("title")
+        assert frame.panel.list.GetItemText(selected, title_col).startswith("↳")
+        derived_col = frame.panel._field_order.index("derived_from")
+        derived_text = frame.panel.list.GetItemText(selected, derived_col)
+        assert derived_text.startswith(parent_rid)
     finally:
         frame.Destroy()
 

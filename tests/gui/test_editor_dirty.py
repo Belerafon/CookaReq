@@ -111,3 +111,64 @@ def test_editor_panel_discard_changes_uses_callback(wx_app):
         assert panel.is_dirty() is False
     finally:
         frame.Destroy()
+
+
+def test_editor_panel_buttons_place_cancel_after_save(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        panel = EditorPanel(frame)
+        sizer = panel.save_btn.GetContainingSizer()
+        assert sizer is not None
+        windows = [child.GetWindow() for child in sizer.GetChildren() if child.IsWindow()]
+        assert windows == [panel.save_btn, panel.cancel_btn]
+    finally:
+        frame.Destroy()
+
+
+def test_detached_editor_cancel_closes_window_without_saving(wx_app, tmp_path):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.core.document_store import LabelDef
+    from app.core.model import requirement_from_dict
+    from app.ui.detached_editor import DetachedEditorFrame
+
+    parent = wx.Frame(None)
+    try:
+        closed: list[DetachedEditorFrame] = []
+
+        def _on_close(frame: DetachedEditorFrame) -> None:
+            closed.append(frame)
+
+        requirement = requirement_from_dict({"id": 1, "statement": "Original"})
+        frame = DetachedEditorFrame(
+            parent,
+            requirement=requirement,
+            doc_prefix="DOC",
+            directory=tmp_path,
+            labels=[LabelDef(key="prio", title="Priority")],
+            allow_freeform=False,
+            on_save=lambda _frame: False,
+            on_close=_on_close,
+        )
+        try:
+            frame.editor.fields["title"].ChangeValue("Updated")
+            assert frame.editor.is_dirty() is True
+
+            frame.editor.discard_changes()
+            wx.Yield()
+
+            assert closed == [frame]
+            assert frame.IsShown() is False
+        finally:
+            try:
+                frame.Destroy()
+            except RuntimeError:
+                pass
+    finally:
+        parent.Destroy()

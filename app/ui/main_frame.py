@@ -55,7 +55,12 @@ class WxLogHandler(logging.Handler):
         super().__init__()
         self._target = target
         self._max_chars = max_chars
-        self.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+        self.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)s: %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
 
     @property
     def target(self) -> wx.TextCtrl:

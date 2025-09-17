@@ -198,6 +198,18 @@ msgstr "Показать чат с агентом"
 msgid "Error Console"
 msgstr "Консоль ошибок"
 
+msgid "Hierarchy"
+msgstr "Иерархия"
+
+msgid "Requirements"
+msgstr "Требования"
+
+msgid "Editor"
+msgstr "Редактор"
+
+msgid "Agent Chat"
+msgstr "Чат с агентом"
+
 msgid "&View"
 msgstr "&Вид"
 

@@ -1,7 +1,7 @@
 """Main application window."""
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import fields, replace
 from importlib import resources
 from pathlib import Path
@@ -144,37 +144,73 @@ class MainFrame(wx.Frame):
         self.splitter = wx.SplitterWindow(self.agent_splitter)
         self._disable_splitter_unsplit(self.splitter)
         self.splitter.SetMinimumPaneSize(200)
-        self.doc_tree = DocumentTree(
+        (
+            self.doc_tree_container,
+            self.doc_tree_label,
+            self.doc_tree,
+        ) = self._create_section(
             self.doc_splitter,
-            on_select=self.on_document_selected,
-            on_new_document=self.on_new_document,
-            on_rename_document=self.on_rename_document,
-            on_delete_document=self.on_delete_document,
+            label=_("Hierarchy"),
+            factory=lambda parent: DocumentTree(
+                parent,
+                on_select=self.on_document_selected,
+                on_new_document=self.on_new_document,
+                on_rename_document=self.on_rename_document,
+                on_delete_document=self.on_delete_document,
+            ),
         )
         self.doc_tree.tree.Bind(wx.EVT_TREE_SEL_CHANGING, self._on_doc_changing)
-        self.panel = ListPanel(
+        (
+            self.list_container,
+            self.list_label,
+            self.panel,
+        ) = self._create_section(
             self.splitter,
-            model=self.model,
-            on_clone=self.on_clone_requirement,
-            on_delete=self.on_delete_requirement,
-            on_delete_many=self.on_delete_requirements,
-            on_sort_changed=self._on_sort_changed,
-            on_derive=self.on_derive_requirement,
+            label=_("Requirements"),
+            factory=lambda parent: ListPanel(
+                parent,
+                model=self.model,
+                on_clone=self.on_clone_requirement,
+                on_delete=self.on_delete_requirement,
+                on_delete_many=self.on_delete_requirements,
+                on_sort_changed=self._on_sort_changed,
+                on_derive=self.on_derive_requirement,
+            ),
         )
         self.panel.set_columns(self.selected_fields)
-        self.editor = EditorPanel(
+        (
+            self.editor_container,
+            self.editor_label,
+            self.editor,
+        ) = self._create_section(
             self.splitter,
-            on_save=self._on_editor_save,
+            label=_("Editor"),
+            factory=lambda parent: EditorPanel(
+                parent,
+                on_save=self._on_editor_save,
+            ),
         )
-        self.splitter.SplitVertically(self.panel, self.editor, 300)
-        self.agent_panel = AgentChatPanel(
+        self.splitter.SplitVertically(self.list_container, self.editor_container, 300)
+        (
+            self.agent_container,
+            self.agent_label,
+            self.agent_panel,
+        ) = self._create_section(
             self.agent_splitter,
-            agent_supplier=self._create_agent,
+            label=_("Agent Chat"),
+            factory=lambda parent: AgentChatPanel(
+                parent,
+                agent_supplier=self._create_agent,
+            ),
         )
-        self.agent_panel.Hide()
+        self._hide_agent_section()
         self.agent_splitter.Initialize(self.splitter)
-        self.doc_splitter.SplitVertically(self.doc_tree, self.agent_splitter, 200)
-        self.editor.Hide()
+        self.doc_splitter.SplitVertically(
+            self.doc_tree_container,
+            self.agent_splitter,
+            200,
+        )
+        self._hide_editor_panel()
 
         self.log_panel = wx.Panel(self.main_splitter)
         log_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -218,6 +254,61 @@ class MainFrame(wx.Frame):
         """Return directories recently opened by the user."""
 
         return self.config.get_recent_dirs()
+
+    def _create_section(
+        self,
+        parent: wx.Window,
+        *,
+        label: str,
+        factory: Callable[[wx.Window], wx.Window],
+    ) -> tuple[wx.Panel, wx.StaticText, wx.Window]:
+        """Build a titled container holding the widget returned by ``factory``."""
+
+        container = wx.Panel(parent)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        label_ctrl = wx.StaticText(container, label=label)
+        sizer.Add(label_ctrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
+        content = factory(container)
+        sizer.Add(content, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 3)
+        container.SetSizer(sizer)
+        return container, label_ctrl, content
+
+    def _show_editor_panel(self) -> None:
+        """Display the editor section alongside its container."""
+
+        self.editor_container.Show()
+        self.editor.Show()
+        self.editor_container.Layout()
+        self.editor.Layout()
+
+    def _hide_editor_panel(self) -> None:
+        """Hide the editor section and its container."""
+
+        self.editor.Hide()
+        self.editor_container.Hide()
+
+    def _show_agent_section(self) -> None:
+        """Display the agent chat section and ensure layout refresh."""
+
+        self.agent_container.Show()
+        self.agent_panel.Show()
+        self.agent_container.Layout()
+        self.agent_panel.Layout()
+
+    def _hide_agent_section(self) -> None:
+        """Hide the agent chat widgets to free screen space."""
+
+        self.agent_panel.Hide()
+        self.agent_container.Hide()
+
+    def _update_section_labels(self) -> None:
+        """Refresh captions for titled sections according to current locale."""
+
+        self.doc_tree_label.SetLabel(_("Hierarchy"))
+        self.list_label.SetLabel(_("Requirements"))
+        self.editor_label.SetLabel(_("Editor"))
+        self.agent_label.SetLabel(_("Agent Chat"))
+        self.log_label.SetLabel(_("Error Console"))
 
 
     def _confirm_discard_changes(self) -> bool:
@@ -362,9 +453,10 @@ class MainFrame(wx.Frame):
         self.manage_labels_id = self.navigation.manage_labels_id
 
         # Replace panels to update all labels
-        old_panel, old_editor = self.panel, self.editor
+        old_panel = self.panel
+        list_sizer = self.list_container.GetSizer()
         self.panel = ListPanel(
-            self.splitter,
+            self.list_container,
             model=self.model,
             on_clone=self.on_clone_requirement,
             on_delete=self.on_delete_requirement,
@@ -374,33 +466,48 @@ class MainFrame(wx.Frame):
         )
         self.panel.set_columns(self.selected_fields)
         self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
+        if list_sizer is not None:
+            list_sizer.Replace(old_panel, self.panel)
+        old_panel.Destroy()
 
+        editor_was_visible = self.editor_container.IsShown()
+        old_editor = self.editor
         self.editor = EditorPanel(
-            self.splitter,
+            self.editor_container,
             on_save=self._on_editor_save,
         )
-        self.editor.Hide()
-
-        self.splitter.ReplaceWindow(old_panel, self.panel)
-        self.splitter.ReplaceWindow(old_editor, self.editor)
-        old_panel.Destroy()
+        editor_sizer = self.editor_container.GetSizer()
+        if editor_sizer is not None:
+            editor_sizer.Replace(old_editor, self.editor)
         old_editor.Destroy()
+        if editor_was_visible:
+            self._show_editor_panel()
+        else:
+            self._hide_editor_panel()
 
-        old_agent_panel = getattr(self, "agent_panel", None)
-        if old_agent_panel is not None:
-            was_visible = self.agent_splitter.IsSplit() and old_agent_panel.IsShown()
-            sash_pos = self.agent_splitter.GetSashPosition() if was_visible else None
+        if hasattr(self, "agent_panel"):
+            old_agent_panel = self.agent_panel
+            agent_was_split = self.agent_splitter.IsSplit()
+            sash_pos = self.agent_splitter.GetSashPosition() if agent_was_split else None
             self.agent_panel = AgentChatPanel(
-                self.agent_splitter,
+                self.agent_container,
                 agent_supplier=self._create_agent,
             )
-            if was_visible:
-                self.agent_splitter.ReplaceWindow(old_agent_panel, self.agent_panel)
+            agent_sizer = self.agent_container.GetSizer()
+            if agent_sizer is not None:
+                agent_sizer.Replace(old_agent_panel, self.agent_panel)
+            old_agent_panel.Destroy()
+            if agent_was_split:
+                self._show_agent_section()
                 if sash_pos is not None:
                     self.agent_splitter.SetSashPosition(sash_pos)
             else:
-                self.agent_panel.Hide()
-            old_agent_panel.Destroy()
+                self._hide_agent_section()
+
+        self._update_section_labels()
+        self.list_container.Layout()
+        self.editor_container.Layout()
+        self.agent_container.Layout()
 
         # Restore layout and reload data if any directory is open
         self._load_layout()
@@ -520,7 +627,7 @@ class MainFrame(wx.Frame):
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
         self._selected_requirement_id = None
-        self.editor.Hide()
+        self._hide_editor_panel()
 
     def _show_directory_error(self, path: Path, error: Exception) -> None:
         """Display error message for a failed directory load."""
@@ -562,7 +669,7 @@ class MainFrame(wx.Frame):
             self.editor.update_labels_list([])
             self.panel.update_labels_list([])
             self._selected_requirement_id = None
-            self.editor.Hide()
+            self._hide_editor_panel()
 
     def _load_document_contents(self, prefix: str) -> bool:
         """Load items and labels for ``prefix`` and update the views."""
@@ -582,7 +689,7 @@ class MainFrame(wx.Frame):
             self.editor.update_labels_list([], False)
             self.panel.update_labels_list([])
             self._selected_requirement_id = None
-            self.editor.Hide()
+            self._hide_editor_panel()
             self.splitter.UpdateSize()
             return False
         labels, freeform = self.docs_controller.collect_labels(prefix)
@@ -590,7 +697,7 @@ class MainFrame(wx.Frame):
         self.editor.update_labels_list(labels, freeform)
         self.panel.update_labels_list(labels)
         self._selected_requirement_id = None
-        self.editor.Hide()
+        self._hide_editor_panel()
         self.splitter.UpdateSize()
         return True
 
@@ -728,8 +835,7 @@ class MainFrame(wx.Frame):
         if req:
             self._selected_requirement_id = req_id
             self.editor.load(req)
-            self.editor.Show()
-            self.editor.Layout()
+            self._show_editor_panel()
             self.splitter.UpdateSize()
 
     def _on_editor_save(self) -> None:
@@ -813,10 +919,10 @@ class MainFrame(wx.Frame):
     def _ensure_agent_chat_visible(self) -> None:
         if not self.agent_splitter.IsSplit():
             default = self.config.get_agent_chat_sash(self._default_agent_chat_sash())
-            self.agent_panel.Show()
+            self._show_agent_section()
             self.agent_splitter.SplitVertically(
                 self.splitter,
-                self.agent_panel,
+                self.agent_container,
                 default,
             )
         self.agent_panel.focus_input()
@@ -825,8 +931,8 @@ class MainFrame(wx.Frame):
     def _hide_agent_chat(self) -> None:
         if self.agent_splitter.IsSplit():
             self.config.set_agent_chat_sash(self.agent_splitter.GetSashPosition())
-            self.agent_splitter.Unsplit(self.agent_panel)
-        self.agent_panel.Hide()
+            self.agent_splitter.Unsplit(self.agent_container)
+        self._hide_agent_section()
         self.config.set_agent_chat_shown(False)
 
     def _load_layout(self) -> None:
@@ -844,17 +950,17 @@ class MainFrame(wx.Frame):
             if self.config.get_agent_chat_shown():
                 self.agent_chat_menu_item.Check(True)
                 sash = self.config.get_agent_chat_sash(self._default_agent_chat_sash())
-                self.agent_panel.Show()
+                self._show_agent_section()
                 self.agent_splitter.SplitVertically(
                     self.splitter,
-                    self.agent_panel,
+                    self.agent_container,
                     sash,
                 )
             else:
                 self.agent_chat_menu_item.Check(False)
                 if self.agent_splitter.IsSplit():
-                    self.agent_splitter.Unsplit(self.agent_panel)
-                self.agent_panel.Hide()
+                    self.agent_splitter.Unsplit(self.agent_container)
+                self._hide_agent_section()
 
     def _save_layout(self) -> None:
         """Persist window geometry, splitter, console, and column widths."""
@@ -909,7 +1015,7 @@ class MainFrame(wx.Frame):
         self._selected_requirement_id = new_id
         self.panel.refresh(select_id=new_id)
         self.editor.load(data, path=None, mtime=None)
-        self.editor.Show()
+        self._show_editor_panel()
         self.splitter.UpdateSize()
 
     def on_clone_requirement(self, req_id: int) -> None:
@@ -931,7 +1037,7 @@ class MainFrame(wx.Frame):
         self._selected_requirement_id = new_id
         self.panel.refresh(select_id=new_id)
         self.editor.load(clone, path=None, mtime=None)
-        self.editor.Show()
+        self._show_editor_panel()
         self.splitter.UpdateSize()
 
     def _create_linked_copy(self, source: Requirement) -> Requirement:
@@ -963,7 +1069,7 @@ class MainFrame(wx.Frame):
         self._selected_requirement_id = clone.id
         self.panel.refresh(select_id=clone.id)
         self.editor.load(clone, path=None, mtime=None)
-        self.editor.Show()
+        self._show_editor_panel()
         self.splitter.UpdateSize()
 
 
@@ -1050,7 +1156,7 @@ class MainFrame(wx.Frame):
 
         self._selected_requirement_id = None
         self.panel.recalc_derived_map(self.model.get_all())
-        self.editor.Hide()
+        self._hide_editor_panel()
         self.splitter.UpdateSize()
         labels, freeform = self.docs_controller.collect_labels(
             self.current_doc_prefix

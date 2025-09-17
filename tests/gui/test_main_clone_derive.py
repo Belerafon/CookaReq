@@ -151,7 +151,9 @@ def test_delete_many_removes_requirements(monkeypatch, wx_app, tmp_path):
         assert frame.model.get_by_id(3) is None
         assert frame.panel.list.GetItemCount() == 1
         assert frame._selected_requirement_id is None
-        assert not frame.editor.IsShown()
+        assert frame.editor.IsShown()
+        assert frame.editor.fields["id"].GetValue() == ""
+        assert frame.editor.fields["title"].GetValue() == ""
         assert "message" in captured
         assert "Delete 2 requirements" in captured["message"]
         assert "Second" in captured["message"]

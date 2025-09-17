@@ -1,85 +1,108 @@
 # CookaReq
 
-CookaReq (Cook a requirement) is a wibecoded desktop application built with wxPython for managing requirements stored in separate JSON files. The package includes a graphical interface, a command-line utility and an MCP server for integration with LLM agents.
+CookaReq (Cook a requirement) is a wxPython desktop application for curating structured requirement sets stored as plain JSON files. The repository also ships a command-line interface and a Model Context Protocol (MCP) service so that the same data can be automated from scripts or LLM-powered agents.
 
-## Features
+## Highlights
 
-- Organize requirements into hierarchical documents. Each document stores
-  its configuration in `document.json` and individual items as
-  `items/<ID>.json` files. File names use only the zero-padded numeric
-  identifier, while the full requirement ID (RID) is composed at runtime
-  from the document prefix and that number. Revisions are tracked per item.
-- Search by text, status and labels with advanced filters
-- Create, clone, edit and delete requirements; attach files and manage user labels
-- Navigate links between requirements and visualise derivation graphs
-- Persistent interface state: window size, columns, sorting, recent folders
-- Command dialog for interacting with the built-in LocalAgent (LLM + MCP)
-- Settings dialog for configuring LLM, MCP and UI options
-- Manage label presets and choose colours for custom labels
-- Display document hierarchy in a tree and switch between documents
- - Editor and requirement list respect labels inherited from the selected document and
-   allow free-form entries when any parent document permits them
- - Command-line utility for managing documents and items, linking and tracing requirements, performing migrations and health checks
-- MCP server exposing requirement tools for external agents
-- Interface localization via text `.po` files
+- Manage requirements grouped into hierarchical documents with revision tracking and label presets.
+- Rich search, filtering and navigation UI with derivation graphs and trace matrix exports.
+- Persistent workspace state (window layout, column selections, recently used repositories).
+- Command dialog that connects the built-in LocalAgent with MCP tools and an LLM backend.
+- FastAPI-based MCP server exposing CRUD and linking operations for external agents.
+- Scriptable CLI that mirrors the GUI operations for CI pipelines and bulk maintenance.
+- Localisation via `.po` catalogues and configurable colour palettes for label presets.
 
-## Graphical Interface
+## Project layout
 
-The main window is divided into three panes:
-
-1. **Document tree** — shows documents with their parent–child relationships.
-2. **Requirement list** — a table with customizable columns. Supports sorting, label filters, text search and an extended filter dialog. The context menu lets you create new requirements, clone existing ones and delete entries. Deleting entries prompts for confirmation and shows the requirement's RID and title to prevent accidental removal.
-3. **Editor** — a form with the fields of a requirement model. It appears when creating or editing a record and allows saving changes to a file.
-
-Selecting a document updates the requirement list and editor with the items and label presets defined for that document and its ancestors. If any document in the chain enables free-form labels, the selection dialog accepts additional custom names.
-
-Additional windows and dialogs:
-
-- **Command dialog** — run LocalAgent commands that combine LLM reasoning with MCP tools.
-- **Settings dialog** — edit LLM/MCP/UI configuration stored in a JSON or TOML file.
-- **Labels dialog** — manage label presets; the **label selection dialog** picks labels from predefined sets with generated colours.
-- **Filter dialog** — build complex search queries across fields, labels and statuses.
-- **Derivation graph** — visualise "derived-from" links using `networkx` and Graphviz.
-- **Navigation** — jump between linked requirements.
-
-An optional log console is shown at the bottom of the window. Interface settings and the last opened directories are preserved between sessions.
-
-## Command-Line Interface
-
-The CLI lives in the `app/cli` package. Example usage:
-
-```bash
-python3 -m app.cli <command> [arguments]
+```
+app/            wxPython UI, CLI commands, domain models and integrations
+app/agent/      LocalAgent orchestrating LLM + MCP interactions
+app/core/       Requirement models, repositories and search utilities
+app/mcp/        FastAPI server, client and tool adapters for MCP
+app/cli/        Command-line entrypoint and subcommands
+requirements/   Example document tree used by tests and demos
+docs/           Architecture overview and design notes
+tests/          Unit, integration, GUI and smoke suites
+build.py        PyInstaller build script for packaging the GUI
 ```
 
-Subcommands:
+## Getting started
 
-- `doc create <root> <PREFIX> <title> [--parent P]` — create a document
-- `doc list <root>` — list existing documents
-- `doc delete <root> <PREFIX> [--dry-run]` — delete a document
+### Prerequisites
 
-- `item add <root> <PREFIX> --title T --statement S [--labels L1,L2]` — add a requirement to a document
-- `item edit <root> <RID> [--title T --status S --statement S ...]` — update a requirement in place without changing its RID.
-  Supports the same optional flags as `item add` (`--title`, `--statement`, `--type`, `--status`, `--owner`, `--priority`,
-  `--source`, `--verification`, `--acceptance`, `--conditions`, `--rationale`, `--assumptions`, `--modified-at`, `--approved-at`,
-  `--notes`, `--attachments`, `--labels`, `--links`, `--data`).
-- `item move <root> <RID> <NEW_PREFIX>` — move a requirement to another document
-- `item delete <root> <RID> [--dry-run]` — delete a requirement and update references
+- Python 3.12 (the project targets the system interpreter, virtual environments are recommended).
+- Platform packages required by `wxPython`. On Debian/Ubuntu the preinstalled system image already satisfies them.
+- Optionally PyInstaller for packaging (install on demand with `python3 -m pip install pyinstaller`).
 
-- `link <root> <RID> <PARENT...> [--replace]` — connect a requirement to ancestor items
-- `trace <root> [--format plain|csv|html] [-o FILE]` — export links as a trace matrix
-- `check [--llm|--mcp]` — verify LLM and MCP connectivity according to loaded settings
+### Installation
 
-Commands that modify data validate input JSON and labels before saving. If validation fails, no changes are written to disk. The `check` command uses the same LocalAgent as the GUI to test LLM and MCP access. This agent is imported lazily, so running `--help` or unrelated commands does not require LLM/MCP dependencies.
+Create and activate a virtual environment, then install the package in editable mode:
 
+```bash
+git clone <repository-url>
+cd CookaReq
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -U pip
+python3 -m pip install -e ".[dev]"
+```
 
-## MCP Integration
+The `[dev]` extra pulls in `pytest`, `pytest-xvfb`, `ruff` and `polib` for development workflows.
 
-CookaReq includes an MCP server that exposes requirement tools to external agents and the built-in LocalAgent. Available tools cover reading, searching and mutating requirements (`list_requirements`, `get_requirement`, `search_requirements`, `create_requirement`, `patch_requirement`, `delete_requirement`, `link_requirements`). Listing and search tools support filtering and pagination via `labels`, `status`, `page`, `per_page` and, for search, an optional `query` string. The LocalAgent combines these tools with an LLM client and is accessible from the GUI command dialog or the CLI `check` command.
+### Launching the GUI
 
-## Requirements Repository
+Run the desktop client from the repository root:
 
-Requirements live in a hierarchical document tree under the `requirements/` directory:
+```bash
+python3 -m app.main
+```
+
+Choose a requirements directory when prompted. The sample dataset under `requirements/` contains two documents (`SYS`, `HLR`) that demonstrate the expected layout. Window geometry, recent folders, column order and filter selections are persisted via `wx.Config`.
+
+Key interface areas:
+
+1. Document tree with parent/child relationships.
+2. Requirement list with configurable columns, search field and advanced filters.
+3. Editor panel for creating or modifying the selected item.
+
+Additional dialogs provide label management, derivation graph visualisation, trace matrix export and the LocalAgent command console.
+
+### Command-line quick start
+
+The CLI mirrors GUI operations and is handy for automation:
+
+```bash
+python3 -m app.cli doc list requirements
+python3 -m app.cli item add requirements SYS --title "New requirement" --statement "…" --labels safety,ui
+python3 -m app.cli link requirements SYS-0001 HLR-0002
+python3 -m app.cli trace requirements --format html -o trace.html
+python3 -m app.cli check --llm   # or --mcp
+```
+
+Every command validates input before writing any files. The CLI loads application settings (including LLM/MCP credentials) using the same schema as the GUI.
+
+## Local agent & MCP integration
+
+`app/agent/local_agent.py` combines the LLM client and MCP HTTP tools so that agents can reason over the requirement repository. The GUI exposes it through the **Command** dialog, and the CLI exposes health checks via `python3 -m app.cli check`.
+
+### Configuring API access
+
+- Set the `OPEN_ROUTER` environment variable (it can be placed into a `.env` file) with an API key recognised by the `openai` client.
+- Adjust the LLM and MCP parameters from the **Settings** dialog or by editing the settings JSON/TOML file consumed by `app.settings.AppSettings`.
+- Token limits and retry policies are validated and normalised during loading.
+
+### MCP endpoints
+
+The background FastAPI application in `app/mcp/server.py` runs in a dedicated thread so the GUI stays responsive. It exposes:
+
+- `GET /health` for readiness checks.
+- `POST /mcp` to access MCP tools including `list_requirements`, `get_requirement`, `search_requirements`, `create_requirement`, `patch_requirement`, `delete_requirement` and `link_requirements`.
+
+Tools operate on the directory configured in the settings dialog (`base_path`) and enforce optional bearer-token authentication. Request and response metadata are logged both as human-readable text and structured JSON.
+
+## Requirements repository format
+
+The repository holds requirement documents in nested directories:
 
 ```
 requirements/
@@ -93,51 +116,65 @@ requirements/
       1.json
 ```
 
-The repository layer loads and saves items, manages label presets defined by each document and resolves links across documents. Advanced search parameters allow filtering by status, label combinations, field-specific queries and derived relationships.
+### Document metadata
 
-### File Format
+Each `document.json` contains the human-readable title, an optional parent prefix, label presets (with an `allowFreeform` flag) and arbitrary metadata fields. The directory name is treated as the canonical prefix.
 
-Each document file (`document.json`) includes:
+### Requirement items
 
-- `title` *(str)* — human-readable name
-- `parent` *(str|null)* — parent document prefix or `null`
-- `labels` *(object)* — label definitions and an `allowFreeform` flag
-- `attributes` *(object)* — additional metadata
+Each file `items/<id>.json` stores a single requirement with:
 
-The document prefix matches the folder name under `requirements/` and is no longer duplicated inside `document.json`, keeping the identifier as a single source of truth.
+- Numeric `id` unique within the document (the GUI renders the RID as `<PREFIX>-<ID>`, zero-padded).
+- Descriptive fields such as `title`, `statement`, `type`, `status`, ownership, verification and priority metadata.
+- `labels`, `links` and `attachments` with the same schema used in the GUI editor.
+- A manual `revision` number that must be incremented by the author; CookaReq persists it as provided.
 
-Each requirement item (`items/<ID>.json`, where `<ID>` is the integer identifier) includes:
-
-- `id` *(int)* — numeric identifier unique within the document
-- `title` *(str)* — short name
-- `statement` *(str)* — requirement statement
-- `type` *(str)* — `requirement`, `constraint`, `interface`
-- `status` *(str)* — `draft`, `in_review`, `approved`, `baselined`, `retired`
-- `owner` *(str)* — responsible person
-- `priority` *(str)* — `low`, `medium`, `high`
-- `source` *(str)* — origin of the requirement
-- `verification` *(str)* — method of verification
-- `labels` *(list[str])* — labels including inherited ones
-- `links` *(list[str])* — linked higher-level requirement IDs
-- `attachments` *(list[obj])* — attachments `{path, note}`
-- `revision` *(int)* — manual revision number maintained by the author; CookaReq keeps the value as provided
-- `notes` *(str)* — additional comments
+Search, filtering and derivation logic operate on these JSON structures across the entire hierarchy.
 
 ## Localization
 
-Translations are stored as plain text `.po` files and loaded at runtime, so no
-compilation to binary `.mo` catalogs is required.
+Translations live in plain-text `.po` files inside `app/locale/`. They are loaded directly at runtime, so generating `.mo` files is unnecessary. Missing keys can be flushed during development using utilities from `app/i18n.py`.
 
-## Development
+## Development workflow
 
-Run the full test suite with `pytest -q`. GUI tests are executed headless via
-`pytest-xvfb`, so no display server is required.
+### Running tests
 
-For a rapid health check, execute the smoke tests:
+Execute the full suite with:
+
+```bash
+pytest -q
+```
+
+GUI tests use `pytest-xvfb`, so no display server is needed. For a quicker check run the smoke group:
 
 ```bash
 pytest -m smoke -q
 ```
+
+### Linting
+
+`ruff` is configured via `pyproject.toml`. Run it before committing:
+
+```bash
+ruff check app tests
+```
+
+### Sample data and docs
+
+- The `requirements/` directory doubles as demo content for the GUI and as fixtures for the automated tests.
+- Architectural notes and pointers to key modules are collected in `docs/ARCHITECTURE.md`.
+
+## Building distributables
+
+Install PyInstaller and invoke the build script:
+
+```bash
+python3 -m pip install pyinstaller
+python3 build.py            # one-folder distribution in dist/CookaReq
+python3 build.py --onefile  # optional single-file executable
+```
+
+The script bundles the wxPython runtime, JSON schema resources and the application icon.
 
 ## License
 

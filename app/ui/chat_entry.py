@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
+from uuid import uuid4
+
+from ..util.time import utc_now_iso
 
 
 @dataclass
@@ -62,4 +65,109 @@ class ChatEntry:
             "display_response": self.display_response,
             "raw_result": self.raw_result,
             "tool_results": self.tool_results,
+        }
+
+
+@dataclass
+class ChatConversation:
+    """Conversation consisting of ordered :class:`ChatEntry` items."""
+
+    conversation_id: str
+    title: str | None
+    created_at: str
+    updated_at: str
+    entries: list[ChatEntry] = field(default_factory=list)
+
+    @classmethod
+    def new(cls) -> "ChatConversation":
+        """Return empty conversation with generated identifiers."""
+
+        now = utc_now_iso()
+        return cls(
+            conversation_id=str(uuid4()),
+            title=None,
+            created_at=now,
+            updated_at=now,
+            entries=[],
+        )
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ChatConversation":
+        """Create :class:`ChatConversation` from stored mapping."""
+
+        conversation_id_raw = payload.get("id") or payload.get("conversation_id")
+        conversation_id = conversation_id_raw if isinstance(conversation_id_raw, str) else str(uuid4())
+
+        title_raw = payload.get("title")
+        title = str(title_raw) if isinstance(title_raw, str) else None
+        if title == "":
+            title = None
+
+        created_at_raw = payload.get("created_at")
+        created_at = created_at_raw if isinstance(created_at_raw, str) else utc_now_iso()
+
+        updated_at_raw = payload.get("updated_at")
+        updated_at = updated_at_raw if isinstance(updated_at_raw, str) else created_at
+
+        entries_raw = payload.get("entries")
+        entries: list[ChatEntry] = []
+        if isinstance(entries_raw, Sequence):
+            for item in entries_raw:
+                if isinstance(item, Mapping):
+                    try:
+                        entries.append(ChatEntry.from_dict(item))
+                    except Exception:  # pragma: no cover - defensive
+                        continue
+
+        conversation = cls(
+            conversation_id=conversation_id,
+            title=title,
+            created_at=created_at,
+            updated_at=updated_at,
+            entries=entries,
+        )
+        conversation.ensure_title()
+        return conversation
+
+    def ensure_title(self) -> None:
+        """Populate title from first prompt when unset."""
+
+        if self.title:
+            return
+        derived = self.derive_title()
+        if derived:
+            self.title = derived
+
+    def derive_title(self) -> str:
+        """Generate human-friendly title from entries."""
+
+        for entry in self.entries:
+            candidate = entry.prompt.strip()
+            if candidate:
+                first_line = candidate.splitlines()[0]
+                return first_line[:80]
+        return ""
+
+    def append_entry(self, entry: ChatEntry) -> None:
+        """Add ``entry`` to the conversation and refresh metadata."""
+
+        self.entries.append(entry)
+        self.updated_at = utc_now_iso()
+        if not self.title:
+            self.ensure_title()
+
+    def total_tokens(self) -> int:
+        """Return total token count across all entries."""
+
+        return sum(item.tokens for item in self.entries)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return representation suitable for JSON storage."""
+
+        return {
+            "id": self.conversation_id,
+            "title": self.title,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "entries": [entry.to_dict() for entry in self.entries],
         }

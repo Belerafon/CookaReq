@@ -11,7 +11,13 @@ from typing import Any, Callable, Generic, Literal, Protocol, TypeVar
 import wx
 
 from .llm.constants import DEFAULT_MAX_CONTEXT_TOKENS, DEFAULT_MAX_OUTPUT_TOKENS
-from .settings import AppSettings, LLMSettings, MCPSettings, UISettings
+from .settings import (
+    AppSettings,
+    LLMSettings,
+    MCPSettings,
+    UISettings,
+    default_requirements_path,
+)
 
 
 T = TypeVar("T")
@@ -188,7 +194,7 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
     "mcp_base_path": FieldSpec(
         key="mcp_base_path",
         value_type=str,
-        default="",
+        default_factory=default_requirements_path,
     ),
     "mcp_require_token": FieldSpec(
         key="mcp_require_token",

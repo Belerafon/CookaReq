@@ -11,7 +11,13 @@ from app.llm.constants import (
     MIN_MAX_CONTEXT_TOKENS,
     MIN_MAX_OUTPUT_TOKENS,
 )
-from app.settings import AppSettings, LLMSettings, MCPSettings, UISettings
+from app.settings import (
+    AppSettings,
+    LLMSettings,
+    MCPSettings,
+    UISettings,
+    default_requirements_path,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -62,6 +68,7 @@ def _recent_dirs_factory(tmp_path):
         ("remember_sort", False),
         ("language", None),
         ("mcp_auto_start", True),
+        ("mcp_base_path", default_requirements_path()),
         ("mcp_port", 59362),
         ("llm_max_output_tokens", DEFAULT_MAX_OUTPUT_TOKENS),
         ("llm_max_context_tokens", DEFAULT_MAX_CONTEXT_TOKENS),
@@ -329,6 +336,20 @@ def test_app_settings_round_trip(tmp_path, wx_app):
     cfg.set_app_settings(app_settings)
     loaded = cfg.get_app_settings()
     assert loaded == app_settings
+
+
+def test_get_mcp_settings_uses_default_requirements(tmp_path, wx_app):
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
+
+    settings = cfg.get_mcp_settings()
+
+    assert settings.base_path == default_requirements_path()
+
+
+def test_app_settings_default_uses_sample_requirements():
+    settings = AppSettings()
+
+    assert settings.mcp.base_path == default_requirements_path()
 
 
 def test_get_llm_settings_normalises_zero(tmp_path, wx_app):

@@ -1,5 +1,7 @@
 """Tests for config manager."""
 
+import logging
+
 import pytest
 
 from app.config import ConfigManager, DEFAULT_LIST_COLUMNS
@@ -65,6 +67,8 @@ def _recent_dirs_factory(tmp_path):
         ("llm_max_context_tokens", DEFAULT_MAX_CONTEXT_TOKENS),
         ("sort_column", -1),
         ("sort_ascending", True),
+        ("log_sash", 300),
+        ("log_level", logging.INFO),
         ("log_shown", False),
         ("win_w", 800),
         ("editor_sash_pos", 600),
@@ -119,6 +123,7 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
         pytest.param("sort_column", _const(5), _const(5), id="sort_column"),
         pytest.param("sort_ascending", _const(False), _const(False), id="sort_ascending"),
         pytest.param("log_sash", _const(512), _const(512), id="log_sash"),
+        pytest.param("log_level", _const(logging.ERROR), _const(logging.ERROR), id="log_level"),
         pytest.param("log_shown", _const(True), _const(True), id="log_shown"),
         pytest.param("win_w", _const(1024), _const(1024), id="win_w"),
         pytest.param("editor_sash_pos", _const(456), _const(456), id="editor_sash_pos"),
@@ -317,6 +322,7 @@ def test_app_settings_round_trip(tmp_path, wx_app):
             language="ru",
             sort_column=2,
             sort_ascending=False,
+            log_level=logging.WARNING,
         ),
     )
 

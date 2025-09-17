@@ -290,14 +290,15 @@ class MainFrame(wx.Frame):
             (h for h in logger.handlers if isinstance(h, WxLogHandler)),
             None,
         )
+        saved_log_level = self.config.get_log_level()
         if existing:
             self.log_handler = existing
             self.log_handler.target = self.log_console
         else:
             self.log_handler = WxLogHandler(self.log_console)
-            self.log_handler.setLevel(logging.INFO)
             logger.addHandler(self.log_handler)
-        self._populate_log_level_choice(self.log_handler.level)
+        self.log_handler.setLevel(saved_log_level)
+        self._populate_log_level_choice(saved_log_level)
         self.log_level_choice.Bind(wx.EVT_CHOICE, self.on_change_log_level)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -1463,6 +1464,7 @@ class MainFrame(wx.Frame):
             return
         level = self._log_level_values[selection]
         self.log_handler.setLevel(level)
+        self.config.set_log_level(level)
 
     def on_toggle_log_console(self, _event: wx.CommandEvent) -> None:
         """Toggle visibility of log console panel."""

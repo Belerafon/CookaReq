@@ -34,6 +34,7 @@ class Navigation:
         on_show_trace_matrix: Callable[[wx.Event], None],
         on_new_requirement: Callable[[wx.Event], None],
         on_run_command: Callable[[wx.Event], None],
+        on_open_logs: Callable[[wx.Event], None],
     ) -> None:
         """Initialize navigation menus and event handlers."""
         self.frame = frame
@@ -52,6 +53,7 @@ class Navigation:
         self.on_show_trace_matrix = on_show_trace_matrix
         self.on_new_requirement = on_new_requirement
         self.on_run_command = on_run_command
+        self.on_open_logs = on_open_logs
         self._recent_items: dict[int, Path] = {}
         self._column_items: dict[int, str] = {}
         self.menu_bar = wx.MenuBar()
@@ -110,7 +112,7 @@ class Navigation:
         )
         self.log_menu_item = view_menu.AppendCheckItem(
             wx.ID_ANY,
-            _("Show Error Console"),
+            _("Show Log Console"),
         )
         self.frame.Bind(wx.EVT_MENU, self.on_toggle_log_console, self.log_menu_item)
         self.agent_chat_menu_item = view_menu.AppendCheckItem(
@@ -128,6 +130,8 @@ class Navigation:
         cmd_item = tools_menu.Append(wx.ID_ANY, _("Open Agent Chat\tCtrl+K"))
         self.frame.Bind(wx.EVT_MENU, self.on_run_command, cmd_item)
         self.run_command_id = cmd_item.GetId()
+        logs_item = tools_menu.Append(wx.ID_ANY, _("Open Log Folder"))
+        self.frame.Bind(wx.EVT_MENU, self.on_open_logs, logs_item)
         menu_bar.Append(tools_menu, _("&Tools"))
         self.menu_bar = menu_bar
         self.frame.SetMenuBar(self.menu_bar)

@@ -21,6 +21,7 @@ class LocalAgent:
     """High-level agent aggregating LLM and MCP clients."""
 
     _MAX_THOUGHT_STEPS = 8
+    _MESSAGE_PREVIEW_LIMIT = 400
 
     def __init__(
         self,
@@ -42,6 +43,64 @@ class LocalAgent:
             raise TypeError("settings or clients must be provided")
         self._llm = llm
         self._mcp = mcp
+
+    # ------------------------------------------------------------------
+    @classmethod
+    def _preview(cls, text: str, limit: int | None = None) -> str:
+        """Return a trimmed preview of *text* for logging."""
+
+        limit = limit or cls._MESSAGE_PREVIEW_LIMIT
+        snippet = text.strip()
+        if len(snippet) > limit:
+            return snippet[: limit - 1] + "\u2026"
+        return snippet
+
+    @staticmethod
+    def _summarize_tool_calls(tool_calls: Sequence[LLMToolCall]) -> list[dict[str, Any]]:
+        """Return lightweight metadata about planned tool calls."""
+
+        summary: list[dict[str, Any]] = []
+        for call in tool_calls:
+            args = call.arguments if isinstance(call.arguments, Mapping) else {}
+            summary.append(
+                {
+                    "id": call.id,
+                    "name": call.name,
+                    "argument_keys": sorted(args.keys()) if isinstance(args, Mapping) else [],
+                }
+            )
+        return summary
+
+    def _log_step(self, step: int, response: LLMResponse) -> None:
+        """Record intermediate agent step for diagnostics."""
+
+        log_event(
+            "AGENT_STEP",
+            {
+                "step": step,
+                "message_preview": self._preview(response.content),
+                "tool_calls": self._summarize_tool_calls(response.tool_calls),
+            },
+        )
+
+    @staticmethod
+    def _summarize_result(result: Mapping[str, Any]) -> dict[str, Any]:
+        """Return compact metadata about final agent outcome."""
+
+        payload: dict[str, Any] = {}
+        ok_value = result.get("ok")
+        if isinstance(ok_value, bool):
+            payload["ok"] = ok_value
+        if "error" in result and result["error"]:
+            payload["error"] = result["error"]
+        if "result" in result and result["result"]:
+            payload["result_type"] = type(result["result"]).__name__
+        if "tool_results" in result:
+            try:
+                payload["tool_results"] = len(result["tool_results"])
+            except TypeError:
+                payload["tool_results"] = result["tool_results"]
+        return payload
 
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
@@ -88,12 +147,18 @@ class LocalAgent:
 
         conversation: list[Mapping[str, Any]] = list(history or [])
         conversation.append({"role": "user", "content": text})
+        log_event(
+            "AGENT_START",
+            {"history_count": len(history or []), "prompt": self._preview(text, 200)},
+        )
         try:
-            return self._run_loop(conversation)
+            result = self._run_loop(conversation)
         except Exception as exc:
             err = exception_to_mcp_error(exc)["error"]
             log_event("ERROR", {"error": err})
             return {"ok": False, "error": err}
+        log_event("AGENT_RESULT", self._summarize_result(result))
+        return result
 
     async def run_command_async(
         self,
@@ -105,12 +170,18 @@ class LocalAgent:
 
         conversation: list[Mapping[str, Any]] = list(history or [])
         conversation.append({"role": "user", "content": text})
+        log_event(
+            "AGENT_START",
+            {"history_count": len(history or []), "prompt": self._preview(text, 200)},
+        )
         try:
-            return await self._run_loop_async(conversation)
+            result = await self._run_loop_async(conversation)
         except Exception as exc:
             err = exception_to_mcp_error(exc)["error"]
             log_event("ERROR", {"error": err})
             return {"ok": False, "error": err}
+        log_event("AGENT_RESULT", self._summarize_result(result))
+        return result
 
     async def _call_tool_async(
         self, name: str, arguments: Mapping[str, Any]
@@ -141,6 +212,7 @@ class LocalAgent:
         for step in range(self._MAX_THOUGHT_STEPS):
             response = self._llm.respond(conversation)
             conversation.append(self._assistant_message(response))
+            self._log_step(step + 1, response)
             if not response.tool_calls:
                 return self._success_result(response, accumulated_results)
             tool_messages, early_result, batch_results = self._execute_tool_calls(
@@ -150,6 +222,10 @@ class LocalAgent:
             accumulated_results.extend(batch_results)
             if early_result is not None:
                 return early_result
+        log_event(
+            "AGENT_ABORTED",
+            {"reason": "max-steps", "max_steps": self._MAX_THOUGHT_STEPS},
+        )
         raise ToolValidationError(
             "LLM did not finish interaction within allowed steps",
         )
@@ -161,6 +237,7 @@ class LocalAgent:
         for step in range(self._MAX_THOUGHT_STEPS):
             response = await self._respond_async(conversation)
             conversation.append(self._assistant_message(response))
+            self._log_step(step + 1, response)
             if not response.tool_calls:
                 return self._success_result(response, accumulated_results)
             tool_messages, early_result, batch_results = (
@@ -170,6 +247,10 @@ class LocalAgent:
             accumulated_results.extend(batch_results)
             if early_result is not None:
                 return early_result
+        log_event(
+            "AGENT_ABORTED",
+            {"reason": "max-steps", "max_steps": self._MAX_THOUGHT_STEPS},
+        )
         raise ToolValidationError(
             "LLM did not finish interaction within allowed steps",
         )
@@ -181,10 +262,27 @@ class LocalAgent:
         successful: list[Mapping[str, Any]] = []
         for call in tool_calls:
             try:
+                log_event(
+                    "AGENT_TOOL_CALL",
+                    {
+                        "call_id": call.id,
+                        "tool_name": call.name,
+                        "arguments": call.arguments,
+                    },
+                )
                 result = self._mcp.call_tool(call.name, call.arguments)
             except Exception as exc:
                 error = exception_to_mcp_error(exc)["error"]
                 log_event("ERROR", {"error": error})
+                log_event(
+                    "AGENT_TOOL_RESULT",
+                    {
+                        "call_id": call.id,
+                        "tool_name": call.name,
+                        "ok": False,
+                        "error": error,
+                    },
+                )
                 payload = {"ok": False, "error": error}
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
@@ -198,9 +296,18 @@ class LocalAgent:
                 }
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
+            result_dict = dict(result)
+            log_payload: dict[str, Any] = {
+                "call_id": call.id,
+                "tool_name": call.name,
+                "ok": bool(result_dict.get("ok", False)),
+            }
+            if not log_payload["ok"] and result_dict.get("error"):
+                log_payload["error"] = result_dict["error"]
+            log_event("AGENT_TOOL_RESULT", log_payload)
             messages.append(self._tool_message(call, result))
-            if not result.get("ok", False):
-                return messages, dict(result), successful
+            if not result_dict.get("ok", False):
+                return messages, result_dict, successful
             successful.append(self._enrich_tool_result(call, result))
         return messages, None, successful
 
@@ -211,10 +318,27 @@ class LocalAgent:
         successful: list[Mapping[str, Any]] = []
         for call in tool_calls:
             try:
+                log_event(
+                    "AGENT_TOOL_CALL",
+                    {
+                        "call_id": call.id,
+                        "tool_name": call.name,
+                        "arguments": call.arguments,
+                    },
+                )
                 result = await self._call_tool_async(call.name, call.arguments)
             except Exception as exc:
                 error = exception_to_mcp_error(exc)["error"]
                 log_event("ERROR", {"error": error})
+                log_event(
+                    "AGENT_TOOL_RESULT",
+                    {
+                        "call_id": call.id,
+                        "tool_name": call.name,
+                        "ok": False,
+                        "error": error,
+                    },
+                )
                 payload = {"ok": False, "error": error}
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
@@ -228,9 +352,18 @@ class LocalAgent:
                 }
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
+            result_dict = dict(result)
+            log_payload = {
+                "call_id": call.id,
+                "tool_name": call.name,
+                "ok": bool(result_dict.get("ok", False)),
+            }
+            if not log_payload["ok"] and result_dict.get("error"):
+                log_payload["error"] = result_dict["error"]
+            log_event("AGENT_TOOL_RESULT", log_payload)
             messages.append(self._tool_message(call, result))
-            if not result.get("ok", False):
-                return messages, dict(result), successful
+            if not result_dict.get("ok", False):
+                return messages, result_dict, successful
             successful.append(self._enrich_tool_result(call, result))
         return messages, None, successful
 

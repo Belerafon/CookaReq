@@ -234,14 +234,26 @@ msgstr "Settings"
 msgid "Short title"
 msgstr "Short title"
 
-msgid "Show Error Console"
-msgstr "Show Error Console"
+msgid "Show Log Console"
+msgstr "Show Log Console"
 
 msgid "Show Agent Chat"
 msgstr "Show Agent Chat"
 
-msgid "Error Console"
-msgstr "Error Console"
+msgid "Log Console"
+msgstr "Log Console"
+
+msgid "Log Level"
+msgstr "Log Level"
+
+msgid "Debug"
+msgstr "Debug"
+
+msgid "Info"
+msgstr "Info"
+
+msgid "Warning"
+msgstr "Warning"
 
 msgid "Hierarchy"
 msgstr "Hierarchy"

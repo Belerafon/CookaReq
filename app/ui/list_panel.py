@@ -95,7 +95,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.current_filters: dict = {}
         self._image_list: wx.ImageList | None = None
         self._label_images: dict[tuple[str, ...], int] = {}
-        self._derived_icon_id: int | None = None
         self._rid_lookup: dict[str, Requirement] = {}
         self._doc_titles: dict[str, str] = {}
         self._link_display_cache: dict[str, str] = {}
@@ -158,7 +157,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._docs_controller = controller
         self._doc_titles = {}
         self._link_display_cache.clear()
-        self._derived_icon_id = None
         if controller is not None:
             with suppress(Exception):
                 all_requirements = self.model.get_all()
@@ -211,38 +209,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         finally:
             dc.SelectObject(wx.NullBitmap)
         return padded
-
-    def _ensure_derived_icon(self) -> int:
-        if self._derived_icon_id is not None:
-            return self._derived_icon_id
-        size = (16, 16)
-        bmp = wx.ArtProvider.GetBitmap(wx.ART_GO_DOWN, wx.ART_MENU, size)
-        if not getattr(bmp, "IsOk", lambda: True)():
-            bmp = wx.ArtProvider.GetBitmap(wx.ART_GO_FORWARD, wx.ART_MENU, size)
-        if not getattr(bmp, "IsOk", lambda: True)():
-            self._derived_icon_id = -1
-            return -1
-        self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
-        if self._image_list is None:
-            self._image_list = wx.ImageList(bmp.GetWidth(), bmp.GetHeight())
-            self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
-        bmp = self._pad_bitmap(bmp, *self._image_list.GetSize())
-        try:
-            img_id = self._image_list.Add(bmp)
-        except Exception:
-            logger.exception("Failed to register derived icon; falling back to text marker")
-            img_id = -1
-        self._derived_icon_id = img_id
-        return img_id
-
-    def _apply_derived_marker(self, index: int, col: int, derived: bool) -> None:
-        img_id = self._ensure_derived_icon() if derived else -1
-        if col == 0 and hasattr(self.list, "SetItemImage"):
-            with suppress(Exception):
-                self.list.SetItemImage(index, img_id)
-        if hasattr(self.list, "SetItemColumnImage"):
-            with suppress(Exception):
-                self.list.SetItemColumnImage(index, col, img_id)
 
     def _doc_title_for_prefix(self, prefix: str) -> str:
         if not prefix:
@@ -649,7 +615,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     derived = bool(getattr(req, "links", []))
                     display = f"↳ {title}".strip() if derived else title
                     self.list.SetItem(index, col, display)
-                    self._apply_derived_marker(index, col, derived)
                     continue
                 if field == "labels":
                     value = getattr(req, "labels", [])

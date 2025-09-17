@@ -1534,10 +1534,28 @@ class MainFrame(wx.Frame):
         event.Veto()
 
     def _on_close(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
+        event_type = type(event).__name__ if event is not None else "<none>"
+        can_veto = False
+        if event is not None and hasattr(event, "CanVeto"):
+            try:  # pragma: no cover - defensive guard around wx API
+                can_veto = bool(event.CanVeto())
+            except Exception:  # pragma: no cover - wx implementations may vary
+                can_veto = False
+        editor_dirty = bool(getattr(self, "editor", None) and self.editor.is_dirty())
+        logger.info(
+            "Close requested: event=%s, can_veto=%s, editor_dirty=%s",
+            event_type,
+            can_veto,
+            editor_dirty,
+        )
         if not self._confirm_discard_changes():
-            if hasattr(event, "Veto") and event.CanVeto():  # pragma: no cover - GUI event
+            logger.warning(
+                "Close vetoed: pending edits remain and user declined to discard",
+            )
+            if event is not None and hasattr(event, "Veto") and can_veto:
                 event.Veto()
             return
+        logger.info("Proceeding with shutdown sequence")
         self._save_layout()
         for frame in list(self._detached_editors.values()):
             try:

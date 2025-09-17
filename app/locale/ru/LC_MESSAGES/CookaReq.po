@@ -1,3 +1,4 @@
+#
 msgid ""
 msgstr ""
 "Language: ru\n"
@@ -121,7 +122,6 @@ msgstr "Критерии приемки требования"
 msgid "Conditions"
 msgstr "Условия и режимы"
 
-
 msgid "Requirement revision"
 msgstr "Ревизия требования"
 
@@ -140,15 +140,35 @@ msgstr "Ответственный за требование"
 msgid "Source"
 msgstr "Источник требования"
 
-msgid "Short uppercase prefix placed at the beginning of every requirement identifier (for example SYS1). It is also used for the document directory name. Identifiers are numbered sequentially without leading zeros (SYS1, SYS2, …). The prefix must start with a capital letter and may contain only ASCII letters, digits or underscores."
-msgstr "Короткий префикс из заглавных букв, который добавляется в начало каждого идентификатора требования (например SYS1). Он также используется в имени каталога документа. Идентификаторы нумеруются последовательно без ведущих нулей (SYS1, SYS2, …). Префикс должен начинаться с заглавной буквы и может содержать только латинские буквы, цифры или символ подчёркивания."
+msgid ""
+"Short uppercase prefix placed at the beginning of every requirement "
+"identifier (for example SYS1). It is also used for the document directory "
+"name. Identifiers are numbered sequentially without leading zeros (SYS1, "
+"SYS2, …). The prefix must start with a capital letter and may contain only "
+"ASCII letters, digits or underscores."
+msgstr ""
+"Короткий префикс из заглавных букв, который добавляется в начало каждого "
+"идентификатора требования (например SYS1). Он также используется в имени "
+"каталога документа. Идентификаторы нумеруются последовательно без ведущих "
+"нулей (SYS1, SYS2, …). Префикс должен начинаться с заглавной буквы и может "
+"содержать только латинские буквы, цифры или символ подчёркивания."
 
-msgid "Human-friendly document name shown in the navigation tree, window titles and exports. When left empty the title defaults to the prefix."
-msgstr "Человекочитаемое название документа, которое отображается в дереве навигации, заголовках окон и экспортируемых материалах. Если оставить поле пустым, заголовок будет совпадать с префиксом."
+msgid ""
+"Human-friendly document name shown in the navigation tree, window titles and"
+" exports. When left empty the title defaults to the prefix."
+msgstr ""
+"Человекочитаемое название документа, которое отображается в дереве "
+"навигации, заголовках окон и экспортируемых материалах. Если оставить поле "
+"пустым, заголовок будет совпадать с префиксом."
 
-
-msgid "Parent document that determines where this entry sits in the hierarchy. The top level is shown as '(top-level)'. The parent is chosen automatically when creating a child document and cannot be edited from this dialog."
-msgstr "Родительский документ, определяющий положение записи в иерархии. Верхний уровень отображается как «(top-level)». При создании дочернего документа родитель выбирается автоматически и не может быть изменён из этого диалога."
+msgid ""
+"Parent document that determines where this entry sits in the hierarchy. The "
+"top level is shown as '(top-level)'. The parent is chosen automatically when"
+" creating a child document and cannot be edited from this dialog."
+msgstr ""
+"Родительский документ, определяющий положение записи в иерархии. Верхний "
+"уровень отображается как «(top-level)». При создании дочернего документа "
+"родитель выбирается автоматически и не может быть изменён из этого диалога."
 
 msgid "Requirement type"
 msgstr "Тип требования"
@@ -433,7 +453,6 @@ msgstr "Связи вывода не найдены."
 msgid "No requirements loaded"
 msgstr "Требования не загружены"
 
-
 msgid "Note"
 msgstr "Примечание"
 
@@ -503,8 +522,6 @@ msgstr "Только подозрительные"
 msgid "Token"
 msgstr "Токен"
 
-
-
 msgid "Update requirement?"
 msgstr "Обновить требование?"
 
@@ -538,8 +555,12 @@ msgstr "не запущен"
 msgid "running"
 msgstr "запущен"
 
-msgid "MCP is a local server providing tools for requirement management used by agents and the LLM."
-msgstr "MCP — локальный сервер, предоставляющий инструменты для управления требованиями, которые используют агенты и LLM."
+msgid ""
+"MCP is a local server providing tools for requirement management used by "
+"agents and the LLM."
+msgstr ""
+"MCP — локальный сервер, предоставляющий инструменты для управления "
+"требованиями, которые используют агенты и LLM."
 
 msgid "path to JSON/TOML settings"
 msgstr "путь к настройкам JSON/TOML"
@@ -586,59 +607,109 @@ msgstr "Агент:"
 msgid "verify LLM and MCP settings"
 msgstr "проверить настройки LLM и MCP"
 
-msgid "Base URL of the LLM API. Example: https://api.openai.com/v1\nRequired; defines where requests are sent."
-msgstr "Базовый URL LLM API. Пример: https://api.openai.com/v1\nОбязательное поле; определяет, куда отправляются запросы."
+msgid ""
+"Base URL of the LLM API. Example: https://api.openai.com/v1\n"
+"Required; defines where requests are sent."
+msgstr ""
+"Базовый URL LLM API. Пример: https://api.openai.com/v1\n"
+"Обязательное поле; определяет, куда отправляются запросы."
 
-msgid "LLM model name. Example: gpt-4-turbo\nRequired; selects which model to use."
-msgstr "Имя модели LLM. Пример: gpt-4-turbo\nОбязательное поле; определяет используемую модель."
+msgid ""
+"LLM model name. Example: gpt-4-turbo\n"
+"Required; selects which model to use."
+msgstr ""
+"Имя модели LLM. Пример: gpt-4-turbo\n"
+"Обязательное поле; определяет используемую модель."
 
-msgid "LLM access key. Example: sk-XXXX\nRequired when the service needs authentication."
-msgstr "Ключ доступа к LLM. Пример: sk-XXXX\nОбязателен, если сервис требует авторизации."
+msgid ""
+"LLM access key. Example: sk-XXXX\n"
+"Required when the service needs authentication."
+msgstr ""
+"Ключ доступа к LLM. Пример: sk-XXXX\n"
+"Обязателен, если сервис требует авторизации."
 
-msgid "HTTP request timeout in minutes. Example: 1\nOptional; defaults to 60 minutes."
-msgstr "Тайм-аут HTTP-запроса в минутах. Пример: 1\nНеобязательное поле; по умолчанию 60 минут."
+msgid ""
+"HTTP request timeout in minutes. Example: 1\n"
+"Optional; defaults to 60 minutes."
+msgstr ""
+"Тайм-аут HTTP-запроса в минутах. Пример: 1\n"
+"Необязательное поле; по умолчанию 60 минут."
 
 msgid "Start the MCP server automatically when CookaReq launches."
 msgstr "Запускать MCP-сервер автоматически при старте CookaReq."
 
-msgid "Hostname for the MCP server. Example: 127.0.0.1\nRequired; defines where to run the server."
-msgstr "Адрес хоста MCP-сервера. Пример: 127.0.0.1\nОбязательное поле; определяет, где запускать сервер."
+msgid ""
+"Hostname for the MCP server. Example: 127.0.0.1\n"
+"Required; defines where to run the server."
+msgstr ""
+"Адрес хоста MCP-сервера. Пример: 127.0.0.1\n"
+"Обязательное поле; определяет, где запускать сервер."
 
-msgid "MCP server port. Example: 8123\nRequired field."
-msgstr "Порт MCP-сервера. Пример: 8123\nОбязательное поле."
+msgid ""
+"MCP server port. Example: 8123\n"
+"Required field."
+msgstr ""
+"Порт MCP-сервера. Пример: 8123\n"
+"Обязательное поле."
 
-msgid "Base folder with requirements. Example: /tmp/reqs\nRequired; the server serves files from this directory."
-msgstr "Базовая папка с требованиями. Пример: /tmp/reqs\nОбязательное поле; сервер обслуживает файлы из этой директории."
+msgid ""
+"Base folder with requirements. Example: /tmp/reqs\n"
+"Required; the server serves files from this directory."
+msgstr ""
+"Базовая папка с требованиями. Пример: /tmp/reqs\n"
+"Обязательное поле; сервер обслуживает файлы из этой директории."
 
 msgid "When enabled, the server requires an authentication token."
 msgstr "Если включено, сервер требует токен аутентификации."
 
-msgid "Access token for MCP. Example: secret123\nRequired when \"Require token\" is enabled."
-msgstr "Токен доступа для MCP. Пример: secret123\nОбязателен, если включено \"Требуется токен\"."
+msgid ""
+"Access token for MCP. Example: secret123\n"
+"Required when \"Require token\" is enabled."
+msgstr ""
+"Токен доступа для MCP. Пример: secret123\n"
+"Обязателен, если включено \"Требуется токен\"."
 
-msgid "Send a test request to the configured LLM using the current settings.\nUse this to verify credentials and network connectivity."
-msgstr "Отправляет тестовый запрос в настроенную LLM с текущими параметрами.\nИспользуйте его, чтобы убедиться в корректности ключей и сетевого соединения."
+msgid ""
+"Send a test request to the configured LLM using the current settings.\n"
+"Use this to verify credentials and network connectivity."
+msgstr ""
+"Отправляет тестовый запрос в настроенную LLM с текущими параметрами.\n"
+"Используйте его, чтобы убедиться в корректности ключей и сетевого соединения."
 
-msgid "Contact the MCP server with the current connection settings and list the available tools.\nEnsures the agent integration is configured correctly."
-msgstr "Подключается к серверу MCP с указанными параметрами и запрашивает список доступных инструментов.\nПомогает убедиться, что интеграция агента настроена правильно."
+msgid ""
+"Contact the MCP server with the current connection settings and list the available tools.\n"
+"Ensures the agent integration is configured correctly."
+msgstr ""
+"Подключается к серверу MCP с указанными параметрами и запрашивает список доступных инструментов.\n"
+"Помогает убедиться, что интеграция агента настроена правильно."
 
-msgid "Launch the MCP server in the background using the current connection settings."
+msgid ""
+"Launch the MCP server in the background using the current connection "
+"settings."
 msgstr "Запускает сервер MCP в фоне с текущими параметрами подключения."
 
 msgid "Stop the MCP server instance that was started from CookaReq."
 msgstr "Останавливает экземпляр сервера MCP, запущенный из CookaReq."
 
-msgid "Connect to the MCP server and report whether it is reachable.\nDisplays diagnostic information about the running instance."
-msgstr "Подключается к серверу MCP и сообщает, доступен ли он.\nПоказывает диагностическую информацию о работающем экземпляре."
+msgid ""
+"Connect to the MCP server and report whether it is reachable.\n"
+"Displays diagnostic information about the running instance."
+msgstr ""
+"Подключается к серверу MCP и сообщает, доступен ли он.\n"
+"Показывает диагностическую информацию о работающем экземпляре."
 
-msgid "Shows whether the MCP server is currently running according to CookaReq and the result of the last check."
-msgstr "Показывает, считает ли CookaReq сервер MCP запущенным, и результат последней проверки."
+msgid ""
+"Shows whether the MCP server is currently running according to CookaReq and "
+"the result of the last check."
+msgstr ""
+"Показывает, считает ли CookaReq сервер MCP запущенным, и результат последней"
+" проверки."
 
 # Updated help texts for requirement fields
 msgid ""
 "The 'Requirement ID' is a unique integer used as the stable anchor for a "
-"requirement. Teams refer to it in traceability matrices, change requests and "
-"test reports to ensure everyone talks about the same item. Once the "
+"requirement. Teams refer to it in traceability matrices, change requests and"
+" test reports to ensure everyone talks about the same item. Once the "
 "identifier appears in external documents it should not be changed to avoid "
 "broken references."
 msgstr ""
@@ -670,10 +741,10 @@ msgstr ""
 "предотвращает двусмысленность при проектировании и рецензировании."
 
 msgid ""
-"Acceptance criteria explain how to verify that the requirement is satisfied. "
-"They may include test scenarios, measurable thresholds or review checklists. "
-"Well-defined criteria let QA teams plan tests and give product owners a "
-"clear basis for acceptance."
+"Acceptance criteria explain how to verify that the requirement is satisfied."
+" They may include test scenarios, measurable thresholds or review "
+"checklists. Well-defined criteria let QA teams plan tests and give product "
+"owners a clear basis for acceptance."
 msgstr ""
 "Критерии приемки объясняют, как убедиться, что требование выполнено. Это "
 "могут быть тестовые сценарии, измеримые пороговые значения или проверочные "
@@ -681,10 +752,10 @@ msgstr ""
 "владельцу продукта прозрачное основание для принятия работы."
 
 msgid ""
-"Operating conditions and modes under which the requirement applies. Describe "
-"environments, performance ranges or user roles that influence validity. Such "
-"context helps engineers design correctly and testers reproduce the right "
-"setup."
+"Operating conditions and modes under which the requirement applies. Describe"
+" environments, performance ranges or user roles that influence validity. "
+"Such context helps engineers design correctly and testers reproduce the "
+"right setup."
 msgstr ""
 "Условия и режимы, в которых действует требование. Опишите окружения, "
 "диапазоны производительности или роли пользователей, влияющие на "
@@ -692,8 +763,8 @@ msgstr ""
 "систему, а тестировщикам воспроизвести нужный контекст."
 
 msgid ""
-"Links to higher-level requirements or stakeholder needs. Upward traceability "
-"shows why this requirement exists and simplifies impact analysis when "
+"Links to higher-level requirements or stakeholder needs. Upward traceability"
+" shows why this requirement exists and simplifies impact analysis when "
 "parents change. Use it to prove coverage of system objectives."
 msgstr ""
 "Ссылки на более высокоуровневые требования или потребности заказчика. "
@@ -701,11 +772,10 @@ msgstr ""
 "облегчает анализ последствий при изменении родительских элементов. "
 "Используйте её, чтобы подтвердить покрытие целей системы."
 
-
 msgid ""
 "Manual revision identifier that teams adjust themselves. Update it whenever "
-"you want to mark a new baseline for the requirement. CookaReq does not change "
-"this value automatically."
+"you want to mark a new baseline for the requirement. CookaReq does not "
+"change this value automatically."
 msgstr ""
 "Ручной идентификатор ревизии, который команда обновляет самостоятельно. "
 "Меняйте его, когда хотите зафиксировать новую базовую версию требования. "
@@ -713,8 +783,8 @@ msgstr ""
 
 msgid ""
 "Date and time of the last edit. The value is filled automatically and aids "
-"audit trails. Reviewers can sort by this field to focus on recently modified "
-"items."
+"audit trails. Reviewers can sort by this field to focus on recently modified"
+" items."
 msgstr ""
 "Дата и время последнего редактирования. Значение устанавливается "
 "автоматически и облегчает ведение журналов изменений. Рецензенты могут "
@@ -723,8 +793,8 @@ msgstr ""
 
 msgid ""
 "Person or team responsible for the requirement. The owner coordinates "
-"discussions, approves updates and answers questions from other stakeholders. "
-"Assigning ownership clarifies accountability and speeds up decisions."
+"discussions, approves updates and answers questions from other stakeholders."
+" Assigning ownership clarifies accountability and speeds up decisions."
 msgstr ""
 "Человек или команда, отвечающая за требование. Владелец координирует "
 "обсуждения, утверждает правки и отвечает на вопросы других участников. "
@@ -732,14 +802,14 @@ msgstr ""
 
 msgid ""
 "Origin of the requirement such as a customer request, regulation or design "
-"document. Recording the source explains why the requirement exists and where "
-"to look for additional context. This trace is essential when validating "
+"document. Recording the source explains why the requirement exists and where"
+" to look for additional context. This trace is essential when validating "
 "compliance or revisiting negotiations."
 msgstr ""
-"Источник требования: запрос клиента, норматив, проектный документ или запись "
-"встречи. Фиксация источника объясняет, почему требование появилось, и куда "
-"обратиться за дополнительным контекстом. Это важно при проверке соответствия "
-"или повторном анализе исходных договорённостей."
+"Источник требования: запрос клиента, норматив, проектный документ или запись"
+" встречи. Фиксация источника объясняет, почему требование появилось, и куда "
+"обратиться за дополнительным контекстом. Это важно при проверке соответствия"
+" или повторном анализе исходных договорённостей."
 
 msgid ""
 "Classification of the requirement: functional, constraint, interface or "
@@ -750,7 +820,8 @@ msgstr ""
 "Классификация требования: функциональное, ограничение, интерфейс или "
 "характеристика качества. Тип помогает фильтровать большие массивы, "
 "привлекать нужных специалистов и применять разные процессы рецензирования. "
-"Последовательная классификация улучшает отчётность и повторное использование."
+"Последовательная классификация улучшает отчётность и повторное "
+"использование."
 
 msgid ""
 "Lifecycle state like draft, in review, approved or retired. The status "
@@ -763,8 +834,8 @@ msgstr ""
 "проекта."
 
 msgid ""
-"Relative importance or urgency of the requirement. High-priority items drive "
-"planning and resource allocation. Use priority to focus effort on the "
+"Relative importance or urgency of the requirement. High-priority items drive"
+" planning and resource allocation. Use priority to focus effort on the "
 "capabilities that deliver most value."
 msgstr ""
 "Относительная важность или срочность требования. Элементы с высоким "
@@ -772,9 +843,9 @@ msgstr ""
 "помогает сосредоточить усилия на функциях, которые дают наибольшую ценность."
 
 msgid ""
-"Preferred method to prove compliance: inspection, analysis, demonstration or "
-"test. Selecting a method early guides preparation of verification activities "
-"and needed tools. It also clarifies expectations for acceptance."
+"Preferred method to prove compliance: inspection, analysis, demonstration or"
+" test. Selecting a method early guides preparation of verification "
+"activities and needed tools. It also clarifies expectations for acceptance."
 msgstr ""
 "Предпочитаемый метод подтверждения выполнения: инспекция, анализ, "
 "демонстрация или испытание. Выбор метода заранее направляет подготовку "
@@ -802,13 +873,12 @@ msgstr ""
 "риски и проясняет контекст, который может измениться. Периодически "
 "пересматривайте их, чтобы требование оставалось актуальным."
 
-
-msgid ""
-"risk decisions transparent and supports future recalculations."
+msgid "risk decisions transparent and supports future recalculations."
 msgstr ""
 "Укажите дополнительный ресурс или допуск, который покрывает "
 "неопределённости. Фиксация запасов делает решения по рискам прозрачными и "
 "помогает при последующих пересчётах."
+
 msgid "Show Trace Matrix"
 msgstr "Показать матрицу трассировки"
 
@@ -820,3 +890,319 @@ msgstr "Потомок"
 
 msgid "No links found"
 msgstr "Связи не найдены"
+
+msgid "(top-level)"
+msgstr "(верхний уровень)"
+
+msgid "...and {count} more."
+msgstr "...и ещё {count}."
+
+msgid ""
+"Automatically reopen the most recently used requirements folder on startup.\n"
+"Disable to always choose a folder manually."
+msgstr ""
+"Автоматически открывать при запуске последнюю использованную папку требований.\n"
+"Отключите, чтобы каждый раз выбирать папку вручную."
+
+msgid "Clear history"
+msgstr "Очистить историю"
+
+msgid "Clear suspect mark"
+msgstr "Снять пометку подозрения"
+
+msgid "Custom labels (comma-separated)"
+msgstr "Произвольные метки (через запятую)"
+
+msgid "Delete document {prefix} and its subtree?"
+msgstr "Удалить документ {prefix} и все дочерние элементы?"
+
+msgid "Delete item {rid}?"
+msgstr "Удалить требование {rid}?"
+
+msgid "Delete {count} requirements?"
+msgstr "Удалить {count} записей требований?"
+
+msgid "Discard unsaved changes?"
+msgstr "Отменить несохранённые изменения?"
+
+msgid "Document not found"
+msgstr "Документ не найден"
+
+msgid "Document prefix is required."
+msgstr "Требуется указать префикс документа."
+
+msgid "Documents"
+msgstr "Документы"
+
+msgid "Edit label"
+msgstr "Изменить метку"
+
+msgid "Edit..."
+msgstr "Изменить..."
+
+msgid "Failed to load requirements folder \"{path}\": {error}"
+msgstr "Не удалось загрузить папку требований \"{path}\": {error}"
+
+msgid "Failed to load requirements for document \"{prefix}\": {error}"
+msgstr "Не удалось загрузить требования для документа \"{prefix}\": {error}"
+
+msgid "Hide hierarchy"
+msgstr "Скрыть иерархию"
+
+msgid "Invalid requirement ID"
+msgstr "Некорректный идентификатор требования"
+
+msgid "JSON list of attachments"
+msgstr "JSON-список вложений"
+
+msgid "JSON template file"
+msgstr "JSON-шаблон"
+
+msgid "Key"
+msgstr "Ключ"
+
+msgid ""
+"Language for menus and dialogs.\n"
+"Changes apply after restarting CookaReq."
+msgstr ""
+"Язык для меню и диалогов.\n"
+"Изменения вступят в силу после перезапуска CookaReq."
+
+msgid "Mark as suspect"
+msgstr "Пометить как подозрительное"
+
+msgid "Max output tokens"
+msgstr "Макс. токенов в ответе"
+
+msgid "Max retries"
+msgstr "Макс. число повторов"
+
+msgid ""
+"Maximum number of tokens returned by the model. Example: 4096\n"
+"Minimum allowed value is 1000 tokens; CookaReq defaults to 5000 when unset."
+msgstr ""
+"Максимальное число токенов, возвращаемых моделью. Пример: 4096\n"
+"Минимально допустимое значение — 1000 токенов; по умолчанию CookaReq использует 5000, если поле пустое."
+
+msgid "New document"
+msgstr "Новый документ"
+
+msgid ""
+"Number of times to retry a failed HTTP request. Example: 3\n"
+"Optional; defaults to 3 retries."
+msgstr ""
+"Сколько раз повторять неуспешный HTTP-запрос. Пример: 3\n"
+"Необязательное поле; по умолчанию выполняется 3 попытки."
+
+msgid "Prefix"
+msgstr "Префикс"
+
+msgid ""
+"Prefix must start with a capital letter and contain only letters, digits or "
+"underscores."
+msgstr ""
+"Префикс должен начинаться с заглавной буквы и содержать только буквы, цифры "
+"или подчёркивания."
+
+msgid "Query"
+msgstr "Запрос"
+
+msgid ""
+"Remember the last column and direction used to sort requirements.\n"
+"Keeps the list ordering consistent between sessions."
+msgstr ""
+"Запоминать последний столбец и направление сортировки требований.\n"
+"Позволяет сохранять порядок списка между сеансами."
+
+msgid "Rename document"
+msgstr "Переименовать документ"
+
+msgid "Requirement {rid}"
+msgstr "Требование {rid}"
+
+msgid "Requirement {rid} already exists"
+msgstr "Требование {rid} уже существует"
+
+msgid "Requirement {rid}: {title}"
+msgstr "Требование {rid}: {title}"
+
+msgid "Show Requirement Editor"
+msgstr "Показать редактор требований"
+
+msgid "Show hierarchy"
+msgstr "Показать иерархию"
+
+msgid "Stream"
+msgstr "Потоковый вывод"
+
+msgid ""
+"Stream partial responses from the LLM as they arrive.\n"
+"Disable to wait for the full reply before showing it."
+msgstr ""
+"Передавать частичные ответы LLM по мере поступления.\n"
+"Отключите, чтобы ждать полного ответа перед отображением."
+
+msgid "Suspect link"
+msgstr "Подозрительная связь"
+
+msgid "Timeout (min)"
+msgstr "Таймаут (мин)"
+
+msgid "aborted"
+msgstr "прервано"
+
+msgid "attachments must be a list"
+msgstr "вложения должны быть списком"
+
+msgid "comma-separated labels"
+msgstr "метки через запятую"
+
+msgid "comma-separated parent requirement IDs"
+msgstr "идентификаторы родительских требований через запятую"
+
+msgid "create document"
+msgstr "создать документ"
+
+msgid "create new item"
+msgstr "создать новый элемент"
+
+msgid "delete document"
+msgstr "удалить документ"
+
+msgid "delete item"
+msgstr "удалить элемент"
+
+msgid "document not found: {prefix}"
+msgstr "документ не найден: {prefix}"
+
+msgid "document prefix"
+msgstr "префикс документа"
+
+msgid "document title"
+msgstr "название документа"
+
+msgid "edit existing item"
+msgstr "изменить существующий элемент"
+
+msgid "export trace links"
+msgstr "экспортировать связи трассировки"
+
+msgid "invalid link target: {rid}"
+msgstr "неверная цель связи: {rid}"
+
+msgid "invalid requirement identifier: {rid}"
+msgstr "некорректный идентификатор требования: {rid}"
+
+msgid "item not found: {rid}"
+msgstr "элемент не найден: {rid}"
+
+msgid "item statement"
+msgstr "описание элемента"
+
+msgid "item title"
+msgstr "название элемента"
+
+msgid "labels must be a list"
+msgstr "метки должны быть списком"
+
+msgid "link requirements"
+msgstr "связать требования"
+
+msgid "linked item not found: {rid}"
+msgstr "связанный элемент не найден: {rid}"
+
+msgid "links must be a list"
+msgstr "связи должны быть списком"
+
+msgid "list documents"
+msgstr "список документов"
+
+msgid "manage documents"
+msgstr "управлять документами"
+
+msgid "manage items"
+msgstr "управлять элементами"
+
+msgid "move item"
+msgstr "переместить элемент"
+
+msgid "output format"
+msgstr "формат вывода"
+
+msgid "parent document prefix"
+msgstr "префикс родительского документа"
+
+msgid "parent requirement identifiers"
+msgstr "идентификаторы родительских требований"
+
+msgid "replace existing links instead of adding"
+msgstr "заменить существующие связи вместо добавления"
+
+msgid "requirement identifier"
+msgstr "идентификатор требования"
+
+msgid "requirement not found: {rid}"
+msgstr "требование не найдено: {rid}"
+
+msgid "requirements root"
+msgstr "корневая папка требований"
+
+msgid "revision must be an integer"
+msgstr "ревизия должна быть целым числом"
+
+msgid "show what would be deleted"
+msgstr "показать, что будет удалено"
+
+msgid "target document prefix"
+msgstr "префикс целевого документа"
+
+msgid "unknown document prefix: {prefix}"
+msgstr "неизвестный префикс документа: {prefix}"
+
+msgid "unknown priority: {value}"
+msgstr "неизвестный приоритет: {value}"
+
+msgid "unknown requirement type: {value}"
+msgstr "неизвестный тип требования: {value}"
+
+msgid "unknown status: {value}"
+msgstr "неизвестный статус: {value}"
+
+msgid "unknown verification method: {value}"
+msgstr "неизвестный метод проверки: {value}"
+
+msgid "write result to file"
+msgstr "записать результат в файл"
+
+msgid "{msg}"
+msgstr "{msg}"
+
+msgid "&New Requirement\tCtrl+N"
+msgstr "&Новое требование\tCtrl+N"
+
+msgid "aborted\n"
+msgstr "прервано\n"
+
+msgid "document not found: {prefix}\n"
+msgstr "документ не найден: {prefix}\n"
+
+msgid "invalid link target: {rid}\n"
+msgstr "неверная цель связи: {rid}\n"
+
+msgid "invalid requirement identifier: {rid}\n"
+msgstr "некорректный идентификатор требования: {rid}\n"
+
+msgid "item not found: {rid}\n"
+msgstr "элемент не найден: {rid}\n"
+
+msgid "linked item not found: {rid}\n"
+msgstr "связанный элемент не найден: {rid}\n"
+
+msgid "requirement not found: {rid}\n"
+msgstr "требование не найдено: {rid}\n"
+
+msgid "unknown document prefix: {prefix}\n"
+msgstr "неизвестный префикс документа: {prefix}\n"
+
+msgid "{msg}\n"
+msgstr "{msg}\n"

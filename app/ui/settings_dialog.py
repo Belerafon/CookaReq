@@ -7,6 +7,7 @@ from importlib import resources
 import wx
 
 from ..i18n import _
+from ..log import logger
 from ..llm.client import LLMClient
 from ..llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
 from ..mcp.client import MCPClient
@@ -708,6 +709,13 @@ class SettingsDialog(wx.Dialog):
             button.Enable(True)
             status_label.SetLabel(_("ok") if ok else _("error"))
             status_label.SetToolTip(tooltip if tooltip else None)
+            if not ok:
+                label_getter = getattr(button, "GetLabelText", None)
+                button_label = (
+                    label_getter() if callable(label_getter) else button.GetLabel()
+                )
+                message = tooltip or _("Unknown error")
+                logger.warning("%s failed: %s", button_label, message)
 
         def worker() -> None:
             try:

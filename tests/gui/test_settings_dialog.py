@@ -310,6 +310,66 @@ def test_llm_agent_checks(monkeypatch, wx_app):
     dlg.Destroy()
 
 
+def test_llm_agent_check_failure_logs(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.settings_dialog as sd
+    from app.ui.settings_dialog import SettingsDialog
+
+    messages: list[str] = []
+
+    def fake_warning(message, *args, **kwargs):
+        if args:
+            message = message % args
+        messages.append(str(message))
+
+    monkeypatch.setattr(sd.logger, "warning", fake_warning)
+
+    class DummyLLM:
+        def __init__(self, *, settings):
+            self.settings = settings
+
+        def check_llm(self):
+            return {
+                "ok": False,
+                "error": {"type": "VALIDATION_ERROR", "message": "invalid"},
+            }
+
+    monkeypatch.setattr(
+        "app.ui.settings_dialog.LLMClient",
+        lambda *, settings: DummyLLM(settings=settings),
+    )
+
+    dlg = SettingsDialog(
+        None,
+        open_last=False,
+        remember_sort=False,
+        language="en",
+        base_url="http://api",
+        model="gpt",
+        api_key="key",
+        max_retries=3,
+        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
+        timeout_minutes=30,
+        stream=False,
+        auto_start=True,
+        host="localhost",
+        port=59362,
+        base_path="/tmp",
+        require_token=False,
+        token="",
+    )
+
+    dlg._on_check_llm(wx.CommandEvent())
+    assert dlg._llm_status.GetLabel() == sd._("error")
+    tooltip = dlg._llm_status.GetToolTip()
+    assert tooltip is not None
+    assert tooltip.GetTip() == "VALIDATION_ERROR: invalid"
+    assert messages and "invalid" in messages[0]
+    assert "Check LLM" in messages[0]
+
+    dlg.Destroy()
+
+
 def test_settings_help_buttons(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui import helpers

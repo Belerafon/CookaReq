@@ -20,6 +20,13 @@ from tests.llm_utils import make_openai_mock, settings_with_llm
 pytestmark = pytest.mark.integration
 
 
+def _extract_token_limit(captured: dict[str, object]) -> tuple[str, object]:
+    for key in ("max_tokens", "max_completion_tokens", "max_output_tokens"):
+        if key in captured:
+            return key, captured[key]
+    raise AssertionError("Token limit argument missing")
+
+
 def test_missing_api_key_ignores_env(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "dummy")
     captured: dict[str, str | None] = {}
@@ -89,7 +96,8 @@ def test_check_llm_uses_configured_token_limit(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = LLMClient(settings.llm)
     client.check_llm()
-    assert captured["max_output_tokens"] == MIN_MAX_OUTPUT_TOKENS + 512
+    _, value = _extract_token_limit(captured)
+    assert value == MIN_MAX_OUTPUT_TOKENS + 512
 
 
 def test_check_llm_uses_default_when_no_limit(tmp_path: Path, monkeypatch) -> None:
@@ -110,7 +118,28 @@ def test_check_llm_uses_default_when_no_limit(tmp_path: Path, monkeypatch) -> No
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = LLMClient(settings.llm)
     client.check_llm()
-    assert captured["max_output_tokens"] == DEFAULT_MAX_OUTPUT_TOKENS
+    _, value = _extract_token_limit(captured)
+    assert value == DEFAULT_MAX_OUTPUT_TOKENS
+
+
+def test_check_llm_detects_available_token_param(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    captured: dict[str, object] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, max_completion_tokens, **kwargs):  # noqa: ANN001
+                captured["max_completion_tokens"] = max_completion_tokens
+                return SimpleNamespace()
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    client.check_llm()
+    assert captured["max_completion_tokens"] == DEFAULT_MAX_OUTPUT_TOKENS
 
 
 def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
@@ -248,7 +277,8 @@ def test_parse_command_uses_default_when_no_limit(tmp_path: Path, monkeypatch) -
     tool, args = client.parse_command("anything")
     assert tool == "list_requirements"
     assert args == {}
-    assert captured["max_output_tokens"] == DEFAULT_MAX_OUTPUT_TOKENS
+    _, value = _extract_token_limit(captured)
+    assert value == DEFAULT_MAX_OUTPUT_TOKENS
 
 
 def test_check_llm_async_uses_thread(tmp_path: Path, monkeypatch) -> None:

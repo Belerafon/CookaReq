@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import time
 from collections.abc import Mapping, Sequence
@@ -28,6 +29,12 @@ from .validation import validate_tool_call
 # configured.
 NO_API_KEY = "sk-no-key"
 
+TOKEN_PARAM_CANDIDATES: tuple[str, ...] = (
+    "max_tokens",
+    "max_completion_tokens",
+    "max_output_tokens",
+)
+
 
 class LLMClient:
     """High-level client for LLM operations."""
@@ -46,6 +53,9 @@ class LLMClient:
             timeout=self.settings.timeout_minutes * 60,
             max_retries=self.settings.max_retries,
         )
+        self._token_param_candidates = self._detect_token_param_candidates()
+        self._token_param_index = 0
+        self._token_param_warning_emitted = False
 
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
@@ -85,10 +95,42 @@ class LLMClient:
         return await asyncio.to_thread(self._parse_command, text, history=history)
 
     # ------------------------------------------------------------------
+    def _detect_token_param_candidates(self) -> list[str]:
+        """Inspect client signature to determine supported token arguments."""
+
+        create = self._client.chat.completions.create
+        try:
+            signature = inspect.signature(create)
+        except (TypeError, ValueError):
+            return list(TOKEN_PARAM_CANDIDATES)
+        params = signature.parameters
+        candidates = [
+            name for name in TOKEN_PARAM_CANDIDATES if name in params
+        ]
+        if candidates:
+            return candidates
+        if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            return list(TOKEN_PARAM_CANDIDATES)
+        return []
+
+    def _current_token_param(self) -> str | None:
+        """Return the currently selected token parameter name, if any."""
+
+        if 0 <= self._token_param_index < len(self._token_param_candidates):
+            return self._token_param_candidates[self._token_param_index]
+        return None
+
+    def _advance_token_param(self) -> None:
+        """Switch to the next available token parameter option."""
+
+        self._token_param_index += 1
+
+    # ------------------------------------------------------------------
     def _check_llm(self) -> dict[str, Any]:
         """Implementation shared by sync and async ``check_llm`` variants."""
 
         max_output_tokens = self._resolved_max_output_tokens()
+        token_param = self._current_token_param()
         payload = {
             "base_url": self.settings.base_url,
             "model": self.settings.model,
@@ -98,14 +140,13 @@ class LLMClient:
             # применяем собственный консервативный дефолт, чтобы сервер не
             # приходилось угадывать ограничения.
             "max_output_tokens": max_output_tokens,
+            "token_parameter": token_param,
         }
         start = time.monotonic()
         log_event("LLM_REQUEST", payload)
         try:
-            self._client.chat.completions.create(
-                model=self.settings.model,
+            self._chat_completion(
                 messages=payload["messages"],
-                max_output_tokens=max_output_tokens,
             )
         except Exception as exc:  # pragma: no cover - network errors
             log_event(
@@ -130,6 +171,7 @@ class LLMClient:
         """Implementation shared by sync and async ``parse_command`` variants."""
 
         max_output_tokens = self._resolved_max_output_tokens()
+        token_param = self._current_token_param()
         messages = self._build_messages(text, history)
         payload = {
             "base_url": self.settings.base_url,
@@ -141,18 +183,17 @@ class LLMClient:
             "temperature": 0,
             "max_output_tokens": max_output_tokens,
             "stream": self.settings.stream,
+            "token_parameter": token_param,
         }
         start = time.monotonic()
         log_event("LLM_REQUEST", payload)
 
         try:
-            completion = self._client.chat.completions.create(
-                model=self.settings.model,
+            completion = self._chat_completion(
                 messages=messages,
                 tools=payload["tools"],
                 tool_choice="required",
                 temperature=0,
-                max_output_tokens=max_output_tokens,
                 stream=self.settings.stream,
             )
             if self.settings.stream:
@@ -188,6 +229,56 @@ class LLMClient:
                 start_time=start,
             )
             return name, arguments
+
+    # ------------------------------------------------------------------
+    def _chat_completion(
+        self,
+        *,
+        messages: Sequence[Mapping[str, Any]],
+        **kwargs: Any,
+    ) -> Any:
+        """Call the chat completions endpoint honouring token limit settings."""
+
+        token_limit = self._resolved_max_output_tokens()
+        base_kwargs: dict[str, Any] = {
+            "model": self.settings.model,
+            "messages": messages,
+        }
+        if kwargs:
+            base_kwargs.update(kwargs)
+
+        while True:
+            param = self._current_token_param()
+            call_kwargs = dict(base_kwargs)
+            if param:
+                call_kwargs[param] = token_limit
+            elif not self._token_param_warning_emitted:
+                log_event(
+                    "LLM_TOKEN_LIMIT_SKIPPED",
+                    {
+                        "reason": "no-supported-parameter",
+                        "max_output_tokens": token_limit,
+                    },
+                )
+                self._token_param_warning_emitted = True
+            try:
+                return self._client.chat.completions.create(**call_kwargs)
+            except TypeError as exc:
+                if param and self._is_unexpected_keyword_error(exc, param):
+                    log_event(
+                        "LLM_TOKEN_PARAM_UNSUPPORTED",
+                        {"parameter": param, "message": str(exc)},
+                    )
+                    self._advance_token_param()
+                    continue
+                raise
+
+    @staticmethod
+    def _is_unexpected_keyword_error(exc: TypeError, param: str) -> bool:
+        """Return ``True`` when *exc* signals an unsupported keyword argument."""
+
+        text = str(exc)
+        return "unexpected keyword" in text.lower() and param in text
 
     # ------------------------------------------------------------------
     def _resolved_max_output_tokens(self) -> int:

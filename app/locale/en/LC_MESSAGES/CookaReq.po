@@ -214,6 +214,18 @@ msgstr "Show Agent Chat"
 msgid "Error Console"
 msgstr "Error Console"
 
+msgid "Hierarchy"
+msgstr "Hierarchy"
+
+msgid "Requirements"
+msgstr "Requirements"
+
+msgid "Editor"
+msgstr "Editor"
+
+msgid "Agent Chat"
+msgstr "Agent Chat"
+
 msgid "Source"
 msgstr "Source"
 

@@ -41,6 +41,60 @@ def test_confirm_discard_changes(monkeypatch, wx_app):
         frame.Destroy()
 
 
+def test_confirm_discard_changes_reload_from_model(monkeypatch, wx_app):
+    pytest.importorskip("wx")
+
+    from dataclasses import replace
+
+    import app.ui.main_frame as main_frame_mod
+    from app.core.model import (
+        Priority,
+        Requirement,
+        RequirementType,
+        Status,
+        Verification,
+    )
+
+    frame = main_frame_mod.MainFrame(None)
+    try:
+        requirement = Requirement(
+            id=1,
+            title="Stored",
+            statement="Statement",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="Owner",
+            priority=Priority.MEDIUM,
+            source="Spec",
+            verification=Verification.ANALYSIS,
+            doc_prefix="DOC",
+            rid="DOC-1",
+        )
+        frame.model.set_requirements([requirement])
+        frame._selected_requirement_id = requirement.id
+        frame.editor.load(requirement)
+        frame.editor.fields["title"].ChangeValue("Dirty")
+        assert frame.editor.is_dirty() is True
+
+        updated = replace(requirement, title="Updated")
+        frame.model.update(updated)
+
+        messages: list[str] = []
+
+        def accept(message: str) -> bool:
+            messages.append(message)
+            return True
+
+        monkeypatch.setattr(main_frame_mod, "confirm", accept)
+
+        assert frame._confirm_discard_changes() is True
+        assert messages[-1] == main_frame_mod._("Discard unsaved changes?")
+        assert frame.editor.fields["title"].GetValue() == "Updated"
+        assert frame.editor.is_dirty() is False
+    finally:
+        frame.Destroy()
+
+
 def test_document_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path):
     pytest.importorskip("wx")
 

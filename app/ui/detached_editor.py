@@ -35,13 +35,18 @@ class DetachedEditorFrame(wx.Frame):
         super().__init__(parent, title=title)
         self._on_save = on_save
         self._on_close = on_close
+        self._closing_via_cancel = False
         self.doc_prefix = doc_prefix
         self.requirement_id = requirement.id
         self.directory = Path(directory)
         self._allow_freeform = allow_freeform
         self._labels: list[LabelDef] = list(labels)
 
-        self.editor = EditorPanel(self, on_save=self._handle_save)
+        self.editor = EditorPanel(
+            self,
+            on_save=self._handle_save,
+            on_discard=self._handle_cancel,
+        )
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.editor, 1, wx.EXPAND)
         self.SetSizer(sizer)
@@ -88,8 +93,25 @@ class DetachedEditorFrame(wx.Frame):
             # Reload handled by callback; nothing else to do on success.
             return
 
+    def _handle_cancel(self) -> bool:
+        """Close the frame when the editor requests to discard changes."""
+
+        self._closing_via_cancel = True
+        closed = self.Close()
+        if not closed:
+            self._closing_via_cancel = False
+            return False
+        return True
+
     def _on_close_window(self, event: wx.CloseEvent) -> None:
         """Confirm closing when editor has unsaved changes."""
+
+        if self._closing_via_cancel:
+            self._closing_via_cancel = False
+            if self._on_close:
+                self._on_close(self)
+            event.Skip()
+            return
 
         if self.editor.is_dirty():
             if not confirm(_("Discard unsaved changes?")):

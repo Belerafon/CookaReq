@@ -39,7 +39,7 @@
 - `resources/` — описывает конфигурацию редактора (`editor_fields.json`, `editor_config.py`), которую подхватывает `EditorPanel` для построения формы.
 
 ### `app/agent/`
-- `local_agent.py` — высокоуровневый `LocalAgent`, объединяющий `LLMClient` и `MCPClient`, проверку подключения (`check_llm`, `check_tools`) и цикл агентного выполнения: модель возвращает `LLMResponse` с текстом и функциями, агент вызывает MCP-инструменты, добавляет ответы в историю и повторно опрашивает LLM до получения финального сообщения.【F:app/agent/local_agent.py†L1-L87】【F:app/agent/local_agent.py†L119-L220】
+- `local_agent.py` — высокоуровневый `LocalAgent`, объединяющий `LLMClient` и `MCPClient`, проверку подключения (`check_llm`, `check_tools`) и цикл агентного выполнения: модель возвращает `LLMResponse` с текстом и функциями, агент перед вызовом MCP-инструментов выполняет health-check сервера, добавляет ответы в историю и повторно опрашивает LLM до получения финального сообщения.【F:app/agent/local_agent.py†L1-L87】【F:app/agent/local_agent.py†L119-L250】
 
 ### `app/llm/`
 - `client.py` — HTTP-клиент поверх `openai.OpenAI`: проверка доступности (`check_llm`), генерация ответов (`respond`/`parse_command`) с возвратом `LLMResponse` — текста и набора валидированных `LLMToolCall`, поддержка потокового режима и разбор истории с сообщениями `assistant`/`tool`, логирование запросов.【F:app/llm/client.py†L1-L137】【F:app/llm/client.py†L189-L344】
@@ -48,7 +48,7 @@
 ### `app/mcp/`
 - `server.py` — FastAPI + FastMCP: регистрация инструментов (`list_requirements`, `create_requirement`, …), middleware авторизации, логирование запросов, запуск через `uvicorn` (используется `start_server`/`stop_server`).【F:app/mcp/server.py†L1-L94】【F:app/mcp/server.py†L96-L164】
 - `controller.py` — `MCPController` управляет жизненным циклом сервера и health-check (`MCPCheckResult`).【F:app/mcp/controller.py†L1-L60】
-- `client.py` — синхронный HTTP-клиент с подтверждениями перед опасными операциями и форматированием ошибок.【F:app/mcp/client.py†L1-L108】【F:app/mcp/client.py†L110-L170】
+- `client.py` — синхронный HTTP-клиент с подтверждениями перед опасными операциями, кешированным health-check `/health` (метод `ensure_ready`) и форматированием ошибок, в том числе для недоступного сервера.【F:app/mcp/client.py†L1-L206】【F:app/mcp/client.py†L208-L344】
 - `tools_read.py` и `tools_write.py` — адаптеры между MCP-инструментами и `document_store`, логирующие вызовы и преобразующие ответы.【F:app/mcp/tools_read.py†L1-L77】【F:app/mcp/tools_write.py†L1-L86】
 - `utils.py` — генерация структур ошибок (`mcp_error`), нормализация исключений, общее логирование инструментов (`log_tool`).【F:app/mcp/utils.py†L1-L74】
 

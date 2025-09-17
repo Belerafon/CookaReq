@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from app.log import logger
-from app.mcp.client import MCPClient
+from app.mcp.client import MCPClient, MCPNotReadyError
 from app.mcp.server import JsonlHandler, start_server, stop_server
 from app.settings import MCPSettings
 from tests.llm_utils import settings_with_mcp
@@ -49,6 +49,72 @@ def test_check_tools_success(tmp_path: Path) -> None:
         assert call["payload"]["params"]["token"] == "[REDACTED]"
         assert res["payload"]["ok"] is True
         assert "duration_ms" in res
+    finally:
+        stop_server()
+
+
+def test_ensure_ready_success(tmp_path: Path) -> None:
+    port = 8136
+    stop_server()
+    start_server(port=port, base_path=str(tmp_path))
+    try:
+        _wait_until_ready(port)
+        settings = settings_with_mcp(
+            "127.0.0.1",
+            port,
+            str(tmp_path),
+            "",
+            tmp_path=tmp_path,
+            fmt="toml",
+        )
+        client = MCPClient(settings.mcp, confirm=lambda _m: True)
+        client.ensure_ready()
+        assert client._last_ready_check is not None
+        first_check = client._last_ready_check
+        client.ensure_ready()
+        assert client._last_ready_check == first_check
+        assert client._last_ready_ok is True
+    finally:
+        stop_server()
+
+
+def test_ensure_ready_reports_connection_errors(tmp_path: Path) -> None:
+    port = 8137
+    stop_server()
+    settings = settings_with_mcp(
+        "127.0.0.1",
+        port,
+        str(tmp_path),
+        "",
+        tmp_path=tmp_path,
+        fmt="toml",
+    )
+    client = MCPClient(settings.mcp, confirm=lambda _m: True)
+    with pytest.raises(MCPNotReadyError) as excinfo:
+        client.ensure_ready(force=True)
+    error = excinfo.value.error_payload
+    assert error["code"] == "INTERNAL"
+    assert "not reachable" in error["message"]
+
+
+def test_ensure_ready_respects_authorization(tmp_path: Path) -> None:
+    port = 8138
+    stop_server()
+    start_server(port=port, base_path=str(tmp_path), token="secret")
+    try:
+        _wait_until_ready(port)
+        settings = settings_with_mcp(
+            "127.0.0.1",
+            port,
+            str(tmp_path),
+            "wrong",
+            tmp_path=tmp_path,
+            require_token=True,
+        )
+        client = MCPClient(settings.mcp, confirm=lambda _m: True)
+        with pytest.raises(MCPNotReadyError) as excinfo:
+            client.ensure_ready(force=True)
+        assert excinfo.value.error_payload["code"] == "UNAUTHORIZED"
     finally:
         stop_server()
 

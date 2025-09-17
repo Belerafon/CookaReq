@@ -143,6 +143,12 @@ class MainFrame(wx.Frame):
             wx.EVT_SPLITTER_SASH_POS_CHANGED,
             self._on_doc_splitter_sash_changed,
         )
+        self._doc_tree_sash_veto_bound = False
+        self._doc_tree_placeholder_width = self.FromDIP(28)
+        self._doc_tree_placeholder: wx.Panel | None = None
+        self._doc_tree_placeholder_button: wx.BitmapButton | None = None
+        self._doc_tree_collapse_bitmap: wx.Bitmap | None = None
+        self._doc_tree_expand_bitmap: wx.Bitmap | None = None
         self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
         self._disable_splitter_unsplit(self.agent_splitter)
         self.agent_splitter.SetMinimumPaneSize(280)
@@ -168,6 +174,7 @@ class MainFrame(wx.Frame):
             ),
         )
         self.doc_tree.tree.Bind(wx.EVT_TREE_SEL_CHANGING, self._on_doc_changing)
+        self._doc_tree_placeholder = self._create_doc_tree_placeholder(self.doc_splitter)
         (
             self.list_container,
             self.list_label,
@@ -291,23 +298,27 @@ class MainFrame(wx.Frame):
         container.SetSizer(sizer)
         return container, label_ctrl, content
 
-    def _create_doc_tree_toggle(self, parent: wx.Window) -> wx.Button:
-        """Create collapse/expand toggle for the document tree pane."""
+    def _create_doc_tree_toggle(self, parent: wx.Window) -> wx.BitmapToggleButton:
+        """Create a flat bitmap toggle for the document tree pane."""
 
-        self.doc_tree_toggle = wx.Button(
+        self._ensure_doc_tree_bitmaps(parent)
+        self.doc_tree_toggle = wx.BitmapToggleButton(
             parent,
-            label="<<<",
-            style=wx.BU_EXACTFIT,
+            style=wx.BU_EXACTFIT | wx.BORDER_NONE,
         )
+        self.doc_tree_toggle.SetWindowVariant(wx.WINDOW_VARIANT_MINI)
+        self.doc_tree_toggle.SetBackgroundColour(parent.GetBackgroundColour())
+        self.doc_tree_toggle.SetBitmap(self._doc_tree_collapse_bitmap)
+        self.doc_tree_toggle.SetValue(True)
         self.doc_tree_toggle.SetMinSize(self.doc_tree_toggle.GetBestSize())
         self.doc_tree_toggle.SetToolTip(_("Hide hierarchy"))
-        self.doc_tree_toggle.Bind(wx.EVT_BUTTON, self._on_toggle_doc_tree)
+        self.doc_tree_toggle.Bind(wx.EVT_TOGGLEBUTTON, self._on_toggle_doc_tree)
         return self.doc_tree_toggle
 
     def _on_toggle_doc_tree(self, _event: wx.Event) -> None:
         """Collapse or expand the document hierarchy panel."""
 
-        if self._doc_tree_collapsed:
+        if self.doc_tree_toggle and self.doc_tree_toggle.GetValue():
             self._expand_doc_tree(update_config=True)
         else:
             self._collapse_doc_tree(update_config=True)
@@ -321,14 +332,26 @@ class MainFrame(wx.Frame):
         self._doc_tree_saved_sash = max(sash, self._doc_tree_min_pane)
         self.doc_tree.Hide()
         self.doc_tree_label.Hide()
+        self.doc_tree_container.Hide()
         self.doc_splitter.SetMinimumPaneSize(0)
         handle = self._collapsed_doc_tree_width()
-        self.doc_tree_container.SetMinSize(wx.Size(handle, -1))
-        self.doc_tree_container.Layout()
-        self._doc_tree_collapsed = True
+        if self._doc_tree_placeholder and self.doc_splitter.GetWindow1() is self.doc_tree_container:
+            replaced = self.doc_splitter.ReplaceWindow(
+                self.doc_tree_container,
+                self._doc_tree_placeholder,
+            )
+            if not replaced:
+                self._doc_tree_placeholder.Reparent(self.doc_splitter)
+        if self._doc_tree_placeholder:
+            self._doc_tree_placeholder.Show()
+            self._doc_tree_placeholder.Layout()
         self.doc_splitter.SetSashPosition(handle, True)
-        self.doc_tree_toggle.SetLabel(">>>")
-        self.doc_tree_toggle.SetToolTip(_("Show hierarchy"))
+        if hasattr(self.doc_splitter, "SetSashInvisible"):
+            self.doc_splitter.SetSashInvisible(True)
+        self._bind_doc_splitter_drag_veto()
+        self._doc_tree_collapsed = True
+        self._update_doc_tree_toggle_state()
+        self.doc_splitter.Layout()
         if update_config:
             self.config.set_doc_tree_saved_sash(self._doc_tree_saved_sash)
             self.config.set_doc_tree_collapsed(True)
@@ -336,16 +359,26 @@ class MainFrame(wx.Frame):
     def _expand_doc_tree(self, *, update_config: bool) -> None:
         """Restore the tree pane to its saved width."""
 
+        if self._doc_tree_placeholder and self.doc_splitter.GetWindow1() is self._doc_tree_placeholder:
+            self.doc_splitter.ReplaceWindow(
+                self._doc_tree_placeholder,
+                self.doc_tree_container,
+            )
+            self._doc_tree_placeholder.Hide()
         self.doc_tree_container.SetMinSize(wx.Size(-1, -1))
         self.doc_tree_label.Show()
         self.doc_tree.Show()
+        self.doc_tree_container.Show()
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
+        if hasattr(self.doc_splitter, "SetSashInvisible"):
+            self.doc_splitter.SetSashInvisible(False)
         width = self._desired_doc_tree_sash()
         self._doc_tree_collapsed = False
+        self._unbind_doc_splitter_drag_veto()
         self.doc_splitter.SetSashPosition(width, True)
-        self.doc_tree_toggle.SetLabel("<<<")
-        self.doc_tree_toggle.SetToolTip(_("Hide hierarchy"))
+        self._update_doc_tree_toggle_state()
         self.doc_tree_container.Layout()
+        self.doc_splitter.Layout()
         if update_config:
             self._doc_tree_saved_sash = width
             self.config.set_doc_tree_saved_sash(self._doc_tree_saved_sash)
@@ -354,8 +387,185 @@ class MainFrame(wx.Frame):
     def _collapsed_doc_tree_width(self) -> int:
         """Return minimal width required to display the toggle handle."""
 
-        margin = 8  # header padding (left/right = 4)
-        return self.doc_tree_toggle.GetBestSize().width + margin
+        width = self._doc_tree_placeholder_width
+        if width <= 0 and getattr(self, "doc_tree_toggle", None):
+            margin = self.doc_tree_toggle.FromDIP(8)
+            width = self.doc_tree_toggle.GetBestSize().width + margin
+        return max(width, self.FromDIP(24))
+
+    def _ensure_doc_tree_bitmaps(self, base: wx.Window) -> None:
+        """Create arrow bitmaps for the tree toggle if not yet available."""
+
+        if (
+            self._doc_tree_collapse_bitmap
+            and self._doc_tree_collapse_bitmap.IsOk()
+            and self._doc_tree_expand_bitmap
+            and self._doc_tree_expand_bitmap.IsOk()
+        ):
+            return
+        size = base.FromDIP(wx.Size(12, 12))
+        width = max(size.width, 12)
+        height = max(size.height, 12)
+        colour = base.GetForegroundColour()
+        if not colour.IsOk():
+            colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
+        self._doc_tree_collapse_bitmap = self._make_arrow_bitmap(
+            width,
+            height,
+            direction="left",
+            colour=colour,
+        )
+        self._doc_tree_expand_bitmap = self._make_arrow_bitmap(
+            width,
+            height,
+            direction="right",
+            colour=colour,
+        )
+
+    def _make_arrow_bitmap(
+        self,
+        width: int,
+        height: int,
+        *,
+        direction: str,
+        colour: wx.Colour,
+    ) -> wx.Bitmap:
+        """Render a minimalist arrow bitmap pointing ``direction``."""
+
+        width = max(width, 6)
+        height = max(height, 6)
+        bitmap = wx.Bitmap(width, height, 32)
+        dc = wx.MemoryDC()
+        dc.SelectObject(bitmap)
+        dc.SetBackground(wx.Brush(wx.Colour(0, 0, 0, 0)))
+        dc.Clear()
+        gc = wx.GraphicsContext.Create(dc)
+        if gc:
+            gc.SetBrush(wx.Brush(colour))
+            gc.SetPen(wx.Pen(colour))
+            margin = max(1.0, width * 0.35)
+            top = max(1.0, height * 0.2)
+            bottom = height - top
+            center = height / 2.0
+            if direction == "left":
+                points = [
+                    (width - margin, top),
+                    (margin, center),
+                    (width - margin, bottom),
+                ]
+            else:
+                points = [
+                    (margin, top),
+                    (width - margin, center),
+                    (margin, bottom),
+                ]
+            path = gc.CreatePath()
+            path.MoveToPoint(*points[0])
+            path.AddLineToPoint(*points[1])
+            path.AddLineToPoint(*points[2])
+            path.CloseSubpath()
+            gc.FillPath(path)
+        dc.SelectObject(wx.NullBitmap)
+        return bitmap
+
+    def _create_doc_tree_placeholder(self, parent: wx.SplitterWindow) -> wx.Panel:
+        """Build a narrow placeholder shown when the hierarchy pane is hidden."""
+
+        panel = wx.Panel(parent, style=wx.BORDER_NONE)
+        panel.Hide()
+        panel.SetBackgroundColour(parent.GetBackgroundColour())
+        panel.SetDoubleBuffered(True)
+        self._ensure_doc_tree_bitmaps(panel)
+        button = wx.BitmapButton(
+            panel,
+            style=wx.BU_EXACTFIT | wx.BORDER_NONE,
+        )
+        button.SetBackgroundColour(panel.GetBackgroundColour())
+        button.SetBitmap(self._doc_tree_expand_bitmap)
+        button.SetWindowVariant(wx.WINDOW_VARIANT_MINI)
+        button.SetToolTip(_("Show hierarchy"))
+        button.Bind(wx.EVT_BUTTON, self._on_doc_tree_placeholder_clicked)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.AddStretchSpacer()
+        sizer.Add(button, 0, wx.ALIGN_CENTER)
+        sizer.AddStretchSpacer()
+        panel.SetSizer(sizer)
+        panel.Layout()
+        width = button.GetBestSize().width + panel.FromDIP(8)
+        width = max(width, self._doc_tree_placeholder_width)
+        panel.SetMinSize(wx.Size(width, -1))
+        panel.SetMaxSize(wx.Size(width, -1))
+        self._doc_tree_placeholder_width = width
+        self._doc_tree_placeholder_button = button
+        return panel
+
+    def _on_doc_tree_placeholder_clicked(self, _event: wx.Event) -> None:
+        """Restore the hierarchy pane from the placeholder."""
+
+        self._expand_doc_tree(update_config=True)
+
+    def _bind_doc_splitter_drag_veto(self) -> None:
+        """Prevent the hierarchy splitter sash from being dragged when hidden."""
+
+        if self._doc_tree_sash_veto_bound:
+            return
+        self.doc_splitter.Bind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGING,
+            self._prevent_doc_splitter_drag,
+        )
+        self._doc_tree_sash_veto_bound = True
+
+    def _unbind_doc_splitter_drag_veto(self) -> None:
+        """Re-enable sash dragging once the hierarchy pane is visible."""
+
+        if not self._doc_tree_sash_veto_bound:
+            return
+        self.doc_splitter.Unbind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGING,
+            handler=self._prevent_doc_splitter_drag,
+        )
+        self._doc_tree_sash_veto_bound = False
+
+    def _prevent_doc_splitter_drag(self, event: wx.SplitterEvent) -> None:
+        """Veto sash movements while the hierarchy pane is collapsed."""
+
+        event.Veto()
+
+    def _update_doc_tree_toggle_state(self) -> None:
+        """Synchronize toggle bitmaps, tooltips, and state."""
+
+        if not getattr(self, "doc_tree_toggle", None):
+            return
+        self._ensure_doc_tree_bitmaps(self.doc_tree_toggle)
+        if self._doc_tree_collapsed:
+            self.doc_tree_toggle.SetValue(False)
+            if self._doc_tree_expand_bitmap and self._doc_tree_expand_bitmap.IsOk():
+                self.doc_tree_toggle.SetBitmap(self._doc_tree_expand_bitmap)
+            self.doc_tree_toggle.SetToolTip(_("Show hierarchy"))
+            if (
+                self._doc_tree_placeholder_button
+                and self._doc_tree_expand_bitmap
+                and self._doc_tree_expand_bitmap.IsOk()
+            ):
+                self._doc_tree_placeholder_button.SetBitmap(
+                    self._doc_tree_expand_bitmap,
+                )
+                self._doc_tree_placeholder_button.SetToolTip(_("Show hierarchy"))
+        else:
+            self.doc_tree_toggle.SetValue(True)
+            if self._doc_tree_collapse_bitmap and self._doc_tree_collapse_bitmap.IsOk():
+                self.doc_tree_toggle.SetBitmap(self._doc_tree_collapse_bitmap)
+            self.doc_tree_toggle.SetToolTip(_("Hide hierarchy"))
+            if (
+                self._doc_tree_placeholder_button
+                and self._doc_tree_expand_bitmap
+                and self._doc_tree_expand_bitmap.IsOk()
+            ):
+                self._doc_tree_placeholder_button.SetBitmap(
+                    self._doc_tree_expand_bitmap,
+                )
+                self._doc_tree_placeholder_button.SetToolTip(_("Show hierarchy"))
+        self.doc_tree_toggle.Refresh()
 
     def _desired_doc_tree_sash(self) -> int:
         """Clamp saved sash position to current splitter dimensions."""

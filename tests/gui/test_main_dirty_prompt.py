@@ -41,6 +41,40 @@ def test_confirm_discard_changes(monkeypatch, wx_app):
         frame.Destroy()
 
 
+def test_close_cancel_does_not_lock_shutdown(monkeypatch, wx_app):
+    pytest.importorskip("wx")
+
+    import wx
+
+    import app.ui.main_frame as main_frame_mod
+
+    frame = main_frame_mod.MainFrame(None)
+    try:
+        frame.editor.fields["title"].ChangeValue("Dirty")
+        assert frame.editor.is_dirty() is True
+
+        def reject(_message: str) -> bool:
+            return False
+
+        monkeypatch.setattr(main_frame_mod, "confirm", reject)
+
+        event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW, frame.GetId())
+        event.SetEventObject(frame)
+        if hasattr(event, "SetCanVeto"):
+            event.SetCanVeto(True)
+
+        frame._on_close(event)
+
+        if hasattr(event, "GetVeto"):
+            assert event.GetVeto() is True
+        assert frame._shutdown_in_progress is False
+        assert frame.editor.is_dirty() is True
+    finally:
+        if not frame.IsBeingDeleted():
+            frame.Destroy()
+        wx_app.Yield()
+
+
 def test_confirm_discard_changes_reload_from_model(monkeypatch, wx_app):
     pytest.importorskip("wx")
 

@@ -1785,7 +1785,6 @@ class MainFrame(wx.Frame):
                 event.Skip()
             return
 
-        self._shutdown_in_progress = True
         event_type = type(event).__name__ if event is not None else "<none>"
         can_veto = False
         if event is not None and hasattr(event, "CanVeto"):
@@ -1807,6 +1806,7 @@ class MainFrame(wx.Frame):
             if event is not None and hasattr(event, "Veto") and can_veto:
                 event.Veto()
             return
+        self._shutdown_in_progress = True
         logger.info("Proceeding with shutdown sequence")
         logger.info("Shutdown step: saving layout")
         try:

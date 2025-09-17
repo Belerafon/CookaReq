@@ -29,29 +29,31 @@ def validate_item_links(
     if links is None:
         return
     if not isinstance(links, list):
-        raise ValidationError("links must be a list")
-    for entry in links:
+        raise ValidationError("links: must be a list")
+    for index, entry in enumerate(links):
         try:
             link = Link.from_raw(entry)
         except TypeError as exc:
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(f"links[{index}]: {exc}") from exc
         except ValueError as exc:
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(f"links[{index}]: {exc}") from exc
         rid = link.rid
         try:
             prefix, item_id = parse_rid(rid)
         except ValueError as exc:
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError(f"links[{index}].rid: {exc}") from exc
         if rid == rid_self:
-            raise ValidationError("link references self")
+            raise ValidationError(f"links[{index}]: link references self")
         target_doc = docs.get(prefix)
         if target_doc is None:
-            raise ValidationError(f"unknown document prefix: {prefix}")
+            raise ValidationError(
+                f"links[{index}].rid: unknown document prefix: {prefix}"
+            )
         if not is_ancestor(doc.prefix, prefix, docs):
-            raise ValidationError(f"invalid link target: {rid}")
+            raise ValidationError(f"links[{index}].rid: invalid link target: {rid}")
         path = locate_item_path(root / prefix, target_doc, item_id)
         if not path.exists():
-            raise ValidationError(f"linked item not found: {rid}")
+            raise ValidationError(f"links[{index}].rid: linked item not found: {rid}")
 
 
 def iter_links(root: str | Path) -> Iterable[tuple[str, str]]:

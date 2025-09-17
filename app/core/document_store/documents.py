@@ -103,6 +103,8 @@ def is_ancestor(
 ) -> bool:
     """Return ``True`` if ``ancestor_prefix`` is an ancestor of ``child_prefix``."""
 
+    if child_prefix == ancestor_prefix:
+        return True
     current = docs.get(child_prefix)
     while current and current.parent:
         if current.parent == ancestor_prefix:

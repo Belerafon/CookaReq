@@ -11,12 +11,13 @@ import wx
 from ..agent import LocalAgent
 from ..config import ConfigManager
 from ..confirm import confirm
-from ..core.model import Requirement
+from ..core.model import Link, Requirement, requirement_fingerprint
 from ..core.document_store import (
     Document,
     LabelDef,
     RequirementIDCollisionError,
     ValidationError,
+    rid_for,
     save_document,
 )
 from ..i18n import _
@@ -28,6 +29,7 @@ from .controllers import DocumentsController
 from .document_dialog import DocumentPropertiesDialog
 from .document_tree import DocumentTree
 from .detached_editor import DetachedEditorFrame
+from .error_dialog import show_error_dialog
 from .editor_panel import EditorPanel
 from .labels_dialog import LabelsDialog
 from .list_panel import ListPanel
@@ -1261,7 +1263,7 @@ class MainFrame(wx.Frame):
         except RequirementIDCollisionError:
             return None
         except Exception as exc:  # pragma: no cover - GUI event
-            wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
+            show_error_dialog(self, str(exc), title=_("Error"))
             return None
         requirement = editor_panel.get_data()
         requirement.doc_prefix = prefix or requirement.doc_prefix
@@ -1598,20 +1600,50 @@ class MainFrame(wx.Frame):
         else:
             self._open_detached_editor(clone)
 
-    def _create_linked_copy(self, source: Requirement) -> Requirement:
+    def _create_linked_copy(self, source: Requirement) -> tuple[Requirement, str]:
         if not (self.docs_controller and self.current_doc_prefix):
             raise RuntimeError("Documents controller not initialized")
+        doc = self.docs_controller.documents.get(self.current_doc_prefix)
+        if doc is None:
+            raise RuntimeError("Document not loaded")
+
         new_id = self.docs_controller.next_item_id(self.current_doc_prefix)
-        parent_rid = source.rid or str(source.id)
+        parent_rid = (getattr(source, "rid", "") or "").strip()
+        if not parent_rid:
+            parent_rid = rid_for(doc, source.id)
+
+        existing_links: list[Link] = []
+        for entry in getattr(source, "links", []):
+            if isinstance(entry, Link):
+                existing_links.append(
+                    Link(rid=entry.rid, fingerprint=entry.fingerprint, suspect=entry.suspect)
+                )
+                continue
+            try:
+                existing_links.append(Link.from_raw(entry))
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Ignoring invalid link %r while deriving requirement %s",
+                    entry,
+                    getattr(source, "rid", source.id),
+                )
+
+        parent_link = Link(
+            rid=parent_rid,
+            fingerprint=requirement_fingerprint(source),
+            suspect=False,
+        )
+        new_links = [*existing_links, parent_link]
+
         clone = replace(
             source,
             id=new_id,
             title=f"{_('(Derived)')} {source.title}".strip(),
             modified_at="",
             revision=1,
-            links=[*getattr(source, "links", []), parent_rid],
+            links=new_links,
         )
-        return clone
+        return clone, parent_rid
 
     def on_derive_requirement(self, req_id: int) -> None:
         """Create a requirement derived from ``req_id`` and open it."""
@@ -1621,9 +1653,9 @@ class MainFrame(wx.Frame):
         source = self.model.get_by_id(req_id)
         if not source:
             return
-        clone = self._create_linked_copy(source)
+        clone, parent_rid = self._create_linked_copy(source)
         self.docs_controller.add_requirement(self.current_doc_prefix, clone)
-        self.panel.record_link(source.rid or str(source.id), clone.id)
+        self.panel.record_link(parent_rid, clone.id)
         self._selected_requirement_id = clone.id
         self.panel.refresh(select_id=clone.id)
         self.editor.load(clone, path=None, mtime=None)

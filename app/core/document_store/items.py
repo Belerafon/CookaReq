@@ -19,12 +19,13 @@ from ..search import filter_by_labels, filter_by_status, search
 from . import (
     Document,
     DocumentNotFoundError,
+    RequirementIDCollisionError,
     RequirementNotFoundError,
     RequirementPage,
     RevisionMismatchError,
     ValidationError,
 )
-from .documents import load_documents, validate_labels
+from .documents import is_ancestor, load_documents, validate_labels
 
 RID_RE = re.compile(r"^([A-Z][A-Z0-9_]*?)(\d+)$")
 READ_ONLY_PATCH_FIELDS = {"id", "links"}
@@ -424,6 +425,113 @@ def patch_requirement(
     req = requirement_from_dict(updated, doc_prefix=prefix, rid=rid)
     _update_link_suspicions(root_path, docs_map, req)
     save_item(directory, doc, requirement_to_dict(req))
+    return req
+
+
+def move_requirement(
+    root: str | Path,
+    rid: str,
+    *,
+    new_prefix: str,
+    payload: Mapping[str, Any] | None = None,
+    expected_revision: int | None = None,
+    docs: Mapping[str, Document] | None = None,
+) -> Requirement:
+    """Relocate requirement ``rid`` under ``new_prefix`` keeping referential integrity."""
+
+    root_path = Path(root)
+    docs_map = _ensure_documents(root_path, docs)
+    prefix, item_id, src_doc, src_directory, data = _resolve_requirement(
+        root_path, rid, docs_map
+    )
+    if new_prefix == prefix:
+        raise ValidationError("requirement already belongs to the specified document")
+
+    try:
+        current_revision = int(data.get("revision", 1))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("revision must be an integer") from exc
+    if current_revision <= 0:
+        raise ValidationError("revision must be positive")
+    if expected_revision is not None and current_revision != expected_revision:
+        raise RevisionMismatchError(expected_revision, current_revision)
+
+    dst_doc = docs_map.get(new_prefix)
+    if dst_doc is None:
+        raise DocumentNotFoundError(new_prefix)
+
+    dst_dir = root_path / new_prefix
+    new_id = next_item_id(dst_dir, dst_doc)
+    new_rid = rid_for(dst_doc, new_id)
+    dst_path = locate_item_path(dst_dir, dst_doc, new_id)
+    if dst_path.exists():
+        raise RequirementIDCollisionError(new_prefix, new_id, rid=new_rid)
+
+    updated_payload = dict(data)
+    if payload is not None:
+        updated_payload.update(payload)
+    updated_payload["id"] = new_id
+    if "revision" not in updated_payload or updated_payload["revision"] in (None, ""):
+        updated_payload["revision"] = current_revision
+
+    labels = _normalize_labels(updated_payload.get("labels"))
+    err = validate_labels(new_prefix, labels, docs_map)
+    if err:
+        raise ValidationError(err)
+    updated_payload["labels"] = labels
+
+    referencing_updates: list[tuple[Path, Document, dict[str, Any]]] = []
+    for pfx, doc in docs_map.items():
+        dir_path = root_path / pfx
+        for other_id in list_item_ids(dir_path, doc):
+            if pfx == prefix and other_id == item_id:
+                continue
+            item_data, _ = load_item(dir_path, doc, other_id)
+            links = item_data.get("links")
+            if not isinstance(links, list):
+                continue
+            changed = False
+            new_links: list[dict[str, Any]] = []
+            for entry in links:
+                try:
+                    link = Link.from_raw(entry)
+                except (TypeError, ValueError):  # pragma: no cover - defensive
+                    new_links.append(entry)
+                    continue
+                if link.rid == rid:
+                    if not is_ancestor(doc.prefix, new_prefix, docs_map):
+                        raise ValidationError(
+                            (
+                                "cannot move {rid}: link from {child} would violate "
+                                "document hierarchy"
+                            ).format(rid=rid, child=rid_for(doc, other_id))
+                        )
+                    link.rid = new_rid
+                    link.fingerprint = None
+                    link.suspect = False
+                    changed = True
+                new_links.append(link.to_dict())
+            if changed:
+                updated = dict(item_data)
+                updated["links"] = new_links
+                referencing_updates.append((dir_path, doc, updated))
+
+    req = requirement_from_dict(updated_payload, doc_prefix=new_prefix, rid=new_rid)
+    _update_link_suspicions(root_path, docs_map, req)
+    save_item(dst_dir, dst_doc, requirement_to_dict(req))
+
+    for directory, doc, item_payload in referencing_updates:
+        save_item(directory, doc, item_payload)
+
+    src_path = locate_item_path(src_directory, src_doc, item_id)
+    try:
+        src_path.unlink()
+    except FileNotFoundError:  # pragma: no cover - defensive
+        pass
+    legacy_path = item_path(src_directory, src_doc, item_id)
+    if legacy_path != src_path and legacy_path.exists():
+        legacy_path.unlink()
+
     return req
 
 

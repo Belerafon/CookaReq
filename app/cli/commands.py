@@ -16,22 +16,23 @@ from app.confirm import confirm
 from app.core.document_store import (
     Document,
     DocumentNotFoundError,
+    RequirementIDCollisionError,
+    RequirementNotFoundError,
+    RevisionMismatchError,
     ValidationError,
     create_requirement,
     delete_document,
     delete_item,
+    get_requirement,
     is_ancestor,
     iter_links,
-    item_path,
     load_document,
     load_documents,
     load_item,
-    locate_item_path,
-    next_item_id,
+    move_requirement,
     parse_rid,
     plan_delete_document,
     plan_delete_item,
-    rid_for,
     save_document,
     save_item,
     validate_labels,
@@ -426,11 +427,11 @@ def cmd_item_edit(args: argparse.Namespace) -> None:
 def cmd_item_move(args: argparse.Namespace) -> None:
     """Move existing item ``rid`` to document ``new_prefix``."""
 
-    prefix, item_id = parse_rid(args.rid)
-    src_dir = Path(args.directory) / prefix
-    src_doc = load_document(src_dir)
-    data, _mtime = load_item(src_dir, src_doc, item_id)
-    src_path = locate_item_path(src_dir, src_doc, item_id)
+    try:
+        current = get_requirement(args.directory, args.rid)
+    except RequirementNotFoundError:
+        sys.stdout.write(_("requirement not found: {rid}\n").format(rid=args.rid))
+        return
 
     template: Mapping[str, Any] = {}
     data_path = getattr(args, "data", None)
@@ -438,7 +439,7 @@ def cmd_item_move(args: argparse.Namespace) -> None:
         with open(data_path, encoding="utf-8") as fh:
             template = json.load(fh)
 
-    base_payload: dict[str, Any] = dict(data)
+    base_payload: dict[str, Any] = requirement_to_dict(current)
     base_payload.update(template)
 
     try:
@@ -447,36 +448,33 @@ def cmd_item_move(args: argparse.Namespace) -> None:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
         return
 
-    docs = load_documents(args.directory)
-    dst_doc = docs.get(args.new_prefix)
-    if dst_doc is None:
+    try:
+        moved = move_requirement(
+            args.directory,
+            args.rid,
+            new_prefix=args.new_prefix,
+            payload=payload,
+            expected_revision=current.revision,
+        )
+    except DocumentNotFoundError:
         sys.stdout.write(
             _("unknown document prefix: {prefix}\n").format(prefix=args.new_prefix)
         )
         return
-
-    labels = list(payload.get("labels", []))
-    err = validate_labels(args.new_prefix, labels, docs)
-    if err:
-        sys.stdout.write(_("{msg}\n").format(msg=err))
+    except RequirementNotFoundError:
+        sys.stdout.write(_("requirement not found: {rid}\n").format(rid=args.rid))
         return
-    payload["labels"] = labels
+    except RequirementIDCollisionError as exc:
+        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
+        return
+    except RevisionMismatchError as exc:
+        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
+        return
+    except ValidationError as exc:
+        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
+        return
 
-    dst_dir = Path(args.directory) / args.new_prefix
-    new_id = next_item_id(dst_dir, dst_doc)
-    payload["id"] = new_id
-    if "revision" not in payload and "revision" in data:
-        payload["revision"] = data["revision"]
-
-    req = requirement_from_dict(
-        payload, doc_prefix=args.new_prefix, rid=rid_for(dst_doc, new_id)
-    )
-    save_item(dst_dir, dst_doc, requirement_to_dict(req))
-    src_path.unlink()
-    alt_path = item_path(src_dir, src_doc, item_id)
-    if alt_path != src_path and alt_path.exists():
-        alt_path.unlink()
-    sys.stdout.write(f"{req.rid}\n")
+    sys.stdout.write(f"{moved.rid}\n")
 
 
 def cmd_item_delete(args: argparse.Namespace) -> None:

@@ -13,10 +13,12 @@ from app.core.document_store.items import (
     delete_requirement,
     get_requirement,
     item_path,
+    move_requirement,
     parse_rid,
     patch_requirement,
     rid_for,
 )
+from app.core.model import requirement_fingerprint
 
 pytestmark = pytest.mark.unit
 
@@ -90,3 +92,57 @@ def test_create_patch_and_delete_requirement(tmp_path: Path, _document: Document
     )
     assert deleted == created.rid
     assert not item_path(tmp_path / "SYS", _document, 1).exists()
+
+
+def test_move_requirement_updates_links(tmp_path: Path) -> None:
+    sys_doc = Document(
+        prefix="SYS",
+        title="System",
+        digits=3,
+        labels=DocumentLabels(allow_freeform=True),
+    )
+    hlr_doc = Document(
+        prefix="HLR",
+        title="High level",
+        digits=2,
+        parent="SYS",
+        labels=DocumentLabels(allow_freeform=True),
+    )
+    llr_doc = Document(
+        prefix="LLR",
+        title="Low level",
+        digits=2,
+        parent="HLR",
+        labels=DocumentLabels(allow_freeform=True),
+    )
+    save_document(tmp_path / "SYS", sys_doc)
+    save_document(tmp_path / "HLR", hlr_doc)
+    save_document(tmp_path / "LLR", llr_doc)
+
+    docs = load_documents(tmp_path)
+
+    parent = create_requirement(tmp_path, prefix="SYS", data=_base_payload(), docs=docs)
+    child = create_requirement(
+        tmp_path,
+        prefix="LLR",
+        data={**_base_payload(), "title": "Child", "links": [parent.rid]},
+        docs=docs,
+    )
+
+    moved = move_requirement(
+        tmp_path,
+        parent.rid,
+        new_prefix="HLR",
+        expected_revision=parent.revision,
+        docs=docs,
+    )
+
+    assert moved.rid == "HLR01"
+    assert moved.revision == parent.revision
+    assert not item_path(tmp_path / "SYS", sys_doc, parent.id).exists()
+    assert item_path(tmp_path / "HLR", hlr_doc, moved.id).is_file()
+
+    updated_child = get_requirement(tmp_path, child.rid, docs=docs)
+    assert [link.rid for link in updated_child.links] == [moved.rid]
+    assert all(not link.suspect for link in updated_child.links)
+    assert updated_child.links[0].fingerprint == requirement_fingerprint(moved)

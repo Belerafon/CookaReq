@@ -49,15 +49,6 @@ def load_document(directory: str | Path) -> Document:
         allow_freeform=labels_data.get("allowFreeform", False),
         defs=defs,
     )
-    digits_raw = data.get("digits")
-    if digits_raw not in (None, ""):
-        try:
-            digits_value = int(digits_raw)
-        except (TypeError, ValueError) as exc:
-            raise ValidationError("digits must be an integer") from exc
-        if digits_value <= 0:
-            raise ValidationError("digits must be positive")
-
     return Document(
         prefix=prefix,
         title=data.get("title", prefix),

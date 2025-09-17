@@ -99,6 +99,7 @@ class AgentChatPanel(wx.Panel):
         self._start_time: float | None = None
         self._current_tokens: int = 0
         self._clear_history_btn: wx.Button | None = None
+        self._bottom_panel: wx.Panel | None = None
         self.transcript = _TranscriptAccessor()
         self._load_history()
 
@@ -125,6 +126,7 @@ class AgentChatPanel(wx.Panel):
 
         top_panel = wx.Panel(self._vertical_splitter)
         bottom_panel = wx.Panel(self._vertical_splitter)
+        self._bottom_panel = bottom_panel
 
         self._horizontal_splitter = wx.SplitterWindow(top_panel, style=splitter_style)
         style_splitter(self._horizontal_splitter)
@@ -196,13 +198,13 @@ class AgentChatPanel(wx.Panel):
         status_sizer.Add(self.status_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         bottom_sizer.Add(input_label, 0, wx.LEFT | wx.RIGHT | wx.TOP, 5)
-        bottom_sizer.Add(self.input, 0, wx.EXPAND | wx.ALL, 5)
+        bottom_sizer.Add(self.input, 1, wx.EXPAND | wx.ALL, 5)
         bottom_sizer.Add(buttons, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
         bottom_sizer.Add(status_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
         bottom_panel.SetSizer(bottom_sizer)
 
         self._vertical_splitter.SplitHorizontally(top_panel, bottom_panel)
-        self._vertical_splitter.SetSashGravity(0.0)
+        self._vertical_splitter.SetSashGravity(1.0)
 
         outer.Add(self._vertical_splitter, 1, wx.EXPAND)
 
@@ -210,6 +212,7 @@ class AgentChatPanel(wx.Panel):
         refresh_splitter_highlight(self._horizontal_splitter)
         refresh_splitter_highlight(self._vertical_splitter)
         self._refresh_history_list()
+        wx.CallAfter(self._adjust_vertical_splitter)
 
     # ------------------------------------------------------------------
     def _on_send(self, _event: wx.Event) -> None:
@@ -314,6 +317,19 @@ class AgentChatPanel(wx.Panel):
             self.status_label.SetLabel(_("Ready"))
             self._start_time = None
             self.input.SetFocus()
+
+    def _adjust_vertical_splitter(self) -> None:
+        """Size the vertical splitter so the bottom pane hugs the controls."""
+
+        if self._bottom_panel is None:
+            return
+        total_height = self._vertical_splitter.GetClientSize().GetHeight()
+        if total_height <= 0:
+            return
+        bottom_height = self._bottom_panel.GetBestSize().GetHeight()
+        min_top = self._vertical_splitter.GetMinimumPaneSize()
+        sash_position = max(min_top, total_height - bottom_height)
+        self._vertical_splitter.SetSashPosition(sash_position, True)
 
     def _on_timer(self, _event: wx.TimerEvent) -> None:
         """Refresh elapsed time display while waiting for response."""

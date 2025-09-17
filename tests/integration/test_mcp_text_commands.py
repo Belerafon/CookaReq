@@ -63,7 +63,7 @@ def test_run_command_error_logs(tmp_path: Path, monkeypatch, mcp_server) -> None
     # Мокаем OpenAI, чтобы исключить внешние вызовы.
     monkeypatch.setattr(
         "openai.OpenAI",
-        make_openai_mock({"get requirement SYS001": ("get_requirement", {"rid": "SYS001"})}),
+        make_openai_mock({"get requirement SYS1": ("get_requirement", {"rid": "SYS1"})}),
     )
     client = LocalAgent(settings=settings, confirm=lambda _m: True)
     log_file = tmp_path / "err.jsonl"
@@ -72,7 +72,7 @@ def test_run_command_error_logs(tmp_path: Path, monkeypatch, mcp_server) -> None
     prev_level = logger.level
     logger.setLevel(logging.INFO)
     try:
-        result = client.run_command("get requirement SYS001")
+        result = client.run_command("get requirement SYS1")
     finally:
         logger.setLevel(prev_level)
         logger.removeHandler(handler)

@@ -180,7 +180,6 @@ class DocumentsController:
         prefix: str,
         title: str,
         *,
-        digits: int = 3,
         parent: str | None = None,
     ) -> Document:
         """Create a new document and persist it to disk."""
@@ -190,8 +189,6 @@ class DocumentsController:
             raise ValueError("prefix cannot be empty")
         if not self._PREFIX_RE.match(prefix):
             raise ValueError("prefix must start with a capital letter and contain only A-Z, 0-9 or underscore")
-        if digits <= 0:
-            raise ValueError("digits must be positive")
         if prefix in self.documents:
             raise ValueError(f"document already exists: {prefix}")
         if parent:
@@ -203,7 +200,6 @@ class DocumentsController:
         doc = Document(
             prefix=prefix,
             title=title or prefix,
-            digits=digits,
             parent=parent or None,
         )
         save_document(self.root / prefix, doc)
@@ -215,7 +211,6 @@ class DocumentsController:
         prefix: str,
         *,
         title: str | None = None,
-        digits: int | None = None,
     ) -> Document:
         """Update metadata of document ``prefix``."""
 
@@ -225,11 +220,6 @@ class DocumentsController:
         updated = False
         if title is not None:
             doc.title = title
-            updated = True
-        if digits is not None:
-            if digits <= 0:
-                raise ValueError("digits must be positive")
-            doc.digits = digits
             updated = True
         if not updated:
             return doc

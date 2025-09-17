@@ -38,8 +38,8 @@ def _requirement(req_id: int) -> Requirement:
 
 
 def test_validate_and_link(tmp_path: Path) -> None:
-    sys_doc = Document(prefix="SYS", title="System", digits=3)
-    hlr_doc = Document(prefix="HLR", title="High level", digits=2, parent="SYS")
+    sys_doc = Document(prefix="SYS", title="System")
+    hlr_doc = Document(prefix="HLR", title="High level", parent="SYS")
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
 
@@ -54,21 +54,21 @@ def test_validate_and_link(tmp_path: Path) -> None:
         validate_item_links(
             tmp_path,
             hlr_doc,
-            {"id": 1, "title": "H", "statement": "", "links": ["HLR01"]},
+            {"id": 1, "title": "H", "statement": "", "links": ["HLR1"]},
             docs,
         )
 
     linked = link_requirements(
         tmp_path,
-        source_rid="SYS001",
-        derived_rid="HLR01",
+        source_rid="SYS1",
+        derived_rid="HLR1",
         link_type="parent",
         expected_revision=1,
         docs=docs,
     )
     assert len(linked.links) == 1
     link_obj = linked.links[0]
-    assert link_obj.rid == "SYS001"
+    assert link_obj.rid == "SYS1"
     assert link_obj.suspect is False
     assert isinstance(link_obj.fingerprint, str) and link_obj.fingerprint
     assert linked.revision == 1
@@ -76,21 +76,21 @@ def test_validate_and_link(tmp_path: Path) -> None:
     data, _ = load_item(tmp_path / "HLR", hlr_doc, 1)
     parent_data, _ = load_item(tmp_path / "SYS", sys_doc, 1)
     expected_fp = requirement_fingerprint(parent_data)
-    assert data["links"] == [{"rid": "SYS001", "fingerprint": expected_fp}]
+    assert data["links"] == [{"rid": "SYS1", "fingerprint": expected_fp}]
 
-    exists, references = plan_delete_item(tmp_path, "SYS001", docs)
+    exists, references = plan_delete_item(tmp_path, "SYS1", docs)
     assert exists is True
-    assert references == ["HLR01"]
+    assert references == ["HLR1"]
 
     doc_prefixes, item_ids = plan_delete_document(tmp_path, "SYS", docs)
     assert set(doc_prefixes) == {"SYS", "HLR"}
-    assert set(item_ids) == {"SYS001", "HLR01"}
+    assert set(item_ids) == {"SYS1", "HLR1"}
 
     with pytest.raises(ValidationError):
         link_requirements(
             tmp_path,
-            source_rid="SYS001",
-            derived_rid="HLR01",
+            source_rid="SYS1",
+            derived_rid="HLR1",
             link_type="child",
             expected_revision=1,
             docs=docs,
@@ -98,8 +98,8 @@ def test_validate_and_link(tmp_path: Path) -> None:
 
 
 def test_link_becomes_suspect_after_parent_change(tmp_path: Path) -> None:
-    sys_doc = Document(prefix="SYS", title="System", digits=3)
-    hlr_doc = Document(prefix="HLR", title="High", digits=2, parent="SYS")
+    sys_doc = Document(prefix="SYS", title="System")
+    hlr_doc = Document(prefix="HLR", title="High", parent="SYS")
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
 
@@ -110,8 +110,8 @@ def test_link_becomes_suspect_after_parent_change(tmp_path: Path) -> None:
     docs = load_documents(tmp_path)
     linked = link_requirements(
         tmp_path,
-        source_rid="SYS001",
-        derived_rid="HLR02",
+        source_rid="SYS1",
+        derived_rid="HLR2",
         link_type="parent",
         expected_revision=1,
         docs=docs,
@@ -127,7 +127,7 @@ def test_link_becomes_suspect_after_parent_change(tmp_path: Path) -> None:
     assert new_fp != stored_fp
     save_item(tmp_path / "SYS", sys_doc, parent_data)
 
-    updated = get_requirement(tmp_path, "HLR02", docs=docs)
+    updated = get_requirement(tmp_path, "HLR2", docs=docs)
     link_obj = updated.links[0]
     assert link_obj.suspect is True
     assert link_obj.fingerprint == stored_fp

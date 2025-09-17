@@ -1,6 +1,5 @@
 {
   "title": "Low-Level Requirements",
-  "digits": 3,
   "parent": "HLR",
   "labels": {
     "allowFreeform": true,

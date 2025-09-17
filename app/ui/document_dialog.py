@@ -8,6 +8,7 @@ import re
 import wx
 
 from ..i18n import _
+from .helpers import make_help_button
 
 
 PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -19,7 +20,24 @@ class DocumentProperties:
 
     prefix: str
     title: str
-    digits: int
+
+
+FIELD_HELP = {
+    "prefix": _(
+        "Short uppercase prefix placed at the beginning of every requirement identifier (for example SYS1)."
+        " It is also used for the document directory name. Identifiers are numbered sequentially without leading zeros"
+        " (SYS1, SYS2, …). The prefix must start with a capital letter and may contain only ASCII letters, digits or"
+        " underscores."
+    ),
+    "title": _(
+        "Human-friendly document name shown in the navigation tree, window titles and exports."
+        " When left empty the title defaults to the prefix."
+    ),
+    "parent": _(
+        "Parent document that determines where this entry sits in the hierarchy. The top level is shown as '(top-level)'."
+        " The parent is chosen automatically when creating a child document and cannot be edited from this dialog."
+    ),
+}
 
 
 class DocumentPropertiesDialog(wx.Dialog):
@@ -32,7 +50,6 @@ class DocumentPropertiesDialog(wx.Dialog):
         mode: str,
         prefix: str = "",
         title: str = "",
-        digits: int = 3,
         parent_prefix: str | None = None,
     ) -> None:
         if mode not in {"create", "rename"}:
@@ -42,7 +59,7 @@ class DocumentPropertiesDialog(wx.Dialog):
         self._mode = mode
         self._result: DocumentProperties | None = None
         main_sizer = wx.BoxSizer(wx.VERTICAL)
-        grid = wx.FlexGridSizer(0, 2, 5, 5)
+        grid = wx.FlexGridSizer(0, 3, 5, 5)
         grid.AddGrowableCol(1, 1)
 
         prefix_label = wx.StaticText(self, label=_("Prefix"))
@@ -51,25 +68,34 @@ class DocumentPropertiesDialog(wx.Dialog):
         if mode == "rename":
             self.prefix_ctrl.Enable(False)
         grid.Add(self.prefix_ctrl, 1, wx.EXPAND)
+        grid.Add(
+            make_help_button(self, FIELD_HELP["prefix"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
 
         title_label = wx.StaticText(self, label=_("Title"))
         grid.Add(title_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.title_ctrl = wx.TextCtrl(self, value=title)
         grid.Add(self.title_ctrl, 1, wx.EXPAND)
-
-        digits_label = wx.StaticText(self, label=_("Digits"))
-        grid.Add(digits_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        max_digits = digits if digits > 0 else 1
-        max_digits = max(9, max_digits)
-        self.digits_ctrl = wx.SpinCtrl(
-            self, min=1, max=max_digits, initial=max(digits, 1)
+        grid.Add(
+            make_help_button(self, FIELD_HELP["title"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
         )
-        grid.Add(self.digits_ctrl, 1, wx.EXPAND)
 
         parent_label = wx.StaticText(self, label=_("Parent"))
         grid.Add(parent_label, 0, wx.ALIGN_CENTER_VERTICAL)
         parent_value = parent_prefix or _("(top-level)")
         grid.Add(wx.StaticText(self, label=parent_value), 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(
+            make_help_button(self, FIELD_HELP["parent"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
 
         main_sizer.Add(grid, 0, wx.ALL | wx.EXPAND, 10)
 
@@ -78,7 +104,7 @@ class DocumentPropertiesDialog(wx.Dialog):
             main_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 10)
 
         self.SetSizer(main_sizer)
-        self.SetMinSize((320, 200))
+        self.SetMinSize((320, 180))
         if mode == "create":
             self.prefix_ctrl.SetFocus()
         else:
@@ -88,7 +114,6 @@ class DocumentPropertiesDialog(wx.Dialog):
     def _on_ok(self, event: wx.CommandEvent) -> None:
         prefix = self.prefix_ctrl.GetValue().strip()
         title = self.title_ctrl.GetValue().strip()
-        digits = int(self.digits_ctrl.GetValue())
         if self._mode == "create":
             if not prefix:
                 wx.MessageBox(_("Document prefix is required."), _("Error"), wx.ICON_ERROR)
@@ -102,13 +127,9 @@ class DocumentPropertiesDialog(wx.Dialog):
                 )
                 self.prefix_ctrl.SetFocus()
                 return
-        if digits <= 0:
-            wx.MessageBox(_("Digits must be positive."), _("Error"), wx.ICON_ERROR)
-            self.digits_ctrl.SetFocus()
-            return
         if not title:
             title = prefix
-        self._result = DocumentProperties(prefix=prefix, title=title, digits=digits)
+        self._result = DocumentProperties(prefix=prefix, title=title)
         self.EndModal(wx.ID_OK)
 
     def get_properties(self) -> DocumentProperties | None:

@@ -38,7 +38,7 @@ def _make_requirement(req_id: int) -> Requirement:
 
 def test_editor_save_rejects_duplicate_id(monkeypatch, wx_app, tmp_path: Path) -> None:
     wx = pytest.importorskip("wx")
-    doc = Document(prefix="SYS", title="System", digits=3)
+    doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
     save_item(doc_dir, doc, requirement_to_dict(_make_requirement(1)))

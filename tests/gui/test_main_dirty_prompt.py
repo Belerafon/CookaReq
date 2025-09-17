@@ -51,8 +51,8 @@ def test_document_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path):
 
     frame = main_frame_mod.MainFrame(None)
     try:
-        doc_a = Document(prefix="DOC", title="Doc", digits=3)
-        doc_b = Document(prefix="FEA", title="Feature", digits=3)
+        doc_a = Document(prefix="DOC", title="Doc")
+        doc_b = Document(prefix="FEA", title="Feature")
         docs = {"DOC": doc_a, "FEA": doc_b}
         frame.doc_tree.set_documents(docs)
 
@@ -123,7 +123,7 @@ def test_requirement_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path
 
     frame = main_frame_mod.MainFrame(None)
     try:
-        doc = Document(prefix="DOC", title="Doc", digits=3)
+        doc = Document(prefix="DOC", title="Doc")
         docs = {"DOC": doc}
         frame.doc_tree.set_documents(docs)
 

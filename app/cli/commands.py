@@ -289,7 +289,6 @@ def cmd_doc_create(args: argparse.Namespace) -> None:
     doc = Document(
         prefix=args.prefix,
         title=args.title,
-        digits=args.digits,
         parent=args.parent,
     )
     save_document(Path(args.directory) / args.prefix, doc)
@@ -346,7 +345,6 @@ def add_doc_arguments(p: argparse.ArgumentParser) -> None:
     create.add_argument("directory", help=_("requirements root"))
     create.add_argument("prefix", help=_("document prefix"))
     create.add_argument("title", help=_("document title"))
-    create.add_argument("--digits", type=int, default=3, help=_("numeric width"))
     create.add_argument("--parent", help=_("parent document prefix"))
     create.set_defaults(func=cmd_doc_create)
 

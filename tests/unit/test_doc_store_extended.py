@@ -17,7 +17,7 @@ pytestmark = pytest.mark.unit
 
 
 def test_save_and_load_extended_fields(tmp_path: Path):
-    doc = Document(prefix="SYS", title="System", digits=3)
+    doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
     req = Requirement(

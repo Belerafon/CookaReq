@@ -17,7 +17,7 @@ def test_links_list_becomes_visible(wx_app, monkeypatch):
         called["called"] = True
 
     monkeypatch.setattr(panel, "FitInside", fake_fitinside)
-    panel.links_id.SetValue("SYS001")
+    panel.links_id.SetValue("SYS1")
     panel._on_add_link_generic("links")
 
     assert panel.links_list.IsShown()

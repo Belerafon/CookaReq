@@ -937,7 +937,7 @@ def test_context_edit_saves_to_disk(monkeypatch, tmp_path):
     ).DocumentsController
     list_panel_cls = list_panel_module.ListPanel
 
-    doc = Document(prefix="SYS", title="System", digits=3)
+    doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
     original = _req(1, "Base", owner="alice")

@@ -1076,7 +1076,6 @@ class MainFrame(wx.Frame):
             doc = self.docs_controller.create_document(
                 props.prefix,
                 props.title,
-                digits=props.digits,
                 parent=parent_prefix,
             )
         except ValueError as exc:
@@ -1098,7 +1097,6 @@ class MainFrame(wx.Frame):
             mode="rename",
             prefix=doc.prefix,
             title=doc.title,
-            digits=doc.digits,
             parent_prefix=doc.parent,
         )
         props = None
@@ -1114,7 +1112,6 @@ class MainFrame(wx.Frame):
             self.docs_controller.rename_document(
                 prefix,
                 title=props.title,
-                digits=props.digits,
             )
         except ValueError as exc:
             wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)

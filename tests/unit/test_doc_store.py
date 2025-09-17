@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -26,19 +27,19 @@ pytestmark = pytest.mark.unit
 
 def test_document_store_roundtrip(tmp_path: Path):
     doc_dir = tmp_path / "SYS"
-    doc = Document(prefix="SYS", title="System", digits=3)
+    doc = Document(prefix="SYS", title="System")
     save_document(doc_dir, doc)
 
     loaded = load_document(doc_dir)
     assert loaded.prefix == "SYS"
-    assert loaded.digits == 3
+    assert not hasattr(loaded, "digits")
 
     item1 = {"id": 1, "title": "One", "statement": "First"}
     item2 = {"id": 2, "title": "Two", "statement": "Second"}
     save_item(doc_dir, doc, item1)
     save_item(doc_dir, doc, item2)
 
-    assert rid_for(doc, 2) == "SYS002"
+    assert rid_for(doc, 2) == "SYS2"
     assert item_path(doc_dir, doc, 2).is_file()
 
     ids = list_item_ids(doc_dir, doc)
@@ -49,12 +50,55 @@ def test_document_store_roundtrip(tmp_path: Path):
     assert data["statement"] == "Second"
 
 
-def test_parse_rid_and_next_id(tmp_path: Path):
-    doc_dir = tmp_path / "HLR"
-    doc = Document(prefix="HLR", title="High", digits=2)
+def test_load_item_accepts_arbitrarily_padded_filenames(tmp_path: Path):
+    doc_dir = tmp_path / "SYS"
+    doc = Document(prefix="SYS", title="System")
     save_document(doc_dir, doc)
 
-    assert parse_rid("HLR01") == ("HLR", 1)
+    items_dir = doc_dir / "items"
+    items_dir.mkdir(parents=True, exist_ok=True)
+    payload = {"id": 7, "title": "Legacy", "statement": "Old"}
+    legacy_path = items_dir / ("0" * 20 + "7.json")
+    with legacy_path.open("w", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+
+    data, _ = load_item(doc_dir, doc, 7)
+    assert data == payload
+
+
+def test_save_item_cleans_all_padded_variants(tmp_path: Path):
+    doc_dir = tmp_path / "SYS"
+    doc = Document(prefix="SYS", title="System")
+    save_document(doc_dir, doc)
+
+    items_dir = doc_dir / "items"
+    items_dir.mkdir(parents=True, exist_ok=True)
+    payload = {"id": 5, "title": "Legacy", "statement": ""}
+    legacy_plain = items_dir / "0005.json"
+    legacy_prefixed = items_dir / "SYS0005.json"
+    for legacy_path in (legacy_plain, legacy_prefixed):
+        with legacy_path.open("w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+
+    result_path = save_item(
+        doc_dir,
+        doc,
+        {"id": 5, "title": "Current", "statement": "Actual"},
+    )
+
+    assert result_path == items_dir / "5.json"
+    stored = json.loads(result_path.read_text(encoding="utf-8"))
+    assert stored["title"] == "Current"
+    assert not legacy_plain.exists()
+    assert not legacy_prefixed.exists()
+
+
+def test_parse_rid_and_next_id(tmp_path: Path):
+    doc_dir = tmp_path / "HLR"
+    doc = Document(prefix="HLR", title="High")
+    save_document(doc_dir, doc)
+
+    assert parse_rid("HLR1") == ("HLR", 1)
     assert next_item_id(doc_dir, doc) == 1
 
     save_item(doc_dir, doc, {"id": 1, "title": "T", "statement": "X"})
@@ -62,18 +106,18 @@ def test_parse_rid_and_next_id(tmp_path: Path):
 
 
 def test_delete_item_removes_links(tmp_path: Path):
-    sys_doc = Document(prefix="SYS", title="System", digits=3)
-    hlr_doc = Document(prefix="HLR", title="High", digits=2, parent="SYS")
+    sys_doc = Document(prefix="SYS", title="System")
+    hlr_doc = Document(prefix="HLR", title="High", parent="SYS")
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
     save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "statement": ""})
     save_item(
         tmp_path / "HLR",
         hlr_doc,
-        {"id": 1, "title": "H", "statement": "", "links": ["SYS001"]},
+        {"id": 1, "title": "H", "statement": "", "links": ["SYS1"]},
     )
     docs = load_documents(tmp_path)
-    assert delete_item(tmp_path, "SYS001", docs) is True
+    assert delete_item(tmp_path, "SYS1", docs) is True
     # parent file removed
     assert not item_path(tmp_path / "SYS", sys_doc, 1).exists()
     # link cleaned
@@ -82,15 +126,15 @@ def test_delete_item_removes_links(tmp_path: Path):
 
 
 def test_delete_document_recursively(tmp_path: Path):
-    sys_doc = Document(prefix="SYS", title="System", digits=3)
-    hlr_doc = Document(prefix="HLR", title="High", digits=2, parent="SYS")
-    llr_doc = Document(prefix="LLR", title="Low", digits=2, parent="HLR")
+    sys_doc = Document(prefix="SYS", title="System")
+    hlr_doc = Document(prefix="HLR", title="High", parent="SYS")
+    llr_doc = Document(prefix="LLR", title="Low", parent="HLR")
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
     save_document(tmp_path / "LLR", llr_doc)
     save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "statement": ""})
-    save_item(tmp_path / "HLR", hlr_doc, {"id": 1, "title": "H", "statement": "", "links": ["SYS001"]})
-    save_item(tmp_path / "LLR", llr_doc, {"id": 1, "title": "L", "statement": "", "links": ["HLR01"]})
+    save_item(tmp_path / "HLR", hlr_doc, {"id": 1, "title": "H", "statement": "", "links": ["SYS1"]})
+    save_item(tmp_path / "LLR", llr_doc, {"id": 1, "title": "L", "statement": "", "links": ["HLR1"]})
     docs = load_documents(tmp_path)
     assert delete_document(tmp_path, "HLR", docs) is True
     assert not (tmp_path / "HLR").exists()
@@ -99,31 +143,31 @@ def test_delete_document_recursively(tmp_path: Path):
 
 
 def test_plan_delete_item_lists_references(tmp_path: Path):
-    sys_doc = Document(prefix="SYS", title="System", digits=3)
-    hlr_doc = Document(prefix="HLR", title="High", digits=2, parent="SYS")
+    sys_doc = Document(prefix="SYS", title="System")
+    hlr_doc = Document(prefix="HLR", title="High", parent="SYS")
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
     save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "statement": ""})
     save_item(
         tmp_path / "HLR",
         hlr_doc,
-        {"id": 1, "title": "H", "statement": "", "links": ["SYS001"]},
+        {"id": 1, "title": "H", "statement": "", "links": ["SYS1"]},
     )
     docs = load_documents(tmp_path)
-    exists, refs = plan_delete_item(tmp_path, "SYS001", docs)
+    exists, refs = plan_delete_item(tmp_path, "SYS1", docs)
     assert exists is True
-    assert refs == ["HLR01"]
+    assert refs == ["HLR1"]
     # nothing removed
     assert item_path(tmp_path / "SYS", sys_doc, 1).exists()
     data, _ = load_item(tmp_path / "HLR", hlr_doc, 1)
     parent_data, _ = load_item(tmp_path / "SYS", sys_doc, 1)
     expected_fp = requirement_fingerprint(parent_data)
-    assert data.get("links") == [{"rid": "SYS001", "fingerprint": expected_fp}]
+    assert data.get("links") == [{"rid": "SYS1", "fingerprint": expected_fp}]
 
 
 def test_plan_delete_document_lists_subtree(tmp_path: Path):
-    sys_doc = Document(prefix="SYS", title="System", digits=3)
-    hlr_doc = Document(prefix="HLR", title="High", digits=2, parent="SYS")
+    sys_doc = Document(prefix="SYS", title="System")
+    hlr_doc = Document(prefix="HLR", title="High", parent="SYS")
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
     save_item(tmp_path / "SYS", sys_doc, {"id": 1, "title": "S", "statement": ""})
@@ -131,7 +175,7 @@ def test_plan_delete_document_lists_subtree(tmp_path: Path):
     docs = load_documents(tmp_path)
     doc_list, item_list = plan_delete_document(tmp_path, "SYS", docs)
     assert set(doc_list) == {"SYS", "HLR"}
-    assert set(item_list) == {"SYS001", "HLR01"}
+    assert set(item_list) == {"SYS1", "HLR1"}
     # filesystem intact
     assert (tmp_path / "SYS").exists()
     assert (tmp_path / "HLR").exists()

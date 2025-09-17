@@ -42,7 +42,7 @@ def _prepare_frame(monkeypatch, tmp_path, extra_requirements=None):
 
     model = RequirementModel()
     frame = main_frame_mod.MainFrame(None, model=model)
-    doc = Document(prefix="REQ", title="Doc", digits=3)
+    doc = Document(prefix="REQ", title="Doc")
     doc_dir = tmp_path / "REQ"
     save_document(doc_dir, doc)
     base_req = _req(1, "Base")

@@ -88,8 +88,8 @@ def test_on_new_document_create_uses_controller(main_frame, tmp_path, monkeypatc
         def __init__(self):
             self.created = []
 
-        def create_document(self, prefix, title, digits, parent):
-            self.created.append((prefix, title, digits, parent))
+        def create_document(self, prefix, title, parent):
+            self.created.append((prefix, title, parent))
             return SimpleNamespace(prefix=prefix)
 
     controller = _Controller()
@@ -101,12 +101,12 @@ def test_on_new_document_create_uses_controller(main_frame, tmp_path, monkeypatc
     dialogs = _install_dialog_stub(
         monkeypatch,
         results=[wx.ID_OK],
-        properties=[DocumentProperties(prefix="SYS", title="System", digits=3)],
+        properties=[DocumentProperties(prefix="SYS", title="System")],
     )
 
     main_frame.on_new_document(parent_prefix="ROOT")
 
-    assert controller.created == [("SYS", "System", 3, "ROOT")]
+    assert controller.created == [("SYS", "System", "ROOT")]
     main_frame._refresh_documents.assert_called_once_with(select="SYS", force_reload=True)
     assert main_frame._selected_requirement_id is None
     assert dialogs[0].destroyed
@@ -115,15 +115,15 @@ def test_on_new_document_create_uses_controller(main_frame, tmp_path, monkeypatc
 def test_on_rename_document_updates_controller(main_frame, monkeypatch):
     """Renaming should update controller and always destroy the dialog."""
 
-    doc = SimpleNamespace(prefix="REQ", title="Initial", digits=3, parent="ROOT")
+    doc = SimpleNamespace(prefix="REQ", title="Initial", parent="ROOT")
 
     class _Controller:
         def __init__(self):
             self.documents = {doc.prefix: doc}
             self.rename_calls = []
 
-        def rename_document(self, prefix, *, title, digits):
-            self.rename_calls.append((prefix, title, digits))
+        def rename_document(self, prefix, *, title):
+            self.rename_calls.append((prefix, title))
 
     controller = _Controller()
     main_frame.docs_controller = controller
@@ -132,11 +132,11 @@ def test_on_rename_document_updates_controller(main_frame, monkeypatch):
     dialogs = _install_dialog_stub(
         monkeypatch,
         results=[wx.ID_OK],
-        properties=[DocumentProperties(prefix="REQ", title="Renamed", digits=4)],
+        properties=[DocumentProperties(prefix="REQ", title="Renamed")],
     )
 
     main_frame.on_rename_document("REQ")
 
-    assert controller.rename_calls == [("REQ", "Renamed", 4)]
+    assert controller.rename_calls == [("REQ", "Renamed")]
     main_frame._refresh_documents.assert_called_once_with(select="REQ", force_reload=True)
     assert dialogs[0].destroyed

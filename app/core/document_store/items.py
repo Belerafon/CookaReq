@@ -76,14 +76,21 @@ def _prepare_links_for_storage(
             link = Link.from_raw(entry)
         except (TypeError, ValueError) as exc:
             raise ValidationError("invalid link entry") from exc
+        canonical_rid = _canonical_rid(docs, link.rid)
         fingerprint = _load_fingerprint_for_rid(root, docs, link.rid, cache)
         if fingerprint is None:
             link.suspect = True
+            if canonical_rid is not None:
+                link.rid = canonical_rid
         elif link.fingerprint is None:
             link.fingerprint = fingerprint
             link.suspect = False
+            if canonical_rid is not None:
+                link.rid = canonical_rid
         else:
             link.suspect = link.fingerprint != fingerprint
+            if canonical_rid is not None:
+                link.rid = canonical_rid
         prepared.append(link.to_dict())
     if prepared:
         prepared.sort(key=lambda item: item.get("rid", ""))
@@ -105,10 +112,13 @@ def _update_link_suspicions(
     for link in req.links:
         if not isinstance(link, Link):
             continue
+        canonical_rid = _canonical_rid(docs, link.rid)
         fingerprint = _load_fingerprint_for_rid(root, docs, link.rid, cache)
         if fingerprint is None:
             link.suspect = True
             continue
+        if canonical_rid is not None:
+            link.rid = canonical_rid
         if link.fingerprint is None:
             link.fingerprint = fingerprint
             link.suspect = False
@@ -124,15 +134,45 @@ def _read_json(path: Path) -> dict:
 def rid_for(doc: Document, item_id: int) -> str:
     """Return requirement identifier for ``item_id`` within ``doc``."""
 
-    return f"{doc.prefix}{item_id:0{doc.digits}d}"
+    return f"{doc.prefix}{item_id}"
 
 
-def _item_filename(doc: Document, item_id: int) -> str:
-    return f"{item_id:0{doc.digits}d}.json"
+def _item_filename(item_id: int) -> str:
+    return f"{item_id}.json"
 
 
-def _legacy_item_filename(doc: Document, item_id: int) -> str:
-    return f"{rid_for(doc, item_id)}.json"
+def _iter_matching_item_paths(
+    items_dir: Path, doc: Document, item_id: int
+) -> Iterable[Path]:
+    """Yield paths representing ``item_id`` in ``doc`` regardless of padding."""
+
+    if not items_dir.is_dir():
+        return
+    for candidate in items_dir.glob("*.json"):
+        stem = candidate.stem
+        if stem.startswith(doc.prefix):
+            suffix = stem[len(doc.prefix) :]
+        else:
+            suffix = stem
+        if not suffix or not suffix.isdigit():
+            continue
+        try:
+            candidate_id = int(suffix)
+        except ValueError:  # pragma: no cover - defensive; should not happen after isdigit
+            continue
+        if candidate_id == item_id:
+            yield candidate
+
+
+def _canonical_rid(docs: Mapping[str, Document], rid: str) -> str | None:
+    try:
+        prefix, item_id = parse_rid(rid)
+    except ValueError:
+        return None
+    doc = docs.get(prefix)
+    if doc is None:
+        return None
+    return rid_for(doc, item_id)
 
 
 def parse_rid(rid: str) -> tuple[str, int]:
@@ -149,7 +189,7 @@ def item_path(directory: str | Path, doc: Document, item_id: int) -> Path:
     """Return filesystem path for ``item_id`` inside ``doc`` using new naming."""
 
     directory_path = Path(directory)
-    return directory_path / "items" / _item_filename(doc, item_id)
+    return directory_path / "items" / _item_filename(item_id)
 
 
 def locate_item_path(directory: str | Path, doc: Document, item_id: int) -> Path:
@@ -159,9 +199,10 @@ def locate_item_path(directory: str | Path, doc: Document, item_id: int) -> Path
     new_path = item_path(directory_path, doc, item_id)
     if new_path.exists():
         return new_path
-    legacy_path = directory_path / "items" / _legacy_item_filename(doc, item_id)
-    if legacy_path.exists():
-        return legacy_path
+    items_dir = directory_path / "items"
+    matches = sorted(_iter_matching_item_paths(items_dir, doc, item_id))
+    if matches:
+        return matches[0]
     return new_path
 
 
@@ -181,9 +222,10 @@ def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2, sort_keys=True)
-    legacy_path = directory_path / "items" / _legacy_item_filename(doc, item_id)
-    if legacy_path != path and legacy_path.exists():
-        legacy_path.unlink()
+    items_dir = directory_path / "items"
+    for legacy_path in _iter_matching_item_paths(items_dir, doc, item_id):
+        if legacy_path != path and legacy_path.exists():
+            legacy_path.unlink()
     return path
 
 

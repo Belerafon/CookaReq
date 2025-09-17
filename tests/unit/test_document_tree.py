@@ -202,7 +202,7 @@ def test_root_context_keeps_existing_selection(document_tree_module):
     parent = wx_stub.Panel(None)
     tree = module.DocumentTree(parent)
     docs = {
-        "SYS": Document(prefix="SYS", title="System", digits=3),
+        "SYS": Document(prefix="SYS", title="System"),
     }
     tree.set_documents(docs)
     node = tree._node_for_prefix["SYS"]

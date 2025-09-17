@@ -54,7 +54,7 @@ python3 -m app.cli <command> [arguments]
 
 Subcommands:
 
-- `doc create <root> <PREFIX> <title> [--digits N] [--parent P]` — create a document
+- `doc create <root> <PREFIX> <title> [--parent P]` — create a document
 - `doc list <root>` — list existing documents
 - `doc delete <root> <PREFIX> [--dry-run]` — delete a document
 
@@ -86,11 +86,11 @@ requirements/
   SYS/
     document.json
     items/
-      001.json
+      1.json
   HLR/
     document.json
     items/
-      001.json
+      1.json
 ```
 
 The repository layer loads and saves items, manages label presets defined by each document and resolves links across documents. Advanced search parameters allow filtering by status, label combinations, field-specific queries and derived relationships.
@@ -100,14 +100,13 @@ The repository layer loads and saves items, manages label presets defined by eac
 Each document file (`document.json`) includes:
 
 - `title` *(str)* — human-readable name
-- `digits` *(int)* — width of numeric identifier padding
 - `parent` *(str|null)* — parent document prefix or `null`
 - `labels` *(object)* — label definitions and an `allowFreeform` flag
 - `attributes` *(object)* — additional metadata
 
 The document prefix matches the folder name under `requirements/` and is no longer duplicated inside `document.json`, keeping the identifier as a single source of truth.
 
-Each requirement item (`items/<ID>.json`, where `<ID>` is the zero-padded numeric identifier) includes:
+Each requirement item (`items/<ID>.json`, where `<ID>` is the integer identifier) includes:
 
 - `id` *(int)* — numeric identifier unique within the document
 - `title` *(str)* — short name

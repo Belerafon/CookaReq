@@ -75,7 +75,6 @@ class Document:
 
     prefix: str
     title: str
-    digits: int
     parent: str | None = None
     labels: DocumentLabels = field(default_factory=DocumentLabels)
     attributes: dict[str, Any] = field(default_factory=dict)

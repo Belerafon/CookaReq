@@ -7,13 +7,13 @@ from app.core.document_store import load_document
 
 def test_doc_create_and_list(tmp_path, capsys):
     args = argparse.Namespace(
-        directory=str(tmp_path), prefix="SYS", title="System", digits=3, parent=None
+        directory=str(tmp_path), prefix="SYS", title="System", parent=None
     )
     commands.cmd_doc_create(args)
     _ = capsys.readouterr()
 
     args2 = argparse.Namespace(
-        directory=str(tmp_path), prefix="HLR", title="High", digits=2, parent="SYS"
+        directory=str(tmp_path), prefix="HLR", title="High", parent="SYS"
     )
     commands.cmd_doc_create(args2)
     _ = capsys.readouterr()
@@ -26,28 +26,28 @@ def test_doc_create_and_list(tmp_path, capsys):
 
     doc_sys = load_document(Path(tmp_path) / "SYS")
     assert doc_sys.parent is None
-    assert doc_sys.digits == 3
+    assert not hasattr(doc_sys, "digits")
 
     doc_hlr = load_document(Path(tmp_path) / "HLR")
     assert doc_hlr.parent == "SYS"
-    assert doc_hlr.digits == 2
+    assert not hasattr(doc_hlr, "digits")
 
 
 def test_doc_delete_removes_subtree(tmp_path, capsys):
     args = argparse.Namespace(
-        directory=str(tmp_path), prefix="SYS", title="System", digits=3, parent=None
+        directory=str(tmp_path), prefix="SYS", title="System", parent=None
     )
     commands.cmd_doc_create(args)
     _ = capsys.readouterr()
 
     args2 = argparse.Namespace(
-        directory=str(tmp_path), prefix="HLR", title="High", digits=2, parent="SYS"
+        directory=str(tmp_path), prefix="HLR", title="High", parent="SYS"
     )
     commands.cmd_doc_create(args2)
     _ = capsys.readouterr()
 
     args3 = argparse.Namespace(
-        directory=str(tmp_path), prefix="LLR", title="Low", digits=2, parent="HLR"
+        directory=str(tmp_path), prefix="LLR", title="Low", parent="HLR"
     )
     commands.cmd_doc_create(args3)
     _ = capsys.readouterr()
@@ -66,13 +66,13 @@ def test_doc_delete_removes_subtree(tmp_path, capsys):
 
 def test_doc_delete_dry_run_lists_subtree(tmp_path, capsys):
     args_sys = argparse.Namespace(
-        directory=str(tmp_path), prefix="SYS", title="System", digits=3, parent=None
+        directory=str(tmp_path), prefix="SYS", title="System", parent=None
     )
     commands.cmd_doc_create(args_sys)
     _ = capsys.readouterr()
 
     args_hlr = argparse.Namespace(
-        directory=str(tmp_path), prefix="HLR", title="High", digits=2, parent="SYS"
+        directory=str(tmp_path), prefix="HLR", title="High", parent="SYS"
     )
     commands.cmd_doc_create(args_hlr)
     _ = capsys.readouterr()
@@ -92,14 +92,14 @@ def test_doc_delete_dry_run_lists_subtree(tmp_path, capsys):
     del_args = argparse.Namespace(directory=str(tmp_path), prefix="SYS", dry_run=True)
     commands.cmd_doc_delete(del_args)
     out = capsys.readouterr().out.splitlines()
-    assert out == ["SYS", "HLR", "SYS001", "HLR01"]
+    assert out == ["SYS", "HLR", "SYS1", "HLR1"]
     assert (Path(tmp_path) / "SYS").exists()
     assert (Path(tmp_path) / "HLR").exists()
 
 
 def test_doc_delete_requires_confirmation(tmp_path, capsys):
     args = argparse.Namespace(
-        directory=str(tmp_path), prefix="SYS", title="System", digits=3, parent=None
+        directory=str(tmp_path), prefix="SYS", title="System", parent=None
     )
     commands.cmd_doc_create(args)
     _ = capsys.readouterr()

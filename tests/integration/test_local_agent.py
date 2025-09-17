@@ -12,6 +12,7 @@ import pytest
 from app.agent import local_agent as la
 from app.agent.local_agent import LocalAgent
 from app.llm.client import LLMResponse, LLMToolCall
+from app.mcp.client import MCPNotReadyError
 from app.mcp.utils import ErrorCode
 from app.settings import AppSettings
 
@@ -91,6 +92,50 @@ def test_run_command_propagates_mcp_exception():
     assert result["ok"] is False
     assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR
     assert result["error"]["message"] == "call fail"
+
+
+def test_run_command_aborts_when_mcp_unavailable():
+    class ToolCallingLLM:
+        def respond(self, conversation):
+            return LLMResponse(
+                "",
+                (
+                    LLMToolCall(
+                        id="call-0",
+                        name="list_requirements",
+                        arguments={},
+                    ),
+                ),
+            )
+
+        async def respond_async(self, conversation):
+            return self.respond(conversation)
+
+    class UnavailableMCP:
+        def __init__(self) -> None:
+            self.ensure_calls = 0
+
+        def ensure_ready(self) -> None:
+            self.ensure_calls += 1
+            raise MCPNotReadyError({"code": "INTERNAL", "message": "server offline"})
+
+        def call_tool(self, name, arguments):  # pragma: no cover - should not be reached
+            raise AssertionError("tool call must be skipped when MCP is offline")
+
+    llm = ToolCallingLLM()
+    mcp = UnavailableMCP()
+    agent = LocalAgent(llm=llm, mcp=mcp)
+
+    result = agent.run_command("list")
+    assert result == {"ok": False, "error": {"code": "INTERNAL", "message": "server offline"}}
+    assert mcp.ensure_calls == 1
+
+    async def exercise() -> None:
+        async_result = await agent.run_command_async("list async")
+        assert async_result == {"ok": False, "error": {"code": "INTERNAL", "message": "server offline"}}
+
+    asyncio.run(exercise())
+    assert mcp.ensure_calls == 2
 
 
 def test_run_command_executes_tool_and_returns_final_message():

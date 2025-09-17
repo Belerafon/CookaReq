@@ -14,8 +14,21 @@ from ..telemetry import log_debug_payload, log_event
 from .utils import ErrorCode, mcp_error
 
 
+class MCPNotReadyError(ConnectionError):
+    """Raised when the MCP server fails a readiness probe."""
+
+    def __init__(self, error_payload: Mapping[str, Any]):
+        message = error_payload.get("message") if isinstance(error_payload, Mapping) else None
+        super().__init__(message or "MCP server is not ready")
+        payload = dict(error_payload) if isinstance(error_payload, Mapping) else {}
+        self.error_payload = payload
+        self.error = payload
+
+
 class MCPClient:
     """Simple HTTP client for the MCP server."""
+
+    _READY_CACHE_TTL = 5.0
 
     def __init__(
         self,
@@ -26,6 +39,9 @@ class MCPClient:
         """Initialize client with MCP ``settings`` and confirmation callback."""
         self.settings = settings
         self._confirm = confirm
+        self._last_ready_check: float | None = None
+        self._last_ready_ok = False
+        self._last_ready_error: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------
     def check_tools(self) -> dict[str, Any]:
@@ -91,6 +107,7 @@ class MCPClient:
                     "error": err,
                 },
             )
+            self._update_ready_state(False, err)
             return {"ok": False, "error": err}
         else:
             data = json.loads(body or "{}")
@@ -106,11 +123,13 @@ class MCPClient:
             )
             if resp.status == 200 and "error" not in data:
                 log_event("TOOL_RESULT", {"ok": True}, start_time=start)
+                self._update_ready_state(True, None)
                 return {"ok": True, "error": None}
             err = data.get("error")
             if not err:
                 err = {"code": str(resp.status), "message": data.get("message", "")}
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
+            self._update_ready_state(False, err)
             return {"ok": False, "error": err}
 
     # ------------------------------------------------------------------
@@ -181,6 +200,7 @@ class MCPClient:
                 "MCP_RESPONSE",
                 {"direction": "inbound", "tool": name, "error": err},
             )
+            self._update_ready_state(False, err)
             return {"ok": False, "error": err}
         else:
             data = json.loads(body or "{}")
@@ -197,11 +217,145 @@ class MCPClient:
             if resp.status == 200 and "error" not in data:
                 log_event("TOOL_RESULT", {"result": data}, start_time=start)
                 log_event("DONE")
+                self._update_ready_state(True, None)
                 return {"ok": True, "error": None, "result": data}
             err = data.get("error")
             if not err:
                 err = {"code": str(resp.status), "message": data.get("message", "")}
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
             log_event("ERROR", {"error": err})
+            if resp.status == 200:
+                self._update_ready_state(True, None)
+            else:
+                self._update_ready_state(False, err)
             return {"ok": False, "error": err}
+
+    # ------------------------------------------------------------------
+    def ensure_ready(self, *, force: bool = False) -> None:
+        """Raise :class:`MCPNotReadyError` if the MCP server is unavailable."""
+
+        now = time.monotonic()
+        if (
+            not force
+            and self._last_ready_ok
+            and self._last_ready_check is not None
+            and now - self._last_ready_check < self._READY_CACHE_TTL
+        ):
+            return
+
+        params = {
+            "host": self.settings.host,
+            "port": self.settings.port,
+            "base_path": self.settings.base_path,
+        }
+        headers = {}
+        if self.settings.require_token and self.settings.token:
+            headers["Authorization"] = f"Bearer {self.settings.token}"
+
+        start = time.monotonic()
+        log_event("HEALTH_CHECK", {"params": params})
+        log_debug_payload(
+            "MCP_HEALTH_REQUEST",
+            {
+                "direction": "outbound",
+                "http": {
+                    "host": self.settings.host,
+                    "port": self.settings.port,
+                    "path": "/health",
+                    "headers": headers,
+                },
+            },
+        )
+        try:
+            conn = HTTPConnection(self.settings.host, self.settings.port, timeout=5)
+            try:
+                conn.request("GET", "/health", headers=headers)
+                resp = conn.getresponse()
+                getheaders = getattr(resp, "getheaders", None)
+                response_headers = list(getheaders()) if callable(getheaders) else []
+                body = resp.read().decode()
+            finally:
+                conn.close()
+        except Exception as exc:  # pragma: no cover - network errors
+            error = self._health_error(
+                _(
+                    "MCP server is not reachable at %(host)s:%(port)s",
+                )
+                % {"host": self.settings.host, "port": self.settings.port},
+                details={"cause": str(exc), **params},
+            )
+            log_event("HEALTH_RESULT", {"error": error}, start_time=start)
+            log_debug_payload(
+                "MCP_HEALTH_RESPONSE",
+                {"direction": "inbound", "error": error},
+            )
+            self._update_ready_state(False, error)
+            raise MCPNotReadyError(error) from exc
+        log_debug_payload(
+            "MCP_HEALTH_RESPONSE",
+            {
+                "direction": "inbound",
+                "status": resp.status,
+                "headers": response_headers,
+                "body": body,
+            },
+        )
+
+        if resp.status == 200:
+            try:
+                data = json.loads(body or "{}")
+            except json.JSONDecodeError as exc:  # pragma: no cover - malformed health response
+                error = self._health_error(
+                    _("MCP health endpoint returned invalid JSON"),
+                    details={"cause": str(exc), **params, "body": body},
+                )
+                log_event("HEALTH_RESULT", {"error": error}, start_time=start)
+                self._update_ready_state(False, error)
+                raise MCPNotReadyError(error) from exc
+            if isinstance(data, Mapping) and data.get("status") == "ok":
+                log_event("HEALTH_RESULT", {"ok": True}, start_time=start)
+                self._update_ready_state(True, None)
+                return
+            error = self._health_error(
+                _("MCP server health check failed"),
+                details={"response": data, **params},
+            )
+            log_event("HEALTH_RESULT", {"error": error}, start_time=start)
+            self._update_ready_state(False, error)
+            raise MCPNotReadyError(error)
+
+        try:
+            data = json.loads(body or "{}")
+        except json.JSONDecodeError:  # pragma: no cover - fallback to raw body
+            data = body
+        code = ErrorCode.UNAUTHORIZED if resp.status in {401, 403} else ErrorCode.INTERNAL
+        message = _("MCP server health check failed")
+        details: dict[str, Any] = {"status": resp.status, **params}
+        if data:
+            details["response"] = data
+        error = mcp_error(code, message, details)["error"]
+        log_event("HEALTH_RESULT", {"error": error}, start_time=start)
+        self._update_ready_state(False, error)
+        raise MCPNotReadyError(error)
+
+    # ------------------------------------------------------------------
+    def _update_ready_state(
+        self, ok: bool, error: Mapping[str, Any] | None
+    ) -> None:
+        """Remember the outcome of the most recent readiness probe."""
+
+        self._last_ready_check = time.monotonic()
+        self._last_ready_ok = ok
+        self._last_ready_error = dict(error) if isinstance(error, Mapping) else None
+
+    def _health_error(
+        self,
+        message: str,
+        *,
+        details: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return MCP-formatted health check error payload."""
+
+        payload = mcp_error(ErrorCode.INTERNAL, message, details)["error"]
+        return payload
 

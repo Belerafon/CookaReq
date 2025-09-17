@@ -102,6 +102,18 @@ class LocalAgent:
                 payload["tool_results"] = result["tool_results"]
         return payload
 
+    @staticmethod
+    def _extract_mcp_error(exc: Exception) -> dict[str, Any]:
+        """Return structured MCP error payload derived from *exc*."""
+
+        payload = getattr(exc, "error_payload", None)
+        if isinstance(payload, Mapping):
+            return dict(payload)
+        payload = getattr(exc, "error", None)
+        if isinstance(payload, Mapping):
+            return dict(payload)
+        return exception_to_mcp_error(exc)["error"]
+
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
         """Delegate to :class:`LLMClient.check_llm`."""
@@ -135,6 +147,27 @@ class LocalAgent:
                 return await result
             return result
         return await asyncio.to_thread(self._mcp.check_tools)
+
+    # ------------------------------------------------------------------
+    def _ensure_mcp_ready(self) -> None:
+        """Invoke MCP readiness probe when the client exposes it."""
+
+        ensure_ready = getattr(self._mcp, "ensure_ready", None)
+        if callable(ensure_ready):
+            ensure_ready()
+
+    async def _ensure_mcp_ready_async(self) -> None:
+        """Asynchronous readiness probe wrapper."""
+
+        ensure_ready_async = getattr(self._mcp, "ensure_ready_async", None)
+        if ensure_ready_async is not None:
+            result = ensure_ready_async()
+            if inspect.isawaitable(result):
+                await result
+            return
+        ensure_ready = getattr(self._mcp, "ensure_ready", None)
+        if callable(ensure_ready):
+            await asyncio.to_thread(ensure_ready)
 
     # ------------------------------------------------------------------
     def run_command(
@@ -270,9 +303,10 @@ class LocalAgent:
                         "arguments": call.arguments,
                     },
                 )
+                self._ensure_mcp_ready()
                 result = self._mcp.call_tool(call.name, call.arguments)
             except Exception as exc:
-                error = exception_to_mcp_error(exc)["error"]
+                error = self._extract_mcp_error(exc)
                 log_event("ERROR", {"error": error})
                 log_event(
                     "AGENT_TOOL_RESULT",
@@ -326,9 +360,10 @@ class LocalAgent:
                         "arguments": call.arguments,
                     },
                 )
+                await self._ensure_mcp_ready_async()
                 result = await self._call_tool_async(call.name, call.arguments)
             except Exception as exc:
-                error = exception_to_mcp_error(exc)["error"]
+                error = self._extract_mcp_error(exc)
                 log_event("ERROR", {"error": error})
                 log_event(
                     "AGENT_TOOL_RESULT",

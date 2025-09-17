@@ -359,6 +359,10 @@ class EditorPanel(ScrolledPanel):
             wx.EVT_SIZE,
             lambda evt, lc=lst: (evt.Skip(), self._autosize_link_columns(lc)),
         )
+        lst.Bind(
+            wx.EVT_CONTEXT_MENU,
+            lambda evt, a=attr: self._on_links_context_menu(a, evt),
+        )
         sizer.Add(lst, 1, wx.EXPAND | wx.ALL, 5)
         # по умолчанию список и кнопка удаления скрыты
         lst.Hide()
@@ -380,7 +384,7 @@ class EditorPanel(ScrolledPanel):
 
     def _refresh_links_visibility(self, attr: str) -> None:
         """Show list and remove button only when links exist."""
-        _, list_ctrl, links_list = self._link_widgets(attr)
+        _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
         remove_btn = getattr(self, f"{attr}_remove", None)
         visible = bool(links_list)
         list_ctrl.Show(visible)
@@ -411,9 +415,9 @@ class EditorPanel(ScrolledPanel):
         else:
             list_ctrl.SetColumnWidth(1, wx.LIST_AUTOSIZE)
 
-    def _rebuild_links_list(self, attr: str) -> None:
+    def _rebuild_links_list(self, attr: str, *, select: int | None = None) -> None:
         """Repopulate ListCtrl for given link attribute."""
-        _, list_ctrl, links_list = self._link_widgets(attr)
+        _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
         list_ctrl.DeleteAllItems()
         for link in links_list:
             src_rid = link["rid"]
@@ -426,6 +430,50 @@ class EditorPanel(ScrolledPanel):
             else:
                 list_ctrl.SetItemTextColour(idx, wx.NullColour)
             list_ctrl.SetItem(idx, 1, note)
+        if select is not None and 0 <= select < list_ctrl.GetItemCount():
+            list_ctrl.Select(select)
+            list_ctrl.Focus(select)
+            list_ctrl.EnsureVisible(select)
+
+    def set_link_suspect(self, attr: str, index: int, value: bool) -> None:
+        """Set suspect flag for a link and refresh list display."""
+        _id_ctrl, _list_ctrl, links_list = self._link_widgets(attr)
+        if not (0 <= index < len(links_list)):
+            return
+        new_value = bool(value)
+        current = bool(links_list[index].get("suspect", False))
+        links_list[index]["suspect"] = new_value
+        if current == new_value:
+            return
+        self._rebuild_links_list(attr, select=index)
+
+    def _on_links_context_menu(self, attr: str, event: wx.ContextMenuEvent) -> None:
+        """Handle context menu requests for link lists."""
+        _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
+        if not links_list or event.GetEventObject() is not list_ctrl:
+            return
+        position = event.GetPosition()
+        index = list_ctrl.GetFirstSelected()
+        if position != wx.DefaultPosition:
+            local_pos = list_ctrl.ScreenToClient(position)
+            hit, _flags = list_ctrl.HitTest(local_pos)
+            if hit != wx.NOT_FOUND:
+                list_ctrl.Select(hit)
+                list_ctrl.Focus(hit)
+                index = hit
+        if index == -1 or not (0 <= index < len(links_list)):
+            return
+        suspect = bool(links_list[index].get("suspect", False))
+        menu = wx.Menu()
+        label = _("Clear suspect mark") if suspect else _("Mark as suspect")
+        item = menu.Append(wx.ID_ANY, label)
+        menu.Bind(
+            wx.EVT_MENU,
+            lambda _evt, a=attr, i=index, value=not suspect: self.set_link_suspect(a, i, value),
+            source=item,
+        )
+        list_ctrl.PopupMenu(menu)
+        menu.Destroy()
 
     # basic operations -------------------------------------------------
     def set_directory(self, directory: str | Path | None) -> None:
@@ -833,7 +881,7 @@ class EditorPanel(ScrolledPanel):
         self._refresh_links_visibility(attr)
 
     def _on_remove_link_generic(self, attr: str) -> None:
-        _, list_ctrl, links_list = self._link_widgets(attr)
+        _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
         idx = (
             list_ctrl.GetFirstSelected()
             if hasattr(list_ctrl, "GetFirstSelected")

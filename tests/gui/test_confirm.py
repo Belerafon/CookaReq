@@ -32,8 +32,28 @@ def test_set_confirm_and_auto_confirm_work():
 def test_wx_confirm(monkeypatch):
     import wx
 
-    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
-    assert wx_confirm("Proceed?") is True
+    responses = iter([wx.ID_YES, wx.ID_NO, wx.ID_OK])
+    destroyed: list[bool] = []
 
-    monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.NO)
+    class DummyDialog:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self._destroyed = False
+
+        def ShowModal(self) -> int:
+            return next(responses)
+
+        def Destroy(self) -> None:
+            destroyed.append(True)
+
+    monkeypatch.setattr(wx, "MessageDialog", lambda *a, **k: DummyDialog())
+    monkeypatch.setattr(wx, "GetActiveWindow", lambda: None)
+    monkeypatch.setattr(wx, "GetTopLevelWindows", lambda: [])
+
+    assert wx_confirm("Proceed?") is True
+    assert destroyed.pop(0) is True
+
     assert wx_confirm("Proceed?") is False
+    assert destroyed.pop(0) is True
+
+    assert wx_confirm("Proceed?") is True
+    assert destroyed.pop(0) is True

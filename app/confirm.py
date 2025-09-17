@@ -23,18 +23,30 @@ def confirm(message: str) -> bool:
 
 def wx_confirm(message: str) -> bool:
     """GUI confirmation dialog using wxWidgets."""
+
     import wx  # type: ignore
 
     from .i18n import _
 
-    return (
-        wx.MessageBox(
-            message,
-            _("Confirm"),
-            style=wx.YES_NO | wx.ICON_WARNING,
-        )
-        == wx.YES
-    )
+    try:
+        parent = wx.GetActiveWindow()
+    except AttributeError:  # pragma: no cover - stubs may omit helper
+        parent = None
+    if not parent:
+        try:
+            windows = wx.GetTopLevelWindows()
+        except AttributeError:  # pragma: no cover - stubs may omit helper
+            windows = []
+        parent = windows[0] if windows else None
+
+    style = wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING
+    dialog = wx.MessageDialog(parent, message, _("Confirm"), style=style)
+    try:
+        result = dialog.ShowModal()
+    finally:
+        dialog.Destroy()
+
+    return result in {wx.ID_YES, wx.YES, wx.ID_OK, wx.OK}
 
 
 def auto_confirm(_message: str) -> bool:

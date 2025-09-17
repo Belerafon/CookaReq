@@ -111,6 +111,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._sort_ascending = True
         self._docs_controller = docs_controller
         self._current_doc_prefix: str | None = None
+        self._context_menu_open = False
         self._setup_columns()
         sizer.Add(btn_row, 0, wx.ALL, 5)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
@@ -786,9 +787,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     # context menu ----------------------------------------------------
     def _popup_context_menu(self, index: int, column: int | None) -> None:
+        if self._context_menu_open:
+            return
         menu, _, _, _ = self._create_context_menu(index, column)
-        self.PopupMenu(menu)
-        menu.Destroy()
+        if not menu.GetMenuItemCount():
+            menu.Destroy()
+            return
+        self._context_menu_open = True
+        try:
+            self.PopupMenu(menu)
+        finally:
+            menu.Destroy()
+            self._context_menu_open = False
 
     def _on_right_click(self, event: ListEvent) -> None:  # pragma: no cover - GUI event
         x, y = event.GetPoint()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from copy import deepcopy
+import logging
 from pathlib import Path
 from typing import Any, Callable, Generic, Literal, Protocol, TypeVar
 
@@ -122,6 +123,7 @@ ConfigFieldName = Literal[
     "sort_column",
     "sort_ascending",
     "log_sash",
+    "log_level",
     "log_shown",
     "agent_chat_sash",
     "agent_chat_shown",
@@ -255,6 +257,11 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         key="log_sash",
         value_type=int,
         default=300,
+    ),
+    "log_level": FieldSpec(
+        key="log_level",
+        value_type=int,
+        default=logging.INFO,
     ),
     "log_shown": FieldSpec(
         key="log_shown",
@@ -594,6 +601,7 @@ class ConfigManager:
             language=self.get_language(),
             sort_column=sort_column,
             sort_ascending=sort_ascending,
+            log_level=self.get_log_level(),
         )
 
     def set_ui_settings(self, settings: UISettings) -> None:
@@ -608,6 +616,7 @@ class ConfigManager:
         sort_col = settings.sort_column
         sort_asc = settings.sort_ascending
         self.set_sort_settings(sort_col, sort_asc)
+        self.set_log_level(settings.log_level)
 
     def get_app_settings(self) -> AppSettings:
         """Return all application settings."""
@@ -656,6 +665,20 @@ class ConfigManager:
         """Persist whether log console is visible."""
 
         self.set_value("log_shown", shown)
+        self.flush()
+
+    def get_log_level(self) -> int:
+        """Return the minimum severity displayed in the log console."""
+
+        level = int(self.get_value("log_level"))
+        if level not in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR):
+            return logging.INFO
+        return level
+
+    def set_log_level(self, level: int) -> None:
+        """Persist minimum severity displayed in the log console."""
+
+        self.set_value("log_level", int(level))
         self.flush()
 
     # ------------------------------------------------------------------

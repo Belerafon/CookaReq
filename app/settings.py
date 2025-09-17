@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import tomllib
@@ -105,6 +106,7 @@ class UISettings(BaseModel):
     language: str | None = None
     sort_column: int = -1
     sort_ascending: bool = True
+    log_level: int = Field(default=logging.INFO)
 
 
 class AppSettings(BaseModel):

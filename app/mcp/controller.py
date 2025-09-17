@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from http.client import HTTPConnection
@@ -9,6 +10,8 @@ from http.client import HTTPConnection
 from ..settings import MCPSettings
 from .server import is_running as server_is_running
 from .server import start_server, stop_server
+
+logger = logging.getLogger(__name__)
 
 
 class MCPStatus(str, Enum):
@@ -38,8 +41,14 @@ class MCPController:
 
     def stop(self) -> None:
         """Shut down the MCP server if running."""
+        if not server_is_running():
+            logger.info("MCP controller stop requested but server is not running")
+            stop_server()
+            return
 
+        logger.info("MCP controller initiating server shutdown")
         stop_server()
+        logger.info("MCP controller confirmed server shutdown")
 
     def is_running(self) -> bool:
         """Return ``True`` if MCP server is currently running."""

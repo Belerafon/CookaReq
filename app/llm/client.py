@@ -20,7 +20,7 @@ from .constants import (
 # ``OpenAI`` импортируется динамически в конструкторе, чтобы тесты могли
 # подменять ``openai.OpenAI`` до первого использования и тем самым избежать
 # реальных сетевых запросов.
-from ..telemetry import log_event
+from ..telemetry import log_debug_payload, log_event
 from .spec import SYSTEM_PROMPT, TOOLS
 from .validation import ToolValidationError, validate_tool_call
 
@@ -180,6 +180,7 @@ class LLMClient:
             "token_parameter": token_param,
         }
         start = time.monotonic()
+        log_debug_payload("LLM_REQUEST", {"direction": "outbound", **payload})
         log_event("LLM_REQUEST", payload)
         try:
             self._chat_completion(
@@ -191,11 +192,22 @@ class LLMClient:
                 {"error": {"type": type(exc).__name__, "message": str(exc)}},
                 start_time=start,
             )
+            log_debug_payload(
+                "LLM_RESPONSE",
+                {
+                    "direction": "inbound",
+                    "error": {"type": type(exc).__name__, "message": str(exc)},
+                },
+            )
             return {
                 "ok": False,
                 "error": {"type": type(exc).__name__, "message": str(exc)},
             }
         log_event("LLM_RESPONSE", {"ok": True}, start_time=start)
+        log_debug_payload(
+            "LLM_RESPONSE",
+            {"direction": "inbound", "ok": True},
+        )
         return {"ok": True}
 
     # ------------------------------------------------------------------
@@ -219,6 +231,7 @@ class LLMClient:
             "token_parameter": token_param,
         }
         start = time.monotonic()
+        log_debug_payload("LLM_REQUEST", {"direction": "outbound", **payload})
         log_event("LLM_REQUEST", payload)
 
         try:
@@ -307,6 +320,13 @@ class LLMClient:
                 {"error": {"type": type(exc).__name__, "message": str(exc)}},
                 start_time=start,
             )
+            log_debug_payload(
+                "LLM_RESPONSE",
+                {
+                    "direction": "inbound",
+                    "error": {"type": type(exc).__name__, "message": str(exc)},
+                },
+            )
             raise
         else:
             log_payload: dict[str, Any] = {"message": response.content}
@@ -323,6 +343,10 @@ class LLMClient:
                 "LLM_RESPONSE",
                 log_payload,
                 start_time=start,
+            )
+            log_debug_payload(
+                "LLM_RESPONSE",
+                {"direction": "inbound", **log_payload},
             )
             return LLMResponse(
                 content=response.content.strip(),

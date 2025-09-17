@@ -40,14 +40,6 @@ class DocumentTree(wx.Panel):
         if hasattr(wx, "EVT_CONTEXT_MENU"):
             self.tree.Bind(wx.EVT_CONTEXT_MENU, self._show_background_menu)
         self._menu_target_prefix: str | None = None
-        self._menu_ids = {
-            "new": wx.Window.NewControlId(),
-            "rename": wx.Window.NewControlId(),
-            "delete": wx.Window.NewControlId(),
-        }
-        self.Bind(wx.EVT_MENU, self._handle_menu_new, id=self._menu_ids["new"])
-        self.Bind(wx.EVT_MENU, self._handle_menu_rename, id=self._menu_ids["rename"])
-        self.Bind(wx.EVT_MENU, self._handle_menu_delete, id=self._menu_ids["delete"])
 
     def set_documents(self, docs: Dict[str, Document]) -> None:
         """Populate tree from mapping ``docs``."""
@@ -124,9 +116,28 @@ class DocumentTree(wx.Panel):
             self.tree.SelectItem(target)
         self._menu_target_prefix = prefix
         menu = wx.Menu()
-        new_item = menu.Append(self._menu_ids["new"], _("New document"))
-        rename_item = menu.Append(self._menu_ids["rename"], _("Rename"))
-        delete_item = menu.Append(self._menu_ids["delete"], _("Delete"))
+
+        def _next_menu_id() -> int:
+            if hasattr(wx, "ID_ANY"):
+                return getattr(wx, "ID_ANY")
+            if hasattr(wx, "Window") and hasattr(wx.Window, "NewControlId"):
+                return wx.Window.NewControlId()
+            # Fallback for extremely limited stubs.
+            return -1
+
+        new_item = menu.Append(_next_menu_id(), _("New document"))
+        rename_item = menu.Append(_next_menu_id(), _("Rename"))
+        delete_item = menu.Append(_next_menu_id(), _("Delete"))
+
+        def _bind(item: wx.MenuItem, handler: Callable[[wx.CommandEvent], None]) -> None:
+            if hasattr(menu, "Bind"):
+                menu.Bind(wx.EVT_MENU, handler, item)
+            else:  # pragma: no cover - exercised via stub in unit tests
+                self.Bind(wx.EVT_MENU, handler, id=item.GetId())
+
+        _bind(new_item, self._handle_menu_new)
+        _bind(rename_item, self._handle_menu_rename)
+        _bind(delete_item, self._handle_menu_delete)
         if self._on_new_document is None:
             new_item.Enable(False)
         if prefix is None or self._on_rename_document is None:

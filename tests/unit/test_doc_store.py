@@ -50,6 +50,24 @@ def test_document_store_roundtrip(tmp_path: Path):
     assert data["statement"] == "Second"
 
 
+def test_load_document_ignores_legacy_digits_field(tmp_path: Path) -> None:
+    doc_dir = tmp_path / "SYS"
+    doc_dir.mkdir()
+    doc_path = doc_dir / "document.json"
+    with doc_path.open("w", encoding="utf-8") as fh:
+        json.dump({"title": "System", "digits": "00foo"}, fh)
+
+    loaded = load_document(doc_dir)
+
+    assert loaded.title == "System"
+    assert not hasattr(loaded, "digits")
+
+    save_document(doc_dir, loaded)
+
+    stored = json.loads(doc_path.read_text(encoding="utf-8"))
+    assert "digits" not in stored
+
+
 def test_load_item_accepts_arbitrarily_padded_filenames(tmp_path: Path):
     doc_dir = tmp_path / "SYS"
     doc = Document(prefix="SYS", title="System")

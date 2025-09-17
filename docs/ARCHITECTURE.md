@@ -18,7 +18,7 @@
 - `settings.py` — pydantic-модели `AppSettings`, `LLMSettings`, `MCPSettings`, `UISettings` и функции загрузки конфигов из JSON/TOML.【F:app/settings.py†L1-L89】【F:app/settings.py†L118-L149】
 - `confirm.py` — регистрация и реализация подтверждающих диалогов (`set_confirm`, `confirm`, `wx_confirm`, `auto_confirm`).【F:app/confirm.py†L1-L31】
 - `i18n.py` — минималистичная загрузка `.po`-каталогов и сбор недостающих переводов через `flush_missing`.【F:app/i18n.py†L1-L120】
-- `log.py` и `telemetry.py` — настройка логирования (`configure_logging`, `JsonlHandler`) и структурированная телеметрия (`log_event`, санитайзинг чувствительных данных).【F:app/log.py†L1-L34】【F:app/telemetry.py†L1-L49】
+- `log.py` и `telemetry.py` — настройка логирования (`configure_logging`, `JsonlHandler`) с ротацией файлов при старте процесса и одновременной записью в поток, текстовый и JSONL-логи, управление каталогом логов (`get_log_directory`, `open_log_directory`) и структурированная телеметрия (`log_event`, санитайзинг чувствительных данных).【F:app/log.py†L1-L131】【F:app/telemetry.py†L1-L49】
 - `util/` — вспомогательные функции времени (`utc_now_iso`, `normalize_timestamp`) и другие мелкие утилиты.【F:app/util/time.py†L1-L27】
 - `resources/` и `locale/` — иконки приложения и каталоги перевода, используемые `MainFrame` и `init_locale`.
 
@@ -29,7 +29,7 @@
 - `label_presets.py` — наборы предустановленных меток и генератор пастельных цветов для них.【F:app/core/label_presets.py†L1-L39】
 
 ### `app/ui/`
-- `main_frame.py` — главное окно: собирает панели (`DocumentTree`, `ListPanel`, `EditorPanel`, `AgentChatPanel`), меню `Navigation`, настраивает `MCPController` и связку с `DocumentsController` для загрузки данных; хранит в конфиге состояние сворачиваемой панели документов и ширину раскрытого дерева.【F:app/ui/main_frame.py†L1-L207】【F:app/config.py†L272-L311】
+- `main_frame.py` — главное окно: собирает панели (`DocumentTree`, `ListPanel`, `EditorPanel`, `AgentChatPanel`), меню `Navigation`, настраивает `MCPController` и связку с `DocumentsController` для загрузки данных; хранит в конфиге состояние сворачиваемой панели документов и ширину раскрытого дерева, отображает консоль логов с выбором уровня и усечением хвоста при росте истории.【F:app/ui/main_frame.py†L1-L317】【F:app/config.py†L272-L311】
 - `controllers/documents.py` — `DocumentsController` загружает и кэширует документы/требования, проверяет уникальность ID, сохраняет файлы и управляет удалением.【F:app/ui/controllers/documents.py†L1-L134】
 - `requirement_model.py` — модель представления, применяющая фильтры и сортировки поверх списка `Requirement`, доступная всем панелям GUI.【F:app/ui/requirement_model.py†L1-L92】【F:app/ui/requirement_model.py†L114-L167】
 - Панели: `list_panel.py` (табличный список с фильтрами и контекстным меню), `editor_panel.py` (форма редактирования требования с валидацией и вложениями), `document_tree.py` (иерархия документов), `navigation.py` (меню и хоткеи), `agent_chat_panel.py` (чат с `LocalAgent`); отдельное плавающее окно редактирования — `detached_editor.py` (переносит `EditorPanel` в отдельный `wx.Frame`, когда основной редактор скрыт).【F:app/ui/list_panel.py†L1-L92】【F:app/ui/editor_panel.py†L1-L81】【F:app/ui/document_tree.py†L1-L83】【F:app/ui/navigation.py†L1-L107】【F:app/ui/agent_chat_panel.py†L1-L77】【F:app/ui/detached_editor.py†L1-L86】

@@ -219,14 +219,26 @@ msgstr "В&ыход"
 msgid "&File"
 msgstr "&Файл"
 
-msgid "Show Error Console"
-msgstr "Показать консоль ошибок"
+msgid "Show Log Console"
+msgstr "Показать консоль логов"
 
 msgid "Show Agent Chat"
 msgstr "Показать чат с агентом"
 
-msgid "Error Console"
-msgstr "Консоль ошибок"
+msgid "Log Console"
+msgstr "Консоль логов"
+
+msgid "Log Level"
+msgstr "Уровень логов"
+
+msgid "Debug"
+msgstr "Отладка"
+
+msgid "Info"
+msgstr "Информация"
+
+msgid "Warning"
+msgstr "Предупреждение"
 
 msgid "Hierarchy"
 msgstr "Иерархия"

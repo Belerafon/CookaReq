@@ -24,7 +24,7 @@ from ..core.document_store import (
     save_document,
 )
 from ..i18n import _
-from ..log import logger
+from ..log import get_log_directory, logger, open_log_directory
 from ..mcp.controller import MCPController
 from ..settings import AppSettings, LLMSettings, MCPSettings
 from .agent_chat_panel import AgentChatPanel
@@ -45,10 +45,11 @@ from .splitter_utils import refresh_splitter_highlight, style_splitter
 class WxLogHandler(logging.Handler):
     """Forward log records to a ``wx.TextCtrl``."""
 
-    def __init__(self, target: wx.TextCtrl) -> None:
+    def __init__(self, target: wx.TextCtrl, *, max_chars: int = 500_000) -> None:
         """Initialize handler redirecting log output to ``target``."""
         super().__init__()
         self._target = target
+        self._max_chars = max_chars
         self.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 
     @property
@@ -70,7 +71,19 @@ class WxLogHandler(logging.Handler):
         if not wx.GetApp():
             return
         msg = self.format(record)
-        wx.CallAfter(self._target.AppendText, msg + "\n")
+        wx.CallAfter(self._append_message, msg)
+
+    def _append_message(self, message: str) -> None:
+        """Render ``message`` in the target control respecting the size limit."""
+
+        target = self._target
+        if not target or target.IsBeingDeleted():
+            return
+        target.AppendText(message + "\n")
+        if self._max_chars and self._max_chars > 0:
+            excess = target.GetLastPosition() - self._max_chars
+            if excess > 0:
+                target.Remove(0, excess)
 
 
 class MainFrame(wx.Frame):
@@ -133,6 +146,7 @@ class MainFrame(wx.Frame):
             on_show_trace_matrix=self.on_show_trace_matrix,
             on_new_requirement=self.on_new_requirement,
             on_run_command=self.on_run_command,
+            on_open_logs=self.on_open_logs,
         )
         self._recent_menu = self.navigation.recent_menu
         self._recent_menu_item = self.navigation.recent_menu_item
@@ -248,12 +262,26 @@ class MainFrame(wx.Frame):
 
         self.log_panel = wx.Panel(self.main_splitter)
         log_sizer = wx.BoxSizer(wx.VERTICAL)
-        self.log_label = wx.StaticText(self.log_panel, label=_("Error Console"))
+        header = wx.BoxSizer(wx.HORIZONTAL)
+        self.log_label = wx.StaticText(self.log_panel, label=_("Log Console"))
+        header.Add(self.log_label, 1, wx.ALIGN_CENTER_VERTICAL)
+        self.log_level_label = wx.StaticText(self.log_panel, label=_("Log Level"))
+        header.Add(self.log_level_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        self._log_level_values: list[int] = []
+        self.log_level_choice = wx.Choice(self.log_panel, choices=[])
+        header.Add(self.log_level_choice, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 2)
+        self.open_logs_button = wx.Button(
+            self.log_panel,
+            label=_("Open Log Folder"),
+            style=wx.BU_EXACTFIT,
+        )
+        self.open_logs_button.Bind(wx.EVT_BUTTON, self.on_open_logs)
+        header.Add(self.open_logs_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        log_sizer.Add(header, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
         self.log_console = wx.TextCtrl(
             self.log_panel,
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP,
         )
-        log_sizer.Add(self.log_label, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
         log_sizer.Add(self.log_console, 1, wx.EXPAND | wx.ALL, 5)
         self.log_panel.SetSizer(log_sizer)
 
@@ -266,8 +294,10 @@ class MainFrame(wx.Frame):
             self.log_handler.target = self.log_console
         else:
             self.log_handler = WxLogHandler(self.log_console)
-            self.log_handler.setLevel(logging.WARNING)
+            self.log_handler.setLevel(logging.INFO)
             logger.addHandler(self.log_handler)
+        self._populate_log_level_choice(self.log_handler.level)
+        self.log_level_choice.Bind(wx.EVT_CHOICE, self.on_change_log_level)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.main_splitter, 1, wx.EXPAND)
@@ -295,6 +325,53 @@ class MainFrame(wx.Frame):
         """Return directories recently opened by the user."""
 
         return self.config.get_recent_dirs()
+
+    def _log_level_options(self) -> list[tuple[str, int]]:
+        """Return ordered pairs of localized labels and log levels."""
+
+        return [
+            (_("Debug"), logging.DEBUG),
+            (_("Info"), logging.INFO),
+            (_("Warning"), logging.WARNING),
+            (_("Error"), logging.ERROR),
+        ]
+
+    def _populate_log_level_choice(self, selected_level: int | None = None) -> None:
+        """Fill the level selector preserving the current ``selected_level``."""
+
+        if not getattr(self, "log_level_choice", None):
+            return
+
+        target_level = selected_level if selected_level is not None else self.log_handler.level
+        if target_level == logging.NOTSET:
+            target_level = logging.INFO
+
+        options = self._log_level_options()
+        self.log_level_choice.Freeze()
+        try:
+            self.log_level_choice.Clear()
+            self._log_level_values = []
+            for label, level in options:
+                self.log_level_choice.Append(label)
+                self._log_level_values.append(level)
+        finally:
+            self.log_level_choice.Thaw()
+
+        index = self._find_choice_index_for_level(target_level)
+        if index >= 0:
+            self.log_level_choice.SetSelection(index)
+
+    def _find_choice_index_for_level(self, level: int) -> int:
+        """Return the closest matching index for ``level`` in the selector."""
+
+        if not self._log_level_values:
+            return -1
+        if level in self._log_level_values:
+            return self._log_level_values.index(level)
+        for idx, candidate in enumerate(self._log_level_values):
+            if level <= candidate:
+                return idx
+        return len(self._log_level_values) - 1
 
     def _create_section(
         self,
@@ -668,7 +745,10 @@ class MainFrame(wx.Frame):
         self.list_label.SetLabel(_("Requirements"))
         self.editor_label.SetLabel(_("Editor"))
         self.agent_label.SetLabel(_("Agent Chat"))
-        self.log_label.SetLabel(_("Error Console"))
+        self.log_label.SetLabel(_("Log Console"))
+        self.log_level_label.SetLabel(_("Log Level"))
+        self._populate_log_level_choice(self.log_handler.level)
+        self.open_logs_button.SetLabel(_("Open Log Folder"))
 
 
     def _confirm_discard_changes(self) -> bool:
@@ -694,6 +774,21 @@ class MainFrame(wx.Frame):
                 return
             self._load_directory(Path(dlg.GetPath()))
         dlg.Destroy()
+
+    def on_open_logs(self, _event: wx.CommandEvent) -> None:
+        """Show the log directory in the system file browser."""
+
+        from ..telemetry import log_event
+
+        directory = get_log_directory()
+        success = open_log_directory()
+        log_event(
+            "OPEN_LOG_FOLDER",
+            {"directory": str(directory), "success": success},
+        )
+        if not success:
+            message = _("Could not open log folder:\n%s") % directory
+            show_error_dialog(self, message, title=_("Error"))
 
     def on_open_recent(self, event: wx.CommandEvent) -> None:
         """Open a directory selected from the "recent" menu."""
@@ -1356,6 +1451,17 @@ class MainFrame(wx.Frame):
         self.panel.load_column_widths(self.config)
         self.panel.load_column_order(self.config)
         self.config.set_columns(self.selected_fields)
+
+    def on_change_log_level(self, event: wx.CommandEvent) -> None:
+        """Adjust the wx log handler level according to user selection."""
+
+        if not getattr(self, "log_handler", None):
+            return
+        selection = event.GetSelection()
+        if selection < 0 or selection >= len(self._log_level_values):
+            return
+        level = self._log_level_values[selection]
+        self.log_handler.setLevel(level)
 
     def on_toggle_log_console(self, _event: wx.CommandEvent) -> None:
         """Toggle visibility of log console panel."""

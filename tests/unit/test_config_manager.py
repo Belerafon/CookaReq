@@ -148,6 +148,17 @@ def test_schema_override_default(tmp_path, wx_app):
     assert cfg.get_value("log_sash", default=123) == 123
 
 
+def test_default_config_persists_within_test(wx_app):
+    cfg_a = ConfigManager(app_name="PyTestCookaReq")
+    cfg_a.set_language("fr")
+
+    cfg_b = ConfigManager(app_name="PyTestCookaReq")
+    assert cfg_b.get_language() == "fr"
+
+    cfg_c = ConfigManager(app_name="OtherApp")
+    assert cfg_c.get_language() is None
+
+
 @pytest.mark.parametrize("log_shown", [True, False])
 def test_save_and_restore_layout(tmp_path, log_shown, wx_app):
     wx = pytest.importorskip("wx")

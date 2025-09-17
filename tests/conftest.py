@@ -1,6 +1,7 @@
 """Pytest fixtures and shared helpers."""
 
 import os
+import re
 import sys
 import time
 import types
@@ -47,6 +48,54 @@ def _auto_confirm():
     set_confirm(auto_confirm)
     yield
 
+
+@pytest.fixture(autouse=True)
+def _isolate_wx_config(monkeypatch, tmp_path_factory):
+    """Persist wx.Config data under a per-test directory."""
+
+    try:
+        import wx  # noqa: WPS433 - optional dependency in tests
+    except ModuleNotFoundError:
+        # Tests that stub ``wx`` can still run without the real library.
+        yield
+        return
+
+    root = tmp_path_factory.mktemp("wx-config")
+    created_paths: dict[str, Path] = {}
+
+    def _normalise_app_name(app_name: object | None) -> str:
+        if app_name is None:
+            return "wx"
+        text = str(app_name)
+        if not text:
+            return "wx"
+        return re.sub(r"[^A-Za-z0-9_.-]", "_", text)
+
+    def _get_config_path(app_name: object | None) -> Path:
+        key = _normalise_app_name(app_name)
+        path = created_paths.get(key)
+        if path is None:
+            path = root / f"{key}.ini"
+            created_paths[key] = path
+        return path
+
+    def _make_config(*args, **kwargs):
+        params = dict(kwargs)
+        app_name = params.get("appName")
+        if app_name is None and args:
+            app_name = args[0]
+        params.setdefault("localFilename", str(_get_config_path(app_name)))
+        return wx.FileConfig(*args, **params)
+
+    monkeypatch.setattr(wx, "Config", _make_config)
+    try:
+        yield
+    finally:
+        for path in created_paths.values():
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 def pytest_collection_modifyitems(config, items):
     """Automatically add markers based on module-level requirements flags."""

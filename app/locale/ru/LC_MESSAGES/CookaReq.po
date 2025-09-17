@@ -140,6 +140,16 @@ msgstr "Ответственный за требование"
 msgid "Source"
 msgstr "Источник требования"
 
+msgid "Short uppercase prefix placed at the beginning of every requirement identifier (for example SYS1). It is also used for the document directory name. Identifiers are numbered sequentially without leading zeros (SYS1, SYS2, …). The prefix must start with a capital letter and may contain only ASCII letters, digits or underscores."
+msgstr "Короткий префикс из заглавных букв, который добавляется в начало каждого идентификатора требования (например SYS1). Он также используется в имени каталога документа. Идентификаторы нумеруются последовательно без ведущих нулей (SYS1, SYS2, …). Префикс должен начинаться с заглавной буквы и может содержать только латинские буквы, цифры или символ подчёркивания."
+
+msgid "Human-friendly document name shown in the navigation tree, window titles and exports. When left empty the title defaults to the prefix."
+msgstr "Человекочитаемое название документа, которое отображается в дереве навигации, заголовках окон и экспортируемых материалах. Если оставить поле пустым, заголовок будет совпадать с префиксом."
+
+
+msgid "Parent document that determines where this entry sits in the hierarchy. The top level is shown as '(top-level)'. The parent is chosen automatically when creating a child document and cannot be edited from this dialog."
+msgstr "Родительский документ, определяющий положение записи в иерархии. Верхний уровень отображается как «(top-level)». При создании дочернего документа родитель выбирается автоматически и не может быть изменён из этого диалога."
+
 msgid "Requirement type"
 msgstr "Тип требования"
 

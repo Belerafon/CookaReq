@@ -49,10 +49,18 @@ def load_document(directory: str | Path) -> Document:
         allow_freeform=labels_data.get("allowFreeform", False),
         defs=defs,
     )
+    digits_raw = data.get("digits")
+    if digits_raw not in (None, ""):
+        try:
+            digits_value = int(digits_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("digits must be an integer") from exc
+        if digits_value <= 0:
+            raise ValidationError("digits must be positive")
+
     return Document(
         prefix=prefix,
         title=data.get("title", prefix),
-        digits=int(data["digits"]),
         parent=data.get("parent"),
         labels=labels,
         attributes=dict(data.get("attributes", {})),
@@ -72,7 +80,6 @@ def save_document(directory: str | Path, doc: Document) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "title": doc.title,
-        "digits": doc.digits,
         "parent": doc.parent,
         "labels": {
             "allowFreeform": doc.labels.allow_freeform,

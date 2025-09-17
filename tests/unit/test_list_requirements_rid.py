@@ -3,7 +3,7 @@ from app.mcp.tools_read import list_requirements
 
 
 def test_list_requirements_returns_rid(tmp_path):
-    doc = Document(prefix="SYS", title="System", digits=3)
+    doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc)
     save_item(
         tmp_path / "SYS",
@@ -23,4 +23,4 @@ def test_list_requirements_returns_rid(tmp_path):
         },
     )
     result = list_requirements(tmp_path)
-    assert result["items"][0]["rid"] == "SYS001"
+    assert result["items"][0]["rid"] == "SYS1"

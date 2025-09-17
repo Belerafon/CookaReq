@@ -18,7 +18,6 @@ def test_collect_label_inheritance(tmp_path: Path) -> None:
     sys_doc = Document(
         prefix="SYS",
         title="System",
-        digits=3,
         labels=DocumentLabels(
             allow_freeform=True,
             defs=[LabelDef(key="safety", title="Safety", color="#123456")],
@@ -27,7 +26,6 @@ def test_collect_label_inheritance(tmp_path: Path) -> None:
     hlr_doc = Document(
         prefix="HLR",
         title="High level",
-        digits=2,
         parent="SYS",
         labels=DocumentLabels(defs=[LabelDef(key="ux", title="UX")]),
     )
@@ -56,7 +54,6 @@ def test_collect_label_inheritance(tmp_path: Path) -> None:
         Document(
             prefix="SYS",
             title="System",
-            digits=3,
             labels=DocumentLabels(
                 allow_freeform=False,
                 defs=[LabelDef(key="safety", title="Safety", color="#123456")],

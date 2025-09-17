@@ -11,15 +11,15 @@ from app.core.document_store import Document, save_document, save_item
 
 
 def _prepare(root):
-    doc_sys = Document(prefix="SYS", title="System", digits=3)
+    doc_sys = Document(prefix="SYS", title="System")
     save_document(root / "SYS", doc_sys)
-    doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
+    doc_hlr = Document(prefix="HLR", title="High", parent="SYS")
     save_document(root / "HLR", doc_hlr)
     save_item(root / "SYS", doc_sys, {"id": 1, "title": "S", "statement": "", "labels": [], "links": []})
     save_item(
         root / "HLR",
         doc_hlr,
-        {"id": 1, "title": "H", "statement": "", "labels": [], "links": ["SYS001"]},
+        {"id": 1, "title": "H", "statement": "", "labels": [], "links": ["SYS1"]},
     )
 
 
@@ -29,7 +29,7 @@ def test_trace_export(tmp_path, capsys):
     _prepare(tmp_path)
     commands.cmd_trace(args)
     out = capsys.readouterr().out.strip().splitlines()
-    assert out == ["HLR01 SYS001"]
+    assert out == ["HLR1 SYS1"]
 
 
 @pytest.mark.unit
@@ -38,7 +38,7 @@ def test_trace_export_csv(tmp_path, capsys):
     _prepare(tmp_path)
     commands.cmd_trace(args)
     out = capsys.readouterr().out.strip().splitlines()
-    assert out == ["child,parent", "HLR01,SYS001"]
+    assert out == ["child,parent", "HLR1,SYS1"]
 
 
 @pytest.mark.unit
@@ -49,7 +49,7 @@ def test_trace_export_html(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "<!DOCTYPE html>" in out
     assert "<style>" in out
-    assert "<tr><td>HLR01</td><td>SYS001</td></tr>" in out
+    assert "<tr><td>HLR1</td><td>SYS1</td></tr>" in out
 
 
 @pytest.mark.unit
@@ -62,7 +62,7 @@ def test_trace_output_file(tmp_path, capsys):
     assert captured.out == ""
     data = out_file.read_text()
     assert "<style>" in data
-    assert "<tr><td>HLR01</td><td>SYS001</td></tr>" in data
+    assert "<tr><td>HLR1</td><td>SYS1</td></tr>" in data
 
 
 @pytest.mark.unit
@@ -76,4 +76,4 @@ def test_trace_output_creates_parent_dirs(tmp_path, capsys):
     assert out_file.exists()
     data = out_file.read_text().splitlines()
     assert data[0] == "child,parent"
-    assert data[1] == "HLR01,SYS001"
+    assert data[1] == "HLR1,SYS1"

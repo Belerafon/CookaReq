@@ -53,9 +53,9 @@ def test_requirement_prefix_and_rid():
         "source": "s",
         "verification": "analysis",
     }
-    req = requirement_from_dict(data, doc_prefix="SYS", rid="SYS005")
+    req = requirement_from_dict(data, doc_prefix="SYS", rid="SYS5")
     assert req.doc_prefix == "SYS"
-    assert req.rid == "SYS005"
+    assert req.rid == "SYS5"
     roundtrip = requirement_to_dict(req)
     assert "doc_prefix" not in roundtrip
     assert "rid" not in roundtrip
@@ -122,13 +122,13 @@ def test_requirement_links_roundtrip():
         priority=Priority.MEDIUM,
         source="",
         verification=Verification.ANALYSIS,
-        links=[Link(rid="SYS001", fingerprint="abc", suspect=True)],
+        links=[Link(rid="SYS1", fingerprint="abc", suspect=True)],
     )
     data = requirement_to_dict(req)
-    assert data["links"] == [{"rid": "SYS001", "fingerprint": "abc", "suspect": True}]
+    assert data["links"] == [{"rid": "SYS1", "fingerprint": "abc", "suspect": True}]
     again = requirement_from_dict(data)
     assert len(again.links) == 1
-    assert again.links[0].rid == "SYS001"
+    assert again.links[0].rid == "SYS1"
     assert again.links[0].fingerprint == "abc"
     assert again.links[0].suspect is True
 

@@ -18,9 +18,9 @@ from app.core.document_store import (
 
 @pytest.mark.unit
 def test_item_add_rejects_unknown_label(tmp_path, capsys):
-    doc_sys = Document(prefix="SYS", title="System", digits=3)
+    doc_sys = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc_sys)
-    doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
+    doc_hlr = Document(prefix="HLR", title="High", parent="SYS")
     save_document(tmp_path / "HLR", doc_hlr)
     args = argparse.Namespace(
         directory=str(tmp_path),
@@ -41,11 +41,10 @@ def test_item_add_accepts_inherited_label(tmp_path, capsys):
     doc_sys = Document(
         prefix="SYS",
         title="System",
-        digits=3,
         labels=DocumentLabels(defs=[LabelDef("ui", "UI")]),
     )
     save_document(tmp_path / "SYS", doc_sys)
-    doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
+    doc_hlr = Document(prefix="HLR", title="High", parent="SYS")
     save_document(tmp_path / "HLR", doc_hlr)
     args = argparse.Namespace(
         directory=str(tmp_path),
@@ -56,7 +55,7 @@ def test_item_add_accepts_inherited_label(tmp_path, capsys):
     )
     commands.cmd_item_add(args)
     out = capsys.readouterr().out.strip()
-    assert out == "HLR01"
+    assert out == "HLR1"
     path = item_path(tmp_path / "HLR", doc_hlr, 1)
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["labels"] == ["ui"]
@@ -67,11 +66,10 @@ def test_validate_labels_helper(tmp_path):
     doc_sys = Document(
         prefix="SYS",
         title="System",
-        digits=3,
         labels=DocumentLabels(defs=[LabelDef("ui", "UI")]),
     )
     save_document(tmp_path / "SYS", doc_sys)
-    doc_hlr = Document(prefix="HLR", title="High", digits=2, parent="SYS")
+    doc_hlr = Document(prefix="HLR", title="High", parent="SYS")
     save_document(tmp_path / "HLR", doc_hlr)
     docs = load_documents(tmp_path)
     assert validate_labels("HLR", ["ui"], docs) is None

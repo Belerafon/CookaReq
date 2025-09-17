@@ -28,7 +28,6 @@ def _document(tmp_path: Path) -> Document:
     doc = Document(
         prefix="SYS",
         title="System",
-        digits=3,
         labels=DocumentLabels(defs=[LabelDef(key="safety", title="Safety")]),
     )
     save_document(tmp_path / "SYS", doc)
@@ -98,20 +97,17 @@ def test_move_requirement_updates_links(tmp_path: Path) -> None:
     sys_doc = Document(
         prefix="SYS",
         title="System",
-        digits=3,
         labels=DocumentLabels(allow_freeform=True),
     )
     hlr_doc = Document(
         prefix="HLR",
         title="High level",
-        digits=2,
         parent="SYS",
         labels=DocumentLabels(allow_freeform=True),
     )
     llr_doc = Document(
         prefix="LLR",
         title="Low level",
-        digits=2,
         parent="HLR",
         labels=DocumentLabels(allow_freeform=True),
     )
@@ -137,7 +133,7 @@ def test_move_requirement_updates_links(tmp_path: Path) -> None:
         docs=docs,
     )
 
-    assert moved.rid == "HLR01"
+    assert moved.rid == "HLR1"
     assert moved.revision == parent.revision
     assert not item_path(tmp_path / "SYS", sys_doc, parent.id).exists()
     assert item_path(tmp_path / "HLR", hlr_doc, moved.id).is_file()

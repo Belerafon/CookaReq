@@ -18,7 +18,7 @@ def test_load_directory_reports_validation_error(tmp_path, monkeypatch, wx_app):
     invalid_dir = root_dir / "SYS1"
     invalid_dir.mkdir(parents=True)
     (invalid_dir / "document.json").write_text(
-        json.dumps({"prefix": "SYS", "digits": 3}),
+        json.dumps({"prefix": "SYS"}),
         encoding="utf-8",
     )
 

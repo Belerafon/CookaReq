@@ -1,6 +1,8 @@
 import pytest
 from pathlib import Path
 
+import json
+
 from app.ui.controllers.documents import DocumentsController
 from app.ui.requirement_model import RequirementModel
 from app.core.document_store import (
@@ -44,7 +46,6 @@ def test_load_documents_and_items(tmp_path: Path):
     doc = Document(
         prefix="SYS",
         title="System",
-        digits=3,
         labels=DocumentLabels(
             allow_freeform=True,
             defs=[LabelDef(key="ui", title="UI", color="#123456")],
@@ -63,14 +64,14 @@ def test_load_documents_and_items(tmp_path: Path):
     all_reqs = model.get_all()
     assert [r.id for r in all_reqs] == [1]
     assert all_reqs[0].doc_prefix == "SYS"
-    assert all_reqs[0].rid == "SYS001"
+    assert all_reqs[0].rid == "SYS1"
     labels, freeform = controller.collect_labels("SYS")
     assert freeform is True
     assert labels and labels[0].key == "ui" and labels[0].color == "#123456"
 
 
 def test_next_id_save_and_delete(tmp_path: Path):
-    doc = Document(prefix="SYS", title="System", digits=3)
+    doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
 
@@ -86,14 +87,14 @@ def test_next_id_save_and_delete(tmp_path: Path):
     path = item_path(doc_dir, doc, 1)
     assert path.is_file()
     assert req.doc_prefix == "SYS"
-    assert req.rid == "SYS001"
+    assert req.rid == "SYS1"
 
     controller.delete_requirement("SYS", req.id)
     assert not path.exists()
 
 
 def test_add_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
-    doc = Document(prefix="SYS", title="System", digits=3)
+    doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
     save_item(doc_dir, doc, requirement_to_dict(_req(1)))
@@ -109,7 +110,7 @@ def test_add_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
 
 
 def test_save_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
-    doc = Document(prefix="SYS", title="System", digits=3)
+    doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
     save_item(doc_dir, doc, requirement_to_dict(_req(1)))
@@ -129,33 +130,33 @@ def test_save_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
 
 
 def test_iter_links(tmp_path: Path):
-    sys_doc = Document(prefix="SYS", title="System", digits=3)
-    hlr_doc = Document(prefix="HLR", title="High", digits=3, parent="SYS")
+    sys_doc = Document(prefix="SYS", title="System")
+    hlr_doc = Document(prefix="HLR", title="High", parent="SYS")
     sys_dir = tmp_path / "SYS"
     hlr_dir = tmp_path / "HLR"
     save_document(sys_dir, sys_doc)
     save_document(hlr_dir, hlr_doc)
     save_item(sys_dir, sys_doc, requirement_to_dict(_req(1)))
     data = requirement_to_dict(_req(1))
-    data["links"] = ["SYS001"]
+    data["links"] = ["SYS1"]
     save_item(hlr_dir, hlr_doc, data)
     model = RequirementModel()
     controller = DocumentsController(tmp_path, model)
     controller.load_documents()
     links = list(controller.iter_links())
-    assert ("HLR001", "SYS001") in links
+    assert ("HLR1", "SYS1") in links
 
 
 def test_delete_requirement_removes_links(tmp_path: Path):
-    sys_doc = Document(prefix="SYS", title="System", digits=3)
-    hlr_doc = Document(prefix="HLR", title="High", digits=3, parent="SYS")
+    sys_doc = Document(prefix="SYS", title="System")
+    hlr_doc = Document(prefix="HLR", title="High", parent="SYS")
     sys_dir = tmp_path / "SYS"
     hlr_dir = tmp_path / "HLR"
     save_document(sys_dir, sys_doc)
     save_document(hlr_dir, hlr_doc)
     save_item(sys_dir, sys_doc, requirement_to_dict(_req(1)))
     data = requirement_to_dict(_req(1))
-    data["links"] = ["SYS001"]
+    data["links"] = ["SYS1"]
     save_item(hlr_dir, hlr_doc, data)
     model = RequirementModel()
     controller = DocumentsController(tmp_path, model)
@@ -167,9 +168,9 @@ def test_delete_requirement_removes_links(tmp_path: Path):
 
 
 def test_delete_document_recursively(tmp_path: Path):
-    sys_doc = Document(prefix="SYS", title="System", digits=3)
-    hlr_doc = Document(prefix="HLR", title="High", digits=3, parent="SYS")
-    llr_doc = Document(prefix="LLR", title="Low", digits=3, parent="HLR")
+    sys_doc = Document(prefix="SYS", title="System")
+    hlr_doc = Document(prefix="HLR", title="High", parent="SYS")
+    llr_doc = Document(prefix="LLR", title="Low", parent="HLR")
     sys_dir = tmp_path / "SYS"
     hlr_dir = tmp_path / "HLR"
     llr_dir = tmp_path / "LLR"
@@ -197,18 +198,21 @@ def test_create_document_persists_configuration(tmp_path: Path) -> None:
     model = RequirementModel()
     controller = DocumentsController(tmp_path, model)
     controller.load_documents()
-    created = controller.create_document("SYS", "System", digits=4)
+    created = controller.create_document("SYS", "System")
     assert created.prefix == "SYS"
-    assert created.digits == 4
+    assert not hasattr(created, "digits")
     path = tmp_path / "SYS" / "document.json"
     assert path.is_file()
     stored = load_document(tmp_path / "SYS")
     assert stored.title == "System"
-    assert stored.digits == 4
+    assert not hasattr(stored, "digits")
+    with path.open(encoding="utf-8") as fh:
+        data = json.load(fh)
+    assert "digits" not in data
 
 
 def test_create_document_with_parent(tmp_path: Path) -> None:
-    parent_doc = Document(prefix="SYS", title="System", digits=3)
+    parent_doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", parent_doc)
     model = RequirementModel()
     controller = DocumentsController(tmp_path, model)
@@ -228,7 +232,7 @@ def test_create_document_rejects_invalid_prefix(tmp_path: Path) -> None:
 
 
 def test_create_document_rejects_duplicate(tmp_path: Path) -> None:
-    doc = Document(prefix="SYS", title="System", digits=3)
+    doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc)
     model = RequirementModel()
     controller = DocumentsController(tmp_path, model)
@@ -238,17 +242,16 @@ def test_create_document_rejects_duplicate(tmp_path: Path) -> None:
 
 
 def test_rename_document_updates_metadata(tmp_path: Path) -> None:
-    doc = Document(prefix="SYS", title="System", digits=3)
+    doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc)
     model = RequirementModel()
     controller = DocumentsController(tmp_path, model)
     controller.load_documents()
-    updated = controller.rename_document("SYS", title="Updated", digits=5)
+    updated = controller.rename_document("SYS", title="Updated")
     assert updated.title == "Updated"
-    assert updated.digits == 5
     stored = load_document(tmp_path / "SYS")
     assert stored.title == "Updated"
-    assert stored.digits == 5
+    assert not hasattr(stored, "digits")
 
 
 def test_rename_document_rejects_unknown(tmp_path: Path) -> None:
@@ -259,11 +262,11 @@ def test_rename_document_rejects_unknown(tmp_path: Path) -> None:
         controller.rename_document("SYS", title="Missing")
 
 
-def test_rename_document_rejects_invalid_digits(tmp_path: Path) -> None:
-    doc = Document(prefix="SYS", title="System", digits=3)
+def test_rename_document_without_changes_returns_existing(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc)
     model = RequirementModel()
     controller = DocumentsController(tmp_path, model)
     controller.load_documents()
-    with pytest.raises(ValueError):
-        controller.rename_document("SYS", digits=0)
+    unchanged = controller.rename_document("SYS")
+    assert unchanged.title == "System"

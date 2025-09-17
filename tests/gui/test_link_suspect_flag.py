@@ -13,7 +13,7 @@ def _prepare_requirement(panel: EditorPanel) -> None:
     panel.fields["id"].SetValue("1")
     panel.fields["title"].SetValue("Title")
     panel.fields["statement"].SetValue("Statement")
-    panel.links_id.SetValue("SYS001")
+    panel.links_id.SetValue("SYS1")
     panel._on_add_link_generic("links")
 
 
@@ -70,7 +70,7 @@ def test_save_includes_suspect_flag(wx_app, tmp_path, monkeypatch):
 
     monkeypatch.setattr("app.ui.editor_panel.save_item", fake_save_item)
 
-    doc = Document(prefix="SYS", title="Test", digits=3)
+    doc = Document(prefix="SYS", title="Test")
     panel.save(tmp_path, doc=doc)
 
     assert "data" in saved_payload

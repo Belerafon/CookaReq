@@ -149,14 +149,14 @@ class MainFrame(wx.Frame):
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         style_splitter(self.doc_splitter)
         self._disable_splitter_unsplit(self.doc_splitter)
-        self._doc_tree_min_pane = 160
+        self._doc_tree_min_pane = max(self.FromDIP(20), 1)
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
         self.doc_splitter.Bind(
             wx.EVT_SPLITTER_SASH_POS_CHANGED,
             self._on_doc_splitter_sash_changed,
         )
         self._doc_tree_sash_veto_bound = False
-        self._doc_tree_placeholder_width = self.FromDIP(28)
+        self._doc_tree_placeholder_width = self.FromDIP(20)
         self._doc_tree_placeholder: wx.Panel | None = None
         self._doc_tree_placeholder_button: wx.Button | None = None
         self._doc_tree_toggle_size: wx.Size | None = None
@@ -185,7 +185,9 @@ class MainFrame(wx.Frame):
             header_factory=lambda parent: (
                 self._create_doc_tree_toggle(parent),
             ),
+            allow_label_shrink=True,
         )
+        self._configure_doc_tree_section()
         self.doc_tree.tree.Bind(wx.EVT_TREE_SEL_CHANGING, self._on_doc_changing)
         self._doc_tree_placeholder = self._create_doc_tree_placeholder(self.doc_splitter)
         (
@@ -300,6 +302,7 @@ class MainFrame(wx.Frame):
         label: str,
         factory: Callable[[wx.Window], wx.Window],
         header_factory: Callable[[wx.Window], Sequence[wx.Window]] | None = None,
+        allow_label_shrink: bool = False,
     ) -> tuple[wx.Panel, wx.StaticText, wx.Window]:
         """Build a titled container holding the widget returned by ``factory``."""
 
@@ -310,7 +313,14 @@ class MainFrame(wx.Frame):
             container.SetBackgroundColour(background)
         container.SetDoubleBuffered(True)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        label_ctrl = wx.StaticText(container, label=label)
+        label_style = 0
+        if allow_label_shrink and hasattr(wx, "ST_NO_AUTORESIZE"):
+            label_style |= wx.ST_NO_AUTORESIZE
+        label_ctrl = wx.StaticText(container, label=label, style=label_style)
+        if allow_label_shrink:
+            best = label_ctrl.GetBestSize()
+            min_height = best.height if best.height > 0 else -1
+            label_ctrl.SetMinSize(wx.Size(0, min_height))
         if header_factory is not None:
             header = wx.BoxSizer(wx.HORIZONTAL)
             header.Add(label_ctrl, 1, wx.ALIGN_CENTER_VERTICAL)
@@ -323,6 +333,35 @@ class MainFrame(wx.Frame):
         sizer.Add(content, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 3)
         container.SetSizer(sizer)
         return container, label_ctrl, content
+
+    def _configure_doc_tree_section(self) -> None:
+        """Allow the hierarchy pane header to collapse to a narrow width."""
+
+        if not getattr(self, "doc_tree_container", None):
+            return
+        label = getattr(self, "doc_tree_label", None)
+        container = self.doc_tree_container
+        if label:
+            best = label.GetBestSize()
+            min_height = best.height if best.height > 0 else -1
+            label.SetMinSize(wx.Size(0, min_height))
+            label.InvalidateBestSize()
+        border = max(container.FromDIP(2), 1)
+        sizer = container.GetSizer()
+        if sizer:
+            children = sizer.GetChildren()
+            if children:
+                children[0].SetBorder(border)
+            if len(children) > 1:
+                children[1].SetBorder(border)
+            sizer.Layout()
+        header_sizer = label.GetContainingSizer() if label else None
+        if header_sizer:
+            header_children = list(header_sizer.GetChildren())
+            for item in header_children[1:]:
+                item.SetBorder(border)
+            header_sizer.Layout()
+        container.Layout()
 
     def _create_doc_tree_toggle(self, parent: wx.Window) -> wx.ToggleButton:
         """Create a minimalist text toggle for the document tree pane."""
@@ -436,7 +475,7 @@ class MainFrame(wx.Frame):
         if width <= 0 and getattr(self, "doc_tree_toggle", None):
             margin = self.doc_tree_toggle.FromDIP(8)
             width = self.doc_tree_toggle.GetBestSize().width + margin
-        return max(width, self.FromDIP(24))
+        return max(width, self.FromDIP(20))
 
     def _create_doc_tree_placeholder(self, parent: wx.SplitterWindow) -> wx.Panel:
         """Build a narrow placeholder shown when the hierarchy pane is hidden."""
@@ -475,7 +514,7 @@ class MainFrame(wx.Frame):
         best = button.GetBestSize()
         if self._doc_tree_toggle_size:
             best = self._doc_tree_toggle_size
-        width = best.width + panel.FromDIP(8)
+        width = best.width + panel.FromDIP(4)
         width = max(width, self._doc_tree_placeholder_width)
         panel.SetMinSize(wx.Size(width, -1))
         panel.SetMaxSize(wx.Size(width, -1))

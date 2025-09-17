@@ -1,6 +1,7 @@
 """Main application window."""
 
 import logging
+import weakref
 from collections.abc import Callable, Sequence
 from dataclasses import fields, replace
 from importlib import resources
@@ -159,6 +160,7 @@ class MainFrame(wx.Frame):
         self.agent_chat_menu_item = self.navigation.agent_chat_menu_item
         self.manage_labels_id = self.navigation.manage_labels_id
         self._detached_editors: dict[tuple[str, int], DetachedEditorFrame] = {}
+        self._auxiliary_frames: set[wx.Frame] = set()
 
         # split horizontally: top is main content, bottom is log console
         self.main_splitter = wx.SplitterWindow(self)
@@ -1050,6 +1052,7 @@ class MainFrame(wx.Frame):
             wx.MessageBox(str(exc), _("Error"))
             return
         frame = DerivationGraphFrame(self, links)
+        self.register_auxiliary_frame(frame)
         frame.Show()
 
     def on_show_trace_matrix(
@@ -1070,6 +1073,7 @@ class MainFrame(wx.Frame):
             wx.MessageBox(str(exc), _("Error"))
             return
         frame = TraceMatrixFrame(self, links)
+        self.register_auxiliary_frame(frame)
         frame.Show()
 
     def _load_directory(self, path: Path) -> None:
@@ -1657,6 +1661,46 @@ class MainFrame(wx.Frame):
 
         event.Veto()
 
+    def register_auxiliary_frame(self, frame: wx.Frame) -> None:
+        """Track ``frame`` so it is destroyed during main window shutdown."""
+
+        if frame is None:
+            return
+        if frame in self._auxiliary_frames:
+            return
+
+        owner_ref = weakref.ref(self)
+        frame_ref = weakref.ref(frame)
+
+        def _on_aux_close(event: wx.Event) -> None:  # pragma: no cover - GUI event
+            owner = owner_ref()
+            target = frame_ref()
+            if owner is not None and target is not None:
+                owner._auxiliary_frames.discard(target)
+            event.Skip()
+
+        frame.Bind(wx.EVT_CLOSE, _on_aux_close)
+        self._auxiliary_frames.add(frame)
+
+    def _close_auxiliary_frames(self) -> None:
+        """Destroy all registered auxiliary frames, ignoring errors."""
+
+        remaining = len(self._auxiliary_frames)
+        logger.info(
+            "Shutdown step: closing %s auxiliary window(s)",
+            remaining,
+        )
+        for aux in list(self._auxiliary_frames):
+            if aux is None:
+                continue
+            try:
+                if not aux.IsBeingDeleted():
+                    aux.Destroy()
+            except Exception:  # pragma: no cover - best effort cleanup
+                logger.exception("Failed to destroy auxiliary window during shutdown")
+        self._auxiliary_frames.clear()
+        logger.info("Shutdown step completed: auxiliary windows closed")
+
     def _on_close(self, event: wx.Event) -> None:  # pragma: no cover - GUI event
         event_type = type(event).__name__ if event is not None else "<none>"
         can_veto = False
@@ -1700,6 +1744,8 @@ class MainFrame(wx.Frame):
                 logger.exception("Failed to destroy detached editor during shutdown")
         self._detached_editors.clear()
         logger.info("Shutdown step completed: detached editors closed")
+
+        self._close_auxiliary_frames()
 
         if self.log_handler in logger.handlers:
             logger.info("Shutdown step: detaching wx log handler")

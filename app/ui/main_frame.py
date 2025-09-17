@@ -1769,7 +1769,24 @@ class MainFrame(wx.Frame):
             if aux is None:
                 continue
             try:
-                if not aux.IsBeingDeleted():
+                if aux.IsBeingDeleted():
+                    continue
+                try:
+                    if aux.IsShownOnScreen():
+                        aux.Show(False)
+                except Exception:  # pragma: no cover - defensive guard
+                    logger.exception("Failed to hide auxiliary window during shutdown")
+                closed = False
+                try:
+                    close = getattr(aux, "Close", None)
+                    if callable(close):
+                        try:
+                            closed = bool(close(force=True))
+                        except TypeError:
+                            closed = bool(close(True))
+                except Exception:  # pragma: no cover - close handlers must not abort shutdown
+                    logger.exception("Failed to close auxiliary window during shutdown")
+                if not closed and not aux.IsBeingDeleted():
                     aux.Destroy()
             except Exception:  # pragma: no cover - best effort cleanup
                 logger.exception("Failed to destroy auxiliary window during shutdown")

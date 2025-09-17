@@ -29,7 +29,7 @@
 - `label_presets.py` — наборы предустановленных меток и генератор пастельных цветов для них.【F:app/core/label_presets.py†L1-L39】
 
 ### `app/ui/`
-- `main_frame.py` — главное окно: собирает панели (`DocumentTree`, `ListPanel`, `EditorPanel`, `AgentChatPanel`), меню `Navigation`, настраивает `MCPController` и связку с `DocumentsController` для загрузки данных.【F:app/ui/main_frame.py†L1-L164】
+- `main_frame.py` — главное окно: собирает панели (`DocumentTree`, `ListPanel`, `EditorPanel`, `AgentChatPanel`), меню `Navigation`, настраивает `MCPController` и связку с `DocumentsController` для загрузки данных; хранит в конфиге состояние сворачиваемой панели документов и ширину раскрытого дерева.【F:app/ui/main_frame.py†L1-L207】【F:app/config.py†L272-L311】
 - `controllers/documents.py` — `DocumentsController` загружает и кэширует документы/требования, проверяет уникальность ID, сохраняет файлы и управляет удалением.【F:app/ui/controllers/documents.py†L1-L134】
 - `requirement_model.py` — модель представления, применяющая фильтры и сортировки поверх списка `Requirement`, доступная всем панелям GUI.【F:app/ui/requirement_model.py†L1-L92】【F:app/ui/requirement_model.py†L114-L167】
 - Панели: `list_panel.py` (табличный список с фильтрами и контекстным меню), `editor_panel.py` (форма редактирования требования с валидацией и вложениями), `document_tree.py` (иерархия документов), `navigation.py` (меню и хоткеи), `agent_chat_panel.py` (чат с `LocalAgent`).【F:app/ui/list_panel.py†L1-L92】【F:app/ui/editor_panel.py†L1-L81】【F:app/ui/document_tree.py†L1-L83】【F:app/ui/navigation.py†L1-L84】【F:app/ui/agent_chat_panel.py†L1-L77】

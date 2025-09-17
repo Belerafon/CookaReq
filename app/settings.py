@@ -85,13 +85,23 @@ class LLMSettings(BaseModel):
         )
 
 
+def default_requirements_path() -> str:
+    """Return bundled requirements directory if present."""
+
+    try:
+        candidate = Path(__file__).resolve().parents[1] / "requirements"
+    except OSError:  # pragma: no cover - very defensive
+        return ""
+    return str(candidate) if candidate.is_dir() else ""
+
+
 class MCPSettings(BaseModel):
     """Settings for configuring the MCP server and client."""
 
     auto_start: bool = True
     host: str = "127.0.0.1"
     port: int = 59362
-    base_path: str = ""
+    base_path: str = Field(default_factory=default_requirements_path)
     require_token: bool = False
     token: str = ""
 

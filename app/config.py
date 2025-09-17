@@ -832,6 +832,7 @@ class ConfigManager:
         agent_splitter: wx.SplitterWindow | None = None,
         doc_tree_collapsed: bool = False,
         doc_tree_expanded_sash: int | None = None,
+        agent_chat_sash: int | None = None,
     ) -> None:
         """Persist window geometry and splitter positions."""
         w, h = frame.GetSize()
@@ -862,9 +863,20 @@ class ConfigManager:
         if agent_splitter is not None:
             if agent_splitter.IsSplit():
                 self.set_value("agent_chat_shown", True)
-                self.set_value("agent_chat_sash", agent_splitter.GetSashPosition())
+                sash_value = (
+                    agent_chat_sash
+                    if agent_chat_sash is not None
+                    else agent_splitter.GetSashPosition()
+                )
             else:
                 self.set_value("agent_chat_shown", False)
+                sash_value = (
+                    agent_chat_sash
+                    if agent_chat_sash is not None
+                    else self.get_value("agent_chat_sash")
+                )
+            if sash_value is not None:
+                self.set_value("agent_chat_sash", sash_value)
         panel.save_column_widths(self)
         panel.save_column_order(self)
         self.flush()

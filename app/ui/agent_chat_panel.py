@@ -13,7 +13,7 @@ import wx
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from ..i18n import _
-from .chat_entry import ChatEntry
+from .chat_entry import ChatConversation, ChatEntry
 from .helpers import dip, format_error_message, inherit_background
 from .splitter_utils import refresh_splitter_highlight, style_splitter
 from .widgets.chat_message import TranscriptMessagePanel
@@ -93,12 +93,14 @@ class AgentChatPanel(wx.Panel):
         inherit_background(self, parent)
         self._agent_supplier = agent_supplier
         self._history_path = history_path or _default_history_path()
-        self.history: list[ChatEntry] = []
+        self.conversations: list[ChatConversation] = []
+        self._active_conversation_id: str | None = None
         self._is_running = False
         self._timer = wx.Timer(self)
         self._timer.Bind(wx.EVT_TIMER, self._on_timer)
         self._start_time: float | None = None
         self._current_tokens: int = 0
+        self._new_chat_btn: wx.Button | None = None
         self._clear_history_btn: wx.Button | None = None
         self._bottom_panel: wx.Panel | None = None
         self.transcript = _TranscriptAccessor()
@@ -138,12 +140,17 @@ class AgentChatPanel(wx.Panel):
 
         history_panel = wx.Panel(self._horizontal_splitter)
         history_sizer = wx.BoxSizer(wx.VERTICAL)
-        history_label = wx.StaticText(history_panel, label=_("Chat History"))
+        history_header = wx.BoxSizer(wx.HORIZONTAL)
+        history_label = wx.StaticText(history_panel, label=_("Chats"))
+        self._new_chat_btn = wx.Button(history_panel, label=_("New chat"))
+        self._new_chat_btn.Bind(wx.EVT_BUTTON, self._on_new_chat)
+        history_header.Add(history_label, 1, wx.ALIGN_CENTER_VERTICAL)
+        history_header.Add(self._new_chat_btn, 0, wx.ALIGN_CENTER_VERTICAL)
         self.history_list = wx.ListBox(history_panel, style=wx.LB_SINGLE)
         self.history_list.SetMinSize(wx.Size(dip(self, 220), -1))
         self.history_list.Bind(wx.EVT_LISTBOX, self._on_select_history)
         inherit_background(history_panel, self)
-        history_sizer.Add(history_label, 0)
+        history_sizer.Add(history_header, 0, wx.EXPAND)
         history_sizer.AddSpacer(spacing)
         history_sizer.Add(self.history_list, 1, wx.EXPAND)
         history_panel.SetSizer(history_sizer)
@@ -185,7 +192,7 @@ class AgentChatPanel(wx.Panel):
         buttons = wx.BoxSizer(wx.HORIZONTAL)
         self._send_btn = wx.Button(bottom_panel, label=_("Send"))
         self._send_btn.Bind(wx.EVT_BUTTON, self._on_send)
-        self._clear_history_btn = wx.Button(bottom_panel, label=_("Clear history"))
+        self._clear_history_btn = wx.Button(bottom_panel, label=_("Delete chat"))
         self._clear_history_btn.Bind(wx.EVT_BUTTON, self._on_clear_history)
         clear_btn = wx.Button(bottom_panel, label=_("Clear input"))
         clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_input)
@@ -233,6 +240,8 @@ class AgentChatPanel(wx.Panel):
             return
 
         prompt = text
+        self.input.SetValue("")
+        self._ensure_active_conversation()
         tokens = _token_count(prompt)
         history_messages = self._conversation_messages()
         self._set_wait_state(True, tokens)
@@ -275,30 +284,47 @@ class AgentChatPanel(wx.Panel):
         """Clear input field and reset selection."""
 
         self.input.SetValue("")
-        self.history_list.SetSelection(wx.NOT_FOUND)
         self.input.SetFocus()
 
     def _on_clear_history(self, _event: wx.Event) -> None:
-        """Remove all stored conversation entries."""
+        """Delete the currently selected conversation."""
 
-        if self._is_running or not self.history:
+        if self._is_running:
             return
-        self.history.clear()
+        active_index = self._active_index()
+        conversation = self._get_active_conversation()
+        if conversation is None:
+            return
+        try:
+            self.conversations.remove(conversation)
+        except ValueError:  # pragma: no cover - defensive
+            pass
+        if self.conversations:
+            if active_index is None:
+                self._active_conversation_id = self.conversations[-1].conversation_id
+            else:
+                next_index = min(active_index, len(self.conversations) - 1)
+                self._active_conversation_id = self.conversations[next_index].conversation_id
+        else:
+            self._active_conversation_id = None
         self._save_history()
         self._refresh_history_list()
-        self.history_list.SetSelection(wx.NOT_FOUND)
         self._render_transcript()
+        self.input.SetValue("")
         self.input.SetFocus()
 
     def _on_select_history(self, event: wx.CommandEvent) -> None:
         """Load prompt from history selection."""
 
         idx = event.GetInt()
-        if 0 <= idx < len(self.history):
-            entry = self.history[idx]
-            self.input.SetValue(entry.prompt)
-            self.input.SetInsertionPointEnd()
+        if 0 <= idx < len(self.conversations):
+            conversation = self.conversations[idx]
+            self._active_conversation_id = conversation.conversation_id
+            self._save_history()
+            self._refresh_history_list()
             self._ensure_history_visible(idx)
+            self._render_transcript()
+            self.input.SetFocus()
 
     # ------------------------------------------------------------------
     def _set_wait_state(self, active: bool, tokens: int = 0) -> None:
@@ -307,9 +333,7 @@ class AgentChatPanel(wx.Panel):
         self._is_running = active
         self._send_btn.Enable(not active)
         self.input.Enable(not active)
-        self.history_list.Enable(not active)
-        if self._clear_history_btn is not None:
-            self._clear_history_btn.Enable(not active)
+        self._update_history_controls()
         if active:
             self._current_tokens = tokens
             self._start_time = time.monotonic()
@@ -427,8 +451,11 @@ class AgentChatPanel(wx.Panel):
 
     # ------------------------------------------------------------------
     def _conversation_messages(self) -> list[dict[str, str]]:
+        conversation = self._get_active_conversation()
+        if conversation is None:
+            return []
         messages: list[dict[str, str]] = []
-        for entry in self.history:
+        for entry in conversation.entries:
             if entry.prompt:
                 messages.append({"role": "user", "content": entry.prompt})
             if entry.response:
@@ -443,6 +470,7 @@ class AgentChatPanel(wx.Panel):
         raw_result: Any | None,
         tool_results: list[Any] | None,
     ) -> None:
+        conversation = self._ensure_active_conversation()
         tokens = _token_count(prompt) + _token_count(response)
         entry = ChatEntry(
             prompt=prompt,
@@ -452,28 +480,40 @@ class AgentChatPanel(wx.Panel):
             raw_result=raw_result,
             tool_results=tool_results,
         )
-        self.history.append(entry)
+        conversation.append_entry(entry)
         self._save_history()
         self._refresh_history_list()
-        self.history_list.SetSelection(len(self.history) - 1)
-        self._ensure_history_visible(len(self.history) - 1)
+        active_index = self._active_index()
+        if active_index is not None:
+            self.history_list.SetSelection(active_index)
+            self._ensure_history_visible(active_index)
 
     def _refresh_history_list(self) -> None:
         self.history_list.Freeze()
         try:
             self.history_list.Clear()
-            for entry in self.history:
-                label = f"{entry.prompt[:30]} · {entry.tokens / 1000:.2f} ktok"
+            active_index = self._active_index()
+            for conversation in self.conversations:
+                label = self._format_conversation_label(conversation)
                 self.history_list.Append(label)
+            if active_index is not None and 0 <= active_index < self.history_list.GetCount():
+                self.history_list.SetSelection(active_index)
+            else:
+                self.history_list.SetSelection(wx.NOT_FOUND)
         finally:
             self.history_list.Thaw()
+        active_index = self._active_index()
+        if active_index is not None:
+            self._ensure_history_visible(active_index)
+        self._update_history_controls()
 
     def _render_transcript(self) -> None:
         last_panel: wx.Window | None = None
         self.transcript_panel.Freeze()
         try:
             self._transcript_sizer.Clear(delete_windows=True)
-            if not self.history:
+            conversation = self._get_active_conversation()
+            if conversation is None:
                 placeholder = wx.StaticText(
                     self.transcript_panel,
                     label=_("Start chatting with the agent to see responses here."),
@@ -484,8 +524,19 @@ class AgentChatPanel(wx.Panel):
                     wx.ALL,
                     dip(self, 8),
                 )
+            elif not conversation.entries:
+                placeholder = wx.StaticText(
+                    self.transcript_panel,
+                    label=_("This chat does not have any messages yet. Send one to get started."),
+                )
+                self._transcript_sizer.Add(
+                    placeholder,
+                    0,
+                    wx.ALL,
+                    dip(self, 8),
+                )
             else:
-                for idx, entry in enumerate(self.history, start=1):
+                for idx, entry in enumerate(conversation.entries, start=1):
                     panel = TranscriptMessagePanel(
                         self.transcript_panel,
                         index=idx,
@@ -509,11 +560,14 @@ class AgentChatPanel(wx.Panel):
             self.history_list.SetFirstItem(index)
 
     def _compose_transcript_text(self) -> str:
-        if not self.history:
+        conversation = self._get_active_conversation()
+        if conversation is None:
             return _("Start chatting with the agent to see responses here.")
+        if not conversation.entries:
+            return _("This chat does not have any messages yet. Send one to get started.")
 
         blocks: list[str] = []
-        for idx, entry in enumerate(self.history, start=1):
+        for idx, entry in enumerate(conversation.entries, start=1):
             block = (
                 f"{idx}. "
                 + _("You:")
@@ -536,28 +590,119 @@ class AgentChatPanel(wx.Panel):
             self.transcript_panel.ScrollChildIntoView(window)
 
     def _load_history(self) -> None:
+        self.conversations = []
+        self._active_conversation_id = None
         try:
             raw = json.loads(self._history_path.read_text(encoding="utf-8"))
-            entries: list[ChatEntry] = []
-            for item in raw:
-                if isinstance(item, Mapping):
-                    try:
-                        entries.append(ChatEntry.from_dict(item))
-                    except Exception:  # pragma: no cover - defensive
-                        continue
-            self.history = entries
         except FileNotFoundError:
-            self.history = []
+            return
         except Exception:
-            self.history = []
+            return
+
+        if not isinstance(raw, Mapping):
+            return
+
+        conversations_raw = raw.get("conversations")
+        if not isinstance(conversations_raw, Sequence):
+            return
+
+        conversations: list[ChatConversation] = []
+        for item in conversations_raw:
+            if isinstance(item, Mapping):
+                try:
+                    conversations.append(ChatConversation.from_dict(item))
+                except Exception:  # pragma: no cover - defensive
+                    continue
+        if not conversations:
+            return
+
+        self.conversations = conversations
+        active_id = raw.get("active_id")
+        if isinstance(active_id, str) and any(
+            conv.conversation_id == active_id for conv in self.conversations
+        ):
+            self._active_conversation_id = active_id
+        else:
+            self._active_conversation_id = self.conversations[-1].conversation_id
 
     def _save_history(self) -> None:
         self._history_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": 2,
+            "active_id": self._active_conversation_id,
+            "conversations": [conv.to_dict() for conv in self.conversations],
+        }
         with self._history_path.open("w", encoding="utf-8") as fh:
-            json.dump(
-                [entry.to_dict() for entry in self.history],
-                fh,
-                ensure_ascii=False,
-                indent=2,
-            )
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
+
+    def _active_index(self) -> int | None:
+        if self._active_conversation_id is None:
+            return None
+        for idx, conversation in enumerate(self.conversations):
+            if conversation.conversation_id == self._active_conversation_id:
+                return idx
+        return None
+
+    def _get_active_conversation(self) -> ChatConversation | None:
+        index = self._active_index()
+        if index is None:
+            return None
+        try:
+            return self.conversations[index]
+        except IndexError:  # pragma: no cover - defensive
+            return None
+
+    def _create_conversation(self, *, persist: bool) -> ChatConversation:
+        conversation = ChatConversation.new()
+        self.conversations.append(conversation)
+        self._active_conversation_id = conversation.conversation_id
+        self._refresh_history_list()
+        self._render_transcript()
+        if persist:
+            self._save_history()
+        return conversation
+
+    def _ensure_active_conversation(self) -> ChatConversation:
+        conversation = self._get_active_conversation()
+        if conversation is not None:
+            return conversation
+        return self._create_conversation(persist=False)
+
+    def _format_conversation_label(self, conversation: ChatConversation) -> str:
+        title = (conversation.title or conversation.derive_title()).strip()
+        if not title:
+            title = _("New chat")
+        if len(title) > 40:
+            title = title[:37] + "…"
+        tokens = conversation.total_tokens()
+        return _("{title} · {tokens:.2f} ktok").format(
+            title=title,
+            tokens=tokens / 1000 if tokens else 0.0,
+        )
+
+    def _update_history_controls(self) -> None:
+        has_conversations = bool(self.conversations)
+        self.history_list.Enable(has_conversations and not self._is_running)
+        if self._clear_history_btn is not None:
+            self._clear_history_btn.Enable(has_conversations and not self._is_running)
+        if self._new_chat_btn is not None:
+            self._new_chat_btn.Enable(not self._is_running)
+
+    def _on_new_chat(self, _event: wx.Event) -> None:
+        if self._is_running:
+            return
+        self._create_conversation(persist=True)
+        active_index = self._active_index()
+        if active_index is not None:
+            self.history_list.SetSelection(active_index)
+            self._ensure_history_visible(active_index)
+        self.input.SetValue("")
+        self.input.SetFocus()
+
+    @property
+    def history(self) -> list[ChatEntry]:
+        conversation = self._get_active_conversation()
+        if conversation is None:
+            return []
+        return list(conversation.entries)
 

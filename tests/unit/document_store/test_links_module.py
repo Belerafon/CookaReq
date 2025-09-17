@@ -135,3 +135,17 @@ def test_link_becomes_suspect_after_parent_change(tmp_path: Path) -> None:
     serialized = requirement_to_dict(updated)
     assert serialized["links"][0]["fingerprint"] == stored_fp
     assert serialized["links"][0]["suspect"] is True
+
+
+def test_validate_item_links_reports_index(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+    docs = load_documents(tmp_path)
+    data = {"id": 1, "title": "", "statement": "", "links": ["123"]}
+
+    with pytest.raises(ValidationError) as excinfo:
+        validate_item_links(tmp_path, doc, data, docs)
+
+    message = str(excinfo.value)
+    assert "links[0].rid" in message
+    assert "123" in message

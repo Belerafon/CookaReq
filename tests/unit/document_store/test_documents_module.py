@@ -62,3 +62,10 @@ def test_collect_label_inheritance(tmp_path: Path) -> None:
     )
     docs = load_documents(tmp_path)
     assert validate_labels("HLR", ["unknown"], docs) == "unknown label: unknown"
+
+
+def test_is_ancestor_includes_self(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+    docs = load_documents(tmp_path)
+    assert is_ancestor("SYS", "SYS", docs) is True

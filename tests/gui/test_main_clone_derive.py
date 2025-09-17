@@ -4,7 +4,7 @@ import importlib
 
 import pytest
 
-from app.core.document_store import Document, save_document, save_item
+from app.core.document_store import Document, load_item, save_document, save_item
 from app.core.model import (
     Priority,
     Requirement,
@@ -158,6 +158,43 @@ def test_delete_many_removes_requirements(monkeypatch, wx_app, tmp_path):
         assert "Delete 2 requirements" in captured["message"]
         assert "Second" in captured["message"]
         assert "Third" in captured["message"]
+    finally:
+        frame.Destroy()
+
+
+def test_save_derived_requirement_with_missing_parent_rid(monkeypatch, wx_app, tmp_path):
+    frame = _prepare_frame(monkeypatch, tmp_path)
+    _ = pytest.importorskip("wx")
+    import app.ui.error_dialog as error_dialog_module
+    import app.ui.main_frame as main_frame_mod
+
+    shown: list[str] = []
+
+    def fake_error(parent, message: str, title: str | None = None) -> None:
+        shown.append(message)
+
+    monkeypatch.setattr(error_dialog_module, "show_error_dialog", fake_error)
+    monkeypatch.setattr(main_frame_mod, "show_error_dialog", fake_error)
+
+    try:
+        wx_app.Yield()
+        source = frame.model.get_by_id(1)
+        assert source is not None
+        source.rid = ""
+
+        frame.on_derive_requirement(1)
+        wx_app.Yield()
+
+        derived = frame.model.get_by_id(2)
+        assert derived is not None
+        frame._on_editor_save()
+        wx_app.Yield()
+
+        assert not shown, "saving should not report an error"
+
+        doc = frame.docs_controller.documents["REQ"]
+        data, _ = load_item(tmp_path / "REQ", doc, 2)
+        assert data["links"][0]["rid"].startswith("REQ")
     finally:
         frame.Destroy()
 

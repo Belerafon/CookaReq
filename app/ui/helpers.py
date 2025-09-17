@@ -9,6 +9,57 @@ import wx
 from ..i18n import _
 
 
+def inherit_background(target: wx.Window, source: wx.Window | None) -> None:
+    """Copy background colour from ``source`` to ``target`` when available."""
+
+    if source is None:
+        return
+    setter = getattr(target, "SetBackgroundColour", None)
+    getter = getattr(source, "GetBackgroundColour", None)
+    if not callable(setter) or not callable(getter):
+        return
+    try:
+        colour = getter()
+    except Exception:
+        return
+    if colour is None:
+        return
+    if hasattr(colour, "IsOk"):
+        try:
+            if not colour.IsOk():
+                system_colour = getattr(wx, "SystemSettings", None)
+                if system_colour is None:
+                    return
+                try:
+                    colour = system_colour.GetColour(wx.SYS_COLOUR_WINDOW)
+                except Exception:
+                    return
+                if hasattr(colour, "IsOk") and not colour.IsOk():
+                    return
+        except Exception:
+            return
+    try:
+        setter(colour)
+    except Exception:
+        return
+
+
+def dip(window: wx.Window, value: int) -> int:
+    """Convert a device-independent pixel ``value`` for ``window`` if possible."""
+
+    converter = getattr(window, "FromDIP", None)
+    if callable(converter):
+        try:
+            converted = converter(value)
+        except Exception:
+            return value
+        try:
+            return int(converted)
+        except Exception:
+            return value
+    return value
+
+
 class HelpStaticBox(wx.StaticBoxSizer):
     """A ``wx.StaticBoxSizer`` with a built-in help button.
 

@@ -15,6 +15,7 @@ from ..core.model import Requirement
 from ..i18n import _
 from ..log import logger
 from . import locale
+from .helpers import dip, inherit_background
 from .enums import ENUMS
 from .filter_dialog import FilterDialog
 from .requirement_model import RequirementModel
@@ -62,10 +63,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     ):
         """Initialize list view and controls for requirements."""
         wx.Panel.__init__(self, parent)
+        inherit_background(self, parent)
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
+        vertical_pad = dip(self, 5)
         orient = getattr(wx, "HORIZONTAL", 0)
         right = getattr(wx, "RIGHT", 0)
+        top_flag = getattr(wx, "TOP", 0)
         align_center = getattr(wx, "ALIGN_CENTER_VERTICAL", 0)
         btn_row = wx.BoxSizer(orient)
         self.filter_btn = wx.Button(self, label=_("Filters"))
@@ -82,8 +86,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.reset_btn.SetToolTip(_("Clear filters"))
         self.reset_btn.Hide()
         self.filter_summary = wx.StaticText(self, label="")
-        btn_row.Add(self.filter_btn, 0, right, 5)
-        btn_row.Add(self.reset_btn, 0, right, 5)
+        btn_row.Add(self.filter_btn, 0, right, vertical_pad)
+        btn_row.Add(self.reset_btn, 0, right, vertical_pad)
         btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
         if hasattr(self.list, "SetExtraStyle"):
@@ -112,8 +116,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._current_doc_prefix: str | None = None
         self._context_menu_open = False
         self._setup_columns()
-        sizer.Add(btn_row, 0, wx.ALL, 5)
-        sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(btn_row, 0, wx.EXPAND, 0)
+        sizer.Add(self.list, 1, wx.EXPAND | top_flag, vertical_pad)
         self.SetSizer(sizer)
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
         self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)

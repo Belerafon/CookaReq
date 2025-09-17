@@ -43,6 +43,9 @@ from .splitter_utils import refresh_splitter_highlight, style_splitter
 from .widgets import SectionContainer
 
 
+_SECTION_DEFAULT_PADDING = 0
+
+
 class WxLogHandler(logging.Handler):
     """Forward log records to a ``wx.TextCtrl``."""
 
@@ -382,12 +385,14 @@ class MainFrame(wx.Frame):
         factory: Callable[[wx.Window], wx.Window],
         header_factory: Callable[[wx.Window], Sequence[wx.Window]] | None = None,
         allow_label_shrink: bool = False,
+        padding: int = _SECTION_DEFAULT_PADDING,
     ) -> tuple[wx.Panel, wx.StaticText, wx.Window]:
         """Build a titled container holding the widget returned by ``factory``."""
 
         container = SectionContainer(parent)
         background = container.GetBackgroundColour()
         sizer = wx.BoxSizer(wx.VERTICAL)
+        border = max(container.FromDIP(padding), 0)
         label_style = 0
         if allow_label_shrink and hasattr(wx, "ST_NO_AUTORESIZE"):
             label_style |= wx.ST_NO_AUTORESIZE
@@ -405,11 +410,14 @@ class MainFrame(wx.Frame):
                 if background.IsOk():
                     ctrl.SetBackgroundColour(background)
                 header.Add(ctrl, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 4)
-            sizer.Add(header, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 4)
+            sizer.Add(header, 0, wx.EXPAND | wx.TOP, border)
         else:
-            sizer.Add(label_ctrl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
+            sizer.Add(label_ctrl, 0, wx.TOP, border)
         content = factory(container)
-        sizer.Add(content, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 3)
+        if border:
+            sizer.Add(content, 1, wx.EXPAND | wx.BOTTOM, border)
+        else:
+            sizer.Add(content, 1, wx.EXPAND)
         container.SetSizer(sizer)
         return container, label_ctrl, content
 
@@ -425,20 +433,27 @@ class MainFrame(wx.Frame):
             min_height = best.height if best.height > 0 else -1
             label.SetMinSize(wx.Size(0, min_height))
             label.InvalidateBestSize()
-        border = max(container.FromDIP(2), 1)
         sizer = container.GetSizer()
         if sizer:
             children = sizer.GetChildren()
-            if children:
-                children[0].SetBorder(border)
+            if not children:
+                return
+            current_border = children[0].GetBorder()
+            if current_border <= 0:
+                return
+            border = max(container.FromDIP(2), 1)
+            children[0].SetBorder(border)
             if len(children) > 1:
                 children[1].SetBorder(border)
             sizer.Layout()
         header_sizer = label.GetContainingSizer() if label else None
         if header_sizer:
             header_children = list(header_sizer.GetChildren())
-            for item in header_children[1:]:
-                item.SetBorder(border)
+            if header_children:
+                border = header_children[0].GetBorder()
+                if border > 0:
+                    for item in header_children[1:]:
+                        item.SetBorder(border)
             header_sizer.Layout()
         container.Layout()
 

@@ -34,6 +34,7 @@ from .list_panel import ListPanel
 from .navigation import Navigation
 from .requirement_model import RequirementModel
 from .settings_dialog import SettingsDialog
+from .splitter_utils import refresh_splitter_highlight, style_splitter
 
 
 class WxLogHandler(logging.Handler):
@@ -138,8 +139,10 @@ class MainFrame(wx.Frame):
 
         # split horizontally: top is main content, bottom is log console
         self.main_splitter = wx.SplitterWindow(self)
+        style_splitter(self.main_splitter)
         self._disable_splitter_unsplit(self.main_splitter)
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
+        style_splitter(self.doc_splitter)
         self._disable_splitter_unsplit(self.doc_splitter)
         self._doc_tree_min_pane = 160
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
@@ -154,9 +157,11 @@ class MainFrame(wx.Frame):
         self._doc_tree_collapse_bitmap: wx.Bitmap | None = None
         self._doc_tree_expand_bitmap: wx.Bitmap | None = None
         self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
+        style_splitter(self.agent_splitter)
         self._disable_splitter_unsplit(self.agent_splitter)
         self.agent_splitter.SetMinimumPaneSize(280)
         self.splitter = wx.SplitterWindow(self.agent_splitter)
+        style_splitter(self.splitter)
         self._disable_splitter_unsplit(self.splitter)
         self.splitter.SetMinimumPaneSize(200)
         (
@@ -261,6 +266,13 @@ class MainFrame(wx.Frame):
         sizer.Add(self.main_splitter, 1, wx.EXPAND)
         self.SetSizer(sizer)
         self._load_layout()
+        for splitter in (
+            self.main_splitter,
+            self.doc_splitter,
+            self.agent_splitter,
+            self.splitter,
+        ):
+            refresh_splitter_highlight(splitter)
         self.current_dir: Path | None = None
         self.current_doc_prefix: str | None = None
         self._selected_requirement_id: int | None = None
@@ -287,7 +299,12 @@ class MainFrame(wx.Frame):
     ) -> tuple[wx.Panel, wx.StaticText, wx.Window]:
         """Build a titled container holding the widget returned by ``factory``."""
 
-        container = wx.Panel(parent)
+        border_style = wx.BORDER_THEME if hasattr(wx, "BORDER_THEME") else wx.BORDER_SIMPLE
+        container = wx.Panel(parent, style=border_style)
+        background = parent.GetBackgroundColour()
+        if background.IsOk():
+            container.SetBackgroundColour(background)
+        container.SetDoubleBuffered(True)
         sizer = wx.BoxSizer(wx.VERTICAL)
         label_ctrl = wx.StaticText(container, label=label)
         if header_factory is not None:
@@ -357,6 +374,7 @@ class MainFrame(wx.Frame):
         self._doc_tree_collapsed = True
         self._update_doc_tree_toggle_state()
         self.doc_splitter.Layout()
+        refresh_splitter_highlight(self.doc_splitter)
         if update_config:
             self.config.set_doc_tree_saved_sash(self._doc_tree_saved_sash)
             self.config.set_doc_tree_collapsed(True)
@@ -384,6 +402,7 @@ class MainFrame(wx.Frame):
         self._update_doc_tree_toggle_state()
         self.doc_tree_container.Layout()
         self.doc_splitter.Layout()
+        refresh_splitter_highlight(self.doc_splitter)
         if update_config:
             self._doc_tree_saved_sash = width
             self.config.set_doc_tree_saved_sash(self._doc_tree_saved_sash)
@@ -610,12 +629,14 @@ class MainFrame(wx.Frame):
         self.editor.Show()
         self.editor_container.Layout()
         self.editor.Layout()
+        refresh_splitter_highlight(self.splitter)
 
     def _hide_editor_panel(self) -> None:
         """Hide the editor section and its container."""
 
         self.editor.Hide()
         self.editor_container.Hide()
+        refresh_splitter_highlight(self.splitter)
 
     def _clear_editor_panel(self) -> None:
         """Reset editor contents and reflect current visibility setting."""
@@ -640,12 +661,14 @@ class MainFrame(wx.Frame):
         self.agent_panel.Show()
         self.agent_container.Layout()
         self.agent_panel.Layout()
+        refresh_splitter_highlight(self.agent_splitter)
 
     def _hide_agent_section(self) -> None:
         """Hide the agent chat widgets to free screen space."""
 
         self.agent_panel.Hide()
         self.agent_container.Hide()
+        refresh_splitter_highlight(self.agent_splitter)
 
     def _update_section_labels(self) -> None:
         """Refresh captions for titled sections according to current locale."""
@@ -1344,6 +1367,7 @@ class MainFrame(wx.Frame):
             self.main_splitter.Unsplit(self.log_panel)
             self.log_panel.Hide()
         self.config.set_log_shown(self.navigation.log_menu_item.IsChecked())
+        refresh_splitter_highlight(self.main_splitter)
 
     def on_toggle_agent_chat(self, _event: wx.CommandEvent | None) -> None:
         """Toggle agent chat panel visibility."""
@@ -1475,6 +1499,7 @@ class MainFrame(wx.Frame):
                     self.agent_container,
                     sash,
                 )
+                refresh_splitter_highlight(self.agent_splitter)
             else:
                 self.agent_chat_menu_item.Check(False)
                 if self.agent_splitter.IsSplit():

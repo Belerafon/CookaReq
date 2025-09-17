@@ -13,6 +13,7 @@ import wx
 
 from ..i18n import _
 from .helpers import format_error_message
+from .splitter_utils import refresh_splitter_highlight, style_splitter
 
 
 try:  # pragma: no cover - import only used for typing
@@ -83,12 +84,14 @@ class AgentChatPanel(wx.Panel):
 
         splitter_style = wx.SP_LIVE_UPDATE | wx.SP_3D
         self._vertical_splitter = wx.SplitterWindow(self, style=splitter_style)
+        style_splitter(self._vertical_splitter)
         self._vertical_splitter.SetMinimumPaneSize(self.FromDIP(160))
 
         top_panel = wx.Panel(self._vertical_splitter)
         bottom_panel = wx.Panel(self._vertical_splitter)
 
         self._horizontal_splitter = wx.SplitterWindow(top_panel, style=splitter_style)
+        style_splitter(self._horizontal_splitter)
         self._horizontal_splitter.SetMinimumPaneSize(self.FromDIP(160))
 
         history_panel = wx.Panel(self._horizontal_splitter)
@@ -161,6 +164,8 @@ class AgentChatPanel(wx.Panel):
         outer.Add(self._vertical_splitter, 1, wx.EXPAND)
 
         self.SetSizer(outer)
+        refresh_splitter_highlight(self._horizontal_splitter)
+        refresh_splitter_highlight(self._vertical_splitter)
         self._refresh_history_list()
 
     # ------------------------------------------------------------------

@@ -5,32 +5,24 @@ from __future__ import annotations
 import json
 import threading
 import time
-from dataclasses import asdict, dataclass
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Callable
 
 import wx
+from wx.lib.scrolledpanel import ScrolledPanel
 
 from ..i18n import _
+from .chat_entry import ChatEntry
 from .helpers import format_error_message
 from .splitter_utils import refresh_splitter_highlight, style_splitter
+from .widgets.chat_message import TranscriptMessagePanel
 
 
 try:  # pragma: no cover - import only used for typing
     from ..agent import LocalAgent  # noqa: TCH004
 except Exception:  # pragma: no cover - fallback when wx stubs are used
     LocalAgent = object  # type: ignore[assignment]
-
-
-@dataclass
-class ChatEntry:
-    """Stored request/response pair."""
-
-    prompt: str
-    response: str
-    tokens: int
-
-
 def _default_history_path() -> Path:
     """Return default location for persisted chat history."""
 
@@ -41,6 +33,48 @@ def _token_count(text: str) -> int:
     """Very naive token count using whitespace separation."""
 
     return len(text.split())
+
+
+def _make_json_safe(value: Any) -> Any:
+    """Convert value into structure that :func:`json.dumps` can handle."""
+
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): _make_json_safe(val) for key, val in value.items()}
+    if isinstance(value, set):  # pragma: no cover - uncommon
+        return [_make_json_safe(item) for item in value]
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_make_json_safe(item) for item in value]
+    return str(value)
+
+
+def _stringify_payload(payload: Any) -> str:
+    """Return textual representation suitable for transcript storage."""
+
+    if payload is None:
+        return ""
+    if isinstance(payload, str):
+        return payload
+    try:
+        return json.dumps(payload, ensure_ascii=False, indent=2)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return str(payload)
+
+
+class _TranscriptAccessor:
+    """Compatibility wrapper exposing legacy ``GetValue`` API for tests."""
+
+    def __init__(self, owner: "AgentChatPanel" | None = None) -> None:
+        self._owner = owner
+
+    def bind(self, owner: "AgentChatPanel") -> None:
+        self._owner = owner
+
+    def GetValue(self) -> str:  # pragma: no cover - exercised via GUI tests
+        if self._owner is None:
+            return ""
+        return self._owner._compose_transcript_text()
 
 
 class AgentChatPanel(wx.Panel):
@@ -65,9 +99,11 @@ class AgentChatPanel(wx.Panel):
         self._start_time: float | None = None
         self._current_tokens: int = 0
         self._clear_history_btn: wx.Button | None = None
+        self.transcript = _TranscriptAccessor()
         self._load_history()
 
         self._build_ui()
+        self.transcript.bind(self)
         self._render_transcript()
 
     # ------------------------------------------------------------------
@@ -107,14 +143,21 @@ class AgentChatPanel(wx.Panel):
         transcript_panel = wx.Panel(self._horizontal_splitter)
         transcript_sizer = wx.BoxSizer(wx.VERTICAL)
         transcript_label = wx.StaticText(transcript_panel, label=_("Conversation"))
-        self.transcript = wx.TextCtrl(
+        self.transcript_panel = ScrolledPanel(
             transcript_panel,
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2,
+            style=wx.TAB_TRAVERSAL,
         )
-        self.transcript.SetBackgroundColour(transcript_panel.GetBackgroundColour())
-        self.transcript.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT))
+        self.transcript_panel.SetBackgroundColour(transcript_panel.GetBackgroundColour())
+        self.transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
+        self._transcript_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.transcript_panel.SetSizer(self._transcript_sizer)
         transcript_sizer.Add(transcript_label, 0, wx.ALL, 5)
-        transcript_sizer.Add(self.transcript, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        transcript_sizer.Add(
+            self.transcript_panel,
+            1,
+            wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
+            5,
+        )
         transcript_panel.SetSizer(transcript_sizer)
 
         self._horizontal_splitter.SplitVertically(history_panel, transcript_panel, self.FromDIP(260))
@@ -294,8 +337,14 @@ class AgentChatPanel(wx.Panel):
         """Render agent response and update history."""
 
         try:
-            response = self._format_result(result)
-            self._append_history(prompt, response)
+            conversation_text, display_text, raw_result, tool_results = self._process_result(result)
+            self._append_history(
+                prompt,
+                conversation_text,
+                display_text,
+                raw_result,
+                tool_results,
+            )
             self._render_transcript()
         finally:
             elapsed = (
@@ -312,27 +361,46 @@ class AgentChatPanel(wx.Panel):
                 )
                 self.status_label.SetLabel(label)
 
-    def _format_result(self, result: Any) -> str:
-        if isinstance(result, dict):
-            if not result.get("ok", False):
-                return format_error_message(result.get("error"))
-            payload = result.get("result")
-        else:
-            return str(result)
+    def _process_result(
+        self, result: Any
+    ) -> tuple[str, str, Any | None, list[Any] | None]:
+        """Normalise agent result for storage and display."""
 
-        try:
-            if isinstance(payload, str):
-                extras = result.get("tool_results")
-                if not extras:
-                    return payload
-                try:
-                    rendered = json.dumps(extras, ensure_ascii=False, indent=2)
-                except (TypeError, ValueError):
-                    rendered = str(extras)
-                return f"{payload}\n\n{rendered}" if payload else rendered
-            return json.dumps(payload, ensure_ascii=False, indent=2)
-        except (TypeError, ValueError):
-            return str(payload)
+        display_text = ""
+        conversation_parts: list[str] = []
+        raw_payload: Any | None = None
+        tool_results: list[Any] | None = None
+
+        if isinstance(result, Mapping):
+            raw_payload = _make_json_safe(result)
+            if not result.get("ok", False):
+                display_text = format_error_message(result.get("error"))
+                conversation_parts.append(display_text)
+            else:
+                payload = result.get("result")
+                display_text = _stringify_payload(payload)
+                if display_text:
+                    conversation_parts.append(display_text)
+
+            extras = result.get("tool_results")
+            if extras:
+                safe_extras = _make_json_safe(extras)
+                if isinstance(safe_extras, list):
+                    tool_results = safe_extras
+                else:
+                    tool_results = [safe_extras]
+                extras_text = _stringify_payload(safe_extras)
+                if extras_text:
+                    conversation_parts.append(extras_text)
+        else:
+            display_text = str(result)
+            conversation_parts.append(display_text)
+
+        conversation_text = "\n\n".join(part for part in conversation_parts if part)
+        if not display_text:
+            display_text = conversation_text
+
+        return conversation_text, display_text, raw_payload, tool_results
 
     # ------------------------------------------------------------------
     def _conversation_messages(self) -> list[dict[str, str]]:
@@ -344,9 +412,23 @@ class AgentChatPanel(wx.Panel):
                 messages.append({"role": "assistant", "content": entry.response})
         return messages
 
-    def _append_history(self, prompt: str, response: str) -> None:
+    def _append_history(
+        self,
+        prompt: str,
+        response: str,
+        display_response: str,
+        raw_result: Any | None,
+        tool_results: list[Any] | None,
+    ) -> None:
         tokens = _token_count(prompt) + _token_count(response)
-        entry = ChatEntry(prompt=prompt, response=response, tokens=tokens)
+        entry = ChatEntry(
+            prompt=prompt,
+            response=response,
+            tokens=tokens,
+            display_response=display_response,
+            raw_result=raw_result,
+            tool_results=tool_results,
+        )
         self.history.append(entry)
         self._save_history()
         self._refresh_history_list()
@@ -364,9 +446,48 @@ class AgentChatPanel(wx.Panel):
             self.history_list.Thaw()
 
     def _render_transcript(self) -> None:
+        last_panel: wx.Window | None = None
+        self.transcript_panel.Freeze()
+        try:
+            self._transcript_sizer.Clear(delete_windows=True)
+            if not self.history:
+                placeholder = wx.StaticText(
+                    self.transcript_panel,
+                    label=_("Start chatting with the agent to see responses here."),
+                )
+                self._transcript_sizer.Add(
+                    placeholder,
+                    0,
+                    wx.ALL,
+                    self.FromDIP(8),
+                )
+            else:
+                for idx, entry in enumerate(self.history, start=1):
+                    panel = TranscriptMessagePanel(
+                        self.transcript_panel,
+                        index=idx,
+                        prompt=entry.prompt,
+                        response=entry.display_response or entry.response,
+                        tool_results=entry.tool_results,
+                    )
+                    panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_transcript_pane_toggled)
+                    self._transcript_sizer.Add(panel, 0, wx.EXPAND)
+                    last_panel = panel
+        finally:
+            self.transcript_panel.Layout()
+            self.transcript_panel.FitInside()
+            self.transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
+            self.transcript_panel.Thaw()
+            if last_panel is not None:
+                self.transcript_panel.ScrollChildIntoView(last_panel)
+
+    def _ensure_history_visible(self, index: int) -> None:
+        if 0 <= index < self.history_list.GetCount():
+            self.history_list.SetFirstItem(index)
+
+    def _compose_transcript_text(self) -> str:
         if not self.history:
-            self.transcript.SetValue(_("Start chatting with the agent to see responses here."))
-            return
+            return _("Start chatting with the agent to see responses here.")
 
         blocks: list[str] = []
         for idx, entry in enumerate(self.history, start=1):
@@ -378,17 +499,30 @@ class AgentChatPanel(wx.Panel):
                 + f"\n{entry.response}"
             )
             blocks.append(block)
-        self.transcript.SetValue("\n\n".join(blocks))
-        self.transcript.ShowPosition(self.transcript.GetLastPosition())
+        return "\n\n".join(blocks)
 
-    def _ensure_history_visible(self, index: int) -> None:
-        if 0 <= index < self.history_list.GetCount():
-            self.history_list.SetFirstItem(index)
+    def _on_transcript_pane_toggled(self, event: wx.CollapsiblePaneEvent) -> None:
+        """Recalculate layout when tool details are expanded or collapsed."""
+
+        event.Skip()
+        window = event.GetEventObject()
+        self.transcript_panel.Layout()
+        self.transcript_panel.FitInside()
+        self.transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
+        if isinstance(window, wx.Window):
+            self.transcript_panel.ScrollChildIntoView(window)
 
     def _load_history(self) -> None:
         try:
             raw = json.loads(self._history_path.read_text(encoding="utf-8"))
-            self.history = [ChatEntry(**item) for item in raw]
+            entries: list[ChatEntry] = []
+            for item in raw:
+                if isinstance(item, Mapping):
+                    try:
+                        entries.append(ChatEntry.from_dict(item))
+                    except Exception:  # pragma: no cover - defensive
+                        continue
+            self.history = entries
         except FileNotFoundError:
             self.history = []
         except Exception:
@@ -397,5 +531,10 @@ class AgentChatPanel(wx.Panel):
     def _save_history(self) -> None:
         self._history_path.parent.mkdir(parents=True, exist_ok=True)
         with self._history_path.open("w", encoding="utf-8") as fh:
-            json.dump([asdict(entry) for entry in self.history], fh, ensure_ascii=False, indent=2)
+            json.dump(
+                [entry.to_dict() for entry in self.history],
+                fh,
+                ensure_ascii=False,
+                indent=2,
+            )
 

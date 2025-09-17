@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.llm.client import NO_API_KEY, LLMClient
+from app.llm.client import LLMResponse, LLMToolCall, LLMClient, NO_API_KEY
 from app.llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
 from app.llm.spec import SYSTEM_PROMPT
 from app.log import logger
@@ -178,9 +178,13 @@ def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
         {"role": "assistant", "content": "hi"},
         {"role": "system", "content": "drop me"},
     ]
-    tool, args = client.parse_command("follow up", history=history)
-    assert tool == "list_requirements"
-    assert args == {}
+    response = client.parse_command("follow up", history=history)
+    assert isinstance(response, LLMResponse)
+    assert len(response.tool_calls) == 1
+    call = response.tool_calls[0]
+    assert isinstance(call, LLMToolCall)
+    assert call.name == "list_requirements"
+    assert call.arguments == {}
     messages = captured["messages"]
     assert messages[0] == {"role": "system", "content": SYSTEM_PROMPT}
     assert messages[-1] == {"role": "user", "content": "follow up"}
@@ -188,6 +192,77 @@ def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "hi"},
     ]
+
+
+def test_parse_command_without_tool_call(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                tool_calls=None,
+                                content="Привет",
+                            ),
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    response = client.parse_command("куку")
+    assert isinstance(response, LLMResponse)
+    assert response.tool_calls == ()
+    assert response.content == "Привет"
+
+
+def test_parse_command_streaming_message(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    settings.llm.stream = True
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                return [
+                    SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                delta=SimpleNamespace(
+                                    content=[{"type": "text", "text": "Прив"}],
+                                    tool_calls=None,
+                                )
+                            )
+                        ]
+                    ),
+                    SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                delta=SimpleNamespace(
+                                    content=[{"type": "text", "text": "ет!"}],
+                                    tool_calls=None,
+                                )
+                            )
+                        ]
+                    ),
+                ]
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    response = client.parse_command("say hi")
+    assert isinstance(response, LLMResponse)
+    assert response.tool_calls == ()
+    assert response.content == "Привет!"
 
 
 def test_parse_command_trims_history_by_tokens(tmp_path: Path, monkeypatch) -> None:
@@ -229,9 +304,12 @@ def test_parse_command_trims_history_by_tokens(tmp_path: Path, monkeypatch) -> N
         {"role": "user", "content": "h2"},
         {"role": "assistant", "content": "a2"},
     ]
-    tool, args = client.parse_command("latest", history=history)
-    assert tool == "list_requirements"
-    assert args == {}
+    response = client.parse_command("latest", history=history)
+    assert isinstance(response, LLMResponse)
+    assert len(response.tool_calls) == 1
+    call = response.tool_calls[0]
+    assert call.name == "list_requirements"
+    assert call.arguments == {}
     messages = captured["messages"]
     # With the patched token counter each message costs 1 token. Limit reserves
     # 2 tokens for system prompt and current user message, leaving room for two
@@ -274,9 +352,12 @@ def test_parse_command_uses_default_when_no_limit(tmp_path: Path, monkeypatch) -
 
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = LLMClient(settings.llm)
-    tool, args = client.parse_command("anything")
-    assert tool == "list_requirements"
-    assert args == {}
+    response = client.parse_command("anything")
+    assert isinstance(response, LLMResponse)
+    assert len(response.tool_calls) == 1
+    call = response.tool_calls[0]
+    assert call.name == "list_requirements"
+    assert call.arguments == {}
     _, value = _extract_token_limit(captured)
     assert value == DEFAULT_MAX_OUTPUT_TOKENS
 
@@ -310,6 +391,89 @@ def test_parse_command_async(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr("openai.OpenAI", make_openai_mock(responses))
     client = LLMClient(settings.llm)
     history = [{"role": "user", "content": "earlier"}]
-    tool, args = asyncio.run(client.parse_command_async("anything", history=history))
-    assert tool == "list_requirements"
-    assert args == {"per_page": 2}
+    response = asyncio.run(
+        client.parse_command_async("anything", history=history)
+    )
+    assert isinstance(response, LLMResponse)
+    assert len(response.tool_calls) == 1
+    call = response.tool_calls[0]
+    assert call.name == "list_requirements"
+    assert call.arguments == {"per_page": 2}
+
+
+def test_respond_accepts_tool_history(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    captured: dict[str, object] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                captured["messages"] = messages
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                tool_calls=None,
+                                content="Готово",
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    conversation = [
+        {"role": "user", "content": "list"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call-0",
+                    "type": "function",
+                    "function": {
+                        "name": "list_requirements",
+                        "arguments": json.dumps({"per_page": 1}),
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call-0",
+            "name": "list_requirements",
+            "content": json.dumps({"ok": True, "result": []}),
+        },
+    ]
+    response = client.respond(conversation)
+    assert isinstance(response, LLMResponse)
+    assert response.content == "Готово"
+    messages = captured["messages"]
+    assert messages[0] == {"role": "system", "content": SYSTEM_PROMPT}
+    assert messages[1:] == [
+        {"role": "user", "content": "list"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call-0",
+                    "type": "function",
+                    "function": {
+                        "name": "list_requirements",
+                        "arguments": json.dumps({"per_page": 1}),
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call-0",
+            "name": "list_requirements",
+            "content": json.dumps({"ok": True, "result": []}),
+        },
+    ]

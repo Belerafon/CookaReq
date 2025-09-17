@@ -29,7 +29,12 @@ def test_run_command_list_logs(tmp_path: Path, monkeypatch, mcp_server) -> None:
     monkeypatch.setattr(
         "openai.OpenAI",
         make_openai_mock(
-            {"list requirements per page 1": ("list_requirements", {"per_page": 1})},
+            {
+                "list requirements per page 1": [
+                    ("list_requirements", {"per_page": 1}),
+                    {"message": "Готово"},
+                ]
+            },
         ),
     )
     client = LocalAgent(settings=settings, confirm=lambda _m: True)
@@ -44,7 +49,9 @@ def test_run_command_list_logs(tmp_path: Path, monkeypatch, mcp_server) -> None:
         logger.setLevel(prev_level)
         logger.removeHandler(handler)
     assert result["ok"] is True
-    assert result["result"]["items"] == []
+    assert result.get("tool_results")
+    assert result["result"] == "Готово"
+    assert result["tool_results"][0]["result"]["items"] == []
     entries = [json.loads(line) for line in log_file.read_text().splitlines()]
     events = {e.get("event") for e in entries}
     assert {"LLM_REQUEST", "LLM_RESPONSE", "TOOL_CALL", "TOOL_RESULT", "DONE"} <= events

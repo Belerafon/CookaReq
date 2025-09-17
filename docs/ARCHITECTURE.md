@@ -37,10 +37,10 @@
 - `resources/` — описывает конфигурацию редактора (`editor_fields.json`, `editor_config.py`), которую подхватывает `EditorPanel` для построения формы.
 
 ### `app/agent/`
-- `local_agent.py` — высокоуровневый `LocalAgent`, объединяющий `LLMClient` и `MCPClient`, проверку подключения (`check_llm`, `check_tools`) и выполнение команд с валидацией (`validate_tool_call`).【F:app/agent/local_agent.py†L1-L87】【F:app/agent/local_agent.py†L89-L149】
+- `local_agent.py` — высокоуровневый `LocalAgent`, объединяющий `LLMClient` и `MCPClient`, проверку подключения (`check_llm`, `check_tools`) и цикл агентного выполнения: модель возвращает `LLMResponse` с текстом и функциями, агент вызывает MCP-инструменты, добавляет ответы в историю и повторно опрашивает LLM до получения финального сообщения.【F:app/agent/local_agent.py†L1-L87】【F:app/agent/local_agent.py†L119-L220】
 
 ### `app/llm/`
-- `client.py` — HTTP-клиент поверх `openai.OpenAI`: проверка доступности (`check_llm`), разбор команд (`parse_command`), потоковый режим, логирование запросов.【F:app/llm/client.py†L1-L120】【F:app/llm/client.py†L135-L204】
+- `client.py` — HTTP-клиент поверх `openai.OpenAI`: проверка доступности (`check_llm`), генерация ответов (`respond`/`parse_command`) с возвратом `LLMResponse` — текста и набора валидированных `LLMToolCall`, поддержка потокового режима и разбор истории с сообщениями `assistant`/`tool`, логирование запросов.【F:app/llm/client.py†L1-L137】【F:app/llm/client.py†L189-L344】
 - `constants.py` — дефолтные и минимальные лимиты токенов; `spec.py` содержит системный промпт и описание MCP-инструментов; `validation.py` проверяет аргументы вызовов инструментов.
 
 ### `app/mcp/`

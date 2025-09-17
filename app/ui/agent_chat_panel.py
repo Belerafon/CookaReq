@@ -292,6 +292,15 @@ class AgentChatPanel(wx.Panel):
             return str(result)
 
         try:
+            if isinstance(payload, str):
+                extras = result.get("tool_results")
+                if not extras:
+                    return payload
+                try:
+                    rendered = json.dumps(extras, ensure_ascii=False, indent=2)
+                except (TypeError, ValueError):
+                    rendered = str(extras)
+                return f"{payload}\n\n{rendered}" if payload else rendered
             return json.dumps(payload, ensure_ascii=False, indent=2)
         except (TypeError, ValueError):
             return str(payload)

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import threading
+from typing import Any, Mapping
 
 import httpx
 import openai
@@ -10,6 +11,7 @@ import pytest
 
 from app.agent import local_agent as la
 from app.agent.local_agent import LocalAgent
+from app.llm.client import LLMResponse, LLMToolCall
 from app.mcp.utils import ErrorCode
 from app.settings import AppSettings
 
@@ -34,18 +36,13 @@ class DummyMCP:
         raise AssertionError("should not be called")
 
 
-class DummyLLM:
-    def parse_command(self, text: str, *, history=None):
-        return "list_requirements", {}
-
-
 class JSONFailingLLM:
-    def parse_command(self, text: str, *, history=None):
-        raise json.JSONDecodeError("Expecting value", text, 0)
+    def respond(self, conversation):
+        raise json.JSONDecodeError("Expecting value", "", 0)
 
 
 class OpenAINetworkLLM:
-    def parse_command(self, text: str, *, history=None):
+    def respond(self, conversation):
         request = httpx.Request("GET", "https://example.com")
         raise openai.APIConnectionError(
             message="temporary outage",
@@ -80,15 +77,116 @@ def test_run_command_reports_internal_error_for_openai_failure():
 
 
 def test_run_command_propagates_mcp_exception():
-    agent = LocalAgent(llm=DummyLLM(), mcp=FailingMCP())
-    with pytest.raises(RuntimeError, match="call fail"):
-        agent.run_command("text")
+    class ToolCallingLLM:
+        def respond(self, conversation):
+            return LLMResponse(
+                content="",
+                tool_calls=(
+                    LLMToolCall(id="call-0", name="list_requirements", arguments={}),
+                ),
+            )
+
+    agent = LocalAgent(llm=ToolCallingLLM(), mcp=FailingMCP())
+    result = agent.run_command("text")
+    assert result["ok"] is False
+    assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR
+    assert result["error"]["message"] == "call fail"
 
 
-def test_run_command_rejects_unknown_tool():
-    class StubLLM:
-        def parse_command(self, text: str, *, history=None):
-            return "unknown_tool", {}
+def test_run_command_executes_tool_and_returns_final_message():
+    class SequencedLLM:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.last_conversation: list[dict[str, Any]] | None = None
+
+        def respond(self, conversation):
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    "Секунду, посмотрю",
+                    (
+                        LLMToolCall(
+                            id="call-0",
+                            name="list_requirements",
+                            arguments={"per_page": 1},
+                        ),
+                    ),
+                )
+            self.last_conversation = list(conversation)
+            return LLMResponse("Нашёл 0 записей", ())
+
+    class RecordingMCP:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, Mapping[str, Any]]] = []
+
+        def call_tool(self, name, arguments):
+            self.calls.append((name, dict(arguments)))
+            return {"ok": True, "error": None, "result": {"items": []}}
+
+    llm = SequencedLLM()
+    mcp = RecordingMCP()
+    agent = LocalAgent(llm=llm, mcp=mcp)
+
+    result = agent.run_command("list latest")
+    assert result["ok"] is True
+    assert result["result"] == "Нашёл 0 записей"
+    assert result.get("tool_results")
+    assert result["tool_results"][0]["result"]["items"] == []
+    assert result["tool_results"][0]["ok"] is True
+    assert mcp.calls == [("list_requirements", {"per_page": 1})]
+    assert llm.last_conversation is not None
+    assert llm.last_conversation[-1]["role"] == "tool"
+    assert json.loads(llm.last_conversation[-1]["content"]) == {
+        "ok": True,
+        "error": None,
+        "result": {"items": []},
+    }
+
+
+def test_run_command_returns_tool_error_result():
+    class ToolLLM:
+        def respond(self, conversation):
+            return LLMResponse(
+                "",
+                (
+                    LLMToolCall(
+                        id="call-0",
+                        name="list_requirements",
+                        arguments={},
+                    ),
+                ),
+            )
+
+    class ErrorMCP:
+        def call_tool(self, name, arguments):
+            return {
+                "ok": False,
+                "error": {
+                    "code": ErrorCode.INTERNAL,
+                    "message": "boom",
+                },
+            }
+
+    agent = LocalAgent(llm=ToolLLM(), mcp=ErrorMCP())
+    result = agent.run_command("list")
+    assert result == {
+        "ok": False,
+        "error": {"code": ErrorCode.INTERNAL, "message": "boom"},
+    }
+    assert "tool_results" not in result
+
+
+def test_run_command_returns_message_without_mcp_call():
+    class MessageLLM:
+        def __init__(self) -> None:
+            self.conversations: list[list[dict[str, Any]]] = []
+
+        def respond(self, conversation):
+            self.conversations.append(list(conversation))
+            return LLMResponse("Привет!", ())
+
+        async def respond_async(self, conversation):
+            return self.respond(conversation)
 
     class RecordingMCP:
         def __init__(self) -> None:
@@ -98,59 +196,57 @@ def test_run_command_rejects_unknown_tool():
             self.called = True
             return {"ok": True, "error": None, "result": {}}
 
+    llm = MessageLLM()
     mcp = RecordingMCP()
-    agent = LocalAgent(llm=StubLLM(), mcp=mcp)
-    result = agent.run_command("text")
-    assert result["ok"] is False
-    assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR
-    assert "Unknown MCP tool" in result["error"]["message"]
+    agent = LocalAgent(llm=llm, mcp=mcp)
+
+    result = agent.run_command("hi")
+    assert result == {"ok": True, "error": None, "result": "Привет!"}
     assert mcp.called is False
+    assert llm.conversations[0][-1] == {"role": "user", "content": "hi"}
+    assert "tool_results" not in result
 
+    async def exercise() -> None:
+        async_result = await agent.run_command_async("ещё")
+        assert async_result == {"ok": True, "error": None, "result": "Привет!"}
+        assert "tool_results" not in async_result
 
-def test_run_command_rejects_invalid_arguments():
-    class StubLLM:
-        def parse_command(self, text: str, *, history=None):
-            return "delete_requirement", {"rid": "SYS-1"}
-
-    class RecordingMCP:
-        def __init__(self) -> None:
-            self.called = False
-
-        def call_tool(self, name, arguments):
-            self.called = True
-            return {"ok": True, "error": None, "result": {}}
-
-    mcp = RecordingMCP()
-    agent = LocalAgent(llm=StubLLM(), mcp=mcp)
-    result = agent.run_command("text")
-    assert result["ok"] is False
-    assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR
-    assert "rev" in result["error"]["message"]
+    asyncio.run(exercise())
     assert mcp.called is False
+    assert llm.conversations[1][-1] == {"role": "user", "content": "ещё"}
 
 
 def test_run_command_passes_history_to_llm():
     class RecordingLLM:
         def __init__(self) -> None:
-            self.calls: list[list[dict[str, str]]] = []
+            self.conversations: list[list[dict[str, Any]]] = []
 
-        def parse_command(self, text: str, *, history=None):
-            self.calls.append(list(history or []))
-            return "list_requirements", {}
+        def respond(self, conversation):
+            self.conversations.append(list(conversation))
+            return LLMResponse("Готово", ())
 
-    class DummyMCP:
+    class SilentMCP:
         def call_tool(self, name, arguments):
-            return {"ok": True, "error": None, "result": {}}
+            raise AssertionError("tool should not be invoked")
 
     llm = RecordingLLM()
-    agent = LocalAgent(llm=llm, mcp=DummyMCP())
-    history = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}]
+    agent = LocalAgent(llm=llm, mcp=SilentMCP())
+    history = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi"},
+    ]
 
     agent.run_command("next", history=history)
-    assert llm.calls[0] == history
+    assert llm.conversations[0] == [
+        *history,
+        {"role": "user", "content": "next"},
+    ]
 
     asyncio.run(agent.run_command_async("again", history=history))
-    assert llm.calls[1] == history
+    assert llm.conversations[1] == [
+        *history,
+        {"role": "user", "content": "again"},
+    ]
 
 
 def test_custom_confirm_message(monkeypatch):
@@ -162,10 +258,25 @@ def test_custom_confirm_message(monkeypatch):
 
     class StubLLM:
         def __init__(self, settings):
-            pass
+            self._calls = 0
 
-        def parse_command(self, text: str, *, history=None):
-            return "delete_requirement", {"rid": "SYS-1", "rev": 3}
+        def respond(self, conversation):
+            self._calls += 1
+            if self._calls == 1:
+                return LLMResponse(
+                    "",
+                    (
+                        LLMToolCall(
+                            id="call-0",
+                            name="delete_requirement",
+                            arguments={"rid": "SYS-1", "rev": 3},
+                        ),
+                    ),
+                )
+            return LLMResponse("Удалено", ())
+
+        async def respond_async(self, conversation):
+            return self.respond(conversation)
 
     class StubMCP:
         def __init__(self, settings, *, confirm):
@@ -179,7 +290,11 @@ def test_custom_confirm_message(monkeypatch):
     monkeypatch.setattr(la, "LLMClient", StubLLM)
     monkeypatch.setattr(la, "MCPClient", StubMCP)
     agent = LocalAgent(settings=AppSettings(), confirm=custom_confirm)
-    assert agent.run_command("remove") == {"ok": True, "error": None, "result": {}}
+    result = agent.run_command("remove")
+    assert result["ok"] is True
+    assert result["result"] == "Удалено"
+    assert result.get("tool_results")
+    assert result["tool_results"][0]["ok"] is True
     assert messages == ["Delete requirement?"]
 
 
@@ -189,15 +304,28 @@ def test_async_methods_offload_to_threads():
     class RecordingLLM:
         def __init__(self) -> None:
             self.check_thread: int | None = None
-            self.parse_thread: int | None = None
+            self.respond_thread: int | None = None
+            self.calls = 0
 
         def check_llm(self):
             self.check_thread = threading.get_ident()
             return {"ok": True}
 
-        def parse_command(self, text: str, *, history=None):
-            self.parse_thread = threading.get_ident()
-            return "list_requirements", {}
+        def respond(self, conversation):
+            self.respond_thread = threading.get_ident()
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    "",
+                    (
+                        LLMToolCall(
+                            id="call-0",
+                            name="list_requirements",
+                            arguments={},
+                        ),
+                    ),
+                )
+            return LLMResponse("готово", ())
 
     class RecordingMCP:
         def __init__(self) -> None:
@@ -220,12 +348,15 @@ def test_async_methods_offload_to_threads():
         assert await agent.check_llm_async() == {"ok": True}
         assert await agent.check_tools_async() == {"ok": True, "error": None}
         result = await agent.run_command_async("anything")
-        assert result == {"ok": True, "error": None, "result": {}}
+        assert result["ok"] is True
+        assert result["result"] == "готово"
+        assert result.get("tool_results")
+        assert result["tool_results"][0]["ok"] is True
 
     asyncio.run(exercise())
 
     assert llm.check_thread is not None and llm.check_thread != main_thread
-    assert llm.parse_thread is not None and llm.parse_thread != main_thread
+    assert llm.respond_thread is not None and llm.respond_thread != main_thread
     assert mcp.check_thread is not None and mcp.check_thread != main_thread
     assert mcp.call_thread is not None and mcp.call_thread != main_thread
 
@@ -234,15 +365,28 @@ def test_async_methods_prefer_native_coroutines():
     class AsyncLLM:
         def __init__(self) -> None:
             self.check_called = False
-            self.parse_called = False
+            self.respond_called = False
+            self._calls = 0
 
         async def check_llm_async(self):
             self.check_called = True
             return {"ok": True}
 
-        async def parse_command_async(self, text: str, *, history=None):
-            self.parse_called = True
-            return "list_requirements", {}
+        async def respond_async(self, conversation):
+            self.respond_called = True
+            self._calls += 1
+            if self._calls == 1:
+                return LLMResponse(
+                    "",
+                    (
+                        LLMToolCall(
+                            id="call-0",
+                            name="list_requirements",
+                            arguments={},
+                        ),
+                    ),
+                )
+            return LLMResponse("готово", ())
 
     class AsyncMCP:
         def __init__(self) -> None:
@@ -265,11 +409,14 @@ def test_async_methods_prefer_native_coroutines():
         assert await agent.check_llm_async() == {"ok": True}
         assert await agent.check_tools_async() == {"ok": True, "error": None}
         result = await agent.run_command_async("text")
-        assert result == {"ok": True, "error": None, "result": {}}
+        assert result["ok"] is True
+        assert result["result"] == "готово"
+        assert result.get("tool_results")
+        assert result["tool_results"][0]["ok"] is True
 
     asyncio.run(exercise())
 
     assert llm.check_called is True
-    assert llm.parse_called is True
+    assert llm.respond_called is True
     assert mcp.check_called is True
     assert mcp.call_called is True

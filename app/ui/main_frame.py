@@ -604,9 +604,13 @@ class MainFrame(wx.Frame):
             mode="create",
             parent_prefix=parent_prefix,
         )
-        if dlg.ShowModal() != wx.ID_OK:
-            return
-        props = dlg.get_properties()
+        props = None
+        try:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            props = dlg.get_properties()
+        finally:
+            dlg.Destroy()
         if props is None:
             return
         try:
@@ -638,9 +642,13 @@ class MainFrame(wx.Frame):
             digits=doc.digits,
             parent_prefix=doc.parent,
         )
-        if dlg.ShowModal() != wx.ID_OK:
-            return
-        props = dlg.get_properties()
+        props = None
+        try:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            props = dlg.get_properties()
+        finally:
+            dlg.Destroy()
         if props is None:
             return
         try:

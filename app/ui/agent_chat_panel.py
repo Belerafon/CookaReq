@@ -81,41 +81,61 @@ class AgentChatPanel(wx.Panel):
 
         outer = wx.BoxSizer(wx.VERTICAL)
 
-        content = wx.BoxSizer(wx.HORIZONTAL)
+        splitter_style = wx.SP_LIVE_UPDATE | wx.SP_3D
+        self._vertical_splitter = wx.SplitterWindow(self, style=splitter_style)
+        self._vertical_splitter.SetMinimumPaneSize(self.FromDIP(160))
 
+        top_panel = wx.Panel(self._vertical_splitter)
+        bottom_panel = wx.Panel(self._vertical_splitter)
+
+        self._horizontal_splitter = wx.SplitterWindow(top_panel, style=splitter_style)
+        self._horizontal_splitter.SetMinimumPaneSize(self.FromDIP(160))
+
+        history_panel = wx.Panel(self._horizontal_splitter)
         history_sizer = wx.BoxSizer(wx.VERTICAL)
-        history_label = wx.StaticText(self, label=_("Chat History"))
-        self.history_list = wx.ListBox(self, style=wx.LB_SINGLE)
+        history_label = wx.StaticText(history_panel, label=_("Chat History"))
+        self.history_list = wx.ListBox(history_panel, style=wx.LB_SINGLE)
+        self.history_list.SetMinSize(wx.Size(self.FromDIP(220), -1))
         self.history_list.Bind(wx.EVT_LISTBOX, self._on_select_history)
         history_sizer.Add(history_label, 0, wx.ALL, 5)
         history_sizer.Add(self.history_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        history_panel.SetSizer(history_sizer)
 
+        transcript_panel = wx.Panel(self._horizontal_splitter)
         transcript_sizer = wx.BoxSizer(wx.VERTICAL)
-        transcript_label = wx.StaticText(self, label=_("Conversation"))
+        transcript_label = wx.StaticText(transcript_panel, label=_("Conversation"))
         self.transcript = wx.TextCtrl(
-            self,
+            transcript_panel,
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2,
         )
-        self.transcript.SetBackgroundColour(self.GetBackgroundColour())
+        self.transcript.SetBackgroundColour(transcript_panel.GetBackgroundColour())
         self.transcript.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT))
         transcript_sizer.Add(transcript_label, 0, wx.ALL, 5)
         transcript_sizer.Add(self.transcript, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        transcript_panel.SetSizer(transcript_sizer)
 
-        content.Add(history_sizer, 0, wx.EXPAND)
-        content.Add(transcript_sizer, 1, wx.EXPAND)
+        self._horizontal_splitter.SplitVertically(history_panel, transcript_panel, self.FromDIP(260))
+        self._horizontal_splitter.SetSashGravity(1.0)
 
-        input_label = wx.StaticText(self, label=_("Ask the agent"))
-        self.input = wx.TextCtrl(self, style=wx.TE_PROCESS_ENTER | wx.TE_MULTILINE)
+        top_sizer = wx.BoxSizer(wx.VERTICAL)
+        top_sizer.Add(self._horizontal_splitter, 1, wx.EXPAND)
+        top_panel.SetSizer(top_sizer)
+
+        bottom_sizer = wx.BoxSizer(wx.VERTICAL)
+        bottom_sizer.Add(wx.StaticLine(bottom_panel), 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
+
+        input_label = wx.StaticText(bottom_panel, label=_("Ask the agent"))
+        self.input = wx.TextCtrl(bottom_panel, style=wx.TE_PROCESS_ENTER | wx.TE_MULTILINE)
         if hasattr(self.input, "SetHint"):
             self.input.SetHint(_("Describe what you need the agent to do"))
         self.input.Bind(wx.EVT_TEXT_ENTER, self._on_send)
 
         buttons = wx.BoxSizer(wx.HORIZONTAL)
-        self._send_btn = wx.Button(self, label=_("Send"))
+        self._send_btn = wx.Button(bottom_panel, label=_("Send"))
         self._send_btn.Bind(wx.EVT_BUTTON, self._on_send)
-        self._clear_history_btn = wx.Button(self, label=_("Clear history"))
+        self._clear_history_btn = wx.Button(bottom_panel, label=_("Clear history"))
         self._clear_history_btn.Bind(wx.EVT_BUTTON, self._on_clear_history)
-        clear_btn = wx.Button(self, label=_("Clear input"))
+        clear_btn = wx.Button(bottom_panel, label=_("Clear input"))
         clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_input)
         buttons.AddStretchSpacer()
         buttons.Add(self._clear_history_btn, 0, wx.RIGHT, 5)
@@ -123,18 +143,22 @@ class AgentChatPanel(wx.Panel):
         buttons.Add(self._send_btn, 0)
 
         status_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.activity = wx.ActivityIndicator(self)
+        self.activity = wx.ActivityIndicator(bottom_panel)
         self.activity.Hide()
-        self.status_label = wx.StaticText(self, label=_("Ready"))
+        self.status_label = wx.StaticText(bottom_panel, label=_("Ready"))
         status_sizer.Add(self.activity, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
         status_sizer.Add(self.status_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
-        outer.Add(content, 1, wx.EXPAND)
-        outer.Add(wx.StaticLine(self), 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
-        outer.Add(input_label, 0, wx.LEFT | wx.RIGHT | wx.TOP, 5)
-        outer.Add(self.input, 0, wx.EXPAND | wx.ALL, 5)
-        outer.Add(buttons, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
-        outer.Add(status_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        bottom_sizer.Add(input_label, 0, wx.LEFT | wx.RIGHT | wx.TOP, 5)
+        bottom_sizer.Add(self.input, 0, wx.EXPAND | wx.ALL, 5)
+        bottom_sizer.Add(buttons, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        bottom_sizer.Add(status_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        bottom_panel.SetSizer(bottom_sizer)
+
+        self._vertical_splitter.SplitHorizontally(top_panel, bottom_panel)
+        self._vertical_splitter.SetSashGravity(0.0)
+
+        outer.Add(self._vertical_splitter, 1, wx.EXPAND)
 
         self.SetSizer(outer)
         self._refresh_history_list()

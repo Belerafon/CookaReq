@@ -1663,17 +1663,49 @@ class MainFrame(wx.Frame):
                 event.Veto()
             return
         logger.info("Proceeding with shutdown sequence")
-        self._save_layout()
+        logger.info("Shutdown step: saving layout")
+        try:
+            self._save_layout()
+        except Exception:  # pragma: no cover - best effort cleanup
+            logger.exception("Shutdown step failed: error while saving layout")
+        else:
+            logger.info("Shutdown step completed: layout persisted")
+
+        remaining_editors = len(self._detached_editors)
+        logger.info(
+            "Shutdown step: closing %s detached editor window(s)",
+            remaining_editors,
+        )
         for frame in list(self._detached_editors.values()):
             try:
                 frame.Destroy()
             except Exception:  # pragma: no cover - best effort cleanup
-                pass
+                logger.exception("Failed to destroy detached editor during shutdown")
         self._detached_editors.clear()
+        logger.info("Shutdown step completed: detached editors closed")
+
         if self.log_handler in logger.handlers:
+            logger.info("Shutdown step: detaching wx log handler")
             logger.removeHandler(self.log_handler)
-        self.mcp.stop()
-        event.Skip()
+
+        mcp_running = False
+        try:
+            mcp_running = self.mcp.is_running()
+        except Exception:  # pragma: no cover - defensive guard around controller
+            logger.exception("Failed to query MCP controller state before shutdown")
+        logger.info("Shutdown step: stopping MCP controller (running=%s)", mcp_running)
+        try:
+            self.mcp.stop()
+        except Exception:  # pragma: no cover - controller stop must not block close
+            logger.exception("Shutdown step failed: MCP controller stop raised an error")
+        else:
+            logger.info("Shutdown step completed: MCP controller stopped")
+
+        if event is not None:
+            event.Skip()
+            logger.info("Shutdown sequence handed off to wx for finalization")
+        else:
+            logger.info("Shutdown sequence completed without wx event object")
 
     def _on_sort_changed(self, column: int, ascending: bool) -> None:
         if not self.remember_sort:

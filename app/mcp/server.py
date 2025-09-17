@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -312,11 +313,33 @@ def stop_server() -> None:
     global _uvicorn_server, _server_thread
 
     if _uvicorn_server is None:
+        logger.info("MCP server stop requested but no server instance is active")
         return
 
+    thread_alive = _server_thread.is_alive() if _server_thread else False
+    logger.info(
+        "MCP server stop requested (thread_alive=%s)",
+        thread_alive,
+    )
+    start = time.perf_counter()
+
     _uvicorn_server.should_exit = True
+    if hasattr(_uvicorn_server, "force_exit"):
+        _uvicorn_server.force_exit = True
+
     if _server_thread is not None:
-        _server_thread.join()
+        timeout = 5.0
+        logger.info(
+            "Waiting up to %.1fs for MCP server thread to terminate", timeout
+        )
+        _server_thread.join(timeout=timeout)
+        if _server_thread.is_alive():
+            logger.warning(
+                "MCP server thread did not exit within %.1fs; continuing shutdown",
+                timeout,
+            )
+        else:
+            logger.info("MCP server thread exited cleanly")
 
     _uvicorn_server = None
     _server_thread = None
@@ -325,3 +348,6 @@ def stop_server() -> None:
         if getattr(h, "cookareq_request", False):
             request_logger.removeHandler(h)
             h.close()
+
+    elapsed = time.perf_counter() - start
+    logger.info("MCP server shutdown cleanup completed in %.3fs", elapsed)

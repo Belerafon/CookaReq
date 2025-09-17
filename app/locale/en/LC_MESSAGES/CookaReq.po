@@ -160,15 +160,34 @@ msgstr "Open last folder on startup"
 msgid "Owner"
 msgstr "Owner"
 
-msgid "Short uppercase prefix placed at the beginning of every requirement identifier (for example SYS1). It is also used for the document directory name. Identifiers are numbered sequentially without leading zeros (SYS1, SYS2, …). The prefix must start with a capital letter and may contain only ASCII letters, digits or underscores."
-msgstr "Short uppercase prefix placed at the beginning of every requirement identifier (for example SYS1). It is also used for the document directory name. Identifiers are numbered sequentially without leading zeros (SYS1, SYS2, …). The prefix must start with a capital letter and may contain only ASCII letters, digits or underscores."
+msgid ""
+"Short uppercase prefix placed at the beginning of every requirement "
+"identifier (for example SYS1). It is also used for the document directory "
+"name. Identifiers are numbered sequentially without leading zeros (SYS1, "
+"SYS2, …). The prefix must start with a capital letter and may contain only "
+"ASCII letters, digits or underscores."
+msgstr ""
+"Short uppercase prefix placed at the beginning of every requirement "
+"identifier (for example SYS1). It is also used for the document directory "
+"name. Identifiers are numbered sequentially without leading zeros (SYS1, "
+"SYS2, …). The prefix must start with a capital letter and may contain only "
+"ASCII letters, digits or underscores."
 
-msgid "Human-friendly document name shown in the navigation tree, window titles and exports. When left empty the title defaults to the prefix."
-msgstr "Human-friendly document name shown in the navigation tree, window titles and exports. When left empty the title defaults to the prefix."
+msgid ""
+"Human-friendly document name shown in the navigation tree, window titles and"
+" exports. When left empty the title defaults to the prefix."
+msgstr ""
+"Human-friendly document name shown in the navigation tree, window titles and"
+" exports. When left empty the title defaults to the prefix."
 
-
-msgid "Parent document that determines where this entry sits in the hierarchy. The top level is shown as '(top-level)'. The parent is chosen automatically when creating a child document and cannot be edited from this dialog."
-msgstr "Parent document that determines where this entry sits in the hierarchy. The top level is shown as '(top-level)'. The parent is chosen automatically when creating a child document and cannot be edited from this dialog."
+msgid ""
+"Parent document that determines where this entry sits in the hierarchy. The "
+"top level is shown as '(top-level)'. The parent is chosen automatically when"
+" creating a child document and cannot be edited from this dialog."
+msgstr ""
+"Parent document that determines where this entry sits in the hierarchy. The "
+"top level is shown as '(top-level)'. The parent is chosen automatically when"
+" creating a child document and cannot be edited from this dialog."
 
 msgid "Priority"
 msgstr "Priority"
@@ -247,7 +266,6 @@ msgstr "Test"
 
 msgid "Title"
 msgstr "Title"
-
 
 msgid "Unique integer identifier"
 msgstr "Unique integer identifier"
@@ -409,10 +427,8 @@ msgstr "Manage Labels"
 msgid "Links"
 msgstr "Links"
 
-
 msgid "Match any labels"
 msgstr "Match any labels"
-
 
 msgid "Name"
 msgstr "Name"
@@ -429,7 +445,6 @@ msgstr "No derivation links found."
 msgid "No requirements loaded"
 msgstr "No requirements loaded"
 
-
 msgid "Note"
 msgstr "Note"
 
@@ -444,7 +459,6 @@ msgstr "Path"
 
 msgid "Port"
 msgstr "Port"
-
 
 msgid "Rationale"
 msgstr "Rationale"
@@ -500,8 +514,6 @@ msgstr "Suspect only"
 msgid "Token"
 msgstr "Token"
 
-
-
 msgid "Update requirement?"
 msgstr "Update requirement?"
 
@@ -535,8 +547,12 @@ msgstr "not running"
 msgid "running"
 msgstr "running"
 
-msgid "MCP is a local server providing tools for requirement management used by agents and the LLM."
-msgstr "MCP is a local server providing tools for requirement management used by agents and the LLM."
+msgid ""
+"MCP is a local server providing tools for requirement management used by "
+"agents and the LLM."
+msgstr ""
+"MCP is a local server providing tools for requirement management used by "
+"agents and the LLM."
 
 msgid "path to JSON/TOML settings"
 msgstr "path to JSON/TOML settings"
@@ -583,65 +599,117 @@ msgstr "Agent:"
 msgid "verify LLM and MCP settings"
 msgstr "verify LLM and MCP settings"
 
-msgid "Base URL of the LLM API. Example: https://api.openai.com/v1\nRequired; defines where requests are sent."
-msgstr "Base URL of the LLM API. Example: https://api.openai.com/v1\nRequired; defines where requests are sent."
+msgid ""
+"Base URL of the LLM API. Example: https://api.openai.com/v1\n"
+"Required; defines where requests are sent."
+msgstr ""
+"Base URL of the LLM API. Example: https://api.openai.com/v1\n"
+"Required; defines where requests are sent."
 
-msgid "LLM model name. Example: gpt-4-turbo\nRequired; selects which model to use."
-msgstr "LLM model name. Example: gpt-4-turbo\nRequired; selects which model to use."
+msgid ""
+"LLM model name. Example: gpt-4-turbo\n"
+"Required; selects which model to use."
+msgstr ""
+"LLM model name. Example: gpt-4-turbo\n"
+"Required; selects which model to use."
 
-msgid "LLM access key. Example: sk-XXXX\nRequired when the service needs authentication."
-msgstr "LLM access key. Example: sk-XXXX\nRequired when the service needs authentication."
+msgid ""
+"LLM access key. Example: sk-XXXX\n"
+"Required when the service needs authentication."
+msgstr ""
+"LLM access key. Example: sk-XXXX\n"
+"Required when the service needs authentication."
 
-msgid "HTTP request timeout in minutes. Example: 1\nOptional; defaults to 60 minutes."
-msgstr "HTTP request timeout in minutes. Example: 1\nOptional; defaults to 60 minutes."
+msgid ""
+"HTTP request timeout in minutes. Example: 1\n"
+"Optional; defaults to 60 minutes."
+msgstr ""
+"HTTP request timeout in minutes. Example: 1\n"
+"Optional; defaults to 60 minutes."
 
 msgid "Start the MCP server automatically when CookaReq launches."
 msgstr "Start the MCP server automatically when CookaReq launches."
 
-msgid "Hostname for the MCP server. Example: 127.0.0.1\nRequired; defines where to run the server."
-msgstr "Hostname for the MCP server. Example: 127.0.0.1\nRequired; defines where to run the server."
+msgid ""
+"Hostname for the MCP server. Example: 127.0.0.1\n"
+"Required; defines where to run the server."
+msgstr ""
+"Hostname for the MCP server. Example: 127.0.0.1\n"
+"Required; defines where to run the server."
 
-msgid "MCP server port. Example: 8123\nRequired field."
-msgstr "MCP server port. Example: 8123\nRequired field."
+msgid ""
+"MCP server port. Example: 8123\n"
+"Required field."
+msgstr ""
+"MCP server port. Example: 8123\n"
+"Required field."
 
-msgid "Base folder with requirements. Example: /tmp/reqs\nRequired; the server serves files from this directory."
-msgstr "Base folder with requirements. Example: /tmp/reqs\nRequired; the server serves files from this directory."
+msgid ""
+"Base folder with requirements. Example: /tmp/reqs\n"
+"Required; the server serves files from this directory."
+msgstr ""
+"Base folder with requirements. Example: /tmp/reqs\n"
+"Required; the server serves files from this directory."
 
 msgid "When enabled, the server requires an authentication token."
 msgstr "When enabled, the server requires an authentication token."
 
-msgid "Access token for MCP. Example: secret123\nRequired when \"Require token\" is enabled."
-msgstr "Access token for MCP. Example: secret123\nRequired when \"Require token\" is enabled."
+msgid ""
+"Access token for MCP. Example: secret123\n"
+"Required when \"Require token\" is enabled."
+msgstr ""
+"Access token for MCP. Example: secret123\n"
+"Required when \"Require token\" is enabled."
 
-msgid "Send a test request to the configured LLM using the current settings.\nUse this to verify credentials and network connectivity."
-msgstr "Send a test request to the configured LLM using the current settings.\nUse this to verify credentials and network connectivity."
+msgid ""
+"Send a test request to the configured LLM using the current settings.\n"
+"Use this to verify credentials and network connectivity."
+msgstr ""
+"Send a test request to the configured LLM using the current settings.\n"
+"Use this to verify credentials and network connectivity."
 
-msgid "Contact the MCP server with the current connection settings and list the available tools.\nEnsures the agent integration is configured correctly."
-msgstr "Contact the MCP server with the current connection settings and list the available tools.\nEnsures the agent integration is configured correctly."
+msgid ""
+"Contact the MCP server with the current connection settings and list the available tools.\n"
+"Ensures the agent integration is configured correctly."
+msgstr ""
+"Contact the MCP server with the current connection settings and list the available tools.\n"
+"Ensures the agent integration is configured correctly."
 
-msgid "Launch the MCP server in the background using the current connection settings."
-msgstr "Launch the MCP server in the background using the current connection settings."
+msgid ""
+"Launch the MCP server in the background using the current connection "
+"settings."
+msgstr ""
+"Launch the MCP server in the background using the current connection "
+"settings."
 
 msgid "Stop the MCP server instance that was started from CookaReq."
 msgstr "Stop the MCP server instance that was started from CookaReq."
 
-msgid "Connect to the MCP server and report whether it is reachable.\nDisplays diagnostic information about the running instance."
-msgstr "Connect to the MCP server and report whether it is reachable.\nDisplays diagnostic information about the running instance."
+msgid ""
+"Connect to the MCP server and report whether it is reachable.\n"
+"Displays diagnostic information about the running instance."
+msgstr ""
+"Connect to the MCP server and report whether it is reachable.\n"
+"Displays diagnostic information about the running instance."
 
-msgid "Shows whether the MCP server is currently running according to CookaReq and the result of the last check."
-msgstr "Shows whether the MCP server is currently running according to CookaReq and the result of the last check."
+msgid ""
+"Shows whether the MCP server is currently running according to CookaReq and "
+"the result of the last check."
+msgstr ""
+"Shows whether the MCP server is currently running according to CookaReq and "
+"the result of the last check."
 
 # Updated help texts for requirement fields
 msgid ""
 "The 'Requirement ID' is a unique integer used as the stable anchor for a "
-"requirement. Teams refer to it in traceability matrices, change requests and "
-"test reports to ensure everyone talks about the same item. Once the "
+"requirement. Teams refer to it in traceability matrices, change requests and"
+" test reports to ensure everyone talks about the same item. Once the "
 "identifier appears in external documents it should not be changed to avoid "
 "broken references."
 msgstr ""
 "The 'Requirement ID' is a unique integer used as the stable anchor for a "
-"requirement. Teams refer to it in traceability matrices, change requests and "
-"test reports to ensure everyone talks about the same item. Once the "
+"requirement. Teams refer to it in traceability matrices, change requests and"
+" test reports to ensure everyone talks about the same item. Once the "
 "identifier appears in external documents it should not be changed to avoid "
 "broken references."
 
@@ -666,73 +734,72 @@ msgstr ""
 "ambiguity during design and review."
 
 msgid ""
-"Acceptance criteria explain how to verify that the requirement is satisfied. "
-"They may include test scenarios, measurable thresholds or review checklists. "
-"Well-defined criteria let QA teams plan tests and give product owners a "
-"clear basis for acceptance."
+"Acceptance criteria explain how to verify that the requirement is satisfied."
+" They may include test scenarios, measurable thresholds or review "
+"checklists. Well-defined criteria let QA teams plan tests and give product "
+"owners a clear basis for acceptance."
 msgstr ""
-"Acceptance criteria explain how to verify that the requirement is satisfied. "
-"They may include test scenarios, measurable thresholds or review checklists. "
-"Well-defined criteria let QA teams plan tests and give product owners a "
-"clear basis for acceptance."
+"Acceptance criteria explain how to verify that the requirement is satisfied."
+" They may include test scenarios, measurable thresholds or review "
+"checklists. Well-defined criteria let QA teams plan tests and give product "
+"owners a clear basis for acceptance."
 
 msgid ""
-"Operating conditions and modes under which the requirement applies. Describe "
-"environments, performance ranges or user roles that influence validity. Such "
-"context helps engineers design correctly and testers reproduce the right "
-"setup."
+"Operating conditions and modes under which the requirement applies. Describe"
+" environments, performance ranges or user roles that influence validity. "
+"Such context helps engineers design correctly and testers reproduce the "
+"right setup."
 msgstr ""
-"Operating conditions and modes under which the requirement applies. Describe "
-"environments, performance ranges or user roles that influence validity. Such "
-"context helps engineers design correctly and testers reproduce the right "
-"setup."
+"Operating conditions and modes under which the requirement applies. Describe"
+" environments, performance ranges or user roles that influence validity. "
+"Such context helps engineers design correctly and testers reproduce the "
+"right setup."
 
 msgid ""
-"Links to higher-level requirements or stakeholder needs. Upward traceability "
-"shows why this requirement exists and simplifies impact analysis when "
+"Links to higher-level requirements or stakeholder needs. Upward traceability"
+" shows why this requirement exists and simplifies impact analysis when "
 "parents change. Use it to prove coverage of system objectives."
 msgstr ""
-"Links to higher-level requirements or stakeholder needs. Upward traceability "
-"shows why this requirement exists and simplifies impact analysis when "
+"Links to higher-level requirements or stakeholder needs. Upward traceability"
+" shows why this requirement exists and simplifies impact analysis when "
 "parents change. Use it to prove coverage of system objectives."
-
 
 msgid ""
 "Manual revision identifier that teams adjust themselves. Update it whenever "
-"you want to mark a new baseline for the requirement. CookaReq does not change "
-"this value automatically."
+"you want to mark a new baseline for the requirement. CookaReq does not "
+"change this value automatically."
 msgstr ""
 "Manual revision identifier that teams adjust themselves. Update it whenever "
-"you want to mark a new baseline for the requirement. CookaReq does not change "
-"this value automatically."
+"you want to mark a new baseline for the requirement. CookaReq does not "
+"change this value automatically."
 
 msgid ""
 "Date and time of the last edit. The value is filled automatically and aids "
-"audit trails. Reviewers can sort by this field to focus on recently modified "
-"items."
+"audit trails. Reviewers can sort by this field to focus on recently modified"
+" items."
 msgstr ""
 "Date and time of the last edit. The value is filled automatically and aids "
-"audit trails. Reviewers can sort by this field to focus on recently modified "
-"items."
+"audit trails. Reviewers can sort by this field to focus on recently modified"
+" items."
 
 msgid ""
 "Person or team responsible for the requirement. The owner coordinates "
-"discussions, approves updates and answers questions from other stakeholders. "
-"Assigning ownership clarifies accountability and speeds up decisions."
+"discussions, approves updates and answers questions from other stakeholders."
+" Assigning ownership clarifies accountability and speeds up decisions."
 msgstr ""
 "Person or team responsible for the requirement. The owner coordinates "
-"discussions, approves updates and answers questions from other stakeholders. "
-"Assigning ownership clarifies accountability and speeds up decisions."
+"discussions, approves updates and answers questions from other stakeholders."
+" Assigning ownership clarifies accountability and speeds up decisions."
 
 msgid ""
 "Origin of the requirement such as a customer request, regulation or design "
-"document. Recording the source explains why the requirement exists and where "
-"to look for additional context. This trace is essential when validating "
+"document. Recording the source explains why the requirement exists and where"
+" to look for additional context. This trace is essential when validating "
 "compliance or revisiting negotiations."
 msgstr ""
 "Origin of the requirement such as a customer request, regulation or design "
-"document. Recording the source explains why the requirement exists and where "
-"to look for additional context. This trace is essential when validating "
+"document. Recording the source explains why the requirement exists and where"
+" to look for additional context. This trace is essential when validating "
 "compliance or revisiting negotiations."
 
 msgid ""
@@ -756,22 +823,22 @@ msgstr ""
 "rely on it to show project progress."
 
 msgid ""
-"Relative importance or urgency of the requirement. High-priority items drive "
-"planning and resource allocation. Use priority to focus effort on the "
+"Relative importance or urgency of the requirement. High-priority items drive"
+" planning and resource allocation. Use priority to focus effort on the "
 "capabilities that deliver most value."
 msgstr ""
-"Relative importance or urgency of the requirement. High-priority items drive "
-"planning and resource allocation. Use priority to focus effort on the "
+"Relative importance or urgency of the requirement. High-priority items drive"
+" planning and resource allocation. Use priority to focus effort on the "
 "capabilities that deliver most value."
 
 msgid ""
-"Preferred method to prove compliance: inspection, analysis, demonstration or "
-"test. Selecting a method early guides preparation of verification activities "
-"and needed tools. It also clarifies expectations for acceptance."
+"Preferred method to prove compliance: inspection, analysis, demonstration or"
+" test. Selecting a method early guides preparation of verification "
+"activities and needed tools. It also clarifies expectations for acceptance."
 msgstr ""
-"Preferred method to prove compliance: inspection, analysis, demonstration or "
-"test. Selecting a method early guides preparation of verification activities "
-"and needed tools. It also clarifies expectations for acceptance."
+"Preferred method to prove compliance: inspection, analysis, demonstration or"
+" test. Selecting a method early guides preparation of verification "
+"activities and needed tools. It also clarifies expectations for acceptance."
 
 msgid ""
 "Explanation of why the requirement exists or how it was derived. Capturing "
@@ -793,10 +860,9 @@ msgstr ""
 "and clarifies the context that might change. Revisit them regularly to "
 "ensure the requirement remains valid."
 
-msgid ""
-"risk decisions transparent and supports future recalculations."
-msgstr ""
-"risk decisions transparent and supports future recalculations."
+msgid "risk decisions transparent and supports future recalculations."
+msgstr "risk decisions transparent and supports future recalculations."
+
 msgid "Show Trace Matrix"
 msgstr "Show Trace Matrix"
 
@@ -808,3 +874,319 @@ msgstr "Child"
 
 msgid "No links found"
 msgstr "No links found"
+
+msgid "(top-level)"
+msgstr "(top-level)"
+
+msgid "...and {count} more."
+msgstr "...and {count} more."
+
+msgid ""
+"Automatically reopen the most recently used requirements folder on startup.\n"
+"Disable to always choose a folder manually."
+msgstr ""
+"Automatically reopen the most recently used requirements folder on startup.\n"
+"Disable to always choose a folder manually."
+
+msgid "Clear history"
+msgstr "Clear history"
+
+msgid "Clear suspect mark"
+msgstr "Clear suspect mark"
+
+msgid "Custom labels (comma-separated)"
+msgstr "Custom labels (comma-separated)"
+
+msgid "Delete document {prefix} and its subtree?"
+msgstr "Delete document {prefix} and its subtree?"
+
+msgid "Delete item {rid}?"
+msgstr "Delete item {rid}?"
+
+msgid "Delete {count} requirements?"
+msgstr "Delete {count} requirements?"
+
+msgid "Discard unsaved changes?"
+msgstr "Discard unsaved changes?"
+
+msgid "Document not found"
+msgstr "Document not found"
+
+msgid "Document prefix is required."
+msgstr "Document prefix is required."
+
+msgid "Documents"
+msgstr "Documents"
+
+msgid "Edit label"
+msgstr "Edit label"
+
+msgid "Edit..."
+msgstr "Edit..."
+
+msgid "Failed to load requirements folder \"{path}\": {error}"
+msgstr "Failed to load requirements folder \"{path}\": {error}"
+
+msgid "Failed to load requirements for document \"{prefix}\": {error}"
+msgstr "Failed to load requirements for document \"{prefix}\": {error}"
+
+msgid "Hide hierarchy"
+msgstr "Hide hierarchy"
+
+msgid "Invalid requirement ID"
+msgstr "Invalid requirement ID"
+
+msgid "JSON list of attachments"
+msgstr "JSON list of attachments"
+
+msgid "JSON template file"
+msgstr "JSON template file"
+
+msgid "Key"
+msgstr "Key"
+
+msgid ""
+"Language for menus and dialogs.\n"
+"Changes apply after restarting CookaReq."
+msgstr ""
+"Language for menus and dialogs.\n"
+"Changes apply after restarting CookaReq."
+
+msgid "Mark as suspect"
+msgstr "Mark as suspect"
+
+msgid "Max output tokens"
+msgstr "Max output tokens"
+
+msgid "Max retries"
+msgstr "Max retries"
+
+msgid ""
+"Maximum number of tokens returned by the model. Example: 4096\n"
+"Minimum allowed value is 1000 tokens; CookaReq defaults to 5000 when unset."
+msgstr ""
+"Maximum number of tokens returned by the model. Example: 4096\n"
+"Minimum allowed value is 1000 tokens; CookaReq defaults to 5000 when unset."
+
+msgid "New document"
+msgstr "New document"
+
+msgid ""
+"Number of times to retry a failed HTTP request. Example: 3\n"
+"Optional; defaults to 3 retries."
+msgstr ""
+"Number of times to retry a failed HTTP request. Example: 3\n"
+"Optional; defaults to 3 retries."
+
+msgid "Prefix"
+msgstr "Prefix"
+
+msgid ""
+"Prefix must start with a capital letter and contain only letters, digits or "
+"underscores."
+msgstr ""
+"Prefix must start with a capital letter and contain only letters, digits or "
+"underscores."
+
+msgid "Query"
+msgstr "Query"
+
+msgid ""
+"Remember the last column and direction used to sort requirements.\n"
+"Keeps the list ordering consistent between sessions."
+msgstr ""
+"Remember the last column and direction used to sort requirements.\n"
+"Keeps the list ordering consistent between sessions."
+
+msgid "Rename document"
+msgstr "Rename document"
+
+msgid "Requirement {rid}"
+msgstr "Requirement {rid}"
+
+msgid "Requirement {rid} already exists"
+msgstr "Requirement {rid} already exists"
+
+msgid "Requirement {rid}: {title}"
+msgstr "Requirement {rid}: {title}"
+
+msgid "Show Requirement Editor"
+msgstr "Show Requirement Editor"
+
+msgid "Show hierarchy"
+msgstr "Show hierarchy"
+
+msgid "Stream"
+msgstr "Stream"
+
+msgid ""
+"Stream partial responses from the LLM as they arrive.\n"
+"Disable to wait for the full reply before showing it."
+msgstr ""
+"Stream partial responses from the LLM as they arrive.\n"
+"Disable to wait for the full reply before showing it."
+
+msgid "Suspect link"
+msgstr "Suspect link"
+
+msgid "Timeout (min)"
+msgstr "Timeout (min)"
+
+msgid "aborted"
+msgstr "aborted"
+
+msgid "attachments must be a list"
+msgstr "attachments must be a list"
+
+msgid "comma-separated labels"
+msgstr "comma-separated labels"
+
+msgid "comma-separated parent requirement IDs"
+msgstr "comma-separated parent requirement IDs"
+
+msgid "create document"
+msgstr "create document"
+
+msgid "create new item"
+msgstr "create new item"
+
+msgid "delete document"
+msgstr "delete document"
+
+msgid "delete item"
+msgstr "delete item"
+
+msgid "document not found: {prefix}"
+msgstr "document not found: {prefix}"
+
+msgid "document prefix"
+msgstr "document prefix"
+
+msgid "document title"
+msgstr "document title"
+
+msgid "edit existing item"
+msgstr "edit existing item"
+
+msgid "export trace links"
+msgstr "export trace links"
+
+msgid "invalid link target: {rid}"
+msgstr "invalid link target: {rid}"
+
+msgid "invalid requirement identifier: {rid}"
+msgstr "invalid requirement identifier: {rid}"
+
+msgid "item not found: {rid}"
+msgstr "item not found: {rid}"
+
+msgid "item statement"
+msgstr "item statement"
+
+msgid "item title"
+msgstr "item title"
+
+msgid "labels must be a list"
+msgstr "labels must be a list"
+
+msgid "link requirements"
+msgstr "link requirements"
+
+msgid "linked item not found: {rid}"
+msgstr "linked item not found: {rid}"
+
+msgid "links must be a list"
+msgstr "links must be a list"
+
+msgid "list documents"
+msgstr "list documents"
+
+msgid "manage documents"
+msgstr "manage documents"
+
+msgid "manage items"
+msgstr "manage items"
+
+msgid "move item"
+msgstr "move item"
+
+msgid "output format"
+msgstr "output format"
+
+msgid "parent document prefix"
+msgstr "parent document prefix"
+
+msgid "parent requirement identifiers"
+msgstr "parent requirement identifiers"
+
+msgid "replace existing links instead of adding"
+msgstr "replace existing links instead of adding"
+
+msgid "requirement identifier"
+msgstr "requirement identifier"
+
+msgid "requirement not found: {rid}"
+msgstr "requirement not found: {rid}"
+
+msgid "requirements root"
+msgstr "requirements root"
+
+msgid "revision must be an integer"
+msgstr "revision must be an integer"
+
+msgid "show what would be deleted"
+msgstr "show what would be deleted"
+
+msgid "target document prefix"
+msgstr "target document prefix"
+
+msgid "unknown document prefix: {prefix}"
+msgstr "unknown document prefix: {prefix}"
+
+msgid "unknown priority: {value}"
+msgstr "unknown priority: {value}"
+
+msgid "unknown requirement type: {value}"
+msgstr "unknown requirement type: {value}"
+
+msgid "unknown status: {value}"
+msgstr "unknown status: {value}"
+
+msgid "unknown verification method: {value}"
+msgstr "unknown verification method: {value}"
+
+msgid "write result to file"
+msgstr "write result to file"
+
+msgid "{msg}"
+msgstr "{msg}"
+
+msgid "&New Requirement\tCtrl+N"
+msgstr "&New Requirement\tCtrl+N"
+
+msgid "aborted\n"
+msgstr "aborted\n"
+
+msgid "document not found: {prefix}\n"
+msgstr "document not found: {prefix}\n"
+
+msgid "invalid link target: {rid}\n"
+msgstr "invalid link target: {rid}\n"
+
+msgid "invalid requirement identifier: {rid}\n"
+msgstr "invalid requirement identifier: {rid}\n"
+
+msgid "item not found: {rid}\n"
+msgstr "item not found: {rid}\n"
+
+msgid "linked item not found: {rid}\n"
+msgstr "linked item not found: {rid}\n"
+
+msgid "requirement not found: {rid}\n"
+msgstr "requirement not found: {rid}\n"
+
+msgid "unknown document prefix: {prefix}\n"
+msgstr "unknown document prefix: {prefix}\n"
+
+msgid "{msg}\n"
+msgstr "{msg}\n"

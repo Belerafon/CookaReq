@@ -67,6 +67,7 @@ class EditorPanel(ScrolledPanel):
         self._known_ids: set[int] | None = None
         self._id_conflict = False
         self._saved_state: dict[str, Any] | None = None
+        self._link_metadata_cache: dict[str, dict[str, Any]] = {}
 
         config = load_editor_config()
         labels = {name: locale.field_label(name) for name in config.field_names}
@@ -210,7 +211,7 @@ class EditorPanel(ScrolledPanel):
 
         # generic links section ----------------------------------------
         ln_sizer = self._create_links_section(
-            _("IDs of linked requirements"),
+            _("Derived from"),
             "links",
             help_key="links",
         )
@@ -377,6 +378,79 @@ class EditorPanel(ScrolledPanel):
         setattr(self, attr, [])
         return sizer
 
+    def _lookup_link_metadata(self, rid: str) -> dict[str, Any] | None:
+        """Return cached metadata for ``rid`` or load it from storage."""
+
+        rid = rid.strip()
+        if not rid:
+            return None
+        cached = self._link_metadata_cache.get(rid)
+        if cached is not None:
+            return cached or None
+        if not self.directory:
+            self._link_metadata_cache[rid] = {}
+            return None
+        try:
+            prefix, item_id = parse_rid(rid)
+        except ValueError:
+            self._link_metadata_cache[rid] = {}
+            return None
+        root = Path(self.directory).parent
+        doc_path = root / prefix
+        try:
+            doc = load_document(doc_path)
+            data, _mtime = load_item(doc_path, doc, item_id)
+        except Exception:  # pragma: no cover - filesystem errors
+            logger.exception("Failed to load metadata for parent requirement %s", rid)
+            self._link_metadata_cache[rid] = {}
+            return None
+        metadata = {
+            "title": str(data.get("title", "")),
+            "fingerprint": requirement_fingerprint(data),
+            "doc_prefix": doc.prefix,
+            "doc_title": doc.title,
+        }
+        self._link_metadata_cache[rid] = metadata
+        return metadata
+
+    def _augment_links_with_metadata(
+        self, links: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Enrich serialized ``links`` with cached metadata when available."""
+
+        enriched: list[dict[str, Any]] = []
+        for entry in links:
+            rid = str(entry.get("rid", "")).strip()
+            if not rid:
+                continue
+            metadata = self._lookup_link_metadata(rid)
+            if metadata:
+                if metadata.get("title") and not entry.get("title"):
+                    entry["title"] = metadata["title"]
+                if metadata.get("fingerprint") and not entry.get("fingerprint"):
+                    entry["fingerprint"] = metadata["fingerprint"]
+                if metadata.get("doc_prefix"):
+                    entry["doc_prefix"] = metadata["doc_prefix"]
+                if metadata.get("doc_title"):
+                    entry["doc_title"] = metadata["doc_title"]
+            enriched.append(entry)
+        return enriched
+
+    def _format_link_note(self, link: dict[str, Any]) -> str:
+        """Return human-readable text for ``link`` entry."""
+
+        rid = str(link.get("rid", "")).strip()
+        title = str(link.get("title", "")).strip()
+        doc_title = str(link.get("doc_title", "")).strip()
+        if title:
+            text = f"{rid} — {title}" if rid else title
+        else:
+            text = rid
+        if doc_title and doc_title not in text:
+            suffix = f"({doc_title})"
+            text = f"{text} {suffix}" if text else suffix
+        return text.strip()
+
     def _link_widgets(self, attr: str):
         id_attr = f"{attr}_id"
         list_attr = f"{attr}_list"
@@ -418,18 +492,22 @@ class EditorPanel(ScrolledPanel):
     def _rebuild_links_list(self, attr: str, *, select: int | None = None) -> None:
         """Repopulate ListCtrl for given link attribute."""
         _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
+        if links_list:
+            enriched = self._augment_links_with_metadata(list(links_list))
+            links_list[:] = enriched
         list_ctrl.DeleteAllItems()
         for link in links_list:
             src_rid = link["rid"]
             idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), src_rid)
-            note = str(link.get("title", ""))
+            display = self._format_link_note(link)
             if link.get("suspect"):
                 warning = _("Suspect link")
-                note = f"⚠ {warning}" + (f" — {note}" if note else "")
+                prefix = f"⚠ {warning}"
+                display = f"{prefix} — {display}" if display else prefix
                 list_ctrl.SetItemTextColour(idx, wx.RED)
             else:
                 list_ctrl.SetItemTextColour(idx, wx.NullColour)
-            list_ctrl.SetItem(idx, 1, note)
+            list_ctrl.SetItem(idx, 1, display)
         if select is not None and 0 <= select < list_ctrl.GetItemCount():
             list_ctrl.Select(select)
             list_ctrl.Focus(select)
@@ -482,6 +560,7 @@ class EditorPanel(ScrolledPanel):
         self._document = None
         self._known_ids = None
         self._id_conflict = False
+        self._link_metadata_cache = {}
         self._on_id_change()
 
     def new_requirement(self) -> None:
@@ -574,7 +653,7 @@ class EditorPanel(ScrolledPanel):
                         rid = entry.strip()
                         if rid:
                             parsed_links.append({"rid": rid, "fingerprint": None, "suspect": False})
-            self.links = parsed_links
+            self.links = self._augment_links_with_metadata(parsed_links)
             self._rebuild_links_list("links")
             self.links_id.ChangeValue("")
             self._refresh_links_visibility("links")
@@ -854,29 +933,40 @@ class EditorPanel(ScrolledPanel):
         except ValueError:
             wx.MessageBox(_("Invalid requirement ID"), _("Error"), style=wx.ICON_ERROR)
             return
-        revision = 1  # preserved for compatibility but unused afterwards
         title = ""
         fingerprint = None
+        doc_title = ""
+        doc_prefix = ""
         if self.directory:
             try:
                 root = Path(self.directory).parent
                 doc = load_document(root / prefix)
                 data, _ = load_item(root / prefix, doc, item_id)
-                revision = int(data.get("revision", 1))
                 title = str(data.get("title", ""))
                 fingerprint = requirement_fingerprint(data)
+                doc_title = doc.title
+                doc_prefix = doc.prefix
+                self._link_metadata_cache[value] = {
+                    "title": title,
+                    "fingerprint": fingerprint,
+                    "doc_prefix": doc_prefix,
+                    "doc_title": doc_title,
+                }
             except Exception:  # pragma: no cover - lookup errors
                 logger.exception("Failed to load requirement %s", value)
+                self._link_metadata_cache[value] = {}
         links_list.append(
             {
                 "rid": value,
                 "fingerprint": fingerprint,
                 "suspect": False,
                 "title": title,
+                "doc_prefix": doc_prefix,
+                "doc_title": doc_title,
             }
         )
         idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), value)
-        list_ctrl.SetItem(idx, 1, title)
+        list_ctrl.SetItem(idx, 1, self._format_link_note(links_list[-1]))
         id_ctrl.ChangeValue("")
         self._refresh_links_visibility(attr)
 

@@ -45,7 +45,7 @@ from .resources import load_editor_config
 logger = logging.getLogger(__name__)
 
 
-class EditorPanel(ScrolledPanel):
+class EditorPanel(wx.Panel):
     """Panel for creating and editing requirements."""
 
     def __init__(
@@ -73,24 +73,27 @@ class EditorPanel(ScrolledPanel):
         labels = {name: locale.field_label(name) for name in config.field_names}
         self._help_texts = config.localized_help()
 
-        sizer = wx.BoxSizer(wx.VERTICAL)
+        self._content_panel = ScrolledPanel(self)
+        self._content_panel.SetAutoLayout(True)
+        content = self._content_panel
+        content_sizer = wx.BoxSizer(wx.VERTICAL)
 
         for spec in config.text_fields:
-            label = wx.StaticText(self, label=labels[spec.name])
-            help_btn = make_help_button(self, self._help_texts[spec.name])
+            label = wx.StaticText(content, label=labels[spec.name])
+            help_btn = make_help_button(content, self._help_texts[spec.name])
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-            sizer.Add(row, 0, wx.ALL, 5)
+            content_sizer.Add(row, 0, wx.ALL, 5)
 
             style = wx.TE_MULTILINE if spec.multiline else 0
-            ctrl = wx.TextCtrl(self, style=style)
+            ctrl = wx.TextCtrl(content, style=style)
             if spec.multiline:
                 self._bind_autosize(ctrl)
             self.fields[spec.name] = ctrl
             # Высоту многострочных полей мы управляем вручную,
             # поэтому не передаём sizer'у коэффициент роста.
-            sizer.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
+            content_sizer.Add(ctrl, 0, wx.EXPAND | wx.ALL, 5)
             if spec.hint:
                 ctrl.SetHint(_(spec.hint))
             if spec.name == "id":
@@ -102,12 +105,12 @@ class EditorPanel(ScrolledPanel):
 
         for spec in config.grid_fields:
             container = wx.BoxSizer(wx.VERTICAL)
-            label = wx.StaticText(self, label=labels[spec.name])
-            help_btn = make_help_button(self, self._help_texts[spec.name])
+            label = wx.StaticText(content, label=labels[spec.name])
+            help_btn = make_help_button(content, self._help_texts[spec.name])
             if spec.control == "enum":
                 enum_cls = ENUMS[spec.name]
                 choices = [locale.code_to_label(spec.name, e.value) for e in enum_cls]
-                choice = wx.Choice(self, choices=choices)
+                choice = wx.Choice(content, choices=choices)
                 row = wx.BoxSizer(wx.HORIZONTAL)
                 row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
                 row.Add(choice, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
@@ -119,7 +122,7 @@ class EditorPanel(ScrolledPanel):
                 row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
                 row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
                 container.Add(row, 0, wx.ALL, 5)
-                ctrl = wx.TextCtrl(self)
+                ctrl = wx.TextCtrl(content)
                 if spec.hint:
                     ctrl.SetHint(_(spec.hint))
                 self.fields[spec.name] = ctrl
@@ -127,11 +130,11 @@ class EditorPanel(ScrolledPanel):
 
             grid.Add(container, 1, wx.EXPAND)
 
-        sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
+        content_sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 5)
 
         # attachments section --------------------------------------------
         a_sizer = HelpStaticBox(
-            self,
+            content,
             _("Attachments"),
             self._help_texts["attachments"],
         )
@@ -151,34 +154,34 @@ class EditorPanel(ScrolledPanel):
         btn_row.Add(self.remove_attachment_btn, 0, wx.LEFT, 5)
         a_sizer.Add(self.attachments_list, 0, wx.EXPAND | wx.ALL, 5)
         a_sizer.Add(btn_row, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
-        sizer.Add(a_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        content_sizer.Add(a_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # approval date and notes ---------------------------------------
         container = wx.BoxSizer(wx.VERTICAL)
         row = wx.BoxSizer(wx.HORIZONTAL)
-        label = wx.StaticText(self, label=_("Approved at"))
-        help_btn = make_help_button(self, self._help_texts["approved_at"])
+        label = wx.StaticText(content, label=_("Approved at"))
+        help_btn = make_help_button(content, self._help_texts["approved_at"])
         row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
         row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         container.Add(row, 0, wx.ALL, 5)
         self.approved_picker = wx.adv.DatePickerCtrl(
-            self,
+            content,
             style=wx.adv.DP_ALLOWNONE,
         )
         container.Add(self.approved_picker, 0, wx.ALL, 5)
-        sizer.Add(container, 0, wx.ALL, 5)
+        content_sizer.Add(container, 0, wx.ALL, 5)
 
         container = wx.BoxSizer(wx.VERTICAL)
         row = wx.BoxSizer(wx.HORIZONTAL)
-        label = wx.StaticText(self, label=_("Notes"))
-        help_btn = make_help_button(self, self._help_texts["notes"])
+        label = wx.StaticText(content, label=_("Notes"))
+        help_btn = make_help_button(content, self._help_texts["notes"])
         row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
         row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         container.Add(row, 0, wx.ALL, 5)
-        self.notes_ctrl = wx.TextCtrl(self, style=wx.TE_MULTILINE)
+        self.notes_ctrl = wx.TextCtrl(content, style=wx.TE_MULTILINE)
         self._bind_autosize(self.notes_ctrl)
         container.Add(self.notes_ctrl, 0, wx.EXPAND | wx.ALL, 5)
-        sizer.Add(container, 0, wx.EXPAND | wx.ALL, 5)
+        content_sizer.Add(container, 0, wx.EXPAND | wx.ALL, 5)
 
         # grouped links and metadata ------------------------------------
         links_grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
@@ -188,7 +191,7 @@ class EditorPanel(ScrolledPanel):
 
         # labels section -------------------------------------------------
         box_sizer = HelpStaticBox(
-            self,
+            content,
             _("Labels"),
             self._help_texts["labels"],
         )
@@ -217,16 +220,26 @@ class EditorPanel(ScrolledPanel):
         )
         links_grid.Add(ln_sizer, 0, wx.EXPAND | wx.ALL, 5)
 
-        sizer.Add(links_grid, 0, wx.EXPAND | wx.ALL, 5)
+        content_sizer.Add(links_grid, 0, wx.EXPAND | wx.ALL, 5)
 
-        self.save_btn = wx.Button(self, label=_("Save"))
+        self._content_panel.SetSizer(content_sizer)
+        self._content_panel.SetupScrolling()
+
+        separator = wx.StaticLine(self)
+        footer = wx.Panel(self)
+        footer.SetBackgroundColour(self.GetBackgroundColour())
+        footer_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        footer.SetSizer(footer_sizer)
+        footer_sizer.AddStretchSpacer()
+        self.save_btn = wx.Button(footer, label=_("Save"))
         self.save_btn.Bind(wx.EVT_BUTTON, self._on_save_button)
-        btn_row = wx.BoxSizer(wx.HORIZONTAL)
-        btn_row.Add(self.save_btn, 0, wx.ALL, 5)
-        sizer.Add(btn_row, 0, wx.ALIGN_RIGHT)
+        footer_sizer.Add(self.save_btn, 0, wx.ALL, 5)
 
-        self.SetSizer(sizer)
-        self.SetupScrolling()
+        root_sizer = wx.BoxSizer(wx.VERTICAL)
+        root_sizer.Add(self._content_panel, 1, wx.EXPAND)
+        root_sizer.Add(separator, 0, wx.EXPAND)
+        root_sizer.Add(footer, 0, wx.EXPAND)
+        self.SetSizer(root_sizer)
 
         self.attachments: list[dict[str, str]] = []
         self.extra: dict[str, Any] = {
@@ -239,6 +252,19 @@ class EditorPanel(ScrolledPanel):
         self._refresh_labels_display()
         self._refresh_attachments()
         self.mark_clean()
+
+    def FitInside(self) -> None:  # noqa: N802 - wxWidgets API casing
+        """Recalculate the scrollable area of the editor form."""
+
+        self._content_panel.FitInside()
+        self._content_panel.Layout()
+        super().Layout()
+
+    def Layout(self) -> bool:  # noqa: N802 - wxWidgets API casing
+        """Layout both the scrollable content and the outer panel."""
+
+        self._content_panel.Layout()
+        return super().Layout()
 
     # helpers -------------------------------------------------------------
     def _load_document(self) -> Document | None:
@@ -332,7 +358,7 @@ class EditorPanel(ScrolledPanel):
         list_name: str | None = None,
     ) -> wx.StaticBoxSizer:
         sizer = HelpStaticBox(
-            self,
+            self._content_panel,
             label,
             self._help_texts[help_key],
         )

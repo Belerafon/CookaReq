@@ -1,6 +1,7 @@
 """Main application window."""
 
 import logging
+from collections.abc import Sequence
 from dataclasses import fields, replace
 from importlib import resources
 from pathlib import Path
@@ -156,6 +157,7 @@ class MainFrame(wx.Frame):
             model=self.model,
             on_clone=self.on_clone_requirement,
             on_delete=self.on_delete_requirement,
+            on_delete_many=self.on_delete_requirements,
             on_sort_changed=self._on_sort_changed,
             on_derive=self.on_derive_requirement,
         )
@@ -366,6 +368,7 @@ class MainFrame(wx.Frame):
             model=self.model,
             on_clone=self.on_clone_requirement,
             on_delete=self.on_delete_requirement,
+            on_delete_many=self.on_delete_requirements,
             on_sort_changed=self._on_sort_changed,
             on_derive=self.on_derive_requirement,
         )
@@ -964,33 +967,98 @@ class MainFrame(wx.Frame):
         self.splitter.UpdateSize()
 
 
-    def on_delete_requirement(self, req_id: int) -> None:
-        """Delete requirement ``req_id`` and refresh views."""
+    def _format_requirement_summary(
+        self, requirement: Requirement | None
+    ) -> str | None:
+        if not requirement:
+            return None
+        summary_parts: list[str] = []
+        if requirement.rid:
+            summary_parts.append(requirement.rid)
+        title = requirement.title.strip()
+        if title:
+            summary_parts.append(title)
+        if summary_parts:
+            return " — ".join(summary_parts)
+        return None
+
+    def on_delete_requirements(self, req_ids: Sequence[int]) -> None:
+        """Delete multiple requirements referenced by ``req_ids``."""
+
+        if not req_ids:
+            return
         if not (self.docs_controller and self.current_doc_prefix):
             return
-        requirement = self.model.get_by_id(req_id) if self.model else None
-        message = _("Delete requirement?")
-        if requirement:
-            summary_parts: list[str] = []
-            if requirement.rid:
-                summary_parts.append(requirement.rid)
-            title = requirement.title.strip()
-            if title:
-                summary_parts.append(title)
-            if summary_parts:
-                message = _("Delete requirement {summary}?").format(
-                    summary=" — ".join(summary_parts)
+
+        unique_ids: list[int] = []
+        seen: set[int] = set()
+        for req_id in req_ids:
+            try:
+                numeric = int(req_id)
+            except (TypeError, ValueError):
+                continue
+            if numeric in seen:
+                continue
+            seen.add(numeric)
+            unique_ids.append(numeric)
+        if not unique_ids:
+            return
+
+        summaries: list[str] = []
+        if self.model:
+            for req_id in unique_ids:
+                summary = self._format_requirement_summary(
+                    self.model.get_by_id(req_id)
                 )
+                if summary:
+                    summaries.append(summary)
+
+        if len(unique_ids) == 1:
+            message = _("Delete requirement?")
+            if summaries:
+                message = _("Delete requirement {summary}?").format(
+                    summary=summaries[0]
+                )
+        else:
+            message = _("Delete {count} requirements?").format(
+                count=len(unique_ids)
+            )
+            if summaries:
+                preview_limit = 5
+                preview = summaries[:preview_limit]
+                bullet_lines = "\n".join(f"- {text}" for text in preview)
+                message = message + "\n" + bullet_lines
+                if len(summaries) > preview_limit:
+                    remaining = len(summaries) - preview_limit
+                    message += "\n" + _("...and {count} more.").format(
+                        count=remaining
+                    )
+
         if not confirm(message):
             return
-        if not self.docs_controller.delete_requirement(self.current_doc_prefix, req_id):
+
+        deleted_any = False
+        for req_id in unique_ids:
+            if not self.docs_controller.delete_requirement(
+                self.current_doc_prefix, req_id
+            ):
+                continue
+            deleted_any = True
+
+        if not deleted_any:
             return
-        self.panel.refresh()
-        self.editor.Hide()
+
         self._selected_requirement_id = None
+        self.panel.recalc_derived_map(self.model.get_all())
+        self.editor.Hide()
         self.splitter.UpdateSize()
         labels, freeform = self.docs_controller.collect_labels(
             self.current_doc_prefix
         )
         self.editor.update_labels_list(labels, freeform)
         self.panel.update_labels_list(labels)
+
+    def on_delete_requirement(self, req_id: int) -> None:
+        """Delete requirement ``req_id`` and refresh views."""
+
+        self.on_delete_requirements([req_id])

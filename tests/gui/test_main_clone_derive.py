@@ -33,7 +33,7 @@ def _req(req_id: int, title: str) -> Requirement:
     )
 
 
-def _prepare_frame(monkeypatch, tmp_path):
+def _prepare_frame(monkeypatch, tmp_path, extra_requirements=None):
     wx = pytest.importorskip("wx")
     import app.ui.main_frame as main_frame_mod
 
@@ -47,6 +47,9 @@ def _prepare_frame(monkeypatch, tmp_path):
     save_document(doc_dir, doc)
     base_req = _req(1, "Base")
     save_item(doc_dir, doc, requirement_to_dict(base_req))
+    if extra_requirements:
+        for req in extra_requirements:
+            save_item(doc_dir, doc, requirement_to_dict(req))
 
     controller = DocumentsController(tmp_path, model)
     controller.load_documents()
@@ -113,6 +116,41 @@ def test_derive_creates_linked_requirement(monkeypatch, wx_app, tmp_path):
         selected = frame.panel.list.GetFirstSelected()
         assert selected != wx.NOT_FOUND
         assert frame.panel.list.GetItemData(selected) == 2
+    finally:
+        frame.Destroy()
+
+
+def test_delete_many_removes_requirements(monkeypatch, wx_app, tmp_path):
+    extra = [_req(2, "Second"), _req(3, "Third")]
+    frame = _prepare_frame(monkeypatch, tmp_path, extra_requirements=extra)
+    wx = pytest.importorskip("wx")
+    import app.ui.main_frame as main_frame_mod
+
+    try:
+        captured: dict[str, str] = {}
+
+        def fake_confirm(message: str) -> bool:
+            captured["message"] = message
+            return True
+
+        monkeypatch.setattr(main_frame_mod, "confirm", fake_confirm)
+        wx_app.Yield()
+
+        assert frame.model.get_by_id(2) is not None
+        assert frame.model.get_by_id(3) is not None
+
+        frame.on_delete_requirements([2, 3])
+        wx_app.Yield()
+
+        assert frame.model.get_by_id(2) is None
+        assert frame.model.get_by_id(3) is None
+        assert frame.panel.list.GetItemCount() == 1
+        assert frame._selected_requirement_id is None
+        assert not frame.editor.IsShown()
+        assert "message" in captured
+        assert "Delete 2 requirements" in captured["message"]
+        assert "Second" in captured["message"]
+        assert "Third" in captured["message"]
     finally:
         frame.Destroy()
 

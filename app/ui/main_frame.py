@@ -27,6 +27,7 @@ from .agent_chat_panel import AgentChatPanel
 from .controllers import DocumentsController
 from .document_dialog import DocumentPropertiesDialog
 from .document_tree import DocumentTree
+from .detached_editor import DetachedEditorFrame
 from .editor_panel import EditorPanel
 from .labels_dialog import LabelsDialog
 from .list_panel import ListPanel
@@ -120,6 +121,7 @@ class MainFrame(wx.Frame):
             on_open_recent=self.on_open_recent,
             on_toggle_column=self.on_toggle_column,
             on_toggle_log_console=self.on_toggle_log_console,
+            on_toggle_requirement_editor=self.on_toggle_requirement_editor,
             on_toggle_agent_chat=self.on_toggle_agent_chat,
             on_show_derivation_graph=self.on_show_derivation_graph,
             on_show_trace_matrix=self.on_show_trace_matrix,
@@ -129,8 +131,10 @@ class MainFrame(wx.Frame):
         self._recent_menu = self.navigation.recent_menu
         self._recent_menu_item = self.navigation.recent_menu_item
         self.log_menu_item = self.navigation.log_menu_item
+        self.editor_menu_item = self.navigation.editor_menu_item
         self.agent_chat_menu_item = self.navigation.agent_chat_menu_item
         self.manage_labels_id = self.navigation.manage_labels_id
+        self._detached_editors: dict[tuple[str, int], DetachedEditorFrame] = {}
 
         # split horizontally: top is main content, bottom is log console
         self.main_splitter = wx.SplitterWindow(self)
@@ -193,6 +197,7 @@ class MainFrame(wx.Frame):
             ),
         )
         self.panel.set_columns(self.selected_fields)
+        self.panel.list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_requirement_activated)
         (
             self.editor_container,
             self.editor_label,
@@ -594,6 +599,13 @@ class MainFrame(wx.Frame):
     def _show_editor_panel(self) -> None:
         """Display the editor section alongside its container."""
 
+        if not self.splitter.IsSplit():
+            sash = self.config.get_editor_sash(self._default_editor_sash())
+            self.splitter.SplitVertically(
+                self.list_container,
+                self.editor_container,
+                sash,
+            )
         self.editor_container.Show()
         self.editor.Show()
         self.editor_container.Layout()
@@ -604,6 +616,11 @@ class MainFrame(wx.Frame):
 
         self.editor.Hide()
         self.editor_container.Hide()
+
+    def _is_editor_visible(self) -> bool:
+        """Return ``True`` when the main editor pane is enabled."""
+
+        return bool(self.editor_menu_item and self.editor_menu_item.IsChecked())
 
     def _show_agent_section(self) -> None:
         """Display the agent chat section and ensure layout refresh."""
@@ -763,12 +780,23 @@ class MainFrame(wx.Frame):
         app = wx.GetApp()
         app.locale = init_locale(self.language)
 
+        editor_visible = self._is_editor_visible()
+        agent_visible = bool(
+            self.agent_chat_menu_item and self.agent_chat_menu_item.IsChecked()
+        )
+
         # Rebuild menus with new translations
         self.navigation.rebuild(self.selected_fields)
         self._recent_menu = self.navigation.recent_menu
         self._recent_menu_item = self.navigation.recent_menu_item
         self.log_menu_item = self.navigation.log_menu_item
+        self.editor_menu_item = self.navigation.editor_menu_item
+        self.agent_chat_menu_item = self.navigation.agent_chat_menu_item
         self.manage_labels_id = self.navigation.manage_labels_id
+        if self.editor_menu_item:
+            self.editor_menu_item.Check(editor_visible)
+        if self.agent_chat_menu_item:
+            self.agent_chat_menu_item.Check(agent_visible)
 
         # Replace panels to update all labels
         old_panel = self.panel
@@ -784,6 +812,7 @@ class MainFrame(wx.Frame):
         )
         self.panel.set_columns(self.selected_fields)
         self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
+        self.panel.list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_requirement_activated)
         if list_sizer is not None:
             list_sizer.Replace(old_panel, self.panel)
         old_panel.Destroy()
@@ -802,6 +831,8 @@ class MainFrame(wx.Frame):
             self._show_editor_panel()
         else:
             self._hide_editor_panel()
+
+        self._apply_editor_visibility(persist=False)
 
         if hasattr(self, "agent_panel"):
             old_agent_panel = self.agent_panel
@@ -1153,32 +1184,129 @@ class MainFrame(wx.Frame):
         if req:
             self._selected_requirement_id = req_id
             self.editor.load(req)
-            self._show_editor_panel()
-            self.splitter.UpdateSize()
+            if self._is_editor_visible():
+                self._show_editor_panel()
+                self.splitter.UpdateSize()
 
-    def _on_editor_save(self) -> None:
-        if not (
-            self.current_dir
-            and self.docs_controller
-            and self.current_doc_prefix
-        ):
+    def on_requirement_activated(self, event: wx.ListEvent) -> None:
+        """Open requirement in a detached editor when activated."""
+
+        if self._is_editor_visible():
+            event.Skip()
+            return
+        index = event.GetIndex()
+        if index == wx.NOT_FOUND:
             return
         try:
-            doc = self.docs_controller.documents[self.current_doc_prefix]
-            self.editor.save(
-                self.current_dir / self.current_doc_prefix, doc=doc
-            )
-        except RequirementIDCollisionError:
+            req_id = self.panel.list.GetItemData(index)
+        except Exception:
             return
+        if req_id <= 0:
+            return
+        req = self.model.get_by_id(req_id)
+        if not req:
+            return
+        self._open_detached_editor(req)
+
+    def _save_editor_contents(
+        self,
+        editor_panel: EditorPanel,
+        *,
+        doc_prefix: str | None = None,
+    ) -> Requirement | None:
+        if not (self.current_dir and self.docs_controller):
+            return None
+        prefix = doc_prefix or str(editor_panel.extra.get("doc_prefix", ""))
+        if not prefix:
+            prefix = self.current_doc_prefix or ""
+        if not prefix:
+            return None
+        doc = self.docs_controller.documents.get(prefix)
+        if not doc:
+            return None
+        directory = self.current_dir / prefix
+        try:
+            editor_panel.save(directory, doc=doc)
+        except RequirementIDCollisionError:
+            return None
         except Exception as exc:  # pragma: no cover - GUI event
             wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
-            return
-        data = self.editor.get_data()
-        self.model.update(data)
+            return None
+        requirement = editor_panel.get_data()
+        requirement.doc_prefix = prefix or requirement.doc_prefix
+        self.model.update(requirement)
         self.panel.recalc_derived_map(self.model.get_all())
-        labels, freeform = self.docs_controller.collect_labels(self.current_doc_prefix)
-        self.editor.update_labels_list(labels, freeform)
+        labels, freeform = self.docs_controller.collect_labels(prefix)
+        editor_panel.update_labels_list(labels, freeform)
         self.panel.update_labels_list(labels)
+        if editor_panel is not self.editor:
+            self.editor.update_labels_list(labels, freeform)
+            if (
+                self._is_editor_visible()
+                and self.current_doc_prefix == prefix
+                and self._selected_requirement_id == requirement.id
+            ):
+                self.editor.load(requirement)
+        self._selected_requirement_id = requirement.id
+        return requirement
+
+    def _on_editor_save(self) -> None:
+        if not self.docs_controller:
+            return
+        self._save_editor_contents(self.editor, doc_prefix=self.current_doc_prefix)
+
+    def _open_detached_editor(self, requirement: Requirement) -> None:
+        if not (self.docs_controller and self.current_dir):
+            return
+        prefix = getattr(requirement, "doc_prefix", "") or self.current_doc_prefix
+        if not prefix:
+            return
+        doc = self.docs_controller.documents.get(prefix)
+        if not doc:
+            return
+        directory = self.current_dir / prefix
+        labels, freeform = self.docs_controller.collect_labels(prefix)
+        key = (prefix, getattr(requirement, "id", 0))
+        existing = self._detached_editors.get(key)
+        if existing:
+            existing.reload(requirement, directory, labels, freeform)
+            existing.Raise()
+            existing.SetFocus()
+            return
+        frame = DetachedEditorFrame(
+            self,
+            requirement=requirement,
+            doc_prefix=prefix,
+            directory=directory,
+            labels=labels,
+            allow_freeform=freeform,
+            on_save=self._on_detached_editor_save,
+            on_close=self._on_detached_editor_closed,
+        )
+        self._detached_editors[frame.key] = frame
+        frame.Show()
+
+    def _on_detached_editor_save(self, frame: DetachedEditorFrame) -> bool:
+        prefix = frame.doc_prefix
+        if not prefix or not self.docs_controller or not self.current_dir:
+            return False
+        old_key = frame.key
+        requirement = self._save_editor_contents(frame.editor, doc_prefix=prefix)
+        if requirement is None:
+            return False
+        directory = self.current_dir / prefix
+        labels, freeform = self.docs_controller.collect_labels(prefix)
+        frame.reload(requirement, directory, labels, freeform)
+        if old_key in self._detached_editors and self._detached_editors[old_key] is frame:
+            del self._detached_editors[old_key]
+        self._detached_editors[frame.key] = frame
+        return True
+
+    def _on_detached_editor_closed(self, frame: DetachedEditorFrame) -> None:
+        for key, window in list(self._detached_editors.items()):
+            if window is frame:
+                del self._detached_editors[key]
+                break
 
     def on_toggle_column(self, event: wx.CommandEvent) -> None:
         """Show or hide column associated with menu item."""
@@ -1219,6 +1347,34 @@ class MainFrame(wx.Frame):
         else:
             self._hide_agent_chat()
 
+    def on_toggle_requirement_editor(self, _event: wx.CommandEvent) -> None:
+        """Toggle visibility of the requirement editor pane."""
+
+        if not self.editor_menu_item:
+            return
+        if not self.editor_menu_item.IsChecked():
+            if not self._confirm_discard_changes():
+                self.editor_menu_item.Check(True)
+                return
+        self._apply_editor_visibility(persist=True)
+
+    def _default_editor_sash(self) -> int:
+        width = self.splitter.GetClientSize().width
+        if width <= 0:
+            width = self.agent_splitter.GetClientSize().width
+        if width <= 0:
+            width = self.doc_splitter.GetClientSize().width
+        if width <= 0:
+            width = self.GetClientSize().width
+        if width <= 0:
+            width = 1000
+        min_size = max(self.splitter.GetMinimumPaneSize(), 200)
+        max_left = max(width - min_size, min_size)
+        desired = width // 2 if width // 2 > 0 else min_size
+        desired = max(min_size, desired)
+        desired = min(desired, max_left)
+        return desired
+
     def _default_agent_chat_sash(self) -> int:
         width = self.agent_splitter.GetClientSize().width
         if width <= 0:
@@ -1253,6 +1409,33 @@ class MainFrame(wx.Frame):
         self._hide_agent_section()
         self.config.set_agent_chat_shown(False)
 
+    def _apply_editor_visibility(self, *, persist: bool) -> None:
+        visible = self._is_editor_visible()
+        if visible:
+            if not self.splitter.IsSplit():
+                sash = self.config.get_editor_sash(self._default_editor_sash())
+                self.splitter.SplitVertically(
+                    self.list_container,
+                    self.editor_container,
+                    sash,
+                )
+            else:
+                sash = self.config.get_editor_sash(self.splitter.GetSashPosition())
+                self.splitter.SetSashPosition(sash)
+            self._show_editor_panel()
+            if persist:
+                self.config.set_editor_shown(True)
+        else:
+            if self.splitter.IsSplit():
+                if persist:
+                    self.config.set_editor_sash(self.splitter.GetSashPosition())
+                self.splitter.Unsplit(self.editor_container)
+            self._hide_editor_panel()
+            if persist:
+                self.config.set_editor_shown(False)
+        self.splitter.UpdateSize()
+        self.Layout()
+
     def _load_layout(self) -> None:
         """Restore window geometry, splitter, console, and column widths."""
         self.config.restore_layout(
@@ -1271,6 +1454,9 @@ class MainFrame(wx.Frame):
             self._collapse_doc_tree(update_config=False)
         else:
             self._expand_doc_tree(update_config=False)
+        if self.editor_menu_item:
+            self.editor_menu_item.Check(self.config.get_editor_shown())
+        self._apply_editor_visibility(persist=False)
         if self.agent_chat_menu_item:
             if self.config.get_agent_chat_shown():
                 self.agent_chat_menu_item.Check(True)
@@ -1317,6 +1503,12 @@ class MainFrame(wx.Frame):
                 event.Veto()
             return
         self._save_layout()
+        for frame in list(self._detached_editors.values()):
+            try:
+                frame.Destroy()
+            except Exception:  # pragma: no cover - best effort cleanup
+                pass
+        self._detached_editors.clear()
         if self.log_handler in logger.handlers:
             logger.removeHandler(self.log_handler)
         self.mcp.stop()
@@ -1342,8 +1534,11 @@ class MainFrame(wx.Frame):
         self._selected_requirement_id = new_id
         self.panel.refresh(select_id=new_id)
         self.editor.load(data, path=None, mtime=None)
-        self._show_editor_panel()
-        self.splitter.UpdateSize()
+        if self._is_editor_visible():
+            self._show_editor_panel()
+            self.splitter.UpdateSize()
+        else:
+            self._open_detached_editor(data)
 
     def on_clone_requirement(self, req_id: int) -> None:
         """Clone requirement ``req_id`` and open in editor."""
@@ -1364,8 +1559,11 @@ class MainFrame(wx.Frame):
         self._selected_requirement_id = new_id
         self.panel.refresh(select_id=new_id)
         self.editor.load(clone, path=None, mtime=None)
-        self._show_editor_panel()
-        self.splitter.UpdateSize()
+        if self._is_editor_visible():
+            self._show_editor_panel()
+            self.splitter.UpdateSize()
+        else:
+            self._open_detached_editor(clone)
 
     def _create_linked_copy(self, source: Requirement) -> Requirement:
         if not (self.docs_controller and self.current_doc_prefix):
@@ -1396,8 +1594,11 @@ class MainFrame(wx.Frame):
         self._selected_requirement_id = clone.id
         self.panel.refresh(select_id=clone.id)
         self.editor.load(clone, path=None, mtime=None)
-        self._show_editor_panel()
-        self.splitter.UpdateSize()
+        if self._is_editor_visible():
+            self._show_editor_panel()
+            self.splitter.UpdateSize()
+        else:
+            self._open_detached_editor(clone)
 
 
     def _format_requirement_summary(

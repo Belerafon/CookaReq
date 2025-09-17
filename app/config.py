@@ -270,6 +270,11 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         value_type=bool,
         default=False,
     ),
+    "editor_shown": FieldSpec(
+        key="editor_shown",
+        value_type=bool,
+        default=True,
+    ),
     "win_w": FieldSpec(
         key="win_w",
         value_type=int,
@@ -677,6 +682,30 @@ class ConfigManager:
         self.flush()
 
     # ------------------------------------------------------------------
+    # requirement editor panel
+    def get_editor_sash(self, default: int) -> int:
+        """Return stored splitter position for the requirement editor."""
+
+        return self.get_value("editor_sash_pos", default=default)
+
+    def set_editor_sash(self, pos: int) -> None:
+        """Persist splitter position for the requirement editor."""
+
+        self.set_value("editor_sash_pos", pos)
+        self.flush()
+
+    def get_editor_shown(self) -> bool:
+        """Check whether the requirement editor is visible on the main form."""
+
+        return self.get_value("editor_shown")
+
+    def set_editor_shown(self, shown: bool) -> None:
+        """Persist visibility flag for the requirement editor."""
+
+        self.set_value("editor_shown", shown)
+        self.flush()
+
+    # ------------------------------------------------------------------
     # document tree pane
     def get_doc_tree_collapsed(self) -> bool:
         """Return whether the document hierarchy pane is hidden."""
@@ -795,8 +824,12 @@ class ConfigManager:
         self.set_value("sash_pos", sash_to_store)
         self.set_value("doc_tree_saved_sash", sash_to_store)
         self.set_value("doc_tree_collapsed", doc_tree_collapsed)
-        if editor_splitter is not None and editor_splitter.IsSplit():
-            self.set_value("editor_sash_pos", editor_splitter.GetSashPosition())
+        if editor_splitter is not None:
+            if editor_splitter.IsSplit():
+                self.set_value("editor_shown", True)
+                self.set_value("editor_sash_pos", editor_splitter.GetSashPosition())
+            else:
+                self.set_value("editor_shown", False)
         if main_splitter.IsSplit():
             self.set_value("log_shown", True)
             self.set_value("log_sash", main_splitter.GetSashPosition())

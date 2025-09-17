@@ -10,7 +10,7 @@ from typing import Any
 
 from ..i18n import _
 from ..settings import MCPSettings
-from ..telemetry import log_event
+from ..telemetry import log_debug_payload, log_event
 from .utils import ErrorCode, mcp_error
 
 
@@ -45,8 +45,26 @@ class MCPClient:
             "base_path": self.settings.base_path,
             "token": self.settings.token if self.settings.require_token else "",
         }
+        request_body = {"name": "list_requirements", "arguments": {"per_page": 1}}
+        headers = {"Content-Type": "application/json"}
+        if self.settings.require_token and self.settings.token:
+            headers["Authorization"] = f"Bearer {self.settings.token}"
         start = time.monotonic()
         # ``log_event`` выполняет собственную очистку чувствительных данных.
+        log_debug_payload(
+            "MCP_REQUEST",
+            {
+                "direction": "outbound",
+                "tool": "list_requirements",
+                "http": {
+                    "host": self.settings.host,
+                    "port": self.settings.port,
+                    "path": "/mcp",
+                    "headers": headers,
+                    "body": request_body,
+                },
+            },
+        )
         log_event(
             "TOOL_CALL",
             {"tool": "list_requirements", "params": params},
@@ -54,24 +72,38 @@ class MCPClient:
         try:
             conn = HTTPConnection(self.settings.host, self.settings.port, timeout=5)
             try:
-                path = "/mcp"
-                payload = json.dumps(
-                    {"name": "list_requirements", "arguments": {"per_page": 1}},
-                )
-                headers = {"Content-Type": "application/json"}
-                if self.settings.require_token and self.settings.token:
-                    headers["Authorization"] = f"Bearer {self.settings.token}"
-                conn.request("POST", path, body=payload, headers=headers)
+                payload = json.dumps(request_body)
+                conn.request("POST", "/mcp", body=payload, headers=headers)
                 resp = conn.getresponse()
+                getheaders = getattr(resp, "getheaders", None)
+                response_headers = list(getheaders()) if callable(getheaders) else []
                 body = resp.read().decode()
             finally:
                 conn.close()
         except Exception as exc:  # pragma: no cover - network errors
             err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
+            log_debug_payload(
+                "MCP_RESPONSE",
+                {
+                    "direction": "inbound",
+                    "tool": "list_requirements",
+                    "error": err,
+                },
+            )
             return {"ok": False, "error": err}
         else:
             data = json.loads(body or "{}")
+            log_debug_payload(
+                "MCP_RESPONSE",
+                {
+                    "direction": "inbound",
+                    "tool": "list_requirements",
+                    "status": resp.status,
+                    "headers": response_headers,
+                    "body": body,
+                },
+            )
             if resp.status == 200 and "error" not in data:
                 log_event("TOOL_RESULT", {"ok": True}, start_time=start)
                 return {"ok": True, "error": None}
@@ -111,16 +143,33 @@ class MCPClient:
             "TOOL_CALL",
             {"tool": name, "params": dict(arguments)},
         )
+        request_body = {"name": name, "arguments": dict(arguments)}
+        headers = {"Content-Type": "application/json"}
+        if self.settings.require_token and self.settings.token:
+            headers["Authorization"] = f"Bearer {self.settings.token}"
         start = time.monotonic()
+        log_debug_payload(
+            "MCP_REQUEST",
+            {
+                "direction": "outbound",
+                "tool": name,
+                "http": {
+                    "host": self.settings.host,
+                    "port": self.settings.port,
+                    "path": "/mcp",
+                    "headers": headers,
+                    "body": request_body,
+                },
+            },
+        )
         try:
             conn = HTTPConnection(self.settings.host, self.settings.port, timeout=5)
             try:
-                payload = json.dumps({"name": name, "arguments": dict(arguments)})
-                headers = {"Content-Type": "application/json"}
-                if self.settings.require_token and self.settings.token:
-                    headers["Authorization"] = f"Bearer {self.settings.token}"
+                payload = json.dumps(request_body)
                 conn.request("POST", "/mcp", body=payload, headers=headers)
                 resp = conn.getresponse()
+                getheaders = getattr(resp, "getheaders", None)
+                response_headers = list(getheaders()) if callable(getheaders) else []
                 body = resp.read().decode()
             finally:
                 conn.close()
@@ -128,9 +177,23 @@ class MCPClient:
             err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
             log_event("ERROR", {"error": err})
+            log_debug_payload(
+                "MCP_RESPONSE",
+                {"direction": "inbound", "tool": name, "error": err},
+            )
             return {"ok": False, "error": err}
         else:
             data = json.loads(body or "{}")
+            log_debug_payload(
+                "MCP_RESPONSE",
+                {
+                    "direction": "inbound",
+                    "tool": name,
+                    "status": resp.status,
+                    "headers": response_headers,
+                    "body": body,
+                },
+            )
             if resp.status == 200 and "error" not in data:
                 log_event("TOOL_RESULT", {"result": data}, start_time=start)
                 log_event("DONE")

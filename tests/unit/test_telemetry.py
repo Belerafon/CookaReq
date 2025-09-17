@@ -8,7 +8,7 @@ import pytest
 
 import app.telemetry as telemetry
 from app.log import JsonlHandler, logger
-from app.telemetry import REDACTED, log_event, sanitize
+from app.telemetry import REDACTED, log_debug_payload, log_event, sanitize
 
 pytestmark = pytest.mark.unit
 
@@ -79,3 +79,40 @@ def test_log_event_records_size_and_duration_and_sanitizes_payload(
     assert '"key"' not in log_text
     assert entry["size_bytes"] == expected_size
     assert entry["duration_ms"] == 1000
+
+
+def test_log_debug_payload_emits_full_payload(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    log_file = tmp_path / "debug.jsonl"
+    handler = JsonlHandler(str(log_file))
+    logger.addHandler(handler)
+    prev_level = logger.level
+    logger.setLevel(logging.DEBUG)
+    try:
+        with caplog.at_level(logging.DEBUG, logger="cookareq"):
+            log_debug_payload(
+                "TEST_DEBUG",
+                {
+                    "token": "secret",
+                    "nested": {"password": "hidden"},
+                    "list": [{"api_key": "key"}],
+                },
+            )
+    finally:
+        logger.setLevel(prev_level)
+        logger.removeHandler(handler)
+    records = [r for r in caplog.records if r.message.startswith("TEST_DEBUG")]
+    assert records, "debug payload log was not emitted"
+    message = records[-1].message
+    assert REDACTED in message
+    assert "secret" not in message
+    assert "hidden" not in message
+    assert '"key"' not in message
+    entry = json.loads(log_file.read_text().splitlines()[-1])
+    assert entry["event"] == "TEST_DEBUG"
+    assert entry["level"] == "DEBUG"
+    assert entry["payload"]["token"] == REDACTED
+    assert entry["payload"]["nested"]["password"] == REDACTED
+    assert entry["payload"]["list"][0]["api_key"] == REDACTED

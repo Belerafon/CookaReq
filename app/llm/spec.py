@@ -23,12 +23,15 @@ _STATUS_VALUES = [
 _STATUS_VALUES_WITH_NULL = _STATUS_VALUES + [None]
 
 
-# Prompt instructing the model to always return a tool call in the
-# OpenAI-compatible "function calling" format.
+# Prompt instructing the model to prefer MCP tool calls while allowing
+# conversational fallbacks when tools are not relevant.
 SYSTEM_PROMPT = (
-    "Translate the user request into a call to one of the MCP tools. "
-    "Always respond with a tool call and use the provided function schemas. "
-    "When listing or searching requirements you may combine filters: "
+    "Translate the user request into a call to one of the MCP tools whenever "
+    "the action relates to the requirements workspace. Use the provided "
+    "function schemas for tool calls and ensure the arguments are valid JSON. "
+    "If the prompt is purely conversational or tools are not applicable, "
+    "reply in natural language without calling a tool. When listing or "
+    "searching requirements you may combine filters: "
     "`list_requirements` accepts optional `page`, `per_page`, `status` and "
     "`labels`; `search_requirements` accepts `query`, `labels`, `status`, "
     "`page` and `per_page`. Status values: draft, in_review, approved, "

@@ -2,6 +2,7 @@
 
 import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -26,17 +27,20 @@ def require_real_llm_tests_flag(*, env_var: str = "COOKAREQ_RUN_REAL_LLM_TESTS")
     )
 
 
-def make_openai_mock(responses: dict[str, tuple[str, dict] | Exception]):
+def make_openai_mock(responses: dict[str, object]):
     """Return a ``FakeOpenAI`` class wired with *responses*.
 
-    ``responses`` — словарь ``{prompt: (tool, args) | Exception}``.
-    При вызове ``chat.completions.create`` будет найден последний
-    пользовательский промпт и возвращён подготовленный ответ. Если вместо
-    пары передано исключение, оно будет возбуждёно. Формат результата
-    соответствует минимальному подмножеству OpenAI, используемому в
-    ``LLMClient``. Такой мок можно переиспользовать в других тестах:
+    ``responses`` — словарь ``{prompt: sequence}``, где элементами
+    последовательности могут быть кортежи ``(tool, args)``, строки (как
+    свободный ответ ассистента), словари ``{"message": "..."}`` или
+    исключения. При вызове ``chat.completions.create`` будет найден последний
+    пользовательский промпт и взят следующий ответ из очереди. Если ответы
+    закончились, используется последнее значение. Исключения пробрасываются
+    напрямую. Формат результата соответствует минимальному подмножеству
+    OpenAI, используемому в ``LLMClient``. Такой мок можно переиспользовать в
+    других тестах:
 
-    >>> mapping = {"list": ("list_requirements", {"per_page": 1})}
+    >>> mapping = {"list": [("list_requirements", {"per_page": 1}), {"message": "готово"}]}
     >>> monkeypatch.setattr("openai.OpenAI", make_openai_mock(mapping))
 
     Это позволит детерминированно эмулировать ответ LLM без сетевых
@@ -46,29 +50,70 @@ def make_openai_mock(responses: dict[str, tuple[str, dict] | Exception]):
     ``list_requirements`` с пустыми аргументами.
     """
 
+    prepared: dict[str, list[object]] = {}
+    for key, value in responses.items():
+        if isinstance(value, list):
+            prepared[key] = list(value)
+        else:
+            prepared[key] = [value]
+
     class _Completions:
         def create(self, *, model, messages, tools=None, **kwargs):
-            user_msg = messages[-1]["content"]
-            result = responses.get(user_msg, ("list_requirements", {}))
+            user_msg = next(
+                (
+                    msg["content"]
+                    for msg in reversed(messages)
+                    if msg.get("role") == "user"
+                ),
+                messages[-1]["content"],
+            )
+            queue = prepared.get(user_msg)
+            if queue is None:
+                queue = prepared.setdefault(user_msg, [("list_requirements", {})])
+            if len(queue) > 1:
+                result = queue.pop(0)
+            else:
+                result = queue[0]
             if isinstance(result, Exception):
                 raise result
-            name, args = result
+            if isinstance(result, str):
+                message_content = result
+                name = None
+                args = {}
+            elif isinstance(result, Mapping) and "message" in result:
+                message_content = str(result["message"])
+                name = None
+                args = {}
+            else:
+                name, args = result
+                message_content = None
             if tools:
+                if name:
+                    return SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(
+                                    tool_calls=[
+                                        SimpleNamespace(
+                                            function=SimpleNamespace(
+                                                name=name,
+                                                arguments=json.dumps(args),
+                                            ),
+                                        ),
+                                    ],
+                                ),
+                            ),
+                        ],
+                    )
                 return SimpleNamespace(
                     choices=[
                         SimpleNamespace(
                             message=SimpleNamespace(
-                                tool_calls=[
-                                    SimpleNamespace(
-                                        function=SimpleNamespace(
-                                            name=name,
-                                            arguments=json.dumps(args),
-                                        ),
-                                    ),
-                                ],
-                            ),
-                        ),
-                    ],
+                                tool_calls=None,
+                                content=message_content,
+                            )
+                        )
+                    ]
                 )
             return SimpleNamespace()
 

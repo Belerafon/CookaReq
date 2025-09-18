@@ -324,8 +324,6 @@ def stop_server() -> None:
     start = time.perf_counter()
 
     _uvicorn_server.should_exit = True
-    if hasattr(_uvicorn_server, "force_exit"):
-        _uvicorn_server.force_exit = True
 
     if _server_thread is not None:
         timeout = 5.0
@@ -335,9 +333,26 @@ def stop_server() -> None:
         _server_thread.join(timeout=timeout)
         if _server_thread.is_alive():
             logger.warning(
-                "MCP server thread did not exit within %.1fs; continuing shutdown",
+                "MCP server thread did not exit within %.1fs; forcing shutdown",
                 timeout,
             )
+            if hasattr(_uvicorn_server, "force_exit"):
+                try:
+                    _uvicorn_server.force_exit = True
+                except Exception:  # pragma: no cover - defensive guard
+                    logger.exception(
+                        "Failed to request uvicorn force-exit during shutdown",
+                    )
+            extra_wait = 1.0
+            _server_thread.join(timeout=extra_wait)
+            if _server_thread.is_alive():
+                logger.error(
+                    "MCP server thread still running after forced shutdown request",
+                )
+            else:
+                logger.info(
+                    "MCP server thread exited after forced shutdown request",
+                )
         else:
             logger.info("MCP server thread exited cleanly")
 

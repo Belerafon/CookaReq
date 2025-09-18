@@ -123,3 +123,50 @@ def test_agent_chat_toggle_preserves_width(configured_frame, wx_app):
 
     restored_frame.Destroy()
     wx_app.Yield()
+
+
+def test_agent_history_splitter_survives_layout_changes(configured_frame, wx_app):
+    """Collapsing hierarchy must not resize the chat history column."""
+
+    frame, config_path = configured_frame("agent_history.ini")
+    menu = frame.agent_chat_menu_item
+    assert menu is not None
+
+    menu.Check(True)
+    frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+
+    history_splitter = frame.agent_panel._horizontal_splitter
+    initial = history_splitter.GetSashPosition()
+    assert initial > 0
+
+    for _ in range(4):
+        frame._collapse_doc_tree(update_config=True)
+        wx_app.Yield()
+        frame._expand_doc_tree(update_config=True)
+        wx_app.Yield()
+        assert history_splitter.GetSashPosition() == initial
+        assert frame.agent_panel.history_sash == initial
+
+    frame._save_layout()
+    frame.Destroy()
+    wx_app.Yield()
+
+    reloaded_config = ConfigManager(path=config_path)
+    reloaded_config.set_mcp_settings(MCPSettings(auto_start=False))
+    restored_frame = MainFrame(None, config=reloaded_config, model=RequirementModel())
+    restored_frame.Show()
+    wx_app.Yield()
+
+    restored_menu = restored_frame.agent_chat_menu_item
+    assert restored_menu is not None
+    restored_menu.Check(True)
+    restored_frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+
+    restored_splitter = restored_frame.agent_panel._horizontal_splitter
+    assert restored_splitter.GetSashPosition() == initial
+    assert restored_frame.agent_panel.history_sash == initial
+
+    restored_frame.Destroy()
+    wx_app.Yield()

@@ -127,6 +127,7 @@ ConfigFieldName = Literal[
     "log_shown",
     "agent_chat_sash",
     "agent_chat_shown",
+    "agent_history_sash",
     "win_w",
     "win_h",
     "win_x",
@@ -277,6 +278,11 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         key="agent_chat_shown",
         value_type=bool,
         default=False,
+    ),
+    "agent_history_sash": FieldSpec(
+        key="agent_history_sash",
+        value_type=int,
+        default=320,
     ),
     "editor_shown": FieldSpec(
         key="editor_shown",
@@ -694,6 +700,17 @@ class ConfigManager:
         self.set_value("agent_chat_sash", pos)
         self.flush()
 
+    def get_agent_history_sash(self, default: int) -> int:
+        """Return stored splitter position for chat history column."""
+
+        return self.get_value("agent_history_sash", default=default)
+
+    def set_agent_history_sash(self, pos: int) -> None:
+        """Persist splitter position for chat history column."""
+
+        self.set_value("agent_history_sash", pos)
+        self.flush()
+
     def get_agent_chat_shown(self) -> bool:
         """Check whether agent chat panel is visible."""
 
@@ -833,6 +850,7 @@ class ConfigManager:
         doc_tree_collapsed: bool = False,
         doc_tree_expanded_sash: int | None = None,
         agent_chat_sash: int | None = None,
+        agent_history_sash: int | None = None,
     ) -> None:
         """Persist window geometry and splitter positions."""
         w, h = frame.GetSize()
@@ -877,6 +895,8 @@ class ConfigManager:
                 )
             if sash_value is not None:
                 self.set_value("agent_chat_sash", sash_value)
+        if agent_history_sash is not None:
+            self.set_value("agent_history_sash", agent_history_sash)
         panel.save_column_widths(self)
         panel.save_column_order(self)
         self.flush()

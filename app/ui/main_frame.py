@@ -41,35 +41,11 @@ from .list_panel import ListPanel
 from .navigation import Navigation
 from .requirement_model import RequirementModel
 from .settings_dialog import SettingsDialog
-from .splitter_utils import refresh_splitter_highlight, style_splitter
+from .splitter_utils import SplitterEventBlocker, refresh_splitter_highlight, style_splitter
 from .widgets import SectionContainer
 
 
 _SECTION_DEFAULT_PADDING = 0
-
-
-class SplitterEventBlocker:
-    """Re-entrant guard that suppresses splitter change callbacks."""
-
-    def __init__(self) -> None:
-        self._depth = 0
-
-    @contextmanager
-    def pause(self) -> Iterator[None]:
-        """Temporarily increment the guard depth while yielding control."""
-
-        self._depth += 1
-        try:
-            yield
-        finally:
-            self._depth -= 1
-
-    @property
-    def active(self) -> bool:
-        """Return ``True`` when callbacks should be ignored."""
-
-        return self._depth > 0
-
 
 class WxLogHandler(logging.Handler):
     """Forward log records to a ``wx.TextCtrl``."""
@@ -295,6 +271,10 @@ class MainFrame(wx.Frame):
             ),
         )
         self._hide_agent_section()
+        history_sash = self.config.get_agent_history_sash(
+            self.agent_panel.default_history_sash()
+        )
+        self.agent_panel.apply_history_sash(history_sash)
         self.agent_splitter.Initialize(self.splitter)
         self.doc_splitter.SplitVertically(
             self.doc_tree_container,
@@ -1030,6 +1010,10 @@ class MainFrame(wx.Frame):
                 self.agent_container,
                 agent_supplier=self._create_agent,
             )
+            history_sash = self.config.get_agent_history_sash(
+                self.agent_panel.default_history_sash()
+            )
+            self.agent_panel.apply_history_sash(history_sash)
             agent_sizer = self.agent_container.GetSizer()
             if agent_sizer is not None:
                 agent_sizer.Replace(old_agent_panel, self.agent_panel)
@@ -1658,6 +1642,7 @@ class MainFrame(wx.Frame):
             self.agent_splitter.Unsplit(self.agent_container)
         self._hide_agent_section()
         self.config.set_agent_chat_shown(False)
+        self.config.set_agent_history_sash(self.agent_panel.history_sash)
 
     def _apply_editor_visibility(self, *, persist: bool) -> None:
         visible = self._is_editor_visible()
@@ -1703,6 +1688,10 @@ class MainFrame(wx.Frame):
         self._agent_saved_sash = self.config.get_agent_chat_sash(
             self._default_agent_chat_sash()
         )
+        history_sash = self.config.get_agent_history_sash(
+            self.agent_panel.default_history_sash()
+        )
+        self.agent_panel.apply_history_sash(history_sash)
         if self.config.get_doc_tree_collapsed():
             self._collapse_doc_tree(update_config=False)
         else:
@@ -1741,6 +1730,7 @@ class MainFrame(wx.Frame):
             doc_tree_collapsed=self._doc_tree_collapsed,
             doc_tree_expanded_sash=self._doc_tree_saved_sash,
             agent_chat_sash=self._agent_saved_sash,
+            agent_history_sash=self.agent_panel.history_sash,
         )
 
     def _disable_splitter_unsplit(self, splitter: wx.SplitterWindow) -> None:

@@ -3,8 +3,7 @@
 import json
 import logging
 import weakref
-from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Sequence
 from dataclasses import fields, replace
 from importlib import resources
 from pathlib import Path
@@ -42,7 +41,7 @@ from .list_panel import ListPanel
 from .navigation import Navigation
 from .requirement_model import RequirementModel
 from .settings_dialog import SettingsDialog
-from .splitter_utils import SplitterEventBlocker, refresh_splitter_highlight, style_splitter
+from .splitter_utils import refresh_splitter_highlight, style_splitter
 from .widgets import SectionContainer
 
 
@@ -176,7 +175,6 @@ class MainFrame(wx.Frame):
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         style_splitter(self.doc_splitter)
         self._disable_splitter_unsplit(self.doc_splitter)
-        self._doc_splitter_guard = SplitterEventBlocker()
         self._doc_tree_min_pane = max(self.FromDIP(20), 1)
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
         self.doc_splitter.Bind(
@@ -191,7 +189,6 @@ class MainFrame(wx.Frame):
         self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
         style_splitter(self.agent_splitter)
         self._disable_splitter_unsplit(self.agent_splitter)
-        self._agent_splitter_guard = SplitterEventBlocker()
         self.agent_splitter.SetMinimumPaneSize(280)
         self.agent_splitter.Bind(
             wx.EVT_SPLITTER_SASH_POS_CHANGED,
@@ -522,13 +519,6 @@ class MainFrame(wx.Frame):
         else:
             self._collapse_doc_tree(update_config=True)
 
-    @contextmanager
-    def _ignore_doc_splitter_events(self) -> Iterator[None]:
-        """Silence hierarchy sash change handler during adjustments."""
-
-        with self._doc_splitter_guard.pause():
-            yield
-
     def _collapse_doc_tree(self, *, update_config: bool) -> None:
         """Hide the tree while keeping the toggle handle accessible."""
 
@@ -551,13 +541,13 @@ class MainFrame(wx.Frame):
         if self._doc_tree_placeholder:
             self._doc_tree_placeholder.Show()
             self._doc_tree_placeholder.Layout()
-        with self._ignore_doc_splitter_events():
-            self.doc_splitter.SetSashPosition(handle, True)
+        self._doc_tree_collapsed = True
+        self.doc_splitter.SetSashPosition(handle, True)
         if hasattr(self.doc_splitter, "SetSashInvisible"):
             self.doc_splitter.SetSashInvisible(True)
         self._bind_doc_splitter_drag_veto()
-        self._doc_tree_collapsed = True
         self._update_doc_tree_toggle_state()
+        self._restore_agent_history_width()
         self.doc_splitter.Layout()
         refresh_splitter_highlight(self.doc_splitter)
         if update_config:
@@ -580,13 +570,13 @@ class MainFrame(wx.Frame):
         if hasattr(self.doc_splitter, "SetSashInvisible"):
             self.doc_splitter.SetSashInvisible(False)
         width = self._desired_doc_tree_sash()
-        self._doc_tree_collapsed = False
         self._unbind_doc_splitter_drag_veto()
-        with self._ignore_doc_splitter_events():
-            self.doc_splitter.SetSashPosition(width, True)
+        self._doc_tree_collapsed = False
+        self.doc_splitter.SetSashPosition(width, True)
         self._update_doc_tree_toggle_state()
         self.doc_tree_container.Layout()
         self.doc_splitter.Layout()
+        self._restore_agent_history_width()
         refresh_splitter_highlight(self.doc_splitter)
         if update_config:
             self._doc_tree_saved_sash = width
@@ -705,6 +695,15 @@ class MainFrame(wx.Frame):
                 self._doc_tree_placeholder_button.SetToolTip(_("Show hierarchy"))
         self.doc_tree_toggle.Refresh()
 
+    def _restore_agent_history_width(self) -> None:
+        """Reapply stored history sash when agent chat is visible."""
+
+        if not getattr(self, "agent_panel", None):
+            return
+        if not self.agent_splitter.IsSplit():
+            return
+        self.agent_panel.apply_history_sash(self.agent_panel.history_sash)
+
     def _desired_doc_tree_sash(self) -> int:
         """Clamp saved sash position to current splitter dimensions."""
 
@@ -723,8 +722,6 @@ class MainFrame(wx.Frame):
         """Remember latest sash position when the tree pane is visible."""
 
         event.Skip()
-        if self._doc_splitter_guard.active:
-            return
         if self._doc_tree_collapsed:
             return
         pos = event.GetSashPosition()
@@ -1688,58 +1685,53 @@ class MainFrame(wx.Frame):
         desired = min(desired, max_left)
         return desired
 
-    @contextmanager
-    def _ignore_agent_splitter_events(self) -> Iterator[None]:
-        """Silence agent chat sash change handler during adjustments."""
+    def _clamp_agent_chat_sash(self, requested: int | None = None) -> int:
+        """Clamp agent chat sash so both panes remain visible."""
 
-        with self._agent_splitter_guard.pause():
-            yield
-
-    def _desired_agent_chat_sash(self) -> int:
-        """Clamp saved agent chat sash to the available splitter width."""
-
-        saved = max(self._agent_saved_sash, self.agent_splitter.GetMinimumPaneSize())
-        width = self.agent_splitter.GetClientSize().width
+        splitter = self.agent_splitter
+        if not splitter:
+            return 0
+        min_size = max(splitter.GetMinimumPaneSize(), 200)
+        candidate = requested if requested is not None else self._agent_saved_sash
+        if candidate <= 0:
+            candidate = self._default_agent_chat_sash()
+        width = splitter.GetClientSize().width
         if width <= 0:
             width = self.doc_splitter.GetClientSize().width
         if width <= 0:
             width = self.GetClientSize().width
         if width <= 0:
-            width = saved
-        min_size = max(self.agent_splitter.GetMinimumPaneSize(), 200)
+            return max(candidate, min_size)
         max_left = max(width - min_size, min_size)
-        return max(min_size, min(saved, max_left))
+        return max(min_size, min(candidate, max_left))
 
     def _on_agent_splitter_sash_changed(self, event: wx.SplitterEvent) -> None:
         """Remember agent chat sash only when moved by the user."""
 
         event.Skip()
-        if self._agent_splitter_guard.active:
-            return
         pos = event.GetSashPosition()
         if pos > 0:
             self._agent_saved_sash = pos
 
     def _ensure_agent_chat_visible(self) -> None:
+        desired = self._clamp_agent_chat_sash()
+        self._show_agent_section()
         if not self.agent_splitter.IsSplit():
-            desired = self._desired_agent_chat_sash()
-            self._show_agent_section()
-            with self._ignore_agent_splitter_events():
-                self.agent_splitter.SplitVertically(
-                    self.splitter,
-                    self.agent_container,
-                    desired,
-                )
+            self.agent_splitter.SplitVertically(
+                self.splitter,
+                self.agent_container,
+                desired,
+            )
         else:
-            desired = self._desired_agent_chat_sash()
-            with self._ignore_agent_splitter_events():
-                self.agent_splitter.SetSashPosition(desired)
-        self._agent_saved_sash = desired
+            self.agent_splitter.SetSashPosition(desired)
+        self._agent_saved_sash = self.agent_splitter.GetSashPosition()
+        self._restore_agent_history_width()
         self.agent_panel.focus_input()
         self.config.set_agent_chat_shown(True)
 
     def _hide_agent_chat(self) -> None:
         if self.agent_splitter.IsSplit():
+            self._agent_saved_sash = self.agent_splitter.GetSashPosition()
             self.agent_splitter.Unsplit(self.agent_container)
         self._hide_agent_section()
         self.config.set_agent_chat_shown(False)
@@ -1801,20 +1793,23 @@ class MainFrame(wx.Frame):
             self.editor_menu_item.Check(self.config.get_editor_shown())
         self._apply_editor_visibility(persist=False)
         if self.agent_chat_menu_item:
-            if self.config.get_agent_chat_shown():
-                self.agent_chat_menu_item.Check(True)
-                desired = self._desired_agent_chat_sash()
+            shown = self.config.get_agent_chat_shown()
+            self.agent_chat_menu_item.Check(shown)
+            if shown:
+                desired = self._clamp_agent_chat_sash(self._agent_saved_sash)
                 self._show_agent_section()
-                with self._ignore_agent_splitter_events():
+                if not self.agent_splitter.IsSplit():
                     self.agent_splitter.SplitVertically(
                         self.splitter,
                         self.agent_container,
                         desired,
                     )
-                self._agent_saved_sash = desired
+                else:
+                    self.agent_splitter.SetSashPosition(desired)
+                self._agent_saved_sash = self.agent_splitter.GetSashPosition()
+                self.agent_panel.apply_history_sash(history_sash)
                 refresh_splitter_highlight(self.agent_splitter)
             else:
-                self.agent_chat_menu_item.Check(False)
                 if self.agent_splitter.IsSplit():
                     self.agent_splitter.Unsplit(self.agent_container)
                 self._hide_agent_section()

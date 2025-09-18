@@ -16,6 +16,7 @@ import wx.dataview as dv
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from ..i18n import _
+from ..util.json import make_json_safe
 from .chat_entry import ChatConversation, ChatEntry
 from .helpers import dip, format_error_message, inherit_background
 from .splitter_utils import SplitterEventBlocker, refresh_splitter_highlight, style_splitter
@@ -38,18 +39,16 @@ def _token_count(text: str) -> int:
     return len(text.split())
 
 
-def _make_json_safe(value: Any) -> Any:
-    """Convert value into structure that :func:`json.dumps` can handle."""
+def _history_json_safe(value: Any) -> Any:
+    """Convert values for history storage using permissive coercions."""
 
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    if isinstance(value, Mapping):
-        return {str(key): _make_json_safe(val) for key, val in value.items()}
-    if isinstance(value, set):  # pragma: no cover - uncommon
-        return [_make_json_safe(item) for item in value]
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        return [_make_json_safe(item) for item in value]
-    return str(value)
+    return make_json_safe(
+        value,
+        stringify_keys=True,
+        sort_sets=False,
+        coerce_sequences=True,
+        default=str,
+    )
 
 
 def _stringify_payload(payload: Any) -> str:
@@ -572,7 +571,7 @@ class AgentChatPanel(wx.Panel):
         tool_results: list[Any] | None = None
 
         if isinstance(result, Mapping):
-            raw_payload = _make_json_safe(result)
+            raw_payload = _history_json_safe(result)
             if not result.get("ok", False):
                 display_text = format_error_message(result.get("error"))
                 conversation_parts.append(display_text)
@@ -584,7 +583,7 @@ class AgentChatPanel(wx.Panel):
 
             extras = result.get("tool_results")
             if extras:
-                safe_extras = _make_json_safe(extras)
+                safe_extras = _history_json_safe(extras)
                 if isinstance(safe_extras, list):
                     tool_results = safe_extras
                 else:

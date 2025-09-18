@@ -9,22 +9,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .log import logger
-
-
-def _make_json_safe(value: Any) -> Any:
-    """Convert ``value`` into a JSON-serialisable structure."""
-
-    if isinstance(value, Mapping):
-        return {k: _make_json_safe(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_make_json_safe(v) for v in value]
-    if isinstance(value, tuple):
-        return [_make_json_safe(v) for v in value]
-    if isinstance(value, set):
-        return sorted(_make_json_safe(v) for v in value)
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    return repr(value)
+from .util.json import make_json_safe
 
 # Keys that should be redacted when logging
 SENSITIVE_KEYS = {
@@ -83,7 +68,7 @@ def log_event(
     data: dict[str, Any] = {"event": event}
     if payload:
         sanitized = sanitize(dict(payload))
-        safe_payload = _make_json_safe(sanitized)
+        safe_payload = make_json_safe(sanitized)
         data["payload"] = safe_payload
         data["size_bytes"] = len(
             json.dumps(safe_payload, ensure_ascii=False).encode("utf-8"),
@@ -109,13 +94,13 @@ def log_debug_payload(
     if payload is None:
         safe_payload: Any = {}
     elif isinstance(payload, Mapping):
-        safe_payload = _make_json_safe(sanitize(dict(payload)))
+        safe_payload = make_json_safe(sanitize(dict(payload)))
     elif isinstance(payload, Sequence) and not isinstance(
         payload, (str, bytes, bytearray)
     ):
-        safe_payload = _make_json_safe(_sanitize_value(list(payload)))
+        safe_payload = make_json_safe(_sanitize_value(list(payload)))
     else:
-        safe_payload = _make_json_safe(payload)
+        safe_payload = make_json_safe(payload)
     if payload is not None:
         record["payload"] = safe_payload
     message = event

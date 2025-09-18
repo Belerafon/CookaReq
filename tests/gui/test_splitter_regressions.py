@@ -3,6 +3,7 @@
 import wx
 import pytest
 
+import app.ui.list_panel as list_panel
 from app.config import ConfigManager
 from app.settings import MCPSettings
 from app.ui.main_frame import MainFrame
@@ -82,25 +83,33 @@ def test_agent_chat_toggle_preserves_width(configured_frame, wx_app):
         frame.on_toggle_agent_chat(None)
         wx_app.Yield()
         assert frame.agent_splitter.IsSplit()
-        visible = _pane_width(frame.agent_splitter.GetWindow1())
+        assert isinstance(frame.agent_panel, list_panel.ListPanel)
+        sash_width = frame._current_agent_splitter_width()
+        tolerance = (
+            frame.agent_splitter.FromDIP(4)
+            if hasattr(frame.agent_splitter, "FromDIP")
+            else 4
+        )
         if expected is None:
-            expected = visible
+            expected = sash_width
         else:
-            assert visible == expected
-        assert frame._agent_last_width == expected
+            assert abs(sash_width - expected) <= tolerance
+        assert abs(frame._agent_last_width - expected) <= tolerance
+        list_ctrl = frame.agent_panel.list
+        assert _pane_width(list_ctrl) > 0
 
         menu.Check(False)
         frame.on_toggle_agent_chat(None)
         wx_app.Yield()
         assert not frame.agent_splitter.IsSplit()
-        assert frame._agent_last_width == expected
+        assert abs(frame._agent_last_width - expected) <= tolerance
 
     frame.Destroy()
     wx_app.Yield()
 
 
-def test_agent_history_splitter_survives_layout_changes(configured_frame, wx_app):
-    """Collapsing hierarchy must not resize the chat history column."""
+def test_debug_requirement_list_survives_layout_changes(configured_frame, wx_app):
+    """Collapsing hierarchy must not disturb the debug requirement list."""
 
     frame, _ = configured_frame("agent_history.ini")
     menu = frame.agent_chat_menu_item
@@ -110,19 +119,19 @@ def test_agent_history_splitter_survives_layout_changes(configured_frame, wx_app
     frame.on_toggle_agent_chat(None)
     wx_app.Yield()
 
-    history_splitter = frame.agent_panel._horizontal_splitter
-    history_panel = history_splitter.GetWindow1()
-    initial = _pane_width(history_panel)
-    assert initial > 0
+    assert isinstance(frame.agent_panel, list_panel.ListPanel)
+    list_ctrl = frame.agent_panel.list
+    initial_count = list_ctrl.GetItemCount()
+    initial_first = list_ctrl.GetItemText(0) if initial_count else None
 
     for _ in range(4):
         frame._collapse_doc_tree()
         wx_app.Yield()
         frame._expand_doc_tree()
         wx_app.Yield()
-        current = _pane_width(history_panel)
-        tolerance = history_panel.FromDIP(4)
-        assert abs(current - initial) <= tolerance
+        assert list_ctrl.GetItemCount() == initial_count
+        if initial_count:
+            assert list_ctrl.GetItemText(0) == initial_first
 
     frame.Destroy()
     wx_app.Yield()

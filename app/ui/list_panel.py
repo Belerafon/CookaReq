@@ -94,6 +94,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         enable_double_buffer(self.list)
         self._apply_text_palette()
         self._set_subitem_image_style(False)
+        self.list.Bind(wx.EVT_SIZE, self._on_list_size)
         self._labels: list[LabelDef] = []
         self.current_filters: dict = {}
         self._rid_lookup: dict[str, Requirement] = {}
@@ -112,6 +113,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._docs_controller = docs_controller
         self._current_doc_prefix: str | None = None
         self._context_menu_open = False
+        self._after_refresh_callback: Callable[["ListPanel"], None] | None = None
         self._setup_columns()
         sizer.Add(btn_row, 0, wx.EXPAND, 0)
         sizer.Add(self.list, 1, wx.EXPAND | top_flag, vertical_pad)
@@ -149,6 +151,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._on_delete_many = on_delete_many
         if on_derive is not None:
             self._on_derive = on_derive
+
+    def set_after_refresh_callback(
+        self, callback: Callable[["ListPanel"], None] | None
+    ) -> None:
+        """Register callback invoked after a successful refresh."""
+
+        self._after_refresh_callback = callback
 
     def set_documents_controller(
         self, controller: DocumentsController | None
@@ -270,34 +279,70 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         with suppress(Exception):  # pragma: no cover - backend quirks
             self.list.SetExtraStyle(desired)
 
+    def _on_list_size(self, event: wx.Event) -> None:
+        """Trigger a redraw when the list is resized."""
+
+        item_count = 0
+        if hasattr(self.list, "GetItemCount"):
+            try:
+                item_count = max(0, int(self.list.GetItemCount()))
+            except Exception:
+                item_count = 0
+        self._request_list_redraw(item_count)
+        event.Skip()
+
     def _apply_text_palette(self) -> None:
         """Align list text colours with the system palette."""
 
         system_settings = getattr(wx, "SystemSettings", None)
         sys_text_colour = getattr(wx, "SYS_COLOUR_WINDOWTEXT", None)
-        if system_settings is None or sys_text_colour is None:
+        sys_background_colour = getattr(wx, "SYS_COLOUR_WINDOW", None)
+        if system_settings is None:
             return
         getter = getattr(system_settings, "GetColour", None)
         if not callable(getter):
             return
-        try:
-            colour = getter(sys_text_colour)
-        except Exception:
-            return
-        if colour is None:
-            return
-        if hasattr(colour, "IsOk"):
+        colours: dict[str, wx.Colour] = {}
+        for key, target in (("text", sys_text_colour), ("background", sys_background_colour)):
+            if target is None:
+                continue
             try:
-                if not colour.IsOk():
-                    return
+                colour = getter(target)
             except Exception:
-                return
-        if hasattr(self.list, "SetTextColour"):
-            with suppress(Exception):
-                self.list.SetTextColour(colour)
-        if hasattr(self.list, "SetForegroundColour"):
-            with suppress(Exception):
-                self.list.SetForegroundColour(colour)
+                continue
+            if colour is None:
+                continue
+            if hasattr(colour, "IsOk"):
+                try:
+                    if not colour.IsOk():
+                        continue
+                except Exception:
+                    continue
+            colours[key] = colour
+        text_colour = colours.get("text")
+        if text_colour is not None:
+            if hasattr(self.list, "SetTextColour"):
+                with suppress(Exception):
+                    self.list.SetTextColour(text_colour)
+            if hasattr(self.list, "SetForegroundColour"):
+                with suppress(Exception):
+                    self.list.SetForegroundColour(text_colour)
+        background_colour = colours.get("background")
+        if background_colour is not None:
+            if hasattr(self.list, "SetBackgroundColour"):
+                with suppress(Exception):
+                    self.list.SetBackgroundColour(background_colour)
+            if hasattr(self, "SetBackgroundColour"):
+                with suppress(Exception):
+                    self.SetBackgroundColour(background_colour)
+            header_getter = getattr(self.list, "GetHeader", None)
+            header = None
+            if callable(header_getter):
+                with suppress(Exception):
+                    header = header_getter()
+            if header is not None and hasattr(header, "SetBackgroundColour"):
+                with suppress(Exception):
+                    header.SetBackgroundColour(background_colour)
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields.
@@ -597,6 +642,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 with suppress(Exception):
                     thaw()
         self._request_list_redraw(len(items))
+        if callable(self._after_refresh_callback):
+            try:
+                self._after_refresh_callback(self)
+            except Exception:
+                logger.exception("ListPanel post-refresh callback failed")
 
     def _request_list_redraw(self, item_count: int) -> None:
         """Force repaint of the list control after bulk updates."""
@@ -652,6 +702,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if hasattr(self.list, "EnsureVisible"):
             with suppress(Exception):
                 self.list.EnsureVisible(target_index)
+
+    def focus_input(self) -> None:
+        """Give keyboard focus to the list control."""
+
+        target = getattr(self, "list", None)
+        if target is not None and hasattr(target, "SetFocus"):
+            with suppress(Exception):
+                target.SetFocus()
 
     def _set_item_selected(self, index: int, selected: bool) -> None:
         """Apply selection state without propagating backend errors."""

@@ -27,6 +27,8 @@ def _build_wx_stub():
             self._bindings = {}
             self._shown = True
             self._tooltip = None
+            self._background = Colour("#ffffff")
+            self._foreground = Colour("#000000")
 
         def GetParent(self):
             return self._parent
@@ -45,6 +47,18 @@ def _build_wx_stub():
 
         def SetToolTip(self, tip):
             self._tooltip = tip
+
+        def SetBackgroundColour(self, colour):
+            self._background = colour
+
+        def GetBackgroundColour(self):
+            return self._background
+
+        def SetForegroundColour(self, colour):
+            self._foreground = colour
+
+        def GetForegroundColour(self):
+            return self._foreground
 
         # helper for tests
         def get_bound_handler(self, event):
@@ -245,6 +259,7 @@ def _build_wx_stub():
             self._refresh_items_calls = []
             self._text_colour = Colour(0, 0, 0)
             self._foreground_colour = Colour(0, 0, 0)
+            self._background_colour = Colour(255, 255, 255)
 
         def InsertColumn(self, col, heading):
             if col >= len(self._cols):
@@ -367,6 +382,12 @@ def _build_wx_stub():
         def GetForegroundColour(self):
             return self._foreground_colour
 
+        def SetBackgroundColour(self, colour):
+            self._background_colour = colour
+
+        def GetBackgroundColour(self):
+            return self._background_colour
+
     class UltimateListItem:
         def __init__(self):
             self._id = 0
@@ -486,6 +507,7 @@ def _build_wx_stub():
         OK=1,
         CANCEL=2,
         EVT_BUTTON=object(),
+        EVT_SIZE=object(),
         LC_REPORT=0,
         EVT_LIST_ITEM_RIGHT_CLICK=object(),
         EVT_CONTEXT_MENU=object(),
@@ -619,6 +641,83 @@ def test_list_panel_applies_system_text_colour(monkeypatch):
     expected = wx_stub.SystemSettings.GetColour(wx_stub.SYS_COLOUR_WINDOWTEXT)
     assert panel.list.GetTextColour() == expected
     assert panel.list.GetForegroundColour() == expected
+
+
+def test_list_panel_applies_system_background_colour(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
+
+    expected = wx_stub.SystemSettings.GetColour(wx_stub.SYS_COLOUR_WINDOW)
+    assert panel.list.GetBackgroundColour() == expected
+    assert panel.GetBackgroundColour() == expected
+
+
+def test_list_panel_requests_redraw_on_resize(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
+
+    handler = panel.list.get_bound_handler(wx_stub.EVT_SIZE)
+    assert handler is not None
+    panel.list.InsertItem(0, "A")
+    panel.list.InsertItem(1, "B")
+    called = {}
+
+    def fake_request(count):
+        called["count"] = count
+
+    panel._request_list_redraw = fake_request
+    handler(types.SimpleNamespace(Skip=lambda: None))
+    assert called["count"] == 2
+
+
+def test_list_panel_after_refresh_callback(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
+
+    called: list[list_panel_module.ListPanel] = []
+
+    def on_refresh(instance):
+        called.append(instance)
+
+    panel.set_after_refresh_callback(on_refresh)
+    panel.set_requirements([_req(1, "A")])
+    assert called == [panel]
 
 
 def test_refresh_freezes_and_repaints(monkeypatch):

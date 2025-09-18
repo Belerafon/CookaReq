@@ -13,7 +13,6 @@ import wx
 _COLLAPSE_ARROW = "\N{BLACK LEFT-POINTING TRIANGLE}"
 _EXPAND_ARROW = "\N{BLACK RIGHT-POINTING TRIANGLE}"
 
-from ..agent import LocalAgent
 from ..config import ConfigManager
 from ..confirm import confirm
 from ..core.model import Link, Requirement, requirement_fingerprint
@@ -29,7 +28,6 @@ from ..i18n import _
 from ..log import get_log_directory, logger, open_log_directory
 from ..mcp.controller import MCPController
 from ..settings import AppSettings, LLMSettings, MCPSettings
-from .agent_chat_panel import AgentChatPanel
 from .controllers import DocumentsController
 from .document_dialog import DocumentPropertiesDialog
 from .document_tree import DocumentTree
@@ -168,17 +166,18 @@ class MainFrame(wx.Frame):
         self._shutdown_in_progress = False
 
         # split horizontally: top is main content, bottom is log console
-        self.main_splitter = wx.SplitterWindow(self)
-        self.doc_splitter = wx.SplitterWindow(self.main_splitter)
+        splitter_style = getattr(wx, "SP_LIVE_UPDATE", 0) | getattr(wx, "SP_3D", 0)
+        self.main_splitter = wx.SplitterWindow(self, style=splitter_style)
+        self.doc_splitter = wx.SplitterWindow(self.main_splitter, style=splitter_style)
         self._doc_tree_min_pane = max(self.FromDIP(20), 1)
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
         self._doc_tree_toggle_size: wx.Size | None = None
         self._doc_tree_collapsed = False
         self._doc_tree_last_width = max(200, self._doc_tree_min_pane)
-        self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
+        self.agent_splitter = wx.SplitterWindow(self.doc_splitter, style=splitter_style)
         self.agent_splitter.SetMinimumPaneSize(280)
         self._agent_last_width = max(self.agent_splitter.GetMinimumPaneSize(), 320)
-        self.splitter = wx.SplitterWindow(self.agent_splitter)
+        self.splitter = wx.SplitterWindow(self.agent_splitter, style=splitter_style)
         self.splitter.SetMinimumPaneSize(200)
         (
             self.doc_tree_container,
@@ -234,20 +233,26 @@ class MainFrame(wx.Frame):
             ),
         )
         self.splitter.SplitVertically(self.list_container, self.editor_container, 300)
+        self._debug_model = RequirementModel()
         (
             self.agent_container,
             self.agent_label,
             self.agent_panel,
         ) = self._create_section(
             self.agent_splitter,
-            label=_("Agent Chat"),
-            factory=lambda parent: AgentChatPanel(
+            label=_("Requirements (Debug)"),
+            factory=lambda parent: ListPanel(
                 parent,
-                agent_supplier=self._create_agent,
+                model=self._debug_model,
             ),
         )
+        if isinstance(self.agent_panel, ListPanel):
+            self.agent_panel.set_columns(self.selected_fields)
         self._hide_agent_section()
         self.agent_splitter.Initialize(self.splitter)
+        if hasattr(self.panel, "set_after_refresh_callback"):
+            self.panel.set_after_refresh_callback(self._mirror_main_list)
+            self._mirror_main_list(self.panel)
         self.doc_splitter.SplitVertically(
             self.doc_tree_container,
             self.agent_splitter,
@@ -643,13 +648,42 @@ class MainFrame(wx.Frame):
         self.agent_panel.Hide()
         self.agent_container.Hide()
 
+    def _mirror_main_list(self, _panel: ListPanel) -> None:
+        """Populate the debug list with the same data as the main list."""
+
+        debug_list = getattr(self, "agent_panel", None)
+        if not isinstance(debug_list, ListPanel):
+            return
+        try:
+            requirements = self.panel.model.get_visible()
+        except Exception:
+            requirements = []
+        derived_map = dict(getattr(self.panel, "derived_map", {}))
+        if getattr(debug_list, "columns", None) != list(getattr(self.panel, "columns", [])):
+            debug_list.set_columns(list(getattr(self.panel, "columns", [])))
+        debug_list.set_requirements(list(requirements), derived_map)
+        selected_id: int | None = None
+        list_ctrl = getattr(self.panel, "list", None)
+        if list_ctrl is not None and hasattr(list_ctrl, "GetFirstSelected"):
+            try:
+                selected = list_ctrl.GetFirstSelected()
+            except Exception:
+                selected = -1
+            if selected is not None and selected >= 0:
+                try:
+                    selected_id = list_ctrl.GetItemData(selected)
+                except Exception:
+                    selected_id = None
+        if selected_id is not None:
+            debug_list.focus_requirement(selected_id)
+
     def _update_section_labels(self) -> None:
         """Refresh captions for titled sections according to current locale."""
 
         self.doc_tree_label.SetLabel(_("Hierarchy"))
         self.list_label.SetLabel(_("Requirements"))
         self.editor_label.SetLabel(_("Editor"))
-        self.agent_label.SetLabel(_("Agent Chat"))
+        self.agent_label.SetLabel(_("Requirements (Debug)"))
         self.log_label.SetLabel(_("Log Console"))
         self.log_level_label.SetLabel(_("Log Level"))
         self._populate_log_level_choice(self.log_handler.level)
@@ -867,10 +901,13 @@ class MainFrame(wx.Frame):
             old_agent_panel = self.agent_panel
             agent_was_split = self.agent_splitter.IsSplit()
             sash_width = self._current_agent_splitter_width() if agent_was_split else None
-            self.agent_panel = AgentChatPanel(
+            self._debug_model = RequirementModel()
+            self.agent_panel = ListPanel(
                 self.agent_container,
-                agent_supplier=self._create_agent,
+                model=self._debug_model,
             )
+            if isinstance(self.agent_panel, ListPanel):
+                self.agent_panel.set_columns(self.selected_fields)
             agent_sizer = self.agent_container.GetSizer()
             if agent_sizer is not None:
                 agent_sizer.Replace(old_agent_panel, self.agent_panel)
@@ -883,6 +920,9 @@ class MainFrame(wx.Frame):
                     self._agent_last_width = self._current_agent_splitter_width()
             else:
                 self._hide_agent_section()
+            if hasattr(self.panel, "set_after_refresh_callback"):
+                self.panel.set_after_refresh_callback(self._mirror_main_list)
+            self._mirror_main_list(self.panel)
 
         self._update_section_labels()
         self.list_container.Layout()
@@ -897,12 +937,6 @@ class MainFrame(wx.Frame):
             self.panel.set_requirements(self.model.get_all(), {})
 
         self.Layout()
-
-    def _create_agent(self) -> LocalAgent:
-        """Construct ``LocalAgent`` using current settings."""
-
-        settings = AppSettings(llm=self.llm_settings, mcp=self.mcp_settings)
-        return LocalAgent(settings=settings, confirm=confirm)
 
     def on_manage_labels(
         self,
@@ -1543,6 +1577,7 @@ class MainFrame(wx.Frame):
         return desired
 
     def _ensure_agent_chat_visible(self) -> None:
+        self._mirror_main_list(self.panel)
         desired = self._agent_last_width
         if desired <= 0:
             desired = self._default_agent_chat_sash()

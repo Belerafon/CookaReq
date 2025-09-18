@@ -112,22 +112,47 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker("gui")
 
 
+def _start_virtual_display_if_needed():
+    """Ensure GUI tests have access to a display, falling back to Xvfb when possible."""
+
+    if os.name == "nt" or os.environ.get("DISPLAY"):
+        return None
+
+    try:
+        from pyvirtualdisplay import Display
+    except Exception as exc:  # pragma: no cover - informative skip
+        pytest.skip(
+            "GUI tests require an X server. Install pytest-xvfb (pip install pytest-xvfb) "
+            "so it can start Xvfb automatically, or execute pytest under xvfb-run."
+            f" PyVirtualDisplay could not be imported: {exc}",
+        )
+
+    display = Display(visible=False, size=(1280, 800))
+    try:
+        display.start()
+    except Exception as exc:  # pragma: no cover - informative skip
+        pytest.skip(
+            "Could not start a virtual display for GUI tests. Ensure the Xvfb binary is "
+            "available and let pytest-xvfb handle startup, or wrap the run in xvfb-run."
+            f" Original error: {exc!r}",
+        )
+    return display
+
+
 @pytest.fixture(scope="session")
 def wx_app():
-    """Provide wx.App instance, starting virtual display if needed."""
-    display = None
-    if os.name != "nt" and not os.environ.get("DISPLAY"):
-        try:
-            from pyvirtualdisplay import Display
-        except Exception:
-            display_cls = None
-        else:
-            display_cls = Display
-        if display_cls is not None:
-            display = display_cls(visible=False, size=(1280, 800))
-            display.start()
+    """Provide wx.App instance, starting a virtual display when no DISPLAY is present."""
+
+    display = _start_virtual_display_if_needed()
     wx = pytest.importorskip("wx")
-    app = wx.App()
+    try:
+        app = wx.App()
+    except Exception as exc:  # pragma: no cover - informative failure
+        pytest.fail(
+            "wx.App() failed to initialise. Ensure the pytest-xvfb plugin is active so "
+            "it can launch Xvfb automatically, or run the suite via xvfb-run in headless "
+            f"environments. Original error: {exc!r}",
+        )
 
     def _safe_yield(self=None, *args, **kwargs):
         target = self if self is not None else app

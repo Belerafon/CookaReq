@@ -5,8 +5,9 @@ This file collects instructions and a short overview of the "CookaReq" applicati
 ## General instructions
 
 - Work on the main branch (no new branches).
-- Run `pytest -q`; tests marked `slow` are skipped.
-- When re-enabling tests that rely on `wx`, run them under a virtual display (the `pytest-xvfb` plugin or an `xvfb-run -a` wrapper).
+- Run `pytest -q`; tests marked `slow` are skipped. The pytest-xvfb plugin is loaded automatically so GUI checks work headlessly.
+- Quick iterations without the GUI can use `pytest -q -m "not gui"`; to focus solely on the GUI suite run `pytest -q -m gui`.
+- GUI tests already run under `pytest-xvfb`. If you disable it for troubleshooting, wrap manual runs with `xvfb-run -a`.
 - Use the system Python 3.12.3 for builds and tests. The root `.python-version` file is set to `system`, so `pyenv` switches automatically; run commands through `python3`. The `python` alias is not available. All required packages (including `wxPython`) are already preinstalled in the system installation; verified that `python3 -c "import wx; print(wx.version())"` finishes without errors.
 - The OpenRouter key is stored in the `.env` file at the repository root under the `OPEN_ROUTER` variable. Tests and the application read the key from the environment when it is defined.
 - By default the tests use a mocked LLM and do not call the external API. To run real integration checks, set `COOKAREQ_RUN_REAL_LLM_TESTS=1` and execute tests with the `real_llm` marker, for example:

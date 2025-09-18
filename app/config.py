@@ -68,7 +68,9 @@ def _list_reader(separator: str) -> Callable[["ConfigManager", FieldSpec[list[st
     return reader
 
 
-def _list_writer(separator: str) -> Callable[["ConfigManager", FieldSpec[list[str]], list[str]], None]:
+def _list_writer(
+    separator: str,
+) -> Callable[["ConfigManager", FieldSpec[list[str]], list[str]], None]:
     def writer(
         manager: "ConfigManager",
         spec: FieldSpec[list[str]],
@@ -77,6 +79,24 @@ def _list_writer(separator: str) -> Callable[["ConfigManager", FieldSpec[list[st
         manager._cfg.Write(spec.key, separator.join(value))
 
     return writer
+
+
+def _float_reader(
+    manager: "ConfigManager", spec: FieldSpec[float], default: float
+) -> float:
+    raw = manager._cfg.Read(spec.key, "")
+    if not raw:
+        return float(default)
+    try:
+        return float(raw)
+    except ValueError:
+        return float(default)
+
+
+def _float_writer(
+    manager: "ConfigManager", spec: FieldSpec[float], value: float
+) -> None:
+    manager._cfg.Write(spec.key, f"{float(value):.6f}")
 
 
 def _optional_string_reader(
@@ -135,6 +155,8 @@ ConfigFieldName = Literal[
     "agent_chat_sash",
     "agent_chat_shown",
     "agent_history_sash",
+    "doc_tree_sash_ratio",
+    "agent_chat_sash_ratio",
     "win_w",
     "win_h",
     "win_x",
@@ -297,6 +319,20 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         key="agent_history_sash",
         value_type=int,
         default=320,
+    ),
+    "doc_tree_sash_ratio": FieldSpec(
+        key="doc_tree_sash_ratio",
+        value_type=float,
+        default=0.0,
+        reader=_float_reader,
+        writer=_float_writer,
+    ),
+    "agent_chat_sash_ratio": FieldSpec(
+        key="agent_chat_sash_ratio",
+        value_type=float,
+        default=0.0,
+        reader=_float_reader,
+        writer=_float_writer,
     ),
     "editor_shown": FieldSpec(
         key="editor_shown",
@@ -718,6 +754,16 @@ class ConfigManager:
         self.set_value("agent_chat_sash", pos)
         self.flush()
 
+    def get_agent_chat_sash_ratio(self) -> float:
+        """Return stored relative width of the agent chat pane."""
+
+        return float(self.get_value("agent_chat_sash_ratio"))
+
+    def set_agent_chat_sash_ratio(self, ratio: float) -> None:
+        """Persist relative width of the agent chat pane."""
+
+        self.set_value("agent_chat_sash_ratio", float(ratio))
+
     def get_agent_history_sash(self, default: int) -> int:
         """Return stored splitter position for chat history column."""
 
@@ -788,6 +834,16 @@ class ConfigManager:
         self.set_value("doc_tree_saved_sash", pos)
         self.flush()
 
+    def get_doc_tree_sash_ratio(self) -> float:
+        """Return stored relative width of the hierarchy pane."""
+
+        return float(self.get_value("doc_tree_sash_ratio"))
+
+    def set_doc_tree_sash_ratio(self, ratio: float) -> None:
+        """Persist relative width of the hierarchy pane."""
+
+        self.set_value("doc_tree_sash_ratio", float(ratio))
+
     # ------------------------------------------------------------------
     # layout helpers
     def restore_layout(
@@ -828,6 +884,10 @@ class ConfigManager:
         doc_min = max(doc_splitter.GetMinimumPaneSize(), 100)
         doc_max = max(client_size.width - doc_min, doc_min)
         doc_sash = self.get_value("sash_pos")
+        ratio = self.get_doc_tree_sash_ratio()
+        collapsed = bool(self.get_value("doc_tree_collapsed", default=False))
+        if client_size.width > 0 and ratio > 0.0 and not collapsed:
+            doc_sash = int(round(client_size.width * ratio))
         doc_sash = max(doc_min, min(doc_sash, doc_max))
         doc_splitter.SetSashPosition(doc_sash)
         if editor_splitter is not None and editor_splitter.IsSplit():
@@ -884,6 +944,12 @@ class ConfigManager:
         )
         self.set_value("sash_pos", sash_to_store)
         self.set_value("doc_tree_saved_sash", sash_to_store)
+        total_width = doc_splitter.GetClientSize().width
+        if total_width <= 0:
+            total_width = doc_splitter.GetSize().width
+        if total_width > 0:
+            ratio = max(0.0, min(float(sash_to_store) / float(total_width), 1.0))
+            self.set_value("doc_tree_sash_ratio", ratio)
         self.set_value("doc_tree_collapsed", doc_tree_collapsed)
         if editor_splitter is not None:
             if editor_splitter.IsSplit():
@@ -913,6 +979,15 @@ class ConfigManager:
                 )
             if sash_value is not None:
                 self.set_value("agent_chat_sash", sash_value)
+            total_agent_width = agent_splitter.GetClientSize().width
+            if total_agent_width <= 0:
+                total_agent_width = agent_splitter.GetSize().width
+            if total_agent_width > 0 and sash_value is not None:
+                ratio = max(
+                    0.0,
+                    min(float(sash_value) / float(total_agent_width), 1.0),
+                )
+                self.set_value("agent_chat_sash_ratio", ratio)
         if agent_history_sash is not None:
             self.set_value("agent_history_sash", agent_history_sash)
         panel.save_column_widths(self)

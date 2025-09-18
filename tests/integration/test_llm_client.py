@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.llm.client import LLMResponse, LLMToolCall, LLMClient, NO_API_KEY
+from app.llm.validation import ToolValidationError
 from app.llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
 from app.llm.spec import SYSTEM_PROMPT
 from app.log import logger
@@ -192,6 +193,38 @@ def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "hi"},
     ]
+
+
+def test_parse_command_reports_missing_choices(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+
+    class DummyCompletion:
+        response = SimpleNamespace(status_code=200)
+
+        @staticmethod
+        def model_dump() -> dict[str, object]:
+            return {"detail": "This endpoint does not implement chat completions"}
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                return DummyCompletion()
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    with pytest.raises(ToolValidationError) as exc:
+        client.parse_command("anything")
+
+    message = str(exc.value)
+    assert "base URL" in message
+    assert settings.llm.base_url in message
+    assert "LM Studio" in message
+    assert "keys: detail" in message
+    assert "HTTP status 200" in message
 
 
 def test_parse_command_without_tool_call(tmp_path: Path, monkeypatch) -> None:

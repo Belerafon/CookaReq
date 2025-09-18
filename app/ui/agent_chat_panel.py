@@ -20,7 +20,6 @@ from ..util.json import make_json_safe
 from ..util.cancellation import CancellationTokenSource, OperationCancelledError
 from .chat_entry import ChatConversation, ChatEntry
 from .helpers import dip, format_error_message, inherit_background
-from .splitter_utils import refresh_splitter_highlight, style_splitter
 from .widgets.chat_message import TranscriptMessagePanel
 
 
@@ -28,6 +27,8 @@ try:  # pragma: no cover - import only used for typing
     from ..agent import LocalAgent  # noqa: TCH004
 except Exception:  # pragma: no cover - fallback when wx stubs are used
     LocalAgent = object  # type: ignore[assignment]
+
+
 def _default_history_path() -> Path:
     """Return default location for persisted chat history."""
 
@@ -149,7 +150,6 @@ class AgentChatPanel(wx.Panel):
 
         splitter_style = wx.SP_LIVE_UPDATE | wx.SP_3D
         self._vertical_splitter = wx.SplitterWindow(self, style=splitter_style)
-        style_splitter(self._vertical_splitter)
         self._vertical_splitter.SetMinimumPaneSize(dip(self, 160))
 
         top_panel = wx.Panel(self._vertical_splitter)
@@ -159,7 +159,6 @@ class AgentChatPanel(wx.Panel):
             inherit_background(panel, self)
 
         self._horizontal_splitter = wx.SplitterWindow(top_panel, style=splitter_style)
-        style_splitter(self._horizontal_splitter)
         history_min_width = dip(self, 260)
         self._history_min_width = history_min_width
         self._horizontal_splitter.SetMinimumPaneSize(history_min_width)
@@ -277,8 +276,6 @@ class AgentChatPanel(wx.Panel):
         self.SetSizer(outer)
         self._history_saved_sash = self._horizontal_splitter.GetSashPosition()
         self._refresh_history_list()
-        refresh_splitter_highlight(self._horizontal_splitter)
-        refresh_splitter_highlight(self._vertical_splitter)
         wx.CallAfter(self._adjust_vertical_splitter)
 
     # ------------------------------------------------------------------

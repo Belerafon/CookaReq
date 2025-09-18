@@ -699,7 +699,7 @@ def test_apply_status_filter(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
 
-def test_labels_column_uses_imagelist(monkeypatch):
+def test_labels_column_displays_plain_text(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -722,16 +722,15 @@ def test_labels_column_uses_imagelist(monkeypatch):
     ])
     labels_col = panel._field_order.index("labels")
     title_col = panel._field_order.index("title")
-    # labels column uses main image slot when placed at index 0
-    if labels_col == 0:
-        assert panel.list._item_images[0] >= 0
-        assert panel.list._col_images.get((0, title_col), -1) == -1
-    else:
-        assert panel.list._col_images[(0, labels_col)] >= 0
-        assert panel.list._item_images[0] == -1
+    label_item = panel.list.GetItem(0, labels_col)
+    assert label_item.GetText() == "ui, backend"
+    assert label_item.GetImage() == -1
+    title_item = panel.list.GetItem(0, title_col)
+    assert title_item.GetText() == "A"
+    assert title_item.GetImage() == -1
 
 
-def test_label_imagelist_handles_resizes(monkeypatch):
+def test_labels_column_updates_text_on_refresh(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -750,27 +749,19 @@ def test_label_imagelist_handles_resizes(monkeypatch):
     panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
 
-    # initial narrow label
     panel.set_requirements([_req(1, "A", labels=["aa"])])
-    first_w, first_h = panel.list.GetImageList(wx_stub.IMAGE_LIST_SMALL).GetSize()
-    assert first_w > 0
-    assert first_h > 0
-    assert panel._label_images[("aa",)] == 0
+    labels_col = panel._field_order.index("labels")
+    assert panel.list.GetItem(0, labels_col).GetText() == "aa"
 
-    # introduce wider label, which should resize the list but keep the first image
     panel.set_requirements(
         [
             _req(1, "A", labels=["aa"]),
             _req(2, "B", labels=["averylonglabelhere"]),
         ]
     )
-    second_w, second_h = panel.list.GetImageList(wx_stub.IMAGE_LIST_SMALL).GetSize()
-    assert second_w >= first_w
-    assert second_h >= first_h
-    assert panel._label_images[("aa",)] >= 0
-    assert panel._label_images[("averylonglabelhere",)] >= 0
+    assert panel.list.GetItem(0, labels_col).GetText() == "aa"
+    assert panel.list.GetItem(1, labels_col).GetText() == "averylonglabelhere"
 
-    # add a shorter label after resizing to ensure padding works
     panel.set_requirements(
         [
             _req(1, "A", labels=["aa"]),
@@ -778,20 +769,13 @@ def test_label_imagelist_handles_resizes(monkeypatch):
             _req(3, "C", labels=["mid"]),
         ]
     )
-    third_w, third_h = panel.list.GetImageList(wx_stub.IMAGE_LIST_SMALL).GetSize()
-    assert third_w == second_w
-    assert third_h == second_h
-    assert panel._label_images[("mid",)] >= 0
-
-    labels_col = panel._field_order.index("labels")
-    for row in range(3):
-        if labels_col == 0:
-            assert panel.list._item_images[row] >= 0
-        else:
-            assert panel.list._col_images[(row, labels_col)] >= 0
+    assert panel.list.GetItem(2, labels_col).GetText() == "mid"
+    for row in range(panel.list.GetItemCount()):
+        item = panel.list.GetItem(row, labels_col)
+        assert item.GetImage() == -1
 
 
-def test_label_image_add_failure_falls_back_to_text(monkeypatch):
+def test_labels_column_handles_empty_values(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -809,27 +793,20 @@ def test_label_image_add_failure_falls_back_to_text(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
-    panel.set_requirements([_req(1, "A", labels=["aa"])])
-
-    # ensure next addition triggers fallback
-    panel._label_images.clear()
-    panel._image_list = panel.list.GetImageList(wx_stub.IMAGE_LIST_SMALL)
-
-    def fail_add(_bmp):
-        return -1
-
-    panel._image_list.Add = fail_add
-    panel.set_requirements([_req(2, "B", labels=["bb"])])
+    panel.set_requirements(
+        [
+            _req(1, "A", labels=[]),
+            _req(2, "B", labels=["bb"]),
+        ]
+    )
 
     labels_col = panel._field_order.index("labels")
-    if labels_col == 0:
-        assert panel.list._item_images[0] == -1
-        assert panel.list._items[0] == "bb"
-    else:
-        assert panel.list._col_images[(0, labels_col)] == -1
-        assert panel.list._cells[(0, labels_col)] == "bb"
-        assert panel.list._item_images[0] == -1
-    assert panel._label_images[("bb",)] == -1
+    first_item = panel.list.GetItem(0, labels_col)
+    assert first_item.GetText() == ""
+    assert first_item.GetImage() == -1
+    second_item = panel.list.GetItem(1, labels_col)
+    assert second_item.GetText() == "bb"
+    assert second_item.GetImage() == -1
 
 
 def test_sort_by_labels(monkeypatch):

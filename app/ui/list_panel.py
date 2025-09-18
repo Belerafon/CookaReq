@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
-from ..core.document_store import LabelDef, label_color, load_item, parse_rid, stable_color
+from ..core.document_store import LabelDef, load_item, parse_rid
 from ..core.model import Requirement
 from ..i18n import _
 from ..log import logger
@@ -99,8 +99,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetExtraStyle(self.list.GetExtraStyle() | extra)
         self._labels: list[LabelDef] = []
         self.current_filters: dict = {}
-        self._image_list: wx.ImageList | None = None
-        self._label_images: dict[tuple[str, ...], int] = {}
         self._rid_lookup: dict[str, Requirement] = {}
         self._doc_titles: dict[str, str] = {}
         self._link_display_cache: dict[str, str] = {}
@@ -173,48 +171,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Record currently active document prefix for persistence."""
 
         self._current_doc_prefix = prefix
-
-    def _label_color(self, name: str) -> str:
-        for lbl in self._labels:
-            if lbl.key == name:
-                return label_color(lbl)
-        return stable_color(name)
-
-    def _ensure_image_list_size(self, width: int, height: int) -> None:
-        width = max(width, 1)
-        height = max(height, 1)
-        if self._image_list is None:
-            self._image_list = wx.ImageList(width, height)
-            self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
-            return
-        cur_w, cur_h = self._image_list.GetSize()
-        if width <= cur_w and height <= cur_h:
-            return
-        new_w = max(width, cur_w)
-        new_h = max(height, cur_h)
-        new_list = wx.ImageList(new_w, new_h)
-        count = self._image_list.GetImageCount()
-        for idx in range(count):
-            bmp = self._image_list.GetBitmap(idx)
-            bmp = self._pad_bitmap(bmp, new_w, new_h)
-            new_list.Add(bmp)
-        self._image_list = new_list
-        self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
-
-    def _pad_bitmap(self, bmp: wx.Bitmap, width: int, height: int) -> wx.Bitmap:
-        if bmp.GetWidth() == width and bmp.GetHeight() == height:
-            return bmp
-        padded = wx.Bitmap(max(width, 1), max(height, 1))
-        dc = wx.MemoryDC()
-        dc.SelectObject(padded)
-        try:
-            bg = self.list.GetBackgroundColour()
-            dc.SetBackground(wx.Brush(bg))
-            dc.Clear()
-            dc.DrawBitmap(bmp, 0, 0, True)
-        finally:
-            dc.SelectObject(wx.NullBitmap)
-        return padded
 
     def _doc_title_for_prefix(self, prefix: str) -> str:
         if not prefix:
@@ -295,82 +251,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         else:
             with suppress(Exception):
                 self.list.SetItemColumnImage(index, col, -1)
-            if hasattr(self.list, "SetItemImage"):
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
-
-    def _create_label_bitmap(self, names: list[str]) -> wx.Bitmap:
-        padding_x, padding_y, gap = 4, 2, 2
-        font = self.list.GetFont()
-        dc = wx.MemoryDC()
-        dc.SelectObject(wx.Bitmap(1, 1))
-        dc.SetFont(font)
-        widths: list[int] = []
-        height = 0
-        for name in names:
-            w, h = dc.GetTextExtent(name)
-            widths.append(w)
-            height = max(height, h)
-        height += padding_y * 2
-        total = sum(w + padding_x * 2 for w in widths) + gap * (len(names) - 1)
-        bmp = wx.Bitmap(total or 1, height or 1)
-        dc.SelectObject(bmp)
-        dc.SetBackground(wx.Brush(self.list.GetBackgroundColour()))
-        dc.Clear()
-        x = 0
-        for name, w in zip(names, widths):
-            colour = wx.Colour(self._label_color(name))
-            dc.SetBrush(wx.Brush(colour))
-            dc.SetPen(wx.Pen(colour))
-            box_w = w + padding_x * 2
-            dc.DrawRectangle(x, 0, box_w, height)
-            dc.SetTextForeground(wx.BLACK)
-            dc.DrawText(name, x + padding_x, padding_y)
-            x += box_w + gap
-        dc.SelectObject(wx.NullBitmap)
-        return bmp
-
-    def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
-        if not labels:
-            self.list.SetItem(index, col, "")
-            if hasattr(self.list, "SetItemImage") and col == 0:
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
-            return
-        key = tuple(labels)
-        img_id = self._label_images.get(key)
-        if img_id == -1:
-            self._set_label_text(index, col, labels)
-            return
-        if img_id is None:
-            bmp = self._create_label_bitmap(labels)
-            self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
-            if self._image_list is None:
-                self._label_images[key] = -1
-                self._set_label_text(index, col, labels)
-                return
-            list_w, list_h = self._image_list.GetSize()
-            bmp = self._pad_bitmap(bmp, list_w, list_h)
-            try:
-                img_id = self._image_list.Add(bmp)
-            except Exception:
-                logger.exception("Failed to add labels image; using text fallback")
-                img_id = -1
-            if img_id == -1:
-                logger.warning("Image list rejected labels bitmap; using text fallback")
-                self._label_images[key] = -1
-                self._set_label_text(index, col, labels)
-                return
-            self._label_images[key] = img_id
-        if col == 0:
-            # Column 0 uses the main item image slot
-            self.list.SetItem(index, col, "")
-            if hasattr(self.list, "SetItemImage"):
-                with suppress(Exception):
-                    self.list.SetItemImage(index, img_id)
-        else:
-            self.list.SetItem(index, col, "")
-            self.list.SetItemColumnImage(index, col, img_id)
             if hasattr(self.list, "SetItemImage"):
                 with suppress(Exception):
                     self.list.SetItemImage(index, -1)
@@ -623,8 +503,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetItem(index, col, display)
                     continue
                 if field == "labels":
-                    value = getattr(req, "labels", [])
-                    self._set_label_image(index, col, value)
+                    value = [str(lbl) for lbl in getattr(req, "labels", [])]
+                    self._set_label_text(index, col, value)
                     continue
                 if field == "derived_from":
                     value = self._first_parent_text(req)

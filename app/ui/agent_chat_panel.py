@@ -403,34 +403,31 @@ class AgentChatPanel(wx.Panel):
         is_main_loop_running = bool(
             app and getattr(app, "IsMainLoopRunning", lambda: False)()
         )
-        finished = threading.Event()
-        result_holder: dict[str, Any] = {}
-
-        def worker() -> None:
+        def worker() -> Any:
             try:
                 agent = self._agent_supplier()
-                result = agent.run_command(prompt, history=history_messages)
+                return agent.run_command(prompt, history=history_messages)
             except Exception as exc:  # pragma: no cover - defensive
-                result = {
+                return {
                     "ok": False,
                     "error": {"type": type(exc).__name__, "message": str(exc)},
                 }
 
-            if is_main_loop_running:
+        if is_main_loop_running:
+            # In live GUI sessions we offload the work to a background thread and
+            # marshal the result back to the UI thread via ``wx.CallAfter`` so the
+            # interface stays responsive.
+            def async_runner() -> None:
+                result = worker()
                 wx.CallAfter(self._finalize_prompt, prompt, result)
-            else:
-                result_holder["value"] = result
-                finished.set()
 
-        thread = threading.Thread(target=worker, daemon=True)
-        thread.start()
-
-        if not is_main_loop_running:
-            finished.wait()
-            result = result_holder.get(
-                "value",
-                {"ok": False, "error": _("Unknown error")},
-            )
+            thread = threading.Thread(target=async_runner, daemon=True)
+            thread.start()
+        else:
+            # When the main loop is not running (typical for unit tests) we are free
+            # to execute synchronously: no GUI events are pending and the tests
+            # expect deterministic completion before assertions run.
+            result = worker()
             self._finalize_prompt(prompt, result)
 
     def _on_clear_input(self, _event: wx.Event) -> None:

@@ -42,3 +42,5 @@ app/locale/missing.po
 # Development server logs generated at project root
 /server.log
 /server.jsonl
+# Helper logs emitted during wx GUI tests
+requirements/server.log

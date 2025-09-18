@@ -1192,6 +1192,16 @@ class MainFrame(wx.Frame):
         self.panel.update_labels_list(labels)
         self._selected_requirement_id = None
         self._clear_editor_panel()
+        total = len(self.model.get_all())
+        visible = len(self.model.get_visible())
+        derived_groups = sum(len(ids) for ids in derived_map.values()) if derived_map else 0
+        logger.info(
+            "Document %s loaded: %s requirement(s), %s visible after filters, %s derived link group(s)",
+            prefix,
+            total,
+            visible,
+            derived_groups,
+        )
         self.splitter.UpdateSize()
         return True
 

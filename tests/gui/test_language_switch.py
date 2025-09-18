@@ -41,6 +41,7 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app):
                 frame.llm_settings.api_key or "",
                 frame.llm_settings.max_retries,
                 frame.llm_settings.max_output_tokens,
+                frame.llm_settings.token_limit_parameter or "",
                 frame.llm_settings.timeout_minutes,
                 frame.llm_settings.stream,
                 frame.mcp_settings.auto_start,

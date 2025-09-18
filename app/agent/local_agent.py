@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import json
 from collections.abc import Sequence
-from typing import Any, Callable, Mapping
+from typing import Any, Awaitable, Callable, Mapping
 
 from ..confirm import confirm as default_confirm
 from ..llm.client import LLMClient, LLMResponse, LLMToolCall
@@ -16,6 +16,144 @@ from ..mcp.utils import exception_to_mcp_error
 from ..settings import AppSettings
 from ..telemetry import log_event
 from ..util.cancellation import CancellationToken, OperationCancelledError
+
+
+class _AsyncMethod:
+    """Bridge synchronous and asynchronous client methods to async coroutines."""
+
+    def __init__(
+        self,
+        owner: Any,
+        method_names: Sequence[str],
+        *,
+        allow_cancellation: bool = False,
+        required: bool = True,
+    ) -> None:
+        self._owner = owner
+        self._method: Callable[..., Any] | None = None
+        self._supports_cancellation = False
+        self._is_coroutine = False
+        for name in method_names:
+            candidate = getattr(owner, name, None)
+            if candidate is None or not callable(candidate):
+                continue
+            self._method = candidate
+            break
+        if self._method is None:
+            if required:
+                names = ", ".join(method_names)
+                raise TypeError(
+                    f"{owner!r} does not provide callable(s) {names}."
+                )
+            return
+        self._is_coroutine = inspect.iscoroutinefunction(self._method)
+        if allow_cancellation:
+            self._supports_cancellation = self._method_accepts_cancellation(
+                self._method
+            )
+
+    @staticmethod
+    def _method_accepts_cancellation(method: Callable[..., Any]) -> bool:
+        try:
+            signature = inspect.signature(method)
+        except (TypeError, ValueError):
+            return False
+        if "cancellation" in signature.parameters:
+            return True
+        return any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        )
+
+    @property
+    def is_available(self) -> bool:
+        return self._method is not None
+
+    async def __call__(
+        self,
+        *args: Any,
+        cancellation: CancellationToken | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        if self._method is None:
+            raise RuntimeError("Async method is not available")
+        call_kwargs = dict(kwargs)
+        if self._supports_cancellation and cancellation is not None:
+            call_kwargs["cancellation"] = cancellation
+        if self._is_coroutine:
+            result = self._method(*args, **call_kwargs)
+            if inspect.isawaitable(result):
+                return await result
+            return result
+
+        def _invoke() -> Any:
+            return self._method(*args, **call_kwargs)
+
+        result = await asyncio.to_thread(_invoke)
+        if inspect.isawaitable(result):
+            return await result
+        return result
+
+
+class _LLMAdapter:
+    """Expose LLM client operations as awaitable helpers."""
+
+    def __init__(self, client: LLMClient) -> None:
+        self._client = client
+        self._check_llm = _AsyncMethod(
+            client,
+            ("check_llm_async", "check_llm"),
+        )
+        self._respond = _AsyncMethod(
+            client,
+            ("respond_async", "respond"),
+            allow_cancellation=True,
+        )
+
+    async def check_llm(self) -> dict[str, Any]:
+        return await self._check_llm()
+
+    async def respond(
+        self,
+        conversation: Sequence[Mapping[str, Any]] | None,
+        *,
+        cancellation: CancellationToken | None = None,
+    ) -> LLMResponse:
+        return await self._respond(
+            conversation,
+            cancellation=cancellation,
+        )
+
+
+class _MCPAdapter:
+    """Expose MCP client operations as awaitable helpers."""
+
+    def __init__(self, client: MCPClient) -> None:
+        self._client = client
+        self._check_tools = _AsyncMethod(
+            client,
+            ("check_tools_async", "check_tools"),
+        )
+        self._ensure_ready = _AsyncMethod(
+            client,
+            ("ensure_ready_async", "ensure_ready"),
+            required=False,
+        )
+        self._call_tool = _AsyncMethod(
+            client,
+            ("call_tool_async", "call_tool"),
+        )
+
+    async def check_tools(self) -> dict[str, Any]:
+        return await self._check_tools()
+
+    async def ensure_ready(self) -> None:
+        if not self._ensure_ready.is_available:
+            return
+        await self._ensure_ready()
+
+    async def call_tool(self, name: str, arguments: Mapping[str, Any]) -> Any:
+        return await self._call_tool(name, arguments)
 
 
 class LocalAgent:
@@ -44,6 +182,8 @@ class LocalAgent:
             raise TypeError("settings or clients must be provided")
         self._llm = llm
         self._mcp = mcp
+        self._llm_adapter = _LLMAdapter(self._llm)
+        self._mcp_adapter = _MCPAdapter(self._mcp)
 
     # ------------------------------------------------------------------
     @classmethod
@@ -123,77 +263,47 @@ class LocalAgent:
             cancellation.raise_if_cancelled()
 
     @staticmethod
-    def _call_with_optional_cancellation(
-        func: Callable[..., Any],
-        *args: Any,
-        cancellation: CancellationToken | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        """Invoke *func* injecting ``cancellation`` when supported."""
+    def _run_sync(coro: Awaitable[Any]) -> Any:
+        """Execute asynchronous helpers from synchronous entry points."""
 
-        if cancellation is None:
-            return func(*args, **kwargs)
         try:
-            return func(*args, cancellation=cancellation, **kwargs)
-        except TypeError as exc:
-            if "cancellation" not in str(exc):  # pragma: no cover - defensive
-                raise
-        return func(*args, **kwargs)
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        raise RuntimeError(
+            "Synchronous LocalAgent methods cannot run inside an active "
+            "asyncio event loop; use the async variants instead."
+        )
+
+    @staticmethod
+    def _prepare_conversation(
+        text: str, history: Sequence[Mapping[str, Any]] | None
+    ) -> list[Mapping[str, Any]]:
+        conversation: list[Mapping[str, Any]] = list(history or [])
+        conversation.append({"role": "user", "content": text})
+        return conversation
 
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
         """Delegate to :class:`LLMClient.check_llm`."""
 
-        return self._llm.check_llm()
+        return self._run_sync(self._llm_adapter.check_llm())
 
     async def check_llm_async(self) -> dict[str, Any]:
         """Asynchronous variant of :meth:`check_llm`."""
 
-        method = getattr(self._llm, "check_llm_async", None)
-        if method is not None:
-            result = method()
-            if inspect.isawaitable(result):
-                return await result
-            return result
-        return await asyncio.to_thread(self._llm.check_llm)
+        return await self._llm_adapter.check_llm()
 
     # ------------------------------------------------------------------
     def check_tools(self) -> dict[str, Any]:
         """Delegate to :class:`MCPClient.check_tools`."""
 
-        return self._mcp.check_tools()
+        return self._run_sync(self._mcp_adapter.check_tools())
 
     async def check_tools_async(self) -> dict[str, Any]:
         """Asynchronous variant of :meth:`check_tools`."""
 
-        method = getattr(self._mcp, "check_tools_async", None)
-        if method is not None:
-            result = method()
-            if inspect.isawaitable(result):
-                return await result
-            return result
-        return await asyncio.to_thread(self._mcp.check_tools)
-
-    # ------------------------------------------------------------------
-    def _ensure_mcp_ready(self) -> None:
-        """Invoke MCP readiness probe when the client exposes it."""
-
-        ensure_ready = getattr(self._mcp, "ensure_ready", None)
-        if callable(ensure_ready):
-            ensure_ready()
-
-    async def _ensure_mcp_ready_async(self) -> None:
-        """Asynchronous readiness probe wrapper."""
-
-        ensure_ready_async = getattr(self._mcp, "ensure_ready_async", None)
-        if ensure_ready_async is not None:
-            result = ensure_ready_async()
-            if inspect.isawaitable(result):
-                await result
-            return
-        ensure_ready = getattr(self._mcp, "ensure_ready", None)
-        if callable(ensure_ready):
-            await asyncio.to_thread(ensure_ready)
+        return await self._mcp_adapter.check_tools()
 
     # ------------------------------------------------------------------
     def run_command(
@@ -205,14 +315,15 @@ class LocalAgent:
     ) -> dict[str, Any]:
         """Drive an agent loop that may invoke MCP tools before replying."""
 
-        conversation: list[Mapping[str, Any]] = list(history or [])
-        conversation.append({"role": "user", "content": text})
+        conversation = self._prepare_conversation(text, history)
         log_event(
             "AGENT_START",
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},
         )
         try:
-            result = self._run_loop(conversation, cancellation=cancellation)
+            result = self._run_sync(
+                self._run_loop_core(conversation, cancellation=cancellation)
+            )
         except OperationCancelledError:
             log_event("AGENT_CANCELLED", {"reason": "user-request"})
             raise
@@ -232,14 +343,13 @@ class LocalAgent:
     ) -> dict[str, Any]:
         """Asynchronous variant of :meth:`run_command`."""
 
-        conversation: list[Mapping[str, Any]] = list(history or [])
-        conversation.append({"role": "user", "content": text})
+        conversation = self._prepare_conversation(text, history)
         log_event(
             "AGENT_START",
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},
         )
         try:
-            result = await self._run_loop_async(
+            result = await self._run_loop_core(
                 conversation, cancellation=cancellation
             )
         except OperationCancelledError:
@@ -252,42 +362,8 @@ class LocalAgent:
         log_event("AGENT_RESULT", self._summarize_result(result))
         return result
 
-    async def _call_tool_async(
-        self, name: str, arguments: Mapping[str, Any]
-    ) -> dict[str, Any]:
-        method = getattr(self._mcp, "call_tool_async", None)
-        if method is not None:
-            result = method(name, arguments)
-            if inspect.isawaitable(result):
-                return await result
-            return result
-        return await asyncio.to_thread(self._mcp.call_tool, name, arguments)
-
-    async def _respond_async(
-        self,
-        conversation: Sequence[Mapping[str, Any]],
-        *,
-        cancellation: CancellationToken | None = None,
-    ) -> LLMResponse:
-        method = getattr(self._llm, "respond_async", None)
-        if method is not None:
-            try:
-                result = method(conversation, cancellation=cancellation)
-            except TypeError as exc:
-                if "cancellation" not in str(exc):  # pragma: no cover - defensive
-                    raise
-                result = method(conversation)
-            if inspect.isawaitable(result):
-                return await result
-            return result
-        return await asyncio.to_thread(
-            self._call_with_optional_cancellation,
-            self._llm.respond,
-            conversation,
-            cancellation=cancellation,
-        )
-
-    def _run_loop(
+    # ------------------------------------------------------------------
+    async def _run_loop_core(
         self,
         conversation: list[Mapping[str, Any]],
         *,
@@ -296,8 +372,7 @@ class LocalAgent:
         accumulated_results: list[Mapping[str, Any]] = []
         for step in range(self._MAX_THOUGHT_STEPS):
             self._raise_if_cancelled(cancellation)
-            response = self._call_with_optional_cancellation(
-                self._llm.respond,
+            response = await self._llm_adapter.respond(
                 conversation,
                 cancellation=cancellation,
             )
@@ -305,8 +380,13 @@ class LocalAgent:
             self._log_step(step + 1, response)
             if not response.tool_calls:
                 return self._success_result(response, accumulated_results)
-            tool_messages, early_result, batch_results = self._execute_tool_calls(
-                response.tool_calls, cancellation=cancellation
+            (
+                tool_messages,
+                early_result,
+                batch_results,
+            ) = await self._execute_tool_calls_core(
+                response.tool_calls,
+                cancellation=cancellation,
             )
             conversation.extend(tool_messages)
             accumulated_results.extend(batch_results)
@@ -321,41 +401,7 @@ class LocalAgent:
             "LLM did not finish interaction within allowed steps",
         )
 
-    async def _run_loop_async(
-        self,
-        conversation: list[Mapping[str, Any]],
-        *,
-        cancellation: CancellationToken | None = None,
-    ) -> dict[str, Any]:
-        accumulated_results: list[Mapping[str, Any]] = []
-        for step in range(self._MAX_THOUGHT_STEPS):
-            self._raise_if_cancelled(cancellation)
-            response = await self._respond_async(
-                conversation, cancellation=cancellation
-            )
-            conversation.append(self._assistant_message(response))
-            self._log_step(step + 1, response)
-            if not response.tool_calls:
-                return self._success_result(response, accumulated_results)
-            tool_messages, early_result, batch_results = (
-                await self._execute_tool_calls_async(
-                    response.tool_calls, cancellation=cancellation
-                )
-            )
-            conversation.extend(tool_messages)
-            accumulated_results.extend(batch_results)
-            if early_result is not None:
-                return early_result
-            self._raise_if_cancelled(cancellation)
-        log_event(
-            "AGENT_ABORTED",
-            {"reason": "max-steps", "max_steps": self._MAX_THOUGHT_STEPS},
-        )
-        raise ToolValidationError(
-            "LLM did not finish interaction within allowed steps",
-        )
-
-    def _execute_tool_calls(
+    async def _execute_tool_calls_core(
         self,
         tool_calls: Sequence[LLMToolCall],
         *,
@@ -374,8 +420,8 @@ class LocalAgent:
                         "arguments": call.arguments,
                     },
                 )
-                self._ensure_mcp_ready()
-                result = self._mcp.call_tool(call.name, call.arguments)
+                await self._mcp_adapter.ensure_ready()
+                result = await self._mcp_adapter.call_tool(call.name, call.arguments)
             except Exception as exc:
                 error = self._extract_mcp_error(exc)
                 log_event("ERROR", {"error": error})
@@ -403,68 +449,6 @@ class LocalAgent:
                 return messages, payload, successful
             result_dict = dict(result)
             log_payload: dict[str, Any] = {
-                "call_id": call.id,
-                "tool_name": call.name,
-                "ok": bool(result_dict.get("ok", False)),
-            }
-            if not log_payload["ok"] and result_dict.get("error"):
-                log_payload["error"] = result_dict["error"]
-            log_event("AGENT_TOOL_RESULT", log_payload)
-            messages.append(self._tool_message(call, result))
-            if not result_dict.get("ok", False):
-                return messages, result_dict, successful
-            successful.append(self._enrich_tool_result(call, result))
-            self._raise_if_cancelled(cancellation)
-        return messages, None, successful
-
-    async def _execute_tool_calls_async(
-        self,
-        tool_calls: Sequence[LLMToolCall],
-        *,
-        cancellation: CancellationToken | None = None,
-    ) -> tuple[list[dict[str, Any]], dict[str, Any] | None, list[Mapping[str, Any]]]:
-        messages: list[dict[str, Any]] = []
-        successful: list[Mapping[str, Any]] = []
-        for call in tool_calls:
-            self._raise_if_cancelled(cancellation)
-            try:
-                log_event(
-                    "AGENT_TOOL_CALL",
-                    {
-                        "call_id": call.id,
-                        "tool_name": call.name,
-                        "arguments": call.arguments,
-                    },
-                )
-                await self._ensure_mcp_ready_async()
-                result = await self._call_tool_async(call.name, call.arguments)
-            except Exception as exc:
-                error = self._extract_mcp_error(exc)
-                log_event("ERROR", {"error": error})
-                log_event(
-                    "AGENT_TOOL_RESULT",
-                    {
-                        "call_id": call.id,
-                        "tool_name": call.name,
-                        "ok": False,
-                        "error": error,
-                    },
-                )
-                payload = {"ok": False, "error": error}
-                messages.append(self._tool_message(call, payload))
-                return messages, payload, successful
-            if not isinstance(result, Mapping):
-                payload = {
-                    "ok": False,
-                    "error": {
-                        "type": "ToolProtocolError",
-                        "message": "Tool returned unexpected payload",
-                    },
-                }
-                messages.append(self._tool_message(call, payload))
-                return messages, payload, successful
-            result_dict = dict(result)
-            log_payload = {
                 "call_id": call.id,
                 "tool_name": call.name,
                 "ok": bool(result_dict.get("ok", False)),

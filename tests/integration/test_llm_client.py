@@ -125,8 +125,9 @@ def test_check_llm_uses_default_when_no_limit(tmp_path: Path, monkeypatch) -> No
     assert value == DEFAULT_MAX_OUTPUT_TOKENS
 
 
-def test_check_llm_detects_available_token_param(tmp_path: Path, monkeypatch) -> None:
+def test_check_llm_uses_configured_token_param(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
+    settings.llm.token_limit_parameter = "max_completion_tokens"
     captured: dict[str, object] = {}
 
     class FakeOpenAI:
@@ -143,6 +144,24 @@ def test_check_llm_detects_available_token_param(tmp_path: Path, monkeypatch) ->
     client = LLMClient(settings.llm)
     client.check_llm()
     assert captured["max_completion_tokens"] == DEFAULT_MAX_OUTPUT_TOKENS
+
+
+def test_check_llm_validates_token_param(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    settings.llm.token_limit_parameter = "max_completion_tokens"
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages):  # noqa: ANN001
+                return SimpleNamespace()
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    with pytest.raises(ValueError, match="token limit parameter"):
+        LLMClient(settings.llm)
 
 
 def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:

@@ -34,6 +34,7 @@ class LLMSettings(BaseModel):
         DEFAULT_MAX_CONTEXT_TOKENS,
         ge=MIN_MAX_CONTEXT_TOKENS,
     )
+    token_limit_parameter: str | None = "max_output_tokens"
     timeout_minutes: int = 60
     stream: bool = False
 
@@ -83,6 +84,18 @@ class LLMSettings(BaseModel):
             default=DEFAULT_MAX_CONTEXT_TOKENS,
             minimum=MIN_MAX_CONTEXT_TOKENS,
         )
+
+    @field_validator("token_limit_parameter", mode="before")
+    @classmethod
+    def _normalize_token_limit_parameter(
+        cls, value: str | None
+    ) -> str | None:
+        """Normalise blank strings to ``None`` for optional parameter names."""
+
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
 
 
 def default_requirements_path() -> str:

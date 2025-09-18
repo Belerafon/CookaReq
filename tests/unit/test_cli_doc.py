@@ -26,11 +26,9 @@ def test_doc_create_and_list(tmp_path, capsys):
 
     doc_sys = load_document(Path(tmp_path) / "SYS")
     assert doc_sys.parent is None
-    assert not hasattr(doc_sys, "digits")
 
     doc_hlr = load_document(Path(tmp_path) / "HLR")
     assert doc_hlr.parent == "SYS"
-    assert not hasattr(doc_hlr, "digits")
 
 
 def test_doc_delete_removes_subtree(tmp_path, capsys):

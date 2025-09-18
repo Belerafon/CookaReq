@@ -38,7 +38,7 @@ def test_load_restores_link_metadata(wx_app, tmp_path, monkeypatch):
     panel = EditorPanel(frame)
     panel.set_directory(tmp_path / "REQ")
 
-    doc = Document(prefix="SYS", title="Systems", digits=3)
+    doc = Document(prefix="SYS", title="Systems")
 
     def fake_load_document(path):
         assert path == tmp_path / "SYS"

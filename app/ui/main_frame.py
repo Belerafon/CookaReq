@@ -1,5 +1,6 @@
 """Main application window."""
 
+import json
 import logging
 import weakref
 from collections.abc import Callable, Sequence
@@ -1194,14 +1195,68 @@ class MainFrame(wx.Frame):
         self._clear_editor_panel()
         total = len(self.model.get_all())
         visible = len(self.model.get_visible())
-        derived_groups = sum(len(ids) for ids in derived_map.values()) if derived_map else 0
+        derived_parent_count = len(derived_map) if derived_map else 0
+        derived_child_count = (
+            sum(len(ids) for ids in derived_map.values()) if derived_map else 0
+        )
+        filters_snapshot: dict[str, object] = {}
+        filter_summary = ""
+        if hasattr(self.panel, "current_filters"):
+            raw_filters = getattr(self.panel, "current_filters", {})
+            for key, value in raw_filters.items():
+                if isinstance(value, dict):
+                    trimmed = {k: v for k, v in value.items() if v}
+                    if trimmed:
+                        filters_snapshot[key] = trimmed
+                elif isinstance(value, (list, tuple, set)):
+                    if value:
+                        filters_snapshot[key] = list(value)
+                elif isinstance(value, bool):
+                    if value:
+                        filters_snapshot[key] = value
+                elif value not in (None, ""):
+                    filters_snapshot[key] = value
+        if getattr(self.panel, "filter_summary", None):
+            try:
+                filter_summary = self.panel.filter_summary.GetLabel().strip()
+            except Exception:  # pragma: no cover - defensive UI access
+                filter_summary = ""
+        doc_path = ""
+        if self.current_dir:
+            doc_path = str(self.current_dir / prefix)
+        filter_details = ""
+        if filters_snapshot:
+            try:
+                serialized = json.dumps(
+                    filters_snapshot, ensure_ascii=False, sort_keys=True
+                )
+            except Exception:  # pragma: no cover - logging fallback
+                serialized = str(filters_snapshot)
+            filter_details = f"; active filters={serialized}"
+            if filter_summary:
+                filter_details += f" ({filter_summary})"
+        elif filter_summary:
+            filter_details = f"; filter summary={filter_summary}"
+        if doc_path:
+            location = f" from {doc_path}"
+        else:
+            location = ""
         logger.info(
-            "Document %s loaded: %s requirement(s), %s visible after filters, %s derived link group(s)",
+            "Document %s loaded%s: %s requirement(s), %s visible after filters%s; %s parent(s) with %s derived child link(s)",
             prefix,
+            location,
             total,
             visible,
-            derived_groups,
+            filter_details,
+            derived_parent_count,
+            derived_child_count,
         )
+        if total and visible == 0 and filters_snapshot:
+            logger.warning(
+                "All %s requirement(s) for %s are hidden by the current filters",
+                total,
+                prefix,
+            )
         self.splitter.UpdateSize()
         return True
 

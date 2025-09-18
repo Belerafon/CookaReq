@@ -77,6 +77,12 @@ def main(argv: list[str] | None = None) -> int:
     if script_path.is_dir():
         parser.error("script argument must be a file, not a directory")
 
+    script_path = script_path.resolve()
+    repo_root = Path(__file__).resolve().parent.parent
+    sys_path_entry = str(repo_root)
+    if sys_path_entry not in sys.path:
+        sys.path.insert(0, sys_path_entry)
+
     display = Display(visible=1 if args.visible else 0, size=args.size)
     display.start()
     try:

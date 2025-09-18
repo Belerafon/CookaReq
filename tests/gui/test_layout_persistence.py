@@ -166,3 +166,23 @@ def test_splitter_widths_ignore_sash_offset(wx_app, tmp_path):
     assert history_widths[0] > 0
     assert doc_tree_widths == [doc_tree_widths[0]] * len(doc_tree_widths)
     assert history_widths == [history_widths[0]] * len(history_widths)
+
+
+def test_log_console_restores_with_visible_list(wx_app, tmp_path):
+    """Ensure restoring a collapsed log sash keeps the requirements list visible."""
+
+    config_path = tmp_path / "log-clamp.ini"
+    config = ConfigManager(path=config_path)
+    config.set_value("log_shown", True)
+    config.set_value("log_sash", 5)
+    config.flush()
+
+    frame = _open_frame(config_path, wx_app)
+    wx_app.Yield()
+    try:
+        assert frame.main_splitter.IsSplit()
+        min_expected = frame.FromDIP(wx.Size(0, 220)).height
+        assert frame.main_splitter.GetSashPosition() >= min_expected
+    finally:
+        frame.Destroy()
+        wx_app.Yield()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from copy import deepcopy
+import numbers
 import logging
 from pathlib import Path
 from typing import Any, Callable, Generic, Literal, Protocol, TypeVar
@@ -422,6 +423,175 @@ class ConfigManager:
                 global_file,
             )
 
+    @staticmethod
+    def _size_to_height(size: Any) -> int:
+        """Return positive height component from *size* if available."""
+
+        if size is None:
+            return 0
+        candidates: list[int] = []
+        getters = [
+            getattr(size, "GetHeight", None),
+            getattr(size, "GetY", None),
+        ]
+        for getter in getters:
+            if callable(getter):
+                try:
+                    value = getter()
+                except Exception:
+                    continue
+                if isinstance(value, numbers.Real) and value > 0:
+                    candidates.append(int(value))
+        for attr in ("height", "y"):
+            value = getattr(size, attr, None)
+            if isinstance(value, numbers.Real) and value > 0:
+                candidates.append(int(value))
+        return max(candidates, default=0)
+
+    def _dip_to_pixels(self, reference: Any, dip: int) -> int:
+        """Convert *dip* height to raw pixels using ``reference`` when possible."""
+
+        if dip <= 0:
+            return 0
+        if reference is None or not hasattr(reference, "FromDIP"):
+            return dip
+        try:
+            size = reference.FromDIP(wx.Size(0, dip))
+        except Exception:
+            return dip
+        height = self._size_to_height(size)
+        return height if height > 0 else dip
+
+    def _window_min_height(self, window: Any) -> int:
+        """Return best known minimum height for ``window`` or zero."""
+
+        if window is None:
+            return 0
+        best = 0
+        for attr in ("GetEffectiveMinSize", "GetMinSize", "GetBestSize"):
+            getter = getattr(window, attr, None)
+            if not callable(getter):
+                continue
+            try:
+                size = getter()
+            except Exception:
+                continue
+            height = self._size_to_height(size)
+            if height > best:
+                best = height
+        return best
+
+    def _window_family_min_height(self, window: Any, *, depth: int = 0) -> int:
+        """Return the maximum minimum height among ``window`` and its children."""
+
+        if window is None or depth > 6:
+            return 0
+        best = self._window_min_height(window)
+        children_getter = getattr(window, "GetChildren", None)
+        if callable(children_getter):
+            try:
+                for child in children_getter():
+                    best = max(best, self._window_family_min_height(child, depth=depth + 1))
+            except Exception:
+                pass
+        return best
+
+    def _list_required_height(self, frame: wx.Frame, panel: ListPanelLike) -> int:
+        """Estimate comfortable minimum height for the requirements list."""
+
+        list_ctrl = getattr(panel, "list", None)
+        if list_ctrl is None:
+            return 0
+        try:
+            row_height = list_ctrl.GetCharHeight()
+        except Exception:
+            row_height = 0
+        if not isinstance(row_height, numbers.Real) or row_height <= 0:
+            row_height = self._dip_to_pixels(frame, 18)
+        header_height = self._dip_to_pixels(frame, 32)
+        minimum_rows = max(int(row_height) * 4 + int(header_height), 0)
+        structural_min = self._window_family_min_height(list_ctrl)
+        return max(minimum_rows, structural_min)
+
+    def _log_sash_bounds(
+        self,
+        frame: wx.Frame,
+        doc_splitter: wx.SplitterWindow,
+        main_splitter: wx.SplitterWindow,
+        panel: ListPanelLike,
+        log_window: wx.Window | None,
+    ) -> tuple[int, int]:
+        """Return inclusive bounds for the log console sash position."""
+
+        client_height = self._size_to_height(frame.GetClientSize())
+        if client_height <= 0:
+            client_height = self._size_to_height(frame.GetSize())
+        doc_min = self._dip_to_pixels(frame, 220)
+        doc_min = max(doc_min, self._window_family_min_height(doc_splitter))
+        doc_min = max(doc_min, self._list_required_height(frame, panel))
+        log_min = self._dip_to_pixels(frame, 140)
+        log_min = max(log_min, self._window_family_min_height(log_window))
+        try:
+            splitter_min = main_splitter.GetMinimumPaneSize()
+        except Exception:
+            splitter_min = 0
+        doc_min = max(doc_min, splitter_min)
+        log_min = max(log_min, splitter_min)
+        lower = max(0, int(doc_min))
+        upper = client_height - max(0, int(log_min))
+        if upper < lower:
+            upper = lower
+        upper = max(upper, 0)
+        upper = min(max(client_height, 0), upper)
+        if upper < lower:
+            lower = upper
+        return lower, upper
+
+    def _clamp_log_sash(
+        self,
+        frame: wx.Frame,
+        doc_splitter: wx.SplitterWindow,
+        main_splitter: wx.SplitterWindow,
+        panel: ListPanelLike,
+        log_window: wx.Window | None,
+        desired: int,
+    ) -> tuple[int, int, int]:
+        """Clamp ``desired`` sash position to valid bounds and return range."""
+
+        lower, upper = self._log_sash_bounds(
+            frame, doc_splitter, main_splitter, panel, log_window
+        )
+        client_height = self._size_to_height(frame.GetClientSize())
+        if client_height <= 0:
+            client_height = self._size_to_height(frame.GetSize())
+        safe = max(0, int(desired))
+        if upper < lower:
+            safe = lower
+        else:
+            safe = max(lower, min(safe, upper))
+        return safe, lower, upper
+
+    def clamp_log_sash_position(
+        self,
+        frame: wx.Frame,
+        doc_splitter: wx.SplitterWindow,
+        main_splitter: wx.SplitterWindow,
+        panel: ListPanelLike,
+        log_window: wx.Window | None,
+        desired: int,
+    ) -> int:
+        """Public helper returning a safe sash position for the log console."""
+
+        clamped, _, _ = self._clamp_log_sash(
+            frame,
+            doc_splitter,
+            main_splitter,
+            panel,
+            log_window,
+            desired,
+        )
+        return clamped
+
     # ------------------------------------------------------------------
     # schema access helpers
     @classmethod
@@ -823,7 +993,7 @@ class ConfigManager:
         doc_splitter: wx.SplitterWindow,
         main_splitter: wx.SplitterWindow,
         panel: ListPanelLike,
-        log_console: wx.Window,
+        log_window: wx.Window,
         log_menu_item: wx.MenuItem | None = None,
         *,
         editor_splitter: wx.SplitterWindow | None = None,
@@ -871,12 +1041,28 @@ class ConfigManager:
         panel.load_column_widths(self)
         panel.load_column_order(self)
         log_shown = self.get_value("log_shown")
-        log_sash = self.get_value("log_sash", default=client_size.height - 150)
+        stored_log_sash = self.get_value(
+            "log_sash", default=client_size.height - 150
+        )
+        log_sash = stored_log_sash
+        log_lower: int | None = None
+        log_upper: int | None = None
+        if log_shown:
+            log_sash, log_lower, log_upper = self._clamp_log_sash(
+                frame,
+                doc_splitter,
+                main_splitter,
+                panel,
+                log_window,
+                stored_log_sash,
+            )
+            if log_sash != stored_log_sash:
+                self.set_value("log_sash", log_sash)
         if logger.isEnabledFor(logging.INFO):
             logger.info(
                 "[layout-debug] restore_layout: window_size=%sx%s pos=(%s,%s)"
                 " client_size=%sx%s doc_sash_raw=%s clamp=[%s,%s]->%s"
-                " log_shown=%s log_sash=%s",
+                " log_shown=%s log_sash=%s log_range=[%s,%s]",
                 w,
                 h,
                 x,
@@ -889,10 +1075,20 @@ class ConfigManager:
                 doc_sash,
                 log_shown,
                 log_sash,
+                log_lower,
+                log_upper,
             )
         if log_shown:
-            log_console.Show()
-            main_splitter.SplitHorizontally(doc_splitter, log_console, log_sash)
+            log_window.Show()
+            main_splitter.SplitHorizontally(doc_splitter, log_window, log_sash)
+            actual = log_sash
+            try:
+                actual = main_splitter.GetSashPosition()
+            except Exception:
+                actual = log_sash
+            if actual != log_sash:
+                log_sash = actual
+                self.set_value("log_sash", log_sash)
             if log_menu_item:
                 log_menu_item.Check(True)
             if logger.isEnabledFor(logging.INFO):
@@ -909,7 +1105,7 @@ class ConfigManager:
                 except Exception:
                     top_height = None
                 try:
-                    bottom_height = log_console.GetClientSize().height
+                    bottom_height = log_window.GetClientSize().height
                 except Exception:
                     bottom_height = None
                 logger.info(
@@ -921,7 +1117,7 @@ class ConfigManager:
                 )
         else:
             main_splitter.Initialize(doc_splitter)
-            log_console.Hide()
+            log_window.Hide()
             if log_menu_item:
                 log_menu_item.Check(False)
             if logger.isEnabledFor(logging.INFO):
@@ -971,7 +1167,25 @@ class ConfigManager:
                 self.set_value("editor_shown", False)
         if main_splitter.IsSplit():
             self.set_value("log_shown", True)
-            self.set_value("log_sash", main_splitter.GetSashPosition())
+            raw_log_sash = 0
+            try:
+                raw_log_sash = main_splitter.GetSashPosition()
+            except Exception:
+                raw_log_sash = 0
+            log_window = None
+            try:
+                log_window = main_splitter.GetWindow2()
+            except Exception:
+                log_window = None
+            clamped, _, _ = self._clamp_log_sash(
+                frame,
+                doc_splitter,
+                main_splitter,
+                panel,
+                log_window,
+                raw_log_sash,
+            )
+            self.set_value("log_sash", clamped)
         else:
             self.set_value("log_shown", False)
         if agent_splitter is not None:

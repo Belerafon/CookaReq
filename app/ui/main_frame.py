@@ -1594,12 +1594,45 @@ class MainFrame(wx.Frame):
 
         checked = self.navigation.log_menu_item.IsChecked()
         if checked:
-            sash = self.config.get_log_sash(self.GetClientSize().height - 150)
+            desired = self.config.get_log_sash(self.GetClientSize().height - 150)
+            safe = self.config.clamp_log_sash_position(
+                self,
+                self.doc_splitter,
+                self.main_splitter,
+                self.panel,
+                self.log_panel,
+                desired,
+            )
             self.log_panel.Show()
-            self.main_splitter.SplitHorizontally(self.doc_splitter, self.log_panel, sash)
+            self.main_splitter.SplitHorizontally(self.doc_splitter, self.log_panel, safe)
+            try:
+                actual = self.main_splitter.GetSashPosition()
+            except Exception:
+                actual = safe
+            safe_actual = self.config.clamp_log_sash_position(
+                self,
+                self.doc_splitter,
+                self.main_splitter,
+                self.panel,
+                self.log_panel,
+                actual,
+            )
+            self.config.set_log_sash(safe_actual)
         else:
             if self.main_splitter.IsSplit():
-                self.config.set_log_sash(self.main_splitter.GetSashPosition())
+                try:
+                    current = self.main_splitter.GetSashPosition()
+                except Exception:
+                    current = self.config.get_log_sash(self.GetClientSize().height - 150)
+                safe_current = self.config.clamp_log_sash_position(
+                    self,
+                    self.doc_splitter,
+                    self.main_splitter,
+                    self.panel,
+                    self.log_panel,
+                    current,
+                )
+                self.config.set_log_sash(safe_current)
             self.main_splitter.Unsplit(self.log_panel)
             self.log_panel.Hide()
         self.config.set_log_shown(checked)

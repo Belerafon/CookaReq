@@ -176,14 +176,8 @@ class MainFrame(wx.Frame):
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         style_splitter(self.doc_splitter)
         self._disable_splitter_unsplit(self.doc_splitter)
-        self._doc_splitter_guard = SplitterEventBlocker()
         self._doc_tree_min_pane = max(self.FromDIP(20), 1)
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
-        self.doc_splitter.Bind(
-            wx.EVT_SPLITTER_SASH_POS_CHANGED,
-            self._on_doc_splitter_sash_changed,
-        )
-        self._doc_tree_sash_veto_bound = False
         self._doc_tree_placeholder_width = self.FromDIP(20)
         self._doc_tree_placeholder: wx.Panel | None = None
         self._doc_tree_placeholder_button: wx.Button | None = None
@@ -283,7 +277,7 @@ class MainFrame(wx.Frame):
             200,
         )
         self._doc_tree_collapsed = False
-        self._doc_tree_saved_sash = self.doc_splitter.GetSashPosition()
+        self._doc_tree_saved_width = max(200, self._doc_tree_min_pane)
         self._clear_editor_panel()
 
         self.log_panel = wx.Panel(self.main_splitter)
@@ -522,24 +516,37 @@ class MainFrame(wx.Frame):
         else:
             self._collapse_doc_tree(update_config=True)
 
-    @contextmanager
-    def _ignore_doc_splitter_events(self) -> Iterator[None]:
-        """Silence hierarchy sash change handler during adjustments."""
+    def _current_doc_tree_width(self) -> int:
+        """Return visible width of the document tree container."""
 
-        with self._doc_splitter_guard.pause():
-            yield
+        width = self.doc_tree_container.GetSize().width
+        if width <= 0:
+            width = self.doc_tree_container.GetClientSize().width
+        if width <= 0:
+            width = self._doc_tree_saved_width
+        if width <= 0:
+            width = self._doc_tree_min_pane
+        return max(width, self._doc_tree_min_pane)
+
+    def _apply_doc_tree_width(self, width: int) -> None:
+        """Resize the document tree pane to ``width`` pixels."""
+
+        target = max(width, self._doc_tree_min_pane)
+        if self.doc_splitter.IsSplit():
+            self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
+            self.doc_splitter.SetSashPosition(target)
+        self._doc_tree_saved_width = target
 
     def _collapse_doc_tree(self, *, update_config: bool) -> None:
         """Hide the tree while keeping the toggle handle accessible."""
 
         if self._doc_tree_collapsed:
             return
-        sash = self.doc_splitter.GetSashPosition()
-        self._doc_tree_saved_sash = max(sash, self._doc_tree_min_pane)
+        width = self._current_doc_tree_width()
+        self._doc_tree_saved_width = width
         self.doc_tree.Hide()
         self.doc_tree_label.Hide()
         self.doc_tree_container.Hide()
-        self.doc_splitter.SetMinimumPaneSize(0)
         handle = self._collapsed_doc_tree_width()
         if self._doc_tree_placeholder and self.doc_splitter.GetWindow1() is self.doc_tree_container:
             replaced = self.doc_splitter.ReplaceWindow(
@@ -551,15 +558,11 @@ class MainFrame(wx.Frame):
         if self._doc_tree_placeholder:
             self._doc_tree_placeholder.Show()
             self._doc_tree_placeholder.Layout()
-        with self._ignore_doc_splitter_events():
-            self.doc_splitter.SetSashPosition(handle, True)
-        if hasattr(self.doc_splitter, "SetSashInvisible"):
-            self.doc_splitter.SetSashInvisible(True)
-        self._bind_doc_splitter_drag_veto()
         self._doc_tree_collapsed = True
         self._update_doc_tree_toggle_state()
         self.doc_splitter.Layout()
-        refresh_splitter_highlight(self.doc_splitter)
+        if self.doc_splitter.IsSplit():
+            self.doc_splitter.SetSashPosition(handle)
         if update_config:
             self.config.set_doc_tree_collapsed(True)
 
@@ -576,20 +579,14 @@ class MainFrame(wx.Frame):
         self.doc_tree_label.Show()
         self.doc_tree.Show()
         self.doc_tree_container.Show()
-        self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
-        if hasattr(self.doc_splitter, "SetSashInvisible"):
-            self.doc_splitter.SetSashInvisible(False)
-        width = self._desired_doc_tree_sash()
+        width = max(self._doc_tree_saved_width, self._doc_tree_min_pane)
         self._doc_tree_collapsed = False
-        self._unbind_doc_splitter_drag_veto()
-        with self._ignore_doc_splitter_events():
-            self.doc_splitter.SetSashPosition(width, True)
+        self._apply_doc_tree_width(width)
         self._update_doc_tree_toggle_state()
         self.doc_tree_container.Layout()
         self.doc_splitter.Layout()
-        refresh_splitter_highlight(self.doc_splitter)
         if update_config:
-            self._doc_tree_saved_sash = width
+            self._doc_tree_saved_width = width
             self.config.set_doc_tree_collapsed(False)
 
     def _collapsed_doc_tree_width(self) -> int:
@@ -651,33 +648,6 @@ class MainFrame(wx.Frame):
 
         self._expand_doc_tree(update_config=True)
 
-    def _bind_doc_splitter_drag_veto(self) -> None:
-        """Prevent the hierarchy splitter sash from being dragged when hidden."""
-
-        if self._doc_tree_sash_veto_bound:
-            return
-        self.doc_splitter.Bind(
-            wx.EVT_SPLITTER_SASH_POS_CHANGING,
-            self._prevent_doc_splitter_drag,
-        )
-        self._doc_tree_sash_veto_bound = True
-
-    def _unbind_doc_splitter_drag_veto(self) -> None:
-        """Re-enable sash dragging once the hierarchy pane is visible."""
-
-        if not self._doc_tree_sash_veto_bound:
-            return
-        self.doc_splitter.Unbind(
-            wx.EVT_SPLITTER_SASH_POS_CHANGING,
-            handler=self._prevent_doc_splitter_drag,
-        )
-        self._doc_tree_sash_veto_bound = False
-
-    def _prevent_doc_splitter_drag(self, event: wx.SplitterEvent) -> None:
-        """Veto sash movements while the hierarchy pane is collapsed."""
-
-        event.Veto()
-
     def _update_doc_tree_toggle_state(self) -> None:
         """Synchronize toggle labels, tooltips, and state."""
 
@@ -704,32 +674,6 @@ class MainFrame(wx.Frame):
                 self._doc_tree_placeholder_button.SetLabel(expand_label)
                 self._doc_tree_placeholder_button.SetToolTip(_("Show hierarchy"))
         self.doc_tree_toggle.Refresh()
-
-    def _desired_doc_tree_sash(self) -> int:
-        """Clamp saved sash position to current splitter dimensions."""
-
-        saved = max(self._doc_tree_saved_sash, self._doc_tree_min_pane)
-        width = self.doc_splitter.GetClientSize().width
-        if width <= 0:
-            width = self.agent_splitter.GetClientSize().width
-        if width <= 0:
-            width = self.GetClientSize().width
-        if width <= 0:
-            width = saved
-        max_left = max(width - self._doc_tree_min_pane, self._doc_tree_min_pane)
-        return max(self._doc_tree_min_pane, min(saved, max_left))
-
-    def _on_doc_splitter_sash_changed(self, event: wx.SplitterEvent) -> None:
-        """Remember latest sash position when the tree pane is visible."""
-
-        event.Skip()
-        if self._doc_splitter_guard.active:
-            return
-        if self._doc_tree_collapsed:
-            return
-        pos = event.GetSashPosition()
-        if pos > 0:
-            self._doc_tree_saved_sash = pos
 
     def _show_editor_panel(self) -> None:
         """Display the editor section alongside its container."""
@@ -1782,8 +1726,9 @@ class MainFrame(wx.Frame):
             self.log_menu_item,
             editor_splitter=self.splitter,
         )
-        self._doc_tree_saved_sash = self.config.get_doc_tree_saved_sash(
-            self.doc_splitter.GetSashPosition()
+        default_tree_width = max(self._doc_tree_saved_width, self._doc_tree_min_pane)
+        self._doc_tree_saved_width = self.config.get_doc_tree_saved_sash(
+            default_tree_width
         )
         self._agent_saved_sash = self.config.get_agent_chat_sash(
             self._default_agent_chat_sash()
@@ -1820,6 +1765,13 @@ class MainFrame(wx.Frame):
 
     def _save_layout(self) -> None:
         """Persist window geometry, splitter, console, and column widths."""
+        doc_tree_width = self._doc_tree_saved_width
+        if not self._doc_tree_collapsed and self.doc_splitter.IsSplit():
+            current = self._current_doc_tree_width()
+            if current > 0:
+                doc_tree_width = current
+                self._doc_tree_saved_width = current
+
         self.config.save_layout(
             self,
             self.doc_splitter,
@@ -1828,7 +1780,7 @@ class MainFrame(wx.Frame):
             editor_splitter=self.splitter,
             agent_splitter=self.agent_splitter,
             doc_tree_collapsed=self._doc_tree_collapsed,
-            doc_tree_expanded_sash=self._doc_tree_saved_sash,
+            doc_tree_expanded_sash=doc_tree_width,
             agent_chat_sash=self._agent_saved_sash,
             agent_history_sash=self.agent_panel.history_sash,
         )

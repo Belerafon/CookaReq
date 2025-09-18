@@ -77,6 +77,9 @@ def _recent_dirs_factory(tmp_path):
         ("log_sash", 300),
         ("log_level", logging.INFO),
         ("log_shown", False),
+        ("agent_chat_sash", 400),
+        ("agent_chat_shown", False),
+        ("agent_history_sash", 320),
         ("win_w", 800),
         ("editor_sash_pos", 600),
         ("editor_shown", True),
@@ -297,6 +300,40 @@ def test_save_layout_tracks_doc_tree_collapse(tmp_path, wx_app):
     )
 
     assert new_doc_splitter.GetSashPosition() == 240
+
+
+def test_save_layout_tracks_agent_history(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg_agent.ini")
+
+    frame = wx.Frame(None)
+    main_splitter = wx.SplitterWindow(frame)
+    doc_splitter = wx.SplitterWindow(main_splitter)
+    agent_splitter = wx.SplitterWindow(doc_splitter)
+    doc_splitter.SplitVertically(wx.Panel(doc_splitter), agent_splitter)
+    panel = DummyListPanel()
+
+    frame.SetSize((900, 700))
+    agent_splitter.SplitVertically(wx.Panel(agent_splitter), wx.Panel(agent_splitter), 360)
+
+    cfg.save_layout(
+        frame,
+        doc_splitter,
+        main_splitter,
+        panel,
+        agent_splitter=agent_splitter,
+        agent_chat_sash=360,
+        agent_history_sash=280,
+    )
+
+    assert cfg.get_agent_chat_shown() is True
+    assert cfg.get_agent_chat_sash(10) == 360
+    assert cfg.get_agent_history_sash(10) == 280
+
+    cfg.set_agent_history_sash(300)
+    assert cfg.get_agent_history_sash(0) == 300
+
+    frame.Destroy()
 
 
 def test_app_settings_round_trip(tmp_path, wx_app):

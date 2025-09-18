@@ -92,6 +92,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
         enable_double_buffer(self.list)
+        self._apply_text_palette()
         self._set_subitem_image_style(False)
         self._labels: list[LabelDef] = []
         self.current_filters: dict = {}
@@ -268,6 +269,35 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             return
         with suppress(Exception):  # pragma: no cover - backend quirks
             self.list.SetExtraStyle(desired)
+
+    def _apply_text_palette(self) -> None:
+        """Align list text colours with the system palette."""
+
+        system_settings = getattr(wx, "SystemSettings", None)
+        sys_text_colour = getattr(wx, "SYS_COLOUR_WINDOWTEXT", None)
+        if system_settings is None or sys_text_colour is None:
+            return
+        getter = getattr(system_settings, "GetColour", None)
+        if not callable(getter):
+            return
+        try:
+            colour = getter(sys_text_colour)
+        except Exception:
+            return
+        if colour is None:
+            return
+        if hasattr(colour, "IsOk"):
+            try:
+                if not colour.IsOk():
+                    return
+            except Exception:
+                return
+        if hasattr(self.list, "SetTextColour"):
+            with suppress(Exception):
+                self.list.SetTextColour(colour)
+        if hasattr(self.list, "SetForegroundColour"):
+            with suppress(Exception):
+                self.list.SetForegroundColour(colour)
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields.
@@ -496,61 +526,92 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _refresh(self) -> None:
         """Reload list control from the model."""
-        items = self.model.get_visible()
-        self.list.DeleteAllItems()
-        for req in items:
-            index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
-            # Windows ListCtrl may still assign image 0; clear explicitly
-            if hasattr(self.list, "SetItemImage"):
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
-            req_id = getattr(req, "id", 0)
+        items = list(self.model.get_visible())
+        freeze = getattr(self.list, "Freeze", None)
+        thaw = getattr(self.list, "Thaw", None)
+        thaw_needed = False
+        if callable(freeze):
             try:
-                self.list.SetItemData(index, int(req_id))
+                freeze()
+                thaw_needed = True
             except Exception:
-                self.list.SetItemData(index, 0)
-            for col, field in enumerate(self._field_order):
-                if field == "title":
-                    title = getattr(req, "title", "")
-                    derived = bool(getattr(req, "links", []))
-                    display = f"↳ {title}".strip() if derived else title
-                    self.list.SetItem(index, col, display)
-                    continue
-                if field == "labels":
-                    value = [str(lbl) for lbl in getattr(req, "labels", [])]
-                    self._set_label_text(index, col, value)
-                    continue
-                if field == "derived_from":
-                    value = self._first_parent_text(req)
-                    self.list.SetItem(index, col, value)
-                    continue
-                if field == "links":
-                    links = getattr(req, "links", [])
-                    formatted: list[str] = []
-                    for link in links:
-                        rid = getattr(link, "rid", str(link))
-                        if getattr(link, "suspect", False):
-                            formatted.append(f"{rid} ⚠")
-                        else:
-                            formatted.append(str(rid))
-                    value = ", ".join(formatted)
-                    self.list.SetItem(index, col, value)
-                    continue
-                if field == "derived_count":
-                    rid = req.rid or str(req.id)
-                    count = len(self.derived_map.get(rid, []))
-                    self.list.SetItem(index, col, str(count))
-                    continue
-                if field == "attachments":
-                    value = ", ".join(
-                        getattr(a, "path", "") for a in getattr(req, "attachments", [])
-                    )
-                    self.list.SetItem(index, col, value)
-                    continue
-                value = getattr(req, field, "")
-                if isinstance(value, Enum):
-                    value = locale.code_to_label(field, value.value)
-                self.list.SetItem(index, col, str(value))
+                thaw_needed = False
+        try:
+            self.list.DeleteAllItems()
+            for req in items:
+                index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
+                # Windows ListCtrl may still assign image 0; clear explicitly
+                if hasattr(self.list, "SetItemImage"):
+                    with suppress(Exception):
+                        self.list.SetItemImage(index, -1)
+                req_id = getattr(req, "id", 0)
+                try:
+                    self.list.SetItemData(index, int(req_id))
+                except Exception:
+                    self.list.SetItemData(index, 0)
+                for col, field in enumerate(self._field_order):
+                    if field == "title":
+                        title = getattr(req, "title", "")
+                        derived = bool(getattr(req, "links", []))
+                        display = f"↳ {title}".strip() if derived else title
+                        self.list.SetItem(index, col, display)
+                        continue
+                    if field == "labels":
+                        value = [str(lbl) for lbl in getattr(req, "labels", [])]
+                        self._set_label_text(index, col, value)
+                        continue
+                    if field == "derived_from":
+                        value = self._first_parent_text(req)
+                        self.list.SetItem(index, col, value)
+                        continue
+                    if field == "links":
+                        links = getattr(req, "links", [])
+                        formatted: list[str] = []
+                        for link in links:
+                            rid = getattr(link, "rid", str(link))
+                            if getattr(link, "suspect", False):
+                                formatted.append(f"{rid} ⚠")
+                            else:
+                                formatted.append(str(rid))
+                        value = ", ".join(formatted)
+                        self.list.SetItem(index, col, value)
+                        continue
+                    if field == "derived_count":
+                        rid = req.rid or str(req.id)
+                        count = len(self.derived_map.get(rid, []))
+                        self.list.SetItem(index, col, str(count))
+                        continue
+                    if field == "attachments":
+                        value = ", ".join(
+                            getattr(a, "path", "")
+                            for a in getattr(req, "attachments", [])
+                        )
+                        self.list.SetItem(index, col, value)
+                        continue
+                    value = getattr(req, field, "")
+                    if isinstance(value, Enum):
+                        value = locale.code_to_label(field, value.value)
+                    self.list.SetItem(index, col, str(value))
+        finally:
+            if thaw_needed and callable(thaw):
+                with suppress(Exception):
+                    thaw()
+        self._request_list_redraw(len(items))
+
+    def _request_list_redraw(self, item_count: int) -> None:
+        """Force repaint of the list control after bulk updates."""
+
+        refresh_items = getattr(self.list, "RefreshItems", None)
+        if item_count > 0 and callable(refresh_items):
+            try:
+                refresh_items(0, max(0, item_count - 1))
+                return
+            except Exception:
+                pass
+        refresh = getattr(self.list, "Refresh", None)
+        if callable(refresh):
+            with suppress(Exception):
+                refresh()
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.

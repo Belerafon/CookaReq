@@ -76,6 +76,26 @@ def test_list_panel_avoids_subitem_images_style(wx_app):
     frame.Destroy()
 
 
+def test_list_panel_uses_system_text_colour(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+
+    if hasattr(panel.list, "GetTextColour"):
+        expected = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT)
+        actual = panel.list.GetTextColour()
+        if hasattr(expected, "Get") and hasattr(actual, "Get"):
+            assert actual.Get() == expected.Get()
+        else:
+            assert actual == expected
+    frame.Destroy()
+
+
 def test_reset_button_visibility_gui(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

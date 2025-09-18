@@ -23,6 +23,9 @@ class FailingLLM:
     def check_llm(self):
         raise RuntimeError("llm failure")
 
+    def respond(self, conversation):  # pragma: no cover - sanity guard
+        raise AssertionError("respond should not be called in this test")
+
 
 class FailingMCP:
     def check_tools(self):
@@ -33,16 +36,25 @@ class FailingMCP:
 
 
 class DummyMCP:
+    def check_tools(self):
+        return {"ok": True, "error": None}
+
     def call_tool(self, name, arguments):
         raise AssertionError("should not be called")
 
 
 class JSONFailingLLM:
+    def check_llm(self):
+        return {"ok": True}
+
     def respond(self, conversation):
         raise json.JSONDecodeError("Expecting value", "", 0)
 
 
 class OpenAINetworkLLM:
+    def check_llm(self):
+        return {"ok": True}
+
     def respond(self, conversation):
         request = httpx.Request("GET", "https://example.com")
         raise openai.APIConnectionError(
@@ -79,6 +91,9 @@ def test_run_command_reports_internal_error_for_openai_failure():
 
 def test_run_command_propagates_mcp_exception():
     class ToolCallingLLM:
+        def check_llm(self):
+            return {"ok": True}
+
         def respond(self, conversation):
             return LLMResponse(
                 content="",
@@ -96,6 +111,9 @@ def test_run_command_propagates_mcp_exception():
 
 def test_run_command_aborts_when_mcp_unavailable():
     class ToolCallingLLM:
+        def check_llm(self):
+            return {"ok": True}
+
         def respond(self, conversation):
             return LLMResponse(
                 "",
@@ -114,6 +132,9 @@ def test_run_command_aborts_when_mcp_unavailable():
     class UnavailableMCP:
         def __init__(self) -> None:
             self.ensure_calls = 0
+
+        def check_tools(self):
+            return {"ok": False, "error": None}
 
         def ensure_ready(self) -> None:
             self.ensure_calls += 1
@@ -144,6 +165,9 @@ def test_run_command_executes_tool_and_returns_final_message():
             self.calls = 0
             self.last_conversation: list[dict[str, Any]] | None = None
 
+        def check_llm(self):
+            return {"ok": True}
+
         def respond(self, conversation):
             self.calls += 1
             if self.calls == 1:
@@ -163,6 +187,9 @@ def test_run_command_executes_tool_and_returns_final_message():
     class RecordingMCP:
         def __init__(self) -> None:
             self.calls: list[tuple[str, Mapping[str, Any]]] = []
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
 
         def call_tool(self, name, arguments):
             self.calls.append((name, dict(arguments)))
@@ -196,6 +223,9 @@ def test_run_command_executes_tool_and_returns_final_message():
 
 def test_run_command_returns_tool_error_result():
     class ToolLLM:
+        def check_llm(self):
+            return {"ok": True}
+
         def respond(self, conversation):
             return LLMResponse(
                 "",
@@ -209,6 +239,9 @@ def test_run_command_returns_tool_error_result():
             )
 
     class ErrorMCP:
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
         def call_tool(self, name, arguments):
             return {
                 "ok": False,
@@ -232,6 +265,9 @@ def test_run_command_returns_message_without_mcp_call():
         def __init__(self) -> None:
             self.conversations: list[list[dict[str, Any]]] = []
 
+        def check_llm(self):
+            return {"ok": True}
+
         def respond(self, conversation):
             self.conversations.append(list(conversation))
             return LLMResponse("Привет!", ())
@@ -242,6 +278,9 @@ def test_run_command_returns_message_without_mcp_call():
     class RecordingMCP:
         def __init__(self) -> None:
             self.called = False
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
 
         def call_tool(self, name, arguments):
             self.called = True
@@ -272,11 +311,17 @@ def test_run_command_passes_history_to_llm():
         def __init__(self) -> None:
             self.conversations: list[list[dict[str, Any]]] = []
 
+        def check_llm(self):
+            return {"ok": True}
+
         def respond(self, conversation):
             self.conversations.append(list(conversation))
             return LLMResponse("Готово", ())
 
     class SilentMCP:
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
         def call_tool(self, name, arguments):
             raise AssertionError("tool should not be invoked")
 
@@ -311,6 +356,9 @@ def test_custom_confirm_message(monkeypatch):
         def __init__(self, settings):
             self._calls = 0
 
+        def check_llm(self):
+            return {"ok": True}
+
         def respond(self, conversation):
             self._calls += 1
             if self._calls == 1:
@@ -332,6 +380,9 @@ def test_custom_confirm_message(monkeypatch):
     class StubMCP:
         def __init__(self, settings, *, confirm):
             self.confirm = confirm
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
 
         def call_tool(self, name, arguments):
             if name in {"delete_requirement", "patch_requirement"}:

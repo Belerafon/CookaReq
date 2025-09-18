@@ -52,6 +52,10 @@ LLM_HELP: dict[str, str] = {
         "Maximum number of tokens returned by the model. Example: 4096\n"
         "Minimum allowed value is 1000 tokens; CookaReq defaults to 5000 when unset.",
     ),
+    "token_limit_parameter": _(
+        "Name of the completion parameter limiting response tokens. Example: max_output_tokens\n"
+        "Leave blank to omit the argument when the service chooses the limit itself.",
+    ),
     "timeout_minutes": _(
         "HTTP request timeout in minutes. Example: 1\n"
         "Optional; defaults to 60 minutes.",
@@ -139,6 +143,7 @@ class SettingsDialog(wx.Dialog):
         api_key: str,
         max_retries: int,
         max_output_tokens: int,
+        token_limit_parameter: str | None,
         timeout_minutes: int,
         stream: bool,
         auto_start: bool,
@@ -223,6 +228,12 @@ class SettingsDialog(wx.Dialog):
         if hasattr(self._max_output_tokens, "SetHint"):
             self._max_output_tokens.SetHint(str(DEFAULT_MAX_OUTPUT_TOKENS))
         self._max_output_tokens.Bind(wx.EVT_TEXT, self._on_max_output_tokens_changed)
+        self._token_limit_parameter = wx.TextCtrl(
+            llm,
+            value=token_limit_parameter or "",
+        )
+        if hasattr(self._token_limit_parameter, "SetHint"):
+            self._token_limit_parameter.SetHint(_("e.g. max_completion_tokens"))
         self._timeout = wx.SpinCtrl(llm, min=1, max=9999, initial=timeout_minutes)
         self._stream = wx.CheckBox(llm, label=_("Stream"))
         self._stream.SetValue(stream)
@@ -316,6 +327,25 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         llm_sizer.Add(tokens_sz, 0, wx.ALL | wx.EXPAND, 5)
+        token_param_sz = wx.BoxSizer(wx.HORIZONTAL)
+        token_param_sz.Add(
+            wx.StaticText(llm, label=_("Token parameter")),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            5,
+        )
+        token_param_sz.Add(self._token_limit_parameter, 1, wx.ALIGN_CENTER_VERTICAL)
+        token_param_sz.Add(
+            make_help_button(
+                llm,
+                LLM_HELP["token_limit_parameter"],
+                dialog_parent=self,
+            ),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        llm_sizer.Add(token_param_sz, 0, wx.ALL | wx.EXPAND, 5)
         timeout_sz = wx.BoxSizer(wx.HORIZONTAL)
         timeout_sz.Add(
             wx.StaticText(llm, label=_("Timeout (min)")),
@@ -610,6 +640,8 @@ class SettingsDialog(wx.Dialog):
             api_key=self._api_key.GetValue() or None,
             max_retries=self._max_retries.GetValue(),
             max_output_tokens=self._read_max_output_tokens(),
+            token_limit_parameter=self._token_limit_parameter.GetValue().strip()
+            or None,
             timeout_minutes=self._timeout.GetValue(),
             stream=self._stream.GetValue(),
         )
@@ -750,6 +782,7 @@ class SettingsDialog(wx.Dialog):
         str,
         int,
         int,
+        str,
         int,
         bool,
         str,
@@ -770,6 +803,7 @@ class SettingsDialog(wx.Dialog):
             self._api_key.GetValue(),
             self._max_retries.GetValue(),
             self._read_max_output_tokens(),
+            self._token_limit_parameter.GetValue().strip(),
             self._timeout.GetValue(),
             self._stream.GetValue(),
             self._auto_start.GetValue(),

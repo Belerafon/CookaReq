@@ -123,6 +123,7 @@ ConfigFieldName = Literal[
     "llm_api_key",
     "llm_max_retries",
     "llm_max_output_tokens",
+    "llm_token_limit_parameter",
     "llm_max_context_tokens",
     "llm_timeout_minutes",
     "llm_stream",
@@ -234,6 +235,13 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         key="llm_max_output_tokens",
         value_type=int,
         default=DEFAULT_MAX_OUTPUT_TOKENS,
+    ),
+    "llm_token_limit_parameter": FieldSpec(
+        key="llm_token_limit_parameter",
+        value_type=str | None,
+        default="max_output_tokens",
+        reader=_optional_string_reader,
+        writer=_optional_string_writer,
     ),
     "llm_max_context_tokens": FieldSpec(
         key="llm_max_context_tokens",
@@ -581,6 +589,7 @@ class ConfigManager:
             api_key=self.get_value("llm_api_key"),
             max_retries=self.get_value("llm_max_retries"),
             max_output_tokens=self.get_value("llm_max_output_tokens"),
+            token_limit_parameter=self.get_value("llm_token_limit_parameter"),
             max_context_tokens=self.get_value("llm_max_context_tokens"),
             timeout_minutes=self.get_value("llm_timeout_minutes"),
             stream=self.get_value("llm_stream"),
@@ -594,6 +603,9 @@ class ConfigManager:
         self.set_value("llm_api_key", settings.api_key)
         self.set_value("llm_max_retries", settings.max_retries)
         self.set_value("llm_max_output_tokens", settings.max_output_tokens)
+        self.set_value(
+            "llm_token_limit_parameter", settings.token_limit_parameter
+        )
         self.set_value("llm_max_context_tokens", settings.max_context_tokens)
         self.set_value("llm_timeout_minutes", settings.timeout_minutes)
         self.set_value("llm_stream", settings.stream)

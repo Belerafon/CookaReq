@@ -766,12 +766,12 @@ class ConfigManager:
         self.flush()
 
     def get_doc_tree_saved_sash(self, default: int) -> int:
-        """Return stored sash position used when the tree is expanded."""
+        """Return stored width used when the tree pane is expanded."""
 
         return self.get_value("doc_tree_saved_sash", default=default)
 
     def set_doc_tree_saved_sash(self, pos: int) -> None:
-        """Persist sash position used when restoring the tree pane."""
+        """Persist width used when restoring the tree pane."""
 
         self.set_value("doc_tree_saved_sash", pos)
         self.flush()

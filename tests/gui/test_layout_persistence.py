@@ -166,29 +166,3 @@ def test_splitter_widths_ignore_sash_offset(wx_app, tmp_path):
     assert history_widths[0] > 0
     assert doc_tree_widths == [doc_tree_widths[0]] * len(doc_tree_widths)
     assert history_widths == [history_widths[0]] * len(history_widths)
-
-
-def test_log_console_restores_with_visible_requirements(wx_app, tmp_path):
-    """Prevent log sash from collapsing the requirements list."""
-
-    config_path = tmp_path / "log.ini"
-    config = ConfigManager(path=config_path)
-    config.set_mcp_settings(MCPSettings(auto_start=False))
-    config.set_value("log_shown", True)
-    config.set_value("log_sash", 10)
-    frame = _open_frame(config_path, wx_app)
-    try:
-        top_height = frame.doc_splitter.GetSize().height
-        if top_height <= 0:
-            top_height = frame.doc_splitter.GetClientSize().height
-        list_height = frame.panel.list.GetClientSize().height
-        min_expected = frame.config.clamp_log_sash(
-            frame,
-            frame.main_splitter.GetClientSize().height or frame.GetClientSize().height,
-            10,
-        )
-        assert top_height >= min_expected
-        assert list_height >= max(frame.FromDIP(60), 40)
-    finally:
-        frame.Destroy()
-        wx_app.Yield()

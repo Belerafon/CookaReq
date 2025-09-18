@@ -169,17 +169,6 @@ class MainFrame(wx.Frame):
 
         # split horizontally: top is main content, bottom is log console
         self.main_splitter = wx.SplitterWindow(self)
-        try:
-            min_pane = self.FromDIP(120)
-        except Exception:
-            min_pane = 120
-        if not isinstance(min_pane, int):
-            try:
-                min_pane = int(min_pane)
-            except Exception:
-                min_pane = 120
-        self._log_splitter_min_height = max(min_pane, 80)
-        self.main_splitter.SetMinimumPaneSize(self._log_splitter_min_height)
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         self._doc_tree_min_pane = max(self.FromDIP(20), 1)
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
@@ -1567,24 +1556,20 @@ class MainFrame(wx.Frame):
     def on_toggle_log_console(self, _event: wx.CommandEvent) -> None:
         """Toggle visibility of log console panel."""
 
-        menu_item = self.navigation.log_menu_item
-        if menu_item is None:
-            return
-        if menu_item.IsChecked():
+        checked = self.navigation.log_menu_item.IsChecked()
+        if checked:
             sash = self.config.get_log_sash(self.GetClientSize().height - 150)
-            height = self.main_splitter.GetClientSize().height
-            if height <= 0:
-                height = self.GetClientSize().height
-            sash = self.config.clamp_log_sash(self, height, sash)
             self.log_panel.Show()
             self.main_splitter.SplitHorizontally(self.doc_splitter, self.log_panel, sash)
-            self.config.set_log_sash(sash)
         else:
             if self.main_splitter.IsSplit():
                 self.config.set_log_sash(self.main_splitter.GetSashPosition())
             self.main_splitter.Unsplit(self.log_panel)
             self.log_panel.Hide()
-        self.config.set_log_shown(menu_item.IsChecked())
+        self.config.set_log_shown(checked)
+        self._log_layout_snapshot(
+            "toggle_log_console -> {}".format("shown" if checked else "hidden")
+        )
 
     def on_toggle_agent_chat(self, _event: wx.CommandEvent | None) -> None:
         """Toggle agent chat panel visibility."""
@@ -1739,6 +1724,7 @@ class MainFrame(wx.Frame):
                 if self.agent_splitter.IsSplit():
                     self.agent_splitter.Unsplit(self.agent_container)
                 self._hide_agent_section()
+        self._log_layout_snapshot("after restore_layout")
 
     def _save_layout(self) -> None:
         """Persist window geometry, splitter, console, and column widths."""
@@ -1767,6 +1753,81 @@ class MainFrame(wx.Frame):
             doc_tree_expanded_sash=doc_tree_width,
             agent_chat_sash=agent_chat_width,
             agent_history_sash=self.agent_panel.history_sash,
+        )
+
+    def _log_layout_snapshot(self, reason: str) -> None:
+        """Log diagnostic information about current splitter geometry."""
+
+        if not logger.isEnabledFor(logging.INFO):
+            return
+
+        def _safe_size(widget: wx.Window | None, *, client: bool) -> tuple[int | None, int | None]:
+            if widget is None:
+                return (None, None)
+            getter = widget.GetClientSize if client else widget.GetSize
+            try:
+                size = getter()
+            except Exception:
+                return (None, None)
+            width = getattr(size, "width", None)
+            height = getattr(size, "height", None)
+            return (width, height)
+
+        def _safe_sash(splitter: wx.SplitterWindow | None) -> int | None:
+            if splitter is None:
+                return None
+            try:
+                if not splitter.IsSplit():
+                    return None
+            except Exception:
+                return None
+            try:
+                return splitter.GetSashPosition()
+            except Exception:
+                return None
+
+        frame_w, frame_h = _safe_size(self, client=False)
+        client_w, client_h = _safe_size(self, client=True)
+        doc_w, doc_h = _safe_size(self.doc_splitter, client=True)
+        log_w, log_h = _safe_size(self.log_panel, client=True)
+        list_container_w, list_container_h = _safe_size(self.list_container, client=True)
+        panel_list = getattr(self.panel, "list", None)
+        list_w, list_h = _safe_size(panel_list, client=True)
+        try:
+            list_items = panel_list.GetItemCount() if panel_list is not None else None
+        except Exception:
+            list_items = None
+        log_visible = False
+        try:
+            log_visible = bool(self.log_panel.IsShown())
+        except Exception:
+            log_visible = False
+        doc_sash = _safe_sash(self.doc_splitter)
+        main_sash = _safe_sash(self.main_splitter)
+        agent_sash = _safe_sash(self.agent_splitter)
+        logger.info(
+            "[layout-debug] %s: frame=%sx%s client=%sx%s main_sash=%s"
+            " doc_sash=%s agent_sash=%s log_visible=%s log_size=%sx%s"
+            " doc_size=%sx%s list_container_size=%sx%s list_size=%sx%s"
+            " list_items=%s",
+            reason,
+            frame_w,
+            frame_h,
+            client_w,
+            client_h,
+            main_sash,
+            doc_sash,
+            agent_sash,
+            log_visible,
+            log_w,
+            log_h,
+            doc_w,
+            doc_h,
+            list_container_w,
+            list_container_h,
+            list_w,
+            list_h,
+            list_items,
         )
 
     def register_auxiliary_frame(self, frame: wx.Frame) -> None:

@@ -20,6 +20,9 @@ from .settings import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 T = TypeVar("T")
 
 
@@ -778,59 +781,6 @@ class ConfigManager:
 
     # ------------------------------------------------------------------
     # layout helpers
-    def clamp_log_sash(
-        self, frame: wx.Frame, available_height: int, desired: int
-    ) -> int:
-        """Limit ``desired`` so the log console keeps usable proportions."""
-
-        try:
-            height = int(available_height)
-        except Exception:
-            height = 0
-        if height <= 0:
-            frame_size = frame.GetClientSize()
-            height = frame_size.height if frame_size.height > 0 else 1
-
-        converter = getattr(frame, "FromDIP", None)
-
-        def _dip(value: int, fallback: int) -> int:
-            if callable(converter):
-                try:
-                    converted = converter(value)
-                except Exception:
-                    converted = None
-                if converted is not None:
-                    try:
-                        converted_int = int(converted)
-                    except Exception:
-                        converted_int = None
-                    if converted_int is not None and converted_int > 0:
-                        return converted_int
-            return fallback
-
-        min_top = max(_dip(240, 240), height // 3, 120)
-        min_bottom = max(_dip(120, 120), 80)
-        total = min_top + min_bottom
-        if total > height:
-            if total <= 0:
-                min_top = max(height // 2, 1)
-                min_bottom = max(height - min_top, 1)
-            else:
-                scale = height / total
-                min_top = max(int(min_top * scale), 1)
-                min_bottom = max(height - min_top, 1)
-        max_top = height - min_bottom
-        if max_top <= 0:
-            max_top = height
-        min_top = max(1, min(min_top, max_top))
-        max_top = max(min_top, max_top)
-        try:
-            desired_int = int(desired)
-        except Exception:
-            desired_int = min_top
-        desired_int = max(min_top, min(desired_int, max_top))
-        return desired_int
-
     def restore_layout(
         self,
         frame: wx.Frame,
@@ -868,8 +818,8 @@ class ConfigManager:
         doc_splitter.SetSize(client_size)
         doc_min = max(doc_splitter.GetMinimumPaneSize(), 100)
         doc_max = max(client_size.width - doc_min, doc_min)
-        doc_sash = self.get_value("sash_pos")
-        doc_sash = max(doc_min, min(doc_sash, doc_max))
+        raw_doc_sash = self.get_value("sash_pos")
+        doc_sash = max(doc_min, min(raw_doc_sash, doc_max))
         doc_splitter.SetSashPosition(doc_sash)
         if editor_splitter is not None and editor_splitter.IsSplit():
             editor_default = editor_splitter.GetSashPosition()
@@ -886,20 +836,67 @@ class ConfigManager:
         panel.load_column_order(self)
         log_shown = self.get_value("log_shown")
         log_sash = self.get_value("log_sash", default=client_size.height - 150)
-        clamped_log_sash = self.clamp_log_sash(frame, client_size.height, log_sash)
-        if clamped_log_sash != log_sash:
-            self.set_value("log_sash", clamped_log_sash)
-            log_sash = clamped_log_sash
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "[layout-debug] restore_layout: window_size=%sx%s pos=(%s,%s)"
+                " client_size=%sx%s doc_sash_raw=%s clamp=[%s,%s]->%s"
+                " log_shown=%s log_sash=%s",
+                w,
+                h,
+                x,
+                y,
+                client_size.width,
+                client_size.height,
+                raw_doc_sash,
+                doc_min,
+                doc_max,
+                doc_sash,
+                log_shown,
+                log_sash,
+            )
         if log_shown:
             log_console.Show()
             main_splitter.SplitHorizontally(doc_splitter, log_console, log_sash)
             if log_menu_item:
                 log_menu_item.Check(True)
+            if logger.isEnabledFor(logging.INFO):
+                try:
+                    actual_sash = (
+                        main_splitter.GetSashPosition()
+                        if main_splitter.IsSplit()
+                        else None
+                    )
+                except Exception:
+                    actual_sash = None
+                try:
+                    top_height = doc_splitter.GetClientSize().height
+                except Exception:
+                    top_height = None
+                try:
+                    bottom_height = log_console.GetClientSize().height
+                except Exception:
+                    bottom_height = None
+                logger.info(
+                    "[layout-debug] restore_layout applied: log visible,"
+                    " main_splitter_sash=%s doc_height=%s log_height=%s",
+                    actual_sash,
+                    top_height,
+                    bottom_height,
+                )
         else:
             main_splitter.Initialize(doc_splitter)
             log_console.Hide()
             if log_menu_item:
                 log_menu_item.Check(False)
+            if logger.isEnabledFor(logging.INFO):
+                try:
+                    top_height = doc_splitter.GetClientSize().height
+                except Exception:
+                    top_height = None
+                logger.info(
+                    "[layout-debug] restore_layout applied: log hidden, doc_height=%s",
+                    top_height,
+                )
 
     def save_layout(
         self,

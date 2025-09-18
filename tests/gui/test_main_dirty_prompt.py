@@ -281,3 +281,40 @@ def test_requirement_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path
         assert frame.editor.fields["title"].GetValue() == "Dirty"
     finally:
         frame.Destroy()
+
+
+def test_close_requests_exit_main_loop(monkeypatch, wx_app, tmp_path):
+    pytest.importorskip("wx")
+
+    import wx
+
+    from app.config import ConfigManager
+    from app.settings import MCPSettings
+    from app.ui.main_frame import MainFrame
+    from app.ui.requirement_model import RequirementModel
+
+    config = ConfigManager(path=tmp_path / "config.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    frame = MainFrame(None, config=config, model=RequirementModel())
+    try:
+        class DummyApp:
+            def __init__(self) -> None:
+                self.exit_called = False
+
+            def ExitMainLoop(self) -> None:  # noqa: N802 - wx naming convention
+                self.exit_called = True
+
+            def IsMainLoopRunning(self) -> bool:  # noqa: N802 - wx naming convention
+                return True
+
+        dummy_app = DummyApp()
+        monkeypatch.setattr(wx, "GetApp", lambda: dummy_app)
+
+        frame._on_close(None)
+        wx_app.Yield()
+
+        assert dummy_app.exit_called is True
+    finally:
+        if not frame.IsBeingDeleted():
+            frame.Destroy()
+        wx_app.Yield()

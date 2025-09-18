@@ -1908,12 +1908,48 @@ class MainFrame(wx.Frame):
                 if not self.IsBeingDeleted():
                     logger.debug("Explicitly destroying MainFrame after close event")
                     self.Destroy()
+                self._request_exit_main_loop()
 
             wx.CallAfter(_finalize_close)
         else:
             logger.info("Shutdown sequence completed without wx event object")
             if not self.IsBeingDeleted():
                 self.Destroy()
+            self._request_exit_main_loop()
+
+    def _request_exit_main_loop(self) -> None:
+        """Ask wx to terminate the main loop if it is still running."""
+
+        app = wx.GetApp()
+        if not app:
+            logger.debug(
+                "Skipping wx main loop exit request: wx.GetApp() returned None",
+            )
+            return
+
+        exit_main_loop = getattr(app, "ExitMainLoop", None)
+        if not callable(exit_main_loop):
+            logger.debug(
+                "Skipping wx main loop exit request: ExitMainLoop not available",
+            )
+            return
+
+        is_running = getattr(app, "IsMainLoopRunning", None)
+        try:
+            if callable(is_running) and not is_running():
+                logger.debug(
+                    "Skipping wx main loop exit request: main loop already stopped",
+                )
+                return
+        except Exception:  # pragma: no cover - defensive guard around wx API
+            logger.exception("Failed to query wx main loop state before shutdown")
+
+        try:
+            exit_main_loop()
+        except Exception:  # pragma: no cover - wx implementations may vary
+            logger.exception("Failed to request wx main loop exit during shutdown")
+        else:
+            logger.debug("wx main loop exit requested")
 
     def _on_sort_changed(self, column: int, ascending: bool) -> None:
         if not self.remember_sort:

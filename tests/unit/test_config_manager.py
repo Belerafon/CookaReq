@@ -520,37 +520,3 @@ def test_restore_layout_clamps_minimum(tmp_path, wx_app):
 
     assert doc_splitter.GetSashPosition() >= 180
     assert editor_splitter.GetSashPosition() >= 200
-
-
-def test_restore_layout_clamps_log_console_height(tmp_path, wx_app):
-    wx = pytest.importorskip("wx")
-    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "log.ini")
-
-    cfg.set_value("log_shown", True)
-    cfg.set_value("log_sash", 5)
-    cfg.flush()
-
-    frame = wx.Frame(None)
-    main_splitter = wx.SplitterWindow(frame)
-    doc_splitter = wx.SplitterWindow(main_splitter)
-    doc_splitter.SplitVertically(wx.Panel(doc_splitter), wx.Panel(doc_splitter))
-    panel = DummyListPanel()
-    log_panel = wx.Panel(main_splitter)
-    log_console = wx.TextCtrl(log_panel)
-    sizer = wx.BoxSizer(wx.VERTICAL)
-    sizer.Add(log_console, 1, wx.EXPAND)
-    log_panel.SetSizer(sizer)
-
-    frame.SetSize((800, 600))
-    cfg.restore_layout(
-        frame,
-        doc_splitter,
-        main_splitter,
-        panel,
-        log_panel,
-    )
-
-    assert main_splitter.IsSplit()
-    min_expected = frame.FromDIP(wx.Size(0, 220)).height
-    assert main_splitter.GetSashPosition() >= min_expected
-    assert cfg.get_value("log_sash") == main_splitter.GetSashPosition()

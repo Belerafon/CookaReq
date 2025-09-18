@@ -598,6 +598,9 @@ msgstr "Отправить"
 msgid "Clear input"
 msgstr "Очистить ввод"
 
+msgid "Stop"
+msgstr "Стоп"
+
 msgid "Ready"
 msgstr "Готово"
 
@@ -606,6 +609,9 @@ msgstr "Ожидание ответа… {time} • {tokens:.2f} кток"
 
 msgid "Received response in {time} • {tokens:.2f} ktok"
 msgstr "Ответ получен за {time} • {tokens:.2f} кток"
+
+msgid "Generation cancelled"
+msgstr "Генерация остановлена"
 
 msgid "Start chatting with the agent to see responses here."
 msgstr "Начните чат с агентом, чтобы увидеть ответы здесь."

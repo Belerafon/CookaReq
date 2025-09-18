@@ -15,7 +15,7 @@ from ..core.model import Requirement
 from ..i18n import _
 from ..log import logger
 from . import locale
-from .helpers import dip, inherit_background
+from .helpers import dip, enable_double_buffer, inherit_background
 from .enums import ENUMS
 from .filter_dialog import FilterDialog
 from .requirement_model import RequirementModel
@@ -63,6 +63,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     ):
         """Initialize list view and controls for requirements."""
         wx.Panel.__init__(self, parent)
+        enable_double_buffer(self)
         inherit_background(self, parent)
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -90,6 +91,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         btn_row.Add(self.reset_btn, 0, right, vertical_pad)
         btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
+        enable_double_buffer(self.list)
         if hasattr(self.list, "SetExtraStyle"):
             extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
             if extra:

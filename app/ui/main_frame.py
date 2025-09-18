@@ -3,8 +3,7 @@
 import json
 import logging
 import weakref
-from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Sequence
 from dataclasses import fields, replace
 from importlib import resources
 from pathlib import Path
@@ -42,7 +41,7 @@ from .list_panel import ListPanel
 from .navigation import Navigation
 from .requirement_model import RequirementModel
 from .settings_dialog import SettingsDialog
-from .splitter_utils import SplitterEventBlocker, refresh_splitter_highlight, style_splitter
+from .splitter_utils import refresh_splitter_highlight, style_splitter
 from .widgets import SectionContainer
 
 
@@ -172,10 +171,8 @@ class MainFrame(wx.Frame):
         # split horizontally: top is main content, bottom is log console
         self.main_splitter = wx.SplitterWindow(self)
         style_splitter(self.main_splitter)
-        self._disable_splitter_unsplit(self.main_splitter)
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         style_splitter(self.doc_splitter)
-        self._disable_splitter_unsplit(self.doc_splitter)
         self._doc_tree_min_pane = max(self.FromDIP(20), 1)
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
         self._doc_tree_placeholder_width = self.FromDIP(20)
@@ -184,19 +181,12 @@ class MainFrame(wx.Frame):
         self._doc_tree_toggle_size: wx.Size | None = None
         self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
         style_splitter(self.agent_splitter)
-        self._disable_splitter_unsplit(self.agent_splitter)
-        self._agent_splitter_guard = SplitterEventBlocker()
         self.agent_splitter.SetMinimumPaneSize(280)
-        self.agent_splitter.Bind(
-            wx.EVT_SPLITTER_SASH_POS_CHANGED,
-            self._on_agent_splitter_sash_changed,
-        )
         self._agent_saved_sash = self.config.get_agent_chat_sash(
             self._default_agent_chat_sash()
         )
         self.splitter = wx.SplitterWindow(self.agent_splitter)
         style_splitter(self.splitter)
-        self._disable_splitter_unsplit(self.splitter)
         self.splitter.SetMinimumPaneSize(200)
         (
             self.doc_tree_container,
@@ -536,6 +526,22 @@ class MainFrame(wx.Frame):
             self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
             self.doc_splitter.SetSashPosition(target)
         self._doc_tree_saved_width = target
+
+    def _current_agent_splitter_width(self) -> int:
+        """Return the width of the primary pane in the agent splitter."""
+
+        width = 0
+        if self.agent_splitter.IsSplit():
+            primary = self.agent_splitter.GetWindow1()
+            if primary is not None:
+                width = primary.GetSize().width
+                if width <= 0:
+                    width = primary.GetClientSize().width
+        if width <= 0:
+            width = self._agent_saved_sash
+        if width <= 0:
+            width = self.agent_splitter.GetMinimumPaneSize()
+        return width
 
     def _collapse_doc_tree(self, *, update_config: bool) -> None:
         """Hide the tree while keeping the toggle handle accessible."""
@@ -1631,58 +1637,27 @@ class MainFrame(wx.Frame):
         desired = min(desired, max_left)
         return desired
 
-    @contextmanager
-    def _ignore_agent_splitter_events(self) -> Iterator[None]:
-        """Silence agent chat sash change handler during adjustments."""
-
-        with self._agent_splitter_guard.pause():
-            yield
-
-    def _desired_agent_chat_sash(self) -> int:
-        """Clamp saved agent chat sash to the available splitter width."""
-
-        saved = max(self._agent_saved_sash, self.agent_splitter.GetMinimumPaneSize())
-        width = self.agent_splitter.GetClientSize().width
-        if width <= 0:
-            width = self.doc_splitter.GetClientSize().width
-        if width <= 0:
-            width = self.GetClientSize().width
-        if width <= 0:
-            width = saved
-        min_size = max(self.agent_splitter.GetMinimumPaneSize(), 200)
-        max_left = max(width - min_size, min_size)
-        return max(min_size, min(saved, max_left))
-
-    def _on_agent_splitter_sash_changed(self, event: wx.SplitterEvent) -> None:
-        """Remember agent chat sash only when moved by the user."""
-
-        event.Skip()
-        if self._agent_splitter_guard.active:
-            return
-        pos = event.GetSashPosition()
-        if pos > 0:
-            self._agent_saved_sash = pos
-
     def _ensure_agent_chat_visible(self) -> None:
+        desired = self._agent_saved_sash
+        if desired <= 0:
+            desired = self._default_agent_chat_sash()
+        desired = max(desired, self.agent_splitter.GetMinimumPaneSize())
+        self._show_agent_section()
         if not self.agent_splitter.IsSplit():
-            desired = self._desired_agent_chat_sash()
-            self._show_agent_section()
-            with self._ignore_agent_splitter_events():
-                self.agent_splitter.SplitVertically(
-                    self.splitter,
-                    self.agent_container,
-                    desired,
-                )
+            self.agent_splitter.SplitVertically(
+                self.splitter,
+                self.agent_container,
+                desired,
+            )
         else:
-            desired = self._desired_agent_chat_sash()
-            with self._ignore_agent_splitter_events():
-                self.agent_splitter.SetSashPosition(desired)
-        self._agent_saved_sash = desired
+            self.agent_splitter.SetSashPosition(desired)
+        self._agent_saved_sash = self._current_agent_splitter_width()
         self.agent_panel.focus_input()
         self.config.set_agent_chat_shown(True)
 
     def _hide_agent_chat(self) -> None:
         if self.agent_splitter.IsSplit():
+            self._agent_saved_sash = self._current_agent_splitter_width()
             self.agent_splitter.Unsplit(self.agent_container)
         self._hide_agent_section()
         self.config.set_agent_chat_shown(False)
@@ -1747,16 +1722,16 @@ class MainFrame(wx.Frame):
         if self.agent_chat_menu_item:
             if self.config.get_agent_chat_shown():
                 self.agent_chat_menu_item.Check(True)
-                desired = self._desired_agent_chat_sash()
+                desired = self._agent_saved_sash
+                if desired <= 0:
+                    desired = self._default_agent_chat_sash()
                 self._show_agent_section()
-                with self._ignore_agent_splitter_events():
-                    self.agent_splitter.SplitVertically(
-                        self.splitter,
-                        self.agent_container,
-                        desired,
-                    )
-                self._agent_saved_sash = desired
-                refresh_splitter_highlight(self.agent_splitter)
+                self.agent_splitter.SplitVertically(
+                    self.splitter,
+                    self.agent_container,
+                    desired,
+                )
+                self._agent_saved_sash = self._current_agent_splitter_width()
             else:
                 self.agent_chat_menu_item.Check(False)
                 if self.agent_splitter.IsSplit():
@@ -1772,6 +1747,13 @@ class MainFrame(wx.Frame):
                 doc_tree_width = current
                 self._doc_tree_saved_width = current
 
+        agent_chat_width = self._agent_saved_sash
+        if self.agent_splitter.IsSplit():
+            current = self._current_agent_splitter_width()
+            if current > 0:
+                agent_chat_width = current
+                self._agent_saved_sash = current
+
         self.config.save_layout(
             self,
             self.doc_splitter,
@@ -1781,20 +1763,9 @@ class MainFrame(wx.Frame):
             agent_splitter=self.agent_splitter,
             doc_tree_collapsed=self._doc_tree_collapsed,
             doc_tree_expanded_sash=doc_tree_width,
-            agent_chat_sash=self._agent_saved_sash,
+            agent_chat_sash=agent_chat_width,
             agent_history_sash=self.agent_panel.history_sash,
         )
-
-    def _disable_splitter_unsplit(self, splitter: wx.SplitterWindow) -> None:
-        """Attach handlers preventing ``splitter`` from unsplitting on double click."""
-
-        splitter.Bind(wx.EVT_SPLITTER_DOUBLECLICKED, self._prevent_splitter_unsplit)
-        splitter.Bind(wx.EVT_SPLITTER_DCLICK, self._prevent_splitter_unsplit)
-
-    def _prevent_splitter_unsplit(self, event: wx.SplitterEvent) -> None:
-        """Block attempts to unsplit panes initiated by double clicks."""
-
-        event.Veto()
 
     def register_auxiliary_frame(self, frame: wx.Frame) -> None:
         """Track ``frame`` so it is destroyed during main window shutdown."""

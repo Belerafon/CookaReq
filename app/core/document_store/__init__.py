@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
-
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, List, Mapping
 
@@ -89,27 +87,12 @@ class Document:
         parent: str | None = None,
         labels: DocumentLabels | None = None,
         attributes: Mapping[str, Any] | None = None,
-        **legacy_kwargs: Any,
+        **extra: Any,
     ) -> None:
-        """Create a document definition.
+        """Create a document definition."""
 
-        Historically :class:`Document` accepted a ``digits`` parameter that
-        controlled zero padding of generated identifiers.  The current storage
-        format always serialises plain integers, so the parameter is ignored but
-        still accepted for backwards compatibility with cached GUI state and
-        older tests.
-        """
-
-        digits = legacy_kwargs.pop("digits", None)
-        if digits not in (None, ""):
-            warnings.warn(
-                "Document(digits=...) is ignored; identifiers are always stored "
-                "without leading zeros.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        if legacy_kwargs:
-            unexpected = ", ".join(sorted(legacy_kwargs))
+        if extra:
+            unexpected = ", ".join(sorted(extra))
             raise TypeError(f"unexpected keyword argument(s): {unexpected}")
 
         self.prefix = prefix

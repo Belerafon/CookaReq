@@ -200,15 +200,18 @@ def test_create_document_persists_configuration(tmp_path: Path) -> None:
     controller.load_documents()
     created = controller.create_document("SYS", "System")
     assert created.prefix == "SYS"
-    assert not hasattr(created, "digits")
     path = tmp_path / "SYS" / "document.json"
     assert path.is_file()
     stored = load_document(tmp_path / "SYS")
     assert stored.title == "System"
-    assert not hasattr(stored, "digits")
     with path.open(encoding="utf-8") as fh:
         data = json.load(fh)
-    assert "digits" not in data
+    assert data == {
+        "title": "System",
+        "parent": None,
+        "labels": {"allowFreeform": False, "defs": []},
+        "attributes": {},
+    }
 
 
 def test_create_document_with_parent(tmp_path: Path) -> None:
@@ -251,7 +254,6 @@ def test_rename_document_updates_metadata(tmp_path: Path) -> None:
     assert updated.title == "Updated"
     stored = load_document(tmp_path / "SYS")
     assert stored.title == "Updated"
-    assert not hasattr(stored, "digits")
 
 
 def test_rename_document_rejects_unknown(tmp_path: Path) -> None:

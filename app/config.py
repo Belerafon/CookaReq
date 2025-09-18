@@ -778,6 +778,59 @@ class ConfigManager:
 
     # ------------------------------------------------------------------
     # layout helpers
+    def clamp_log_sash(
+        self, frame: wx.Frame, available_height: int, desired: int
+    ) -> int:
+        """Limit ``desired`` so the log console keeps usable proportions."""
+
+        try:
+            height = int(available_height)
+        except Exception:
+            height = 0
+        if height <= 0:
+            frame_size = frame.GetClientSize()
+            height = frame_size.height if frame_size.height > 0 else 1
+
+        converter = getattr(frame, "FromDIP", None)
+
+        def _dip(value: int, fallback: int) -> int:
+            if callable(converter):
+                try:
+                    converted = converter(value)
+                except Exception:
+                    converted = None
+                if converted is not None:
+                    try:
+                        converted_int = int(converted)
+                    except Exception:
+                        converted_int = None
+                    if converted_int is not None and converted_int > 0:
+                        return converted_int
+            return fallback
+
+        min_top = max(_dip(240, 240), height // 3, 120)
+        min_bottom = max(_dip(120, 120), 80)
+        total = min_top + min_bottom
+        if total > height:
+            if total <= 0:
+                min_top = max(height // 2, 1)
+                min_bottom = max(height - min_top, 1)
+            else:
+                scale = height / total
+                min_top = max(int(min_top * scale), 1)
+                min_bottom = max(height - min_top, 1)
+        max_top = height - min_bottom
+        if max_top <= 0:
+            max_top = height
+        min_top = max(1, min(min_top, max_top))
+        max_top = max(min_top, max_top)
+        try:
+            desired_int = int(desired)
+        except Exception:
+            desired_int = min_top
+        desired_int = max(min_top, min(desired_int, max_top))
+        return desired_int
+
     def restore_layout(
         self,
         frame: wx.Frame,
@@ -833,6 +886,10 @@ class ConfigManager:
         panel.load_column_order(self)
         log_shown = self.get_value("log_shown")
         log_sash = self.get_value("log_sash", default=client_size.height - 150)
+        clamped_log_sash = self.clamp_log_sash(frame, client_size.height, log_sash)
+        if clamped_log_sash != log_sash:
+            self.set_value("log_sash", clamped_log_sash)
+            log_sash = clamped_log_sash
         if log_shown:
             log_console.Show()
             main_splitter.SplitHorizontally(doc_splitter, log_console, log_sash)

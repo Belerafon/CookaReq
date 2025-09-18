@@ -169,6 +169,17 @@ class MainFrame(wx.Frame):
 
         # split horizontally: top is main content, bottom is log console
         self.main_splitter = wx.SplitterWindow(self)
+        try:
+            min_pane = self.FromDIP(120)
+        except Exception:
+            min_pane = 120
+        if not isinstance(min_pane, int):
+            try:
+                min_pane = int(min_pane)
+            except Exception:
+                min_pane = 120
+        self._log_splitter_min_height = max(min_pane, 80)
+        self.main_splitter.SetMinimumPaneSize(self._log_splitter_min_height)
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         self._doc_tree_min_pane = max(self.FromDIP(20), 1)
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
@@ -1556,16 +1567,24 @@ class MainFrame(wx.Frame):
     def on_toggle_log_console(self, _event: wx.CommandEvent) -> None:
         """Toggle visibility of log console panel."""
 
-        if self.navigation.log_menu_item.IsChecked():
+        menu_item = self.navigation.log_menu_item
+        if menu_item is None:
+            return
+        if menu_item.IsChecked():
             sash = self.config.get_log_sash(self.GetClientSize().height - 150)
+            height = self.main_splitter.GetClientSize().height
+            if height <= 0:
+                height = self.GetClientSize().height
+            sash = self.config.clamp_log_sash(self, height, sash)
             self.log_panel.Show()
             self.main_splitter.SplitHorizontally(self.doc_splitter, self.log_panel, sash)
+            self.config.set_log_sash(sash)
         else:
             if self.main_splitter.IsSplit():
                 self.config.set_log_sash(self.main_splitter.GetSashPosition())
             self.main_splitter.Unsplit(self.log_panel)
             self.log_panel.Hide()
-        self.config.set_log_shown(self.navigation.log_menu_item.IsChecked())
+        self.config.set_log_shown(menu_item.IsChecked())
 
     def on_toggle_agent_chat(self, _event: wx.CommandEvent | None) -> None:
         """Toggle agent chat panel visibility."""

@@ -358,17 +358,21 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if include_labels:
             self.list.InsertColumn(0, _("Labels"))
             self._field_order.append("labels")
+            self._ensure_column_width(0, "labels")
             self.list.InsertColumn(1, _("Title"))
             self._field_order.append("title")
+            self._ensure_column_width(1, "title")
         else:
             self.list.InsertColumn(0, _("Title"))
             self._field_order.append("title")
+            self._ensure_column_width(0, "title")
         for field in self.columns:
             if field == "labels":
                 continue
             idx = self.list.GetColumnCount()
             self.list.InsertColumn(idx, locale.field_label(field))
             self._field_order.append(field)
+            self._ensure_column_width(idx, field)
         ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
         with suppress(Exception):  # remove mixin's default binding and use our own
             self.list.Unbind(wx.EVT_LIST_COL_CLICK)
@@ -405,6 +409,25 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if field in {"revision", "id", "doc_prefix", "derived_count"}:
             return 90
         return self.DEFAULT_COLUMN_WIDTH
+
+    def _ensure_column_width(self, column: int, field: str) -> None:
+        """Guarantee that a column has a reasonable starting width."""
+
+        getter = getattr(self.list, "GetColumnWidth", None)
+        setter = getattr(self.list, "SetColumnWidth", None)
+        if not callable(getter) or not callable(setter):
+            return
+        try:
+            current = getter(column)
+        except Exception:
+            current = 0
+        if current and current > 0:
+            return
+        width = self._default_column_width(field)
+        try:
+            setter(column, max(self.MIN_COL_WIDTH, width))
+        except Exception:
+            logger.debug("Failed to apply default width for column %s", field)
 
     def load_column_order(self, config: ConfigManager) -> None:
         """Restore column ordering from config."""
@@ -651,17 +674,39 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _request_list_redraw(self, item_count: int) -> None:
         """Force repaint of the list control after bulk updates."""
 
+        refresh_done = False
         refresh_items = getattr(self.list, "RefreshItems", None)
         if item_count > 0 and callable(refresh_items):
             try:
                 refresh_items(0, max(0, item_count - 1))
-                return
+                refresh_done = True
             except Exception:
-                pass
-        refresh = getattr(self.list, "Refresh", None)
-        if callable(refresh):
-            with suppress(Exception):
-                refresh()
+                logger.debug("ListCtrl.RefreshItems failed", exc_info=True)
+        if not refresh_done:
+            refresh = getattr(self.list, "Refresh", None)
+            if callable(refresh):
+                try:
+                    refresh()
+                    refresh_done = True
+                except Exception:
+                    logger.debug("ListCtrl.Refresh failed", exc_info=True)
+        update = getattr(self.list, "Update", None)
+        if callable(update):
+            def _apply_update() -> None:
+                try:
+                    update()
+                except Exception:
+                    logger.debug("ListCtrl.Update failed", exc_info=True)
+
+            call_after = getattr(wx, "CallAfter", None)
+            if callable(call_after):
+                try:
+                    call_after(_apply_update)
+                except Exception:
+                    logger.debug("wx.CallAfter failed", exc_info=True)
+                    _apply_update()
+            else:
+                _apply_update()
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.

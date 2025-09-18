@@ -260,6 +260,7 @@ def _build_wx_stub():
             self._text_colour = Colour(0, 0, 0)
             self._foreground_colour = Colour(0, 0, 0)
             self._background_colour = Colour(255, 255, 255)
+            self._update_calls = 0
 
         def InsertColumn(self, col, heading):
             if col >= len(self._cols):
@@ -368,7 +369,7 @@ def _build_wx_stub():
             self._refresh_items_calls.append((first, last))
 
         def Update(self):
-            pass
+            self._update_calls += 1
 
         def SetTextColour(self, colour):
             self._text_colour = colour
@@ -518,6 +519,7 @@ def _build_wx_stub():
         Config=Config,
         ContextMenuEvent=types.SimpleNamespace,
         ArtProvider=ArtProvider,
+        CallAfter=lambda func, *args, **kwargs: func(*args, **kwargs),
         Font=Font,
         Colour=Colour,
         Brush=Brush,

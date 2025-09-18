@@ -134,6 +134,107 @@ def test_debug_requirement_list_remains_static_when_main_changes(configured_fram
     wx_app.Yield()
 
 
+def test_debug_requirement_list_requests_immediate_update(
+    configured_frame, wx_app, monkeypatch
+):
+    """Debug list must request an immediate repaint after seeding data."""
+
+    base_cls = list_panel.wx.ListCtrl
+
+    class TrackingListCtrl(base_cls):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._refresh_records: list[tuple[str, tuple[int, int] | None]] = []
+            self._update_calls = 0
+
+        def Refresh(self):  # pragma: no cover - backend behaviour
+            self._refresh_records.append(("refresh", None))
+            return super().Refresh()
+
+        def RefreshItems(self, first, last):
+            self._refresh_records.append(("items", (first, last)))
+            return super().RefreshItems(first, last)
+
+        def Update(self):
+            self._update_calls += 1
+            return super().Update()
+
+    monkeypatch.setattr(list_panel.wx, "ListCtrl", TrackingListCtrl)
+
+    frame, _ = configured_frame("agent_debug_repaint.ini")
+    menu = frame.agent_chat_menu_item
+    assert menu is not None
+
+    menu.Check(True)
+    frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+    wx_app.Yield()
+
+    assert isinstance(frame.agent_panel.list, TrackingListCtrl)
+    debug_ctrl: TrackingListCtrl = frame.agent_panel.list
+    assert debug_ctrl._refresh_records, "Debug list refresh was never triggered"
+    assert (
+        debug_ctrl._update_calls >= 1
+    ), "Debug list never requested Update after refresh"
+
+    frame.Destroy()
+    wx_app.Yield()
+
+
+def test_debug_requirement_list_assigns_default_column_widths(
+    configured_frame, wx_app, monkeypatch
+):
+    """Debug list should assign meaningful widths to freshly created columns."""
+
+    base_cls = list_panel.wx.ListCtrl
+
+    class TrackingListCtrl(base_cls):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._set_column_width_calls: list[tuple[int, int]] = []
+            self._column_widths: dict[int, int] = {}
+
+        def SetColumnWidth(self, col, width):
+            self._set_column_width_calls.append((col, width))
+            self._column_widths[col] = width
+            try:
+                return super().SetColumnWidth(col, width)
+            except Exception:  # pragma: no cover - backend quirks
+                return None
+
+        def GetColumnWidth(self, col):
+            if col in self._column_widths:
+                return self._column_widths[col]
+            return 0
+
+    monkeypatch.setattr(list_panel.wx, "ListCtrl", TrackingListCtrl)
+
+    frame, _ = configured_frame("agent_debug_widths.ini")
+    menu = frame.agent_chat_menu_item
+    assert menu is not None
+
+    menu.Check(True)
+    frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+
+    assert isinstance(frame.agent_panel, list_panel.ListPanel)
+    debug_ctrl: TrackingListCtrl = frame.agent_panel.list
+
+    column_count = debug_ctrl.GetColumnCount()
+    assert column_count > 0
+
+    touched_columns = {col for col, _ in debug_ctrl._set_column_width_calls}
+    assert touched_columns.issuperset(
+        range(column_count)
+    ), "Not all debug list columns received a width"
+
+    for col, width in debug_ctrl._set_column_width_calls:
+        assert width >= list_panel.ListPanel.MIN_COL_WIDTH
+
+    frame.Destroy()
+    wx_app.Yield()
+
+
 def test_agent_chat_toggle_preserves_width(configured_frame, wx_app):
     """Showing and hiding agent chat keeps a consistent splitter width."""
 

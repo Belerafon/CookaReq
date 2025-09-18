@@ -60,6 +60,22 @@ def test_list_panel_real_widgets(wx_app):
     frame.Destroy()
 
 
+def test_list_panel_avoids_subitem_images_style(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    extra_flag = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
+    if extra_flag and hasattr(panel.list, "GetExtraStyle"):
+        assert panel.list.GetExtraStyle() & extra_flag == 0
+
+    frame.Destroy()
+
+
 def test_reset_button_visibility_gui(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

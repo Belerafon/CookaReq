@@ -92,11 +92,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
         enable_double_buffer(self.list)
-        if hasattr(self.list, "SetExtraStyle"):
-            extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
-            if extra:
-                with suppress(Exception):  # pragma: no cover - backend quirks
-                    self.list.SetExtraStyle(self.list.GetExtraStyle() | extra)
+        self._set_subitem_image_style(False)
         self._labels: list[LabelDef] = []
         self.current_filters: dict = {}
         self._rid_lookup: dict[str, Requirement] = {}
@@ -254,6 +250,24 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if hasattr(self.list, "SetItemImage"):
                 with suppress(Exception):
                     self.list.SetItemImage(index, -1)
+
+    def _set_subitem_image_style(self, enabled: bool) -> None:
+        """Toggle ``LC_EX_SUBITEMIMAGES`` based on the presence of image lists."""
+
+        if not hasattr(self.list, "SetExtraStyle") or not hasattr(self.list, "GetExtraStyle"):
+            return
+        extra_flag = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
+        if not extra_flag:
+            return
+        try:
+            current = self.list.GetExtraStyle()
+        except Exception:  # pragma: no cover - backend quirks
+            return
+        desired = (current | extra_flag) if enabled else (current & ~extra_flag)
+        if desired == current:
+            return
+        with suppress(Exception):  # pragma: no cover - backend quirks
+            self.list.SetExtraStyle(desired)
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields.

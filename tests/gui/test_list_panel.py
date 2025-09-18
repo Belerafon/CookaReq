@@ -221,6 +221,7 @@ def _build_wx_stub():
             self._item_images = []
             self._cells = {}
             self._col_widths = {}
+            self._extra_style = 0
 
         def InsertColumn(self, col, heading):
             if col >= len(self._cols):
@@ -291,6 +292,12 @@ def _build_wx_stub():
                 else self._col_images.get((index, col), -1)
             )
             return types.SimpleNamespace(GetText=lambda: text, GetImage=lambda: img)
+
+        def SetExtraStyle(self, style):
+            self._extra_style = style
+
+        def GetExtraStyle(self):
+            return self._extra_style
 
         def GetFont(self):
             return Font()
@@ -418,6 +425,7 @@ def _build_wx_stub():
         EXPAND=0,
         ALL=0,
         BU_EXACTFIT=0,
+        LC_EX_SUBITEMIMAGES=0x0001,
         ART_CLOSE="close",
         ART_BUTTON="button",
         OK=1,
@@ -511,6 +519,27 @@ def test_list_panel_has_filter_and_list(monkeypatch):
     inner = [child.GetWindow() for child in btn_row.GetChildren()]
     assert inner == [panel.filter_btn, panel.reset_btn, panel.filter_summary]
     assert children[1] is panel.list
+
+
+def test_list_panel_does_not_request_subitem_images(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
+
+    extra_flag = getattr(wx_stub, "LC_EX_SUBITEMIMAGES", 0)
+    assert extra_flag
+    assert panel.list.GetExtraStyle() & extra_flag == 0
 
 
 def test_column_click_sorts(monkeypatch):

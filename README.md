@@ -145,7 +145,7 @@ Execute the full suite with:
 pytest -q
 ```
 
-GUI tests use `pytest-xvfb`, so no display server is needed. For a quicker check run the smoke group:
+GUI tests use `pytest-xvfb`, so no display server is needed. Skip them with `pytest -q -m "not gui"` or focus on them via `pytest -q -m gui`. For a quicker check run the smoke group:
 
 ```bash
 pytest -m smoke -q

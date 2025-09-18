@@ -590,6 +590,9 @@ msgstr "Send"
 msgid "Clear input"
 msgstr "Clear input"
 
+msgid "Stop"
+msgstr "Stop"
+
 msgid "Ready"
 msgstr "Ready"
 
@@ -598,6 +601,9 @@ msgstr "Waiting for agent… {time} • {tokens:.2f} ktok"
 
 msgid "Received response in {time} • {tokens:.2f} ktok"
 msgstr "Received response in {time} • {tokens:.2f} ktok"
+
+msgid "Generation cancelled"
+msgstr "Generation cancelled"
 
 msgid "Start chatting with the agent to see responses here."
 msgstr "Start chatting with the agent to see responses here."

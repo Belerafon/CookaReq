@@ -7,6 +7,7 @@ import json
 import threading
 import time
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -16,6 +17,7 @@ from wx.lib.scrolledpanel import ScrolledPanel
 
 from ..i18n import _
 from ..util.json import make_json_safe
+from ..util.cancellation import CancellationTokenSource, OperationCancelledError
 from .chat_entry import ChatConversation, ChatEntry
 from .helpers import dip, format_error_message, inherit_background
 from .widgets.chat_message import TranscriptMessagePanel
@@ -77,6 +79,22 @@ class _TranscriptAccessor:
         return self._owner._compose_transcript_text()
 
 
+@dataclass(slots=True)
+class _AgentRunHandle:
+    """Track metadata for an in-flight agent invocation."""
+
+    run_id: int
+    prompt: str
+    cancellation: CancellationTokenSource
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self.cancellation.cancelled
+
+    def cancel(self) -> None:
+        self.cancellation.cancel()
+
+
 class AgentChatPanel(wx.Panel):
     """Interactive chat panel driving the :class:`LocalAgent`."""
 
@@ -102,9 +120,12 @@ class AgentChatPanel(wx.Panel):
         self._current_tokens: int = 0
         self._new_chat_btn: wx.Button | None = None
         self._clear_history_btn: wx.Button | None = None
+        self._stop_btn: wx.Button | None = None
         self._bottom_panel: wx.Panel | None = None
         self.transcript = _TranscriptAccessor()
         self._suppress_history_selection = False
+        self._run_counter = 0
+        self._active_run_handle: _AgentRunHandle | None = None
         self._load_history()
 
         self._build_ui()
@@ -214,14 +235,18 @@ class AgentChatPanel(wx.Panel):
         self.input.Bind(wx.EVT_TEXT_ENTER, self._on_send)
 
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self._send_btn = wx.Button(bottom_panel, label=_("Send"))
-        self._send_btn.Bind(wx.EVT_BUTTON, self._on_send)
         self._clear_history_btn = wx.Button(bottom_panel, label=_("Delete chat"))
         self._clear_history_btn.Bind(wx.EVT_BUTTON, self._on_clear_history)
         clear_btn = wx.Button(bottom_panel, label=_("Clear input"))
         clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_input)
+        self._stop_btn = wx.Button(bottom_panel, label=_("Stop"))
+        self._stop_btn.Bind(wx.EVT_BUTTON, self._on_stop)
+        self._stop_btn.Enable(False)
+        self._send_btn = wx.Button(bottom_panel, label=_("Send"))
+        self._send_btn.Bind(wx.EVT_BUTTON, self._on_send)
         button_sizer.Add(self._clear_history_btn, 0, wx.RIGHT, spacing)
         button_sizer.Add(clear_btn, 0, wx.RIGHT, spacing)
+        button_sizer.Add(self._stop_btn, 0, wx.RIGHT, spacing)
         button_sizer.Add(self._send_btn, 0)
 
         status_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -336,6 +361,14 @@ class AgentChatPanel(wx.Panel):
 
         prompt = text
         self.input.SetValue("")
+        self._run_counter += 1
+        cancellation = CancellationTokenSource()
+        handle = _AgentRunHandle(
+            run_id=self._run_counter,
+            prompt=prompt,
+            cancellation=cancellation,
+        )
+        self._active_run_handle = handle
         self._ensure_active_conversation()
         tokens = _token_count(prompt)
         history_messages = self._conversation_messages()
@@ -348,7 +381,13 @@ class AgentChatPanel(wx.Panel):
         def worker() -> Any:
             try:
                 agent = self._agent_supplier()
-                return agent.run_command(prompt, history=history_messages)
+                return agent.run_command(
+                    prompt,
+                    history=history_messages,
+                    cancellation=handle.cancellation.token,
+                )
+            except OperationCancelledError:
+                raise
             except Exception as exc:  # pragma: no cover - defensive
                 return {
                     "ok": False,
@@ -359,18 +398,31 @@ class AgentChatPanel(wx.Panel):
             # In live GUI sessions we offload the work to a background thread and
             # marshal the result back to the UI thread via ``wx.CallAfter`` so the
             # interface stays responsive.
-            def async_runner() -> None:
-                result = worker()
-                wx.CallAfter(self._finalize_prompt, prompt, result)
+            def async_runner(current_handle: _AgentRunHandle) -> None:
+                try:
+                    result = worker()
+                except OperationCancelledError:
+                    return
+                if current_handle.is_cancelled:
+                    return
+                wx.CallAfter(self._finalize_prompt, prompt, result, current_handle)
 
-            thread = threading.Thread(target=async_runner, daemon=True)
+            thread = threading.Thread(
+                target=async_runner,
+                args=(handle,),
+                daemon=True,
+            )
             thread.start()
         else:
             # When the main loop is not running (typical for unit tests) we are free
             # to execute synchronously: no GUI events are pending and the tests
             # expect deterministic completion before assertions run.
-            result = worker()
-            self._finalize_prompt(prompt, result)
+            try:
+                result = worker()
+            except OperationCancelledError:
+                return
+            if not handle.is_cancelled:
+                self._finalize_prompt(prompt, result, handle)
 
     def _on_clear_input(self, _event: wx.Event) -> None:
         """Clear input field and reset selection."""
@@ -417,6 +469,20 @@ class AgentChatPanel(wx.Panel):
             self._activate_conversation_by_index(index)
         event.Skip()
 
+    def _on_stop(self, _event: wx.Event) -> None:
+        """Cancel the in-flight agent request, if any."""
+
+        handle = self._active_run_handle
+        if handle is None:
+            return
+        handle.cancel()
+        self._active_run_handle = None
+        self._set_wait_state(False)
+        self.status_label.SetLabel(_("Generation cancelled"))
+        self.input.SetValue(handle.prompt)
+        self.input.SetInsertionPointEnd()
+        self.input.SetFocus()
+
     # ------------------------------------------------------------------
     def _set_wait_state(self, active: bool, tokens: int = 0) -> None:
         """Enable or disable busy indicators."""
@@ -424,6 +490,8 @@ class AgentChatPanel(wx.Panel):
         self._is_running = active
         self._send_btn.Enable(not active)
         self.input.Enable(not active)
+        if self._stop_btn is not None:
+            self._stop_btn.Enable(active)
         self._update_history_controls()
         if active:
             self._current_tokens = tokens
@@ -471,9 +539,23 @@ class AgentChatPanel(wx.Panel):
         )
         self.status_label.SetLabel(label)
 
-    def _finalize_prompt(self, prompt: str, result: Any) -> None:
+    def _finalize_prompt(
+        self,
+        prompt: str,
+        result: Any,
+        handle: _AgentRunHandle,
+    ) -> None:
         """Render agent response and update history."""
 
+        if handle.is_cancelled:
+            return
+        if self._active_run_handle is handle:
+            self._active_run_handle = None
+        elapsed = (
+            time.monotonic() - self._start_time
+            if self._start_time is not None
+            else 0.0
+        )
         try:
             conversation_text, display_text, raw_result, tool_results = self._process_result(result)
             self._append_history(
@@ -485,11 +567,6 @@ class AgentChatPanel(wx.Panel):
             )
             self._render_transcript()
         finally:
-            elapsed = (
-                time.monotonic() - self._start_time
-                if self._start_time is not None
-                else 0.0
-            )
             self._set_wait_state(False)
             if elapsed:
                 minutes, seconds = divmod(int(elapsed), 60)

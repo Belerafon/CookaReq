@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import httpx
 
 from app.llm.client import LLMResponse, LLMToolCall, LLMClient, NO_API_KEY
 from app.llm.validation import ToolValidationError
@@ -16,6 +17,7 @@ from app.llm.spec import SYSTEM_PROMPT
 from app.log import logger
 from app.mcp.server import JsonlHandler
 from app.settings import LLMSettings
+from app.util.cancellation import CancellationTokenSource, OperationCancelledError
 from tests.llm_utils import make_openai_mock, settings_with_llm
 
 pytestmark = pytest.mark.integration
@@ -296,6 +298,79 @@ def test_parse_command_streaming_message(tmp_path: Path, monkeypatch) -> None:
     assert isinstance(response, LLMResponse)
     assert response.tool_calls == ()
     assert response.content == "Привет!"
+
+
+def test_streaming_cancellation_closes_stream(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    settings.llm.stream = True
+
+    class FakeStream:
+        def __init__(self) -> None:
+            self.started = threading.Event()
+            self.closed = threading.Event()
+            self.allow = threading.Event()
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            self.started.set()
+            while not self.closed.is_set():
+                if self.allow.wait(0.05):
+                    self.allow.clear()
+                    break
+            if self.closed.is_set():
+                raise httpx.ReadError("closed", request=None)
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        index=0,
+                        delta=SimpleNamespace(
+                            content=[{"type": "text", "text": "chunk"}],
+                            tool_calls=None,
+                        ),
+                    )
+                ]
+            )
+
+        def close(self) -> None:
+            self.closed.set()
+            self.allow.set()
+
+    class FakeOpenAI:
+        def __init__(self, *args, **kwargs):  # pragma: no cover - simple container
+            self.stream = FakeStream()
+
+            def create(**_kwargs):  # noqa: ANN001
+                return self.stream
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    fake_client = client._client  # type: ignore[attr-defined]
+    stream: FakeStream = fake_client.stream  # type: ignore[assignment]
+    cancellation = CancellationTokenSource()
+    result: dict[str, object] = {}
+
+    def target() -> None:
+        try:
+            client.respond([], cancellation=cancellation.token)
+        except Exception as exc:  # pragma: no cover - thread propagation
+            result["exc"] = exc
+
+    worker = threading.Thread(target=target)
+    worker.start()
+
+    assert stream.started.wait(1.0)
+    cancellation.cancel()
+    worker.join(timeout=1.0)
+    assert not worker.is_alive()
+
+    assert stream.closed.is_set()
+    assert isinstance(result.get("exc"), OperationCancelledError)
 
 
 def test_parse_command_trims_history_by_tokens(tmp_path: Path, monkeypatch) -> None:

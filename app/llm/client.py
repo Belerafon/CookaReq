@@ -6,9 +6,11 @@ import asyncio
 import inspect
 import json
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+
+import httpx
 
 from ..settings import LLMSettings
 from .constants import (
@@ -21,6 +23,11 @@ from .constants import (
 # подменять ``openai.OpenAI`` до первого использования и тем самым избежать
 # реальных сетевых запросов.
 from ..telemetry import log_debug_payload, log_event
+from ..util.cancellation import (
+    CancellationRegistration,
+    CancellationToken,
+    OperationCancelledError,
+)
 from .spec import SYSTEM_PROMPT, TOOLS
 from .validation import ToolValidationError, validate_tool_call
 
@@ -92,6 +99,7 @@ class LLMClient:
         text: str,
         *,
         history: Sequence[Mapping[str, Any]] | None = None,
+        cancellation: CancellationToken | None = None,
     ) -> LLMResponse:
         """Interpret *text* into an assistant reply with optional tool calls.
 
@@ -102,34 +110,49 @@ class LLMClient:
 
         conversation: list[Mapping[str, Any]] = list(history or [])
         conversation.append({"role": "user", "content": text})
-        return self.respond(conversation)
+        return self.respond(conversation, cancellation=cancellation)
 
     async def parse_command_async(
         self,
         text: str,
         *,
         history: Sequence[Mapping[str, Any]] | None = None,
+        cancellation: CancellationToken | None = None,
     ) -> LLMResponse:
         """Asynchronous counterpart to :meth:`parse_command`."""
 
         conversation: list[Mapping[str, Any]] = list(history or [])
         conversation.append({"role": "user", "content": text})
-        return await self.respond_async(conversation)
+        return await self.respond_async(
+            conversation, cancellation=cancellation
+        )
 
     # ------------------------------------------------------------------
     def respond(
-        self, conversation: Sequence[Mapping[str, Any]] | None
+        self,
+        conversation: Sequence[Mapping[str, Any]] | None,
+        *,
+        cancellation: CancellationToken | None = None,
     ) -> LLMResponse:
         """Send the full *conversation* to the model and return its reply."""
 
-        return self._respond(list(conversation or []))
+        return self._respond(
+            list(conversation or []), cancellation=cancellation
+        )
 
     async def respond_async(
-        self, conversation: Sequence[Mapping[str, Any]] | None
+        self,
+        conversation: Sequence[Mapping[str, Any]] | None,
+        *,
+        cancellation: CancellationToken | None = None,
     ) -> LLMResponse:
         """Asynchronous counterpart to :meth:`respond`."""
 
-        return await asyncio.to_thread(self._respond, list(conversation or []))
+        return await asyncio.to_thread(
+            self._respond,
+            list(conversation or []),
+            cancellation=cancellation,
+        )
 
     # ------------------------------------------------------------------
     def _detect_token_param_candidates(self) -> list[str]:
@@ -307,13 +330,17 @@ class LLMClient:
 
     # ------------------------------------------------------------------
     def _respond(
-        self, conversation: Sequence[Mapping[str, Any]]
+        self,
+        conversation: Sequence[Mapping[str, Any]],
+        *,
+        cancellation: CancellationToken | None = None,
     ) -> LLMResponse:
         """Implementation shared by sync and async response helpers."""
 
         max_output_tokens = self._resolved_max_output_tokens()
         token_param = self._current_token_param()
         messages = self._prepare_messages(conversation)
+        use_stream = bool(cancellation) or self.settings.stream
         payload = {
             "base_url": self.settings.base_url,
             "model": self.settings.model,
@@ -322,7 +349,7 @@ class LLMClient:
             "tools": TOOLS,
             "temperature": 0,
             "max_output_tokens": max_output_tokens,
-            "stream": self.settings.stream,
+            "stream": use_stream,
             "token_parameter": token_param,
         }
         start = time.monotonic()
@@ -334,56 +361,13 @@ class LLMClient:
                 messages=messages,
                 tools=payload["tools"],
                 temperature=0,
-                stream=self.settings.stream,
+                stream=use_stream,
             )
-            if self.settings.stream:
-                message_parts: list[str] = []
-                tool_chunks: dict[str, dict[str, str]] = {}
-                tool_order: list[str] = []
-                for chunk in completion:  # pragma: no cover - network/streaming
-                    delta = chunk.choices[0].delta
-                    tool_calls_delta = getattr(delta, "tool_calls", None)
-                    if tool_calls_delta:
-                        for tool_delta in tool_calls_delta:
-                            call_id = (
-                                getattr(tool_delta, "id", None)
-                                or getattr(tool_delta, "tool_call_id", None)
-                            )
-                            if not call_id:
-                                call_id = f"tool_call_{len(tool_order)}"
-                            if call_id not in tool_chunks:
-                                tool_chunks[call_id] = {"name": "", "arguments": ""}
-                                tool_order.append(call_id)
-                            fn = getattr(tool_delta, "function", None)
-                            if fn is not None:
-                                name = getattr(fn, "name", None)
-                                if name:
-                                    tool_chunks[call_id]["name"] = name
-                                args_fragment = getattr(fn, "arguments", None)
-                                if args_fragment:
-                                    tool_chunks[call_id]["arguments"] += args_fragment
-                    text = self._extract_message_content(
-                        getattr(delta, "content", None)
-                    )
-                    if text:
-                        message_parts.append(text)
-                raw_calls: list[dict[str, Any]] = []
-                for call_id in tool_order:
-                    data = tool_chunks[call_id]
-                    if not data["name"]:
-                        continue
-                    raw_calls.append(
-                        {
-                            "id": call_id,
-                            "type": "function",
-                            "function": {
-                                "name": data["name"],
-                                "arguments": data["arguments"],
-                            },
-                        }
-                    )
-                tool_calls = self._parse_tool_calls(raw_calls)
-                message_text = "".join(message_parts).strip()
+            if use_stream:
+                message_text, raw_tool_calls = self._consume_stream(
+                    completion, cancellation=cancellation
+                )
+                tool_calls = self._parse_tool_calls(raw_tool_calls)
             else:
                 choices = getattr(completion, "choices", None)
                 if not choices:
@@ -415,6 +399,17 @@ class LLMClient:
                 raise ToolValidationError(
                     "LLM response did not include a tool call or message",
                 )
+        except OperationCancelledError:
+            log_event(
+                "LLM_RESPONSE",
+                {"cancelled": True},
+                start_time=start,
+            )
+            log_debug_payload(
+                "LLM_RESPONSE",
+                {"direction": "inbound", "cancelled": True},
+            )
+            raise
         except Exception as exc:  # pragma: no cover - network errors
             log_event(
                 "LLM_RESPONSE",
@@ -453,6 +448,197 @@ class LLMClient:
                 content=response.content.strip(),
                 tool_calls=response.tool_calls,
             )
+
+    def _consume_stream(
+        self,
+        stream: Iterable[Any],
+        *,
+        cancellation: CancellationToken | None,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Read streaming response and return message text with raw tool calls."""
+
+        message_parts: list[str] = []
+        tool_chunks: dict[tuple[int, int], dict[str, Any]] = {}
+        order: list[tuple[int, int]] = []
+        closer = getattr(stream, "close", None)
+        registration: CancellationRegistration | None = None
+        try:
+            if cancellation is not None and cancellation.cancelled:
+                raise OperationCancelledError()
+            if cancellation is not None and callable(closer):
+                registration = cancellation.register(closer)
+            for chunk in stream:  # pragma: no cover - network/streaming
+                if cancellation is not None and cancellation.cancelled:
+                    raise OperationCancelledError()
+                chunk_map = self._extract_mapping(chunk)
+                choices = getattr(chunk, "choices", None)
+                if choices is None and chunk_map is not None:
+                    choices = chunk_map.get("choices")
+                if not choices:
+                    continue
+                for choice in choices:
+                    choice_map = self._extract_mapping(choice)
+                    raw_choice_index = getattr(choice, "index", None)
+                    if choice_map is not None and raw_choice_index is None:
+                        raw_choice_index = choice_map.get("index")
+                    try:
+                        choice_index = int(raw_choice_index)
+                    except (TypeError, ValueError):
+                        choice_index = 0
+                    delta = getattr(choice, "delta", None)
+                    if delta is None and choice_map is not None:
+                        delta = choice_map.get("delta")
+                    if delta is None:
+                        continue
+                    delta_map = self._extract_mapping(delta)
+                    tool_calls_delta = getattr(delta, "tool_calls", None)
+                    if tool_calls_delta is None and delta_map is not None:
+                        tool_calls_delta = delta_map.get("tool_calls")
+                    if tool_calls_delta:
+                        self._append_stream_tool_calls(
+                            tool_chunks,
+                            order,
+                            tool_calls_delta,
+                            choice_index,
+                        )
+                    function_call = getattr(delta, "function_call", None)
+                    if function_call is None and delta_map is not None:
+                        function_call = delta_map.get("function_call")
+                    if function_call:
+                        self._append_stream_function_call(
+                            tool_chunks,
+                            order,
+                            function_call,
+                            choice_index,
+                        )
+                    content = getattr(delta, "content", None)
+                    if content is None and delta_map is not None:
+                        content = delta_map.get("content")
+                    text = self._extract_message_content(content)
+                    if text:
+                        message_parts.append(text)
+                if cancellation is not None and cancellation.cancelled:
+                    raise OperationCancelledError()
+        except httpx.HTTPError as exc:  # pragma: no cover - network errors
+            if cancellation is not None and cancellation.cancelled:
+                raise OperationCancelledError() from exc
+            raise
+        finally:
+            if registration is not None:
+                registration.dispose()
+            if callable(closer):
+                try:
+                    closer()
+                except Exception:  # pragma: no cover - defensive
+                    pass
+        if cancellation is not None and cancellation.cancelled:
+            raise OperationCancelledError()
+        raw_calls: list[dict[str, Any]] = []
+        for key in order:
+            data = tool_chunks.get(key)
+            if not data:
+                continue
+            function = data.get("function", {})
+            name = function.get("name")
+            if not name:
+                continue
+            entry: dict[str, Any] = {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": function.get("arguments") or "",
+                },
+            }
+            call_id = data.get("id")
+            if call_id:
+                entry["id"] = call_id
+            raw_calls.append(entry)
+        return "".join(message_parts).strip(), raw_calls
+
+    def _append_stream_tool_calls(
+        self,
+        tool_chunks: dict[tuple[int, int], dict[str, Any]],
+        order: list[tuple[int, int]],
+        tool_calls_delta: Any,
+        choice_index: int,
+    ) -> None:
+        """Accumulate incremental tool call payloads from streaming chunks."""
+
+        if isinstance(tool_calls_delta, Mapping):
+            iterable = [tool_calls_delta]
+        else:
+            iterable = list(tool_calls_delta)
+        for item in iterable:
+            item_map = self._extract_mapping(item)
+            raw_index = getattr(item, "index", None)
+            if item_map is not None and raw_index is None:
+                raw_index = item_map.get("index")
+            try:
+                tool_index = int(raw_index)
+            except (TypeError, ValueError):
+                tool_index = len(order)
+            key = (choice_index, tool_index)
+            if key not in tool_chunks:
+                tool_chunks[key] = {
+                    "id": None,
+                    "type": "function",
+                    "function": {"name": None, "arguments": ""},
+                }
+                order.append(key)
+            entry = tool_chunks[key]
+            call_id = getattr(item, "id", None) or getattr(item, "tool_call_id", None)
+            if item_map is not None:
+                call_id = item_map.get("id", call_id) or item_map.get(
+                    "tool_call_id", call_id
+                )
+            if call_id:
+                entry["id"] = call_id
+            function = getattr(item, "function", None)
+            if item_map is not None:
+                function = item_map.get("function", function)
+            if function is None:
+                continue
+            func_map = self._extract_mapping(function)
+            name = getattr(function, "name", None)
+            if func_map is not None and name is None:
+                name = func_map.get("name")
+            if name:
+                entry["function"]["name"] = name
+            args_fragment = getattr(function, "arguments", None)
+            if func_map is not None:
+                args_fragment = func_map.get("arguments", args_fragment)
+            if args_fragment:
+                entry["function"]["arguments"] += str(args_fragment)
+
+    def _append_stream_function_call(
+        self,
+        tool_chunks: dict[tuple[int, int], dict[str, Any]],
+        order: list[tuple[int, int]],
+        function_call: Any,
+        choice_index: int,
+    ) -> None:
+        """Normalize legacy ``function_call`` deltas during streaming."""
+
+        func_map = self._extract_mapping(function_call)
+        key = (choice_index, -1)
+        if key not in tool_chunks:
+            tool_chunks[key] = {
+                "id": None,
+                "type": "function",
+                "function": {"name": None, "arguments": ""},
+            }
+            order.append(key)
+        entry = tool_chunks[key]
+        name = getattr(function_call, "name", None)
+        if func_map is not None and name is None:
+            name = func_map.get("name")
+        if name:
+            entry["function"]["name"] = name
+        args_fragment = getattr(function_call, "arguments", None)
+        if func_map is not None:
+            args_fragment = func_map.get("arguments", args_fragment)
+        if args_fragment:
+            entry["function"]["arguments"] += str(args_fragment)
 
     # ------------------------------------------------------------------
     def _chat_completion(

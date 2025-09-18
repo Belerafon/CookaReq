@@ -1,6 +1,7 @@
 """Tests for mcp server."""
 
 import json
+import logging
 
 import pytest
 
@@ -34,3 +35,18 @@ def test_missing_token_results_in_unauthorized():
         assert "UNAUTHORIZED" in body
     finally:
         stop_server()
+
+
+def test_stop_server_does_not_log_cancelled_error(caplog):
+    port = 8127
+    stop_server()
+    start_server(port=port)
+    try:
+        _wait_until_ready(port)
+        caplog.clear()
+        with caplog.at_level(logging.ERROR, logger="uvicorn.error"):
+            stop_server()
+    finally:
+        stop_server()
+
+    assert not any("CancelledError" in record.getMessage() for record in caplog.records)

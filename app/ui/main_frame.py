@@ -15,7 +15,15 @@ _EXPAND_ARROW = "\N{BLACK RIGHT-POINTING TRIANGLE}"
 
 from ..config import ConfigManager
 from ..confirm import confirm
-from ..core.model import Link, Requirement, requirement_fingerprint
+from ..core.model import (
+    Link,
+    Priority,
+    Requirement,
+    RequirementType,
+    Status,
+    Verification,
+    requirement_fingerprint,
+)
 from ..core.document_store import (
     Document,
     LabelDef,
@@ -43,6 +51,32 @@ from .widgets import SectionContainer
 
 
 _SECTION_DEFAULT_PADDING = 0
+
+_DEBUG_LIST_FIELDS: list[str] = ["status", "owner"]
+
+_DEBUG_REQUIREMENTS_DATA: tuple[tuple[int, str, Status, str, str], ...] = (
+    (
+        10_001,
+        "Debug requirement A",
+        Status.DRAFT,
+        "Alpha",
+        "Static debug row one",
+    ),
+    (
+        10_002,
+        "Debug requirement B",
+        Status.IN_REVIEW,
+        "Beta",
+        "Static debug row two",
+    ),
+    (
+        10_003,
+        "Debug requirement C",
+        Status.APPROVED,
+        "Gamma",
+        "Static debug row three",
+    ),
+)
 
 class WxLogHandler(logging.Handler):
     """Forward log records to a ``wx.TextCtrl``."""
@@ -246,13 +280,9 @@ class MainFrame(wx.Frame):
                 model=self._debug_model,
             ),
         )
-        if isinstance(self.agent_panel, ListPanel):
-            self.agent_panel.set_columns(self.selected_fields)
+        self._ensure_debug_panel_seeded()
         self._hide_agent_section()
         self.agent_splitter.Initialize(self.splitter)
-        if hasattr(self.panel, "set_after_refresh_callback"):
-            self.panel.set_after_refresh_callback(self._mirror_main_list)
-            self._mirror_main_list(self.panel)
         self.doc_splitter.SplitVertically(
             self.doc_tree_container,
             self.agent_splitter,
@@ -648,34 +678,35 @@ class MainFrame(wx.Frame):
         self.agent_panel.Hide()
         self.agent_container.Hide()
 
-    def _mirror_main_list(self, _panel: ListPanel) -> None:
-        """Populate the debug list with the same data as the main list."""
+    def _debug_requirements_dataset(self) -> list[Requirement]:
+        """Return static requirements used to seed the debug list."""
 
-        debug_list = getattr(self, "agent_panel", None)
-        if not isinstance(debug_list, ListPanel):
+        dataset: list[Requirement] = []
+        for req_id, title, status, owner, statement in _DEBUG_REQUIREMENTS_DATA:
+            dataset.append(
+                Requirement(
+                    id=req_id,
+                    title=title,
+                    statement=statement,
+                    type=RequirementType.REQUIREMENT,
+                    status=status,
+                    owner=owner,
+                    priority=Priority.MEDIUM,
+                    source="debug-static",
+                    verification=Verification.ANALYSIS,
+                )
+            )
+        return dataset
+
+    def _ensure_debug_panel_seeded(self) -> None:
+        """Configure debug list panel with predictable static data."""
+
+        debug_panel = getattr(self, "agent_panel", None)
+        if not isinstance(debug_panel, ListPanel):
             return
-        try:
-            requirements = self.panel.model.get_visible()
-        except Exception:
-            requirements = []
-        derived_map = dict(getattr(self.panel, "derived_map", {}))
-        if getattr(debug_list, "columns", None) != list(getattr(self.panel, "columns", [])):
-            debug_list.set_columns(list(getattr(self.panel, "columns", [])))
-        debug_list.set_requirements(list(requirements), derived_map)
-        selected_id: int | None = None
-        list_ctrl = getattr(self.panel, "list", None)
-        if list_ctrl is not None and hasattr(list_ctrl, "GetFirstSelected"):
-            try:
-                selected = list_ctrl.GetFirstSelected()
-            except Exception:
-                selected = -1
-            if selected is not None and selected >= 0:
-                try:
-                    selected_id = list_ctrl.GetItemData(selected)
-                except Exception:
-                    selected_id = None
-        if selected_id is not None:
-            debug_list.focus_requirement(selected_id)
+        if getattr(debug_panel, "columns", []) != list(_DEBUG_LIST_FIELDS):
+            debug_panel.set_columns(list(_DEBUG_LIST_FIELDS))
+        debug_panel.set_requirements(self._debug_requirements_dataset(), {})
 
     def _update_section_labels(self) -> None:
         """Refresh captions for titled sections according to current locale."""
@@ -906,8 +937,7 @@ class MainFrame(wx.Frame):
                 self.agent_container,
                 model=self._debug_model,
             )
-            if isinstance(self.agent_panel, ListPanel):
-                self.agent_panel.set_columns(self.selected_fields)
+            self._ensure_debug_panel_seeded()
             agent_sizer = self.agent_container.GetSizer()
             if agent_sizer is not None:
                 agent_sizer.Replace(old_agent_panel, self.agent_panel)
@@ -920,9 +950,6 @@ class MainFrame(wx.Frame):
                     self._agent_last_width = self._current_agent_splitter_width()
             else:
                 self._hide_agent_section()
-            if hasattr(self.panel, "set_after_refresh_callback"):
-                self.panel.set_after_refresh_callback(self._mirror_main_list)
-            self._mirror_main_list(self.panel)
 
         self._update_section_labels()
         self.list_container.Layout()
@@ -1577,7 +1604,7 @@ class MainFrame(wx.Frame):
         return desired
 
     def _ensure_agent_chat_visible(self) -> None:
-        self._mirror_main_list(self.panel)
+        self._ensure_debug_panel_seeded()
         desired = self._agent_last_width
         if desired <= 0:
             desired = self._default_agent_chat_sash()

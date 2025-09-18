@@ -777,6 +777,68 @@ class ConfigManager:
         self.flush()
 
     # ------------------------------------------------------------------
+    # internal layout helpers
+    @staticmethod
+    def _effective_min_height(window: wx.Window, fallback: int) -> int:
+        """Return a conservative minimum height for ``window``."""
+
+        height = 0
+        if hasattr(window, "GetEffectiveMinSize"):
+            size = window.GetEffectiveMinSize()
+            height = getattr(size, "height", 0)
+        if height <= 0 and hasattr(window, "GetBestSize"):
+            best = window.GetBestSize()
+            height = getattr(best, "height", 0)
+        if height <= 0:
+            converter = getattr(window, "FromDIP", None)
+            if callable(converter):
+                try:
+                    height = int(converter(fallback))
+                except Exception:
+                    height = fallback
+            else:
+                height = fallback
+        return max(int(height), 1)
+
+    def _clamp_log_sash(
+        self,
+        position: int,
+        *,
+        available: int,
+        doc_splitter: wx.SplitterWindow,
+        log_console: wx.Window,
+    ) -> int:
+        """Clamp splitter ``position`` so both panes remain usable."""
+
+        available = max(int(available), 1)
+        doc_min = self._effective_min_height(doc_splitter, 240)
+        log_min = self._effective_min_height(log_console, 120)
+
+        if doc_min >= available:
+            doc_min = max(available - 1, 1)
+        if log_min >= available:
+            log_min = max(available - doc_min, 1)
+
+        if doc_min + log_min > available:
+            overflow = doc_min + log_min - available
+            reducible = max(log_min - 1, 0)
+            if reducible > 0:
+                reduce = min(overflow, reducible)
+                log_min -= reduce
+                overflow -= reduce
+            if overflow > 0:
+                doc_min = max(doc_min - overflow, 1)
+
+        max_top = max(doc_min, available - log_min)
+        min_top = min(doc_min, max_top)
+        if min_top <= 0:
+            min_top = max(available - log_min, 1)
+            if max_top < min_top:
+                max_top = min_top
+
+        return max(min_top, min(int(position), max_top))
+
+    # ------------------------------------------------------------------
     # layout helpers
     def restore_layout(
         self,
@@ -835,7 +897,13 @@ class ConfigManager:
         log_sash = self.get_value("log_sash", default=client_size.height - 150)
         if log_shown:
             log_console.Show()
-            main_splitter.SplitHorizontally(doc_splitter, log_console, log_sash)
+            safe_log_sash = self._clamp_log_sash(
+                log_sash,
+                available=client_size.height,
+                doc_splitter=doc_splitter,
+                log_console=log_console,
+            )
+            main_splitter.SplitHorizontally(doc_splitter, log_console, safe_log_sash)
             if log_menu_item:
                 log_menu_item.Check(True)
         else:

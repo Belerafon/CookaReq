@@ -166,3 +166,61 @@ def test_splitter_widths_ignore_sash_offset(wx_app, tmp_path):
     assert history_widths[0] > 0
     assert doc_tree_widths == [doc_tree_widths[0]] * len(doc_tree_widths)
     assert history_widths == [history_widths[0]] * len(history_widths)
+
+
+def test_log_console_sash_respects_minimum_top_height(wx_app, tmp_path):
+    """Restore log console with collapsed sash must keep list visible."""
+
+    config_path = tmp_path / "log_min.ini"
+    config = ConfigManager(path=config_path)
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    config.set_value("log_shown", True)
+    config.set_value("log_sash", 1)
+    config.flush()
+
+    frame = _open_frame(config_path, wx_app)
+    try:
+        doc_min = frame.doc_splitter.GetEffectiveMinSize().height
+        if doc_min <= 0:
+            doc_min = frame.main_splitter.FromDIP(200)
+        doc_min = max(int(doc_min), 1)
+
+        sash = frame.main_splitter.GetSashPosition()
+        assert sash == frame.doc_splitter.GetSize().height
+        assert sash >= doc_min
+
+        list_min = frame.panel.list.GetEffectiveMinSize().height
+        if list_min > 0:
+            assert frame.panel.list.GetClientSize().height >= list_min
+    finally:
+        frame.Destroy()
+        wx_app.Yield()
+
+
+def test_log_console_sash_respects_minimum_bottom_height(wx_app, tmp_path):
+    """Restore log console with oversized sash keeps console usable."""
+
+    config_path = tmp_path / "log_max.ini"
+    config = ConfigManager(path=config_path)
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    config.set_value("log_shown", True)
+    config.set_value("log_sash", 50_000)
+    config.flush()
+
+    frame = _open_frame(config_path, wx_app)
+    try:
+        total_height = frame.main_splitter.GetClientSize().height
+        log_min = frame.log_panel.GetEffectiveMinSize().height
+        if log_min <= 0:
+            log_min = frame.main_splitter.FromDIP(120)
+        log_min = max(int(log_min), 1)
+
+        sash = frame.main_splitter.GetSashPosition()
+        remaining = total_height - sash
+        assert remaining >= log_min
+
+        log_height = frame.log_panel.GetSize().height
+        assert log_height > 0
+    finally:
+        frame.Destroy()
+        wx_app.Yield()

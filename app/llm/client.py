@@ -162,6 +162,101 @@ class LLMClient:
 
         self._token_param_index += 1
 
+    def _format_invalid_completion_error(
+        self, prefix: str, completion: Any
+    ) -> str:
+        """Return a detailed error message for unexpected completion payloads."""
+
+        summary = self._summarize_completion_payload(completion)
+        hint = (
+            "Verify that the configured base URL "
+            f"{self.settings.base_url!r} exposes an OpenAI-compatible chat "
+            "completions endpoint. If you are using LM Studio, ensure the URL "
+            "ends with '/v1' (for example 'http://127.0.0.1:1234/v1')."
+        )
+
+        def _normalize(text: str) -> str:
+            return text.rstrip(".")
+
+        parts = [_normalize(prefix)]
+        if summary:
+            parts.append(_normalize(summary))
+        parts.append(_normalize(hint))
+        message = ". ".join(parts)
+        if not message.endswith("."):
+            message += "."
+        return message
+
+    def _summarize_completion_payload(self, completion: Any) -> str:
+        """Return a concise description of an unexpected completion payload."""
+
+        def _clip(text: str, limit: int = 120) -> str:
+            snippet = str(text).strip()
+            if len(snippet) <= limit:
+                return snippet
+            return snippet[: limit - 3] + "..."
+
+        summary_parts: list[str] = []
+        mapping = self._extract_mapping(completion)
+        if mapping is not None:
+            keys = ", ".join(sorted(str(key) for key in mapping.keys())) or "(none)"
+            summary = (
+                f"Response payload type {type(completion).__name__} "
+                f"with keys: {keys}"
+            )
+            details: list[str] = []
+            error_info = mapping.get("error")
+            if isinstance(error_info, Mapping):
+                message = error_info.get("message") or error_info.get("detail")
+                code = error_info.get("code") or error_info.get("type")
+                if message:
+                    details.append(_clip(message))
+                if code:
+                    details.append(str(code))
+            elif error_info:
+                details.append(_clip(error_info))
+            detail_value = mapping.get("detail")
+            if detail_value:
+                details.append(_clip(detail_value))
+            if details:
+                summary += f" ({'; '.join(details)})"
+            summary_parts.append(summary)
+        elif isinstance(completion, str):
+            summary_parts.append(f"Response payload was a string: {_clip(completion)}")
+        elif completion is None:
+            summary_parts.append("Response payload was empty (None)")
+        else:
+            summary_parts.append(
+                "Response payload type "
+                f"{type(completion).__name__} is not OpenAI ChatCompletion-compatible"
+            )
+
+        response_obj = getattr(completion, "response", None)
+        status_code = getattr(response_obj, "status_code", None)
+        if status_code is not None:
+            summary_parts.append(f"HTTP status {status_code}")
+        return "; ".join(summary_parts)
+
+    @staticmethod
+    def _extract_mapping(obj: Any) -> Mapping[str, Any] | None:
+        """Return a mapping representation of *obj* when possible."""
+
+        if isinstance(obj, Mapping):
+            return obj
+        for attr in ("model_dump", "dict"):
+            method = getattr(obj, attr, None)
+            if callable(method):
+                try:
+                    data = method()
+                except Exception:  # pragma: no cover - defensive
+                    continue
+                if isinstance(data, Mapping):
+                    return data
+        data = getattr(obj, "_data", None)
+        if isinstance(data, Mapping):
+            return data
+        return None
+
     # ------------------------------------------------------------------
     def _check_llm(self) -> dict[str, Any]:
         """Implementation shared by sync and async ``check_llm`` variants."""
@@ -293,12 +388,18 @@ class LLMClient:
                 choices = getattr(completion, "choices", None)
                 if not choices:
                     raise ToolValidationError(
-                        "LLM response did not include any choices",
+                        self._format_invalid_completion_error(
+                            "LLM response did not include any choices",
+                            completion,
+                        )
                     )
                 message = getattr(choices[0], "message", None)
                 if message is None:
                     raise ToolValidationError(
-                        "LLM response did not include an assistant message",
+                        self._format_invalid_completion_error(
+                            "LLM response did not include an assistant message",
+                            completion,
+                        )
                     )
                 tool_calls = self._parse_tool_calls(
                     getattr(message, "tool_calls", None) or []

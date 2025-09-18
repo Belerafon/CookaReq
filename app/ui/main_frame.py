@@ -172,15 +172,12 @@ class MainFrame(wx.Frame):
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         self._doc_tree_min_pane = max(self.FromDIP(20), 1)
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
-        self._doc_tree_placeholder_width = self.FromDIP(20)
-        self._doc_tree_placeholder: wx.Panel | None = None
-        self._doc_tree_placeholder_button: wx.Button | None = None
         self._doc_tree_toggle_size: wx.Size | None = None
+        self._doc_tree_collapsed = False
+        self._doc_tree_last_width = max(200, self._doc_tree_min_pane)
         self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
         self.agent_splitter.SetMinimumPaneSize(280)
-        self._agent_saved_sash = self.config.get_agent_chat_sash(
-            self._default_agent_chat_sash()
-        )
+        self._agent_last_width = max(self.agent_splitter.GetMinimumPaneSize(), 320)
         self.splitter = wx.SplitterWindow(self.agent_splitter)
         self.splitter.SetMinimumPaneSize(200)
         (
@@ -204,7 +201,6 @@ class MainFrame(wx.Frame):
         )
         self._configure_doc_tree_section()
         self.doc_tree.tree.Bind(wx.EVT_TREE_SEL_CHANGING, self._on_doc_changing)
-        self._doc_tree_placeholder = self._create_doc_tree_placeholder(self.doc_splitter)
         (
             self.list_container,
             self.list_label,
@@ -251,18 +247,13 @@ class MainFrame(wx.Frame):
             ),
         )
         self._hide_agent_section()
-        history_sash = self.config.get_agent_history_sash(
-            self.agent_panel.default_history_sash()
-        )
-        self.agent_panel.apply_history_sash(history_sash)
         self.agent_splitter.Initialize(self.splitter)
         self.doc_splitter.SplitVertically(
             self.doc_tree_container,
             self.agent_splitter,
             200,
         )
-        self._doc_tree_collapsed = False
-        self._doc_tree_saved_width = max(200, self._doc_tree_min_pane)
+        self._doc_tree_last_width = self._current_doc_tree_width()
         self._clear_editor_panel()
 
         self.log_panel = wx.Panel(self.main_splitter)
@@ -490,30 +481,46 @@ class MainFrame(wx.Frame):
         """Collapse or expand the document hierarchy panel."""
 
         if self.doc_tree_toggle and self.doc_tree_toggle.GetValue():
-            self._expand_doc_tree(update_config=True)
+            self._expand_doc_tree()
         else:
-            self._collapse_doc_tree(update_config=True)
+            self._collapse_doc_tree()
 
-    def _current_doc_tree_width(self) -> int:
-        """Return visible width of the document tree container."""
+    def _collapsed_doc_tree_width(self) -> int:
+        """Return minimal width required to display the toggle handle."""
 
-        width = self.doc_tree_container.GetSize().width
-        if width <= 0:
-            width = self.doc_tree_container.GetClientSize().width
-        if width <= 0:
-            width = self._doc_tree_saved_width
-        if width <= 0:
-            width = self._doc_tree_min_pane
+        if getattr(self, "doc_tree_toggle", None):
+            margin = self.doc_tree_toggle.FromDIP(8)
+            best = self.doc_tree_toggle.GetBestSize()
+            width = best.width + margin
+        else:
+            width = self.FromDIP(24)
         return max(width, self._doc_tree_min_pane)
 
-    def _apply_doc_tree_width(self, width: int) -> None:
-        """Resize the document tree pane to ``width`` pixels."""
+    def _default_doc_tree_width(self) -> int:
+        """Heuristic width used when the saved value is not usable."""
 
-        target = max(width, self._doc_tree_min_pane)
+        width = self.doc_splitter.GetClientSize().width
+        if width <= 0:
+            width = self.GetClientSize().width
+        if width <= 0:
+            width = 800
+        return max(width // 4, self._doc_tree_min_pane)
+
+    def _current_doc_tree_width(self) -> int:
+        """Return the rendered width of the hierarchy pane."""
+
+        width = 0
         if self.doc_splitter.IsSplit():
-            self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
-            self.doc_splitter.SetSashPosition(target)
-        self._doc_tree_saved_width = target
+            tree_container = self.doc_splitter.GetWindow1()
+            if tree_container is not None:
+                width = tree_container.GetSize().width
+                if width <= 0:
+                    width = tree_container.GetClientSize().width
+        if width <= 0:
+            width = self.doc_splitter.GetSashPosition()
+        if width <= 0:
+            width = self._default_doc_tree_width()
+        return max(width, self._doc_tree_min_pane)
 
     def _current_agent_splitter_width(self) -> int:
         """Return the width of the primary pane in the agent splitter."""
@@ -526,121 +533,47 @@ class MainFrame(wx.Frame):
                 if width <= 0:
                     width = primary.GetClientSize().width
         if width <= 0:
-            width = self._agent_saved_sash
-        if width <= 0:
             width = self.agent_splitter.GetMinimumPaneSize()
         return width
 
-    def _collapse_doc_tree(self, *, update_config: bool) -> None:
+    def _collapse_doc_tree(self) -> None:
         """Hide the tree while keeping the toggle handle accessible."""
 
         if self._doc_tree_collapsed:
             return
-        width = self._current_doc_tree_width()
-        self._doc_tree_saved_width = width
+        if self.doc_splitter.IsSplit():
+            width = self._current_doc_tree_width()
+            if width > self._doc_tree_min_pane:
+                self._doc_tree_last_width = width
+        if self.doc_tree_label:
+            self.doc_tree_label.Hide()
         self.doc_tree.Hide()
-        self.doc_tree_label.Hide()
-        self.doc_tree_container.Hide()
-        handle = self._collapsed_doc_tree_width()
-        if self._doc_tree_placeholder and self.doc_splitter.GetWindow1() is self.doc_tree_container:
-            replaced = self.doc_splitter.ReplaceWindow(
-                self.doc_tree_container,
-                self._doc_tree_placeholder,
-            )
-            if not replaced:
-                self._doc_tree_placeholder.Reparent(self.doc_splitter)
-        if self._doc_tree_placeholder:
-            self._doc_tree_placeholder.Show()
-            self._doc_tree_placeholder.Layout()
+        collapsed = self._collapsed_doc_tree_width()
+        self.doc_tree_container.SetMinSize(wx.Size(collapsed, -1))
+        self.doc_splitter.SetSashPosition(collapsed)
+        self.doc_tree_container.Show()
+        self.doc_tree_container.Layout()
         self._doc_tree_collapsed = True
         self._update_doc_tree_toggle_state()
-        self.doc_splitter.Layout()
-        if self.doc_splitter.IsSplit():
-            self.doc_splitter.SetSashPosition(handle)
-        if update_config:
-            self.config.set_doc_tree_collapsed(True)
 
-    def _expand_doc_tree(self, *, update_config: bool) -> None:
+    def _expand_doc_tree(self) -> None:
         """Restore the tree pane to its saved width."""
 
-        if self._doc_tree_placeholder and self.doc_splitter.GetWindow1() is self._doc_tree_placeholder:
-            self.doc_splitter.ReplaceWindow(
-                self._doc_tree_placeholder,
-                self.doc_tree_container,
-            )
-            self._doc_tree_placeholder.Hide()
+        if not self._doc_tree_collapsed:
+            return
         self.doc_tree_container.SetMinSize(wx.Size(-1, -1))
-        self.doc_tree_label.Show()
+        if self.doc_tree_label:
+            self.doc_tree_label.Show()
         self.doc_tree.Show()
-        self.doc_tree_container.Show()
-        width = max(self._doc_tree_saved_width, self._doc_tree_min_pane)
-        self._doc_tree_collapsed = False
-        self._apply_doc_tree_width(width)
-        self._update_doc_tree_toggle_state()
+        target = self._doc_tree_last_width
+        collapsed = self._collapsed_doc_tree_width()
+        if target <= collapsed:
+            target = self._default_doc_tree_width()
+        self.doc_splitter.SetSashPosition(max(target, self._doc_tree_min_pane))
         self.doc_tree_container.Layout()
         self.doc_splitter.Layout()
-        if update_config:
-            self._doc_tree_saved_width = width
-            self.config.set_doc_tree_collapsed(False)
-
-    def _collapsed_doc_tree_width(self) -> int:
-        """Return minimal width required to display the toggle handle."""
-
-        width = self._doc_tree_placeholder_width
-        if width <= 0 and getattr(self, "doc_tree_toggle", None):
-            margin = self.doc_tree_toggle.FromDIP(8)
-            width = self.doc_tree_toggle.GetBestSize().width + margin
-        return max(width, self.FromDIP(20))
-
-    def _create_doc_tree_placeholder(self, parent: wx.SplitterWindow) -> wx.Panel:
-        """Build a narrow placeholder shown when the hierarchy pane is hidden."""
-
-        panel = wx.Panel(parent, style=wx.BORDER_NONE)
-        panel.Hide()
-        panel.SetBackgroundColour(parent.GetBackgroundColour())
-        panel.SetDoubleBuffered(True)
-        button = wx.Button(
-            panel,
-            label=_EXPAND_ARROW,
-            style=wx.BU_EXACTFIT | wx.BORDER_NONE,
-        )
-        button.SetWindowVariant(wx.WINDOW_VARIANT_MINI)
-        background = panel.GetBackgroundColour()
-        if background.IsOk():
-            button.SetBackgroundColour(background)
-        foreground = panel.GetForegroundColour()
-        if foreground.IsOk():
-            button.SetForegroundColour(foreground)
-        if self._doc_tree_toggle_size:
-            button.SetMinSize(self._doc_tree_toggle_size)
-            button.SetMaxSize(self._doc_tree_toggle_size)
-        button.SetToolTip(_("Show hierarchy"))
-        button.Bind(wx.EVT_BUTTON, self._on_doc_tree_placeholder_clicked)
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(
-            button,
-            0,
-            wx.ALIGN_CENTER_HORIZONTAL | wx.TOP,
-            panel.FromDIP(6),
-        )
-        sizer.AddStretchSpacer()
-        panel.SetSizer(sizer)
-        panel.Layout()
-        best = button.GetBestSize()
-        if self._doc_tree_toggle_size:
-            best = self._doc_tree_toggle_size
-        width = best.width + panel.FromDIP(4)
-        width = max(width, self._doc_tree_placeholder_width)
-        panel.SetMinSize(wx.Size(width, -1))
-        panel.SetMaxSize(wx.Size(width, -1))
-        self._doc_tree_placeholder_width = width
-        self._doc_tree_placeholder_button = button
-        return panel
-
-    def _on_doc_tree_placeholder_clicked(self, _event: wx.Event) -> None:
-        """Restore the hierarchy pane from the placeholder."""
-
-        self._expand_doc_tree(update_config=True)
+        self._doc_tree_collapsed = False
+        self._update_doc_tree_toggle_state()
 
     def _update_doc_tree_toggle_state(self) -> None:
         """Synchronize toggle labels, tooltips, and state."""
@@ -653,20 +586,10 @@ class MainFrame(wx.Frame):
             self.doc_tree_toggle.SetValue(False)
             self.doc_tree_toggle.SetLabel(expand_label)
             self.doc_tree_toggle.SetToolTip(_("Show hierarchy"))
-            if (
-                self._doc_tree_placeholder_button
-            ):
-                self._doc_tree_placeholder_button.SetLabel(expand_label)
-                self._doc_tree_placeholder_button.SetToolTip(_("Show hierarchy"))
         else:
             self.doc_tree_toggle.SetValue(True)
             self.doc_tree_toggle.SetLabel(collapse_label)
             self.doc_tree_toggle.SetToolTip(_("Hide hierarchy"))
-            if (
-                self._doc_tree_placeholder_button
-            ):
-                self._doc_tree_placeholder_button.SetLabel(expand_label)
-                self._doc_tree_placeholder_button.SetToolTip(_("Show hierarchy"))
         self.doc_tree_toggle.Refresh()
 
     def _show_editor_panel(self) -> None:
@@ -948,10 +871,6 @@ class MainFrame(wx.Frame):
                 self.agent_container,
                 agent_supplier=self._create_agent,
             )
-            history_sash = self.config.get_agent_history_sash(
-                self.agent_panel.default_history_sash()
-            )
-            self.agent_panel.apply_history_sash(history_sash)
             agent_sizer = self.agent_container.GetSizer()
             if agent_sizer is not None:
                 agent_sizer.Replace(old_agent_panel, self.agent_panel)
@@ -959,9 +878,9 @@ class MainFrame(wx.Frame):
             if agent_was_split:
                 self._show_agent_section()
                 if sash_width is not None:
-                    self._agent_saved_sash = sash_width
+                    self._agent_last_width = sash_width
                     self.agent_splitter.SetSashPosition(sash_width)
-                    self._agent_saved_sash = self._current_agent_splitter_width()
+                    self._agent_last_width = self._current_agent_splitter_width()
             else:
                 self._hide_agent_section()
 
@@ -1624,7 +1543,7 @@ class MainFrame(wx.Frame):
         return desired
 
     def _ensure_agent_chat_visible(self) -> None:
-        desired = self._agent_saved_sash
+        desired = self._agent_last_width
         if desired <= 0:
             desired = self._default_agent_chat_sash()
         desired = max(desired, self.agent_splitter.GetMinimumPaneSize())
@@ -1637,17 +1556,16 @@ class MainFrame(wx.Frame):
             )
         else:
             self.agent_splitter.SetSashPosition(desired)
-        self._agent_saved_sash = self._current_agent_splitter_width()
+        self._agent_last_width = self._current_agent_splitter_width()
         self.agent_panel.focus_input()
         self.config.set_agent_chat_shown(True)
 
     def _hide_agent_chat(self) -> None:
         if self.agent_splitter.IsSplit():
-            self._agent_saved_sash = self._current_agent_splitter_width()
+            self._agent_last_width = self._current_agent_splitter_width()
             self.agent_splitter.Unsplit(self.agent_container)
         self._hide_agent_section()
         self.config.set_agent_chat_shown(False)
-        self.config.set_agent_history_sash(self.agent_panel.history_sash)
 
     def _apply_editor_visibility(self, *, persist: bool) -> None:
         visible = self._is_editor_visible()
@@ -1687,70 +1605,52 @@ class MainFrame(wx.Frame):
             self.log_menu_item,
             editor_splitter=self.splitter,
         )
-        default_tree_width = max(self._doc_tree_saved_width, self._doc_tree_min_pane)
-        self._doc_tree_saved_width = self.config.get_doc_tree_saved_sash(
-            default_tree_width
-        )
-        self._agent_saved_sash = self.config.get_agent_chat_sash(
-            self._default_agent_chat_sash()
-        )
-        history_sash = self.config.get_agent_history_sash(
-            self.agent_panel.default_history_sash()
-        )
-        self.agent_panel.apply_history_sash(history_sash)
-        if self.config.get_doc_tree_collapsed():
-            self._collapse_doc_tree(update_config=False)
-        else:
-            self._expand_doc_tree(update_config=False)
+        self._doc_tree_last_width = self._current_doc_tree_width()
+        self._doc_tree_collapsed = False
+        self._update_doc_tree_toggle_state()
         if self.editor_menu_item:
             self.editor_menu_item.Check(self.config.get_editor_shown())
         self._apply_editor_visibility(persist=False)
         if self.agent_chat_menu_item:
-            if self.config.get_agent_chat_shown():
-                self.agent_chat_menu_item.Check(True)
-                desired = self._agent_saved_sash
-                if desired <= 0:
-                    desired = self._default_agent_chat_sash()
-                self._show_agent_section()
-                self.agent_splitter.SplitVertically(
-                    self.splitter,
-                    self.agent_container,
-                    desired,
+            shown = self.config.get_agent_chat_shown()
+            self.agent_chat_menu_item.Check(shown)
+            if shown:
+                desired = max(
+                    self._agent_last_width,
+                    self.agent_splitter.GetMinimumPaneSize(),
                 )
-                self._agent_saved_sash = self._current_agent_splitter_width()
+                self._show_agent_section()
+                if not self.agent_splitter.IsSplit():
+                    self.agent_splitter.SplitVertically(
+                        self.splitter,
+                        self.agent_container,
+                        desired,
+                    )
+                else:
+                    self.agent_splitter.SetSashPosition(desired)
+                self._agent_last_width = self._current_agent_splitter_width()
             else:
-                self.agent_chat_menu_item.Check(False)
                 if self.agent_splitter.IsSplit():
+                    self._agent_last_width = self._current_agent_splitter_width()
                     self.agent_splitter.Unsplit(self.agent_container)
                 self._hide_agent_section()
 
     def _save_layout(self) -> None:
         """Persist window geometry, splitter, console, and column widths."""
-        doc_tree_width = self._doc_tree_saved_width
         if not self._doc_tree_collapsed and self.doc_splitter.IsSplit():
             current = self._current_doc_tree_width()
             if current > 0:
-                doc_tree_width = current
-                self._doc_tree_saved_width = current
-
-        agent_chat_width = self._agent_saved_sash
+                self._doc_tree_last_width = current
         if self.agent_splitter.IsSplit():
             current = self._current_agent_splitter_width()
             if current > 0:
-                agent_chat_width = current
-                self._agent_saved_sash = current
-
+                self._agent_last_width = current
         self.config.save_layout(
             self,
             self.doc_splitter,
             self.main_splitter,
             self.panel,
             editor_splitter=self.splitter,
-            agent_splitter=self.agent_splitter,
-            doc_tree_collapsed=self._doc_tree_collapsed,
-            doc_tree_expanded_sash=doc_tree_width,
-            agent_chat_sash=agent_chat_width,
-            agent_history_sash=self.agent_panel.history_sash,
         )
 
     def register_auxiliary_frame(self, frame: wx.Frame) -> None:

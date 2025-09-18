@@ -157,12 +157,9 @@ class AgentChatPanel(wx.Panel):
 
         self._horizontal_splitter = wx.SplitterWindow(top_panel, style=splitter_style)
         history_min_width = dip(self, 260)
-        self._history_min_width = history_min_width
         self._horizontal_splitter.SetMinimumPaneSize(history_min_width)
 
         history_panel = wx.Panel(self._horizontal_splitter)
-        self._history_panel = history_panel
-        self._last_history_width = history_min_width
         history_sizer = wx.BoxSizer(wx.VERTICAL)
         history_header = wx.BoxSizer(wx.HORIZONTAL)
         history_label = wx.StaticText(history_panel, label=_("Chats"))
@@ -197,7 +194,6 @@ class AgentChatPanel(wx.Panel):
         history_sizer.AddSpacer(spacing)
         history_sizer.Add(self.history_list, 1, wx.EXPAND)
         history_panel.SetSizer(history_sizer)
-        history_panel.Bind(wx.EVT_SIZE, self._on_history_panel_size)
 
         transcript_panel = wx.Panel(self._horizontal_splitter)
         transcript_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -218,7 +214,6 @@ class AgentChatPanel(wx.Panel):
 
         self._horizontal_splitter.SplitVertically(history_panel, transcript_panel, history_min_width)
         self._horizontal_splitter.SetSashGravity(0.0)
-        self._default_history_width = history_min_width
 
         top_sizer = wx.BoxSizer(wx.VERTICAL)
         top_sizer.Add(self._horizontal_splitter, 1, wx.EXPAND)
@@ -277,77 +272,8 @@ class AgentChatPanel(wx.Panel):
         self.SetSizer(outer)
         self._refresh_history_list()
         wx.CallAfter(self._adjust_vertical_splitter)
-        wx.CallAfter(self._capture_history_width)
 
     # ------------------------------------------------------------------
-    @property
-    def history_sash(self) -> int:
-        """Current sash position of the history splitter."""
-
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter and splitter.IsSplit():
-            width = self._history_panel_width()
-            if width > 0:
-                return width
-        return max(
-            getattr(self, "_default_history_width", 0),
-            getattr(self, "_history_min_width", 0),
-        )
-
-    # ------------------------------------------------------------------
-    def default_history_sash(self) -> int:
-        """Baseline width used when no persisted value is available."""
-
-        width = self._history_panel_width()
-        if width > 0:
-            return width
-        baseline = getattr(self, "_default_history_width", None)
-        if baseline is not None and baseline > 0:
-            return baseline
-        return getattr(self, "_history_min_width", dip(self, 260))
-
-    # ------------------------------------------------------------------
-    def apply_history_sash(self, value: int) -> None:
-        """Apply ``value`` to the history splitter if it is active."""
-
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if not splitter or not splitter.IsSplit():
-            return
-        minimum = splitter.GetMinimumPaneSize()
-        target = max(value, minimum)
-        splitter.SetSashPosition(target)
-        self._last_history_width = target
-        if self._default_history_width <= 0:
-            self._default_history_width = target
-        wx.CallAfter(self._capture_history_width)
-
-    # ------------------------------------------------------------------
-    def _history_panel_width(self) -> int:
-        panel = getattr(self, "_history_panel", None)
-        width = getattr(self, "_last_history_width", 0)
-        if panel is not None:
-            measured = panel.GetSize().width
-            if measured <= 0:
-                measured = panel.GetClientSize().width
-            if measured > 0:
-                width = measured
-        if width <= 0:
-            width = getattr(self, "_default_history_width", 0)
-        if width <= 0:
-            width = getattr(self, "_history_min_width", 0)
-        return max(width, getattr(self, "_history_min_width", 0))
-
-    def _capture_history_width(self) -> None:
-        width = self._history_panel_width()
-        if width > 0:
-            self._last_history_width = width
-            self._default_history_width = width
-
-    def _on_history_panel_size(self, event: wx.SizeEvent) -> None:
-        self._last_history_width = max(event.GetSize().width, self._history_min_width)
-        self._default_history_width = self._last_history_width
-        event.Skip()
-
     # ------------------------------------------------------------------
     def _on_send(self, _event: wx.Event) -> None:
         """Send prompt to agent."""

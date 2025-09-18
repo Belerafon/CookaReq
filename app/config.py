@@ -386,6 +386,42 @@ class ConfigManager:
             p.parent.mkdir(parents=True, exist_ok=True)
             self._cfg = wx.FileConfig(appName=app_name, localFilename=str(p))
 
+        if logger.isEnabledFor(logging.INFO):
+            backend = type(self._cfg).__name__
+            user_config_dir: str | None
+            try:
+                std_paths = wx.StandardPaths.Get()
+                user_config_dir = std_paths.GetUserConfigDir()
+            except Exception:
+                user_config_dir = None
+            local_file = None
+            global_file = None
+            if hasattr(self._cfg, "GetLocalFileName"):
+                try:
+                    local_file = self._cfg.GetLocalFileName("")
+                except Exception:
+                    local_file = None
+            if hasattr(self._cfg, "GetGlobalFileName"):
+                try:
+                    global_file = self._cfg.GetGlobalFileName("")
+                except Exception:
+                    global_file = None
+            vendor = None
+            try:
+                vendor = wx.GetApp().GetVendorName() if wx.GetApp() else None
+            except Exception:
+                vendor = None
+            logger.info(
+                "[config-debug] backend=%s app_name=%s vendor=%s user_config_dir=%s"
+                " local_file=%s global_file=%s",
+                backend,
+                app_name,
+                vendor,
+                user_config_dir,
+                local_file,
+                global_file,
+            )
+
     # ------------------------------------------------------------------
     # schema access helpers
     @classmethod

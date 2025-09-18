@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from contextlib import suppress
 from enum import Enum
+import logging
 from typing import TYPE_CHECKING
 
 import wx
@@ -601,6 +602,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _refresh(self) -> None:
         """Reload list control from the model."""
         items = self.model.get_visible()
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "[list-debug] refresh start: visible=%s total=%s filters=%s columns=%s",
+                len(items),
+                len(self.model.get_all()),
+                getattr(self, "current_filters", {}),
+                list(self._field_order),
+            )
         self.list.DeleteAllItems()
         for req in items:
             index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
@@ -655,6 +664,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
                 self.list.SetItem(index, col, str(value))
+        if logger.isEnabledFor(logging.INFO):
+            try:
+                count = self.list.GetItemCount()
+            except Exception:
+                count = None
+            logger.info(
+                "[list-debug] refresh done: row_count=%s", count
+            )
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.

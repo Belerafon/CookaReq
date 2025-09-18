@@ -1193,6 +1193,33 @@ class MainFrame(wx.Frame):
         self.panel.update_labels_list(labels)
         self._selected_requirement_id = None
         self._clear_editor_panel()
+        list_count = None
+        list_selected: int | None = None
+        title_samples: list[str] = []
+        title_column: int | None = None
+        if logger.isEnabledFor(logging.INFO):
+            try:
+                list_count = self.panel.list.GetItemCount()
+            except Exception:
+                list_count = None
+            if list_count and list_count > 0:
+                try:
+                    title_column = self.panel._field_order.index("title")
+                except ValueError:
+                    title_column = 0
+                sample = min(list_count, 5)
+                for idx in range(sample):
+                    try:
+                        title = self.panel.list.GetItemText(idx, title_column or 0)
+                    except Exception:
+                        title = "<error>"
+                    title_samples.append(title)
+            try:
+                selected = self.panel.list.GetFirstSelected()
+                if selected is not None and selected != wx.NOT_FOUND:
+                    list_selected = self.panel.list.GetItemData(selected)
+            except Exception:
+                list_selected = None
         total = len(self.model.get_all())
         visible = len(self.model.get_visible())
         derived_parent_count = len(derived_map) if derived_map else 0
@@ -1251,6 +1278,15 @@ class MainFrame(wx.Frame):
             derived_parent_count,
             derived_child_count,
         )
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "[list-debug] after loading %s: list_count=%s selected_id=%s title_column=%s samples=%s",
+                prefix,
+                list_count,
+                list_selected,
+                title_column,
+                title_samples,
+            )
         if total and visible == 0 and filters_snapshot:
             logger.warning(
                 "All %s requirement(s) for %s are hidden by the current filters",

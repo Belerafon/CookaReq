@@ -90,7 +90,7 @@ def _build_wx_stub():
             return self._value
 
     class Button(Window):
-        def __init__(self, parent=None, label=""):
+        def __init__(self, parent=None, label="", style=0):
             super().__init__(parent)
             self._label = label
 
@@ -99,7 +99,7 @@ def _build_wx_stub():
 
     class BitmapButton(Button):
         def __init__(self, parent=None, bitmap=None, style=0):
-            super().__init__(parent)
+            super().__init__(parent, style=style)
             self._bitmap = bitmap
 
     class ArtProvider:
@@ -386,6 +386,16 @@ def _build_wx_stub():
                 for child in self._children
             ]
 
+    class StaticBox(Window):
+        def __init__(self, parent=None, label=""):
+            super().__init__(parent)
+            self._label = label
+
+    class StaticBoxSizer(BoxSizer):
+        def __init__(self, box, orient):
+            super().__init__(orient)
+            self._box = box
+
     class Config:
         def read_int(self, key, default):
             return default
@@ -413,10 +423,15 @@ def _build_wx_stub():
         ListCtrl=ListCtrl,
         ImageList=ImageList,
         BoxSizer=BoxSizer,
+        StaticBox=StaticBox,
+        StaticBoxSizer=StaticBoxSizer,
         Window=Window,
         VERTICAL=0,
+        HORIZONTAL=1,
         EXPAND=0,
         ALL=0,
+        LEFT=0,
+        ALIGN_CENTER_VERTICAL=0,
         BU_EXACTFIT=0,
         ART_CLOSE="close",
         ART_BUTTON="button",
@@ -1038,6 +1053,41 @@ def test_reorder_columns(monkeypatch):
         field_label("id"),
     ]
 
+
+def test_debug_rendering_limits_columns_and_formatting(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    monkeypatch.setenv("COOKAREQ_LIST_PANEL_RENDERING", "debug")
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_cls(frame, model=requirement_model_cls())
+    panel.set_columns(["labels", "id", "derived_from"])
+    panel.set_requirements(
+        [
+            _req(1, "Parent", labels=["alpha"]),
+            _req(2, "Child", labels=["beta"], links=["REQ-001"]),
+        ]
+    )
+
+    assert panel.list._cols == [list_panel_module._("Title")]
+    assert panel.list.GetColumnCount() == 1
+    assert panel.list.GetItem(0, 0).GetText() == "Parent"
+    assert panel.list.GetItem(1, 0).GetText() == "Child"
+    assert (
+        panel.list.get_bound_handler(wx_stub.EVT_LIST_ITEM_RIGHT_CLICK) is None
+    )
 
 def test_load_column_widths_assigns_defaults(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()

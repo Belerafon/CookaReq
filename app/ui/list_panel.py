@@ -73,12 +73,16 @@ _DEBUG_RENDERING = _RENDERING_MODE is ListPanelRenderingMode.DEBUG
 DISABLE_BACKGROUND_INHERITANCE = _DEBUG_RENDERING
 DISABLE_SUBITEM_IMAGE_STYLE = _DEBUG_RENDERING
 DISABLE_LABEL_BITMAPS = _DEBUG_RENDERING
+SIMPLIFY_COLUMN_SET = _DEBUG_RENDERING
+SIMPLIFY_CELL_RENDERING = _DEBUG_RENDERING
+DISABLE_CONTEXT_MENU = _DEBUG_RENDERING
 
 if _DEBUG_RENDERING:
     logger.info(
         "ListPanel debug rendering mode enabled: background inheritance, subitem images, "
-        "and label bitmaps are temporarily disabled. Set COOKAREQ_LIST_PANEL_RENDERING=full "
-        "to restore the full visuals once the repaint bug is fixed."
+        "label bitmaps, extra columns, context menus, and complex cell formatting are temporarily disabled. "
+        "Set COOKAREQ_LIST_PANEL_RENDERING=full to restore the full visuals once the repaint "
+        "bug is fixed."
     )
 else:
     logger.info("ListPanel full rendering mode enabled; advanced visuals are active.")
@@ -176,8 +180,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         sizer.Add(btn_row, 0, wx.EXPAND, 0)
         sizer.Add(self.list, 1, wx.EXPAND | top_flag, vertical_pad)
         self.SetSizer(sizer)
-        self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
-        self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
+        if not DISABLE_CONTEXT_MENU:
+            self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
+            self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
         self.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter)
         self.reset_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.reset_filters())
 
@@ -435,6 +440,22 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 with suppress(Exception):
                     self.list.SetItemImage(index, -1)
 
+    def _basic_cell_text(self, req: Requirement, field: str) -> str:
+        """Return minimal string representation for ``field`` in debug mode."""
+
+        if field == "labels":
+            labels = getattr(req, "labels", []) or []
+            return ", ".join(str(label) for label in labels)
+        if field == "links":
+            links = getattr(req, "links", []) or []
+            return ", ".join(str(getattr(link, "rid", link)) for link in links)
+        value = getattr(req, field, "")
+        if isinstance(value, Enum):
+            return locale.code_to_label(field, value.value)
+        if value is None:
+            return ""
+        return str(value)
+
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields.
 
@@ -445,21 +466,25 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """
         self.list.ClearAll()
         self._field_order: list[str] = []
-        include_labels = "labels" in self.columns
-        if include_labels:
-            self.list.InsertColumn(0, _("Labels"))
-            self._field_order.append("labels")
-            self.list.InsertColumn(1, _("Title"))
-            self._field_order.append("title")
-        else:
+        if SIMPLIFY_COLUMN_SET:
             self.list.InsertColumn(0, _("Title"))
             self._field_order.append("title")
-        for field in self.columns:
-            if field == "labels":
-                continue
-            idx = self.list.GetColumnCount()
-            self.list.InsertColumn(idx, locale.field_label(field))
-            self._field_order.append(field)
+        else:
+            include_labels = "labels" in self.columns
+            if include_labels:
+                self.list.InsertColumn(0, _("Labels"))
+                self._field_order.append("labels")
+                self.list.InsertColumn(1, _("Title"))
+                self._field_order.append("title")
+            else:
+                self.list.InsertColumn(0, _("Title"))
+                self._field_order.append("title")
+            for field in self.columns:
+                if field == "labels":
+                    continue
+                idx = self.list.GetColumnCount()
+                self.list.InsertColumn(idx, locale.field_label(field))
+                self._field_order.append(field)
         ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
         with suppress(Exception):  # remove mixin's default binding and use our own
             self.list.Unbind(wx.EVT_LIST_COL_CLICK)
@@ -665,7 +690,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         items = self.model.get_visible()
         self.list.DeleteAllItems()
         for req in items:
-            index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
+            first_text = ""
+            if SIMPLIFY_CELL_RENDERING and self._field_order:
+                first_field = self._field_order[0]
+                first_text = self._basic_cell_text(req, first_field)
+            index = self.list.InsertItem(self.list.GetItemCount(), first_text, -1)
             # Windows ListCtrl may still assign image 0; clear explicitly
             if hasattr(self.list, "SetItemImage"):
                 with suppress(Exception):
@@ -676,6 +705,17 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             except Exception:
                 self.list.SetItemData(index, 0)
             for col, field in enumerate(self._field_order):
+                if SIMPLIFY_CELL_RENDERING:
+                    text = self._basic_cell_text(req, field)
+                    self.list.SetItem(index, col, text)
+                    if field == "labels":
+                        if hasattr(self.list, "SetItemColumnImage"):
+                            with suppress(Exception):
+                                self.list.SetItemColumnImage(index, col, -1)
+                        if hasattr(self.list, "SetItemImage"):
+                            with suppress(Exception):
+                                self.list.SetItemImage(index, -1)
+                    continue
                 if field == "title":
                     title = getattr(req, "title", "")
                     derived = bool(getattr(req, "links", []))

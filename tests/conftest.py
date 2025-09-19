@@ -50,6 +50,20 @@ def _auto_confirm():
 
 
 @pytest.fixture(autouse=True)
+def _default_list_panel_rendering(monkeypatch):
+    """Force ListPanel to run in full rendering mode for tests unless overridden."""
+
+    if "COOKAREQ_LIST_PANEL_RENDERING" not in os.environ:
+        monkeypatch.setenv("COOKAREQ_LIST_PANEL_RENDERING", "full")
+    for module in (
+        "app.ui.list_panel",
+        "app.ui.helpers",
+    ):
+        sys.modules.pop(module, None)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _isolate_wx_config(monkeypatch, tmp_path_factory):
     """Persist wx.Config data under a per-test directory."""
 

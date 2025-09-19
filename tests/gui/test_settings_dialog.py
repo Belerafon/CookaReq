@@ -26,6 +26,7 @@ def test_settings_dialog_returns_language(wx_app):
         open_last=True,
         remember_sort=False,
         language="ru",
+        list_panel_debug_level=3,
         base_url="http://api",
         model="gpt-test",
         api_key="key",
@@ -46,6 +47,7 @@ def test_settings_dialog_returns_language(wx_app):
         True,
         False,
         "ru",
+        3,
         "http://api",
         "gpt-test",
         "key",
@@ -73,6 +75,7 @@ def test_max_output_tokens_text_input(wx_app):
         open_last=False,
         remember_sort=False,
         language="en",
+        list_panel_debug_level=0,
         base_url="http://api",
         model="gpt",
         api_key="key",
@@ -97,17 +100,17 @@ def test_max_output_tokens_text_input(wx_app):
 
     dlg._max_output_tokens.SetValue("")
     wx.GetApp().Yield()
-    max_tokens = dlg.get_values()[7]
+    max_tokens = dlg.get_values()[8]
     assert max_tokens == DEFAULT_MAX_OUTPUT_TOKENS
 
     dlg._max_output_tokens.SetValue("500")
     wx.GetApp().Yield()
-    max_tokens = dlg.get_values()[7]
+    max_tokens = dlg.get_values()[8]
     assert max_tokens == MIN_MAX_OUTPUT_TOKENS
 
     dlg._max_output_tokens.SetValue("7500")
     wx.GetApp().Yield()
-    max_tokens = dlg.get_values()[7]
+    max_tokens = dlg.get_values()[8]
     assert max_tokens == 7500
 
     dlg.Destroy()
@@ -146,6 +149,7 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         open_last=False,
         remember_sort=False,
         language="en",
+        list_panel_debug_level=0,
         base_url="",
         model="",
         api_key="",
@@ -224,6 +228,7 @@ def test_mcp_check_status(monkeypatch, wx_app):
         open_last=False,
         remember_sort=False,
         language="en",
+        list_panel_debug_level=0,
         base_url="",
         model="",
         api_key="",
@@ -294,6 +299,7 @@ def test_llm_agent_checks(monkeypatch, wx_app):
         open_last=False,
         remember_sort=False,
         language="en",
+        list_panel_debug_level=0,
         base_url="http://api",
         model="gpt",
         api_key="key",
@@ -354,6 +360,7 @@ def test_llm_agent_check_failure_logs(monkeypatch, wx_app):
         open_last=False,
         remember_sort=False,
         language="en",
+        list_panel_debug_level=0,
         base_url="http://api",
         model="gpt",
         api_key="key",
@@ -398,6 +405,7 @@ def test_settings_help_buttons(monkeypatch, wx_app):
         open_last=False,
         remember_sort=False,
         language="en",
+        list_panel_debug_level=0,
         base_url="",
         model="",
         api_key="",
@@ -439,3 +447,56 @@ def test_settings_help_buttons(monkeypatch, wx_app):
     assert shown[-1] == (dlg, host_btn, MCP_HELP["host"])
 
     dlg.Destroy()
+
+
+def test_settings_dialog_updates_list_panel_debug_level(monkeypatch, tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+    from app.config import ConfigManager
+    import app.ui.main_frame as main_frame
+
+    config = ConfigManager(app_name="TestCookaReq", path=tmp_path / "cfg.ini")
+    frame = main_frame.MainFrame(None, config=config)
+    old_panel = frame.panel
+
+    class DummySettingsDialog:
+        def __init__(self, *args, **kwargs):
+            assert kwargs.get("list_panel_debug_level") == frame.list_panel_debug_level
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def get_values(self):
+            return (
+                frame.auto_open_last,
+                frame.remember_sort,
+                frame.language,
+                9,
+                frame.llm_settings.base_url,
+                frame.llm_settings.model,
+                frame.llm_settings.api_key or "",
+                frame.llm_settings.max_retries,
+                frame.llm_settings.max_output_tokens,
+                frame.llm_settings.token_limit_parameter or "",
+                frame.llm_settings.timeout_minutes,
+                frame.llm_settings.stream,
+                frame.mcp_settings.auto_start,
+                frame.mcp_settings.host,
+                frame.mcp_settings.port,
+                frame.mcp_settings.base_path,
+                frame.mcp_settings.require_token,
+                frame.mcp_settings.token,
+            )
+
+        def Destroy(self):  # pragma: no cover - compatibility hook
+            pass
+
+    monkeypatch.setattr(main_frame, "SettingsDialog", DummySettingsDialog)
+
+    frame.on_open_settings(None)
+
+    assert frame.list_panel_debug_level == 9
+    assert frame.panel is not old_panel
+    assert frame.panel.debug_level == 9
+    assert frame.config.get_list_panel_debug_level() == 9
+
+    frame.Destroy()

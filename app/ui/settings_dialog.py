@@ -28,6 +28,11 @@ GENERAL_HELP: dict[str, str] = {
         "Language for menus and dialogs.\n"
         "Changes apply after restarting CookaReq.",
     ),
+    "list_debug": _(
+        "Diagnostic level for the requirements list.\n"
+        "Higher numbers progressively disable extra features to help locate rendering issues.\n"
+        "Set to 10 to use a plain wx.ListCtrl without custom behaviour.",
+    ),
 }
 
 
@@ -138,6 +143,7 @@ class SettingsDialog(wx.Dialog):
         open_last: bool,
         remember_sort: bool,
         language: str,
+        list_panel_debug_level: int,
         base_url: str,
         model: str,
         api_key: str,
@@ -172,6 +178,12 @@ class SettingsDialog(wx.Dialog):
         self._remember_sort.SetValue(remember_sort)
         self._language_choice = wx.Choice(general, choices=choices)
         self._language_choice.SetSelection(idx)
+        self._list_debug_level = wx.SpinCtrl(
+            general,
+            min=0,
+            max=10,
+            initial=max(0, min(10, int(list_panel_debug_level))),
+        )
 
         gen_sizer = wx.BoxSizer(wx.VERTICAL)
         open_last_sz = wx.BoxSizer(wx.HORIZONTAL)
@@ -212,6 +224,25 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         gen_sizer.Add(lang_sizer, 0, wx.ALL | wx.EXPAND, 5)
+        debug_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        debug_sizer.Add(
+            wx.StaticText(general, label=_("List debug level")),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            5,
+        )
+        debug_sizer.Add(self._list_debug_level, 0, wx.ALIGN_CENTER_VERTICAL)
+        debug_sizer.Add(
+            make_help_button(
+                general,
+                GENERAL_HELP["list_debug"],
+                dialog_parent=self,
+            ),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        gen_sizer.Add(debug_sizer, 0, wx.ALL | wx.EXPAND, 5)
         general.SetSizer(gen_sizer)
 
         # LLM/Agent settings ---------------------------------------------
@@ -798,6 +829,7 @@ class SettingsDialog(wx.Dialog):
             self._open_last.GetValue(),
             self._remember_sort.GetValue(),
             lang_code,
+            self._list_debug_level.GetValue(),
             self._base_url.GetValue(),
             self._model.GetValue(),
             self._api_key.GetValue(),

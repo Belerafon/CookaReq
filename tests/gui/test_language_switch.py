@@ -36,6 +36,7 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app):
                 frame.auto_open_last,
                 frame.remember_sort,
                 "ru",
+                frame.list_panel_debug_level,
                 frame.llm_settings.base_url,
                 frame.llm_settings.model,
                 frame.llm_settings.api_key or "",

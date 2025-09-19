@@ -209,19 +209,9 @@ class MainFrame(wx.Frame):
         ) = self._create_section(
             self.splitter,
             label=_("Requirements"),
-            factory=lambda parent: ListPanel(
-                parent,
-                model=self.model,
-                on_clone=self.on_clone_requirement,
-                on_delete=self.on_delete_requirement,
-                on_delete_many=self.on_delete_requirements,
-                on_sort_changed=self._on_sort_changed,
-                on_derive=self.on_derive_requirement,
-                debug_level=self.list_panel_debug_level,
-            ),
+            factory=lambda parent: self._create_list_panel(parent),
         )
-        self.panel.set_columns(self.selected_fields)
-        self.panel.list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_requirement_activated)
+        self._attach_list_panel(self.panel)
         (
             self.editor_container,
             self.editor_label,
@@ -305,7 +295,6 @@ class MainFrame(wx.Frame):
         self.current_dir: Path | None = None
         self.current_doc_prefix: str | None = None
         self._selected_requirement_id: int | None = None
-        self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         if self.auto_open_last and self.recent_dirs:
             path = Path(self.recent_dirs[0])
@@ -408,6 +397,92 @@ class MainFrame(wx.Frame):
             sizer.Add(content, 1, wx.EXPAND)
         container.SetSizer(sizer)
         return container, label_ctrl, content
+
+    def _create_list_panel(self, parent: wx.Window) -> ListPanel:
+        """Instantiate :class:`ListPanel` with current callbacks and debug level."""
+
+        return ListPanel(
+            parent,
+            model=self.model,
+            on_clone=self.on_clone_requirement,
+            on_delete=self.on_delete_requirement,
+            on_delete_many=self.on_delete_requirements,
+            on_sort_changed=self._on_sort_changed,
+            on_derive=self.on_derive_requirement,
+            debug_level=self.list_panel_debug_level,
+        )
+
+    def _attach_list_panel(self, panel: ListPanel) -> None:
+        """Configure ``panel`` with current columns and event bindings."""
+
+        panel.set_columns(self.selected_fields)
+        panel.list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_requirement_activated)
+        panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
+
+    def _recreate_list_panel(self) -> None:
+        """Replace the requirements panel preserving data and selection."""
+
+        if not getattr(self, "panel", None):
+            return
+        old_panel = self.panel
+        container = getattr(self, "list_container", None)
+        if container is None:
+            return
+        list_sizer = container.GetSizer()
+        selected_id: int | None = None
+        try:
+            idx = old_panel.list.GetFirstSelected()
+        except Exception:
+            idx = -1
+        if idx != -1:
+            try:
+                selected_id = int(old_panel.list.GetItemData(idx))
+            except Exception:
+                selected_id = None
+        previous_filters = dict(getattr(old_panel, "current_filters", {}) or {})
+        previous_derived_map = getattr(old_panel, "derived_map", None)
+        previous_labels = list(getattr(old_panel, "_labels", []))
+
+        self.panel = self._create_list_panel(container)
+        self._attach_list_panel(self.panel)
+        self.panel.set_documents_controller(self.docs_controller)
+        self.panel.set_active_document(self.current_doc_prefix)
+        if list_sizer is not None:
+            list_sizer.Replace(old_panel, self.panel)
+        old_panel.Destroy()
+
+        self.panel.load_column_widths(self.config)
+        self.panel.load_column_order(self.config)
+        try:
+            requirements = self.model.get_all()
+        except Exception:
+            requirements = []
+        derived_map = previous_derived_map if isinstance(previous_derived_map, dict) else None
+        self.panel.set_requirements(requirements, derived_map)
+        if self.docs_controller and self.current_doc_prefix:
+            try:
+                labels, _ = self.docs_controller.collect_labels(self.current_doc_prefix)
+            except Exception:
+                labels = previous_labels
+        else:
+            labels = previous_labels
+        self.panel.update_labels_list(labels)
+        self.panel.apply_filters(previous_filters)
+
+        if self.remember_sort and self.sort_column != -1:
+            self.panel.sort(self.sort_column, self.sort_ascending)
+
+        target_id = self._selected_requirement_id
+        if target_id is None:
+            target_id = selected_id
+        if target_id is not None:
+            try:
+                self.panel.focus_requirement(int(target_id))
+            except Exception:
+                pass
+        container.Layout()
+        self.panel.Refresh()
+        self.Layout()
 
     def _configure_doc_tree_section(self) -> None:
         """Allow the hierarchy pane header to collapse to a narrow width."""
@@ -715,6 +790,7 @@ class MainFrame(wx.Frame):
             open_last=self.auto_open_last,
             remember_sort=self.remember_sort,
             language=self.language,
+            list_panel_debug_level=self.list_panel_debug_level,
             base_url=self.llm_settings.base_url,
             model=self.llm_settings.model,
             api_key=self.llm_settings.api_key or "",
@@ -730,11 +806,14 @@ class MainFrame(wx.Frame):
             require_token=self.mcp_settings.require_token,
             token=self.mcp_settings.token,
         )
+        previous_language = self.language
+        previous_debug_level = self.list_panel_debug_level
         if dlg.ShowModal() == wx.ID_OK:
             (
                 self.auto_open_last,
                 self.remember_sort,
                 self.language,
+                list_panel_debug_level,
                 base_url,
                 model,
                 api_key,
@@ -750,6 +829,7 @@ class MainFrame(wx.Frame):
                 require_token,
                 token,
             ) = dlg.get_values()
+            self.list_panel_debug_level = list_panel_debug_level
             previous_mcp = self.mcp_settings
             self.llm_settings = LLMSettings(
                 base_url=base_url,
@@ -772,6 +852,7 @@ class MainFrame(wx.Frame):
             self.config.set_auto_open_last(self.auto_open_last)
             self.config.set_remember_sort(self.remember_sort)
             self.config.set_language(self.language)
+            self.config.set_list_panel_debug_level(self.list_panel_debug_level)
             self.config.set_llm_settings(self.llm_settings)
             self.config.set_mcp_settings(self.mcp_settings)
             auto_start_changed = (
@@ -789,7 +870,14 @@ class MainFrame(wx.Frame):
             elif self.mcp_settings.auto_start and server_config_changed:
                 self.mcp.stop()
                 self.mcp.start(self.mcp_settings)
-            self._apply_language()
+            language_changed = previous_language != self.language
+            debug_level_changed = (
+                previous_debug_level != self.list_panel_debug_level
+            )
+            if language_changed:
+                self._apply_language()
+            elif debug_level_changed:
+                self._recreate_list_panel()
         dlg.Destroy()
 
     def on_run_command(self, _event: wx.Event) -> None:
@@ -831,19 +919,8 @@ class MainFrame(wx.Frame):
         # Replace panels to update all labels
         old_panel = self.panel
         list_sizer = self.list_container.GetSizer()
-        self.panel = ListPanel(
-            self.list_container,
-            model=self.model,
-            on_clone=self.on_clone_requirement,
-            on_delete=self.on_delete_requirement,
-            on_delete_many=self.on_delete_requirements,
-            on_sort_changed=self._on_sort_changed,
-            on_derive=self.on_derive_requirement,
-            debug_level=self.list_panel_debug_level,
-        )
-        self.panel.set_columns(self.selected_fields)
-        self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
-        self.panel.list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_requirement_activated)
+        self.panel = self._create_list_panel(self.list_container)
+        self._attach_list_panel(self.panel)
         if list_sizer is not None:
             list_sizer.Replace(old_panel, self.panel)
         old_panel.Destroy()

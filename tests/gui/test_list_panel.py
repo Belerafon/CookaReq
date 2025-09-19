@@ -1136,7 +1136,8 @@ def test_sort_by_labels(monkeypatch):
         ],
     )
 
-    panel.sort(0, True)
+    label_col = panel._field_order.index("labels")
+    panel.sort(label_col, True)
     assert [r.id for r in panel.model.get_visible()] == [2, 1]
 
 
@@ -1165,7 +1166,8 @@ def test_sort_by_multiple_labels(monkeypatch):
         ],
     )
 
-    panel.sort(0, True)
+    label_col = panel._field_order.index("labels")
+    panel.sort(label_col, True)
     assert [r.id for r in panel.model.get_visible()] == [2, 1]
 
 
@@ -1341,8 +1343,8 @@ def test_load_column_widths_assigns_defaults(monkeypatch):
     panel.load_column_widths(config)
 
     assert panel.list._col_widths == {
-        0: list_panel_cls.DEFAULT_COLUMN_WIDTHS["labels"],
-        1: list_panel_cls.DEFAULT_COLUMN_WIDTHS["title"],
+        0: list_panel_cls.DEFAULT_COLUMN_WIDTHS["title"],
+        1: list_panel_cls.DEFAULT_COLUMN_WIDTHS["labels"],
         2: list_panel_cls.DEFAULT_COLUMN_WIDTHS["id"],
         3: list_panel_cls.DEFAULT_COLUMN_WIDTHS["status"],
         4: list_panel_cls.DEFAULT_COLUMN_WIDTHS["priority"],

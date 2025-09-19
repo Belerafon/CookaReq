@@ -248,19 +248,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         rid = getattr(parent, "rid", str(parent))
         return self._link_display_text(rid)
 
-    def _set_label_text(self, index: int, col: int, labels: list[str]) -> None:
-        text = ", ".join(labels)
-        self.list.SetItem(index, col, text)
-        if col == 0 and hasattr(self.list, "SetItemImage"):
-            with suppress(Exception):
-                self.list.SetItemImage(index, -1)
-        else:
-            with suppress(Exception):
-                self.list.SetItemColumnImage(index, col, -1)
-            if hasattr(self.list, "SetItemImage"):
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
-
     def _set_subitem_image_style(self, enabled: bool) -> None:
         """Toggle ``LC_EX_SUBITEMIMAGES`` based on the presence of image lists."""
 
@@ -345,36 +332,24 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     header.SetBackgroundColour(background_colour)
 
     def _setup_columns(self) -> None:
-        """Configure list control columns based on selected fields.
+        """Configure list columns using a minimal layout for debugging."""
 
-        On Windows ``wx.ListCtrl`` always reserves space for an image in the
-        first physical column. Placing ``labels`` at index 0 removes the extra
-        padding before ``Title``. Another workaround is to insert a hidden
-        dummy column before ``Title``.
-        """
         self.list.ClearAll()
-        self._field_order: list[str] = []
-        include_labels = "labels" in self.columns
-        if include_labels:
-            self.list.InsertColumn(0, _("Labels"))
-            self._field_order.append("labels")
-            self._ensure_column_width(0, "labels")
-            self.list.InsertColumn(1, _("Title"))
-            self._field_order.append("title")
-            self._ensure_column_width(1, "title")
-        else:
-            self.list.InsertColumn(0, _("Title"))
-            self._field_order.append("title")
-            self._ensure_column_width(0, "title")
+        self._field_order = []
+
+        self.list.InsertColumn(0, _("Title"))
+        self._field_order.append("title")
+        self._ensure_column_width(0, "title")
+
         for field in self.columns:
-            if field == "labels":
-                continue
             idx = self.list.GetColumnCount()
-            self.list.InsertColumn(idx, locale.field_label(field))
+            label = _("Labels") if field == "labels" else locale.field_label(field)
+            self.list.InsertColumn(idx, label)
             self._field_order.append(field)
             self._ensure_column_width(idx, field)
+
         ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
-        with suppress(Exception):  # remove mixin's default binding and use our own
+        with suppress(Exception):
             self.list.Unbind(wx.EVT_LIST_COL_CLICK)
         self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
 
@@ -454,16 +429,17 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def reorder_columns(self, from_col: int, to_col: int) -> None:
         """Move column from ``from_col`` index to ``to_col`` index."""
-        offset = 2 if "labels" in self.columns else 1
+        offset = 1  # Title column at index 0
         if from_col == to_col or from_col < offset or to_col < offset:
             return
-        fields = [f for f in self.columns if f != "labels"]
-        field = fields.pop(from_col - offset)
-        fields.insert(to_col - offset, field)
-        if "labels" in self.columns:
-            self.columns = ["labels", *fields]
-        else:
-            self.columns = fields
+        fields = list(self.columns)
+        src = from_col - offset
+        dst = to_col - offset
+        if src < 0 or src >= len(fields) or dst < 0 or dst >= len(fields):
+            return
+        field = fields.pop(src)
+        fields.insert(dst, field)
+        self.columns = fields
         self._setup_columns()
         self._refresh()
 
@@ -472,7 +448,16 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
         ``labels`` is treated specially and rendered as a comma-separated list.
         """
-        self.columns = fields
+        seen: set[str] = set()
+        normalized: list[str] = []
+        for field in fields:
+            if field == "title":
+                continue
+            if field in seen:
+                continue
+            seen.add(field)
+            normalized.append(field)
+        self.columns = normalized
         self._setup_columns()
         # repopulate with existing requirements after changing columns
         self._refresh()
@@ -596,66 +581,56 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Reload list control from the model."""
         items = list(self.model.get_visible())
         self.list.DeleteAllItems()
-        for req in items:
-            index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
-            # Windows ListCtrl may still assign image 0; clear explicitly
-            if hasattr(self.list, "SetItemImage"):
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
-            req_id = getattr(req, "id", 0)
-            try:
-                self.list.SetItemData(index, int(req_id))
-            except Exception:
-                self.list.SetItemData(index, 0)
+        for row, req in enumerate(items):
             for col, field in enumerate(self._field_order):
-                if field == "title":
-                    title = getattr(req, "title", "")
-                    derived = bool(getattr(req, "links", []))
-                    display = f"↳ {title}".strip() if derived else title
-                    self.list.SetItem(index, col, display)
-                    continue
-                if field == "labels":
-                    value = [str(lbl) for lbl in getattr(req, "labels", [])]
-                    self._set_label_text(index, col, value)
-                    continue
-                if field == "derived_from":
-                    value = self._first_parent_text(req)
-                    self.list.SetItem(index, col, value)
-                    continue
-                if field == "links":
-                    links = getattr(req, "links", [])
-                    formatted: list[str] = []
-                    for link in links:
-                        rid = getattr(link, "rid", str(link))
-                        if getattr(link, "suspect", False):
-                            formatted.append(f"{rid} ⚠")
-                        else:
-                            formatted.append(str(rid))
-                    value = ", ".join(formatted)
-                    self.list.SetItem(index, col, value)
-                    continue
-                if field == "derived_count":
-                    rid = req.rid or str(req.id)
-                    count = len(self.derived_map.get(rid, []))
-                    self.list.SetItem(index, col, str(count))
-                    continue
-                if field == "attachments":
-                    value = ", ".join(
-                        getattr(a, "path", "")
-                        for a in getattr(req, "attachments", [])
-                    )
-                    self.list.SetItem(index, col, value)
-                    continue
-                value = getattr(req, field, "")
-                if isinstance(value, Enum):
-                    value = locale.code_to_label(field, value.value)
-                self.list.SetItem(index, col, str(value))
+                value = self._format_cell(req, field)
+                if col == 0:
+                    index = self.list.InsertItem(row, value)
+                    req_id = getattr(req, "id", 0)
+                    try:
+                        self.list.SetItemData(index, int(req_id))
+                    except Exception:
+                        self.list.SetItemData(index, 0)
+                else:
+                    self.list.SetItem(row, col, value)
         self._request_list_redraw(len(items))
         if callable(self._after_refresh_callback):
             try:
                 self._after_refresh_callback(self)
             except Exception:
                 logger.exception("ListPanel post-refresh callback failed")
+
+    def _format_cell(self, req: Requirement, field: str) -> str:
+        """Return textual representation for ``field`` of ``req``."""
+
+        if field == "title":
+            title = getattr(req, "title", "")
+            derived = bool(getattr(req, "links", []))
+            return f"↳ {title}".strip() if derived else str(title)
+        if field == "labels":
+            labels = getattr(req, "labels", []) or []
+            return ", ".join(str(lbl) for lbl in labels)
+        if field == "derived_from":
+            return self._first_parent_text(req)
+        if field == "links":
+            formatted: list[str] = []
+            for link in getattr(req, "links", []) or []:
+                rid = getattr(link, "rid", str(link))
+                suffix = " ⚠" if getattr(link, "suspect", False) else ""
+                formatted.append(f"{rid}{suffix}")
+            return ", ".join(formatted)
+        if field == "derived_count":
+            rid = getattr(req, "rid", "") or str(getattr(req, "id", ""))
+            return str(len(self.derived_map.get(rid, [])))
+        if field == "attachments":
+            attachments = getattr(req, "attachments", []) or []
+            return ", ".join(getattr(att, "path", "") for att in attachments)
+        value = getattr(req, field, "")
+        if isinstance(value, Enum):
+            return str(locale.code_to_label(field, value.value))
+        if isinstance(value, list):
+            return ", ".join(str(item) for item in value)
+        return str(value)
 
     def _request_list_redraw(self, item_count: int) -> None:
         """Force repaint of the list control after bulk updates."""

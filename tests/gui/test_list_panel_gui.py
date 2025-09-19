@@ -135,6 +135,9 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.debug.report_width_retry is False
     assert panel.debug.report_column_widths is False
     assert panel.debug.report_list_item is False
+    assert panel.debug.report_clear_all is False
+    assert panel.debug.report_batch_delete is False
+    assert panel.debug.report_lazy_refresh is False
     assert panel.debug.report_style is False
     assert panel.debug.sizer_layout is False
     assert panel.model is None
@@ -169,11 +172,116 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
 @pytest.mark.parametrize(
     "level, flags",
     [
-        (19, {"report_width_retry": True, "report_column_widths": True, "report_list_item": True, "report_style": True}),
-        (20, {"report_width_retry": False, "report_column_widths": True, "report_list_item": True, "report_style": True}),
-        (21, {"report_width_retry": False, "report_column_widths": False, "report_list_item": True, "report_style": True}),
-        (22, {"report_width_retry": False, "report_column_widths": False, "report_list_item": False, "report_style": True}),
-        (23, {"report_width_retry": False, "report_column_widths": False, "report_list_item": False, "report_style": False}),
+        (
+            19,
+            {
+                "report_width_retry": True,
+                "report_column_widths": True,
+                "report_list_item": True,
+                "report_clear_all": True,
+                "report_batch_delete": True,
+                "report_lazy_refresh": True,
+                "report_style": True,
+            },
+        ),
+        (
+            20,
+            {
+                "report_width_retry": False,
+                "report_column_widths": True,
+                "report_list_item": True,
+                "report_clear_all": True,
+                "report_batch_delete": True,
+                "report_lazy_refresh": True,
+                "report_style": True,
+            },
+        ),
+        (
+            21,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": True,
+                "report_clear_all": True,
+                "report_batch_delete": True,
+                "report_lazy_refresh": True,
+                "report_style": True,
+            },
+        ),
+        (
+            22,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": True,
+                "report_batch_delete": True,
+                "report_lazy_refresh": True,
+                "report_style": True,
+            },
+        ),
+        (
+            23,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": True,
+                "report_lazy_refresh": True,
+                "report_style": True,
+            },
+        ),
+        (
+            24,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_lazy_refresh": True,
+                "report_style": True,
+            },
+        ),
+        (
+            25,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_lazy_refresh": False,
+                "report_style": True,
+            },
+        ),
+        (
+            26,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_lazy_refresh": False,
+                "report_style": False,
+                "sizer_layout": True,
+            },
+        ),
+        (
+            27,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_lazy_refresh": False,
+                "report_style": False,
+                "sizer_layout": False,
+            },
+        ),
     ],
 )
 def test_report_style_debug_steps(wx_app, level, flags):

@@ -58,6 +58,9 @@ class ListPanelDebugProfile:
         "report_width_retry": "report width retry queue",
         "report_column_widths": "report column width enforcement",
         "report_list_item": "report header listitem setup",
+        "report_clear_all": "report ClearAll column reset",
+        "report_batch_delete": "report bulk DeleteAllItems",
+        "report_lazy_refresh": "implicit report refresh",
         "report_style": "report-style layout",
         "sizer_layout": "panel box sizer",
     }
@@ -86,6 +89,9 @@ class ListPanelDebugProfile:
     report_width_retry: bool
     report_column_widths: bool
     report_list_item: bool
+    report_clear_all: bool
+    report_batch_delete: bool
+    report_lazy_refresh: bool
     report_style: bool
     sizer_layout: bool
 
@@ -120,8 +126,11 @@ class ListPanelDebugProfile:
             report_width_retry=clamped < 20,
             report_column_widths=clamped < 21,
             report_list_item=clamped < 22,
-            report_style=clamped < 23,
-            sizer_layout=clamped < 24,
+            report_clear_all=clamped < 23,
+            report_batch_delete=clamped < 24,
+            report_lazy_refresh=clamped < 25,
+            report_style=clamped < 26,
+            sizer_layout=clamped < 27,
         )
 
     def disabled_features(self) -> list[str]:
@@ -478,13 +487,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _populate_plain_items(self) -> None:
         """Render cached plain entries into the list control."""
 
-        self.list.DeleteAllItems()
+        self._clear_items()
         for req_id, title in self._plain_items:
             index = self.list.InsertItem(self.list.GetItemCount(), title)
             try:
                 self.list.SetItemData(index, int(req_id))
             except Exception:
                 self.list.SetItemData(index, 0)
+        self._post_population_refresh()
 
     def _on_size_plain(self, event: wx.Event | None) -> None:
         """Resize the list control to fill the panel without sizers."""
@@ -606,7 +616,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         padding before ``Title``. Another workaround is to insert a hidden
         dummy column before ``Title``.
         """
-        self.list.ClearAll()
+        if self.debug.report_clear_all:
+            self.list.ClearAll()
+        else:
+            self._clear_items()
+            self._remove_all_columns()
         self._pending_column_widths.clear()
         self._field_order: list[str] = []
         if not self.debug.report_style:
@@ -678,6 +692,51 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.InsertColumn(index, label)
         self._field_order.append(field)
         self._ensure_column_width(index, width)
+
+    def _clear_items(self) -> None:
+        """Remove all items from the control respecting debug fallbacks."""
+
+        if self.debug.report_batch_delete:
+            try:
+                self.list.DeleteAllItems()
+            except Exception:
+                pass
+            else:
+                return
+        try:
+            count = self.list.GetItemCount()
+        except Exception:
+            return
+        for idx in range(count - 1, -1, -1):
+            with suppress(Exception):
+                self.list.DeleteItem(idx)
+
+    def _remove_all_columns(self) -> None:
+        """Drop all report-style columns without relying on ``ClearAll``."""
+
+        try:
+            count = self.list.GetColumnCount()
+        except Exception:
+            return
+        for idx in range(count - 1, -1, -1):
+            try:
+                self.list.DeleteColumn(idx)
+            except Exception:
+                logger.debug(
+                    "Failed to delete ListPanel column %s during fallback removal",
+                    idx,
+                    exc_info=True,
+                )
+
+    def _post_population_refresh(self) -> None:
+        """Force a repaint when implicit refresh is disabled."""
+
+        if self.debug.report_lazy_refresh:
+            return
+        with suppress(Exception):
+            self.list.Refresh()
+        with suppress(Exception):
+            self.list.Update()
 
     def _ensure_column_width(self, column: int, width: int) -> None:
         """Guarantee that a column remains visible even if the backend rejects it."""
@@ -1031,7 +1090,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             items = self.model.get_visible()
         except Exception:
             items = []
-        self.list.DeleteAllItems()
+        self._clear_items()
         if not self.debug.rich_rendering:
             for req in items:
                 title = getattr(req, "title", "")
@@ -1044,6 +1103,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetItemData(index, int(req_id))
                 except Exception:
                     self.list.SetItemData(index, 0)
+            self._post_population_refresh()
             return
         for req in items:
             index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
@@ -1115,6 +1175,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
                 self.list.SetItem(index, col, str(value))
+        self._post_population_refresh()
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.

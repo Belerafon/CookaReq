@@ -63,8 +63,12 @@ class ListPanelDebugProfile:
         "report_column_align": "report column alignment",
         "report_lazy_refresh": "implicit report refresh",
         "report_placeholder_text": "report placeholder insert",
+        "report_column0_setitem": "report column-0 SetItem",
+        "report_image_list": "report image list attachment",
         "report_item_images": "report item image management",
         "report_item_data": "report item client data",
+        "report_refresh_items": "report RefreshItems fallback",
+        "report_immediate_refresh": "report immediate repaint",
         "report_style": "report-style layout",
         "sizer_layout": "panel box sizer",
     }
@@ -98,8 +102,12 @@ class ListPanelDebugProfile:
     report_column_align: bool
     report_lazy_refresh: bool
     report_placeholder_text: bool
+    report_column0_setitem: bool
+    report_image_list: bool
     report_item_images: bool
     report_item_data: bool
+    report_refresh_items: bool
+    report_immediate_refresh: bool
     report_style: bool
     sizer_layout: bool
 
@@ -139,10 +147,14 @@ class ListPanelDebugProfile:
             report_column_align=clamped < 25,
             report_lazy_refresh=clamped < 26,
             report_placeholder_text=clamped < 27,
-            report_item_images=clamped < 28,
-            report_item_data=clamped < 29,
-            report_style=clamped < 30,
-            sizer_layout=clamped < 31,
+            report_column0_setitem=clamped < 28,
+            report_image_list=clamped < 29,
+            report_item_images=clamped < 30,
+            report_item_data=clamped < 31,
+            report_refresh_items=clamped < 32,
+            report_immediate_refresh=clamped < 33,
+            report_style=clamped < 34,
+            sizer_layout=clamped < 35,
         )
 
     def disabled_features(self) -> list[str]:
@@ -315,6 +327,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if not getattr(self, "_diagnostic_logging", False):
             return
         logger.info("ListPanel diagnostics: " + message, *args)
+
+    def _use_item_images(self) -> bool:
+        """Return ``True`` when report item images should be attached."""
+
+        return self.debug.report_item_images and self.debug.report_image_list
 
     def _capture_column_width(self, column: int) -> int:
         """Return current width of ``column`` or ``-1`` if unavailable."""
@@ -588,6 +605,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         return stable_color(name)
 
     def _ensure_image_list_size(self, width: int, height: int) -> None:
+        if not self.debug.report_image_list:
+            return
         width = max(width, 1)
         height = max(height, 1)
         if self._image_list is None:
@@ -606,7 +625,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             bmp = self._pad_bitmap(bmp, new_w, new_h)
             new_list.Add(bmp)
         self._image_list = new_list
-        self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
+        if self.debug.report_image_list:
+            self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
 
     def _pad_bitmap(self, bmp: wx.Bitmap, width: int, height: int) -> wx.Bitmap:
         if bmp.GetWidth() == width and bmp.GetHeight() == height:
@@ -720,9 +740,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._clear_items()
         for req_id, title in self._plain_items:
             index = self.list.InsertItem(self.list.GetItemCount(), title)
-            with suppress(Exception):
-                # Ensure column 0 text is committed even if InsertItem label is ignored
-                self.list.SetItem(index, 0, title)
+            if self.debug.report_column0_setitem:
+                with suppress(Exception):
+                    # Ensure column 0 text is committed even if InsertItem label is ignored
+                    self.list.SetItem(index, 0, title)
             if self.debug.report_item_data:
                 try:
                     self.list.SetItemData(index, int(req_id))
@@ -754,7 +775,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _set_label_text(self, index: int, col: int, labels: list[str]) -> None:
         text = ", ".join(labels)
         self.list.SetItem(index, col, text)
-        if not self.debug.report_item_images:
+        if not self._use_item_images():
             return
         if col == 0 and hasattr(self.list, "SetItemImage"):
             with suppress(Exception):
@@ -798,12 +819,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         return bmp
 
     def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
-        if not self.debug.label_bitmaps or not self.debug.report_item_images:
+        if not self.debug.label_bitmaps or not self._use_item_images():
             self._set_label_text(index, col, labels)
             return
         if not labels:
             self.list.SetItem(index, col, "")
-            if self.debug.report_item_images and hasattr(self.list, "SetItemImage") and col == 0:
+            if self._use_item_images() and hasattr(self.list, "SetItemImage") and col == 0:
                 with suppress(Exception):
                     self.list.SetItemImage(index, -1)
             return
@@ -835,14 +856,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if col == 0:
             # Column 0 uses the main item image slot
             self.list.SetItem(index, col, "")
-            if self.debug.report_item_images and hasattr(self.list, "SetItemImage"):
+            if self._use_item_images() and hasattr(self.list, "SetItemImage"):
                 with suppress(Exception):
                     self.list.SetItemImage(index, img_id)
         else:
             self.list.SetItem(index, col, "")
-            if self.debug.report_item_images:
+            if self._use_item_images():
                 self.list.SetItemColumnImage(index, col, img_id)
-            if self.debug.report_item_images and hasattr(self.list, "SetItemImage"):
+            if self._use_item_images() and hasattr(self.list, "SetItemImage"):
                 with suppress(Exception):
                     self.list.SetItemImage(index, -1)
 
@@ -1001,6 +1022,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _apply_immediate_refresh(self) -> None:
         """Request the list control to repaint immediately."""
 
+        if not self.debug.report_immediate_refresh:
+            return
         with suppress(Exception):
             self.list.Refresh()
         with suppress(Exception):
@@ -1062,7 +1085,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         count = 0
         with suppress(Exception):
             count = list_ctrl.GetItemCount()
-        if hasattr(list_ctrl, "RefreshItems") and count > 0:
+        if self.debug.report_refresh_items and hasattr(list_ctrl, "RefreshItems") and count > 0:
             try:
                 list_ctrl.RefreshItems(0, max(0, count - 1))
             except Exception:
@@ -1484,13 +1507,23 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._log_population_snapshot("refresh-report-simple")
             return
         for req in items:
-            initial_text = "" if self.debug.report_placeholder_text else str(getattr(req, "title", ""))
-            if self.debug.report_item_images:
+            raw_title = getattr(req, "title", "")
+            derived = bool(getattr(req, "links", []))
+            display_title = (
+                f"↳ {raw_title}".strip()
+                if derived and self.debug.derived_formatting
+                else str(raw_title)
+            )
+            placeholder_enabled = (
+                self.debug.report_placeholder_text and self.debug.report_column0_setitem
+            )
+            initial_text = "" if placeholder_enabled else display_title
+            if self._use_item_images():
                 index = self.list.InsertItem(self.list.GetItemCount(), initial_text, -1)
             else:
                 index = self.list.InsertItem(self.list.GetItemCount(), initial_text)
             # Windows ListCtrl may still assign image 0; clear explicitly
-            if self.debug.report_item_images and hasattr(self.list, "SetItemImage"):
+            if self._use_item_images() and hasattr(self.list, "SetItemImage"):
                 with suppress(Exception):
                     self.list.SetItemImage(index, -1)
             if self.debug.report_item_data:
@@ -1501,12 +1534,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetItemData(index, 0)
             for col, field in enumerate(self._field_order):
                 if field == "title":
-                    title = getattr(req, "title", "")
-                    derived = bool(getattr(req, "links", []))
-                    display = (
-                        f"↳ {title}".strip() if derived and self.debug.derived_formatting else title
-                    )
-                    self.list.SetItem(index, col, display)
+                    if self.debug.report_column0_setitem:
+                        self.list.SetItem(index, col, display_title)
                     continue
                 if field == "labels":
                     value = getattr(req, "labels", [])

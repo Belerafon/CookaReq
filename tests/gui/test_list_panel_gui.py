@@ -142,6 +142,10 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.debug.report_placeholder_text is False
     assert panel.debug.report_item_images is False
     assert panel.debug.report_item_data is False
+    assert panel.debug.report_column0_setitem is False
+    assert panel.debug.report_image_list is False
+    assert panel.debug.report_refresh_items is False
+    assert panel.debug.report_immediate_refresh is False
     assert panel.debug.report_style is False
     assert panel.debug.sizer_layout is False
     assert panel.model is None
@@ -199,6 +203,117 @@ def test_report_style_high_level_still_displays_title(wx_app):
     frame.Destroy()
 
 
+def test_report_column0_setitem_disabled_still_shows_title(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=28)
+    panel.set_requirements([_req(1, "Column 0 text")])
+    wx_app.Yield()
+
+    assert panel.debug.report_column0_setitem is False
+    assert panel.debug.report_style is True
+    assert panel.list.GetItemText(0) == "Column 0 text"
+
+    frame.Destroy()
+
+
+def test_report_refresh_items_toggle(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    # Level where RefreshItems is still used
+    panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=31)
+    panel_enabled.set_requirements([_req(1, "Needs refresh")])
+    wx_app.Yield()
+
+    called_enabled: list[tuple[int, int]] = []
+
+    def record_refresh_items(first: int, last: int) -> None:
+        called_enabled.append((first, last))
+
+    monkeypatch.setattr(panel_enabled.list, "RefreshItems", record_refresh_items)
+    monkeypatch.setattr(panel_enabled.list, "IsShownOnScreen", lambda: True)
+    panel_enabled._flush_report_refresh()
+    assert called_enabled, "expected RefreshItems to be invoked when toggle is enabled"
+
+    panel_enabled.Destroy()
+
+    # Level where RefreshItems is disabled
+    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=32)
+    panel_disabled.set_requirements([_req(2, "No refresh items")])
+    wx_app.Yield()
+
+    called_disabled: list[tuple[int, int]] = []
+
+    def record_disabled(first: int, last: int) -> None:
+        called_disabled.append((first, last))
+
+    monkeypatch.setattr(panel_disabled.list, "RefreshItems", record_disabled)
+    monkeypatch.setattr(panel_disabled.list, "IsShownOnScreen", lambda: True)
+    panel_disabled._flush_report_refresh()
+    assert not called_disabled
+
+    panel_disabled.Destroy()
+    frame.Destroy()
+
+
+def test_report_immediate_refresh_toggle(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=33)
+    panel_disabled.set_requirements([_req(1, "Skip immediate refresh")])
+    wx_app.Yield()
+
+    refreshed: list[str] = []
+
+    def record_refresh() -> None:
+        refreshed.append("refresh")
+
+    def record_update() -> None:
+        refreshed.append("update")
+
+    monkeypatch.setattr(panel_disabled.list, "Refresh", record_refresh)
+    monkeypatch.setattr(panel_disabled.list, "Update", record_update)
+    panel_disabled._apply_immediate_refresh()
+    assert not refreshed
+
+    panel_disabled.Destroy()
+
+    panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=32)
+    panel_enabled.set_requirements([_req(2, "Immediate refresh works")])
+    wx_app.Yield()
+
+    called: list[str] = []
+
+    def record_refresh_enabled() -> None:
+        called.append("refresh")
+
+    def record_update_enabled() -> None:
+        called.append("update")
+
+    monkeypatch.setattr(panel_enabled.list, "Refresh", record_refresh_enabled)
+    monkeypatch.setattr(panel_enabled.list, "Update", record_update_enabled)
+    panel_enabled._apply_immediate_refresh()
+    assert "refresh" in called or "update" in called
+
+    panel_enabled.Destroy()
+    frame.Destroy()
+
+
 def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
@@ -238,8 +353,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": True,
                 "report_lazy_refresh": True,
                 "report_placeholder_text": True,
+                "report_column0_setitem": True,
+                "report_image_list": True,
                 "report_item_images": True,
                 "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
                 "report_style": True,
                 "sizer_layout": True,
             },
@@ -255,8 +374,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": True,
                 "report_lazy_refresh": True,
                 "report_placeholder_text": True,
+                "report_column0_setitem": True,
+                "report_image_list": True,
                 "report_item_images": True,
                 "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
                 "report_style": True,
                 "sizer_layout": True,
             },
@@ -272,8 +395,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": True,
                 "report_lazy_refresh": True,
                 "report_placeholder_text": True,
+                "report_column0_setitem": True,
+                "report_image_list": True,
                 "report_item_images": True,
                 "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
                 "report_style": True,
                 "sizer_layout": True,
             },
@@ -289,8 +416,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": True,
                 "report_lazy_refresh": True,
                 "report_placeholder_text": True,
+                "report_column0_setitem": True,
+                "report_image_list": True,
                 "report_item_images": True,
                 "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
                 "report_style": True,
                 "sizer_layout": True,
             },
@@ -306,8 +437,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": True,
                 "report_lazy_refresh": True,
                 "report_placeholder_text": True,
+                "report_column0_setitem": True,
+                "report_image_list": True,
                 "report_item_images": True,
                 "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
                 "report_style": True,
                 "sizer_layout": True,
             },
@@ -323,8 +458,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": True,
                 "report_lazy_refresh": True,
                 "report_placeholder_text": True,
+                "report_column0_setitem": True,
+                "report_image_list": True,
                 "report_item_images": True,
                 "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
                 "report_style": True,
                 "sizer_layout": True,
             },
@@ -340,8 +479,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": False,
                 "report_lazy_refresh": True,
                 "report_placeholder_text": True,
+                "report_column0_setitem": True,
+                "report_image_list": True,
                 "report_item_images": True,
                 "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
                 "report_style": True,
                 "sizer_layout": True,
             },
@@ -357,8 +500,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": False,
                 "report_lazy_refresh": False,
                 "report_placeholder_text": True,
+                "report_column0_setitem": True,
+                "report_image_list": True,
                 "report_item_images": True,
                 "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
                 "report_style": True,
                 "sizer_layout": True,
             },
@@ -374,8 +521,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": False,
                 "report_lazy_refresh": False,
                 "report_placeholder_text": False,
+                "report_column0_setitem": True,
+                "report_image_list": True,
                 "report_item_images": True,
                 "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
                 "report_style": True,
                 "sizer_layout": True,
             },
@@ -391,8 +542,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": False,
                 "report_lazy_refresh": False,
                 "report_placeholder_text": False,
-                "report_item_images": False,
+                "report_column0_setitem": False,
+                "report_image_list": True,
+                "report_item_images": True,
                 "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
                 "report_style": True,
                 "sizer_layout": True,
             },
@@ -408,8 +563,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": False,
                 "report_lazy_refresh": False,
                 "report_placeholder_text": False,
-                "report_item_images": False,
-                "report_item_data": False,
+                "report_column0_setitem": False,
+                "report_image_list": False,
+                "report_item_images": True,
+                "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
                 "report_style": True,
                 "sizer_layout": True,
             },
@@ -425,9 +584,13 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": False,
                 "report_lazy_refresh": False,
                 "report_placeholder_text": False,
+                "report_column0_setitem": False,
+                "report_image_list": False,
                 "report_item_images": False,
-                "report_item_data": False,
-                "report_style": False,
+                "report_item_data": True,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
+                "report_style": True,
                 "sizer_layout": True,
             },
         ),
@@ -442,8 +605,96 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
                 "report_column_align": False,
                 "report_lazy_refresh": False,
                 "report_placeholder_text": False,
+                "report_column0_setitem": False,
+                "report_image_list": False,
                 "report_item_images": False,
                 "report_item_data": False,
+                "report_refresh_items": True,
+                "report_immediate_refresh": True,
+                "report_style": True,
+                "sizer_layout": True,
+            },
+        ),
+        (
+            32,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_column_align": False,
+                "report_lazy_refresh": False,
+                "report_placeholder_text": False,
+                "report_column0_setitem": False,
+                "report_image_list": False,
+                "report_item_images": False,
+                "report_item_data": False,
+                "report_refresh_items": False,
+                "report_immediate_refresh": True,
+                "report_style": True,
+                "sizer_layout": True,
+            },
+        ),
+        (
+            33,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_column_align": False,
+                "report_lazy_refresh": False,
+                "report_placeholder_text": False,
+                "report_column0_setitem": False,
+                "report_image_list": False,
+                "report_item_images": False,
+                "report_item_data": False,
+                "report_refresh_items": False,
+                "report_immediate_refresh": False,
+                "report_style": True,
+                "sizer_layout": True,
+            },
+        ),
+        (
+            34,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_column_align": False,
+                "report_lazy_refresh": False,
+                "report_placeholder_text": False,
+                "report_column0_setitem": False,
+                "report_image_list": False,
+                "report_item_images": False,
+                "report_item_data": False,
+                "report_refresh_items": False,
+                "report_immediate_refresh": False,
+                "report_style": False,
+                "sizer_layout": True,
+            },
+        ),
+        (
+            35,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_column_align": False,
+                "report_lazy_refresh": False,
+                "report_placeholder_text": False,
+                "report_column0_setitem": False,
+                "report_image_list": False,
+                "report_item_images": False,
+                "report_item_data": False,
+                "report_refresh_items": False,
+                "report_immediate_refresh": False,
                 "report_style": False,
                 "sizer_layout": False,
             },

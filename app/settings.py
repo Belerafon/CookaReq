@@ -130,6 +130,7 @@ class UISettings(BaseModel):
     sort_column: int = -1
     sort_ascending: bool = True
     log_level: int = Field(default=logging.INFO)
+    list_panel_debug_level: int = 0
 
 
 class AppSettings(BaseModel):

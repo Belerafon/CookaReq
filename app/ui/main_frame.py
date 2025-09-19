@@ -121,6 +121,7 @@ class MainFrame(wx.Frame):
         self.auto_open_last = self.config.get_auto_open_last()
         self.remember_sort = self.config.get_remember_sort()
         self.language = self.config.get_language()
+        self.list_panel_debug_level = self.config.get_list_panel_debug_level()
         self.sort_column, self.sort_ascending = self.config.get_sort_settings()
         self.llm_settings = self.config.get_llm_settings()
         self.mcp_settings = self.config.get_mcp_settings()
@@ -216,6 +217,7 @@ class MainFrame(wx.Frame):
                 on_delete_many=self.on_delete_requirements,
                 on_sort_changed=self._on_sort_changed,
                 on_derive=self.on_derive_requirement,
+                debug_level=self.list_panel_debug_level,
             ),
         )
         self.panel.set_columns(self.selected_fields)
@@ -837,6 +839,7 @@ class MainFrame(wx.Frame):
             on_delete_many=self.on_delete_requirements,
             on_sort_changed=self._on_sort_changed,
             on_derive=self.on_derive_requirement,
+            debug_level=self.list_panel_debug_level,
         )
         self.panel.set_columns(self.selected_fields)
         self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)

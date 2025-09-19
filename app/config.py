@@ -108,6 +108,7 @@ def _llm_base_url_reader(
 
 ConfigFieldName = Literal[
     "list_columns",
+    "list_panel_debug_level",
     "recent_dirs",
     "auto_open_last",
     "remember_sort",
@@ -149,6 +150,11 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         default_factory=lambda: list(DEFAULT_LIST_COLUMNS),
         reader=_list_reader(","),
         writer=_list_writer(","),
+    ),
+    "list_panel_debug_level": FieldSpec(
+        key="list_panel_debug_level",
+        value_type=int,
+        default=0,
     ),
     "recent_dirs": FieldSpec(
         key="recent_dirs",
@@ -469,6 +475,19 @@ class ConfigManager:
         self.set_value("list_columns", fields)
         self.flush()
 
+    def get_list_panel_debug_level(self) -> int:
+        """Return diagnostic level for :class:`ListPanel`."""
+
+        value = int(self.get_value("list_panel_debug_level"))
+        return max(0, min(10, value))
+
+    def set_list_panel_debug_level(self, level: int) -> None:
+        """Persist diagnostic level for :class:`ListPanel`."""
+
+        numeric = max(0, min(10, int(level)))
+        self.set_value("list_panel_debug_level", numeric)
+        self.flush()
+
     # ------------------------------------------------------------------
     # recent directories
     def get_recent_dirs(self) -> list[str]:
@@ -602,6 +621,7 @@ class ConfigManager:
             sort_column=sort_column,
             sort_ascending=sort_ascending,
             log_level=self.get_log_level(),
+            list_panel_debug_level=self.get_list_panel_debug_level(),
         )
 
     def set_ui_settings(self, settings: UISettings) -> None:
@@ -611,6 +631,7 @@ class ConfigManager:
         self.set_recent_dirs(settings.recent_dirs)
         self.set_auto_open_last(settings.auto_open_last)
         self.set_remember_sort(settings.remember_sort)
+        self.set_list_panel_debug_level(settings.list_panel_debug_level)
         if settings.language is not None:
             self.set_language(settings.language)
         sort_col = settings.sort_column

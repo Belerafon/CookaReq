@@ -63,6 +63,7 @@ def _recent_dirs_factory(tmp_path):
     ("name", "expected"),
     [
         ("list_columns", DEFAULT_LIST_COLUMNS),
+        ("list_panel_debug_level", 0),
         ("recent_dirs", []),
         ("auto_open_last", False),
         ("remember_sort", False),
@@ -149,6 +150,12 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
         pytest.param("win_w", _const(1024), _const(1024), id="win_w"),
         pytest.param("editor_sash_pos", _const(456), _const(456), id="editor_sash_pos"),
         pytest.param("editor_shown", _const(False), _const(False), id="editor_shown"),
+        pytest.param(
+            "list_panel_debug_level",
+            _const(7),
+            _const(7),
+            id="list_panel_debug_level",
+        ),
     ],
 )
 def test_schema_round_trip(tmp_path, wx_app, name, value_factory, expected_factory):
@@ -291,6 +298,7 @@ def test_app_settings_round_trip(tmp_path, wx_app):
             sort_column=2,
             sort_ascending=False,
             log_level=logging.WARNING,
+            list_panel_debug_level=4,
         ),
     )
 

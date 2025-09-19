@@ -78,6 +78,50 @@ def test_reset_button_visibility_gui(wx_app):
     frame.Destroy()
 
 
+def test_list_panel_debug_level_text_labels(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=2)
+    panel.set_columns(["labels"])
+    panel.set_requirements([_req(1, "Item", labels=["bug", "feature"])])
+    wx_app.Yield()
+
+    assert panel.debug.label_bitmaps is False
+    assert panel.list.GetColumnCount() >= 2
+    assert panel.list.GetItemText(0) == "bug, feature"
+    assert panel.list.GetItemText(0, 1) == "Item"
+
+    frame.Destroy()
+
+
+def test_list_panel_debug_level_plain_list_ctrl(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=10)
+    panel.set_columns(["labels", "status"])
+    panel.set_requirements([_req(1, "Plain", labels=["bug"], status=Status.APPROVED)])
+    wx_app.Yield()
+
+    assert panel.filter_btn is None
+    assert panel.reset_btn is None
+    assert panel.filter_summary is None
+    assert panel.list.GetColumnCount() == 1
+    assert panel.list.GetItemText(0) == "Plain"
+    assert panel.debug.context_menu is False
+
+    frame.Destroy()
+
+
 def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

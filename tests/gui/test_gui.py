@@ -5,9 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-pytestmark = pytest.mark.skip(
-    reason="GUI smoke tests disabled while ListPanel runs in ultra-minimal debug mode."
-)
+REQUIRES_GUI = True
 
 
 def test_gui_imports(wx_app):
@@ -18,11 +16,15 @@ def test_gui_imports(wx_app):
     from app.ui.main_frame import MainFrame
 
     frame = MainFrame(None)
-    list_panel = ListPanel(frame)
-    editor_panel = EditorPanel(frame)
-    assert list_panel.GetParent() is frame
-    assert editor_panel.GetParent() is frame
-    assert callable(main)
+    try:
+        list_panel = ListPanel(frame)
+        editor_panel = EditorPanel(frame)
+        assert list_panel.GetParent() is frame
+        assert editor_panel.GetParent() is frame
+        assert callable(main)
+    finally:
+        frame.Destroy()
+        wx_app.Yield()
 
 
 def test_log_level_persistence(wx_app, tmp_path):

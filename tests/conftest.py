@@ -1,7 +1,9 @@
 """Pytest fixtures and shared helpers."""
 
+import importlib
 import os
 import re
+import socket
 import sys
 import time
 import types
@@ -9,8 +11,6 @@ from pathlib import Path
 
 # Ensure project root is on sys.path for imports
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-
-import socket
 
 import pytest
 
@@ -50,17 +50,16 @@ def _auto_confirm():
 
 
 @pytest.fixture(autouse=True)
-def _default_list_panel_rendering(monkeypatch):
-    """Force ListPanel to run in full rendering mode for tests unless overridden."""
+def _reset_list_panel_module():
+    """Reload ``app.ui.list_panel`` around each test to reset feature flags."""
 
-    if "COOKAREQ_LIST_PANEL_RENDERING" not in os.environ:
-        monkeypatch.setenv("COOKAREQ_LIST_PANEL_RENDERING", "full")
-    for module in (
-        "app.ui.list_panel",
-        "app.ui.helpers",
-    ):
-        sys.modules.pop(module, None)
+    import app.ui.list_panel as list_panel  # noqa: WPS433 - runtime reload
+
+    importlib.reload(list_panel)
     yield
+    current_wx = sys.modules.get("wx")
+    if current_wx is not None and hasattr(current_wx, "Panel"):
+        importlib.reload(list_panel)
 
 
 @pytest.fixture(autouse=True)

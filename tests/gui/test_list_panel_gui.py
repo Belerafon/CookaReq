@@ -5,9 +5,7 @@ import pytest
 from app.core.model import Priority, Requirement, RequirementType, Status, Verification
 from app.ui.requirement_model import RequirementModel
 
-pytestmark = pytest.mark.skip(
-    reason="ListPanel GUI tests temporarily disabled while the widget runs in ultra-minimal debug mode."
-)
+REQUIRES_GUI = True
 
 
 def _req(req_id: int, title: str, **overrides) -> Requirement:
@@ -47,6 +45,7 @@ def test_list_panel_real_widgets(wx_app):
         assert panel.list.GetColumnCount() == 1
     finally:
         frame.Destroy()
+        wx_app.Yield()
 
 
 def test_refresh_selects_new_row(wx_app):
@@ -70,3 +69,4 @@ def test_refresh_selects_new_row(wx_app):
         assert panel.list.GetItemData(selected) == 3
     finally:
         frame.Destroy()
+        wx_app.Yield()

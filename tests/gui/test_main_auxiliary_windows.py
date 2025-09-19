@@ -97,6 +97,13 @@ def test_view_debug_window_registers_frame(wx_app, tmp_path):
         titles = [ctrl.GetItemText(i) for i in range(item_count)]
         expected = [req.title for req in dataset]
         assert titles == expected
+
+        native_ctrl = debug_frame.native_list
+        native_count = native_ctrl.GetItemCount()
+        assert native_count == len(dataset)
+
+        native_titles = [native_ctrl.GetItemText(i) for i in range(native_count)]
+        assert native_titles == expected
     finally:
         if debug_frame and not debug_frame.IsBeingDeleted():
             debug_frame.Destroy()

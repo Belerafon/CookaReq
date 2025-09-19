@@ -68,7 +68,9 @@ class ListPanelDebugProfile:
         "report_item_images": "report item image management",
         "report_item_data": "report item client data",
         "report_refresh_items": "report RefreshItems fallback",
-        "report_immediate_refresh": "report immediate repaint",
+        "report_immediate_refresh": "report Refresh() request",
+        "report_immediate_update": "report Update() request",
+        "report_send_size_event": "report SendSizeEvent fallback",
         "report_style": "report-style layout",
         "sizer_layout": "panel box sizer",
     }
@@ -108,6 +110,8 @@ class ListPanelDebugProfile:
     report_item_data: bool
     report_refresh_items: bool
     report_immediate_refresh: bool
+    report_immediate_update: bool
+    report_send_size_event: bool
     report_style: bool
     sizer_layout: bool
 
@@ -153,8 +157,10 @@ class ListPanelDebugProfile:
             report_item_data=clamped < 31,
             report_refresh_items=clamped < 32,
             report_immediate_refresh=clamped < 33,
-            report_style=clamped < 34,
-            sizer_layout=clamped < 35,
+            report_immediate_update=clamped < 34,
+            report_send_size_event=clamped < 35,
+            report_style=clamped < 36,
+            sizer_layout=clamped < 37,
         )
 
     def disabled_features(self) -> list[str]:
@@ -1019,15 +1025,61 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             return
         self._apply_immediate_refresh()
 
+    def _request_size_event(self) -> bool:
+        """Trigger a size event on the list (and panel) for diagnostics."""
+
+        issued = False
+        targets: tuple[wx.Window | None, ...] = (self.list, self)
+        for target in targets:
+            if target is None or not hasattr(target, "SendSizeEvent"):
+                continue
+            try:
+                target.SendSizeEvent()
+            except Exception:
+                if self._diagnostic_logging:
+                    logger.debug(
+                        "ListPanel SendSizeEvent failed for %r", target, exc_info=True
+                    )
+            else:
+                issued = True
+        return issued
+
     def _apply_immediate_refresh(self) -> None:
         """Request the list control to repaint immediately."""
 
-        if not self.debug.report_immediate_refresh:
+        issued_refresh = False
+        issued_update = False
+        issued_size_event = False
+        if self.debug.report_immediate_refresh:
+            try:
+                self.list.Refresh()
+            except Exception:
+                if self._diagnostic_logging:
+                    logger.debug("ListPanel Refresh() call failed", exc_info=True)
+            else:
+                issued_refresh = True
+        if self.debug.report_immediate_update:
+            try:
+                self.list.Update()
+            except Exception:
+                if self._diagnostic_logging:
+                    logger.debug("ListPanel Update() call failed", exc_info=True)
+            else:
+                issued_update = True
+        if self.debug.report_send_size_event:
+            issued_size_event = self._request_size_event()
+        if not self._diagnostic_logging:
             return
-        with suppress(Exception):
-            self.list.Refresh()
-        with suppress(Exception):
-            self.list.Update()
+        column0 = None
+        if self.debug.report_style:
+            column0 = self._capture_column_width(0)
+        self._log_diagnostics(
+            "immediate repaint requests — refresh=%s update=%s send_size=%s column0=%s",
+            issued_refresh,
+            issued_update,
+            issued_size_event,
+            column0,
+        )
 
     def _schedule_report_refresh(self) -> None:
         """Fallback for report mode when lazy refresh fails to repaint."""

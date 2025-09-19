@@ -5,6 +5,8 @@ import logging
 
 import pytest
 
+import app.ui.list_panel as list_panel
+
 from app.core.model import (
     Link,
     Priority,
@@ -146,6 +148,8 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.debug.report_image_list is False
     assert panel.debug.report_refresh_items is False
     assert panel.debug.report_immediate_refresh is False
+    assert panel.debug.report_immediate_update is False
+    assert panel.debug.report_send_size_event is False
     assert panel.debug.report_style is False
     assert panel.debug.sizer_layout is False
     assert panel.model is None
@@ -274,43 +278,71 @@ def test_report_immediate_refresh_toggle(monkeypatch, wx_app):
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
 
-    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=33)
-    panel_disabled.set_requirements([_req(1, "Skip immediate refresh")])
-    wx_app.Yield()
+    calls: list[str] = []
 
-    refreshed: list[str] = []
+    def _instrument(panel: list_panel.ListPanel) -> None:
+        def make_recorder(tag: str):
+            def _recorder(*_args, **_kwargs):
+                calls.append(tag)
 
-    def record_refresh() -> None:
-        refreshed.append("refresh")
+            return _recorder
 
-    def record_update() -> None:
-        refreshed.append("update")
+        monkeypatch.setattr(panel.list, "Refresh", make_recorder("refresh"))
+        monkeypatch.setattr(panel.list, "Update", make_recorder("update"))
+        monkeypatch.setattr(panel.list, "SendSizeEvent", make_recorder("list_size"))
+        monkeypatch.setattr(panel, "SendSizeEvent", make_recorder("panel_size"))
 
-    monkeypatch.setattr(panel_disabled.list, "Refresh", record_refresh)
-    monkeypatch.setattr(panel_disabled.list, "Update", record_update)
-    panel_disabled._apply_immediate_refresh()
-    assert not refreshed
-
-    panel_disabled.Destroy()
-
+    # Level 32 — everything enabled
     panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=32)
-    panel_enabled.set_requirements([_req(2, "Immediate refresh works")])
+    panel_enabled.set_requirements([_req(1, "Immediate repaint")])
     wx_app.Yield()
-
-    called: list[str] = []
-
-    def record_refresh_enabled() -> None:
-        called.append("refresh")
-
-    def record_update_enabled() -> None:
-        called.append("update")
-
-    monkeypatch.setattr(panel_enabled.list, "Refresh", record_refresh_enabled)
-    monkeypatch.setattr(panel_enabled.list, "Update", record_update_enabled)
+    _instrument(panel_enabled)
     panel_enabled._apply_immediate_refresh()
-    assert "refresh" in called or "update" in called
-
+    assert "refresh" in calls
+    assert "update" in calls
+    assert any(tag in calls for tag in ("list_size", "panel_size"))
     panel_enabled.Destroy()
+
+    # Level 33 — Refresh() disabled, Update() and size events still active
+    calls.clear()
+    panel_refresh_disabled = list_panel.ListPanel(
+        frame, model=RequirementModel(), debug_level=33
+    )
+    panel_refresh_disabled.set_requirements([_req(2, "Skip Refresh")])
+    wx_app.Yield()
+    _instrument(panel_refresh_disabled)
+    panel_refresh_disabled._apply_immediate_refresh()
+    assert "refresh" not in calls
+    assert "update" in calls
+    assert any(tag in calls for tag in ("list_size", "panel_size"))
+    panel_refresh_disabled.Destroy()
+
+    # Level 34 — both Refresh() and Update() disabled, size event still emitted
+    calls.clear()
+    panel_update_disabled = list_panel.ListPanel(
+        frame, model=RequirementModel(), debug_level=34
+    )
+    panel_update_disabled.set_requirements([_req(3, "Only size event")])
+    wx_app.Yield()
+    _instrument(panel_update_disabled)
+    panel_update_disabled._apply_immediate_refresh()
+    assert "refresh" not in calls
+    assert "update" not in calls
+    assert any(tag in calls for tag in ("list_size", "panel_size"))
+    panel_update_disabled.Destroy()
+
+    # Level 35 — size event also disabled
+    calls.clear()
+    panel_all_disabled = list_panel.ListPanel(
+        frame, model=RequirementModel(), debug_level=35
+    )
+    panel_all_disabled.set_requirements([_req(4, "No immediate repaint")])
+    wx_app.Yield()
+    _instrument(panel_all_disabled)
+    panel_all_disabled._apply_immediate_refresh()
+    assert not calls
+    panel_all_disabled.Destroy()
+
     frame.Destroy()
 
 
@@ -339,369 +371,32 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
     frame.Destroy()
 
 
+REPORT_FLAG_THRESHOLDS = {
+    "report_width_retry": 20,
+    "report_column_widths": 21,
+    "report_list_item": 22,
+    "report_clear_all": 23,
+    "report_batch_delete": 24,
+    "report_column_align": 25,
+    "report_lazy_refresh": 26,
+    "report_placeholder_text": 27,
+    "report_column0_setitem": 28,
+    "report_image_list": 29,
+    "report_item_images": 30,
+    "report_item_data": 31,
+    "report_refresh_items": 32,
+    "report_immediate_refresh": 33,
+    "report_immediate_update": 34,
+    "report_send_size_event": 35,
+    "report_style": 36,
+    "sizer_layout": 37,
+}
+
+
 @pytest.mark.parametrize(
-    "level, flags",
-    [
-        (
-            19,
-            {
-                "report_width_retry": True,
-                "report_column_widths": True,
-                "report_list_item": True,
-                "report_clear_all": True,
-                "report_batch_delete": True,
-                "report_column_align": True,
-                "report_lazy_refresh": True,
-                "report_placeholder_text": True,
-                "report_column0_setitem": True,
-                "report_image_list": True,
-                "report_item_images": True,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            20,
-            {
-                "report_width_retry": False,
-                "report_column_widths": True,
-                "report_list_item": True,
-                "report_clear_all": True,
-                "report_batch_delete": True,
-                "report_column_align": True,
-                "report_lazy_refresh": True,
-                "report_placeholder_text": True,
-                "report_column0_setitem": True,
-                "report_image_list": True,
-                "report_item_images": True,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            21,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": True,
-                "report_clear_all": True,
-                "report_batch_delete": True,
-                "report_column_align": True,
-                "report_lazy_refresh": True,
-                "report_placeholder_text": True,
-                "report_column0_setitem": True,
-                "report_image_list": True,
-                "report_item_images": True,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            22,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": True,
-                "report_batch_delete": True,
-                "report_column_align": True,
-                "report_lazy_refresh": True,
-                "report_placeholder_text": True,
-                "report_column0_setitem": True,
-                "report_image_list": True,
-                "report_item_images": True,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            23,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": True,
-                "report_column_align": True,
-                "report_lazy_refresh": True,
-                "report_placeholder_text": True,
-                "report_column0_setitem": True,
-                "report_image_list": True,
-                "report_item_images": True,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            24,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": True,
-                "report_lazy_refresh": True,
-                "report_placeholder_text": True,
-                "report_column0_setitem": True,
-                "report_image_list": True,
-                "report_item_images": True,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            25,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": False,
-                "report_lazy_refresh": True,
-                "report_placeholder_text": True,
-                "report_column0_setitem": True,
-                "report_image_list": True,
-                "report_item_images": True,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            26,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": False,
-                "report_lazy_refresh": False,
-                "report_placeholder_text": True,
-                "report_column0_setitem": True,
-                "report_image_list": True,
-                "report_item_images": True,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            27,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": False,
-                "report_lazy_refresh": False,
-                "report_placeholder_text": False,
-                "report_column0_setitem": True,
-                "report_image_list": True,
-                "report_item_images": True,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            28,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": False,
-                "report_lazy_refresh": False,
-                "report_placeholder_text": False,
-                "report_column0_setitem": False,
-                "report_image_list": True,
-                "report_item_images": True,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            29,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": False,
-                "report_lazy_refresh": False,
-                "report_placeholder_text": False,
-                "report_column0_setitem": False,
-                "report_image_list": False,
-                "report_item_images": True,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            30,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": False,
-                "report_lazy_refresh": False,
-                "report_placeholder_text": False,
-                "report_column0_setitem": False,
-                "report_image_list": False,
-                "report_item_images": False,
-                "report_item_data": True,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            31,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": False,
-                "report_lazy_refresh": False,
-                "report_placeholder_text": False,
-                "report_column0_setitem": False,
-                "report_image_list": False,
-                "report_item_images": False,
-                "report_item_data": False,
-                "report_refresh_items": True,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            32,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": False,
-                "report_lazy_refresh": False,
-                "report_placeholder_text": False,
-                "report_column0_setitem": False,
-                "report_image_list": False,
-                "report_item_images": False,
-                "report_item_data": False,
-                "report_refresh_items": False,
-                "report_immediate_refresh": True,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            33,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": False,
-                "report_lazy_refresh": False,
-                "report_placeholder_text": False,
-                "report_column0_setitem": False,
-                "report_image_list": False,
-                "report_item_images": False,
-                "report_item_data": False,
-                "report_refresh_items": False,
-                "report_immediate_refresh": False,
-                "report_style": True,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            34,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": False,
-                "report_lazy_refresh": False,
-                "report_placeholder_text": False,
-                "report_column0_setitem": False,
-                "report_image_list": False,
-                "report_item_images": False,
-                "report_item_data": False,
-                "report_refresh_items": False,
-                "report_immediate_refresh": False,
-                "report_style": False,
-                "sizer_layout": True,
-            },
-        ),
-        (
-            35,
-            {
-                "report_width_retry": False,
-                "report_column_widths": False,
-                "report_list_item": False,
-                "report_clear_all": False,
-                "report_batch_delete": False,
-                "report_column_align": False,
-                "report_lazy_refresh": False,
-                "report_placeholder_text": False,
-                "report_column0_setitem": False,
-                "report_image_list": False,
-                "report_item_images": False,
-                "report_item_data": False,
-                "report_refresh_items": False,
-                "report_immediate_refresh": False,
-                "report_style": False,
-                "sizer_layout": False,
-            },
-        ),
-    ],
+    "level", range(19, list_panel.MAX_LIST_PANEL_DEBUG_LEVEL + 1)
 )
-def test_report_style_debug_steps(wx_app, level, flags):
+def test_report_style_debug_steps(wx_app, level):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
 
@@ -713,8 +408,8 @@ def test_report_style_debug_steps(wx_app, level, flags):
     panel.set_requirements([_req(1, "Visible title")])
     wx_app.Yield()
 
-    for attr, value in flags.items():
-        assert getattr(panel.debug, attr) is value
+    for attr, threshold in REPORT_FLAG_THRESHOLDS.items():
+        assert getattr(panel.debug, attr) is (level < threshold)
 
     if panel.debug.report_style:
         assert panel.list.GetWindowStyleFlag() & wx.LC_REPORT

@@ -139,6 +139,27 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     frame.Destroy()
 
 
+def test_report_style_plain_mode_keeps_title_visible(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=19)
+    panel.set_requirements([_req(1, "Visible title")])
+    wx_app.Yield()
+
+    assert panel.debug.report_style is True
+    assert panel.debug.rich_rendering is False
+    assert panel.list.GetColumnCount() == 1
+    assert panel.list.GetItemText(0) == "Visible title"
+    assert panel.list.GetColumnWidth(0) > 0
+
+    frame.Destroy()
+
+
 def test_list_panel_debug_level_logs_disabled_features(wx_app, caplog):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

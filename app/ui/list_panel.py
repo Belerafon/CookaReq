@@ -182,6 +182,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self.model = None
         self._plain_source: list[Requirement] = []
         self._plain_items: list[tuple[int, str]] = []
+        self._pending_column_widths: dict[int, tuple[int, int]] = {}
+        self._column_widths_scheduled = False
         sizer = wx.BoxSizer(wx.VERTICAL) if self.debug.sizer_layout else None
         vertical_pad = dip(self, 5)
         orient = getattr(wx, "HORIZONTAL", 0)
@@ -596,37 +598,30 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         dummy column before ``Title``.
         """
         self.list.ClearAll()
+        self._pending_column_widths.clear()
         self._field_order: list[str] = []
         if not self.debug.report_style:
             with suppress(Exception):
                 self.list.Unbind(wx.EVT_LIST_COL_CLICK)
             return
         if not self.debug.rich_rendering:
-            self.list.InsertColumn(0, _("Title"))
-            self._field_order.append("title")
-            width = self._default_column_width("title")
-            with suppress(Exception):
-                self.list.SetColumnWidth(0, width)
+            self._add_report_column(0, "title", _("Title"))
             with suppress(Exception):
                 self.list.Unbind(wx.EVT_LIST_COL_CLICK)
             return
         active_columns = self.columns if self.debug.extra_columns else []
         include_labels = self.debug.extra_columns and "labels" in active_columns
         if include_labels:
-            self.list.InsertColumn(0, _("Labels"))
-            self._field_order.append("labels")
-            self.list.InsertColumn(1, _("Title"))
-            self._field_order.append("title")
+            self._add_report_column(0, "labels", _("Labels"))
+            self._add_report_column(1, "title", _("Title"))
         else:
-            self.list.InsertColumn(0, _("Title"))
-            self._field_order.append("title")
+            self._add_report_column(0, "title", _("Title"))
         if self.debug.extra_columns:
             for field in active_columns:
                 if field == "labels":
                     continue
                 idx = self.list.GetColumnCount()
-                self.list.InsertColumn(idx, locale.field_label(field))
-                self._field_order.append(field)
+                self._add_report_column(idx, field, locale.field_label(field))
         if self.debug.sorting and self.debug.sorter_mixin:
             ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
             with suppress(Exception):  # remove mixin's default binding and use our own
@@ -635,6 +630,127 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         else:
             with suppress(Exception):
                 self.list.Unbind(wx.EVT_LIST_COL_CLICK)
+
+    def _add_report_column(self, index: int, field: str, label: str) -> None:
+        """Insert a report-style column and ensure it has a visible width."""
+
+        width = self._default_column_width(field)
+        inserted = False
+        list_item_cls = getattr(wx, "ListItem", None)
+        if list_item_cls is not None:
+            try:
+                item = list_item_cls()
+            except Exception:
+                item = None
+            if item is not None:
+                if hasattr(item, "SetText"):
+                    item.SetText(label)
+                align_flag = getattr(wx, "LIST_FORMAT_LEFT", None)
+                if align_flag is not None and hasattr(item, "SetAlign"):
+                    with suppress(Exception):
+                        item.SetAlign(align_flag)
+                if hasattr(item, "SetWidth"):
+                    item.SetWidth(width)
+                try:
+                    self.list.InsertColumn(index, item)
+                except (TypeError, ValueError):
+                    inserted = False
+                else:
+                    inserted = True
+        if not inserted:
+            self.list.InsertColumn(index, label)
+        self._field_order.append(field)
+        self._ensure_column_width(index, width)
+
+    def _ensure_column_width(self, column: int, width: int) -> None:
+        """Guarantee that a column remains visible even if the backend rejects it."""
+
+        width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
+        if self._apply_column_width_now(column, width):
+            self._pending_column_widths.pop(column, None)
+            return
+        self._queue_column_width(column, width)
+
+    def _apply_column_width_now(self, column: int, width: int) -> bool:
+        """Try to set the column width immediately, using several fallbacks."""
+
+        try:
+            self.list.SetColumnWidth(column, width)
+        except Exception:
+            logger.debug("SetColumnWidth(%s, %s) failed immediately", column, width, exc_info=True)
+        actual = -1
+        with suppress(Exception):
+            actual = self.list.GetColumnWidth(column)
+        if actual and actual > 0:
+            return True
+        fallbacks: list[int] = []
+        if width != self.MIN_COL_WIDTH:
+            fallbacks.append(max(width, self.MIN_COL_WIDTH))
+        header_auto = getattr(wx, "LIST_AUTOSIZE_USEHEADER", None)
+        if isinstance(header_auto, int):
+            fallbacks.append(header_auto)
+        auto = getattr(wx, "LIST_AUTOSIZE", None)
+        if isinstance(auto, int):
+            fallbacks.append(auto)
+        if self.MIN_COL_WIDTH not in fallbacks:
+            fallbacks.append(self.MIN_COL_WIDTH)
+        for candidate in fallbacks:
+            try:
+                self.list.SetColumnWidth(column, candidate)
+            except Exception:
+                logger.debug(
+                    "SetColumnWidth(%s, %s) failed during fallback", column, candidate, exc_info=True
+                )
+                continue
+            actual = -1
+            with suppress(Exception):
+                actual = self.list.GetColumnWidth(column)
+            if actual and actual > 0:
+                return True
+        return False
+
+    def _queue_column_width(self, column: int, width: int) -> None:
+        """Schedule a deferred attempt to enforce a report column width."""
+
+        attempts = 0
+        if column in self._pending_column_widths:
+            stored_width, attempts = self._pending_column_widths[column]
+            width = max(width, stored_width)
+        self._pending_column_widths[column] = (width, attempts)
+        if not self._column_widths_scheduled:
+            self._column_widths_scheduled = True
+            wx.CallAfter(self._flush_pending_column_widths)
+
+    def _flush_pending_column_widths(self) -> None:
+        """Retry collapsed column widths once the widget is fully realized."""
+
+        self._column_widths_scheduled = False
+        pending = list(self._pending_column_widths.items())
+        self._pending_column_widths.clear()
+        if not pending:
+            return
+        for column, (width, attempts) in pending:
+            try:
+                count = self.list.GetColumnCount()
+            except Exception:
+                return
+            if column >= count:
+                continue
+            success = self._apply_column_width_now(column, width)
+            if success:
+                continue
+            attempts += 1
+            if attempts >= 3:
+                logger.warning(
+                    "ListPanel column %s remains collapsed after retries; giving up", column
+                )
+                with suppress(Exception):
+                    self.list.SetColumnWidth(column, max(width, self.MIN_COL_WIDTH))
+                continue
+            self._pending_column_widths[column] = (width, attempts)
+        if self._pending_column_widths and not self._column_widths_scheduled:
+            self._column_widths_scheduled = True
+            wx.CallAfter(self._flush_pending_column_widths)
 
     # Columns ---------------------------------------------------------
     def load_column_widths(self, config: ConfigManager) -> None:
@@ -648,7 +764,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 field = self._field_order[i] if i < len(self._field_order) else ""
                 width = self._default_column_width(field)
             width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
-            self.list.SetColumnWidth(i, width)
+            self._ensure_column_width(i, width)
 
     def save_column_widths(self, config: ConfigManager) -> None:
         """Persist current column widths to config."""

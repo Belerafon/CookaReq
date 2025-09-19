@@ -28,6 +28,17 @@ if TYPE_CHECKING:  # pragma: no cover
     from wx import ContextMenuEvent, ListEvent
 
 
+# Temporary debug toggles to narrow down repaint bug in ListPanel.
+# Each flag disables a non-essential UI enhancement so we can test hypotheses
+# about what breaks requirement text rendering:
+#   * background inheritance might introduce palette glitches;
+#   * subitem image style tweaks may confuse native backends;
+#   * custom label bitmaps exercise wx.ImageList and manual drawing.
+DISABLE_BACKGROUND_INHERITANCE = True
+DISABLE_SUBITEM_IMAGE_STYLE = True
+DISABLE_LABEL_BITMAPS = True
+
+
 class ListPanel(wx.Panel, ColumnSorterMixin):
     """Panel with a filter button and list of requirement fields."""
 
@@ -63,7 +74,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     ):
         """Initialize list view and controls for requirements."""
         wx.Panel.__init__(self, parent)
-        inherit_background(self, parent)
+        if not DISABLE_BACKGROUND_INHERITANCE:
+            inherit_background(self, parent)
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
         vertical_pad = dip(self, 5)
@@ -90,7 +102,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         btn_row.Add(self.reset_btn, 0, right, vertical_pad)
         btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
-        if hasattr(self.list, "SetExtraStyle"):
+        if not DISABLE_SUBITEM_IMAGE_STYLE and hasattr(self.list, "SetExtraStyle"):
             extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
             if extra:
                 with suppress(Exception):  # pragma: no cover - backend quirks
@@ -181,6 +193,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _ensure_image_list_size(self, width: int, height: int) -> None:
         width = max(width, 1)
         height = max(height, 1)
+        if DISABLE_LABEL_BITMAPS:
+            return
         if self._image_list is None:
             self._image_list = wx.ImageList(width, height)
             self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
@@ -329,6 +343,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         return bmp
 
     def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
+        if DISABLE_LABEL_BITMAPS:
+            self._set_label_text(index, col, labels)
+            return
         if not labels:
             self.list.SetItem(index, col, "")
             if hasattr(self.list, "SetItemImage") and col == 0:

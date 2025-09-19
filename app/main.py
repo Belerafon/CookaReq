@@ -1,5 +1,6 @@
 """Application entry point for CookaReq."""
 
+import argparse
 import atexit
 from pathlib import Path
 
@@ -37,8 +38,23 @@ def init_locale(language: str | None = None) -> wx.Locale:
     return locale
 
 
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments, ignoring unknown flags from launchers/tests."""
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--list-panel-diag-level",
+        type=int,
+        choices=range(0, 11),
+        help="Override diagnostics level for the requirements ListPanel (0-10).",
+    )
+    args, _unknown = parser.parse_known_args(argv)
+    return args
+
+
 def main() -> None:
     """Run wx application with the main frame."""
+    args = _parse_args()
     configure_logging()
     app = wx.App()
     set_confirm(wx_confirm)
@@ -47,7 +63,12 @@ def main() -> None:
     app.locale = init_locale(language)
     model = RequirementModel()
     try:
-        frame = MainFrame(parent=None, config=config, model=model)
+        frame = MainFrame(
+            parent=None,
+            config=config,
+            model=model,
+            list_panel_diag_level=args.list_panel_diag_level,
+        )
     except TypeError:  # compatibility with potential stubs
         frame = MainFrame(parent=None)
     frame.Show()

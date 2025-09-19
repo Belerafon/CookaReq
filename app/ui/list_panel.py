@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Sequence
 from contextlib import suppress
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -26,6 +28,115 @@ if TYPE_CHECKING:
 
 if TYPE_CHECKING:  # pragma: no cover
     from wx import ContextMenuEvent, ListEvent
+
+
+_DIAGNOSTIC_ENV = "COOKAREQ_LIST_PANEL_DIAG_LEVEL"
+_LEGACY_DEBUG_ENV = "COOKAREQ_LIST_PANEL_DEBUG"
+
+
+def _clamp_level(level: int) -> int:
+    return max(0, min(10, level))
+
+
+def _parse_level(value: int | str | None) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, int):
+        return _clamp_level(value)
+    text = str(value).strip()
+    if not text:
+        return 0
+    try:
+        numeric = int(text, 10)
+    except ValueError:
+        lowered = text.lower()
+        if lowered in {"true", "yes", "on"}:
+            return 10
+        if lowered in {"false", "no", "off"}:
+            return 0
+        return 0
+    return _clamp_level(numeric)
+
+
+def _default_diagnostic_level() -> int:
+    env_level = os.getenv(_DIAGNOSTIC_ENV)
+    if env_level is not None:
+        return _parse_level(env_level)
+    legacy = os.getenv(_LEGACY_DEBUG_ENV)
+    if legacy is not None:
+        text = legacy.strip()
+        if not text:
+            return 10
+        lowered = text.lower()
+        if lowered in {"0", "false", "no", "off"}:
+            return 0
+        if lowered in {"1", "true", "yes", "on"}:
+            return 10
+        level = _parse_level(legacy)
+        return level if level else 10
+    return 0
+
+
+def _resolve_diagnostic_level(level: int | str | None) -> int:
+    return _parse_level(level) if level is not None else _default_diagnostic_level()
+
+
+@dataclass(frozen=True)
+class ListPanelFeatureProfile:
+    context_menu: bool = True
+    label_bitmaps: bool = True
+    subitem_images: bool = True
+    inherit_background: bool = True
+    show_filter_buttons: bool = True
+    show_filter_summary: bool = True
+    enable_filter_logic: bool = True
+    derived_map: bool = True
+    multi_columns: bool = True
+    sorting: bool = True
+    simple_list: bool = False
+
+def _profile_for_level(level: int) -> ListPanelFeatureProfile:
+    base = ListPanelFeatureProfile()
+    tweaks: dict[int, dict[str, bool]] = {
+        1: {"context_menu": False},
+        2: {"label_bitmaps": False},
+        3: {"subitem_images": False},
+        4: {"inherit_background": False},
+        5: {"show_filter_summary": False},
+        6: {"show_filter_buttons": False},
+        7: {"derived_map": False},
+        8: {"multi_columns": False},
+        9: {"sorting": False},
+        10: {
+            "simple_list": True,
+            "context_menu": False,
+            "label_bitmaps": False,
+            "subitem_images": False,
+            "inherit_background": False,
+            "show_filter_summary": False,
+            "show_filter_buttons": False,
+            "enable_filter_logic": False,
+            "derived_map": False,
+            "multi_columns": False,
+            "sorting": False,
+        },
+    }
+    merged = base.__dict__.copy()
+    for lvl in range(1, _clamp_level(level) + 1):
+        merged.update(tweaks.get(lvl, {}))
+    if merged.get("simple_list"):
+        merged.update(
+            context_menu=False,
+            label_bitmaps=False,
+            subitem_images=False,
+            show_filter_buttons=False,
+            show_filter_summary=False,
+            enable_filter_logic=False,
+            derived_map=False,
+            multi_columns=False,
+            sorting=False,
+        )
+    return ListPanelFeatureProfile(**merged)
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):
@@ -60,37 +171,50 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         on_delete_many: Callable[[Sequence[int]], None] | None = None,
         on_sort_changed: Callable[[int, bool], None] | None = None,
         on_derive: Callable[[int], None] | None = None,
+        diagnostic_level: int | str | None = None,
     ):
         """Initialize list view and controls for requirements."""
         wx.Panel.__init__(self, parent)
-        inherit_background(self, parent)
+        self._diagnostic_level = _resolve_diagnostic_level(diagnostic_level)
+        self.diagnostic_level = self._diagnostic_level
+        self.features = _profile_for_level(self._diagnostic_level)
+        if self.features.inherit_background:
+            inherit_background(self, parent)
         self.model = model if model is not None else RequirementModel()
+        self._raw_requirements: list[Requirement] = []
         sizer = wx.BoxSizer(wx.VERTICAL)
         vertical_pad = dip(self, 5)
         orient = getattr(wx, "HORIZONTAL", 0)
         right = getattr(wx, "RIGHT", 0)
         top_flag = getattr(wx, "TOP", 0)
         align_center = getattr(wx, "ALIGN_CENTER_VERTICAL", 0)
-        btn_row = wx.BoxSizer(orient)
-        self.filter_btn = wx.Button(self, label=_("Filters"))
-        bmp = wx.ArtProvider.GetBitmap(
-            getattr(wx, "ART_CLOSE", "wxART_CLOSE"),
-            getattr(wx, "ART_BUTTON", "wxART_BUTTON"),
-            (16, 16),
-        )
-        self.reset_btn = wx.BitmapButton(
-            self,
-            bitmap=bmp,
-            style=getattr(wx, "BU_EXACTFIT", 0),
-        )
-        self.reset_btn.SetToolTip(_("Clear filters"))
-        self.reset_btn.Hide()
-        self.filter_summary = wx.StaticText(self, label="")
-        btn_row.Add(self.filter_btn, 0, right, vertical_pad)
-        btn_row.Add(self.reset_btn, 0, right, vertical_pad)
-        btn_row.Add(self.filter_summary, 0, align_center, 0)
+        self.filter_btn: wx.Button | None = None
+        self.reset_btn: wx.BitmapButton | None = None
+        self.filter_summary: wx.StaticText | None = None
+        if self.features.show_filter_buttons or self.features.show_filter_summary:
+            btn_row = wx.BoxSizer(orient)
+            if self.features.show_filter_buttons:
+                self.filter_btn = wx.Button(self, label=_("Filters"))
+                bmp = wx.ArtProvider.GetBitmap(
+                    getattr(wx, "ART_CLOSE", "wxART_CLOSE"),
+                    getattr(wx, "ART_BUTTON", "wxART_BUTTON"),
+                    (16, 16),
+                )
+                self.reset_btn = wx.BitmapButton(
+                    self,
+                    bitmap=bmp,
+                    style=getattr(wx, "BU_EXACTFIT", 0),
+                )
+                self.reset_btn.SetToolTip(_("Clear filters"))
+                self.reset_btn.Hide()
+                btn_row.Add(self.filter_btn, 0, right, vertical_pad)
+                btn_row.Add(self.reset_btn, 0, right, vertical_pad)
+            if self.features.show_filter_summary:
+                self.filter_summary = wx.StaticText(self, label="")
+                btn_row.Add(self.filter_summary, 0, align_center, 0)
+            sizer.Add(btn_row, 0, wx.EXPAND, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
-        if hasattr(self.list, "SetExtraStyle"):
+        if self.features.subitem_images and hasattr(self.list, "SetExtraStyle"):
             extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
             if extra:
                 with suppress(Exception):  # pragma: no cover - backend quirks
@@ -116,13 +240,15 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._current_doc_prefix: str | None = None
         self._context_menu_open = False
         self._setup_columns()
-        sizer.Add(btn_row, 0, wx.EXPAND, 0)
         sizer.Add(self.list, 1, wx.EXPAND | top_flag, vertical_pad)
         self.SetSizer(sizer)
-        self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
-        self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
-        self.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter)
-        self.reset_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.reset_filters())
+        if self.features.context_menu:
+            self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
+            self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
+        if self.filter_btn is not None:
+            self.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter)
+        if self.reset_btn is not None:
+            self.reset_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.reset_filters())
 
     # ColumnSorterMixin requirement
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
@@ -179,6 +305,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         return stable_color(name)
 
     def _ensure_image_list_size(self, width: int, height: int) -> None:
+        if not self.features.label_bitmaps:
+            return
         width = max(width, 1)
         height = max(height, 1)
         if self._image_list is None:
@@ -329,6 +457,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         return bmp
 
     def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
+        if not self.features.label_bitmaps:
+            self._set_label_text(index, col, labels)
+            return
         if not labels:
             self.list.SetItem(index, col, "")
             if hasattr(self.list, "SetItemImage") and col == 0:
@@ -383,8 +514,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """
         self.list.ClearAll()
         self._field_order: list[str] = []
-        include_labels = "labels" in self.columns
-        if include_labels:
+        include_labels = self.features.multi_columns and "labels" in self.columns
+        if not self.features.multi_columns:
+            self.list.InsertColumn(0, _("Title"))
+            self._field_order.append("title")
+        elif include_labels:
             self.list.InsertColumn(0, _("Labels"))
             self._field_order.append("labels")
             self.list.InsertColumn(1, _("Title"))
@@ -392,16 +526,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         else:
             self.list.InsertColumn(0, _("Title"))
             self._field_order.append("title")
-        for field in self.columns:
-            if field == "labels":
-                continue
-            idx = self.list.GetColumnCount()
-            self.list.InsertColumn(idx, locale.field_label(field))
-            self._field_order.append(field)
-        ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
+        if self.features.multi_columns:
+            for field in self.columns:
+                if field == "labels":
+                    continue
+                idx = self.list.GetColumnCount()
+                self.list.InsertColumn(idx, locale.field_label(field))
+                self._field_order.append(field)
+        ColumnSorterMixin.__init__(self, max(1, self.list.GetColumnCount()))
         with suppress(Exception):  # remove mixin's default binding and use our own
             self.list.Unbind(wx.EVT_LIST_COL_CLICK)
-        self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
+        if self.features.sorting:
+            self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
 
     # Columns ---------------------------------------------------------
     def load_column_widths(self, config: ConfigManager) -> None:
@@ -489,29 +625,45 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         derived_map: dict[str, list[int]] | None = None,
     ) -> None:
         """Populate list control with requirement data via model."""
+        self._raw_requirements = list(requirements)
         self.model.set_requirements(requirements)
-        self._rebuild_rid_lookup(self.model.get_all())
-        if derived_map is None:
-            derived_map = {}
-            for req in requirements:
-                for parent in getattr(req, "links", []):
-                    parent_rid = getattr(parent, "rid", parent)
-                    derived_map.setdefault(parent_rid, []).append(req.id)
-        self.derived_map = derived_map
+        needs_lookup = self.features.multi_columns and (
+            self.features.derived_map
+            or any(field in {"derived_from", "links"} for field in self.columns)
+        )
+        if needs_lookup:
+            self._rebuild_rid_lookup(self.model.get_all())
+        else:
+            self._rid_lookup = {}
+            self._link_display_cache.clear()
+            self._doc_titles = {}
+        if self.features.derived_map:
+            if derived_map is None:
+                derived_map = {}
+                for req in requirements:
+                    for parent in getattr(req, "links", []):
+                        parent_rid = getattr(parent, "rid", parent)
+                        derived_map.setdefault(parent_rid, []).append(req.id)
+            self.derived_map = derived_map
+        else:
+            self.derived_map = {}
         self._refresh()
 
     # filtering -------------------------------------------------------
     def apply_filters(self, filters: dict) -> None:
         """Apply filters to the underlying model."""
         self.current_filters.update(filters)
-        self.model.set_label_filter(self.current_filters.get("labels", []))
-        self.model.set_label_match_all(not self.current_filters.get("match_any", False))
-        fields = self.current_filters.get("fields")
-        self.model.set_search_query(self.current_filters.get("query", ""), fields)
-        self.model.set_field_queries(self.current_filters.get("field_queries", {}))
-        self.model.set_status(self.current_filters.get("status"))
-        self.model.set_is_derived(self.current_filters.get("is_derived", False))
-        self.model.set_has_derived(self.current_filters.get("has_derived", False))
+        if self.features.enable_filter_logic:
+            self.model.set_label_filter(self.current_filters.get("labels", []))
+            self.model.set_label_match_all(
+                not self.current_filters.get("match_any", False)
+            )
+            fields = self.current_filters.get("fields")
+            self.model.set_search_query(self.current_filters.get("query", ""), fields)
+            self.model.set_field_queries(self.current_filters.get("field_queries", {}))
+            self.model.set_status(self.current_filters.get("status"))
+            self.model.set_is_derived(self.current_filters.get("is_derived", False))
+            self.model.set_has_derived(self.current_filters.get("has_derived", False))
         self._refresh()
         self._update_filter_summary()
         self._toggle_reset_button()
@@ -534,6 +686,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
 
     def _on_filter(self, event):  # pragma: no cover - simple event binding
+        if not self.features.enable_filter_logic:
+            if hasattr(event, "Skip"):
+                event.Skip()
+            return
         dlg = FilterDialog(self, labels=self._labels, values=self.current_filters)
         if dlg.ShowModal() == wx.ID_OK:
             self.apply_filters(dlg.get_filters())
@@ -548,6 +704,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _update_filter_summary(self) -> None:
         """Update text describing currently active filters."""
+        if self.filter_summary is None:
+            return
         parts: list[str] = []
         if self.current_filters.get("query"):
             parts.append(_("Query") + f": {self.current_filters['query']}")
@@ -588,6 +746,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _toggle_reset_button(self) -> None:
         """Show or hide the reset button based on active filters."""
+        if self.reset_btn is None:
+            return
         if self._has_active_filters():
             if hasattr(self.reset_btn, "Show"):
                 self.reset_btn.Show()
@@ -600,7 +760,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _refresh(self) -> None:
         """Reload list control from the model."""
-        items = self.model.get_visible()
+        if self.features.enable_filter_logic:
+            items = self.model.get_visible()
+        else:
+            items = list(self._raw_requirements)
         self.list.DeleteAllItems()
         for req in items:
             index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
@@ -616,7 +779,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             for col, field in enumerate(self._field_order):
                 if field == "title":
                     title = getattr(req, "title", "")
-                    derived = bool(getattr(req, "links", []))
+                    derived = self.features.derived_map and bool(getattr(req, "links", []))
                     display = f"↳ {title}".strip() if derived else title
                     self.list.SetItem(index, col, display)
                     continue
@@ -625,7 +788,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self._set_label_image(index, col, value)
                     continue
                 if field == "derived_from":
-                    value = self._first_parent_text(req)
+                    value = self._first_parent_text(req) if self.features.derived_map else ""
                     self.list.SetItem(index, col, value)
                     continue
                 if field == "links":
@@ -642,7 +805,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     continue
                 if field == "derived_count":
                     rid = req.rid or str(req.id)
-                    count = len(self.derived_map.get(rid, []))
+                    count = len(self.derived_map.get(rid, [])) if self.features.derived_map else 0
                     self.list.SetItem(index, col, str(count))
                     continue
                 if field == "attachments":
@@ -724,11 +887,17 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def record_link(self, parent_rid: str, child_id: int) -> None:
         """Record that ``child_id`` links to ``parent_rid``."""
 
+        if not self.features.derived_map:
+            return
         self.derived_map.setdefault(parent_rid, []).append(child_id)
 
     def recalc_derived_map(self, requirements: list[Requirement]) -> None:
         """Rebuild derived requirements map from ``requirements``."""
 
+        if not self.features.derived_map:
+            self.derived_map = {}
+            self._refresh()
+            return
         derived_map: dict[str, list[int]] = {}
         for req in requirements:
             for parent in getattr(req, "links", []):
@@ -745,6 +914,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def sort(self, column: int, ascending: bool) -> None:
         """Sort list by ``column`` with ``ascending`` order."""
+        if not self.features.sorting:
+            return
         self._sort_column = column
         self._sort_ascending = ascending
         if column < len(self._field_order):
@@ -756,6 +927,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     # context menu ----------------------------------------------------
     def _popup_context_menu(self, index: int, column: int | None) -> None:
+        if not self.features.context_menu:
+            return
         if self._context_menu_open:
             return
         menu, _, _, _ = self._create_context_menu(index, column)
@@ -782,6 +955,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self,
         event: ContextMenuEvent,
     ) -> None:  # pragma: no cover - GUI event
+        if not self.features.context_menu:
+            return
         pos = event.GetPosition()
         if pos == wx.DefaultPosition:
             pos = wx.GetMousePosition()
@@ -804,6 +979,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         return self._field_order[col]
 
     def _create_context_menu(self, index: int, column: int | None):
+        if not self.features.context_menu:
+            return wx.Menu(), None, None, None
         menu = wx.Menu()
         selected_indices = self._get_selected_indices()
         if index != wx.NOT_FOUND and (not selected_indices or index not in selected_indices):

@@ -104,11 +104,13 @@ class MainFrame(wx.Frame):
         *,
         config: ConfigManager | None = None,
         model: RequirementModel | None = None,
+        list_panel_diag_level: int | None = None,
     ) -> None:
         """Set up main application window and controllers."""
         self._base_title = "CookaReq"
         self.config = config if config is not None else ConfigManager()
         self.model = model if model is not None else RequirementModel()
+        self._list_panel_diag_level = list_panel_diag_level
         # ``Requirement`` содержит множество полей, но в списке колонок
         # нам нужны только скалярные значения. Метки отображаются особым
         # образом, поэтому добавим их вручную в конец списка.
@@ -216,6 +218,7 @@ class MainFrame(wx.Frame):
                 on_delete_many=self.on_delete_requirements,
                 on_sort_changed=self._on_sort_changed,
                 on_derive=self.on_derive_requirement,
+                diagnostic_level=self._list_panel_diag_level,
             ),
         )
         self.panel.set_columns(self.selected_fields)
@@ -837,6 +840,7 @@ class MainFrame(wx.Frame):
             on_delete_many=self.on_delete_requirements,
             on_sort_changed=self._on_sort_changed,
             on_derive=self.on_derive_requirement,
+            diagnostic_level=self._list_panel_diag_level,
         )
         self.panel.set_columns(self.selected_fields)
         self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)

@@ -159,6 +159,34 @@ def test_list_panel_delete_many_uses_batch_handler(wx_app):
     frame.Destroy()
 
 
+def test_list_panel_diagnostic_level_plain(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(
+        frame,
+        model=RequirementModel(),
+        diagnostic_level=10,
+    )
+    panel.set_requirements([
+        _req(1, "Alpha", links=[Link(rid="REQ-0")]),
+    ])
+
+    assert panel.filter_btn is None
+    assert panel.reset_btn is None
+    assert panel.filter_summary is None
+    assert not panel.features.context_menu
+    assert panel.list.GetColumnCount() == 1
+    assert panel.list.GetColumn(0).GetText() == list_panel._("Title")
+    assert panel.list.GetItemCount() == 1
+    assert panel.list.GetItemText(0) == "Alpha"
+    frame.Destroy()
+
+
 def test_list_panel_delete_many_falls_back_to_single_handler(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

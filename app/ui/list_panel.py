@@ -117,6 +117,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.SetSizer(sizer)
         self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
         self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
+        self.list.Bind(wx.EVT_SIZE, self._on_list_resize)
         self.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter)
         self.reset_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.reset_filters())
 
@@ -575,6 +576,20 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if callable(update):
             with suppress(Exception):
                 update()
+
+    def _on_list_resize(self, event: wx.Event) -> None:
+        """Request a redraw when the embedded list control is resized."""
+
+        try:
+            count = self.list.GetItemCount()
+        except Exception:
+            count = 0
+        self._request_list_redraw(count)
+        if hasattr(event, "Skip"):
+            try:
+                event.Skip()
+            except Exception:
+                pass
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.

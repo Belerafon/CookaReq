@@ -680,6 +680,49 @@ def test_list_panel_after_refresh_callback(monkeypatch):
     assert called == [panel]
 
 
+def test_list_panel_requests_redraw_on_size(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    calls: list[int] = []
+
+    def record_redraw(self, count: int) -> None:
+        calls.append(count)
+
+    monkeypatch.setattr(list_panel_module.ListPanel, "_request_list_redraw", record_redraw)
+
+    parent = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(parent, model=model_module.RequirementModel())
+    panel.set_columns(["status"])
+    panel.set_requirements([_req(1, "Req")])
+
+    calls.clear()
+
+    handler = panel.list.get_bound_handler(wx_stub.EVT_SIZE)
+    assert handler is not None
+
+    skip_called = {"value": False}
+
+    def skip() -> None:
+        skip_called["value"] = True
+
+    event = types.SimpleNamespace(Skip=skip)
+
+    handler(event)
+
+    assert calls == [panel.list.GetItemCount()]
+    assert skip_called["value"]
+
+
 def test_refresh_repaints_without_freeze(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)

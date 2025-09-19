@@ -1,7 +1,9 @@
 """Pytest fixtures and shared helpers."""
 
+import importlib
 import os
 import re
+import socket
 import sys
 import time
 import types
@@ -9,8 +11,6 @@ from pathlib import Path
 
 # Ensure project root is on sys.path for imports
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-
-import socket
 
 import pytest
 
@@ -47,6 +47,19 @@ def _mock_openrouter(monkeypatch, request):
 def _auto_confirm():
     set_confirm(auto_confirm)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_list_panel_module():
+    """Reload ``app.ui.list_panel`` around each test to reset feature flags."""
+
+    import app.ui.list_panel as list_panel  # noqa: WPS433 - runtime reload
+
+    importlib.reload(list_panel)
+    yield
+    current_wx = sys.modules.get("wx")
+    if current_wx is not None and hasattr(current_wx, "Panel"):
+        importlib.reload(list_panel)
 
 
 @pytest.fixture(autouse=True)

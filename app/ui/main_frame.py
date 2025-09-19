@@ -1308,6 +1308,8 @@ class MainFrame(wx.Frame):
                 can_veto = getattr(event, "CanVeto", None)
                 if can_veto is None or can_veto():
                     event.Veto()
+            if self._selected_requirement_id is not None:
+                wx.CallAfter(self.panel.focus_requirement, self._selected_requirement_id)
             return
         req = self.model.get_by_id(req_id)
         if req:

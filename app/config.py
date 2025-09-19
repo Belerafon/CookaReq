@@ -12,6 +12,7 @@ import wx
 
 from .llm.constants import DEFAULT_MAX_CONTEXT_TOKENS, DEFAULT_MAX_OUTPUT_TOKENS
 from .settings import (
+    MAX_LIST_PANEL_DEBUG_LEVEL,
     AppSettings,
     LLMSettings,
     MCPSettings,
@@ -479,12 +480,12 @@ class ConfigManager:
         """Return diagnostic level for :class:`ListPanel`."""
 
         value = int(self.get_value("list_panel_debug_level"))
-        return max(0, min(10, value))
+        return max(0, min(MAX_LIST_PANEL_DEBUG_LEVEL, value))
 
     def set_list_panel_debug_level(self, level: int) -> None:
         """Persist diagnostic level for :class:`ListPanel`."""
 
-        numeric = max(0, min(10, int(level)))
+        numeric = max(0, min(MAX_LIST_PANEL_DEBUG_LEVEL, int(level)))
         self.set_value("list_panel_debug_level", numeric)
         self.flush()
 

@@ -12,7 +12,7 @@ from ..llm.client import LLMClient
 from ..llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
-from ..settings import LLMSettings, MCPSettings
+from ..settings import LLMSettings, MCPSettings, MAX_LIST_PANEL_DEBUG_LEVEL
 from .helpers import format_error_message, make_help_button
 
 GENERAL_HELP: dict[str, str] = {
@@ -31,7 +31,7 @@ GENERAL_HELP: dict[str, str] = {
     "list_debug": _(
         "Diagnostic level for the requirements list.\n"
         "Higher numbers progressively disable extra features to help locate rendering issues.\n"
-        "Set to 10 to use a plain wx.ListCtrl without custom behaviour.",
+        "Set to {max_level} for the simplest rendering mode.",
     ),
 }
 
@@ -181,8 +181,11 @@ class SettingsDialog(wx.Dialog):
         self._list_debug_level = wx.SpinCtrl(
             general,
             min=0,
-            max=10,
-            initial=max(0, min(10, int(list_panel_debug_level))),
+            max=MAX_LIST_PANEL_DEBUG_LEVEL,
+            initial=max(
+                0,
+                min(MAX_LIST_PANEL_DEBUG_LEVEL, int(list_panel_debug_level)),
+            ),
         )
 
         gen_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -235,7 +238,9 @@ class SettingsDialog(wx.Dialog):
         debug_sizer.Add(
             make_help_button(
                 general,
-                GENERAL_HELP["list_debug"],
+                GENERAL_HELP["list_debug"].format(
+                    max_level=MAX_LIST_PANEL_DEBUG_LEVEL
+                ),
                 dialog_parent=self,
             ),
             0,

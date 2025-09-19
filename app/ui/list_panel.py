@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from contextlib import suppress
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
@@ -20,6 +20,7 @@ from .helpers import dip, inherit_background
 from .enums import ENUMS
 from .filter_dialog import FilterDialog
 from .requirement_model import RequirementModel
+from ..settings import MAX_LIST_PANEL_DEBUG_LEVEL
 
 if TYPE_CHECKING:
     from ..config import ConfigManager
@@ -33,6 +34,24 @@ if TYPE_CHECKING:  # pragma: no cover
 class ListPanelDebugProfile:
     """Feature toggles for :class:`ListPanel` based on debug level."""
 
+    FEATURE_LABELS: ClassVar[dict[str, str]] = {
+        "context_menu": "context menu",
+        "label_bitmaps": "label bitmaps",
+        "derived_formatting": "derived formatting",
+        "filter_summary": "filter summary",
+        "filter_button": "filter button",
+        "filter_logic": "filter logic",
+        "column_persistence": "column persistence",
+        "extra_columns": "extra columns",
+        "sorting": "sorting",
+        "derived_map": "derived map",
+        "doc_lookup": "document lookup",
+        "subitem_images": "subitem images",
+        "inherit_background": "background inheritance",
+        "sorter_mixin": "column sorter mixin",
+        "rich_rendering": "rich rendering",
+    }
+
     level: int
     context_menu: bool
     label_bitmaps: bool
@@ -45,13 +64,17 @@ class ListPanelDebugProfile:
     sorting: bool
     derived_map: bool
     doc_lookup: bool
+    subitem_images: bool
+    inherit_background: bool
+    sorter_mixin: bool
+    rich_rendering: bool
 
     @classmethod
     def from_level(cls, level: int | None) -> "ListPanelDebugProfile":
-        """Return profile for ``level`` clamped to ``0..10``."""
+        """Return profile for ``level`` clamped to supported range."""
 
         raw = 0 if level is None else int(level)
-        clamped = max(0, min(10, raw))
+        clamped = max(0, min(MAX_LIST_PANEL_DEBUG_LEVEL, raw))
         return cls(
             level=clamped,
             context_menu=clamped < 1,
@@ -65,7 +88,20 @@ class ListPanelDebugProfile:
             sorting=clamped < 8,
             derived_map=clamped < 9,
             doc_lookup=clamped < 10,
+            subitem_images=clamped < 11,
+            inherit_background=clamped < 12,
+            sorter_mixin=clamped < 13,
+            rich_rendering=clamped < 14,
         )
+
+    def disabled_features(self) -> list[str]:
+        """Return human-readable names of features disabled at this level."""
+
+        disabled: list[str] = []
+        for attr, label in self.FEATURE_LABELS.items():
+            if not getattr(self, attr):
+                disabled.append(label)
+        return disabled
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):
@@ -104,9 +140,19 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     ):
         """Initialize list view and controls for requirements."""
         wx.Panel.__init__(self, parent)
-        inherit_background(self, parent)
         self.debug = ListPanelDebugProfile.from_level(debug_level)
         self.debug_level = self.debug.level
+        if self.debug.inherit_background:
+            inherit_background(self, parent)
+        disabled = self.debug.disabled_features()
+        if disabled:
+            logger.info(
+                "ListPanel debug level %s disabled features: %s",
+                self.debug_level,
+                ", ".join(disabled),
+            )
+        else:
+            logger.info("ListPanel debug level %s: all features enabled", self.debug_level)
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
         vertical_pad = dip(self, 5)
@@ -140,7 +186,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self.filter_summary = wx.StaticText(self, label="")
                 btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
-        if hasattr(self.list, "SetExtraStyle"):
+        if self.debug.subitem_images and hasattr(self.list, "SetExtraStyle"):
             extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
             if extra:
                 with suppress(Exception):  # pragma: no cover - backend quirks
@@ -152,7 +198,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._rid_lookup: dict[str, Requirement] = {}
         self._doc_titles: dict[str, str] = {}
         self._link_display_cache: dict[str, str] = {}
-        ColumnSorterMixin.__init__(self, 1)
+        if self.debug.sorter_mixin:
+            ColumnSorterMixin.__init__(self, 1)
         self.columns: list[str] = []
         self._on_clone = on_clone
         self._on_delete = on_delete
@@ -450,6 +497,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """
         self.list.ClearAll()
         self._field_order: list[str] = []
+        if not self.debug.rich_rendering:
+            self.list.InsertColumn(0, _("Title"))
+            self._field_order.append("title")
+            with suppress(Exception):
+                self.list.Unbind(wx.EVT_LIST_COL_CLICK)
+            return
         active_columns = self.columns if self.debug.extra_columns else []
         include_labels = self.debug.extra_columns and "labels" in active_columns
         if include_labels:
@@ -467,7 +520,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 idx = self.list.GetColumnCount()
                 self.list.InsertColumn(idx, locale.field_label(field))
                 self._field_order.append(field)
-        if self.debug.sorting:
+        if self.debug.sorting and self.debug.sorter_mixin:
             ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
             with suppress(Exception):  # remove mixin's default binding and use our own
                 self.list.Unbind(wx.EVT_LIST_COL_CLICK)
@@ -561,7 +614,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
         ``labels`` is treated specially and rendered as a comma-separated list.
         """
-        self.columns = list(fields) if self.debug.extra_columns else []
+        if not self.debug.rich_rendering:
+            self.columns = []
+        else:
+            self.columns = list(fields) if self.debug.extra_columns else []
         self._setup_columns()
         # repopulate with existing requirements after changing columns
         self._refresh()
@@ -706,6 +762,19 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Reload list control from the model."""
         items = self.model.get_visible()
         self.list.DeleteAllItems()
+        if not self.debug.rich_rendering:
+            for req in items:
+                title = getattr(req, "title", "")
+                index = self.list.InsertItem(
+                    self.list.GetItemCount(),
+                    str(title),
+                )
+                req_id = getattr(req, "id", 0)
+                try:
+                    self.list.SetItemData(index, int(req_id))
+                except Exception:
+                    self.list.SetItemData(index, 0)
+            return
         for req in items:
             index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
             # Windows ListCtrl may still assign image 0; clear explicitly

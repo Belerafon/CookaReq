@@ -1,6 +1,7 @@
 """Tests for list panel gui."""
 
 import importlib
+import logging
 
 import pytest
 
@@ -107,7 +108,7 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
 
-    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=10)
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=14)
     panel.set_columns(["labels", "status"])
     panel.set_requirements([_req(1, "Plain", labels=["bug"], status=Status.APPROVED)])
     wx_app.Yield()
@@ -118,6 +119,30 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.list.GetColumnCount() == 1
     assert panel.list.GetItemText(0) == "Plain"
     assert panel.debug.context_menu is False
+    assert panel.debug.rich_rendering is False
+    assert panel.debug.subitem_images is False
+    assert panel.debug.sorter_mixin is False
+
+    frame.Destroy()
+
+
+def test_list_panel_debug_level_logs_disabled_features(wx_app, caplog):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    caplog.set_level(logging.INFO, logger="cookareq")
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=12)
+    panel.set_requirements([_req(1, "Item")])
+    wx_app.Yield()
+
+    message = caplog.text
+    assert f"ListPanel debug level {panel.debug_level}" in message
+    assert "background inheritance" in message
 
     frame.Destroy()
 

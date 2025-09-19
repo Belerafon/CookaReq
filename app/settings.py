@@ -9,6 +9,9 @@ from pathlib import Path
 import tomllib
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+
+MAX_LIST_PANEL_DEBUG_LEVEL = 14
+
 from .llm.constants import (
     DEFAULT_MAX_CONTEXT_TOKENS,
     DEFAULT_MAX_OUTPUT_TOKENS,

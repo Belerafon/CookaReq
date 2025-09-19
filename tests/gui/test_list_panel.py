@@ -4,6 +4,7 @@ import importlib
 
 import pytest
 
+from app.core.document_store import LabelDef
 from app.core.model import Priority, Requirement, RequirementType, Status, Verification
 from app.ui.requirement_model import RequirementModel
 
@@ -68,14 +69,14 @@ def test_list_panel_basic_layout(wx_app):
         frame.Destroy()
 
 
-def test_set_columns_excludes_labels(wx_app):
+def test_set_columns_allows_labels(wx_app):
     wx, frame, panel = _make_panel(wx_app)
     try:
-        panel.set_columns(["id", "labels", "status"])
-        assert panel._field_order == ["title", "id", "status"]
+        panel.set_columns(["labels", "id", "status"])
+        assert panel._field_order[0] == "labels"
+        assert panel._field_order[1] == "title"
         headers = [panel.list.GetColumn(i).GetText() for i in range(panel.list.GetColumnCount())]
-        assert headers[0] == "Title"
-        assert "Labels" not in headers
+        assert headers[:2] == ["Labels", "Title"]
     finally:
         frame.Destroy()
 
@@ -176,5 +177,51 @@ def test_filter_summary_updates_and_reset_button(wx_app):
         panel.reset_filters()
         assert not panel.reset_btn.IsShown()
         assert panel.filter_summary.GetLabel() == ""
+    finally:
+        frame.Destroy()
+
+
+def test_filter_dialog_applies_filters(wx_app):
+    wx, frame, panel = _make_panel(wx_app)
+    try:
+        panel.update_labels_list([LabelDef("alpha", "Alpha", "#ffffff")])
+
+        created: list[object] = []
+
+        class _DummyDialog:
+            def __init__(self, parent, *, labels, values):
+                assert parent is panel
+                assert [lbl.key for lbl in labels] == ["alpha"]
+                assert values == panel.current_filters
+                self.destroyed = False
+
+            def ShowModal(self):
+                return wx.ID_OK
+
+            def get_filters(self):
+                return {
+                    "query": "foo",
+                    "labels": ["alpha"],
+                    "field_queries": {"title": "bar"},
+                }
+
+            def Destroy(self):
+                self.destroyed = True
+
+        def factory(parent, *, labels, values):
+            dialog = _DummyDialog(parent, labels=labels, values=values)
+            created.append(dialog)
+            return dialog
+
+        panel._filter_dialog_factory = factory
+        panel._on_filter_button(None)
+
+        assert panel.current_filters["query"] == "foo"
+        assert panel.current_filters["labels"] == ["alpha"]
+        assert panel.filter_summary.GetLabel()
+        assert "foo" in panel.filter_summary.GetLabel()
+        assert "bar" in panel.filter_summary.GetLabel()
+        assert panel.reset_btn.IsShown()
+        assert created and created[0].destroyed
     finally:
         frame.Destroy()

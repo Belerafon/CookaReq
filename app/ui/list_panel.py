@@ -15,6 +15,7 @@ from ..i18n import _
 from ..log import logger
 from . import locale
 from .enums import ENUMS
+from .filter_dialog import FilterDialog
 from .requirement_model import RequirementModel
 
 if TYPE_CHECKING:  # pragma: no cover - runtime optional
@@ -30,6 +31,7 @@ class ListPanel(wx.Panel):
     DEFAULT_COLUMN_WIDTH = 200
     DEFAULT_COLUMN_WIDTHS: dict[str, int] = {
         "title": 340,
+        "labels": 200,
         "id": 90,
         "status": 140,
         "priority": 130,
@@ -69,10 +71,12 @@ class ListPanel(wx.Panel):
         self.derived_map: dict[str, list[int]] = {}
         self._labels: list[LabelDef] = []
         self._field_order: list[str] = ["title"]
+        self._show_labels = False
         self.columns: list[str] = []
         self._sort_column = 0
         self._sort_ascending = True
         self._current_doc_prefix: str | None = None
+        self._filter_dialog_factory: Callable[..., FilterDialog] = FilterDialog
 
         pad = max(self.FromDIP(6), 2)
 
@@ -116,7 +120,7 @@ class ListPanel(wx.Panel):
         self._current_doc_prefix = prefix
 
     def update_labels_list(self, labels: list[LabelDef]) -> None:
-        self._labels = list(labels)
+        self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
 
     # ------------------------------------------------------------------
     # Columns
@@ -125,11 +129,20 @@ class ListPanel(wx.Panel):
         """Create columns for title and all requested fields."""
 
         self.list.ClearAll()
-        self._field_order = ["title"]
-        self.list.InsertColumn(0, _("Title"))
+        self._field_order = []
+
+        column_index = 0
+        if self._show_labels:
+            self.list.InsertColumn(column_index, _("Labels"))
+            self._field_order.append("labels")
+            column_index += 1
+
+        self.list.InsertColumn(column_index, _("Title"))
+        self._field_order.append("title")
+        column_index += 1
 
         for field in self.columns:
-            if field == "title":
+            if field in {"title", "labels"}:
                 continue
             header = locale.field_label(field)
             self.list.InsertColumn(self.list.GetColumnCount(), header)
@@ -145,16 +158,18 @@ class ListPanel(wx.Panel):
 
         sanitized: list[str] = []
         seen = {"title"}
+        show_labels = False
         for field in fields:
-            if not field or field in seen:
+            if not field:
                 continue
             if field == "labels":
-                logger.debug(
-                    "ListPanel ignoring 'labels' column while debug mode is active",
-                )
+                show_labels = True
+                continue
+            if field in seen:
                 continue
             sanitized.append(field)
             seen.add(field)
+        self._show_labels = show_labels
         self.columns = sanitized
         self._apply_columns()
         self._refresh()
@@ -213,13 +228,14 @@ class ListPanel(wx.Panel):
     def reorder_columns(self, from_col: int, to_col: int) -> None:
         """Allow reordering user columns while keeping Title fixed."""
 
-        if from_col == to_col or from_col <= 0 or to_col <= 0:
+        anchor = 2 if self._show_labels else 1
+        if from_col == to_col or from_col < anchor or to_col < anchor:
             return
         if from_col >= len(self._field_order) or to_col >= len(self._field_order):
             return
-        fields = list(self._field_order[1:])
-        moved = fields.pop(from_col - 1)
-        fields.insert(to_col - 1, moved)
+        fields = list(self._field_order[anchor:])
+        moved = fields.pop(from_col - anchor)
+        fields.insert(to_col - anchor, moved)
         self.columns = fields
         self._apply_columns()
         self._refresh()
@@ -239,26 +255,64 @@ class ListPanel(wx.Panel):
     def apply_filters(self, filters: dict[str, object]) -> None:
         """Apply a subset of filters to the underlying model."""
 
-        self.current_filters = dict(filters)
+        sanitized: dict[str, object] = {}
+
         labels = filters.get("labels", [])
         if isinstance(labels, list):
-            self.model.set_label_filter(labels)
-        self.model.set_label_match_all(not filters.get("match_any", False))
+            label_list = [str(lbl) for lbl in labels if str(lbl)]
+        else:
+            label_list = []
+        if label_list:
+            sanitized["labels"] = label_list
+        self.model.set_label_filter(label_list)
+
+        match_any = bool(filters.get("match_any", False))
+        if match_any:
+            sanitized["match_any"] = True
+        self.model.set_label_match_all(not match_any)
+
         query = str(filters.get("query", "") or "")
+        if query:
+            sanitized["query"] = query
+
         fields = filters.get("fields")
         if isinstance(fields, list):
-            field_names = [str(name) for name in fields]
+            field_names = [str(name) for name in fields if str(name)]
         else:
             field_names = None
+        if field_names:
+            sanitized["fields"] = field_names
         self.model.set_search_query(query, field_names)
-        field_queries = filters.get("field_queries", {})
-        if isinstance(field_queries, dict):
-            casted = {str(k): str(v) for k, v in field_queries.items() if v}
-            self.model.set_field_queries(casted)
+
+        field_queries_input = filters.get("field_queries", {})
+        if isinstance(field_queries_input, dict):
+            casted = {
+                str(key): str(value)
+                for key, value in field_queries_input.items()
+                if value
+            }
+        else:
+            casted = {}
+        if casted:
+            sanitized["field_queries"] = casted
+        self.model.set_field_queries(casted)
+
         status = filters.get("status")
-        self.model.set_status(str(status) if status else None)
-        self.model.set_is_derived(bool(filters.get("is_derived", False)))
-        self.model.set_has_derived(bool(filters.get("has_derived", False)))
+        status_value = str(status) if status else ""
+        if status_value:
+            sanitized["status"] = status_value
+        self.model.set_status(status_value or None)
+
+        is_derived = bool(filters.get("is_derived", False))
+        has_derived = bool(filters.get("has_derived", False))
+        if is_derived:
+            sanitized["is_derived"] = True
+        if has_derived:
+            sanitized["has_derived"] = True
+        self.model.set_is_derived(is_derived)
+        self.model.set_has_derived(has_derived)
+
+        self.current_filters = sanitized
         self._refresh()
         self._update_filter_summary()
         self._toggle_reset_button()
@@ -268,8 +322,33 @@ class ListPanel(wx.Panel):
 
         self.apply_filters({})
 
-    def _on_filter_button(self, _event: wx.Event) -> None:  # pragma: no cover - UI
-        logger.info("Filter dialog is temporarily disabled in text-only debug mode")
+    def _create_filter_dialog(self) -> FilterDialog:
+        """Construct a filter dialog instance (split for testing)."""
+
+        return self._filter_dialog_factory(
+            self,
+            labels=self._labels,
+            values=self.current_filters,
+        )
+
+    def _on_filter_button(self, _event: wx.Event | None) -> None:  # pragma: no cover - UI
+        dialog: FilterDialog | None = None
+        try:
+            dialog = self._create_filter_dialog()
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Unable to open filter dialog")
+            return
+        try:
+            result = dialog.ShowModal()
+            if result == wx.ID_OK:
+                try:
+                    filters = dialog.get_filters()
+                except Exception:  # pragma: no cover - defensive
+                    logger.exception("Filter dialog produced invalid filters")
+                    return
+                self.apply_filters(filters)
+        finally:
+            dialog.Destroy()
 
     def _on_reset_button(self, _event: wx.Event) -> None:  # pragma: no cover - UI
         self.reset_filters()
@@ -284,12 +363,12 @@ class ListPanel(wx.Panel):
 
     def _update_filter_summary(self) -> None:
         parts: list[str] = []
-        labels = self.current_filters.get("labels")
-        if labels:
-            parts.append(_("Labels: %s") % ", ".join(str(lbl) for lbl in labels))
         query = self.current_filters.get("query")
         if query:
             parts.append(_("Query: %s") % query)
+        labels = self.current_filters.get("labels")
+        if labels:
+            parts.append(_("Labels: %s") % ", ".join(str(lbl) for lbl in labels))
         status = self.current_filters.get("status")
         if status:
             parts.append(
@@ -302,8 +381,12 @@ class ListPanel(wx.Panel):
         has_children = self.current_filters.get("has_derived")
         if has_children:
             parts.append(_("With children"))
-        text = "; ".join(parts)
-        self.filter_summary.SetLabel(text)
+        field_queries = self.current_filters.get("field_queries")
+        if isinstance(field_queries, dict):
+            for field, value in field_queries.items():
+                if value:
+                    parts.append(f"{locale.field_label(field)}: {value}")
+        self.filter_summary.SetLabel("; ".join(parts))
 
     # ------------------------------------------------------------------
     # Data

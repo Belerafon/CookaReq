@@ -54,6 +54,9 @@ class ListPanelDebugProfile:
         "callbacks": "action callbacks",
         "selection_events": "list selection events",
         "model_driven": "model-driven refresh",
+        "model_cache": "requirement model cache",
+        "report_style": "report-style layout",
+        "sizer_layout": "panel box sizer",
     }
 
     level: int
@@ -76,6 +79,9 @@ class ListPanelDebugProfile:
     callbacks: bool
     selection_events: bool
     model_driven: bool
+    model_cache: bool
+    report_style: bool
+    sizer_layout: bool
 
     @classmethod
     def from_level(cls, level: int | None) -> "ListPanelDebugProfile":
@@ -104,6 +110,9 @@ class ListPanelDebugProfile:
             callbacks=clamped < 16,
             selection_events=clamped < 17,
             model_driven=clamped < 18,
+            model_cache=clamped < 19,
+            report_style=clamped < 20,
+            sizer_layout=clamped < 21,
         )
 
     def disabled_features(self) -> list[str]:
@@ -158,16 +167,22 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             inherit_background(self, parent)
         disabled = self.debug.disabled_features()
         if disabled:
-            logger.info(
-                "ListPanel debug level %s disabled features: %s",
-                self.debug_level,
-                ", ".join(disabled),
+            self._debug_summary = (
+                "ListPanel debug level %s disabled features: %s"
+                % (self.debug_level, ", ".join(disabled))
             )
         else:
-            logger.info("ListPanel debug level %s: all features enabled", self.debug_level)
-        self.model = model if model is not None else RequirementModel()
+            self._debug_summary = "ListPanel debug level %s: all features enabled" % (
+                self.debug_level,
+            )
+        logger.info(self._debug_summary)
+        if self.debug.model_cache:
+            self.model = model if model is not None else RequirementModel()
+        else:
+            self.model = None
+        self._plain_source: list[Requirement] = []
         self._plain_items: list[tuple[int, str]] = []
-        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer = wx.BoxSizer(wx.VERTICAL) if self.debug.sizer_layout else None
         vertical_pad = dip(self, 5)
         orient = getattr(wx, "HORIZONTAL", 0)
         right = getattr(wx, "RIGHT", 0)
@@ -198,7 +213,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if self.debug.filter_summary:
                 self.filter_summary = wx.StaticText(self, label="")
                 btn_row.Add(self.filter_summary, 0, align_center, 0)
-        self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
+        list_style = wx.LC_REPORT if self.debug.report_style else wx.LC_LIST
+        self.list = wx.ListCtrl(self, style=list_style)
         if self.debug.subitem_images and hasattr(self.list, "SetExtraStyle"):
             extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
             if extra:
@@ -233,10 +249,15 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._current_doc_prefix: str | None = None
         self._context_menu_open = False
         self._setup_columns()
-        if btn_row is not None:
-            sizer.Add(btn_row, 0, wx.EXPAND, 0)
-        sizer.Add(self.list, 1, wx.EXPAND | top_flag, vertical_pad)
-        self.SetSizer(sizer)
+        if sizer is not None:
+            if btn_row is not None:
+                sizer.Add(btn_row, 0, wx.EXPAND, 0)
+            sizer.Add(self.list, 1, wx.EXPAND | top_flag, vertical_pad)
+            self.SetSizer(sizer)
+        else:
+            self.list.SetPosition((0, 0))
+            self.Bind(wx.EVT_SIZE, self._on_size_plain)
+            self._on_size_plain(None)
         if self.debug.context_menu:
             self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
             self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
@@ -246,6 +267,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self.reset_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.reset_filters())
 
     # ColumnSorterMixin requirement
+    def log_debug_profile(self) -> None:
+        """Log the cached summary of disabled features."""
+
+        if getattr(self, "_debug_summary", None):
+            logger.info(self._debug_summary)
+
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
         """Return internal ``wx.ListCtrl`` for sorting mixin."""
 
@@ -420,11 +447,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         source: list[Requirement]
         if requirements is not None:
             source = list(requirements)
-        else:
+        elif self.debug.model_cache and self.model is not None:
             try:
                 source = self.model.get_visible()
             except Exception:
                 source = []
+        else:
+            source = list(self._plain_source)
         plain: list[tuple[int, str]] = []
         for req in source:
             try:
@@ -445,6 +474,15 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self.list.SetItemData(index, int(req_id))
             except Exception:
                 self.list.SetItemData(index, 0)
+
+    def _on_size_plain(self, event: wx.Event | None) -> None:
+        """Resize the list control to fill the panel without sizers."""
+
+        size = self.GetClientSize()
+        if size.width > 0 and size.height > 0:
+            self.list.SetSize(size)
+        if event is not None and hasattr(event, "Skip"):
+            event.Skip()
 
     def _first_parent_text(self, req: Requirement) -> str:
         links = getattr(req, "links", []) or []
@@ -559,9 +597,16 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """
         self.list.ClearAll()
         self._field_order: list[str] = []
+        if not self.debug.report_style:
+            with suppress(Exception):
+                self.list.Unbind(wx.EVT_LIST_COL_CLICK)
+            return
         if not self.debug.rich_rendering:
             self.list.InsertColumn(0, _("Title"))
             self._field_order.append("title")
+            width = self._default_column_width("title")
+            with suppress(Exception):
+                self.list.SetColumnWidth(0, width)
             with suppress(Exception):
                 self.list.Unbind(wx.EVT_LIST_COL_CLICK)
             return
@@ -690,8 +735,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         derived_map: dict[str, list[int]] | None = None,
     ) -> None:
         """Populate list control with requirement data via model."""
-        self.model.set_requirements(requirements)
-        if not self.debug.model_driven:
+        self._plain_source = list(requirements)
+        if self.debug.model_cache and self.model is not None:
+            self.model.set_requirements(requirements)
+        if (
+            not self.debug.model_driven
+            or not self.debug.model_cache
+            or self.model is None
+        ):
             self._update_plain_items(requirements)
             self._populate_plain_items()
             return
@@ -714,26 +765,31 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Apply filters to the underlying model."""
         if not self.debug.filter_logic:
             self.current_filters = {}
-            self.model.set_label_filter([])
-            self.model.set_label_match_all(True)
-            self.model.set_search_query("", None)
-            self.model.set_field_queries({})
-            self.model.set_status(None)
-            self.model.set_is_derived(False)
-            self.model.set_has_derived(False)
+            if self.debug.model_cache and self.model is not None:
+                self.model.set_label_filter([])
+                self.model.set_label_match_all(True)
+                self.model.set_search_query("", None)
+                self.model.set_field_queries({})
+                self.model.set_status(None)
+                self.model.set_is_derived(False)
+                self.model.set_has_derived(False)
             self._refresh()
             self._update_filter_summary()
             self._toggle_reset_button()
             return
         self.current_filters.update(filters)
-        self.model.set_label_filter(self.current_filters.get("labels", []))
-        self.model.set_label_match_all(not self.current_filters.get("match_any", False))
+        if self.debug.model_cache and self.model is not None:
+            self.model.set_label_filter(self.current_filters.get("labels", []))
+            self.model.set_label_match_all(
+                not self.current_filters.get("match_any", False)
+            )
         fields = self.current_filters.get("fields")
-        self.model.set_search_query(self.current_filters.get("query", ""), fields)
-        self.model.set_field_queries(self.current_filters.get("field_queries", {}))
-        self.model.set_status(self.current_filters.get("status"))
-        self.model.set_is_derived(self.current_filters.get("is_derived", False))
-        self.model.set_has_derived(self.current_filters.get("has_derived", False))
+        if self.debug.model_cache and self.model is not None:
+            self.model.set_search_query(self.current_filters.get("query", ""), fields)
+            self.model.set_field_queries(self.current_filters.get("field_queries", {}))
+            self.model.set_status(self.current_filters.get("status"))
+            self.model.set_is_derived(self.current_filters.get("is_derived", False))
+            self.model.set_has_derived(self.current_filters.get("has_derived", False))
         self._refresh()
         self._update_filter_summary()
         self._toggle_reset_button()
@@ -826,11 +882,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _refresh(self) -> None:
         """Reload list control from the model."""
-        if not self.debug.model_driven:
+        if (
+            not self.debug.model_driven
+            or not self.debug.model_cache
+            or self.model is None
+        ):
             self._update_plain_items()
             self._populate_plain_items()
             return
-        items = self.model.get_visible()
+        try:
+            items = self.model.get_visible()
+        except Exception:
+            items = []
         self.list.DeleteAllItems()
         if not self.debug.rich_rendering:
             for req in items:

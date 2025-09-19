@@ -108,7 +108,11 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
 
-    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=18)
+    panel = list_panel.ListPanel(
+        frame,
+        model=RequirementModel(),
+        debug_level=list_panel.MAX_LIST_PANEL_DEBUG_LEVEL,
+    )
     panel.set_columns(["labels", "status"])
     panel.set_requirements([_req(1, "Plain", labels=["bug"], status=Status.APPROVED)])
     wx_app.Yield()
@@ -116,7 +120,8 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.filter_btn is None
     assert panel.reset_btn is None
     assert panel.filter_summary is None
-    assert panel.list.GetColumnCount() == 1
+    style = panel.list.GetWindowStyleFlag()
+    assert not style & wx.LC_REPORT
     assert panel.list.GetItemText(0) == "Plain"
     assert panel.debug.context_menu is False
     assert panel.debug.rich_rendering is False
@@ -126,6 +131,10 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.debug.callbacks is False
     assert panel.debug.selection_events is False
     assert panel.debug.model_driven is False
+    assert panel.debug.model_cache is False
+    assert panel.debug.report_style is False
+    assert panel.debug.sizer_layout is False
+    assert panel.model is None
 
     frame.Destroy()
 

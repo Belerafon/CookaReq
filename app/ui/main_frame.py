@@ -288,6 +288,8 @@ class MainFrame(wx.Frame):
         self.log_handler.setLevel(saved_log_level)
         self._populate_log_level_choice(saved_log_level)
         self.log_level_choice.Bind(wx.EVT_CHOICE, self.on_change_log_level)
+        if hasattr(self.panel, "log_debug_profile"):
+            self.panel.log_debug_profile()
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.main_splitter, 1, wx.EXPAND)
@@ -492,6 +494,8 @@ class MainFrame(wx.Frame):
                 self.panel.focus_requirement(int(target_id))
             except Exception:
                 pass
+        if hasattr(self.panel, "log_debug_profile"):
+            self.panel.log_debug_profile()
         container.Layout()
         self.panel.Refresh()
         self.Layout()
@@ -936,6 +940,8 @@ class MainFrame(wx.Frame):
         if list_sizer is not None:
             list_sizer.Replace(old_panel, self.panel)
         old_panel.Destroy()
+        if hasattr(self.panel, "log_debug_profile"):
+            self.panel.log_debug_profile()
 
         editor_was_visible = self.editor_container.IsShown()
         old_editor = self.editor

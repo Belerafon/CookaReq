@@ -9,6 +9,20 @@ import wx
 from ..i18n import _
 
 
+def enable_double_buffer(window: wx.Window | None) -> None:
+    """Turn on native double buffering for ``window`` when supported."""
+
+    if window is None:
+        return
+    setter = getattr(window, "SetDoubleBuffered", None)
+    if not callable(setter):
+        return
+    try:
+        setter(True)
+    except Exception:
+        return
+
+
 def inherit_background(target: wx.Window, source: wx.Window | None) -> None:
     """Copy background colour from ``source`` to ``target`` when available."""
 

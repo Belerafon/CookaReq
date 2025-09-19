@@ -6,6 +6,7 @@ from pathlib import Path
 
 import wx
 
+import app.ui.list_panel as list_panel
 from app.config import ConfigManager
 from app.settings import MCPSettings
 from app.ui.main_frame import MainFrame
@@ -38,17 +39,18 @@ def test_hierarchy_and_agent_history_width_do_not_expand(wx_app, tmp_path):
             menu.Check(True)
             frame.on_toggle_agent_chat(None)
             wx_app.Yield()
+        assert isinstance(frame.agent_panel, list_panel.ListPanel)
         width = frame.doc_tree_container.GetSize().width
         if width <= 0:
             width = frame.doc_tree_container.GetClientSize().width
         doc_tree_widths.append(width)
-        history_splitter = frame.agent_panel._horizontal_splitter
+        history_widths.append(frame._current_agent_splitter_width())
+        list_ctrl = frame.agent_panel.list
         wx_app.Yield()
-        history_panel = history_splitter.GetWindow1()
-        history_width = history_panel.GetSize().width
-        if history_width <= 0:
-            history_width = history_panel.GetClientSize().width
-        history_widths.append(history_width)
+        visible_width = list_ctrl.GetSize().width
+        if visible_width <= 0:
+            visible_width = list_ctrl.GetClientSize().width
+        assert visible_width > 0
         frame._save_layout()
         frame.Destroy()
         wx_app.Yield()
@@ -76,17 +78,18 @@ def test_splitter_widths_survive_window_resizing(wx_app, tmp_path):
             menu.Check(True)
             frame.on_toggle_agent_chat(None)
             wx_app.Yield()
+        assert isinstance(frame.agent_panel, list_panel.ListPanel)
         width = frame.doc_tree_container.GetSize().width
         if width <= 0:
             width = frame.doc_tree_container.GetClientSize().width
         doc_tree_widths.append(width)
-        history_splitter = frame.agent_panel._horizontal_splitter
+        history_widths.append(frame._current_agent_splitter_width())
+        list_ctrl = frame.agent_panel.list
         wx_app.Yield()
-        history_panel = history_splitter.GetWindow1()
-        history_width = history_panel.GetSize().width
-        if history_width <= 0:
-            history_width = history_panel.GetClientSize().width
-        history_widths.append(history_width)
+        visible_width = list_ctrl.GetSize().width
+        if visible_width <= 0:
+            visible_width = list_ctrl.GetClientSize().width
+        assert visible_width > 0
         frame.Close(True)
         wx_app.Yield()
 
@@ -112,18 +115,18 @@ def test_splitter_widths_ignore_sash_offset(wx_app, tmp_path):
             menu.Check(True)
             frame.on_toggle_agent_chat(None)
             wx_app.Yield()
+        assert isinstance(frame.agent_panel, list_panel.ListPanel)
         doc_tree_widths.append(frame._current_doc_tree_width())
-        history_splitter = frame.agent_panel._horizontal_splitter
-        history_panel = history_splitter.GetWindow1()
-        width = history_panel.GetSize().width
+        history_widths.append(frame._current_agent_splitter_width())
+        list_ctrl = frame.agent_panel.list
+        width = list_ctrl.GetSize().width
         if width <= 0:
-            width = history_panel.GetClientSize().width
-        history_widths.append(width)
+            width = list_ctrl.GetClientSize().width
+        assert width > 0
         doc_splitter = frame.doc_splitter
         agent_splitter = frame.agent_splitter
         doc_original = doc_splitter.GetSashPosition
         agent_original = agent_splitter.GetSashPosition
-        history_original = history_splitter.GetSashPosition
 
         def doc_fake() -> int:
             measured = frame.doc_tree_container.GetSize().width
@@ -142,23 +145,13 @@ def test_splitter_widths_ignore_sash_offset(wx_app, tmp_path):
                 measured = agent_original()
             return measured + extra
 
-        def history_fake() -> int:
-            measured = history_panel.GetSize().width
-            if measured <= 0:
-                measured = history_panel.GetClientSize().width
-            if measured <= 0:
-                measured = history_original()
-            return measured + extra
-
         doc_splitter.GetSashPosition = doc_fake  # type: ignore[assignment]
         agent_splitter.GetSashPosition = agent_fake  # type: ignore[assignment]
-        history_splitter.GetSashPosition = history_fake  # type: ignore[assignment]
         try:
             frame._save_layout()
         finally:
             doc_splitter.GetSashPosition = doc_original  # type: ignore[assignment]
             agent_splitter.GetSashPosition = agent_original  # type: ignore[assignment]
-            history_splitter.GetSashPosition = history_original  # type: ignore[assignment]
         frame.Destroy()
         wx_app.Yield()
 

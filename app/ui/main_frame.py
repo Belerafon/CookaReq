@@ -13,7 +13,6 @@ import wx
 _COLLAPSE_ARROW = "\N{BLACK LEFT-POINTING TRIANGLE}"
 _EXPAND_ARROW = "\N{BLACK RIGHT-POINTING TRIANGLE}"
 
-from ..agent import LocalAgent
 from ..config import ConfigManager
 from ..confirm import confirm
 from ..core.model import Link, Requirement, requirement_fingerprint
@@ -29,9 +28,10 @@ from ..i18n import _
 from ..log import get_log_directory, logger, open_log_directory
 from ..mcp.controller import MCPController
 from ..settings import AppSettings, LLMSettings, MCPSettings
-from .agent_chat_panel import AgentChatPanel
 from .controllers import DocumentsController
 from .document_dialog import DocumentPropertiesDialog
+from .debug_data import DEBUG_LIST_FIELDS, build_debug_requirements
+from .debug_list_frame import DebugListFrame
 from .document_tree import DocumentTree
 from .detached_editor import DetachedEditorFrame
 from .error_dialog import show_error_dialog
@@ -156,29 +156,32 @@ class MainFrame(wx.Frame):
             on_new_requirement=self.on_new_requirement,
             on_run_command=self.on_run_command,
             on_open_logs=self.on_open_logs,
+            on_open_debug_window=self.on_open_debug_window,
         )
         self._recent_menu = self.navigation.recent_menu
         self._recent_menu_item = self.navigation.recent_menu_item
         self.log_menu_item = self.navigation.log_menu_item
         self.editor_menu_item = self.navigation.editor_menu_item
         self.agent_chat_menu_item = self.navigation.agent_chat_menu_item
+        self.debug_menu_item = self.navigation.debug_menu_item
         self.manage_labels_id = self.navigation.manage_labels_id
         self._detached_editors: dict[tuple[str, int], DetachedEditorFrame] = {}
         self._auxiliary_frames: set[wx.Frame] = set()
         self._shutdown_in_progress = False
 
         # split horizontally: top is main content, bottom is log console
-        self.main_splitter = wx.SplitterWindow(self)
-        self.doc_splitter = wx.SplitterWindow(self.main_splitter)
+        splitter_style = getattr(wx, "SP_LIVE_UPDATE", 0) | getattr(wx, "SP_3D", 0)
+        self.main_splitter = wx.SplitterWindow(self, style=splitter_style)
+        self.doc_splitter = wx.SplitterWindow(self.main_splitter, style=splitter_style)
         self._doc_tree_min_pane = max(self.FromDIP(20), 1)
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
         self._doc_tree_toggle_size: wx.Size | None = None
         self._doc_tree_collapsed = False
         self._doc_tree_last_width = max(200, self._doc_tree_min_pane)
-        self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
+        self.agent_splitter = wx.SplitterWindow(self.doc_splitter, style=splitter_style)
         self.agent_splitter.SetMinimumPaneSize(280)
         self._agent_last_width = max(self.agent_splitter.GetMinimumPaneSize(), 320)
-        self.splitter = wx.SplitterWindow(self.agent_splitter)
+        self.splitter = wx.SplitterWindow(self.agent_splitter, style=splitter_style)
         self.splitter.SetMinimumPaneSize(200)
         (
             self.doc_tree_container,
@@ -234,18 +237,20 @@ class MainFrame(wx.Frame):
             ),
         )
         self.splitter.SplitVertically(self.list_container, self.editor_container, 300)
+        self._debug_model = RequirementModel()
         (
             self.agent_container,
             self.agent_label,
             self.agent_panel,
         ) = self._create_section(
             self.agent_splitter,
-            label=_("Agent Chat"),
-            factory=lambda parent: AgentChatPanel(
+            label=_("Requirements (Debug)"),
+            factory=lambda parent: ListPanel(
                 parent,
-                agent_supplier=self._create_agent,
+                model=self._debug_model,
             ),
         )
+        self._ensure_debug_panel_seeded()
         self._hide_agent_section()
         self.agent_splitter.Initialize(self.splitter)
         self.doc_splitter.SplitVertically(
@@ -643,13 +648,23 @@ class MainFrame(wx.Frame):
         self.agent_panel.Hide()
         self.agent_container.Hide()
 
+    def _ensure_debug_panel_seeded(self) -> None:
+        """Configure debug list panel with predictable static data."""
+
+        debug_panel = getattr(self, "agent_panel", None)
+        if not isinstance(debug_panel, ListPanel):
+            return
+        if getattr(debug_panel, "columns", []) != list(DEBUG_LIST_FIELDS):
+            debug_panel.set_columns(list(DEBUG_LIST_FIELDS))
+        debug_panel.set_requirements(build_debug_requirements(), {})
+
     def _update_section_labels(self) -> None:
         """Refresh captions for titled sections according to current locale."""
 
         self.doc_tree_label.SetLabel(_("Hierarchy"))
         self.list_label.SetLabel(_("Requirements"))
         self.editor_label.SetLabel(_("Editor"))
-        self.agent_label.SetLabel(_("Agent Chat"))
+        self.agent_label.SetLabel(_("Requirements (Debug)"))
         self.log_label.SetLabel(_("Log Console"))
         self.log_level_label.SetLabel(_("Log Level"))
         self._populate_log_level_choice(self.log_handler.level)
@@ -820,6 +835,7 @@ class MainFrame(wx.Frame):
         self.log_menu_item = self.navigation.log_menu_item
         self.editor_menu_item = self.navigation.editor_menu_item
         self.agent_chat_menu_item = self.navigation.agent_chat_menu_item
+        self.debug_menu_item = self.navigation.debug_menu_item
         self.manage_labels_id = self.navigation.manage_labels_id
         if self.editor_menu_item:
             self.editor_menu_item.Check(editor_visible)
@@ -867,10 +883,12 @@ class MainFrame(wx.Frame):
             old_agent_panel = self.agent_panel
             agent_was_split = self.agent_splitter.IsSplit()
             sash_width = self._current_agent_splitter_width() if agent_was_split else None
-            self.agent_panel = AgentChatPanel(
+            self._debug_model = RequirementModel()
+            self.agent_panel = ListPanel(
                 self.agent_container,
-                agent_supplier=self._create_agent,
+                model=self._debug_model,
             )
+            self._ensure_debug_panel_seeded()
             agent_sizer = self.agent_container.GetSizer()
             if agent_sizer is not None:
                 agent_sizer.Replace(old_agent_panel, self.agent_panel)
@@ -897,12 +915,6 @@ class MainFrame(wx.Frame):
             self.panel.set_requirements(self.model.get_all(), {})
 
         self.Layout()
-
-    def _create_agent(self) -> LocalAgent:
-        """Construct ``LocalAgent`` using current settings."""
-
-        settings = AppSettings(llm=self.llm_settings, mcp=self.mcp_settings)
-        return LocalAgent(settings=settings, confirm=confirm)
 
     def on_manage_labels(
         self,
@@ -964,6 +976,20 @@ class MainFrame(wx.Frame):
             wx.MessageBox(str(exc), _("Error"))
             return
         frame = TraceMatrixFrame(self, links)
+        self.register_auxiliary_frame(frame)
+        frame.Show()
+
+    def on_open_debug_window(
+        self,
+        _event: wx.Event,
+    ) -> None:  # pragma: no cover - GUI event
+        """Open auxiliary window with a standalone debug requirement list."""
+
+        frame = DebugListFrame(
+            self,
+            columns=DEBUG_LIST_FIELDS,
+            requirements=build_debug_requirements(),
+        )
         self.register_auxiliary_frame(frame)
         frame.Show()
 
@@ -1543,6 +1569,7 @@ class MainFrame(wx.Frame):
         return desired
 
     def _ensure_agent_chat_visible(self) -> None:
+        self._ensure_debug_panel_seeded()
         desired = self._agent_last_width
         if desired <= 0:
             desired = self._default_agent_chat_sash()

@@ -10,12 +10,12 @@ from typing import TYPE_CHECKING
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
-from ..core.document_store import LabelDef, label_color, load_item, parse_rid, stable_color
+from ..core.document_store import LabelDef, load_item, parse_rid
 from ..core.model import Requirement
 from ..i18n import _
 from ..log import logger
 from . import locale
-from .helpers import dip, inherit_background
+from .helpers import dip, enable_double_buffer, inherit_background
 from .enums import ENUMS
 from .filter_dialog import FilterDialog
 from .requirement_model import RequirementModel
@@ -63,6 +63,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     ):
         """Initialize list view and controls for requirements."""
         wx.Panel.__init__(self, parent)
+        enable_double_buffer(self)
         inherit_background(self, parent)
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -90,15 +91,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         btn_row.Add(self.reset_btn, 0, right, vertical_pad)
         btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
-        if hasattr(self.list, "SetExtraStyle"):
-            extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
-            if extra:
-                with suppress(Exception):  # pragma: no cover - backend quirks
-                    self.list.SetExtraStyle(self.list.GetExtraStyle() | extra)
+        enable_double_buffer(self.list)
+        self._apply_text_palette()
+        self._set_subitem_image_style(False)
+        self.list.Bind(wx.EVT_SIZE, self._on_list_size)
         self._labels: list[LabelDef] = []
         self.current_filters: dict = {}
-        self._image_list: wx.ImageList | None = None
-        self._label_images: dict[tuple[str, ...], int] = {}
         self._rid_lookup: dict[str, Requirement] = {}
         self._doc_titles: dict[str, str] = {}
         self._link_display_cache: dict[str, str] = {}
@@ -115,6 +113,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._docs_controller = docs_controller
         self._current_doc_prefix: str | None = None
         self._context_menu_open = False
+        self._after_refresh_callback: Callable[["ListPanel"], None] | None = None
         self._setup_columns()
         sizer.Add(btn_row, 0, wx.EXPAND, 0)
         sizer.Add(self.list, 1, wx.EXPAND | top_flag, vertical_pad)
@@ -153,6 +152,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if on_derive is not None:
             self._on_derive = on_derive
 
+    def set_after_refresh_callback(
+        self, callback: Callable[["ListPanel"], None] | None
+    ) -> None:
+        """Register callback invoked after a successful refresh."""
+
+        self._after_refresh_callback = callback
+
     def set_documents_controller(
         self, controller: DocumentsController | None
     ) -> None:
@@ -171,48 +177,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Record currently active document prefix for persistence."""
 
         self._current_doc_prefix = prefix
-
-    def _label_color(self, name: str) -> str:
-        for lbl in self._labels:
-            if lbl.key == name:
-                return label_color(lbl)
-        return stable_color(name)
-
-    def _ensure_image_list_size(self, width: int, height: int) -> None:
-        width = max(width, 1)
-        height = max(height, 1)
-        if self._image_list is None:
-            self._image_list = wx.ImageList(width, height)
-            self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
-            return
-        cur_w, cur_h = self._image_list.GetSize()
-        if width <= cur_w and height <= cur_h:
-            return
-        new_w = max(width, cur_w)
-        new_h = max(height, cur_h)
-        new_list = wx.ImageList(new_w, new_h)
-        count = self._image_list.GetImageCount()
-        for idx in range(count):
-            bmp = self._image_list.GetBitmap(idx)
-            bmp = self._pad_bitmap(bmp, new_w, new_h)
-            new_list.Add(bmp)
-        self._image_list = new_list
-        self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
-
-    def _pad_bitmap(self, bmp: wx.Bitmap, width: int, height: int) -> wx.Bitmap:
-        if bmp.GetWidth() == width and bmp.GetHeight() == height:
-            return bmp
-        padded = wx.Bitmap(max(width, 1), max(height, 1))
-        dc = wx.MemoryDC()
-        dc.SelectObject(padded)
-        try:
-            bg = self.list.GetBackgroundColour()
-            dc.SetBackground(wx.Brush(bg))
-            dc.Clear()
-            dc.DrawBitmap(bmp, 0, 0, True)
-        finally:
-            dc.SelectObject(wx.NullBitmap)
-        return padded
 
     def _doc_title_for_prefix(self, prefix: str) -> str:
         if not prefix:
@@ -297,81 +261,88 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 with suppress(Exception):
                     self.list.SetItemImage(index, -1)
 
-    def _create_label_bitmap(self, names: list[str]) -> wx.Bitmap:
-        padding_x, padding_y, gap = 4, 2, 2
-        font = self.list.GetFont()
-        dc = wx.MemoryDC()
-        dc.SelectObject(wx.Bitmap(1, 1))
-        dc.SetFont(font)
-        widths: list[int] = []
-        height = 0
-        for name in names:
-            w, h = dc.GetTextExtent(name)
-            widths.append(w)
-            height = max(height, h)
-        height += padding_y * 2
-        total = sum(w + padding_x * 2 for w in widths) + gap * (len(names) - 1)
-        bmp = wx.Bitmap(total or 1, height or 1)
-        dc.SelectObject(bmp)
-        dc.SetBackground(wx.Brush(self.list.GetBackgroundColour()))
-        dc.Clear()
-        x = 0
-        for name, w in zip(names, widths):
-            colour = wx.Colour(self._label_color(name))
-            dc.SetBrush(wx.Brush(colour))
-            dc.SetPen(wx.Pen(colour))
-            box_w = w + padding_x * 2
-            dc.DrawRectangle(x, 0, box_w, height)
-            dc.SetTextForeground(wx.BLACK)
-            dc.DrawText(name, x + padding_x, padding_y)
-            x += box_w + gap
-        dc.SelectObject(wx.NullBitmap)
-        return bmp
+    def _set_subitem_image_style(self, enabled: bool) -> None:
+        """Toggle ``LC_EX_SUBITEMIMAGES`` based on the presence of image lists."""
 
-    def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
-        if not labels:
-            self.list.SetItem(index, col, "")
-            if hasattr(self.list, "SetItemImage") and col == 0:
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
+        if not hasattr(self.list, "SetExtraStyle") or not hasattr(self.list, "GetExtraStyle"):
             return
-        key = tuple(labels)
-        img_id = self._label_images.get(key)
-        if img_id == -1:
-            self._set_label_text(index, col, labels)
+        extra_flag = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
+        if not extra_flag:
             return
-        if img_id is None:
-            bmp = self._create_label_bitmap(labels)
-            self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
-            if self._image_list is None:
-                self._label_images[key] = -1
-                self._set_label_text(index, col, labels)
-                return
-            list_w, list_h = self._image_list.GetSize()
-            bmp = self._pad_bitmap(bmp, list_w, list_h)
+        try:
+            current = self.list.GetExtraStyle()
+        except Exception:  # pragma: no cover - backend quirks
+            return
+        desired = (current | extra_flag) if enabled else (current & ~extra_flag)
+        if desired == current:
+            return
+        with suppress(Exception):  # pragma: no cover - backend quirks
+            self.list.SetExtraStyle(desired)
+
+    def _on_list_size(self, event: wx.Event) -> None:
+        """Trigger a redraw when the list is resized."""
+
+        item_count = 0
+        if hasattr(self.list, "GetItemCount"):
             try:
-                img_id = self._image_list.Add(bmp)
+                item_count = max(0, int(self.list.GetItemCount()))
             except Exception:
-                logger.exception("Failed to add labels image; using text fallback")
-                img_id = -1
-            if img_id == -1:
-                logger.warning("Image list rejected labels bitmap; using text fallback")
-                self._label_images[key] = -1
-                self._set_label_text(index, col, labels)
-                return
-            self._label_images[key] = img_id
-        if col == 0:
-            # Column 0 uses the main item image slot
-            self.list.SetItem(index, col, "")
-            if hasattr(self.list, "SetItemImage"):
+                item_count = 0
+        self._request_list_redraw(item_count)
+        event.Skip()
+
+    def _apply_text_palette(self) -> None:
+        """Align list text colours with the system palette."""
+
+        system_settings = getattr(wx, "SystemSettings", None)
+        sys_text_colour = getattr(wx, "SYS_COLOUR_WINDOWTEXT", None)
+        sys_background_colour = getattr(wx, "SYS_COLOUR_WINDOW", None)
+        if system_settings is None:
+            return
+        getter = getattr(system_settings, "GetColour", None)
+        if not callable(getter):
+            return
+        colours: dict[str, wx.Colour] = {}
+        for key, target in (("text", sys_text_colour), ("background", sys_background_colour)):
+            if target is None:
+                continue
+            try:
+                colour = getter(target)
+            except Exception:
+                continue
+            if colour is None:
+                continue
+            if hasattr(colour, "IsOk"):
+                try:
+                    if not colour.IsOk():
+                        continue
+                except Exception:
+                    continue
+            colours[key] = colour
+        text_colour = colours.get("text")
+        if text_colour is not None:
+            if hasattr(self.list, "SetTextColour"):
                 with suppress(Exception):
-                    self.list.SetItemImage(index, img_id)
-        else:
-            self.list.SetItem(index, col, "")
-            self.list.SetItemColumnImage(index, col, img_id)
-            if hasattr(self.list, "SetItemImage"):
+                    self.list.SetTextColour(text_colour)
+            if hasattr(self.list, "SetForegroundColour"):
                 with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
+                    self.list.SetForegroundColour(text_colour)
+        background_colour = colours.get("background")
+        if background_colour is not None:
+            if hasattr(self.list, "SetBackgroundColour"):
+                with suppress(Exception):
+                    self.list.SetBackgroundColour(background_colour)
+            if hasattr(self, "SetBackgroundColour"):
+                with suppress(Exception):
+                    self.SetBackgroundColour(background_colour)
+            header_getter = getattr(self.list, "GetHeader", None)
+            header = None
+            if callable(header_getter):
+                with suppress(Exception):
+                    header = header_getter()
+            if header is not None and hasattr(header, "SetBackgroundColour"):
+                with suppress(Exception):
+                    header.SetBackgroundColour(background_colour)
 
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields.
@@ -387,17 +358,21 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if include_labels:
             self.list.InsertColumn(0, _("Labels"))
             self._field_order.append("labels")
+            self._ensure_column_width(0, "labels")
             self.list.InsertColumn(1, _("Title"))
             self._field_order.append("title")
+            self._ensure_column_width(1, "title")
         else:
             self.list.InsertColumn(0, _("Title"))
             self._field_order.append("title")
+            self._ensure_column_width(0, "title")
         for field in self.columns:
             if field == "labels":
                 continue
             idx = self.list.GetColumnCount()
             self.list.InsertColumn(idx, locale.field_label(field))
             self._field_order.append(field)
+            self._ensure_column_width(idx, field)
         ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
         with suppress(Exception):  # remove mixin's default binding and use our own
             self.list.Unbind(wx.EVT_LIST_COL_CLICK)
@@ -434,6 +409,25 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if field in {"revision", "id", "doc_prefix", "derived_count"}:
             return 90
         return self.DEFAULT_COLUMN_WIDTH
+
+    def _ensure_column_width(self, column: int, field: str) -> None:
+        """Guarantee that a column has a reasonable starting width."""
+
+        getter = getattr(self.list, "GetColumnWidth", None)
+        setter = getattr(self.list, "SetColumnWidth", None)
+        if not callable(getter) or not callable(setter):
+            return
+        try:
+            current = getter(column)
+        except Exception:
+            current = 0
+        if current and current > 0:
+            return
+        width = self._default_column_width(field)
+        try:
+            setter(column, max(self.MIN_COL_WIDTH, width))
+        except Exception:
+            logger.debug("Failed to apply default width for column %s", field)
 
     def load_column_order(self, config: ConfigManager) -> None:
         """Restore column ordering from config."""
@@ -600,7 +594,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _refresh(self) -> None:
         """Reload list control from the model."""
-        items = self.model.get_visible()
+        items = list(self.model.get_visible())
         self.list.DeleteAllItems()
         for req in items:
             index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
@@ -621,8 +615,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetItem(index, col, display)
                     continue
                 if field == "labels":
-                    value = getattr(req, "labels", [])
-                    self._set_label_image(index, col, value)
+                    value = [str(lbl) for lbl in getattr(req, "labels", [])]
+                    self._set_label_text(index, col, value)
                     continue
                 if field == "derived_from":
                     value = self._first_parent_text(req)
@@ -647,7 +641,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     continue
                 if field == "attachments":
                     value = ", ".join(
-                        getattr(a, "path", "") for a in getattr(req, "attachments", [])
+                        getattr(a, "path", "")
+                        for a in getattr(req, "attachments", [])
                     )
                     self.list.SetItem(index, col, value)
                     continue
@@ -655,6 +650,63 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
                 self.list.SetItem(index, col, str(value))
+        self._request_list_redraw(len(items))
+        if callable(self._after_refresh_callback):
+            try:
+                self._after_refresh_callback(self)
+            except Exception:
+                logger.exception("ListPanel post-refresh callback failed")
+
+    def _request_list_redraw(self, item_count: int) -> None:
+        """Force repaint of the list control after bulk updates."""
+
+        style = 0
+        get_style = getattr(self.list, "GetWindowStyleFlag", None)
+        if callable(get_style):
+            try:
+                style_value = get_style()
+            except Exception:
+                style_value = 0
+            try:
+                style = int(style_value)
+            except Exception:
+                style = 0
+        lc_virtual = getattr(wx, "LC_VIRTUAL", 0)
+        allow_virtual_refresh = bool(lc_virtual and style & lc_virtual)
+
+        refresh_done = False
+        refresh_items = getattr(self.list, "RefreshItems", None)
+        if allow_virtual_refresh and item_count > 0 and callable(refresh_items):
+            try:
+                refresh_items(0, max(0, item_count - 1))
+                refresh_done = True
+            except Exception:
+                logger.debug("ListCtrl.RefreshItems failed", exc_info=True)
+        if not refresh_done:
+            refresh = getattr(self.list, "Refresh", None)
+            if callable(refresh):
+                try:
+                    refresh()
+                    refresh_done = True
+                except Exception:
+                    logger.debug("ListCtrl.Refresh failed", exc_info=True)
+        update = getattr(self.list, "Update", None)
+        if callable(update):
+            def _apply_update() -> None:
+                try:
+                    update()
+                except Exception:
+                    logger.debug("ListCtrl.Update failed", exc_info=True)
+
+            call_after = getattr(wx, "CallAfter", None)
+            if callable(call_after):
+                try:
+                    call_after(_apply_update)
+                except Exception:
+                    logger.debug("wx.CallAfter failed", exc_info=True)
+                    _apply_update()
+            else:
+                _apply_update()
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.
@@ -695,6 +747,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if hasattr(self.list, "EnsureVisible"):
             with suppress(Exception):
                 self.list.EnsureVisible(target_index)
+
+    def focus_input(self) -> None:
+        """Give keyboard focus to the list control."""
+
+        target = getattr(self, "list", None)
+        if target is not None and hasattr(target, "SetFocus"):
+            with suppress(Exception):
+                target.SetFocus()
 
     def _set_item_selected(self, index: int, selected: bool) -> None:
         """Apply selection state without propagating backend errors."""

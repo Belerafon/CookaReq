@@ -27,6 +27,8 @@ def _build_wx_stub():
             self._bindings = {}
             self._shown = True
             self._tooltip = None
+            self._background = Colour("#ffffff")
+            self._foreground = Colour("#000000")
 
         def GetParent(self):
             return self._parent
@@ -45,6 +47,18 @@ def _build_wx_stub():
 
         def SetToolTip(self, tip):
             self._tooltip = tip
+
+        def SetBackgroundColour(self, colour):
+            self._background = colour
+
+        def GetBackgroundColour(self):
+            return self._background
+
+        def SetForegroundColour(self, colour):
+            self._foreground = colour
+
+        def GetForegroundColour(self):
+            return self._foreground
 
         # helper for tests
         def get_bound_handler(self, event):
@@ -111,8 +125,25 @@ def _build_wx_stub():
         pass
 
     class Colour:
-        def __init__(self, *args, **kwargs):
-            pass
+        def __init__(self, r=0, g=None, b=None):
+            if g is None and b is None:
+                self.value = r
+            else:
+                self.value = (r, g, b)
+
+        def IsOk(self):
+            return True
+
+        def Get(self):
+            return self.value
+
+        def __repr__(self):
+            return f"Colour({self.value!r})"
+
+        def __eq__(self, other):
+            if not isinstance(other, Colour):
+                return NotImplemented
+            return self.value == other.value
 
     class Brush:
         def __init__(self, colour):
@@ -221,6 +252,16 @@ def _build_wx_stub():
             self._item_images = []
             self._cells = {}
             self._col_widths = {}
+            self._extra_style = 0
+            self._freeze_calls = 0
+            self._thaw_calls = 0
+            self._refresh_calls = 0
+            self._refresh_items_calls = []
+            self._text_colour = Colour(0, 0, 0)
+            self._foreground_colour = Colour(0, 0, 0)
+            self._background_colour = Colour(255, 255, 255)
+            self._update_calls = 0
+            self._style = style
 
         def InsertColumn(self, col, heading):
             if col >= len(self._cols):
@@ -292,6 +333,18 @@ def _build_wx_stub():
             )
             return types.SimpleNamespace(GetText=lambda: text, GetImage=lambda: img)
 
+        def SetExtraStyle(self, style):
+            self._extra_style = style
+
+        def GetExtraStyle(self):
+            return self._extra_style
+
+        def GetWindowStyleFlag(self):
+            return self._style
+
+        def SetWindowStyleFlag(self, style):
+            self._style = style
+
         def GetFont(self):
             return Font()
 
@@ -309,6 +362,39 @@ def _build_wx_stub():
 
         def GetColumnWidth(self, col):
             return self._col_widths.get(col, 0)
+
+        def Freeze(self):
+            self._freeze_calls += 1
+
+        def Thaw(self):
+            self._thaw_calls += 1
+
+        def Refresh(self):
+            self._refresh_calls += 1
+
+        def RefreshItems(self, first, last):
+            self._refresh_items_calls.append((first, last))
+
+        def Update(self):
+            self._update_calls += 1
+
+        def SetTextColour(self, colour):
+            self._text_colour = colour
+
+        def GetTextColour(self):
+            return self._text_colour
+
+        def SetForegroundColour(self, colour):
+            self._foreground_colour = colour
+
+        def GetForegroundColour(self):
+            return self._foreground_colour
+
+        def SetBackgroundColour(self, colour):
+            self._background_colour = colour
+
+        def GetBackgroundColour(self):
+            return self._background_colour
 
     class UltimateListItem:
         def __init__(self):
@@ -399,6 +485,11 @@ def _build_wx_stub():
         def write(self, key, value):
             pass
 
+    class SystemSettings:
+        @staticmethod
+        def GetColour(which):
+            return Colour(f"sys-{which}")
+
     wx_mod = types.SimpleNamespace(
         Panel=Panel,
         SearchCtrl=SearchCtrl,
@@ -418,12 +509,15 @@ def _build_wx_stub():
         EXPAND=0,
         ALL=0,
         BU_EXACTFIT=0,
+        LC_EX_SUBITEMIMAGES=0x0001,
         ART_CLOSE="close",
         ART_BUTTON="button",
         OK=1,
         CANCEL=2,
         EVT_BUTTON=object(),
-        LC_REPORT=0,
+        EVT_SIZE=object(),
+        LC_REPORT=0x0001,
+        LC_VIRTUAL=0x0002,
         EVT_LIST_ITEM_RIGHT_CLICK=object(),
         EVT_CONTEXT_MENU=object(),
         EVT_LIST_COL_CLICK=object(),
@@ -433,6 +527,7 @@ def _build_wx_stub():
         Config=Config,
         ContextMenuEvent=types.SimpleNamespace,
         ArtProvider=ArtProvider,
+        CallAfter=lambda func, *args, **kwargs: func(*args, **kwargs),
         Font=Font,
         Colour=Colour,
         Brush=Brush,
@@ -441,6 +536,9 @@ def _build_wx_stub():
         MemoryDC=MemoryDC,
         NullBitmap=object(),
         BLACK=Colour(0, 0, 0),
+        SystemSettings=SystemSettings,
+        SYS_COLOUR_WINDOWTEXT="WINDOWTEXT",
+        SYS_COLOUR_WINDOW="WINDOW",
     )
 
     class ColumnSorterMixin:
@@ -511,6 +609,210 @@ def test_list_panel_has_filter_and_list(monkeypatch):
     inner = [child.GetWindow() for child in btn_row.GetChildren()]
     assert inner == [panel.filter_btn, panel.reset_btn, panel.filter_summary]
     assert children[1] is panel.list
+
+
+def test_list_panel_does_not_request_subitem_images(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
+
+    extra_flag = getattr(wx_stub, "LC_EX_SUBITEMIMAGES", 0)
+    assert extra_flag
+    assert panel.list.GetExtraStyle() & extra_flag == 0
+
+
+def test_list_panel_applies_system_text_colour(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
+
+    expected = wx_stub.SystemSettings.GetColour(wx_stub.SYS_COLOUR_WINDOWTEXT)
+    assert panel.list.GetTextColour() == expected
+    assert panel.list.GetForegroundColour() == expected
+
+
+def test_list_panel_applies_system_background_colour(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
+
+    expected = wx_stub.SystemSettings.GetColour(wx_stub.SYS_COLOUR_WINDOW)
+    assert panel.list.GetBackgroundColour() == expected
+    assert panel.GetBackgroundColour() == expected
+
+
+def test_list_panel_requests_redraw_on_resize(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
+
+    handler = panel.list.get_bound_handler(wx_stub.EVT_SIZE)
+    assert handler is not None
+    panel.list.InsertItem(0, "A")
+    panel.list.InsertItem(1, "B")
+    called = {}
+
+    def fake_request(count):
+        called["count"] = count
+
+    panel._request_list_redraw = fake_request
+    handler(types.SimpleNamespace(Skip=lambda: None))
+    assert called["count"] == 2
+
+
+def test_request_list_redraw_falls_back_to_refresh(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
+    panel.set_columns(["status"])
+    panel.set_requirements([_req(1, "Req"), _req(2, "Other")])
+
+    assert panel.list._refresh_calls >= 1
+    assert panel.list._update_calls >= 1
+    assert panel.list._refresh_items_calls == []
+
+
+def test_request_list_redraw_prefers_refresh_items_for_virtual_lists(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame)
+    style = panel.list.GetWindowStyleFlag() | wx_stub.LC_VIRTUAL
+    panel.list.SetWindowStyleFlag(style)
+    panel.list._refresh_calls = 0
+    panel.list._refresh_items_calls.clear()
+    panel._request_list_redraw(5)
+
+    assert panel.list._refresh_items_calls != []
+    assert panel.list._refresh_calls <= 1
+
+
+def test_list_panel_after_refresh_callback(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
+
+    called: list[list_panel_module.ListPanel] = []
+
+    def on_refresh(instance):
+        called.append(instance)
+
+    panel.set_after_refresh_callback(on_refresh)
+    panel.set_requirements([_req(1, "A")])
+    assert called == [panel]
+
+
+def test_refresh_repaints_without_freeze(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    model_module = importlib.import_module("app.ui.requirement_model")
+    importlib.reload(model_module)
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
+
+    panel.set_columns(["labels", "status"])
+    panel.list._freeze_calls = 0
+    panel.list._thaw_calls = 0
+    panel.list._refresh_items_calls.clear()
+    panel.list._refresh_calls = 0
+    panel.set_requirements([
+        _req(1, "First", labels=["L"], status=Status.DRAFT),
+        _req(2, "Second", labels=["L2"], status=Status.APPROVED),
+    ])
+
+    assert panel.list._freeze_calls == 0
+    assert panel.list._thaw_calls == 0
+    assert panel.list._refresh_calls >= 1
+    assert panel.list._refresh_items_calls == []
+
+    panel.list._refresh_items_calls.clear()
+    panel.list._refresh_calls = 0
+    panel.model.set_requirements([])
+    panel.refresh()
+    assert panel.list._refresh_items_calls == []
+    assert panel.list._refresh_calls == 1
 
 
 def test_column_click_sorts(monkeypatch):
@@ -699,7 +1001,7 @@ def test_apply_status_filter(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
 
-def test_labels_column_uses_imagelist(monkeypatch):
+def test_labels_column_displays_plain_text(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -722,16 +1024,15 @@ def test_labels_column_uses_imagelist(monkeypatch):
     ])
     labels_col = panel._field_order.index("labels")
     title_col = panel._field_order.index("title")
-    # labels column uses main image slot when placed at index 0
-    if labels_col == 0:
-        assert panel.list._item_images[0] >= 0
-        assert panel.list._col_images.get((0, title_col), -1) == -1
-    else:
-        assert panel.list._col_images[(0, labels_col)] >= 0
-        assert panel.list._item_images[0] == -1
+    label_item = panel.list.GetItem(0, labels_col)
+    assert label_item.GetText() == "ui, backend"
+    assert label_item.GetImage() == -1
+    title_item = panel.list.GetItem(0, title_col)
+    assert title_item.GetText() == "A"
+    assert title_item.GetImage() == -1
 
 
-def test_label_imagelist_handles_resizes(monkeypatch):
+def test_labels_column_updates_text_on_refresh(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -750,27 +1051,19 @@ def test_label_imagelist_handles_resizes(monkeypatch):
     panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
 
-    # initial narrow label
     panel.set_requirements([_req(1, "A", labels=["aa"])])
-    first_w, first_h = panel.list.GetImageList(wx_stub.IMAGE_LIST_SMALL).GetSize()
-    assert first_w > 0
-    assert first_h > 0
-    assert panel._label_images[("aa",)] == 0
+    labels_col = panel._field_order.index("labels")
+    assert panel.list.GetItem(0, labels_col).GetText() == "aa"
 
-    # introduce wider label, which should resize the list but keep the first image
     panel.set_requirements(
         [
             _req(1, "A", labels=["aa"]),
             _req(2, "B", labels=["averylonglabelhere"]),
         ]
     )
-    second_w, second_h = panel.list.GetImageList(wx_stub.IMAGE_LIST_SMALL).GetSize()
-    assert second_w >= first_w
-    assert second_h >= first_h
-    assert panel._label_images[("aa",)] >= 0
-    assert panel._label_images[("averylonglabelhere",)] >= 0
+    assert panel.list.GetItem(0, labels_col).GetText() == "aa"
+    assert panel.list.GetItem(1, labels_col).GetText() == "averylonglabelhere"
 
-    # add a shorter label after resizing to ensure padding works
     panel.set_requirements(
         [
             _req(1, "A", labels=["aa"]),
@@ -778,20 +1071,13 @@ def test_label_imagelist_handles_resizes(monkeypatch):
             _req(3, "C", labels=["mid"]),
         ]
     )
-    third_w, third_h = panel.list.GetImageList(wx_stub.IMAGE_LIST_SMALL).GetSize()
-    assert third_w == second_w
-    assert third_h == second_h
-    assert panel._label_images[("mid",)] >= 0
-
-    labels_col = panel._field_order.index("labels")
-    for row in range(3):
-        if labels_col == 0:
-            assert panel.list._item_images[row] >= 0
-        else:
-            assert panel.list._col_images[(row, labels_col)] >= 0
+    assert panel.list.GetItem(2, labels_col).GetText() == "mid"
+    for row in range(panel.list.GetItemCount()):
+        item = panel.list.GetItem(row, labels_col)
+        assert item.GetImage() == -1
 
 
-def test_label_image_add_failure_falls_back_to_text(monkeypatch):
+def test_labels_column_handles_empty_values(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -809,27 +1095,20 @@ def test_label_image_add_failure_falls_back_to_text(monkeypatch):
     frame = wx_stub.Panel(None)
     panel = list_panel_cls(frame, model=requirement_model_cls())
     panel.set_columns(["labels"])
-    panel.set_requirements([_req(1, "A", labels=["aa"])])
-
-    # ensure next addition triggers fallback
-    panel._label_images.clear()
-    panel._image_list = panel.list.GetImageList(wx_stub.IMAGE_LIST_SMALL)
-
-    def fail_add(_bmp):
-        return -1
-
-    panel._image_list.Add = fail_add
-    panel.set_requirements([_req(2, "B", labels=["bb"])])
+    panel.set_requirements(
+        [
+            _req(1, "A", labels=[]),
+            _req(2, "B", labels=["bb"]),
+        ]
+    )
 
     labels_col = panel._field_order.index("labels")
-    if labels_col == 0:
-        assert panel.list._item_images[0] == -1
-        assert panel.list._items[0] == "bb"
-    else:
-        assert panel.list._col_images[(0, labels_col)] == -1
-        assert panel.list._cells[(0, labels_col)] == "bb"
-        assert panel.list._item_images[0] == -1
-    assert panel._label_images[("bb",)] == -1
+    first_item = panel.list.GetItem(0, labels_col)
+    assert first_item.GetText() == ""
+    assert first_item.GetImage() == -1
+    second_item = panel.list.GetItem(1, labels_col)
+    assert second_item.GetText() == "bb"
+    assert second_item.GetImage() == -1
 
 
 def test_sort_by_labels(monkeypatch):

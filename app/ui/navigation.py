@@ -35,6 +35,7 @@ class Navigation:
         on_new_requirement: Callable[[wx.Event], None],
         on_run_command: Callable[[wx.Event], None],
         on_open_logs: Callable[[wx.Event], None],
+        on_open_debug_window: Callable[[wx.Event], None],
     ) -> None:
         """Initialize navigation menus and event handlers."""
         self.frame = frame
@@ -54,12 +55,14 @@ class Navigation:
         self.on_new_requirement = on_new_requirement
         self.on_run_command = on_run_command
         self.on_open_logs = on_open_logs
+        self.on_open_debug_window = on_open_debug_window
         self._recent_items: dict[int, Path] = {}
         self._column_items: dict[int, str] = {}
         self.menu_bar = wx.MenuBar()
         self.log_menu_item: wx.MenuItem | None = None
         self.editor_menu_item: wx.MenuItem | None = None
         self.agent_chat_menu_item: wx.MenuItem | None = None
+        self.debug_menu_item: wx.MenuItem | None = None
         self.recent_menu = wx.Menu()
         self.recent_menu_item: wx.MenuItem | None = None
         self.run_command_id: int | None = None
@@ -124,6 +127,9 @@ class Navigation:
         self.frame.Bind(wx.EVT_MENU, self.on_show_derivation_graph, graph_item)
         trace_item = view_menu.Append(wx.ID_ANY, _("Show Trace Matrix"))
         self.frame.Bind(wx.EVT_MENU, self.on_show_trace_matrix, trace_item)
+        view_menu.AppendSeparator()
+        self.debug_menu_item = view_menu.Append(wx.ID_ANY, _("Debug Requirements List"))
+        self.frame.Bind(wx.EVT_MENU, self.on_open_debug_window, self.debug_menu_item)
         menu_bar.Append(view_menu, _("&View"))
 
         tools_menu = wx.Menu()

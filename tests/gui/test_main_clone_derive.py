@@ -16,7 +16,7 @@ from app.core.model import (
 from app.ui.controllers import DocumentsController
 from app.ui.requirement_model import RequirementModel
 
-REQUIRES_GUI = True
+pytestmark = pytest.mark.gui
 
 
 def _req(req_id: int, title: str) -> Requirement:
@@ -87,7 +87,6 @@ def test_clone_creates_new_requirement(monkeypatch, wx_app, tmp_path):
         assert frame.panel.list.GetItemData(selected) == 2
     finally:
         frame.Destroy()
-        wx_app.Yield()
 
 
 def test_derive_creates_linked_requirement(monkeypatch, wx_app, tmp_path):
@@ -118,16 +117,12 @@ def test_derive_creates_linked_requirement(monkeypatch, wx_app, tmp_path):
         assert selected != wx.NOT_FOUND
         assert frame.panel.list.GetItemData(selected) == 2
         title_col = frame.panel._field_order.index("title")
-        displayed_title = frame.panel.list.GetItemText(selected, title_col)
-        assert displayed_title.endswith(derived.title)
-        if "derived_from" in frame.panel._field_order:
-            derived_col = frame.panel._field_order.index("derived_from")
-            derived_text = frame.panel.list.GetItemText(selected, derived_col)
-            if derived_text:
-                assert derived_text.startswith(parent_rid)
+        assert frame.panel.list.GetItemText(selected, title_col).startswith("↳")
+        derived_col = frame.panel._field_order.index("derived_from")
+        derived_text = frame.panel.list.GetItemText(selected, derived_col)
+        assert derived_text.startswith(parent_rid)
     finally:
         frame.Destroy()
-        wx_app.Yield()
 
 
 def test_delete_many_removes_requirements(monkeypatch, wx_app, tmp_path):
@@ -165,7 +160,6 @@ def test_delete_many_removes_requirements(monkeypatch, wx_app, tmp_path):
         assert "Third" in captured["message"]
     finally:
         frame.Destroy()
-        wx_app.Yield()
 
 
 def test_save_derived_requirement_with_missing_parent_rid(monkeypatch, wx_app, tmp_path):
@@ -203,5 +197,4 @@ def test_save_derived_requirement_with_missing_parent_rid(monkeypatch, wx_app, t
         assert data["links"][0]["rid"].startswith("REQ")
     finally:
         frame.Destroy()
-        wx_app.Yield()
 

@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.gui
+
 
 def test_gui_imports(wx_app):
     pytest.importorskip("wx")

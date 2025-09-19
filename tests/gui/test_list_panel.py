@@ -722,7 +722,7 @@ def test_list_panel_after_refresh_callback(monkeypatch):
     assert called == [panel]
 
 
-def test_refresh_freezes_and_repaints(monkeypatch):
+def test_refresh_repaints_without_freeze(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -748,8 +748,8 @@ def test_refresh_freezes_and_repaints(monkeypatch):
         _req(2, "Second", labels=["L2"], status=Status.APPROVED),
     ])
 
-    assert panel.list._freeze_calls >= 1
-    assert panel.list._thaw_calls == panel.list._freeze_calls
+    assert panel.list._freeze_calls == 0
+    assert panel.list._thaw_calls == 0
     assert panel.list._refresh_calls == 0
     assert panel.list._refresh_items_calls
     last_first, last_last = panel.list._refresh_items_calls[-1]

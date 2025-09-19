@@ -322,6 +322,152 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             actual = self.list.GetColumnWidth(column)
         return actual
 
+    def _capture_item_rect(
+        self,
+        row: int,
+        code: int,
+    ) -> tuple[int, int, int, int] | None:
+        """Return ``wx.ListCtrl`` rectangle metrics for diagnostics."""
+
+        rect = wx.Rect()
+        try:
+            ok = self.list.GetItemRect(row, rect, code)
+        except Exception:
+            return None
+        if not ok:
+            return None
+        return (rect.x, rect.y, rect.width, rect.height)
+
+    def _capture_item_position(self, row: int) -> tuple[int, int] | None:
+        """Return the position of ``row`` within the control, if available."""
+
+        point = wx.Point()
+        try:
+            ok = self.list.GetItemPosition(row, point)
+        except Exception:
+            return None
+        if not ok:
+            return None
+        return (point.x, point.y)
+
+    def _describe_colour(self, colour: wx.Colour | None) -> str | None:
+        """Convert ``wx.Colour`` values into a hex triplet for logs."""
+
+        if colour is None:
+            return None
+        try:
+            if hasattr(colour, "IsOk") and not colour.IsOk():
+                return None
+            red = colour.Red()
+            green = colour.Green()
+            blue = colour.Blue()
+        except Exception:
+            return None
+        return f"#{red:02x}{green:02x}{blue:02x}"
+
+    def _snapshot_column_widths(self, column_count: int) -> list[int]:
+        """Return a list of current column widths."""
+
+        widths: list[int] = []
+        for idx in range(column_count):
+            widths.append(self._capture_column_width(idx))
+        return widths
+
+    def _snapshot_row_geometry(self, limit: int = 3) -> list[dict[str, object]]:
+        """Collect geometry diagnostics for the first ``limit`` rows."""
+
+        rows: list[dict[str, object]] = []
+        try:
+            count = self.list.GetItemCount()
+        except Exception:
+            return rows
+        if count <= 0:
+            return rows
+        safe_limit = max(0, min(limit, count))
+        bounds_code = getattr(wx, "LIST_RECT_BOUNDS", 0)
+        label_code = getattr(wx, "LIST_RECT_LABEL", 0)
+        for row in range(safe_limit):
+            info: dict[str, object] = {"row": row}
+            bounds = self._capture_item_rect(row, bounds_code)
+            label_rect = self._capture_item_rect(row, label_code)
+            if bounds is not None:
+                info["bounds"] = bounds
+            if label_rect is not None and label_rect != bounds:
+                info["label_rect"] = label_rect
+            position = self._capture_item_position(row)
+            if position is not None:
+                info["position"] = position
+            with suppress(Exception):
+                state_mask = 0
+                for attr in ("LIST_STATE_SELECTED", "LIST_STATE_FOCUSED", "LIST_STATE_DROPHILITED"):
+                    state_mask |= getattr(wx, attr, 0)
+                if state_mask:
+                    info["state"] = self.list.GetItemState(row, state_mask)
+            with suppress(Exception):
+                info["data"] = self.list.GetItemData(row)
+            with suppress(Exception):
+                colour = self.list.GetItemTextColour(row)
+                described = self._describe_colour(colour)
+                if described is not None:
+                    info["text_colour"] = described
+            with suppress(Exception):
+                colour = self.list.GetItemBackgroundColour(row)
+                described = self._describe_colour(colour)
+                if described is not None:
+                    info["background_colour"] = described
+            rows.append(info)
+        return rows
+
+    def _collect_control_metrics(self) -> dict[str, object]:
+        """Gather assorted control-level metrics for diagnostics."""
+
+        metrics: dict[str, object] = {}
+        with suppress(Exception):
+            metrics["style"] = format(self.list.GetWindowStyleFlag(), "x")
+        with suppress(Exception):
+            metrics["is_shown"] = bool(self.list.IsShownOnScreen())
+        with suppress(Exception):
+            metrics["is_enabled"] = bool(self.list.IsEnabled())
+        with suppress(Exception):
+            metrics["has_focus"] = bool(self.list.HasFocus())
+        with suppress(Exception):
+            metrics["is_frozen"] = bool(self.list.IsFrozen())
+        with suppress(Exception):
+            size = self.list.GetClientSize()
+            metrics["client_size"] = (size.width, size.height)
+        with suppress(Exception):
+            vsize = self.list.GetVirtualSize()
+            metrics["virtual_size"] = (vsize.width, vsize.height)
+        with suppress(Exception):
+            rect = self.list.GetViewRect()
+            metrics["view_rect"] = (rect.x, rect.y, rect.width, rect.height)
+        with suppress(Exception):
+            metrics["top_item"] = self.list.GetTopItem()
+        with suppress(Exception):
+            metrics["count_per_page"] = self.list.GetCountPerPage()
+        if hasattr(self.list, "GetItemSpacing"):
+            with suppress(Exception):
+                spacing = self.list.GetItemSpacing()
+                if isinstance(spacing, tuple) and len(spacing) == 2:
+                    metrics["item_spacing"] = spacing
+        with suppress(Exception):
+            header = self.list.GetHeaderCtrl()
+            if header:
+                size = header.GetSize()
+                metrics["header_size"] = (size.width, size.height)
+        for orient_name in ("HORIZONTAL", "VERTICAL"):
+            orient = getattr(wx, orient_name, None)
+            if orient is None:
+                continue
+            key = orient_name.lower()
+            with suppress(Exception):
+                pos = self.list.GetScrollPos(orient)
+                metrics[f"scroll_{key}_pos"] = pos
+            with suppress(Exception):
+                rng = self.list.GetScrollRange(orient)
+                metrics[f"scroll_{key}_range"] = rng
+        return metrics
+
     def _snapshot_rows(self, limit: int = 3) -> list[list[str]]:
         """Return up to ``limit`` rows of visible text for diagnostics."""
 
@@ -356,6 +502,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         with suppress(Exception):
             column_count = self.list.GetColumnCount()
         rows = self._snapshot_rows()
+        widths: list[int] = []
+        if column_count > 0:
+            widths = self._snapshot_column_widths(column_count)
+        geometry = self._snapshot_row_geometry()
+        metrics = self._collect_control_metrics()
         self._log_diagnostics(
             "%s — items=%s columns=%s sample=%s",
             stage,
@@ -363,6 +514,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             column_count,
             rows,
         )
+        if widths:
+            self._log_diagnostics("%s column-widths=%s", stage, widths)
+        if geometry:
+            self._log_diagnostics("%s row-geometry=%s", stage, geometry)
+        if metrics:
+            self._log_diagnostics("%s control-metrics=%s", stage, metrics)
 
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
         """Return internal ``wx.ListCtrl`` for sorting mixin."""

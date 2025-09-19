@@ -632,79 +632,7 @@ def test_list_panel_does_not_request_subitem_images(monkeypatch):
     assert panel.list.GetExtraStyle() & extra_flag == 0
 
 
-def test_list_panel_applies_system_text_colour(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    model_module = importlib.import_module("app.ui.requirement_model")
-    importlib.reload(model_module)
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
-
-    expected = wx_stub.SystemSettings.GetColour(wx_stub.SYS_COLOUR_WINDOWTEXT)
-    assert panel.list.GetTextColour() == expected
-    assert panel.list.GetForegroundColour() == expected
-
-
-def test_list_panel_applies_system_background_colour(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    model_module = importlib.import_module("app.ui.requirement_model")
-    importlib.reload(model_module)
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
-
-    expected = wx_stub.SystemSettings.GetColour(wx_stub.SYS_COLOUR_WINDOW)
-    assert panel.list.GetBackgroundColour() == expected
-    assert panel.GetBackgroundColour() == expected
-
-
-def test_list_panel_requests_redraw_on_resize(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    model_module = importlib.import_module("app.ui.requirement_model")
-    importlib.reload(model_module)
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_module.ListPanel(frame, model=model_module.RequirementModel())
-
-    handler = panel.list.get_bound_handler(wx_stub.EVT_SIZE)
-    assert handler is not None
-    panel.list.InsertItem(0, "A")
-    panel.list.InsertItem(1, "B")
-    called = {}
-
-    def fake_request(count):
-        called["count"] = count
-
-    panel._request_list_redraw = fake_request
-    handler(types.SimpleNamespace(Skip=lambda: None))
-    assert called["count"] == 2
-
-
-def test_request_list_redraw_falls_back_to_refresh(monkeypatch):
+def test_request_list_redraw_calls_refresh_and_update(monkeypatch):
     wx_stub, mixins, ulc = _build_wx_stub()
     agw = types.SimpleNamespace(ultimatelistctrl=ulc)
     monkeypatch.setitem(sys.modules, "wx", wx_stub)
@@ -724,30 +652,6 @@ def test_request_list_redraw_falls_back_to_refresh(monkeypatch):
 
     assert panel.list._refresh_calls >= 1
     assert panel.list._update_calls >= 1
-    assert panel.list._refresh_items_calls == []
-
-
-def test_request_list_redraw_prefers_refresh_items_for_virtual_lists(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_module.ListPanel(frame)
-    style = panel.list.GetWindowStyleFlag() | wx_stub.LC_VIRTUAL
-    panel.list.SetWindowStyleFlag(style)
-    panel.list._refresh_calls = 0
-    panel.list._refresh_items_calls.clear()
-    panel._request_list_redraw(5)
-
-    assert panel.list._refresh_items_calls != []
-    assert panel.list._refresh_calls <= 1
 
 
 def test_list_panel_after_refresh_callback(monkeypatch):

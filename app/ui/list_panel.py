@@ -15,7 +15,7 @@ from ..core.model import Requirement
 from ..i18n import _
 from ..log import logger
 from . import locale
-from .helpers import dip, enable_double_buffer, inherit_background
+from .helpers import dip, enable_double_buffer
 from .enums import ENUMS
 from .filter_dialog import FilterDialog
 from .requirement_model import RequirementModel
@@ -64,7 +64,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Initialize list view and controls for requirements."""
         wx.Panel.__init__(self, parent)
         enable_double_buffer(self)
-        inherit_background(self, parent)
         self.model = model if model is not None else RequirementModel()
         sizer = wx.BoxSizer(wx.VERTICAL)
         vertical_pad = dip(self, 5)
@@ -92,9 +91,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         btn_row.Add(self.filter_summary, 0, align_center, 0)
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
         enable_double_buffer(self.list)
-        self._apply_text_palette()
         self._set_subitem_image_style(False)
-        self.list.Bind(wx.EVT_SIZE, self._on_list_size)
         self._labels: list[LabelDef] = []
         self.current_filters: dict = {}
         self._rid_lookup: dict[str, Requirement] = {}
@@ -265,71 +262,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             return
         with suppress(Exception):  # pragma: no cover - backend quirks
             self.list.SetExtraStyle(desired)
-
-    def _on_list_size(self, event: wx.Event) -> None:
-        """Trigger a redraw when the list is resized."""
-
-        item_count = 0
-        if hasattr(self.list, "GetItemCount"):
-            try:
-                item_count = max(0, int(self.list.GetItemCount()))
-            except Exception:
-                item_count = 0
-        self._request_list_redraw(item_count)
-        event.Skip()
-
-    def _apply_text_palette(self) -> None:
-        """Align list text colours with the system palette."""
-
-        system_settings = getattr(wx, "SystemSettings", None)
-        sys_text_colour = getattr(wx, "SYS_COLOUR_WINDOWTEXT", None)
-        sys_background_colour = getattr(wx, "SYS_COLOUR_WINDOW", None)
-        if system_settings is None:
-            return
-        getter = getattr(system_settings, "GetColour", None)
-        if not callable(getter):
-            return
-        colours: dict[str, wx.Colour] = {}
-        for key, target in (("text", sys_text_colour), ("background", sys_background_colour)):
-            if target is None:
-                continue
-            try:
-                colour = getter(target)
-            except Exception:
-                continue
-            if colour is None:
-                continue
-            if hasattr(colour, "IsOk"):
-                try:
-                    if not colour.IsOk():
-                        continue
-                except Exception:
-                    continue
-            colours[key] = colour
-        text_colour = colours.get("text")
-        if text_colour is not None:
-            if hasattr(self.list, "SetTextColour"):
-                with suppress(Exception):
-                    self.list.SetTextColour(text_colour)
-            if hasattr(self.list, "SetForegroundColour"):
-                with suppress(Exception):
-                    self.list.SetForegroundColour(text_colour)
-        background_colour = colours.get("background")
-        if background_colour is not None:
-            if hasattr(self.list, "SetBackgroundColour"):
-                with suppress(Exception):
-                    self.list.SetBackgroundColour(background_colour)
-            if hasattr(self, "SetBackgroundColour"):
-                with suppress(Exception):
-                    self.SetBackgroundColour(background_colour)
-            header_getter = getattr(self.list, "GetHeader", None)
-            header = None
-            if callable(header_getter):
-                with suppress(Exception):
-                    header = header_getter()
-            if header is not None and hasattr(header, "SetBackgroundColour"):
-                with suppress(Exception):
-                    header.SetBackgroundColour(background_colour)
 
     def _setup_columns(self) -> None:
         """Configure list columns using a minimal layout for debugging."""
@@ -632,56 +564,17 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             return ", ".join(str(item) for item in value)
         return str(value)
 
-    def _request_list_redraw(self, item_count: int) -> None:
+    def _request_list_redraw(self, _item_count: int) -> None:
         """Force repaint of the list control after bulk updates."""
 
-        style = 0
-        get_style = getattr(self.list, "GetWindowStyleFlag", None)
-        if callable(get_style):
-            try:
-                style_value = get_style()
-            except Exception:
-                style_value = 0
-            try:
-                style = int(style_value)
-            except Exception:
-                style = 0
-        lc_virtual = getattr(wx, "LC_VIRTUAL", 0)
-        allow_virtual_refresh = bool(lc_virtual and style & lc_virtual)
-
-        refresh_done = False
-        refresh_items = getattr(self.list, "RefreshItems", None)
-        if allow_virtual_refresh and item_count > 0 and callable(refresh_items):
-            try:
-                refresh_items(0, max(0, item_count - 1))
-                refresh_done = True
-            except Exception:
-                logger.debug("ListCtrl.RefreshItems failed", exc_info=True)
-        if not refresh_done:
-            refresh = getattr(self.list, "Refresh", None)
-            if callable(refresh):
-                try:
-                    refresh()
-                    refresh_done = True
-                except Exception:
-                    logger.debug("ListCtrl.Refresh failed", exc_info=True)
+        refresh = getattr(self.list, "Refresh", None)
+        if callable(refresh):
+            with suppress(Exception):
+                refresh()
         update = getattr(self.list, "Update", None)
         if callable(update):
-            def _apply_update() -> None:
-                try:
-                    update()
-                except Exception:
-                    logger.debug("ListCtrl.Update failed", exc_info=True)
-
-            call_after = getattr(wx, "CallAfter", None)
-            if callable(call_after):
-                try:
-                    call_after(_apply_update)
-                except Exception:
-                    logger.debug("wx.CallAfter failed", exc_info=True)
-                    _apply_update()
-            else:
-                _apply_update()
+            with suppress(Exception):
+                update()
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.

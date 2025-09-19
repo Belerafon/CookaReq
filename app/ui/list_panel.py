@@ -1,38 +1,28 @@
-"""Panel displaying requirements list and simple filters."""
+"""Simplified requirements list panel built on top of wx.ListCtrl."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from contextlib import suppress
-from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import wx
-from wx.lib.mixins.listctrl import ColumnSorterMixin
 
-from ..core.document_store import LabelDef, load_item, parse_rid
+from ..core.document_store import LabelDef
 from ..core.model import Requirement
 from ..i18n import _
-from ..log import logger
 from . import locale
-from .helpers import dip, enable_double_buffer
-from .enums import ENUMS
-from .filter_dialog import FilterDialog
+from .helpers import dip
 from .requirement_model import RequirementModel
 
 if TYPE_CHECKING:
     from ..config import ConfigManager
     from .controllers import DocumentsController
 
-if TYPE_CHECKING:  # pragma: no cover
-    from wx import ContextMenuEvent, ListEvent
 
+class ListPanel(wx.Panel):
+    """Lightweight wrapper around :class:`wx.ListCtrl` for debugging."""
 
-class ListPanel(wx.Panel, ColumnSorterMixin):
-    """Panel with a filter button and list of requirement fields."""
-
-    MIN_COL_WIDTH = 50
-    MAX_COL_WIDTH = 1000
+    MIN_COL_WIDTH = 60
     DEFAULT_COLUMN_WIDTH = 160
     DEFAULT_COLUMN_WIDTHS: dict[str, int] = {
         "title": 340,
@@ -60,78 +50,57 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         on_delete_many: Callable[[Sequence[int]], None] | None = None,
         on_sort_changed: Callable[[int, bool], None] | None = None,
         on_derive: Callable[[int], None] | None = None,
-    ):
-        """Initialize list view and controls for requirements."""
-        wx.Panel.__init__(self, parent)
-        enable_double_buffer(self)
+    ) -> None:
+        super().__init__(parent)
+
         self.model = model if model is not None else RequirementModel()
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        vertical_pad = dip(self, 5)
-        orient = getattr(wx, "HORIZONTAL", 0)
-        right = getattr(wx, "RIGHT", 0)
-        top_flag = getattr(wx, "TOP", 0)
-        align_center = getattr(wx, "ALIGN_CENTER_VERTICAL", 0)
-        btn_row = wx.BoxSizer(orient)
-        self.filter_btn = wx.Button(self, label=_("Filters"))
-        bmp = wx.ArtProvider.GetBitmap(
-            getattr(wx, "ART_CLOSE", "wxART_CLOSE"),
-            getattr(wx, "ART_BUTTON", "wxART_BUTTON"),
-            (16, 16),
-        )
-        self.reset_btn = wx.BitmapButton(
-            self,
-            bitmap=bmp,
-            style=getattr(wx, "BU_EXACTFIT", 0),
-        )
-        self.reset_btn.SetToolTip(_("Clear filters"))
-        self.reset_btn.Hide()
-        self.filter_summary = wx.StaticText(self, label="")
-        btn_row.Add(self.filter_btn, 0, right, vertical_pad)
-        btn_row.Add(self.reset_btn, 0, right, vertical_pad)
-        btn_row.Add(self.filter_summary, 0, align_center, 0)
-        self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
-        enable_double_buffer(self.list)
-        self._set_subitem_image_style(False)
-        self._labels: list[LabelDef] = []
-        self.current_filters: dict = {}
-        self._rid_lookup: dict[str, Requirement] = {}
-        self._doc_titles: dict[str, str] = {}
-        self._link_display_cache: dict[str, str] = {}
-        ColumnSorterMixin.__init__(self, 1)
-        self.columns: list[str] = []
+        self._docs_controller = docs_controller
         self._on_clone = on_clone
         self._on_delete = on_delete
         self._on_delete_many = on_delete_many
         self._on_sort_changed = on_sort_changed
         self._on_derive = on_derive
+
+        self.columns: list[str] = []
+        self._field_order: list[str] = ["title"]
+        self._labels: list[LabelDef] = []
+        self.current_filters: dict[str, Any] = {}
         self.derived_map: dict[str, list[int]] = {}
-        self._sort_column = -1
-        self._sort_ascending = True
-        self._docs_controller = docs_controller
         self._current_doc_prefix: str | None = None
-        self._context_menu_open = False
         self._after_refresh_callback: Callable[["ListPanel"], None] | None = None
-        self._setup_columns()
-        sizer.Add(btn_row, 0, wx.EXPAND, 0)
-        sizer.Add(self.list, 1, wx.EXPAND | top_flag, vertical_pad)
+        self._sort_column: int = 0
+        self._sort_ascending: bool = True
+
+        padding = dip(self, 4)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        button_row = wx.BoxSizer(wx.HORIZONTAL)
+
+        self.filter_btn = wx.Button(self, label=_("Filters"))
+        self.filter_btn.Disable()
+        self.reset_btn = wx.Button(self, label=_("Reset"))
+        self.reset_btn.Hide()
+        self.filter_summary = wx.StaticText(self, label="")
+
+        button_row.Add(self.filter_btn, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, padding)
+        button_row.Add(self.reset_btn, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, padding)
+        button_row.Add(self.filter_summary, 0, wx.ALIGN_CENTER_VERTICAL, 0)
+
+        list_style = wx.LC_REPORT | wx.LC_SINGLE_SEL
+        self.list = wx.ListCtrl(self, style=list_style)
+
+        sizer.Add(button_row, 0, wx.EXPAND | wx.ALL, padding)
+        sizer.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, padding)
         self.SetSizer(sizer)
-        self.list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_right_click)
-        self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
+
+        self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
         self.list.Bind(wx.EVT_SIZE, self._on_list_resize)
-        self.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter)
-        self.reset_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.reset_filters())
 
-    # ColumnSorterMixin requirement
-    def GetListCtrl(self):  # pragma: no cover - simple forwarding
-        """Return internal ``wx.ListCtrl`` for sorting mixin."""
+        self._setup_columns()
+        self._populate_list()
 
-        return self.list
-
-    def GetSortImages(self):  # pragma: no cover - default arrows
-        """Return image ids for sort arrows (unused)."""
-
-        return (-1, -1)
-
+    # ------------------------------------------------------------------
+    # public API expected by the rest of the application
+    # ------------------------------------------------------------------
     def set_handlers(
         self,
         *,
@@ -140,7 +109,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         on_delete_many: Callable[[Sequence[int]], None] | None = None,
         on_derive: Callable[[int], None] | None = None,
     ) -> None:
-        """Set callbacks for context menu actions."""
         if on_clone is not None:
             self._on_clone = on_clone
         if on_delete is not None:
@@ -153,746 +121,261 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def set_after_refresh_callback(
         self, callback: Callable[["ListPanel"], None] | None
     ) -> None:
-        """Register callback invoked after a successful refresh."""
-
         self._after_refresh_callback = callback
 
     def set_documents_controller(
         self, controller: DocumentsController | None
     ) -> None:
-        """Set documents controller used for persistence."""
-
         self._docs_controller = controller
-        self._doc_titles = {}
-        self._link_display_cache.clear()
-        if controller is not None:
-            with suppress(Exception):
-                all_requirements = self.model.get_all()
-            if isinstance(all_requirements, list):
-                self._rebuild_rid_lookup(all_requirements)
 
     def set_active_document(self, prefix: str | None) -> None:
-        """Record currently active document prefix for persistence."""
-
         self._current_doc_prefix = prefix
 
-    def _doc_title_for_prefix(self, prefix: str) -> str:
-        if not prefix:
-            return ""
-        if prefix in self._doc_titles:
-            return self._doc_titles[prefix]
-        if self._docs_controller:
-            doc = self._docs_controller.documents.get(prefix)
-            if doc:
-                self._doc_titles[prefix] = doc.title
-                return doc.title
-        self._doc_titles[prefix] = ""
-        return ""
+    def set_columns(self, fields: list[str]) -> None:
+        unique: list[str] = []
+        for field in fields:
+            if field == "title":
+                continue
+            if field not in unique:
+                unique.append(field)
+        self.columns = unique
+        self._setup_columns()
+        self._populate_list()
 
-    def _rebuild_rid_lookup(self, requirements: list[Requirement]) -> None:
-        self._rid_lookup = {}
-        self._link_display_cache.clear()
-        self._doc_titles = {}
-        for req in requirements:
-            rid = getattr(req, "rid", "")
-            if rid:
-                self._rid_lookup[rid] = req
-            prefix = getattr(req, "doc_prefix", "")
-            if prefix and prefix not in self._doc_titles:
-                self._doc_titles[prefix] = self._doc_title_for_prefix(prefix)
-
-    def _link_display_text(self, rid: str) -> str:
-        rid = str(rid or "").strip()
-        if not rid:
-            return ""
-        cached = self._link_display_cache.get(rid)
-        if cached is not None:
-            return cached
-        title = ""
-        doc_title = ""
-        req = self._rid_lookup.get(rid)
-        if req is not None:
-            title = getattr(req, "title", "")
-            doc_title = self._doc_title_for_prefix(getattr(req, "doc_prefix", ""))
-        elif self._docs_controller:
-            try:
-                prefix, item_id = parse_rid(rid)
-            except ValueError:
-                self._link_display_cache[rid] = rid
-                return rid
-            doc = self._docs_controller.documents.get(prefix)
-            if doc:
-                doc_title = self._doc_title_for_prefix(prefix)
-                directory = self._docs_controller.root / prefix
-                try:
-                    data, _mtime = load_item(directory, doc, item_id)
-                except Exception:
-                    logger.exception("Failed to load linked requirement %s", rid)
-                else:
-                    title = str(data.get("title", ""))
-        base = rid
-        if title:
-            base = f"{rid} — {title}"
-        if doc_title and doc_title not in base:
-            base = f"{base} ({doc_title})"
-        self._link_display_cache[rid] = base
-        return base
-
-    def _first_parent_text(self, req: Requirement) -> str:
-        links = getattr(req, "links", []) or []
-        if not links:
-            return ""
-        parent = links[0]
-        rid = getattr(parent, "rid", str(parent))
-        return self._link_display_text(rid)
-
-    def _set_subitem_image_style(self, enabled: bool) -> None:
-        """Toggle ``LC_EX_SUBITEMIMAGES`` based on the presence of image lists."""
-
-        if not hasattr(self.list, "SetExtraStyle") or not hasattr(self.list, "GetExtraStyle"):
-            return
-        extra_flag = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
-        if not extra_flag:
-            return
-        try:
-            current = self.list.GetExtraStyle()
-        except Exception:  # pragma: no cover - backend quirks
-            return
-        desired = (current | extra_flag) if enabled else (current & ~extra_flag)
-        if desired == current:
-            return
-        with suppress(Exception):  # pragma: no cover - backend quirks
-            self.list.SetExtraStyle(desired)
-
-    def _setup_columns(self) -> None:
-        """Configure list columns using a minimal layout for debugging."""
-
-        self.list.ClearAll()
-        self._field_order = []
-
-        self.list.InsertColumn(0, _("Title"))
-        self._field_order.append("title")
-        self._ensure_column_width(0, "title")
-
-        for field in self.columns:
-            idx = self.list.GetColumnCount()
-            label = _("Labels") if field == "labels" else locale.field_label(field)
-            self.list.InsertColumn(idx, label)
-            self._field_order.append(field)
-            self._ensure_column_width(idx, field)
-
-        ColumnSorterMixin.__init__(self, self.list.GetColumnCount())
-        with suppress(Exception):
-            self.list.Unbind(wx.EVT_LIST_COL_CLICK)
-        self.list.Bind(wx.EVT_LIST_COL_CLICK, self._on_col_click)
-
-    # Columns ---------------------------------------------------------
     def load_column_widths(self, config: ConfigManager) -> None:
-        """Restore column widths from config with sane bounds."""
-        count = self.list.GetColumnCount()
-        for i in range(count):
-            width = config.read_int(f"col_width_{i}", -1)
+        for index in range(self.list.GetColumnCount()):
+            width = config.read_int(f"col_width_{index}", -1)
             if width <= 0:
-                field = self._field_order[i] if i < len(self._field_order) else ""
+                field = self._field_order[index]
                 width = self._default_column_width(field)
-            width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
-            self.list.SetColumnWidth(i, width)
+            width = max(self.MIN_COL_WIDTH, width)
+            try:
+                self.list.SetColumnWidth(index, width)
+            except Exception:
+                continue
 
     def save_column_widths(self, config: ConfigManager) -> None:
-        """Persist current column widths to config."""
-        count = self.list.GetColumnCount()
-        for i in range(count):
-            width = self.list.GetColumnWidth(i)
-            width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
-            config.write_int(f"col_width_{i}", width)
-
-    def _default_column_width(self, field: str) -> int:
-        """Return sensible default width for a given column field."""
-
-        width = self.DEFAULT_COLUMN_WIDTHS.get(field)
-        if width is not None:
-            return width
-        if field.endswith("_at"):
-            return 180
-        if field in {"revision", "id", "doc_prefix", "derived_count"}:
-            return 90
-        return self.DEFAULT_COLUMN_WIDTH
-
-    def _ensure_column_width(self, column: int, field: str) -> None:
-        """Guarantee that a column has a reasonable starting width."""
-
-        getter = getattr(self.list, "GetColumnWidth", None)
-        setter = getattr(self.list, "SetColumnWidth", None)
-        if not callable(getter) or not callable(setter):
-            return
-        try:
-            current = getter(column)
-        except Exception:
-            current = 0
-        if current and current > 0:
-            return
-        width = self._default_column_width(field)
-        try:
-            setter(column, max(self.MIN_COL_WIDTH, width))
-        except Exception:
-            logger.debug("Failed to apply default width for column %s", field)
+        for index in range(self.list.GetColumnCount()):
+            width = self.list.GetColumnWidth(index)
+            config.write_int(f"col_width_{index}", int(width))
 
     def load_column_order(self, config: ConfigManager) -> None:
-        """Restore column ordering from config."""
-        value = config.read("col_order", "")
-        if not value:
+        order_raw = config.read("col_order", "")
+        if not order_raw:
             return
-        names = [n for n in value.split(",") if n]
-        order = [self._field_order.index(n) for n in names if n in self._field_order]
-        count = self.list.GetColumnCount()
-        for idx in range(count):
-            if idx not in order:
-                order.append(idx)
-        with suppress(Exception):  # pragma: no cover - depends on GUI backend
+        requested = [name for name in order_raw.split(",") if name in self._field_order]
+        if not requested:
+            return
+        order: list[int] = [self._field_order.index(name) for name in requested]
+        for index in range(self.list.GetColumnCount()):
+            if index not in order:
+                order.append(index)
+        try:
             self.list.SetColumnsOrder(order)
+        except Exception:
+            return
 
     def save_column_order(self, config: ConfigManager) -> None:
-        """Persist current column ordering to config."""
-        try:  # pragma: no cover - depends on GUI backend
+        try:
             order = self.list.GetColumnsOrder()
         except Exception:
             return
-        names = [self._field_order[idx] for idx in order if idx < len(self._field_order)]
+        names = [self._field_order[index] for index in order if index < len(self._field_order)]
         config.write("col_order", ",".join(names))
 
     def reorder_columns(self, from_col: int, to_col: int) -> None:
-        """Move column from ``from_col`` index to ``to_col`` index."""
-        offset = 1  # Title column at index 0
+        offset = 1  # keep Title at index 0
         if from_col == to_col or from_col < offset or to_col < offset:
             return
         fields = list(self.columns)
         src = from_col - offset
         dst = to_col - offset
-        if src < 0 or src >= len(fields) or dst < 0 or dst >= len(fields):
+        if src < 0 or dst < 0 or src >= len(fields) or dst >= len(fields):
             return
         field = fields.pop(src)
         fields.insert(dst, field)
-        self.columns = fields
-        self._setup_columns()
-        self._refresh()
-
-    def set_columns(self, fields: list[str]) -> None:
-        """Set additional columns (beyond Title) to display.
-
-        ``labels`` is treated specially and rendered as a comma-separated list.
-        """
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for field in fields:
-            if field == "title":
-                continue
-            if field in seen:
-                continue
-            seen.add(field)
-            normalized.append(field)
-        self.columns = normalized
-        self._setup_columns()
-        # repopulate with existing requirements after changing columns
-        self._refresh()
+        self.set_columns(fields)
 
     def set_requirements(
         self,
-        requirements: list,
+        requirements: Sequence[Requirement],
         derived_map: dict[str, list[int]] | None = None,
     ) -> None:
-        """Populate list control with requirement data via model."""
-        self.model.set_requirements(requirements)
-        self._rebuild_rid_lookup(self.model.get_all())
-        if derived_map is None:
-            derived_map = {}
-            for req in requirements:
-                for parent in getattr(req, "links", []):
-                    parent_rid = getattr(parent, "rid", parent)
-                    derived_map.setdefault(parent_rid, []).append(req.id)
-        self.derived_map = derived_map
-        self._refresh()
+        self.model.set_requirements(list(requirements))
+        if derived_map is not None:
+            self.derived_map = {str(key): list(value) for key, value in derived_map.items()}
+        else:
+            self.derived_map = self._build_derived_map(self.model.get_all())
+        self._populate_list()
 
-    # filtering -------------------------------------------------------
-    def apply_filters(self, filters: dict) -> None:
-        """Apply filters to the underlying model."""
-        self.current_filters.update(filters)
-        self.model.set_label_filter(self.current_filters.get("labels", []))
-        self.model.set_label_match_all(not self.current_filters.get("match_any", False))
-        fields = self.current_filters.get("fields")
-        self.model.set_search_query(self.current_filters.get("query", ""), fields)
-        self.model.set_field_queries(self.current_filters.get("field_queries", {}))
-        self.model.set_status(self.current_filters.get("status"))
-        self.model.set_is_derived(self.current_filters.get("is_derived", False))
-        self.model.set_has_derived(self.current_filters.get("has_derived", False))
-        self._refresh()
+    def recalc_derived_map(self, requirements: Sequence[Requirement]) -> None:
+        self.derived_map = self._build_derived_map(requirements)
+        self._populate_list()
+
+    def record_link(self, parent_rid: str, child_id: int) -> None:
+        rid = str(parent_rid or "")
+        if not rid:
+            return
+        children = self.derived_map.setdefault(rid, [])
+        if child_id not in children:
+            children.append(child_id)
+
+    def refresh(self, select_id: int | None = None) -> None:
+        self._populate_list(select_id=select_id)
+
+    def sort(self, column: int, ascending: bool) -> None:
+        if column < 0 or column >= len(self._field_order):
+            return
+        field = self._field_order[column]
+        self._sort_column = column
+        self._sort_ascending = ascending
+        self.model.sort(field, ascending)
+        self._populate_list()
+        if self._on_sort_changed:
+            self._on_sort_changed(column, ascending)
+
+    def apply_filters(self, filters: dict[str, Any]) -> None:
+        self.current_filters = dict(filters)
         self._update_filter_summary()
         self._toggle_reset_button()
 
     def set_label_filter(self, labels: list[str]) -> None:
-        """Apply label filter to the model."""
-
-        self.apply_filters({"labels": labels})
+        self.apply_filters({"labels": list(labels)})
 
     def set_search_query(self, query: str, fields: Sequence[str] | None = None) -> None:
-        """Apply text ``query`` with optional field restriction."""
-
-        filters = {"query": query}
+        payload: dict[str, Any] = {"query": query}
         if fields is not None:
-            filters["fields"] = list(fields)
-        self.apply_filters(filters)
+            payload["fields"] = list(fields)
+        self.apply_filters(payload)
 
     def update_labels_list(self, labels: list[LabelDef]) -> None:
-        """Update available labels for the filter dialog."""
-        self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
-
-    def _on_filter(self, event):  # pragma: no cover - simple event binding
-        dlg = FilterDialog(self, labels=self._labels, values=self.current_filters)
-        if dlg.ShowModal() == wx.ID_OK:
-            self.apply_filters(dlg.get_filters())
-        dlg.Destroy()
-        if hasattr(event, "Skip"):
-            event.Skip()
+        self._labels = list(labels)
 
     def reset_filters(self) -> None:
-        """Clear all applied filters and update UI."""
         self.current_filters = {}
-        self.apply_filters({})
+        self._update_filter_summary()
+        self._toggle_reset_button()
 
-    def _update_filter_summary(self) -> None:
-        """Update text describing currently active filters."""
-        parts: list[str] = []
-        if self.current_filters.get("query"):
-            parts.append(_("Query") + f": {self.current_filters['query']}")
-        labels = self.current_filters.get("labels") or []
-        if labels:
-            parts.append(_("Labels") + ": " + ", ".join(labels))
-        status = self.current_filters.get("status")
-        if status:
-            parts.append(_("Status") + f": {locale.code_to_label('status', status)}")
-        if self.current_filters.get("is_derived"):
-            parts.append(_("Derived only"))
-        if self.current_filters.get("has_derived"):
-            parts.append(_("Has derived"))
-        field_queries = self.current_filters.get("field_queries", {})
-        for field, value in field_queries.items():
-            if value:
-                parts.append(f"{locale.field_label(field)}: {value}")
-        summary = "; ".join(parts)
-        if hasattr(self.filter_summary, "SetLabel"):
-            self.filter_summary.SetLabel(summary)
-        else:  # pragma: no cover - test stub
-            self.filter_summary.label = summary
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+    def _setup_columns(self) -> None:
+        self.list.ClearAll()
+        self._field_order = ["title"] + list(self.columns)
+        for index, field in enumerate(self._field_order):
+            label = _("Title") if index == 0 else locale.field_label(field)
+            self.list.InsertColumn(index, label)
+            width = self._default_column_width(field)
+            try:
+                self.list.SetColumnWidth(index, max(self.MIN_COL_WIDTH, width))
+            except Exception:
+                continue
 
-    def _has_active_filters(self) -> bool:
-        """Return ``True`` if any filters are currently applied."""
-        if self.current_filters.get("query"):
-            return True
-        if self.current_filters.get("labels"):
-            return True
-        if self.current_filters.get("status"):
-            return True
-        if self.current_filters.get("is_derived"):
-            return True
-        if self.current_filters.get("has_derived"):
-            return True
-        field_queries = self.current_filters.get("field_queries", {})
-        return bool(any(field_queries.values()))
-
-    def _toggle_reset_button(self) -> None:
-        """Show or hide the reset button based on active filters."""
-        if self._has_active_filters():
-            if hasattr(self.reset_btn, "Show"):
-                self.reset_btn.Show()
-        else:
-            if hasattr(self.reset_btn, "Hide"):
-                self.reset_btn.Hide()
-        if hasattr(self, "Layout"):
-            with suppress(Exception):  # pragma: no cover - some stubs lack Layout
-                self.Layout()
-
-    def _refresh(self) -> None:
-        """Reload list control from the model."""
+    def _populate_list(self, *, select_id: int | None = None) -> None:
         items = list(self.model.get_visible())
         self.list.DeleteAllItems()
         for row, req in enumerate(items):
-            for col, field in enumerate(self._field_order):
-                value = self._format_cell(req, field)
-                if col == 0:
-                    index = self.list.InsertItem(row, value)
-                    req_id = getattr(req, "id", 0)
-                    try:
-                        self.list.SetItemData(index, int(req_id))
-                    except Exception:
-                        self.list.SetItemData(index, 0)
-                else:
-                    self.list.SetItem(row, col, value)
-        self._request_list_redraw(len(items))
-        if callable(self._after_refresh_callback):
+            title = self._format_cell(req, "title")
+            index = self.list.InsertItem(row, title)
+            req_id = getattr(req, "id", 0)
             try:
-                self._after_refresh_callback(self)
-            except Exception:
-                logger.exception("ListPanel post-refresh callback failed")
+                numeric_id = int(req_id)
+            except (TypeError, ValueError):
+                numeric_id = 0
+            self.list.SetItemData(index, numeric_id)
+            for offset, field in enumerate(self._field_order[1:], start=1):
+                value = self._format_cell(req, field)
+                self.list.SetItem(index, offset, value)
+        if select_id is not None:
+            self._select_by_id(select_id)
+        self.list.Refresh()
+        self.list.Update()
+        if self._after_refresh_callback:
+            self._after_refresh_callback(self)
+
+    def _select_by_id(self, req_id: int) -> None:
+        for row in range(self.list.GetItemCount()):
+            if self.list.GetItemData(row) == req_id:
+                self.list.Select(row)
+                self.list.EnsureVisible(row)
+                break
+
+    def _default_column_width(self, field: str) -> int:
+        return self.DEFAULT_COLUMN_WIDTHS.get(field, self.DEFAULT_COLUMN_WIDTH)
 
     def _format_cell(self, req: Requirement, field: str) -> str:
-        """Return textual representation for ``field`` of ``req``."""
-
-        if field == "title":
-            title = getattr(req, "title", "")
-            derived = bool(getattr(req, "links", []))
-            return f"↳ {title}".strip() if derived else str(title)
+        value = getattr(req, field, "") if field != "title" else getattr(req, "title", "")
+        if value is None:
+            return ""
         if field == "labels":
-            labels = getattr(req, "labels", []) or []
-            return ", ".join(str(lbl) for lbl in labels)
-        if field == "derived_from":
-            return self._first_parent_text(req)
-        if field == "links":
-            formatted: list[str] = []
-            for link in getattr(req, "links", []) or []:
-                rid = getattr(link, "rid", str(link))
-                suffix = " ⚠" if getattr(link, "suspect", False) else ""
-                formatted.append(f"{rid}{suffix}")
-            return ", ".join(formatted)
+            if isinstance(value, (list, tuple, set)):
+                return ", ".join(str(item) for item in value)
+            return str(value)
         if field == "derived_count":
-            rid = getattr(req, "rid", "") or str(getattr(req, "id", ""))
-            return str(len(self.derived_map.get(rid, [])))
-        if field == "attachments":
-            attachments = getattr(req, "attachments", []) or []
-            return ", ".join(getattr(att, "path", "") for att in attachments)
-        value = getattr(req, field, "")
-        if isinstance(value, Enum):
-            return str(locale.code_to_label(field, value.value))
-        if isinstance(value, list):
+            rid = getattr(req, "rid", "")
+            return str(len(self.derived_map.get(str(rid), [])))
+        if field == "derived_from":
+            links = getattr(req, "links", []) or []
+            readable: list[str] = []
+            for link in links:
+                readable.append(str(getattr(link, "rid", link)))
+            return ", ".join(readable)
+        if field in {"status", "priority", "type"}:
+            try:
+                code = getattr(value, "value", value)
+                return locale.code_to_label(field, code)
+            except Exception:
+                return str(value)
+        if isinstance(value, (list, tuple, set)):
             return ", ".join(str(item) for item in value)
         return str(value)
 
-    def _request_list_redraw(self, _item_count: int) -> None:
-        """Force repaint of the list control after bulk updates."""
-
-        refresh = getattr(self.list, "Refresh", None)
-        if callable(refresh):
-            with suppress(Exception):
-                refresh()
-        update = getattr(self.list, "Update", None)
-        if callable(update):
-            with suppress(Exception):
-                update()
-
-    def _on_list_resize(self, event: wx.Event) -> None:
-        """Request a redraw when the embedded list control is resized."""
-
-        try:
-            count = self.list.GetItemCount()
-        except Exception:
-            count = 0
-        self._request_list_redraw(count)
-        if hasattr(event, "Skip"):
-            try:
-                event.Skip()
-            except Exception:
-                pass
-
-    def refresh(self, *, select_id: int | None = None) -> None:
-        """Public wrapper to reload list control.
-
-        When ``select_id`` is provided, the list selects the matching
-        requirement and scrolls to it after reloading the contents.
-        """
-
-        self._refresh()
-        if select_id is not None:
-            self.focus_requirement(select_id)
-
-    def focus_requirement(self, req_id: int) -> None:
-        """Select and ensure visibility of requirement ``req_id``."""
-
-        target_index: int | None = None
-        try:
-            count = self.list.GetItemCount()
-        except Exception:  # pragma: no cover - backend quirks
-            return
-        for idx in range(count):
-            try:
-                item_id = self.list.GetItemData(idx)
-            except Exception:
-                continue
-            if item_id == req_id:
-                target_index = idx
-                break
-        if target_index is None:
-            return
-
-        for idx in range(count):
-            self._set_item_selected(idx, idx == target_index)
-
-        if hasattr(self.list, "Focus"):
-            with suppress(Exception):
-                self.list.Focus(target_index)
-        if hasattr(self.list, "EnsureVisible"):
-            with suppress(Exception):
-                self.list.EnsureVisible(target_index)
-
-    def focus_input(self) -> None:
-        """Give keyboard focus to the list control."""
-
-        target = getattr(self, "list", None)
-        if target is not None and hasattr(target, "SetFocus"):
-            with suppress(Exception):
-                target.SetFocus()
-
-    def _set_item_selected(self, index: int, selected: bool) -> None:
-        """Apply selection state without propagating backend errors."""
-
-        select_flag = getattr(wx, "LIST_STATE_SELECTED", 0x0002)
-        focus_flag = getattr(wx, "LIST_STATE_FOCUSED", 0x0001)
-        mask = select_flag | focus_flag
-        if hasattr(self.list, "SetItemState"):
-            with suppress(Exception):
-                self.list.SetItemState(index, mask if selected else 0, mask)
-                return
-        if hasattr(self.list, "Select"):
-            try:
-                self.list.Select(index, selected)
-            except TypeError:
-                if selected:
-                    self.list.Select(index)
-                else:
-                    with suppress(Exception):
-                        self.list.Select(index, False)
-            except Exception:
-                return
-        if selected and hasattr(self.list, "Focus"):
-            with suppress(Exception):
-                self.list.Focus(index)
-
-    def record_link(self, parent_rid: str, child_id: int) -> None:
-        """Record that ``child_id`` links to ``parent_rid``."""
-
-        self.derived_map.setdefault(parent_rid, []).append(child_id)
-
-    def recalc_derived_map(self, requirements: list[Requirement]) -> None:
-        """Rebuild derived requirements map from ``requirements``."""
-
-        derived_map: dict[str, list[int]] = {}
+    def _build_derived_map(
+        self, requirements: Sequence[Requirement]
+    ) -> dict[str, list[int]]:
+        mapping: dict[str, list[int]] = {}
         for req in requirements:
-            for parent in getattr(req, "links", []):
-                parent_rid = getattr(parent, "rid", parent)
-                derived_map.setdefault(parent_rid, []).append(req.id)
-        self.derived_map = derived_map
-        self._rebuild_rid_lookup(requirements)
-        self._refresh()
-
-    def _on_col_click(self, event: ListEvent) -> None:  # pragma: no cover - GUI event
-        col = event.GetColumn()
-        ascending = not self._sort_ascending if col == self._sort_column else True
-        self.sort(col, ascending)
-
-    def sort(self, column: int, ascending: bool) -> None:
-        """Sort list by ``column`` with ``ascending`` order."""
-        self._sort_column = column
-        self._sort_ascending = ascending
-        if column < len(self._field_order):
-            field = self._field_order[column]
-            self.model.sort(field, ascending)
-        self._refresh()
-        if self._on_sort_changed:
-            self._on_sort_changed(self._sort_column, self._sort_ascending)
-
-    # context menu ----------------------------------------------------
-    def _popup_context_menu(self, index: int, column: int | None) -> None:
-        if self._context_menu_open:
-            return
-        menu, _, _, _ = self._create_context_menu(index, column)
-        if not menu.GetMenuItemCount():
-            menu.Destroy()
-            return
-        self._context_menu_open = True
-        try:
-            self.PopupMenu(menu)
-        finally:
-            menu.Destroy()
-            self._context_menu_open = False
-
-    def _on_right_click(self, event: ListEvent) -> None:  # pragma: no cover - GUI event
-        x, y = event.GetPoint()
-        if hasattr(self.list, "HitTestSubItem"):
-            _, _, col = self.list.HitTestSubItem((x, y))
-        else:  # pragma: no cover - fallback for older wx
-            _, _ = self.list.HitTest((x, y))
-            col = None
-        self._popup_context_menu(event.GetIndex(), col)
-
-    def _on_context_menu(
-        self,
-        event: ContextMenuEvent,
-    ) -> None:  # pragma: no cover - GUI event
-        pos = event.GetPosition()
-        if pos == wx.DefaultPosition:
-            pos = wx.GetMousePosition()
-        pt = self.list.ScreenToClient(pos)
-        if hasattr(self.list, "HitTestSubItem"):
-            index, _, col = self.list.HitTestSubItem(pt)
-            if col == -1:
-                col = None
-        else:  # pragma: no cover - fallback for older wx
-            index, _ = self.list.HitTest(pt)
-            col = None
-        if index == wx.NOT_FOUND:
-            return
-        self.list.Select(index)
-        self._popup_context_menu(index, col)
-
-    def _field_from_column(self, col: int | None) -> str | None:
-        if col is None or col < 0 or col >= len(self._field_order):
-            return None
-        return self._field_order[col]
-
-    def _create_context_menu(self, index: int, column: int | None):
-        menu = wx.Menu()
-        selected_indices = self._get_selected_indices()
-        if index != wx.NOT_FOUND and (not selected_indices or index not in selected_indices):
-            selected_indices = [index]
-        single_selection = len(selected_indices) == 1
-        selected_ids = self._indices_to_ids(selected_indices)
-        req_id = selected_ids[0] if selected_ids else None
-        derive_item = clone_item = None
-        if single_selection:
-            derive_item = menu.Append(wx.ID_ANY, _("Derive"))
-            clone_item = menu.Append(wx.ID_ANY, _("Clone"))
-        delete_item = menu.Append(wx.ID_ANY, _("Delete"))
-        field = self._field_from_column(column)
-        edit_item = None
-        if field and field != "title":
-            edit_item = menu.Append(wx.ID_ANY, _("Edit {field}").format(field=field))
-            menu.Bind(
-                wx.EVT_MENU,
-                lambda _evt, c=column: self._on_edit_field(c),
-                edit_item,
-            )
-        if clone_item and self._on_clone and req_id is not None:
-            menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_clone(i), clone_item)
-        if len(selected_ids) > 1:
-            if self._on_delete_many:
-                menu.Bind(
-                    wx.EVT_MENU,
-                    lambda _evt, ids=tuple(selected_ids): self._on_delete_many(ids),
-                    delete_item,
-                )
-            elif self._on_delete:
-                menu.Bind(
-                    wx.EVT_MENU,
-                    lambda _evt, ids=tuple(selected_ids): self._invoke_delete_each(ids),
-                    delete_item,
-                )
-        elif self._on_delete and req_id is not None:
-            menu.Bind(
-                wx.EVT_MENU,
-                lambda _evt, i=req_id: self._on_delete(i),
-                delete_item,
-            )
-        if derive_item and self._on_derive and req_id is not None:
-            menu.Bind(
-                wx.EVT_MENU,
-                lambda _evt, i=req_id: self._on_derive(i),
-                derive_item,
-            )
-        return menu, clone_item, delete_item, edit_item
-
-    def _get_selected_indices(self) -> list[int]:
-        indices: list[int] = []
-        idx = self.list.GetFirstSelected()
-        while idx != -1:
-            indices.append(idx)
-            idx = self.list.GetNextSelected(idx)
-        return indices
-
-    def _indices_to_ids(self, indices: Sequence[int]) -> list[int]:
-        ids: list[int] = []
-        for idx in indices:
-            if idx == wx.NOT_FOUND:
-                continue
-            try:
-                raw_id = self.list.GetItemData(idx)
-            except Exception:
-                continue
-            try:
-                ids.append(int(raw_id))
-            except (TypeError, ValueError):
-                continue
-        return ids
-
-    def _invoke_delete_each(self, req_ids: Sequence[int]) -> None:
-        if not self._on_delete:
-            return
-        for req_id in req_ids:
-            self._on_delete(req_id)
-
-    def _prompt_value(self, field: str) -> object | None:
-        if field in ENUMS:
-            enum_cls = ENUMS[field]
-            choices = [locale.code_to_label(field, e.value) for e in enum_cls]
-            dlg = wx.SingleChoiceDialog(
-                self,
-                _("Select {field}").format(field=field),
-                _("Edit"),
-                choices,
-            )
-            if dlg.ShowModal() == wx.ID_OK:
-                label = dlg.GetStringSelection()
-                code = locale.label_to_code(field, label)
-                value = enum_cls(code)
-            else:
-                value = None
-            dlg.Destroy()
-            return value
-        dlg = wx.TextEntryDialog(
-            self,
-            _("New value for {field}").format(field=field),
-            _("Edit"),
-        )
-        value = dlg.GetValue() if dlg.ShowModal() == wx.ID_OK else None
-        dlg.Destroy()
-        return value
-
-    def _on_edit_field(self, column: int) -> None:  # pragma: no cover - GUI event
-        field = self._field_from_column(column)
-        if not field:
-            return
-        value = self._prompt_value(field)
-        if value is None:
-            return
-        for idx in self._get_selected_indices():
-            items = self.model.get_visible()
-            if idx >= len(items):
-                continue
-            req = items[idx]
-            if field == "revision":
-                try:
-                    numeric = int(str(value).strip())
-                except (TypeError, ValueError):
+            links = getattr(req, "links", []) or []
+            for link in links:
+                rid = str(getattr(link, "rid", link))
+                if not rid:
                     continue
-                if numeric <= 0:
-                    continue
-                value = numeric
-            setattr(req, field, value)
-            self.model.update(req)
-            if isinstance(value, Enum):
-                display = (
-                    locale.code_to_label(field, value.value)
-                    if field in ENUMS
-                    else value.value
-                )
-            else:
-                display = value
-            self.list.SetItem(idx, column, str(display))
-            self._persist_requirement(req)
+                mapping.setdefault(rid, []).append(getattr(req, "id", 0))
+        return mapping
 
-    def _persist_requirement(self, req: Requirement) -> None:
-        """Persist edited ``req`` if controller and document are available."""
-
-        if not self._docs_controller or not self._current_doc_prefix:
+    def _update_filter_summary(self) -> None:
+        if not self.current_filters:
+            self.filter_summary.SetLabel("")
             return
+        fragments: list[str] = []
+        query = self.current_filters.get("query")
+        if query:
+            fragments.append(_("Query") + f": {query}")
+        labels = self.current_filters.get("labels") or []
+        if labels:
+            fragments.append(_("Labels") + ": " + ", ".join(map(str, labels)))
+        status = self.current_filters.get("status")
+        if status:
+            fragments.append(_("Status") + f": {status}")
+        self.filter_summary.SetLabel("; ".join(fragments))
+
+    def _toggle_reset_button(self) -> None:
+        if self.current_filters:
+            self.reset_btn.Show()
+        else:
+            self.reset_btn.Hide()
         try:
-            self._docs_controller.save_requirement(self._current_doc_prefix, req)
-        except Exception:  # pragma: no cover - log and continue
-            rid = getattr(req, "rid", req.id)
-            logger.exception("Failed to save requirement %s", rid)
+            self.Layout()
+        except Exception:
+            pass
+
+    def _on_col_click(self, event: wx.ListEvent) -> None:  # pragma: no cover - GUI event
+        column = event.GetColumn()
+        ascending = not self._sort_ascending if column == self._sort_column else True
+        self.sort(column, ascending)
+        event.Skip()
+
+    def _on_list_resize(self, event: wx.SizeEvent) -> None:  # pragma: no cover - GUI event
+        self.list.Refresh()
+        self.list.Update()
+        event.Skip()

@@ -158,6 +158,7 @@ class ListPanelDebugProfile:
 class ListPanel(wx.Panel, ColumnSorterMixin):
     """Panel with a filter button and list of requirement fields."""
 
+    DIAGNOSTIC_LOG_THRESHOLD = 19
     MIN_COL_WIDTH = 50
     MAX_COL_WIDTH = 1000
     DEFAULT_COLUMN_WIDTH = 160
@@ -193,6 +194,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         wx.Panel.__init__(self, parent)
         self.debug = ListPanelDebugProfile.from_level(debug_level)
         self.debug_level = self.debug.level
+        self._diagnostic_logging = self.debug_level >= self.DIAGNOSTIC_LOG_THRESHOLD
         if self.debug.inherit_background:
             inherit_background(self, parent)
         disabled = self.debug.disabled_features()
@@ -304,6 +306,63 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
         if getattr(self, "_debug_summary", None):
             logger.info(self._debug_summary)
+
+    def _log_diagnostics(self, message: str, *args) -> None:
+        """Emit verbose diagnostic information when high debug levels are active."""
+
+        if not getattr(self, "_diagnostic_logging", False):
+            return
+        logger.info("ListPanel diagnostics: " + message, *args)
+
+    def _capture_column_width(self, column: int) -> int:
+        """Return current width of ``column`` or ``-1`` if unavailable."""
+
+        actual = -1
+        with suppress(Exception):
+            actual = self.list.GetColumnWidth(column)
+        return actual
+
+    def _snapshot_rows(self, limit: int = 3) -> list[list[str]]:
+        """Return up to ``limit`` rows of visible text for diagnostics."""
+
+        rows: list[list[str]] = []
+        try:
+            count = self.list.GetItemCount()
+            columns = self.list.GetColumnCount()
+        except Exception:
+            return rows
+        if count <= 0 or columns <= 0:
+            return rows
+        safe_limit = max(0, min(limit, count))
+        for row in range(safe_limit):
+            cells: list[str] = []
+            for col in range(columns):
+                text = ""
+                with suppress(Exception):
+                    text = self.list.GetItemText(row, col)
+                cells.append(text)
+            rows.append(cells)
+        return rows
+
+    def _log_population_snapshot(self, stage: str) -> None:
+        """Dump a short textual snapshot of the current list contents."""
+
+        if not getattr(self, "_diagnostic_logging", False):
+            return
+        item_count = -1
+        column_count = -1
+        with suppress(Exception):
+            item_count = self.list.GetItemCount()
+        with suppress(Exception):
+            column_count = self.list.GetColumnCount()
+        rows = self._snapshot_rows()
+        self._log_diagnostics(
+            "%s — items=%s columns=%s sample=%s",
+            stage,
+            item_count,
+            column_count,
+            rows,
+        )
 
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
         """Return internal ``wx.ListCtrl`` for sorting mixin."""
@@ -508,6 +567,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 except Exception:
                     self.list.SetItemData(index, 0)
         self._post_population_refresh()
+        self._log_population_snapshot("populate-plain")
 
     def _on_size_plain(self, event: wx.Event | None) -> None:
         """Resize the list control to fill the panel without sizers."""
@@ -669,6 +729,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         else:
             with suppress(Exception):
                 self.list.Unbind(wx.EVT_LIST_COL_CLICK)
+        style_flag = -1
+        column_count = -1
+        with suppress(Exception):
+            style_flag = self.list.GetWindowStyleFlag()
+        with suppress(Exception):
+            column_count = self.list.GetColumnCount()
+        self._log_diagnostics(
+            "setup_columns complete — order=%s style=0x%s count=%s",
+            self._field_order,
+            format(style_flag if style_flag >= 0 else 0, "x"),
+            column_count,
+        )
 
     def _add_report_column(self, index: int, field: str, label: str) -> None:
         """Insert a report-style column and ensure it has a visible width."""
@@ -712,6 +784,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.InsertColumn(index, label)
         self._field_order.append(field)
         self._ensure_column_width(index, width)
+        actual = self._capture_column_width(index)
+        self._log_diagnostics(
+            "column %s (%s) inserted — requested=%s actual=%s",
+            index,
+            field,
+            width,
+            actual,
+        )
 
     def _clear_items(self) -> None:
         """Remove all items from the control respecting debug fallbacks."""
@@ -762,6 +842,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Guarantee that a column remains visible even if the backend rejects it."""
 
         if not self.debug.report_column_widths:
+            self._log_diagnostics(
+                "skip width enforcement for column %s (requested=%s)",
+                column,
+                width,
+            )
             return
         width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
         if self._apply_column_width_now(column, width):
@@ -776,9 +861,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self.list.SetColumnWidth(column, width)
         except Exception:
             logger.debug("SetColumnWidth(%s, %s) failed immediately", column, width, exc_info=True)
-        actual = -1
-        with suppress(Exception):
-            actual = self.list.GetColumnWidth(column)
+        actual = self._capture_column_width(column)
+        self._log_diagnostics(
+            "column %s width attempt — requested=%s actual=%s",
+            column,
+            width,
+            actual,
+        )
         if actual and actual > 0:
             return True
         fallbacks: list[int] = []
@@ -800,9 +889,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     "SetColumnWidth(%s, %s) failed during fallback", column, candidate, exc_info=True
                 )
                 continue
-            actual = -1
-            with suppress(Exception):
-                actual = self.list.GetColumnWidth(column)
+            actual = self._capture_column_width(column)
+            self._log_diagnostics(
+                "column %s width fallback — candidate=%s actual=%s",
+                column,
+                candidate,
+                actual,
+            )
             if actual and actual > 0:
                 return True
         return False
@@ -817,9 +910,16 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             stored_width, attempts = self._pending_column_widths[column]
             width = max(width, stored_width)
         self._pending_column_widths[column] = (width, attempts)
+        self._log_diagnostics(
+            "column %s width queued — requested=%s attempts=%s",
+            column,
+            width,
+            attempts,
+        )
         if not self._column_widths_scheduled:
             self._column_widths_scheduled = True
             wx.CallAfter(self._flush_pending_column_widths)
+            self._log_diagnostics("scheduled deferred column width flush")
 
     def _flush_pending_column_widths(self) -> None:
         """Retry collapsed column widths once the widget is fully realized."""
@@ -829,6 +929,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._pending_column_widths.clear()
         if not pending:
             return
+        self._log_diagnostics("processing %s pending column width attempts", len(pending))
         for column, (width, attempts) in pending:
             try:
                 count = self.list.GetColumnCount()
@@ -838,6 +939,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 continue
             success = self._apply_column_width_now(column, width)
             if success:
+                self._log_diagnostics("column %s width recovered after retry", column)
                 continue
             attempts += 1
             if attempts >= 3:
@@ -846,11 +948,23 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 )
                 with suppress(Exception):
                     self.list.SetColumnWidth(column, max(width, self.MIN_COL_WIDTH))
+                actual = self._capture_column_width(column)
+                self._log_diagnostics(
+                    "column %s width give-up — requested=%s actual=%s",
+                    column,
+                    width,
+                    actual,
+                )
                 continue
             self._pending_column_widths[column] = (width, attempts)
+        if self._pending_column_widths:
+            self._log_diagnostics(
+                "retry queue still has %s column(s)", len(self._pending_column_widths)
+            )
         if self._pending_column_widths and not self._column_widths_scheduled:
             self._column_widths_scheduled = True
             wx.CallAfter(self._flush_pending_column_widths)
+            self._log_diagnostics("rescheduled deferred column width flush")
 
     # Columns ---------------------------------------------------------
     def load_column_widths(self, config: ConfigManager) -> None:
@@ -1105,6 +1219,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         ):
             self._update_plain_items()
             self._populate_plain_items()
+            self._log_population_snapshot("refresh-plain")
             return
         try:
             items = self.model.get_visible()
@@ -1125,6 +1240,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     except Exception:
                         self.list.SetItemData(index, 0)
             self._post_population_refresh()
+            self._log_population_snapshot("refresh-report-simple")
             return
         for req in items:
             initial_text = "" if self.debug.report_placeholder_text else str(getattr(req, "title", ""))
@@ -1202,6 +1318,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     value = locale.code_to_label(field, value.value)
                 self.list.SetItem(index, col, str(value))
         self._post_population_refresh()
+        self._log_population_snapshot("refresh-report-full")
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.

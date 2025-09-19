@@ -55,6 +55,9 @@ class ListPanelDebugProfile:
         "selection_events": "list selection events",
         "model_driven": "model-driven refresh",
         "model_cache": "requirement model cache",
+        "report_width_retry": "report width retry queue",
+        "report_column_widths": "report column width enforcement",
+        "report_list_item": "report header listitem setup",
         "report_style": "report-style layout",
         "sizer_layout": "panel box sizer",
     }
@@ -80,6 +83,9 @@ class ListPanelDebugProfile:
     selection_events: bool
     model_driven: bool
     model_cache: bool
+    report_width_retry: bool
+    report_column_widths: bool
+    report_list_item: bool
     report_style: bool
     sizer_layout: bool
 
@@ -111,8 +117,11 @@ class ListPanelDebugProfile:
             selection_events=clamped < 17,
             model_driven=clamped < 18,
             model_cache=clamped < 19,
-            report_style=clamped < 20,
-            sizer_layout=clamped < 21,
+            report_width_retry=clamped < 20,
+            report_column_widths=clamped < 21,
+            report_list_item=clamped < 22,
+            report_style=clamped < 23,
+            sizer_layout=clamped < 24,
         )
 
     def disabled_features(self) -> list[str]:
@@ -637,7 +646,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         width = self._default_column_width(field)
         inserted = False
         list_item_cls = getattr(wx, "ListItem", None)
-        if list_item_cls is not None:
+        if self.debug.report_list_item and list_item_cls is not None:
             try:
                 item = list_item_cls()
             except Exception:
@@ -658,13 +667,23 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 else:
                     inserted = True
         if not inserted:
-            self.list.InsertColumn(index, label)
+            align_flag = getattr(wx, "LIST_FORMAT_LEFT", None)
+            if align_flag is None:
+                self.list.InsertColumn(index, label)
+            else:
+                width_arg = width if self.debug.report_column_widths else -1
+                try:
+                    self.list.InsertColumn(index, label, align_flag, width_arg)
+                except TypeError:
+                    self.list.InsertColumn(index, label)
         self._field_order.append(field)
         self._ensure_column_width(index, width)
 
     def _ensure_column_width(self, column: int, width: int) -> None:
         """Guarantee that a column remains visible even if the backend rejects it."""
 
+        if not self.debug.report_column_widths:
+            return
         width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
         if self._apply_column_width_now(column, width):
             self._pending_column_widths.pop(column, None)
@@ -712,6 +731,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _queue_column_width(self, column: int, width: int) -> None:
         """Schedule a deferred attempt to enforce a report column width."""
 
+        if not self.debug.report_width_retry:
+            return
         attempts = 0
         if column in self._pending_column_widths:
             stored_width, attempts = self._pending_column_widths[column]

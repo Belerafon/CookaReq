@@ -132,6 +132,9 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.debug.selection_events is False
     assert panel.debug.model_driven is False
     assert panel.debug.model_cache is False
+    assert panel.debug.report_width_retry is False
+    assert panel.debug.report_column_widths is False
+    assert panel.debug.report_list_item is False
     assert panel.debug.report_style is False
     assert panel.debug.sizer_layout is False
     assert panel.model is None
@@ -152,10 +155,46 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
     wx_app.Yield()
 
     assert panel.debug.report_style is True
+    assert panel.debug.report_width_retry is True
+    assert panel.debug.report_column_widths is True
+    assert panel.debug.report_list_item is True
     assert panel.debug.rich_rendering is False
     assert panel.list.GetColumnCount() == 1
     assert panel.list.GetItemText(0) == "Visible title"
     assert panel.list.GetColumnWidth(0) > 0
+
+    frame.Destroy()
+
+
+@pytest.mark.parametrize(
+    "level, flags",
+    [
+        (19, {"report_width_retry": True, "report_column_widths": True, "report_list_item": True, "report_style": True}),
+        (20, {"report_width_retry": False, "report_column_widths": True, "report_list_item": True, "report_style": True}),
+        (21, {"report_width_retry": False, "report_column_widths": False, "report_list_item": True, "report_style": True}),
+        (22, {"report_width_retry": False, "report_column_widths": False, "report_list_item": False, "report_style": True}),
+        (23, {"report_width_retry": False, "report_column_widths": False, "report_list_item": False, "report_style": False}),
+    ],
+)
+def test_report_style_debug_steps(wx_app, level, flags):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=level)
+    panel.set_requirements([_req(1, "Visible title")])
+    wx_app.Yield()
+
+    for attr, value in flags.items():
+        assert getattr(panel.debug, attr) is value
+
+    if panel.debug.report_style:
+        assert panel.list.GetWindowStyleFlag() & wx.LC_REPORT
+    else:
+        assert not panel.list.GetWindowStyleFlag() & wx.LC_REPORT
 
     frame.Destroy()
 

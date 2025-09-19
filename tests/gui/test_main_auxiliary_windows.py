@@ -6,6 +6,8 @@ import pytest
 
 from app.config import ConfigManager
 from app.settings import MCPSettings
+from app.ui.debug_data import build_debug_requirements
+from app.ui.debug_list_frame import DebugListFrame
 from app.ui.main_frame import MainFrame
 from app.ui.requirement_model import RequirementModel
 
@@ -62,3 +64,43 @@ def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path):
         if not frame.IsBeingDeleted():
             frame.Destroy()
         wx_app.Yield()
+
+
+def test_view_debug_window_registers_frame(wx_app, tmp_path):
+    """Opening the debug window must create a tracked auxiliary frame."""
+
+    wx = pytest.importorskip("wx")
+
+    config = ConfigManager(path=tmp_path / "config.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    frame = MainFrame(None, config=config, model=RequirementModel())
+    debug_frame: DebugListFrame | None = None
+    try:
+        assert frame.debug_menu_item is not None
+
+        before = set(frame._auxiliary_frames)  # type: ignore[attr-defined]
+        frame.on_open_debug_window(None)
+        wx_app.Yield()
+
+        after = set(frame._auxiliary_frames)  # type: ignore[attr-defined]
+        new_frames = list(after - before)
+        assert len(new_frames) == 1
+
+        debug_frame = new_frames[0]
+        assert isinstance(debug_frame, DebugListFrame)
+
+        ctrl = debug_frame.list_panel.list
+        dataset = build_debug_requirements()
+        item_count = ctrl.GetItemCount()
+        assert item_count == len(dataset)
+
+        titles = [ctrl.GetItemText(i) for i in range(item_count)]
+        expected = [req.title for req in dataset]
+        assert titles == expected
+    finally:
+        if debug_frame and not debug_frame.IsBeingDeleted():
+            debug_frame.Destroy()
+            wx_app.Yield()
+        if not frame.IsBeingDeleted():
+            frame.Destroy()
+            wx_app.Yield()

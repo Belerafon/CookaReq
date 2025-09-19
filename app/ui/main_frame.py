@@ -15,15 +15,7 @@ _EXPAND_ARROW = "\N{BLACK RIGHT-POINTING TRIANGLE}"
 
 from ..config import ConfigManager
 from ..confirm import confirm
-from ..core.model import (
-    Link,
-    Priority,
-    Requirement,
-    RequirementType,
-    Status,
-    Verification,
-    requirement_fingerprint,
-)
+from ..core.model import Link, Requirement, requirement_fingerprint
 from ..core.document_store import (
     Document,
     LabelDef,
@@ -38,6 +30,8 @@ from ..mcp.controller import MCPController
 from ..settings import AppSettings, LLMSettings, MCPSettings
 from .controllers import DocumentsController
 from .document_dialog import DocumentPropertiesDialog
+from .debug_data import DEBUG_LIST_FIELDS, build_debug_requirements
+from .debug_list_frame import DebugListFrame
 from .document_tree import DocumentTree
 from .detached_editor import DetachedEditorFrame
 from .error_dialog import show_error_dialog
@@ -51,32 +45,6 @@ from .widgets import SectionContainer
 
 
 _SECTION_DEFAULT_PADDING = 0
-
-_DEBUG_LIST_FIELDS: list[str] = ["status", "owner"]
-
-_DEBUG_REQUIREMENTS_DATA: tuple[tuple[int, str, Status, str, str], ...] = (
-    (
-        10_001,
-        "Debug requirement A",
-        Status.DRAFT,
-        "Alpha",
-        "Static debug row one",
-    ),
-    (
-        10_002,
-        "Debug requirement B",
-        Status.IN_REVIEW,
-        "Beta",
-        "Static debug row two",
-    ),
-    (
-        10_003,
-        "Debug requirement C",
-        Status.APPROVED,
-        "Gamma",
-        "Static debug row three",
-    ),
-)
 
 class WxLogHandler(logging.Handler):
     """Forward log records to a ``wx.TextCtrl``."""
@@ -188,12 +156,14 @@ class MainFrame(wx.Frame):
             on_new_requirement=self.on_new_requirement,
             on_run_command=self.on_run_command,
             on_open_logs=self.on_open_logs,
+            on_open_debug_window=self.on_open_debug_window,
         )
         self._recent_menu = self.navigation.recent_menu
         self._recent_menu_item = self.navigation.recent_menu_item
         self.log_menu_item = self.navigation.log_menu_item
         self.editor_menu_item = self.navigation.editor_menu_item
         self.agent_chat_menu_item = self.navigation.agent_chat_menu_item
+        self.debug_menu_item = self.navigation.debug_menu_item
         self.manage_labels_id = self.navigation.manage_labels_id
         self._detached_editors: dict[tuple[str, int], DetachedEditorFrame] = {}
         self._auxiliary_frames: set[wx.Frame] = set()
@@ -678,35 +648,15 @@ class MainFrame(wx.Frame):
         self.agent_panel.Hide()
         self.agent_container.Hide()
 
-    def _debug_requirements_dataset(self) -> list[Requirement]:
-        """Return static requirements used to seed the debug list."""
-
-        dataset: list[Requirement] = []
-        for req_id, title, status, owner, statement in _DEBUG_REQUIREMENTS_DATA:
-            dataset.append(
-                Requirement(
-                    id=req_id,
-                    title=title,
-                    statement=statement,
-                    type=RequirementType.REQUIREMENT,
-                    status=status,
-                    owner=owner,
-                    priority=Priority.MEDIUM,
-                    source="debug-static",
-                    verification=Verification.ANALYSIS,
-                )
-            )
-        return dataset
-
     def _ensure_debug_panel_seeded(self) -> None:
         """Configure debug list panel with predictable static data."""
 
         debug_panel = getattr(self, "agent_panel", None)
         if not isinstance(debug_panel, ListPanel):
             return
-        if getattr(debug_panel, "columns", []) != list(_DEBUG_LIST_FIELDS):
-            debug_panel.set_columns(list(_DEBUG_LIST_FIELDS))
-        debug_panel.set_requirements(self._debug_requirements_dataset(), {})
+        if getattr(debug_panel, "columns", []) != list(DEBUG_LIST_FIELDS):
+            debug_panel.set_columns(list(DEBUG_LIST_FIELDS))
+        debug_panel.set_requirements(build_debug_requirements(), {})
 
     def _update_section_labels(self) -> None:
         """Refresh captions for titled sections according to current locale."""
@@ -885,6 +835,7 @@ class MainFrame(wx.Frame):
         self.log_menu_item = self.navigation.log_menu_item
         self.editor_menu_item = self.navigation.editor_menu_item
         self.agent_chat_menu_item = self.navigation.agent_chat_menu_item
+        self.debug_menu_item = self.navigation.debug_menu_item
         self.manage_labels_id = self.navigation.manage_labels_id
         if self.editor_menu_item:
             self.editor_menu_item.Check(editor_visible)
@@ -1025,6 +976,20 @@ class MainFrame(wx.Frame):
             wx.MessageBox(str(exc), _("Error"))
             return
         frame = TraceMatrixFrame(self, links)
+        self.register_auxiliary_frame(frame)
+        frame.Show()
+
+    def on_open_debug_window(
+        self,
+        _event: wx.Event,
+    ) -> None:  # pragma: no cover - GUI event
+        """Open auxiliary window with a standalone debug requirement list."""
+
+        frame = DebugListFrame(
+            self,
+            columns=DEBUG_LIST_FIELDS,
+            requirements=build_debug_requirements(),
+        )
         self.register_auxiliary_frame(frame)
         frame.Show()
 

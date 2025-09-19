@@ -29,12 +29,37 @@ if TYPE_CHECKING:  # pragma: no cover
     from wx import ContextMenuEvent, ListEvent
 
 
-def _list_panel_debug_enabled() -> bool:
-    value = os.environ.get("COOKAREQ_LIST_PANEL_DEBUG")
-    if value is None:
-        return True
-    value = value.strip().lower()
-    return value not in {"0", "false", "no", "off"}
+class ListPanelRenderingMode(Enum):
+    """Toggle that defines how ListPanel renders advanced visuals."""
+
+    DEBUG = "debug"
+    FULL = "full"
+
+
+def _determine_rendering_mode() -> ListPanelRenderingMode:
+    """Return rendering mode for ListPanel, defaulting to debug."""
+
+    explicit = os.environ.get("COOKAREQ_LIST_PANEL_RENDERING")
+    if explicit:
+        normalized = explicit.strip().lower()
+        if normalized in {"full", "prod", "production", "release"}:
+            return ListPanelRenderingMode.FULL
+        if normalized in {"debug", "diagnostic", "safe"}:
+            return ListPanelRenderingMode.DEBUG
+        logger.warning(
+            "Unknown COOKAREQ_LIST_PANEL_RENDERING value %r; falling back to debug mode.",
+            explicit,
+        )
+        return ListPanelRenderingMode.DEBUG
+
+    legacy = os.environ.get("COOKAREQ_LIST_PANEL_DEBUG")
+    if legacy is not None:
+        normalized = legacy.strip().lower()
+        if normalized in {"0", "false", "no", "off"}:
+            return ListPanelRenderingMode.FULL
+        return ListPanelRenderingMode.DEBUG
+
+    return ListPanelRenderingMode.DEBUG
 
 
 # Temporary debug toggles to narrow down repaint bug in ListPanel.
@@ -43,17 +68,20 @@ def _list_panel_debug_enabled() -> bool:
 #   * background inheritance might introduce palette glitches;
 #   * subitem image style tweaks may confuse native backends;
 #   * custom label bitmaps exercise wx.ImageList and manual drawing.
-_DEBUG_RENDERING = _list_panel_debug_enabled()
-DISABLE_BACKGROUND_INHERITANCE = _DEBUG_RENDERING or False
-DISABLE_SUBITEM_IMAGE_STYLE = _DEBUG_RENDERING or False
-DISABLE_LABEL_BITMAPS = _DEBUG_RENDERING or False
+_RENDERING_MODE = _determine_rendering_mode()
+_DEBUG_RENDERING = _RENDERING_MODE is ListPanelRenderingMode.DEBUG
+DISABLE_BACKGROUND_INHERITANCE = _DEBUG_RENDERING
+DISABLE_SUBITEM_IMAGE_STYLE = _DEBUG_RENDERING
+DISABLE_LABEL_BITMAPS = _DEBUG_RENDERING
 
 if _DEBUG_RENDERING:
     logger.info(
         "ListPanel debug rendering mode enabled: background inheritance, subitem images, "
-        "and label bitmaps are temporarily disabled. Set COOKAREQ_LIST_PANEL_DEBUG=0 to "
-        "restore the full visuals."
+        "and label bitmaps are temporarily disabled. Set COOKAREQ_LIST_PANEL_RENDERING=full "
+        "to restore the full visuals once the repaint bug is fixed."
     )
+else:
+    logger.info("ListPanel full rendering mode enabled; advanced visuals are active.")
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):

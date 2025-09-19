@@ -60,7 +60,11 @@ class ListPanelDebugProfile:
         "report_list_item": "report header listitem setup",
         "report_clear_all": "report ClearAll column reset",
         "report_batch_delete": "report bulk DeleteAllItems",
+        "report_column_align": "report column alignment",
         "report_lazy_refresh": "implicit report refresh",
+        "report_placeholder_text": "report placeholder insert",
+        "report_item_images": "report item image management",
+        "report_item_data": "report item client data",
         "report_style": "report-style layout",
         "sizer_layout": "panel box sizer",
     }
@@ -91,7 +95,11 @@ class ListPanelDebugProfile:
     report_list_item: bool
     report_clear_all: bool
     report_batch_delete: bool
+    report_column_align: bool
     report_lazy_refresh: bool
+    report_placeholder_text: bool
+    report_item_images: bool
+    report_item_data: bool
     report_style: bool
     sizer_layout: bool
 
@@ -128,9 +136,13 @@ class ListPanelDebugProfile:
             report_list_item=clamped < 22,
             report_clear_all=clamped < 23,
             report_batch_delete=clamped < 24,
-            report_lazy_refresh=clamped < 25,
-            report_style=clamped < 26,
-            sizer_layout=clamped < 27,
+            report_column_align=clamped < 25,
+            report_lazy_refresh=clamped < 26,
+            report_placeholder_text=clamped < 27,
+            report_item_images=clamped < 28,
+            report_item_data=clamped < 29,
+            report_style=clamped < 30,
+            sizer_layout=clamped < 31,
         )
 
     def disabled_features(self) -> list[str]:
@@ -490,10 +502,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._clear_items()
         for req_id, title in self._plain_items:
             index = self.list.InsertItem(self.list.GetItemCount(), title)
-            try:
-                self.list.SetItemData(index, int(req_id))
-            except Exception:
-                self.list.SetItemData(index, 0)
+            if self.debug.report_item_data:
+                try:
+                    self.list.SetItemData(index, int(req_id))
+                except Exception:
+                    self.list.SetItemData(index, 0)
         self._post_population_refresh()
 
     def _on_size_plain(self, event: wx.Event | None) -> None:
@@ -519,15 +532,17 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _set_label_text(self, index: int, col: int, labels: list[str]) -> None:
         text = ", ".join(labels)
         self.list.SetItem(index, col, text)
+        if not self.debug.report_item_images:
+            return
         if col == 0 and hasattr(self.list, "SetItemImage"):
             with suppress(Exception):
                 self.list.SetItemImage(index, -1)
-        else:
+            return
+        with suppress(Exception):
+            self.list.SetItemColumnImage(index, col, -1)
+        if hasattr(self.list, "SetItemImage"):
             with suppress(Exception):
-                self.list.SetItemColumnImage(index, col, -1)
-            if hasattr(self.list, "SetItemImage"):
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
+                self.list.SetItemImage(index, -1)
 
     def _create_label_bitmap(self, names: list[str]) -> wx.Bitmap:
         padding_x, padding_y, gap = 4, 2, 2
@@ -561,12 +576,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         return bmp
 
     def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
-        if not self.debug.label_bitmaps:
+        if not self.debug.label_bitmaps or not self.debug.report_item_images:
             self._set_label_text(index, col, labels)
             return
         if not labels:
             self.list.SetItem(index, col, "")
-            if hasattr(self.list, "SetItemImage") and col == 0:
+            if self.debug.report_item_images and hasattr(self.list, "SetItemImage") and col == 0:
                 with suppress(Exception):
                     self.list.SetItemImage(index, -1)
             return
@@ -598,13 +613,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if col == 0:
             # Column 0 uses the main item image slot
             self.list.SetItem(index, col, "")
-            if hasattr(self.list, "SetItemImage"):
+            if self.debug.report_item_images and hasattr(self.list, "SetItemImage"):
                 with suppress(Exception):
                     self.list.SetItemImage(index, img_id)
         else:
             self.list.SetItem(index, col, "")
-            self.list.SetItemColumnImage(index, col, img_id)
-            if hasattr(self.list, "SetItemImage"):
+            if self.debug.report_item_images:
+                self.list.SetItemColumnImage(index, col, img_id)
+            if self.debug.report_item_images and hasattr(self.list, "SetItemImage"):
                 with suppress(Exception):
                     self.list.SetItemImage(index, -1)
 
@@ -668,7 +684,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if item is not None:
                 if hasattr(item, "SetText"):
                     item.SetText(label)
-                align_flag = getattr(wx, "LIST_FORMAT_LEFT", None)
+                align_flag = getattr(wx, "LIST_FORMAT_LEFT", None) if self.debug.report_column_align else None
                 if align_flag is not None and hasattr(item, "SetAlign"):
                     with suppress(Exception):
                         item.SetAlign(align_flag)
@@ -681,7 +697,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 else:
                     inserted = True
         if not inserted:
-            align_flag = getattr(wx, "LIST_FORMAT_LEFT", None)
+            align_flag = (
+                getattr(wx, "LIST_FORMAT_LEFT", None)
+                if self.debug.report_column_align
+                else None
+            )
             if align_flag is None:
                 self.list.InsertColumn(index, label)
             else:
@@ -1098,24 +1118,30 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.GetItemCount(),
                     str(title),
                 )
+                if self.debug.report_item_data:
+                    req_id = getattr(req, "id", 0)
+                    try:
+                        self.list.SetItemData(index, int(req_id))
+                    except Exception:
+                        self.list.SetItemData(index, 0)
+            self._post_population_refresh()
+            return
+        for req in items:
+            initial_text = "" if self.debug.report_placeholder_text else str(getattr(req, "title", ""))
+            if self.debug.report_item_images:
+                index = self.list.InsertItem(self.list.GetItemCount(), initial_text, -1)
+            else:
+                index = self.list.InsertItem(self.list.GetItemCount(), initial_text)
+            # Windows ListCtrl may still assign image 0; clear explicitly
+            if self.debug.report_item_images and hasattr(self.list, "SetItemImage"):
+                with suppress(Exception):
+                    self.list.SetItemImage(index, -1)
+            if self.debug.report_item_data:
                 req_id = getattr(req, "id", 0)
                 try:
                     self.list.SetItemData(index, int(req_id))
                 except Exception:
                     self.list.SetItemData(index, 0)
-            self._post_population_refresh()
-            return
-        for req in items:
-            index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
-            # Windows ListCtrl may still assign image 0; clear explicitly
-            if hasattr(self.list, "SetItemImage"):
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
-            req_id = getattr(req, "id", 0)
-            try:
-                self.list.SetItemData(index, int(req_id))
-            except Exception:
-                self.list.SetItemData(index, 0)
             for col, field in enumerate(self._field_order):
                 if field == "title":
                     title = getattr(req, "title", "")
@@ -1191,6 +1217,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def focus_requirement(self, req_id: int) -> None:
         """Select and ensure visibility of requirement ``req_id``."""
 
+        if not self.debug.report_item_data:
+            return
         target_index: int | None = None
         try:
             count = self.list.GetItemCount()
@@ -1396,6 +1424,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         return indices
 
     def _indices_to_ids(self, indices: Sequence[int]) -> list[int]:
+        if not self.debug.report_item_data:
+            return []
         ids: list[int] = []
         for idx in indices:
             if idx == wx.NOT_FOUND:

@@ -138,6 +138,10 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.debug.report_clear_all is False
     assert panel.debug.report_batch_delete is False
     assert panel.debug.report_lazy_refresh is False
+    assert panel.debug.report_column_align is False
+    assert panel.debug.report_placeholder_text is False
+    assert panel.debug.report_item_images is False
+    assert panel.debug.report_item_data is False
     assert panel.debug.report_style is False
     assert panel.debug.sizer_layout is False
     assert panel.model is None
@@ -162,6 +166,10 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
     assert panel.debug.report_column_widths is True
     assert panel.debug.report_list_item is True
     assert panel.debug.rich_rendering is False
+    assert panel.debug.report_column_align is True
+    assert panel.debug.report_placeholder_text is True
+    assert panel.debug.report_item_images is True
+    assert panel.debug.report_item_data is True
     assert panel.list.GetColumnCount() == 1
     assert panel.list.GetItemText(0) == "Visible title"
     assert panel.list.GetColumnWidth(0) > 0
@@ -180,8 +188,13 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
                 "report_list_item": True,
                 "report_clear_all": True,
                 "report_batch_delete": True,
+                "report_column_align": True,
                 "report_lazy_refresh": True,
+                "report_placeholder_text": True,
+                "report_item_images": True,
+                "report_item_data": True,
                 "report_style": True,
+                "sizer_layout": True,
             },
         ),
         (
@@ -192,8 +205,13 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
                 "report_list_item": True,
                 "report_clear_all": True,
                 "report_batch_delete": True,
+                "report_column_align": True,
                 "report_lazy_refresh": True,
+                "report_placeholder_text": True,
+                "report_item_images": True,
+                "report_item_data": True,
                 "report_style": True,
+                "sizer_layout": True,
             },
         ),
         (
@@ -204,8 +222,13 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
                 "report_list_item": True,
                 "report_clear_all": True,
                 "report_batch_delete": True,
+                "report_column_align": True,
                 "report_lazy_refresh": True,
+                "report_placeholder_text": True,
+                "report_item_images": True,
+                "report_item_data": True,
                 "report_style": True,
+                "sizer_layout": True,
             },
         ),
         (
@@ -216,8 +239,13 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
                 "report_list_item": False,
                 "report_clear_all": True,
                 "report_batch_delete": True,
+                "report_column_align": True,
                 "report_lazy_refresh": True,
+                "report_placeholder_text": True,
+                "report_item_images": True,
+                "report_item_data": True,
                 "report_style": True,
+                "sizer_layout": True,
             },
         ),
         (
@@ -228,8 +256,13 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
                 "report_list_item": False,
                 "report_clear_all": False,
                 "report_batch_delete": True,
+                "report_column_align": True,
                 "report_lazy_refresh": True,
+                "report_placeholder_text": True,
+                "report_item_images": True,
+                "report_item_data": True,
                 "report_style": True,
+                "sizer_layout": True,
             },
         ),
         (
@@ -240,8 +273,13 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
                 "report_list_item": False,
                 "report_clear_all": False,
                 "report_batch_delete": False,
+                "report_column_align": True,
                 "report_lazy_refresh": True,
+                "report_placeholder_text": True,
+                "report_item_images": True,
+                "report_item_data": True,
                 "report_style": True,
+                "sizer_layout": True,
             },
         ),
         (
@@ -252,8 +290,13 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
                 "report_list_item": False,
                 "report_clear_all": False,
                 "report_batch_delete": False,
-                "report_lazy_refresh": False,
+                "report_column_align": False,
+                "report_lazy_refresh": True,
+                "report_placeholder_text": True,
+                "report_item_images": True,
+                "report_item_data": True,
                 "report_style": True,
+                "sizer_layout": True,
             },
         ),
         (
@@ -264,8 +307,12 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
                 "report_list_item": False,
                 "report_clear_all": False,
                 "report_batch_delete": False,
+                "report_column_align": False,
                 "report_lazy_refresh": False,
-                "report_style": False,
+                "report_placeholder_text": True,
+                "report_item_images": True,
+                "report_item_data": True,
+                "report_style": True,
                 "sizer_layout": True,
             },
         ),
@@ -277,7 +324,79 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
                 "report_list_item": False,
                 "report_clear_all": False,
                 "report_batch_delete": False,
+                "report_column_align": False,
                 "report_lazy_refresh": False,
+                "report_placeholder_text": False,
+                "report_item_images": True,
+                "report_item_data": True,
+                "report_style": True,
+                "sizer_layout": True,
+            },
+        ),
+        (
+            28,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_column_align": False,
+                "report_lazy_refresh": False,
+                "report_placeholder_text": False,
+                "report_item_images": False,
+                "report_item_data": True,
+                "report_style": True,
+                "sizer_layout": True,
+            },
+        ),
+        (
+            29,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_column_align": False,
+                "report_lazy_refresh": False,
+                "report_placeholder_text": False,
+                "report_item_images": False,
+                "report_item_data": False,
+                "report_style": True,
+                "sizer_layout": True,
+            },
+        ),
+        (
+            30,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_column_align": False,
+                "report_lazy_refresh": False,
+                "report_placeholder_text": False,
+                "report_item_images": False,
+                "report_item_data": False,
+                "report_style": False,
+                "sizer_layout": True,
+            },
+        ),
+        (
+            31,
+            {
+                "report_width_retry": False,
+                "report_column_widths": False,
+                "report_list_item": False,
+                "report_clear_all": False,
+                "report_batch_delete": False,
+                "report_column_align": False,
+                "report_lazy_refresh": False,
+                "report_placeholder_text": False,
+                "report_item_images": False,
+                "report_item_data": False,
                 "report_style": False,
                 "sizer_layout": False,
             },

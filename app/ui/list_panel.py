@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Sequence
 from contextlib import suppress
 from enum import Enum
@@ -28,15 +29,31 @@ if TYPE_CHECKING:  # pragma: no cover
     from wx import ContextMenuEvent, ListEvent
 
 
+def _list_panel_debug_enabled() -> bool:
+    value = os.environ.get("COOKAREQ_LIST_PANEL_DEBUG")
+    if value is None:
+        return True
+    value = value.strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
 # Temporary debug toggles to narrow down repaint bug in ListPanel.
 # Each flag disables a non-essential UI enhancement so we can test hypotheses
 # about what breaks requirement text rendering:
 #   * background inheritance might introduce palette glitches;
 #   * subitem image style tweaks may confuse native backends;
 #   * custom label bitmaps exercise wx.ImageList and manual drawing.
-DISABLE_BACKGROUND_INHERITANCE = True
-DISABLE_SUBITEM_IMAGE_STYLE = True
-DISABLE_LABEL_BITMAPS = True
+_DEBUG_RENDERING = _list_panel_debug_enabled()
+DISABLE_BACKGROUND_INHERITANCE = _DEBUG_RENDERING or False
+DISABLE_SUBITEM_IMAGE_STYLE = _DEBUG_RENDERING or False
+DISABLE_LABEL_BITMAPS = _DEBUG_RENDERING or False
+
+if _DEBUG_RENDERING:
+    logger.info(
+        "ListPanel debug rendering mode enabled: background inheritance, subitem images, "
+        "and label bitmaps are temporarily disabled. Set COOKAREQ_LIST_PANEL_DEBUG=0 to "
+        "restore the full visuals."
+    )
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
-from ..core.document_store import LabelDef, label_color, load_item, parse_rid, stable_color
+from ..core.document_store import LabelDef, load_item, parse_rid
 from ..core.model import Requirement
 from ..i18n import _
 from ..log import logger
@@ -66,13 +66,13 @@ def _determine_rendering_mode() -> ListPanelRenderingMode:
 # Each flag disables a non-essential UI enhancement so we can test hypotheses
 # about what breaks requirement text rendering:
 #   * background inheritance might introduce palette glitches;
-#   * subitem image style tweaks may confuse native backends;
-#   * custom label bitmaps exercise wx.ImageList and manual drawing.
+#   * subitem image style tweaks may confuse native backends.
+# The specialised labels column and bitmap badges are removed entirely for now
+# so we can verify whether their painting logic was hiding text cells.
 _RENDERING_MODE = _determine_rendering_mode()
 _DEBUG_RENDERING = _RENDERING_MODE is ListPanelRenderingMode.DEBUG
 DISABLE_BACKGROUND_INHERITANCE = _DEBUG_RENDERING
 DISABLE_SUBITEM_IMAGE_STYLE = _DEBUG_RENDERING
-DISABLE_LABEL_BITMAPS = _DEBUG_RENDERING
 SIMPLIFY_COLUMN_SET = _DEBUG_RENDERING
 SIMPLIFY_CELL_RENDERING = _DEBUG_RENDERING
 DISABLE_CONTEXT_MENU = _DEBUG_RENDERING
@@ -80,7 +80,7 @@ DISABLE_CONTEXT_MENU = _DEBUG_RENDERING
 if _DEBUG_RENDERING:
     logger.info(
         "ListPanel debug rendering mode enabled: background inheritance, subitem images, "
-        "label bitmaps, extra columns, context menus, and complex cell formatting are temporarily disabled. "
+        "extra columns, context menus, and complex cell formatting are temporarily disabled. "
         "Set COOKAREQ_LIST_PANEL_RENDERING=full to restore the full visuals once the repaint "
         "bug is fixed."
     )
@@ -96,7 +96,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     DEFAULT_COLUMN_WIDTH = 160
     DEFAULT_COLUMN_WIDTHS: dict[str, int] = {
         "title": 340,
-        "labels": 200,
         "id": 90,
         "status": 140,
         "priority": 130,
@@ -158,8 +157,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetExtraStyle(self.list.GetExtraStyle() | extra)
         self._labels: list[LabelDef] = []
         self.current_filters: dict = {}
-        self._image_list: wx.ImageList | None = None
-        self._label_images: dict[tuple[str, ...], int] = {}
+        self._label_column_pruned = False
         self._rid_lookup: dict[str, Requirement] = {}
         self._doc_titles: dict[str, str] = {}
         self._link_display_cache: dict[str, str] = {}
@@ -234,50 +232,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
         self._current_doc_prefix = prefix
 
-    def _label_color(self, name: str) -> str:
-        for lbl in self._labels:
-            if lbl.key == name:
-                return label_color(lbl)
-        return stable_color(name)
-
-    def _ensure_image_list_size(self, width: int, height: int) -> None:
-        width = max(width, 1)
-        height = max(height, 1)
-        if DISABLE_LABEL_BITMAPS:
-            return
-        if self._image_list is None:
-            self._image_list = wx.ImageList(width, height)
-            self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
-            return
-        cur_w, cur_h = self._image_list.GetSize()
-        if width <= cur_w and height <= cur_h:
-            return
-        new_w = max(width, cur_w)
-        new_h = max(height, cur_h)
-        new_list = wx.ImageList(new_w, new_h)
-        count = self._image_list.GetImageCount()
-        for idx in range(count):
-            bmp = self._image_list.GetBitmap(idx)
-            bmp = self._pad_bitmap(bmp, new_w, new_h)
-            new_list.Add(bmp)
-        self._image_list = new_list
-        self.list.SetImageList(self._image_list, wx.IMAGE_LIST_SMALL)
-
-    def _pad_bitmap(self, bmp: wx.Bitmap, width: int, height: int) -> wx.Bitmap:
-        if bmp.GetWidth() == width and bmp.GetHeight() == height:
-            return bmp
-        padded = wx.Bitmap(max(width, 1), max(height, 1))
-        dc = wx.MemoryDC()
-        dc.SelectObject(padded)
-        try:
-            bg = self.list.GetBackgroundColour()
-            dc.SetBackground(wx.Brush(bg))
-            dc.Clear()
-            dc.DrawBitmap(bmp, 0, 0, True)
-        finally:
-            dc.SelectObject(wx.NullBitmap)
-        return padded
-
     def _doc_title_for_prefix(self, prefix: str) -> str:
         if not prefix:
             return ""
@@ -348,98 +302,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         rid = getattr(parent, "rid", str(parent))
         return self._link_display_text(rid)
 
-    def _set_label_text(self, index: int, col: int, labels: list[str]) -> None:
-        text = ", ".join(labels)
-        self.list.SetItem(index, col, text)
-        if col == 0 and hasattr(self.list, "SetItemImage"):
-            with suppress(Exception):
-                self.list.SetItemImage(index, -1)
-        else:
-            with suppress(Exception):
-                self.list.SetItemColumnImage(index, col, -1)
-            if hasattr(self.list, "SetItemImage"):
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
-
-    def _create_label_bitmap(self, names: list[str]) -> wx.Bitmap:
-        padding_x, padding_y, gap = 4, 2, 2
-        font = self.list.GetFont()
-        dc = wx.MemoryDC()
-        dc.SelectObject(wx.Bitmap(1, 1))
-        dc.SetFont(font)
-        widths: list[int] = []
-        height = 0
-        for name in names:
-            w, h = dc.GetTextExtent(name)
-            widths.append(w)
-            height = max(height, h)
-        height += padding_y * 2
-        total = sum(w + padding_x * 2 for w in widths) + gap * (len(names) - 1)
-        bmp = wx.Bitmap(total or 1, height or 1)
-        dc.SelectObject(bmp)
-        dc.SetBackground(wx.Brush(self.list.GetBackgroundColour()))
-        dc.Clear()
-        x = 0
-        for name, w in zip(names, widths):
-            colour = wx.Colour(self._label_color(name))
-            dc.SetBrush(wx.Brush(colour))
-            dc.SetPen(wx.Pen(colour))
-            box_w = w + padding_x * 2
-            dc.DrawRectangle(x, 0, box_w, height)
-            dc.SetTextForeground(wx.BLACK)
-            dc.DrawText(name, x + padding_x, padding_y)
-            x += box_w + gap
-        dc.SelectObject(wx.NullBitmap)
-        return bmp
-
-    def _set_label_image(self, index: int, col: int, labels: list[str]) -> None:
-        if DISABLE_LABEL_BITMAPS:
-            self._set_label_text(index, col, labels)
-            return
-        if not labels:
-            self.list.SetItem(index, col, "")
-            if hasattr(self.list, "SetItemImage") and col == 0:
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
-            return
-        key = tuple(labels)
-        img_id = self._label_images.get(key)
-        if img_id == -1:
-            self._set_label_text(index, col, labels)
-            return
-        if img_id is None:
-            bmp = self._create_label_bitmap(labels)
-            self._ensure_image_list_size(bmp.GetWidth(), bmp.GetHeight())
-            if self._image_list is None:
-                self._label_images[key] = -1
-                self._set_label_text(index, col, labels)
-                return
-            list_w, list_h = self._image_list.GetSize()
-            bmp = self._pad_bitmap(bmp, list_w, list_h)
-            try:
-                img_id = self._image_list.Add(bmp)
-            except Exception:
-                logger.exception("Failed to add labels image; using text fallback")
-                img_id = -1
-            if img_id == -1:
-                logger.warning("Image list rejected labels bitmap; using text fallback")
-                self._label_images[key] = -1
-                self._set_label_text(index, col, labels)
-                return
-            self._label_images[key] = img_id
-        if col == 0:
-            # Column 0 uses the main item image slot
-            self.list.SetItem(index, col, "")
-            if hasattr(self.list, "SetItemImage"):
-                with suppress(Exception):
-                    self.list.SetItemImage(index, img_id)
-        else:
-            self.list.SetItem(index, col, "")
-            self.list.SetItemColumnImage(index, col, img_id)
-            if hasattr(self.list, "SetItemImage"):
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
-
     def _basic_cell_text(self, req: Requirement, field: str) -> str:
         """Return minimal string representation for ``field`` in debug mode."""
 
@@ -459,29 +321,17 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _setup_columns(self) -> None:
         """Configure list control columns based on selected fields.
 
-        On Windows ``wx.ListCtrl`` always reserves space for an image in the
-        first physical column. Placing ``labels`` at index 0 removes the extra
-        padding before ``Title``. Another workaround is to insert a hidden
-        dummy column before ``Title``.
+        The title column always remains first. Additional columns are appended
+        only when we are not in the simplified debug mode. The labels column is
+        intentionally skipped so the list avoids bitmap work while we track
+        down the repaint regression.
         """
         self.list.ClearAll()
         self._field_order: list[str] = []
-        if SIMPLIFY_COLUMN_SET:
-            self.list.InsertColumn(0, _("Title"))
-            self._field_order.append("title")
-        else:
-            include_labels = "labels" in self.columns
-            if include_labels:
-                self.list.InsertColumn(0, _("Labels"))
-                self._field_order.append("labels")
-                self.list.InsertColumn(1, _("Title"))
-                self._field_order.append("title")
-            else:
-                self.list.InsertColumn(0, _("Title"))
-                self._field_order.append("title")
+        self.list.InsertColumn(0, _("Title"))
+        self._field_order.append("title")
+        if not SIMPLIFY_COLUMN_SET:
             for field in self.columns:
-                if field == "labels":
-                    continue
                 idx = self.list.GetColumnCount()
                 self.list.InsertColumn(idx, locale.field_label(field))
                 self._field_order.append(field)
@@ -547,25 +397,34 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def reorder_columns(self, from_col: int, to_col: int) -> None:
         """Move column from ``from_col`` index to ``to_col`` index."""
-        offset = 2 if "labels" in self.columns else 1
+        offset = 1
         if from_col == to_col or from_col < offset or to_col < offset:
             return
-        fields = [f for f in self.columns if f != "labels"]
+        fields = list(self.columns)
         field = fields.pop(from_col - offset)
         fields.insert(to_col - offset, field)
-        if "labels" in self.columns:
-            self.columns = ["labels", *fields]
-        else:
-            self.columns = fields
+        self.columns = fields
         self._setup_columns()
         self._refresh()
 
     def set_columns(self, fields: list[str]) -> None:
-        """Set additional columns (beyond Title) to display.
+        """Set additional columns (beyond Title) to display."""
 
-        ``labels`` is treated specially and rendered as a comma-separated list.
-        """
-        self.columns = fields
+        filtered: list[str] = []
+        suppressed = False
+        for field in fields:
+            if field == "labels":
+                suppressed = True
+                continue
+            filtered.append(field)
+        if suppressed and not self._label_column_pruned:
+            logger.info(
+                "ListPanel temporarily suppresses the labels column and bitmap badges "
+                "while the repaint bug is investigated. Requests to include it are "
+                "ignored for now."
+            )
+            self._label_column_pruned = True
+        self.columns = filtered
         self._setup_columns()
         # repopulate with existing requirements after changing columns
         self._refresh()
@@ -708,23 +567,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if SIMPLIFY_CELL_RENDERING:
                     text = self._basic_cell_text(req, field)
                     self.list.SetItem(index, col, text)
-                    if field == "labels":
-                        if hasattr(self.list, "SetItemColumnImage"):
-                            with suppress(Exception):
-                                self.list.SetItemColumnImage(index, col, -1)
-                        if hasattr(self.list, "SetItemImage"):
-                            with suppress(Exception):
-                                self.list.SetItemImage(index, -1)
                     continue
                 if field == "title":
                     title = getattr(req, "title", "")
                     derived = bool(getattr(req, "links", []))
                     display = f"↳ {title}".strip() if derived else title
                     self.list.SetItem(index, col, display)
-                    continue
-                if field == "labels":
-                    value = getattr(req, "labels", [])
-                    self._set_label_image(index, col, value)
                     continue
                 if field == "derived_from":
                     value = self._first_parent_text(req)

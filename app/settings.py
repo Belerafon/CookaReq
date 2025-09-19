@@ -10,7 +10,7 @@ import tomllib
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
-MAX_LIST_PANEL_DEBUG_LEVEL = 14
+MAX_LIST_PANEL_DEBUG_LEVEL = 18
 
 from .llm.constants import (
     DEFAULT_MAX_CONTEXT_TOKENS,

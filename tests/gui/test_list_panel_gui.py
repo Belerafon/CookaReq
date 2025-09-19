@@ -108,7 +108,7 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
 
-    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=14)
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=18)
     panel.set_columns(["labels", "status"])
     panel.set_requirements([_req(1, "Plain", labels=["bug"], status=Status.APPROVED)])
     wx_app.Yield()
@@ -122,6 +122,10 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.debug.rich_rendering is False
     assert panel.debug.subitem_images is False
     assert panel.debug.sorter_mixin is False
+    assert panel.debug.documents_integration is False
+    assert panel.debug.callbacks is False
+    assert panel.debug.selection_events is False
+    assert panel.debug.model_driven is False
 
     frame.Destroy()
 
@@ -136,13 +140,46 @@ def test_list_panel_debug_level_logs_disabled_features(wx_app, caplog):
 
     caplog.set_level(logging.INFO, logger="cookareq")
 
-    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=12)
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=16)
     panel.set_requirements([_req(1, "Item")])
     wx_app.Yield()
 
     message = caplog.text
     assert f"ListPanel debug level {panel.debug_level}" in message
     assert "background inheritance" in message
+    assert "documents integration" in message
+    assert "action callbacks" in message
+
+    frame.Destroy()
+
+
+def test_main_frame_plain_mode_skips_selection_binding(monkeypatch, tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+
+    from app.config import ConfigManager
+    from app.settings import MAX_LIST_PANEL_DEBUG_LEVEL
+    import app.ui.main_frame as main_frame
+
+    calls: list[tuple[object, object]] = []
+
+    original_bind = wx.Window.Bind
+
+    def recording_bind(self, event, handler=None, source=None, id=wx.ID_ANY, id2=wx.ID_ANY):
+        calls.append((self, event))
+        return original_bind(self, event, handler, source=source, id=id, id2=id2)
+
+    monkeypatch.setattr(wx.Window, "Bind", recording_bind)
+
+    config = ConfigManager(app_name="TestCookaReq", path=tmp_path / "cfg.ini")
+    config.set_list_panel_debug_level(MAX_LIST_PANEL_DEBUG_LEVEL)
+
+    frame = main_frame.MainFrame(None, config=config)
+
+    list_ctrl = frame.panel.list
+    bound_events = [event for target, event in calls if target is list_ctrl]
+
+    assert wx.EVT_LIST_ITEM_SELECTED not in bound_events
+    assert wx.EVT_LIST_ITEM_ACTIVATED not in bound_events
 
     frame.Destroy()
 

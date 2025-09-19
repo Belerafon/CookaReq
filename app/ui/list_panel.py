@@ -50,6 +50,10 @@ class ListPanelDebugProfile:
         "inherit_background": "background inheritance",
         "sorter_mixin": "column sorter mixin",
         "rich_rendering": "rich rendering",
+        "documents_integration": "documents integration",
+        "callbacks": "action callbacks",
+        "selection_events": "list selection events",
+        "model_driven": "model-driven refresh",
     }
 
     level: int
@@ -68,6 +72,10 @@ class ListPanelDebugProfile:
     inherit_background: bool
     sorter_mixin: bool
     rich_rendering: bool
+    documents_integration: bool
+    callbacks: bool
+    selection_events: bool
+    model_driven: bool
 
     @classmethod
     def from_level(cls, level: int | None) -> "ListPanelDebugProfile":
@@ -92,6 +100,10 @@ class ListPanelDebugProfile:
             inherit_background=clamped < 12,
             sorter_mixin=clamped < 13,
             rich_rendering=clamped < 14,
+            documents_integration=clamped < 15,
+            callbacks=clamped < 16,
+            selection_events=clamped < 17,
+            model_driven=clamped < 18,
         )
 
     def disabled_features(self) -> list[str]:
@@ -154,6 +166,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         else:
             logger.info("ListPanel debug level %s: all features enabled", self.debug_level)
         self.model = model if model is not None else RequirementModel()
+        self._plain_items: list[tuple[int, str]] = []
         sizer = wx.BoxSizer(wx.VERTICAL)
         vertical_pad = dip(self, 5)
         orient = getattr(wx, "HORIZONTAL", 0)
@@ -201,15 +214,22 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if self.debug.sorter_mixin:
             ColumnSorterMixin.__init__(self, 1)
         self.columns: list[str] = []
-        self._on_clone = on_clone
-        self._on_delete = on_delete
-        self._on_delete_many = on_delete_many
-        self._on_sort_changed = on_sort_changed
-        self._on_derive = on_derive
+        if self.debug.callbacks:
+            self._on_clone = on_clone
+            self._on_delete = on_delete
+            self._on_delete_many = on_delete_many
+            self._on_sort_changed = on_sort_changed
+            self._on_derive = on_derive
+        else:
+            self._on_clone = None
+            self._on_delete = None
+            self._on_delete_many = None
+            self._on_sort_changed = None
+            self._on_derive = None
         self.derived_map: dict[str, list[int]] = {}
         self._sort_column = -1
         self._sort_ascending = True
-        self._docs_controller = docs_controller
+        self._docs_controller = docs_controller if self.debug.documents_integration else None
         self._current_doc_prefix: str | None = None
         self._context_menu_open = False
         self._setup_columns()
@@ -245,6 +265,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         on_derive: Callable[[int], None] | None = None,
     ) -> None:
         """Set callbacks for context menu actions."""
+        if not self.debug.callbacks:
+            return
         if on_clone is not None:
             self._on_clone = on_clone
         if on_delete is not None:
@@ -259,6 +281,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     ) -> None:
         """Set documents controller used for persistence."""
 
+        if not self.debug.documents_integration:
+            self._docs_controller = None
+            self._doc_titles = {}
+            self._link_display_cache.clear()
+            self._rid_lookup = {}
+            return
         self._docs_controller = controller
         self._doc_titles = {}
         self._link_display_cache.clear()
@@ -272,6 +300,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def set_active_document(self, prefix: str | None) -> None:
         """Record currently active document prefix for persistence."""
 
+        if not self.debug.documents_integration:
+            return
         self._current_doc_prefix = prefix
 
     def _label_color(self, name: str) -> str:
@@ -383,6 +413,38 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             base = f"{base} ({doc_title})"
         self._link_display_cache[rid] = base
         return base
+
+    def _update_plain_items(self, requirements: list[Requirement] | None = None) -> None:
+        """Build cached plain entries for simplified rendering."""
+
+        source: list[Requirement]
+        if requirements is not None:
+            source = list(requirements)
+        else:
+            try:
+                source = self.model.get_visible()
+            except Exception:
+                source = []
+        plain: list[tuple[int, str]] = []
+        for req in source:
+            try:
+                req_id = int(getattr(req, "id", 0))
+            except Exception:
+                req_id = 0
+            title = str(getattr(req, "title", ""))
+            plain.append((req_id, title))
+        self._plain_items = plain
+
+    def _populate_plain_items(self) -> None:
+        """Render cached plain entries into the list control."""
+
+        self.list.DeleteAllItems()
+        for req_id, title in self._plain_items:
+            index = self.list.InsertItem(self.list.GetItemCount(), title)
+            try:
+                self.list.SetItemData(index, int(req_id))
+            except Exception:
+                self.list.SetItemData(index, 0)
 
     def _first_parent_text(self, req: Requirement) -> str:
         links = getattr(req, "links", []) or []
@@ -629,6 +691,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     ) -> None:
         """Populate list control with requirement data via model."""
         self.model.set_requirements(requirements)
+        if not self.debug.model_driven:
+            self._update_plain_items(requirements)
+            self._populate_plain_items()
+            return
         self._rebuild_rid_lookup(self.model.get_all())
         if not self.debug.derived_map:
             self.derived_map = {}
@@ -760,6 +826,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _refresh(self) -> None:
         """Reload list control from the model."""
+        if not self.debug.model_driven:
+            self._update_plain_items()
+            self._populate_plain_items()
+            return
         items = self.model.get_visible()
         self.list.DeleteAllItems()
         if not self.debug.rich_rendering:
@@ -914,14 +984,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def record_link(self, parent_rid: str, child_id: int) -> None:
         """Record that ``child_id`` links to ``parent_rid``."""
 
-        if not self.debug.derived_map:
+        if not self.debug.derived_map or not self.debug.documents_integration:
             return
         self.derived_map.setdefault(parent_rid, []).append(child_id)
 
     def recalc_derived_map(self, requirements: list[Requirement]) -> None:
         """Rebuild derived requirements map from ``requirements``."""
 
-        if not self.debug.derived_map:
+        if not self.debug.derived_map or not self.debug.documents_integration:
             self._rebuild_rid_lookup(requirements)
             self._refresh()
             return
@@ -1148,7 +1218,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _persist_requirement(self, req: Requirement) -> None:
         """Persist edited ``req`` if controller and document are available."""
 
-        if not self._docs_controller or not self._current_doc_prefix:
+        if (
+            not self.debug.documents_integration
+            or not self._docs_controller
+            or not self._current_doc_prefix
+        ):
             return
         try:
             self._docs_controller.save_requirement(self._current_doc_prefix, req)

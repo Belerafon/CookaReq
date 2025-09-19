@@ -4,6 +4,7 @@ import json
 import logging
 import weakref
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from dataclasses import fields, replace
 from importlib import resources
 from pathlib import Path
@@ -416,8 +417,14 @@ class MainFrame(wx.Frame):
         """Configure ``panel`` with current columns and event bindings."""
 
         panel.set_columns(self.selected_fields)
-        panel.list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_requirement_activated)
-        panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
+        if panel.debug.selection_events:
+            panel.list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_requirement_activated)
+            panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
+        else:
+            with suppress(Exception):
+                panel.list.Unbind(wx.EVT_LIST_ITEM_ACTIVATED)
+            with suppress(Exception):
+                panel.list.Unbind(wx.EVT_LIST_ITEM_SELECTED)
 
     def _recreate_list_panel(self) -> None:
         """Replace the requirements panel preserving data and selection."""
@@ -445,8 +452,9 @@ class MainFrame(wx.Frame):
 
         self.panel = self._create_list_panel(container)
         self._attach_list_panel(self.panel)
-        self.panel.set_documents_controller(self.docs_controller)
-        self.panel.set_active_document(self.current_doc_prefix)
+        if self.panel.debug.documents_integration:
+            self.panel.set_documents_controller(self.docs_controller)
+            self.panel.set_active_document(self.current_doc_prefix)
         if list_sizer is not None:
             list_sizer.Replace(old_panel, self.panel)
         old_panel.Destroy()
@@ -459,7 +467,11 @@ class MainFrame(wx.Frame):
             requirements = []
         derived_map = previous_derived_map if isinstance(previous_derived_map, dict) else None
         self.panel.set_requirements(requirements, derived_map)
-        if self.docs_controller and self.current_doc_prefix:
+        if (
+            self.panel.debug.documents_integration
+            and self.docs_controller
+            and self.current_doc_prefix
+        ):
             try:
                 labels, _ = self.docs_controller.collect_labels(self.current_doc_prefix)
             except Exception:
@@ -1100,7 +1112,8 @@ class MainFrame(wx.Frame):
             return
 
         self.docs_controller = controller
-        self.panel.set_documents_controller(self.docs_controller)
+        if self.panel.debug.documents_integration:
+            self.panel.set_documents_controller(self.docs_controller)
         self.doc_tree.set_documents(docs)
         self.config.add_recent_dir(path)
         self.navigation.update_recent_menu()
@@ -1110,13 +1123,15 @@ class MainFrame(wx.Frame):
         if docs:
             first = sorted(docs)[0]
             self.current_doc_prefix = first
-            self.panel.set_active_document(first)
+            if self.panel.debug.documents_integration:
+                self.panel.set_active_document(first)
             self.editor.set_directory(self.current_dir / first)
             self._load_document_contents(first)
             self.doc_tree.select(first)
         else:
             self.current_doc_prefix = None
-            self.panel.set_active_document(None)
+            if self.panel.debug.documents_integration:
+                self.panel.set_active_document(None)
             self.editor.set_directory(None)
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([])
@@ -1160,7 +1175,8 @@ class MainFrame(wx.Frame):
             self.doc_tree.select(target)
         else:
             self.current_doc_prefix = None
-            self.panel.set_active_document(None)
+            if self.panel.debug.documents_integration:
+                self.panel.set_active_document(None)
             self.editor.set_directory(None)
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([])
@@ -1369,7 +1385,8 @@ class MainFrame(wx.Frame):
         if not self.docs_controller:
             return
         self.current_doc_prefix = prefix
-        self.panel.set_active_document(prefix)
+        if self.panel.debug.documents_integration:
+            self.panel.set_active_document(prefix)
         if self.current_dir:
             self.editor.set_directory(self.current_dir / prefix)
         self._load_document_contents(prefix)

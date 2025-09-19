@@ -177,6 +177,28 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
     frame.Destroy()
 
 
+def test_report_style_high_level_still_displays_title(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=29)
+    panel.set_requirements([_req(1, "Visible title")])
+    wx_app.Yield()
+
+    assert panel.debug.report_style is True
+    assert panel.debug.report_column_widths is False
+    assert panel.list.GetWindowStyleFlag() & wx.LC_REPORT
+    assert panel.list.GetItemCount() == 1
+    assert panel.list.GetItemText(0) == "Visible title"
+    assert panel.list.GetColumnWidth(0) > 0
+
+    frame.Destroy()
+
+
 @pytest.mark.parametrize(
     "level, flags",
     [
@@ -445,6 +467,35 @@ def test_list_panel_debug_level_logs_disabled_features(wx_app, caplog):
     assert "background inheritance" in message
     assert "documents integration" in message
     assert "action callbacks" in message
+
+    frame.Destroy()
+
+
+def test_report_column_width_attempt_even_when_disabled(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+
+    calls: list[tuple[int, int]] = []
+    original_apply = list_panel.ListPanel._apply_column_width_now
+
+    def recording_apply(self, column: int, width: int) -> bool:
+        calls.append((column, width))
+        return original_apply(self, column, width)
+
+    monkeypatch.setattr(list_panel.ListPanel, "_apply_column_width_now", recording_apply)
+
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=29)
+    wx_app.Yield()
+
+    assert calls, "expected a width attempt even with enforcement disabled"
+    column, width = calls[0]
+    assert column == 0
+    assert width >= list_panel.ListPanel.MIN_COL_WIDTH
 
     frame.Destroy()
 

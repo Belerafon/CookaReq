@@ -561,6 +561,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._clear_items()
         for req_id, title in self._plain_items:
             index = self.list.InsertItem(self.list.GetItemCount(), title)
+            with suppress(Exception):
+                # Ensure column 0 text is committed even if InsertItem label is ignored
+                self.list.SetItem(index, 0, title)
             if self.debug.report_item_data:
                 try:
                     self.list.SetItemData(index, int(req_id))
@@ -841,14 +844,20 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _ensure_column_width(self, column: int, width: int) -> None:
         """Guarantee that a column remains visible even if the backend rejects it."""
 
+        width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
         if not self.debug.report_column_widths:
             self._log_diagnostics(
-                "skip width enforcement for column %s (requested=%s)",
+                "width enforcement disabled — single attempt for column %s (requested=%s)",
                 column,
                 width,
             )
+            success = self._apply_column_width_now(column, width)
+            if not success:
+                self._log_diagnostics(
+                    "column %s width still collapsed with enforcement disabled",
+                    column,
+                )
             return
-        width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
         if self._apply_column_width_now(column, width):
             self._pending_column_widths.pop(column, None)
             return

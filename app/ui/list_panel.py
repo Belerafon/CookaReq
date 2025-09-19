@@ -216,6 +216,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._plain_items: list[tuple[int, str]] = []
         self._pending_column_widths: dict[int, tuple[int, int]] = {}
         self._column_widths_scheduled = False
+        self._report_refresh_scheduled = False
+        self._report_refresh_attempts = 0
         sizer = wx.BoxSizer(wx.VERTICAL) if self.debug.sizer_layout else None
         vertical_pad = dip(self, 5)
         orient = getattr(wx, "HORIZONTAL", 0)
@@ -992,11 +994,84 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Force a repaint when implicit refresh is disabled."""
 
         if self.debug.report_lazy_refresh:
+            self._schedule_report_refresh()
             return
+        self._apply_immediate_refresh()
+
+    def _apply_immediate_refresh(self) -> None:
+        """Request the list control to repaint immediately."""
+
         with suppress(Exception):
             self.list.Refresh()
         with suppress(Exception):
             self.list.Update()
+
+    def _schedule_report_refresh(self) -> None:
+        """Fallback for report mode when lazy refresh fails to repaint."""
+
+        if not self.debug.report_style:
+            return
+        if self._report_refresh_scheduled:
+            return
+        self._report_refresh_scheduled = True
+        self._log_diagnostics("scheduled explicit report refresh fallback")
+        call_after = getattr(wx, "CallAfter", None)
+        if callable(call_after):
+            call_after(self._flush_report_refresh)
+            return
+        self._log_diagnostics("executing report refresh immediately — CallAfter unavailable")
+        self._flush_report_refresh()
+
+    def _flush_report_refresh(self) -> None:
+        """Execute a deferred refresh scheduled by ``_schedule_report_refresh``."""
+
+        self._report_refresh_scheduled = False
+        list_ctrl = getattr(self, "list", None)
+        if not list_ctrl:
+            return
+        with suppress(Exception):
+            if list_ctrl.IsBeingDeleted():
+                return
+        shown = True
+        with suppress(Exception):
+            shown = bool(list_ctrl.IsShownOnScreen())
+        if not shown:
+            attempts = self._report_refresh_attempts + 1
+            self._report_refresh_attempts = attempts
+            call_after = getattr(wx, "CallAfter", None)
+            if attempts >= 5 or not callable(call_after):
+                if attempts >= 5:
+                    self._log_diagnostics(
+                        "report refresh giving up after %s deferred attempts",
+                        attempts,
+                    )
+                else:
+                    self._log_diagnostics(
+                        "report refresh fallback without CallAfter (attempt %s)",
+                        attempts,
+                    )
+                self._apply_immediate_refresh()
+                return
+            self._log_diagnostics(
+                "report refresh deferred — control not yet shown (attempt %s)",
+                attempts,
+            )
+            self._schedule_report_refresh()
+            return
+        self._report_refresh_attempts = 0
+        count = 0
+        with suppress(Exception):
+            count = list_ctrl.GetItemCount()
+        if hasattr(list_ctrl, "RefreshItems") and count > 0:
+            try:
+                list_ctrl.RefreshItems(0, max(0, count - 1))
+            except Exception:
+                logger.debug(
+                    "RefreshItems failed during report refresh fallback",
+                    exc_info=True,
+                )
+        self._apply_immediate_refresh()
+        self._log_diagnostics("report refresh applied — count=%s", count)
 
     def _ensure_column_width(self, column: int, width: int) -> None:
         """Guarantee that a column remains visible even if the backend rejects it."""

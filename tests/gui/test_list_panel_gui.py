@@ -199,6 +199,31 @@ def test_report_style_high_level_still_displays_title(wx_app):
     frame.Destroy()
 
 
+def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    applied: list[str] = []
+
+    def _record_refresh(self):
+        applied.append("refresh")
+
+    monkeypatch.setattr(list_panel.ListPanel, "_apply_immediate_refresh", _record_refresh)
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=19)
+    panel.set_requirements([_req(1, "Needs repaint")])
+    wx_app.Yield()
+
+    assert applied, "fallback refresh must trigger immediate repaint"
+    assert panel._report_refresh_attempts >= 1
+
+    frame.Destroy()
+
+
 @pytest.mark.parametrize(
     "level, flags",
     [

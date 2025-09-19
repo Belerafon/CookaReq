@@ -386,6 +386,9 @@ def _build_wx_stub():
                 for child in self._children
             ]
 
+    class StaticBoxSizer(BoxSizer):
+        pass
+
     class Config:
         def read_int(self, key, default):
             return default
@@ -398,6 +401,9 @@ def _build_wx_stub():
 
         def write(self, key, value):
             pass
+
+    def _call_after(callback, *args, **kwargs):
+        return callback(*args, **kwargs)
 
     wx_mod = types.SimpleNamespace(
         Panel=Panel,
@@ -413,6 +419,7 @@ def _build_wx_stub():
         ListCtrl=ListCtrl,
         ImageList=ImageList,
         BoxSizer=BoxSizer,
+        StaticBoxSizer=StaticBoxSizer,
         Window=Window,
         VERTICAL=0,
         EXPAND=0,
@@ -441,6 +448,7 @@ def _build_wx_stub():
         MemoryDC=MemoryDC,
         NullBitmap=object(),
         BLACK=Colour(0, 0, 0),
+        CallAfter=_call_after,
     )
 
     class ColumnSorterMixin:

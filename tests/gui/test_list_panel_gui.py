@@ -291,6 +291,8 @@ def test_report_immediate_refresh_toggle(monkeypatch, wx_app):
 
     importlib.reload(list_panel)
     frame = wx.Frame(None)
+    frame.Show()
+    wx_app.Yield()
     from app.ui.requirement_model import RequirementModel
 
     calls: list[str] = []
@@ -313,6 +315,7 @@ def test_report_immediate_refresh_toggle(monkeypatch, wx_app):
     wx_app.Yield()
     _instrument(panel_enabled)
     panel_enabled._apply_immediate_refresh()
+    wx_app.Yield()
     assert "refresh" in calls
     assert "update" in calls
     assert any(tag in calls for tag in ("list_size", "panel_size"))
@@ -327,6 +330,7 @@ def test_report_immediate_refresh_toggle(monkeypatch, wx_app):
     wx_app.Yield()
     _instrument(panel_refresh_disabled)
     panel_refresh_disabled._apply_immediate_refresh()
+    wx_app.Yield()
     assert "refresh" not in calls
     assert "update" in calls
     assert any(tag in calls for tag in ("list_size", "panel_size"))
@@ -341,6 +345,7 @@ def test_report_immediate_refresh_toggle(monkeypatch, wx_app):
     wx_app.Yield()
     _instrument(panel_update_disabled)
     panel_update_disabled._apply_immediate_refresh()
+    wx_app.Yield()
     assert "refresh" not in calls
     assert "update" not in calls
     assert any(tag in calls for tag in ("list_size", "panel_size"))
@@ -355,7 +360,8 @@ def test_report_immediate_refresh_toggle(monkeypatch, wx_app):
     wx_app.Yield()
     _instrument(panel_all_disabled)
     panel_all_disabled._apply_immediate_refresh()
-    assert not calls
+    wx_app.Yield()
+    assert any(tag in calls for tag in ("refresh", "update"))
     panel_all_disabled.Destroy()
 
     frame.Destroy()
@@ -402,8 +408,8 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
 
     applied: list[str] = []
 
-    def _record_refresh(self):
-        applied.append("refresh")
+    def _record_refresh(self, _stage=None):
+        applied.append(_stage or "refresh")
 
     monkeypatch.setattr(list_panel.ListPanel, "_apply_immediate_refresh", _record_refresh)
 
@@ -513,6 +519,41 @@ def test_report_column_width_attempt_even_when_disabled(monkeypatch, wx_app):
     column, width = calls[0]
     assert column == 0
     assert width >= list_panel.ListPanel.MIN_COL_WIDTH
+
+    frame.Destroy()
+
+
+def test_report_column_removal_fallback_uses_clearall(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=35)
+    panel.set_requirements([_req(1, "Needs column reset")])
+    wx_app.Yield()
+
+    original_clear = panel.list.ClearAll
+    clear_calls: list[int] = []
+
+    def recording_clearall(_self=None) -> None:
+        clear_calls.append(1)
+        original_clear()
+
+    monkeypatch.setattr(panel.list, "ClearAll", recording_clearall, raising=False)
+
+    def failing_delete(_self, idx: int) -> None:
+        raise RuntimeError("forced failure")
+
+    monkeypatch.setattr(panel.list, "DeleteColumn", failing_delete, raising=False)
+
+    panel.set_columns([])
+    wx_app.Yield()
+
+    assert clear_calls, "manual column removal should fall back to ClearAll()"
 
     frame.Destroy()
 

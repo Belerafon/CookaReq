@@ -284,6 +284,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._probe_deferred_plain_payload: list[Requirement] | None = None
         self._probe_deferred_plain_stage = ""
         self._probe_deferred_plain_attempts = 0
+        self._basic_refresh_pending = False
+        self._basic_refresh_attempts = 0
+        self._basic_refresh_stage = ""
         sizer = wx.BoxSizer(wx.VERTICAL) if self.debug.sizer_layout else None
         vertical_pad = dip(self, 5)
         orient = getattr(wx, "HORIZONTAL", 0)
@@ -944,7 +947,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if self.debug.probe_column_reset:
                 self._probe_log_column_inventory("pre-fallback-removal")
             self._clear_items()
-            self._remove_all_columns()
+            removed_all = self._remove_all_columns()
+            if not removed_all:
+                self._log_diagnostics(
+                    "fallback column removal incomplete — invoking ClearAll()",
+                )
+                with suppress(Exception):
+                    self.list.ClearAll()
             self._probe_verify_column_removal("fallback-removal")
         self._pending_column_widths.clear()
         self._field_order: list[str] = []
@@ -1062,22 +1071,30 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             with suppress(Exception):
                 self.list.DeleteItem(idx)
 
-    def _remove_all_columns(self) -> None:
+    def _remove_all_columns(self) -> bool:
         """Drop all report-style columns without relying on ``ClearAll``."""
 
         try:
             count = self.list.GetColumnCount()
         except Exception:
-            return
+            return True
+        success = True
         for idx in range(count - 1, -1, -1):
             try:
                 self.list.DeleteColumn(idx)
             except Exception:
+                success = False
                 logger.debug(
                     "Failed to delete ListPanel column %s during fallback removal",
                     idx,
                     exc_info=True,
                 )
+        remaining = 0
+        with suppress(Exception):
+            remaining = self.list.GetColumnCount()
+        if remaining:
+            success = False
+        return success
 
     def _probe_log_column_inventory(self, stage: str) -> dict[str, object]:
         """Emit diagnostics about current columns for tier-2 probes."""
@@ -1120,7 +1137,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if self.debug.report_lazy_refresh:
             self._schedule_report_refresh(stage_name)
         else:
-            self._apply_immediate_refresh()
+            self._apply_immediate_refresh(stage_name)
         if self.debug.probe_force_refresh:
             self._schedule_force_refresh_probe(stage_name)
 
@@ -1143,9 +1160,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 issued = True
         return issued
 
-    def _apply_immediate_refresh(self) -> None:
+    def _apply_immediate_refresh(self, stage: str | None = None) -> None:
         """Request the list control to repaint immediately."""
 
+        stage_name = stage or "immediate"
         issued_refresh = False
         issued_update = False
         issued_size_event = False
@@ -1167,6 +1185,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 issued_update = True
         if self.debug.report_send_size_event:
             issued_size_event = self._request_size_event()
+        if (
+            self.debug.report_style
+            and not (issued_refresh or issued_update or issued_size_event)
+        ):
+            self._ensure_basic_refresh(stage_name)
         if not self._diagnostic_logging:
             return
         column0 = None
@@ -1288,6 +1311,101 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if self.debug.probe_deferred_population:
             self._flush_deferred_plain_population("refresh-probe")
 
+    def _ensure_basic_refresh(self, stage: str) -> None:
+        """Schedule a minimal repaint when all immediate hooks are disabled."""
+
+        if not self.debug.report_style:
+            return
+        self._basic_refresh_stage = stage
+        if self._basic_refresh_pending:
+            if self._diagnostic_logging:
+                self._log_diagnostics(
+                    "basic refresh already pending — stage=%s attempts=%s",
+                    stage,
+                    self._basic_refresh_attempts,
+                )
+            return
+        self._basic_refresh_pending = True
+        self._basic_refresh_attempts = 0
+        self._log_diagnostics("scheduled basic refresh fallback — stage=%s", stage)
+        self._schedule_basic_refresh()
+
+    def _schedule_basic_refresh(self, delay: int | None = None) -> None:
+        """Dispatch the basic refresh attempt via ``CallAfter``/``CallLater``."""
+
+        if delay is not None:
+            call_later = getattr(wx, "CallLater", None)
+            if callable(call_later):
+                call_later(delay, self._perform_basic_refresh)
+                return
+        call_after = getattr(wx, "CallAfter", None)
+        if callable(call_after):
+            call_after(self._perform_basic_refresh)
+            return
+        self._perform_basic_refresh()
+
+    def _perform_basic_refresh(self) -> None:
+        """Run (or re-schedule) the fallback repaint once the list is ready."""
+
+        if not self._basic_refresh_pending:
+            return
+        ready, metrics = self._probe_list_ready()
+        if not ready:
+            self._basic_refresh_attempts += 1
+            self._log_diagnostics(
+                "basic refresh deferred — stage=%s attempts=%s metrics=%s",
+                self._basic_refresh_stage,
+                self._basic_refresh_attempts,
+                metrics,
+            )
+            if self._basic_refresh_attempts >= 10:
+                self._log_diagnostics(
+                    "basic refresh forcing repaint after %s attempts — stage=%s",
+                    self._basic_refresh_attempts,
+                    self._basic_refresh_stage,
+                )
+                self._force_basic_refresh()
+                self._basic_refresh_pending = False
+                return
+            delay = min(200, 25 * self._basic_refresh_attempts)
+            self._schedule_basic_refresh(delay)
+            return
+        self._force_basic_refresh()
+        self._basic_refresh_pending = False
+
+    def _force_basic_refresh(self) -> None:
+        """Invoke a manual Refresh/Update + size event sequence for report mode."""
+
+        list_ctrl = getattr(self, "list", None)
+        if not list_ctrl:
+            return
+        operations: list[str] = []
+        for name in ("Refresh", "Update"):
+            method = getattr(list_ctrl, name, None)
+            if not callable(method):
+                continue
+            try:
+                method()
+            except Exception:
+                if self._diagnostic_logging:
+                    logger.debug(
+                        "ListPanel basic refresh %s() failed", name.lower(), exc_info=True
+                    )
+            else:
+                operations.append(name.lower())
+        size_event = self._request_size_event()
+        if self._diagnostic_logging:
+            metrics = self._probe_filter_metrics(self._collect_control_metrics())
+            self._log_diagnostics(
+                "basic refresh executed — stage=%s operations=%s size_event=%s metrics=%s attempts=%s",
+                self._basic_refresh_stage,
+                operations,
+                size_event,
+                metrics,
+                self._basic_refresh_attempts,
+            )
+        self._basic_refresh_stage = ""
+
     def _schedule_report_refresh(self, stage: str) -> None:
         """Fallback for report mode when lazy refresh fails to repaint."""
 
@@ -1338,7 +1456,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                         attempts,
                         self._report_refresh_stage,
                     )
-                self._apply_immediate_refresh()
+                self._apply_immediate_refresh(
+                    self._report_refresh_stage or "report-refresh"
+                )
                 return
             self._log_diagnostics(
                 "report refresh deferred — control not yet shown (attempt %s) stage=%s",
@@ -1359,7 +1479,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     "RefreshItems failed during report refresh fallback",
                     exc_info=True,
                 )
-        self._apply_immediate_refresh()
+        self._apply_immediate_refresh(self._report_refresh_stage or "report-refresh")
         self._log_diagnostics(
             "report refresh applied — stage=%s count=%s",
             self._report_refresh_stage,

@@ -67,17 +67,17 @@ def test_debug_profile_rollback_stage_progression():
         37: 0,
         38: 0,
         39: 0,
-        40: 1,
-        41: 2,
-        42: 3,
-        43: 4,
-        44: 5,
-        45: 6,
-        46: 7,
-        47: 8,
-        48: 9,
-        49: 10,
-        50: 11,
+        40: 0,
+        41: 0,
+        42: 0,
+        43: 0,
+        44: 0,
+        45: 0,
+        46: 1,
+        47: 2,
+        48: 3,
+        49: 4,
+        50: 5,
     }
     for level, expected in expected_progression.items():
         profile = ListPanelDebugProfile.from_level(level)
@@ -85,8 +85,8 @@ def test_debug_profile_rollback_stage_progression():
 
 
 def test_debug_profile_diff_reports_width_guard_drop():
-    before = ListPanelDebugProfile.from_level(38)
-    after = ListPanelDebugProfile.from_level(39)
+    before = ListPanelDebugProfile.from_level(44)
+    after = ListPanelDebugProfile.from_level(45)
 
     delta = after.diff(before)
 
@@ -97,8 +97,8 @@ def test_debug_profile_diff_reports_width_guard_drop():
 
 
 def test_debug_profile_diff_reports_plain_queue_toggle():
-    before = ListPanelDebugProfile.from_level(41)
-    after = ListPanelDebugProfile.from_level(42)
+    before = ListPanelDebugProfile.from_level(39)
+    after = ListPanelDebugProfile.from_level(40)
 
     delta = after.diff(before)
 

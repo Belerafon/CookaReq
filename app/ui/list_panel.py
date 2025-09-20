@@ -184,10 +184,10 @@ class ListPanelDebugProfile:
             selection_events=base_clamped < 17,
             model_driven=base_clamped < 18,
             model_cache=base_clamped < 19,
-            report_width_fallbacks=base_clamped < 36,
-            report_width_retry_async=base_clamped < 37,
-            report_width_retry=base_clamped < 38,
-            report_column_widths=base_clamped < 39,
+            report_width_fallbacks=base_clamped < 42,
+            report_width_retry_async=base_clamped < 43,
+            report_width_retry=base_clamped < 44,
+            report_column_widths=base_clamped < 45,
             report_list_item=base_clamped < 22,
             report_clear_all=base_clamped < 23,
             report_batch_delete=base_clamped < 24,
@@ -202,12 +202,12 @@ class ListPanelDebugProfile:
             report_immediate_refresh=base_clamped < 33,
             report_immediate_update=base_clamped < 34,
             report_send_size_event=base_clamped < 35,
-            plain_deferred_callafter=base_clamped < 40,
-            plain_deferred_timer=base_clamped < 41,
-            plain_deferred_queue=base_clamped < 42,
-            plain_deferred_population=base_clamped < 43,
-            plain_cached_items=base_clamped < 44,
-            plain_post_refresh=base_clamped < 45,
+            plain_deferred_callafter=base_clamped < 38,
+            plain_deferred_timer=base_clamped < 39,
+            plain_deferred_queue=base_clamped < 40,
+            plain_deferred_population=base_clamped < 41,
+            plain_cached_items=base_clamped < 37,
+            plain_post_refresh=base_clamped < 36,
             report_style=base_clamped < 49,
             sizer_layout=base_clamped < 49,
             probe_force_refresh=tier >= 1,
@@ -223,7 +223,7 @@ class ListPanelDebugProfile:
         # only after the column-width recovery toggles at levels 36–39.  This
         # keeps the intermediate steps focused on width handling so each
         # feature can be isolated independently.
-        return max(0, self.base_level - 39)
+        return max(0, self.base_level - 45)
 
     def disabled_features(self) -> list[str]:
         """Return human-readable names of features disabled at this level."""
@@ -487,6 +487,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if getattr(previous, name) != getattr(profile, name)
         }
         allowed_toggles = {
+            "plain_post_refresh",
+            "plain_cached_items",
+            "plain_deferred_callafter",
+            "plain_deferred_timer",
+            "plain_deferred_queue",
+            "plain_deferred_population",
             "report_width_retry_async",
             "report_width_retry",
             "report_width_fallbacks",

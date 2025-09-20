@@ -386,6 +386,19 @@ def _build_wx_stub():
                 for child in self._children
             ]
 
+    class StaticBox(Window):
+        def __init__(self, parent=None, label=""):
+            super().__init__(parent)
+            self._label = label
+
+    class StaticBoxSizer(BoxSizer):
+        def __init__(self, box, orient):
+            super().__init__(orient)
+            self._box = box
+
+        def GetStaticBox(self):
+            return self._box
+
     class Config:
         def read_int(self, key, default):
             return default
@@ -413,10 +426,14 @@ def _build_wx_stub():
         ListCtrl=ListCtrl,
         ImageList=ImageList,
         BoxSizer=BoxSizer,
+        StaticBox=StaticBox,
+        StaticBoxSizer=StaticBoxSizer,
         Window=Window,
         VERTICAL=0,
+        HORIZONTAL=1,
         EXPAND=0,
         ALL=0,
+        LEFT=0,
         BU_EXACTFIT=0,
         ART_CLOSE="close",
         ART_BUTTON="button",
@@ -424,6 +441,8 @@ def _build_wx_stub():
         CANCEL=2,
         EVT_BUTTON=object(),
         LC_REPORT=0,
+        LIST_AUTOSIZE=-1,
+        LIST_AUTOSIZE_USEHEADER=-2,
         EVT_LIST_ITEM_RIGHT_CLICK=object(),
         EVT_CONTEXT_MENU=object(),
         EVT_LIST_COL_CLICK=object(),
@@ -1068,3 +1087,50 @@ def test_load_column_widths_assigns_defaults(monkeypatch):
         3: list_panel_cls.DEFAULT_COLUMN_WIDTHS["status"],
         4: list_panel_cls.DEFAULT_COLUMN_WIDTHS["priority"],
     }
+
+
+def test_load_column_widths_recovers_from_rejected_request(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_cls(frame, model=requirement_model_cls())
+
+    attempts: list[int] = []
+
+    def fake_set(col, width):
+        attempts.append(width)
+        if width == wx_stub.LIST_AUTOSIZE_USEHEADER:
+            panel.list._col_widths[col] = 30
+            return
+        if width == wx_stub.LIST_AUTOSIZE:
+            panel.list._col_widths[col] = 0
+            return
+        if width == panel.MIN_COL_WIDTH:
+            panel.list._col_widths[col] = panel.MIN_COL_WIDTH
+            return
+        # simulate backend ignoring the explicit width requests
+        panel.list._col_widths[col] = 0
+
+    panel.list.SetColumnWidth = fake_set
+
+    config = types.SimpleNamespace(read_int=lambda key, default: 200)
+    panel.load_column_widths(config)
+
+    assert attempts[0] == 200
+    assert attempts.count(200) >= 2
+    assert wx_stub.LIST_AUTOSIZE_USEHEADER in attempts
+    assert wx_stub.LIST_AUTOSIZE in attempts
+    assert attempts[-1] == panel.MIN_COL_WIDTH
+    assert panel.list.GetColumnWidth(0) == panel.MIN_COL_WIDTH

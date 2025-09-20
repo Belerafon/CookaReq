@@ -413,7 +413,48 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 field = self._field_order[i] if i < len(self._field_order) else ""
                 width = self._default_column_width(field)
             width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
-            self.list.SetColumnWidth(i, width)
+            self._apply_column_width(i, width)
+
+    def _apply_column_width(self, column: int, desired: int) -> None:
+        """Set column width with fallbacks for backends dropping the request."""
+
+        attempts: list[int] = [desired]
+        header_auto = getattr(wx, "LIST_AUTOSIZE_USEHEADER", None)
+        if isinstance(header_auto, int):
+            attempts.append(header_auto)
+        body_auto = getattr(wx, "LIST_AUTOSIZE", None)
+        if isinstance(body_auto, int):
+            attempts.append(body_auto)
+        attempts.append(self.MIN_COL_WIDTH)
+
+        seen: set[int] = set()
+        for attempt in attempts:
+            if attempt in seen:
+                continue
+            seen.add(attempt)
+            self._force_column_width(column, attempt)
+            current = self._safe_column_width(column)
+            if current <= 0:
+                continue
+            if attempt not in {desired, self.MIN_COL_WIDTH}:
+                self._force_column_width(column, desired)
+                current = self._safe_column_width(column)
+                if current <= 0:
+                    continue
+            if current < self.MIN_COL_WIDTH:
+                self._force_column_width(column, self.MIN_COL_WIDTH)
+            return
+        # If all attempts failed (some backends report zero), fall back to minimum.
+        self._force_column_width(column, self.MIN_COL_WIDTH)
+
+    def _force_column_width(self, column: int, width: int) -> None:
+        with suppress(Exception):  # pragma: no cover - backend quirks
+            self.list.SetColumnWidth(column, width)
+
+    def _safe_column_width(self, column: int) -> int:
+        with suppress(Exception):  # pragma: no cover - backend quirks
+            return self.list.GetColumnWidth(column)
+        return -1
 
     def save_column_widths(self, config: ConfigManager) -> None:
         """Persist current column widths to config."""

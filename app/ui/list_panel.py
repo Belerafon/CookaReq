@@ -209,7 +209,11 @@ class ListPanelDebugProfile:
     def rollback_stage(self) -> int:
         """Return how many post-commit rollback tiers are enabled."""
 
-        return max(0, self.base_level - 35)
+        # Post-fcbd3c rollbacks (legacy splitters, placeholders, etc.) start
+        # only after the column-width recovery toggles at levels 36–39.  This
+        # keeps the intermediate steps focused on width handling so each
+        # feature can be isolated independently.
+        return max(0, self.base_level - 39)
 
     def disabled_features(self) -> list[str]:
         """Return human-readable names of features disabled at this level."""

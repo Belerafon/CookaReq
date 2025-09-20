@@ -65,6 +65,22 @@ def refresh_splitter_highlight(splitter: wx.SplitterWindow) -> None:
         helper.refresh()
 
 
+def clear_splitter_style(splitter: wx.SplitterWindow) -> None:
+    """Detach custom highlight from ``splitter`` and restore default look."""
+
+    helper = getattr(splitter, "_cooka_splitter_highlight", None)
+    if helper is None:
+        return
+    try:
+        helper.destroy()
+    finally:
+        if getattr(splitter, "_cooka_splitter_highlight", None) is helper:
+            try:
+                delattr(splitter, "_cooka_splitter_highlight")
+            except Exception:
+                splitter._cooka_splitter_highlight = None  # type: ignore[attr-defined]
+
+
 class _SplitterHighlighter:
     """State holder responsible for tinting a ``wx.SplitterWindow`` sash."""
 
@@ -151,6 +167,25 @@ class _SplitterHighlighter:
             dc.DrawRectangle(rect)
         except Exception:
             pass
+
+    def destroy(self) -> None:
+        splitter = self.splitter
+        if not splitter:
+            return
+        handlers = (
+            (wx.EVT_PAINT, self._on_paint),
+            (wx.EVT_SIZE, self._on_size),
+            (wx.EVT_SPLITTER_SASH_POS_CHANGED, self._on_sash_move),
+            (wx.EVT_SPLITTER_SASH_POS_CHANGING, self._on_sash_move),
+            (wx.EVT_SHOW, self._on_show),
+        )
+        for event, handler in handlers:
+            try:
+                splitter.Unbind(event, handler=handler)
+            except Exception:
+                pass
+        self._pending_draw = False
+        self.splitter = None
 
 
 def _resolve_thickness(splitter: wx.Window, thickness: int | None) -> int:

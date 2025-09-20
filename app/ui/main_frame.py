@@ -5,7 +5,7 @@ import logging
 import weakref
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, suppress
-from dataclasses import fields, replace
+from dataclasses import dataclass, fields, replace
 from importlib import resources
 from pathlib import Path
 
@@ -44,6 +44,7 @@ from .requirement_model import RequirementModel
 from .settings_dialog import SettingsDialog
 from .splitter_utils import (
     SplitterEventBlocker,
+    clear_splitter_style,
     refresh_splitter_highlight,
     style_splitter,
 )
@@ -51,6 +52,48 @@ from .widgets import SectionContainer
 
 
 _SECTION_DEFAULT_PADDING = 0
+
+_LEGACY_DOC_GUARD_STAGE = 1
+_LEGACY_DOC_EVENTS_STAGE = 2
+_LEGACY_DOC_PLACEHOLDER_STAGE = 3
+_LEGACY_DOC_SWAP_STAGE = 4
+_LEGACY_DOC_VETO_STAGE = 5
+_LEGACY_AGENT_GUARD_STAGE = 6
+_LEGACY_AGENT_EVENTS_STAGE = 7
+_LEGACY_DOC_STYLING_STAGE = 8
+_LEGACY_FULL_STYLING_STAGE = 9
+_LEGACY_DISABLE_UNSPLIT_STAGE = 10
+
+
+@dataclass(frozen=True)
+class _LegacySplitterDebugState:
+    """Describe which legacy splitter behaviours should be active."""
+
+    doc_guard: bool
+    doc_sash_events: bool
+    doc_placeholder: bool
+    doc_swap: bool
+    doc_drag_veto: bool
+    agent_guard: bool
+    agent_events: bool
+    doc_styling: bool
+    full_styling: bool
+    disable_unsplit: bool
+
+    @classmethod
+    def from_stage(cls, stage: int) -> "_LegacySplitterDebugState":
+        return cls(
+            doc_guard=stage >= _LEGACY_DOC_GUARD_STAGE,
+            doc_sash_events=stage >= _LEGACY_DOC_EVENTS_STAGE,
+            doc_placeholder=stage >= _LEGACY_DOC_PLACEHOLDER_STAGE,
+            doc_swap=stage >= _LEGACY_DOC_SWAP_STAGE,
+            doc_drag_veto=stage >= _LEGACY_DOC_VETO_STAGE,
+            agent_guard=stage >= _LEGACY_AGENT_GUARD_STAGE,
+            agent_events=stage >= _LEGACY_AGENT_EVENTS_STAGE,
+            doc_styling=stage >= _LEGACY_DOC_STYLING_STAGE,
+            full_styling=stage >= _LEGACY_FULL_STYLING_STAGE,
+            disable_unsplit=stage >= _LEGACY_DISABLE_UNSPLIT_STAGE,
+        )
 
 class WxLogHandler(logging.Handler):
     """Forward log records to a ``wx.TextCtrl``."""
@@ -126,92 +169,152 @@ class MainFrame(wx.Frame):
     def _legacy_doc_tree_enabled(self) -> bool:
         """Return ``True`` when legacy doc tree logic should be active."""
 
-        return getattr(self, "_list_debug_stage", 0) >= 1
+        return getattr(self, "_list_debug_stage", 0) >= _LEGACY_DOC_SWAP_STAGE
 
     def _legacy_agent_splitter_enabled(self) -> bool:
         """Return ``True`` when legacy agent splitter handling is active."""
 
-        return getattr(self, "_list_debug_stage", 0) >= 2
+        return getattr(self, "_list_debug_stage", 0) >= _LEGACY_AGENT_EVENTS_STAGE
 
     def _legacy_splitter_styling_enabled(self) -> bool:
         """Return ``True`` when splitter styling should be restored."""
 
-        return getattr(self, "_list_debug_stage", 0) >= 3
+        return getattr(self, "_list_debug_stage", 0) >= _LEGACY_DOC_STYLING_STAGE
+
+    def _legacy_full_splitter_styling_enabled(self) -> bool:
+        """Return ``True`` when all splitters should use legacy styling."""
+
+        return getattr(self, "_list_debug_stage", 0) >= _LEGACY_FULL_STYLING_STAGE
+
+    def _legacy_doc_tree_drag_veto_enabled(self) -> bool:
+        """Return ``True`` when hierarchy sash dragging must be vetoed."""
+
+        return getattr(self, "_list_debug_stage", 0) >= _LEGACY_DOC_VETO_STAGE
 
     def _apply_splitter_debug_profile(self, initial: bool = False) -> None:
         """Apply splitter guards, placeholders and styling based on debug stage."""
 
         if not hasattr(self, "doc_splitter"):
             return
+        state = _LegacySplitterDebugState.from_stage(
+            getattr(self, "_list_debug_stage", 0)
+        )
 
-        if self._legacy_doc_tree_enabled():
+        self._apply_doc_splitter_legacy(state, initial=initial)
+        self._apply_agent_splitter_legacy(state)
+        self._apply_splitter_styling_legacy(state)
+
+        self._update_doc_tree_toggle_state()
+
+    def _apply_doc_splitter_legacy(
+        self, state: _LegacySplitterDebugState, *, initial: bool
+    ) -> None:
+        splitter = getattr(self, "doc_splitter", None)
+        if splitter is None:
+            return
+        if state.doc_guard:
             if self._doc_splitter_guard is None:
                 self._doc_splitter_guard = SplitterEventBlocker()
+        else:
+            self._doc_splitter_guard = None
+
+        if state.doc_placeholder:
             if self._doc_tree_placeholder is None:
                 self._doc_tree_placeholder = self._create_doc_tree_placeholder(
-                    self.doc_splitter
+                    splitter
                 )
+        else:
+            self._teardown_doc_tree_placeholder(initial=initial)
+
+        if state.doc_sash_events:
             self._bind_doc_splitter_events()
             if not self._doc_tree_collapsed:
                 self._doc_tree_saved_sash = max(
-                    self.doc_splitter.GetSashPosition(), self._doc_tree_min_pane
+                    splitter.GetSashPosition(), self._doc_tree_min_pane
                 )
         else:
             self._unbind_doc_splitter_events()
-            self._doc_splitter_guard = None
+
+        if state.doc_drag_veto and state.doc_swap:
+            self._bind_doc_splitter_drag_veto()
+        else:
             self._unbind_doc_splitter_drag_veto()
-            if (
-                self._doc_tree_placeholder is not None
-                and self.doc_splitter.GetWindow1() is self._doc_tree_placeholder
-                and self.doc_tree_container is not None
-            ):
-                self.doc_splitter.ReplaceWindow(
-                    self._doc_tree_placeholder,
-                    self.doc_tree_container,
-                )
-                self.doc_tree_container.Show()
-            if self._doc_tree_placeholder is not None and not initial:
-                self._doc_tree_placeholder.Hide()
+
+        if not state.doc_swap:
+            if self._doc_tree_collapsed:
+                self._expand_doc_tree_legacy()
+            if hasattr(splitter, "SetSashInvisible"):
+                splitter.SetSashInvisible(False)
             self._doc_tree_collapsed = False
 
-        if self._legacy_agent_splitter_enabled():
+    def _teardown_doc_tree_placeholder(self, *, initial: bool) -> None:
+        placeholder = self._doc_tree_placeholder
+        if placeholder is None:
+            return
+        if self._doc_tree_collapsed:
+            self._expand_doc_tree_legacy()
+        splitter = getattr(self, "doc_splitter", None)
+        if (
+            splitter is not None
+            and splitter.GetWindow1() is placeholder
+            and self.doc_tree_container is not None
+        ):
+            splitter.ReplaceWindow(placeholder, self.doc_tree_container)
+            self.doc_tree_container.Show()
+        if not initial:
+            placeholder.Hide()
+        self._doc_tree_placeholder = None
+        self._doc_tree_placeholder_button = None
+
+    def _apply_agent_splitter_legacy(self, state: _LegacySplitterDebugState) -> None:
+        if state.agent_guard:
             if self._agent_splitter_guard is None:
                 self._agent_splitter_guard = SplitterEventBlocker()
+        else:
+            self._agent_splitter_guard = None
+
+        if state.agent_events:
             self._bind_agent_splitter_events()
         else:
             self._unbind_agent_splitter_events()
-            self._agent_splitter_guard = None
 
-        if self._legacy_splitter_styling_enabled():
-            for splitter in (
-                getattr(self, "main_splitter", None),
-                getattr(self, "doc_splitter", None),
-                getattr(self, "agent_splitter", None),
-                getattr(self, "splitter", None),
-            ):
+    def _apply_splitter_styling_legacy(self, state: _LegacySplitterDebugState) -> None:
+        doc_splitter = getattr(self, "doc_splitter", None)
+        if doc_splitter is not None:
+            if state.doc_styling:
+                style_splitter(doc_splitter)
+                refresh_splitter_highlight(doc_splitter)
+            else:
+                clear_splitter_style(doc_splitter)
+
+        other_splitters = (
+            getattr(self, "main_splitter", None),
+            getattr(self, "agent_splitter", None),
+            getattr(self, "splitter", None),
+        )
+        for splitter in other_splitters:
+            if splitter is None:
+                continue
+            if state.full_styling:
+                style_splitter(splitter)
+                refresh_splitter_highlight(splitter)
+            else:
+                clear_splitter_style(splitter)
+
+        targets = (
+            getattr(self, "main_splitter", None),
+            getattr(self, "doc_splitter", None),
+            getattr(self, "agent_splitter", None),
+            getattr(self, "splitter", None),
+        )
+        if state.disable_unsplit and hasattr(wx, "EVT_SPLITTER_DOUBLECLICKED"):
+            for splitter in targets:
                 if splitter is not None:
-                    style_splitter(splitter)
-                    refresh_splitter_highlight(splitter)
-            if hasattr(wx, "EVT_SPLITTER_DOUBLECLICKED"):
-                for splitter in (
-                    getattr(self, "main_splitter", None),
-                    getattr(self, "doc_splitter", None),
-                    getattr(self, "agent_splitter", None),
-                    getattr(self, "splitter", None),
-                ):
-                    if splitter is not None:
-                        self._disable_splitter_unsplit(splitter)
+                    self._disable_splitter_unsplit(splitter)
         else:
-            for splitter in (
-                getattr(self, "main_splitter", None),
-                getattr(self, "doc_splitter", None),
-                getattr(self, "agent_splitter", None),
-                getattr(self, "splitter", None),
-            ):
+            for splitter in targets:
                 if splitter is not None:
                     self._enable_splitter_unsplit(splitter)
-
-        self._update_doc_tree_toggle_state()
 
     def __init__(
         self,
@@ -812,7 +915,7 @@ class MainFrame(wx.Frame):
     def _prevent_doc_splitter_drag(self, event: wx.SplitterEvent) -> None:
         """Veto sash movements while the hierarchy pane is collapsed."""
 
-        if self._legacy_doc_tree_enabled():
+        if self._legacy_doc_tree_drag_veto_enabled():
             event.Veto()
 
     @contextmanager
@@ -1088,7 +1191,7 @@ class MainFrame(wx.Frame):
         self.editor.Show()
         self.editor_container.Layout()
         self.editor.Layout()
-        if self._legacy_splitter_styling_enabled():
+        if self._legacy_full_splitter_styling_enabled():
             refresh_splitter_highlight(self.splitter)
 
     def _hide_editor_panel(self) -> None:
@@ -1096,7 +1199,7 @@ class MainFrame(wx.Frame):
 
         self.editor.Hide()
         self.editor_container.Hide()
-        if self._legacy_splitter_styling_enabled():
+        if self._legacy_full_splitter_styling_enabled():
             refresh_splitter_highlight(self.splitter)
 
     def _clear_editor_panel(self) -> None:
@@ -1122,7 +1225,7 @@ class MainFrame(wx.Frame):
         self.agent_panel.Show()
         self.agent_container.Layout()
         self.agent_panel.Layout()
-        if self._legacy_splitter_styling_enabled():
+        if self._legacy_full_splitter_styling_enabled():
             refresh_splitter_highlight(self.agent_splitter)
 
     def _hide_agent_section(self) -> None:
@@ -1130,7 +1233,7 @@ class MainFrame(wx.Frame):
 
         self.agent_panel.Hide()
         self.agent_container.Hide()
-        if self._legacy_splitter_styling_enabled():
+        if self._legacy_full_splitter_styling_enabled():
             refresh_splitter_highlight(self.agent_splitter)
 
     def _update_section_labels(self) -> None:
@@ -1988,7 +2091,7 @@ class MainFrame(wx.Frame):
             self.main_splitter.Unsplit(self.log_panel)
             self.log_panel.Hide()
         self.config.set_log_shown(self.navigation.log_menu_item.IsChecked())
-        if self._legacy_splitter_styling_enabled():
+        if self._legacy_full_splitter_styling_enabled():
             refresh_splitter_highlight(self.main_splitter)
 
     def on_toggle_agent_chat(self, _event: wx.CommandEvent | None) -> None:
@@ -2089,7 +2192,7 @@ class MainFrame(wx.Frame):
             else:
                 self.agent_splitter.SetSashPosition(desired)
         self._agent_last_width = self._current_agent_splitter_width()
-        if self._legacy_splitter_styling_enabled():
+        if self._legacy_full_splitter_styling_enabled():
             refresh_splitter_highlight(self.agent_splitter)
         self.agent_panel.focus_input()
         self.config.set_agent_chat_shown(True)
@@ -2107,7 +2210,7 @@ class MainFrame(wx.Frame):
                     self._agent_last_width = current
                 self.agent_splitter.Unsplit(self.agent_container)
         self._hide_agent_section()
-        if self._legacy_splitter_styling_enabled():
+        if self._legacy_full_splitter_styling_enabled():
             refresh_splitter_highlight(self.agent_splitter)
         self.config.set_agent_chat_shown(False)
 
@@ -2209,7 +2312,7 @@ class MainFrame(wx.Frame):
                     else:
                         self.agent_splitter.SetSashPosition(desired)
                 self._agent_last_width = self._current_agent_splitter_width()
-                if self._legacy_splitter_styling_enabled():
+                if self._legacy_full_splitter_styling_enabled():
                     refresh_splitter_highlight(self.agent_splitter)
             else:
                 if self.agent_splitter.IsSplit():
@@ -2227,7 +2330,7 @@ class MainFrame(wx.Frame):
                             self._agent_last_width = current
                         self.agent_splitter.Unsplit(self.agent_container)
                 self._hide_agent_section()
-                if self._legacy_splitter_styling_enabled():
+                if self._legacy_full_splitter_styling_enabled():
                     refresh_splitter_highlight(self.agent_splitter)
 
     def _save_layout(self) -> None:

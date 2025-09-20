@@ -54,7 +54,7 @@ def test_debug_profile_clamps_to_maximum_level():
     over_max = ListPanelDebugProfile.from_level(MAX_LIST_PANEL_DEBUG_LEVEL + 500)
 
     assert over_max.level == MAX_LIST_PANEL_DEBUG_LEVEL
-    assert over_max.base_level <= 50
+    assert over_max.base_level <= 55
 
 
 def test_debug_profile_rollback_stage_progression():
@@ -78,10 +78,18 @@ def test_debug_profile_rollback_stage_progression():
         48: 3,
         49: 4,
         50: 5,
+        51: 6,
+        52: 7,
+        53: 8,
+        54: 9,
+        55: 10,
     }
     for level, expected in expected_progression.items():
         profile = ListPanelDebugProfile.from_level(level)
         assert profile.rollback_stage == expected
+
+    beyond = ListPanelDebugProfile.from_level(99)
+    assert beyond.rollback_stage == 10
 
 
 def test_debug_profile_diff_reports_width_guard_drop():

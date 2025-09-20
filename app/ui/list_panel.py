@@ -161,7 +161,7 @@ class ListPanelDebugProfile:
         raw = 0 if level is None else int(level)
         clamped = max(0, min(MAX_LIST_PANEL_DEBUG_LEVEL, raw))
         tier, base = divmod(clamped, 100)
-        base_clamped = max(0, min(50, base))
+        base_clamped = max(0, min(55, base))
         return cls(
             level=clamped,
             base_level=base_clamped,
@@ -226,7 +226,7 @@ class ListPanelDebugProfile:
         # only after the column-width recovery toggles at levels 36–39.  This
         # keeps the intermediate steps focused on width handling so each
         # feature can be isolated independently.
-        return max(0, self.base_level - 45)
+        return max(0, min(10, self.base_level - 45))
 
     def disabled_features(self) -> list[str]:
         """Return human-readable names of features disabled at this level."""

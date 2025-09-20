@@ -323,6 +323,7 @@ class AgentChatPanel(wx.Panel):
             return
         minimum = splitter.GetMinimumPaneSize()
         self._history_saved_sash = max(value, minimum)
+        logger.info("Agent history target sash stored=%s minimum=%s", value, minimum)
         self._schedule_history_sash_restore()
 
     @contextmanager
@@ -343,16 +344,27 @@ class AgentChatPanel(wx.Panel):
         source = event.GetEventObject()
         if source is None or source is splitter:
             return True
+        if isinstance(source, wx.SplitterWindow):
+            if logger.isEnabledFor(logging.DEBUG):
+                source_id = getattr(source, "GetId", lambda: None)()
+                logger.debug(
+                    "Ignoring agent history sash %s event forwarded from splitter id=%s type=%s pos=%s",
+                    phase,
+                    source_id,
+                    type(source).__name__,
+                    event.GetSashPosition(),
+                )
+            return False
         if logger.isEnabledFor(logging.DEBUG):
             source_id = getattr(source, "GetId", lambda: None)()
             logger.debug(
-                "Ignoring agent history sash %s event forwarded from splitter id=%s type=%s pos=%s",
+                "Processing agent history sash %s event forwarded from non-splitter id=%s type=%s pos=%s",
                 phase,
                 source_id,
                 type(source).__name__,
                 event.GetSashPosition(),
             )
-        return False
+        return True
 
     def _schedule_history_sash_restore(self) -> None:
         """Ensure the saved sash is re-applied once events settle."""
@@ -380,6 +392,12 @@ class AgentChatPanel(wx.Panel):
         with self._suspend_history_splitter_events():
             splitter.SetSashPosition(desired)
         self._history_saved_sash = desired
+        logger.info(
+            "Agent history sash applied desired=%s current=%s width=%s",
+            desired,
+            current,
+            splitter.GetClientSize().width,
+        )
 
     def _desired_history_sash(self) -> int:
         """Clamp stored sash to the available width of the splitter."""
@@ -412,6 +430,15 @@ class AgentChatPanel(wx.Panel):
         pos = event.GetSashPosition()
         if pos > 0:
             self._history_saved_sash = pos
+            source = event.GetEventObject()
+            source_type = type(source).__name__ if source is not None else "<none>"
+            source_id = getattr(source, "GetId", lambda: None)() if source else None
+            logger.info(
+                "Agent history sash moved by event source=%s id=%s to %s",
+                source_type,
+                source_id,
+                pos,
+            )
 
     def _on_history_splitter_resized(self, event: wx.SizeEvent) -> None:
         """Trigger sash restoration after external layout changes."""

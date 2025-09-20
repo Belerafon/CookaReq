@@ -195,6 +195,7 @@ class MainFrame(wx.Frame):
         self._doc_tree_placeholder_button: wx.Button | None = None
         self._doc_tree_toggle_size: wx.Size | None = None
         self._delayed_doc_tree_log: wx.CallLater | None = None
+        self._delayed_agent_log: wx.CallLater | None = None
         self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
         style_splitter(self.agent_splitter)
         self._disable_splitter_unsplit(self.agent_splitter)
@@ -544,17 +545,29 @@ class MainFrame(wx.Frame):
         source = event.GetEventObject()
         if source is None or source is splitter:
             return True
+        if isinstance(source, wx.SplitterWindow):
+            if logger.isEnabledFor(logging.DEBUG):
+                source_id = getattr(source, "GetId", lambda: None)()
+                logger.debug(
+                    "Ignoring %s sash %s event forwarded from splitter id=%s type=%s pos=%s",
+                    label,
+                    phase,
+                    source_id,
+                    type(source).__name__,
+                    event.GetSashPosition(),
+                )
+            return False
         if logger.isEnabledFor(logging.DEBUG):
             source_id = getattr(source, "GetId", lambda: None)()
             logger.debug(
-                "Ignoring %s sash %s event forwarded from splitter id=%s type=%s pos=%s",
+                "Processing %s sash %s event forwarded from non-splitter id=%s type=%s pos=%s",
                 label,
                 phase,
                 source_id,
                 type(source).__name__,
                 event.GetSashPosition(),
             )
-        return False
+        return True
 
     @contextmanager
     def _ignore_doc_splitter_events(self) -> Iterator[None]:
@@ -820,6 +833,33 @@ class MainFrame(wx.Frame):
             splitter.IsSplit(),
             self._doc_tree_collapsed,
             client_width,
+        )
+
+    def _log_agent_chat_sash(self, *, note: str) -> None:
+        """Emit diagnostic information about the agent chat splitter state."""
+
+        splitter = getattr(self, "agent_splitter", None)
+        if splitter is None:
+            return
+        try:
+            sash = splitter.GetSashPosition()
+        except Exception:
+            sash = None
+        client_width = splitter.GetClientSize().width
+        history = None
+        panel = getattr(self, "agent_panel", None)
+        if panel is not None:
+            try:
+                history = panel.history_sash
+            except Exception:
+                history = None
+        logger.info(
+            "Agent chat sash snapshot (%s): pos=%s is_split=%s width=%s history=%s",
+            note,
+            sash,
+            splitter.IsSplit(),
+            client_width,
+            history,
         )
 
     def _on_doc_splitter_sash_changing(self, event: wx.SplitterEvent) -> None:
@@ -1857,6 +1897,15 @@ class MainFrame(wx.Frame):
         pos = event.GetSashPosition()
         if pos > 0:
             self._agent_saved_sash = pos
+            source = event.GetEventObject()
+            source_type = type(source).__name__ if source is not None else "<none>"
+            source_id = getattr(source, "GetId", lambda: None)() if source else None
+            logger.info(
+                "Agent chat sash moved by event source=%s id=%s to %s",
+                source_type,
+                source_id,
+                pos,
+            )
 
     def _ensure_agent_chat_visible(self) -> None:
         if not self.agent_splitter.IsSplit():
@@ -1875,6 +1924,7 @@ class MainFrame(wx.Frame):
         self._agent_saved_sash = desired
         self.agent_panel.focus_input()
         self.config.set_agent_chat_shown(True)
+        self._log_agent_chat_sash(note="ensure visible")
 
     def _hide_agent_chat(self) -> None:
         if self.agent_splitter.IsSplit():
@@ -1882,6 +1932,7 @@ class MainFrame(wx.Frame):
         self._hide_agent_section()
         self.config.set_agent_chat_shown(False)
         self.config.set_agent_history_sash(self.agent_panel.history_sash)
+        self._log_agent_chat_sash(note="hide agent chat")
     def _apply_editor_visibility(self, *, persist: bool) -> None:
         visible = self._is_editor_visible()
         if visible:
@@ -1932,9 +1983,11 @@ class MainFrame(wx.Frame):
         self._agent_saved_sash = self.config.get_agent_chat_sash(
             self._default_agent_chat_sash()
         )
+        logger.info("Agent chat config loaded saved_sash=%s", self._agent_saved_sash)
         history_sash = self.config.get_agent_history_sash(
             self.agent_panel.default_history_sash()
         )
+        logger.info("Agent history config loaded saved_sash=%s", history_sash)
         self.agent_panel.apply_history_sash(history_sash)
         if self.config.get_doc_tree_collapsed():
             self._collapse_doc_tree(update_config=False)
@@ -1956,16 +2009,25 @@ class MainFrame(wx.Frame):
                     )
                 self._agent_saved_sash = desired
                 refresh_splitter_highlight(self.agent_splitter)
+                self._log_agent_chat_sash(note="after layout restore")
             else:
                 self.agent_chat_menu_item.Check(False)
                 if self.agent_splitter.IsSplit():
                     self.agent_splitter.Unsplit(self.agent_container)
                 self._hide_agent_section()
+                self._log_agent_chat_sash(note="after layout restore (hidden)")
 
         self._log_doc_tree_sash(note="after layout restore")
         self._delayed_doc_tree_log = wx.CallLater(
             1000,
             self._log_doc_tree_sash,
+            note="1s after startup",
+        )
+        if self._delayed_agent_log is not None:
+            self._delayed_agent_log.Stop()
+        self._delayed_agent_log = wx.CallLater(
+            1000,
+            self._log_agent_chat_sash,
             note="1s after startup",
         )
 
@@ -2084,6 +2146,9 @@ class MainFrame(wx.Frame):
         if self._delayed_doc_tree_log is not None:
             self._delayed_doc_tree_log.Stop()
             self._delayed_doc_tree_log = None
+        if self._delayed_agent_log is not None:
+            self._delayed_agent_log.Stop()
+            self._delayed_agent_log = None
         self._cancel_doc_splitter_user_marker()
         logger.info("Proceeding with shutdown sequence")
         logger.info("Shutdown step: saving layout")

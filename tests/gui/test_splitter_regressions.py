@@ -20,9 +20,11 @@ def _splitter_event(
     splitter: wx.SplitterWindow,
     event_type: int,
     pos: int,
+    *,
+    source: wx.Window | None = None,
 ) -> wx.SplitterEvent:
     event = wx.SplitterEvent(event_type, splitter)
-    event.SetEventObject(splitter)
+    event.SetEventObject(source or splitter)
     event.SetSashPosition(pos)
     return event
 
@@ -256,6 +258,41 @@ def test_agent_splitter_ignores_foreign_events(configured_frame, wx_app):
     assert frame._agent_saved_sash == initial
 
 
+def test_agent_splitter_accepts_non_splitter_events(configured_frame, wx_app):
+    """Agent splitter must accept sash events forwarded from non-splitters."""
+
+    frame, _ = configured_frame("agent_non_splitter_source.ini")
+    menu = frame.agent_chat_menu_item
+    assert menu is not None
+    menu.Check(True)
+    frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+
+    splitter = frame.agent_splitter
+    assert splitter.IsSplit()
+    initial = frame._agent_saved_sash
+    min_size = splitter.GetMinimumPaneSize()
+    width = splitter.GetClientSize().width
+    if width <= 0:
+        width = splitter.GetSize().width
+    max_left = max(width - min_size, min_size)
+    new_pos = max(min_size, min(initial + frame.FromDIP(140), max_left))
+    if new_pos == initial:
+        new_pos = max(min_size, min(initial - frame.FromDIP(140), max_left))
+    assert new_pos > 0
+
+    event = _splitter_event(
+        splitter,
+        wx.wxEVT_SPLITTER_SASH_POS_CHANGED,
+        new_pos,
+        source=frame.agent_container,
+    )
+    frame._on_agent_splitter_sash_changed(event)
+    wx_app.Yield()
+
+    assert frame._agent_saved_sash == new_pos
+
+
 def test_agent_chat_toggle_preserves_width(configured_frame, wx_app):
     """Showing and hiding agent chat must not drift the sash position."""
 
@@ -333,6 +370,40 @@ def test_agent_history_splitter_ignores_foreign_events(configured_frame, wx_app)
     assert frame.agent_panel.history_sash == initial
 
 
+def test_agent_history_accepts_non_splitter_events(configured_frame, wx_app):
+    """History splitter must accept sash changes triggered by non-splitters."""
+
+    frame, _ = configured_frame("agent_history_non_splitter.ini")
+    menu = frame.agent_chat_menu_item
+    assert menu is not None
+    menu.Check(True)
+    frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+
+    splitter = frame.agent_panel._horizontal_splitter
+    initial = frame.agent_panel.history_sash
+    min_size = splitter.GetMinimumPaneSize()
+    width = splitter.GetClientSize().width
+    if width <= 0:
+        width = splitter.GetSize().width
+    max_left = max(width - min_size, min_size)
+    new_pos = max(min_size, min(initial + splitter.FromDIP(120), max_left))
+    if new_pos == initial:
+        new_pos = max(min_size, min(initial - splitter.FromDIP(120), max_left))
+    assert new_pos > 0
+
+    event = _splitter_event(
+        splitter,
+        wx.wxEVT_SPLITTER_SASH_POS_CHANGED,
+        new_pos,
+        source=frame.agent_panel,
+    )
+    frame.agent_panel._on_history_sash_changed(event)
+    wx_app.Yield()
+
+    assert frame.agent_panel.history_sash == new_pos
+
+
 def test_agent_history_splitter_survives_layout_changes(configured_frame, wx_app):
     """Collapsing hierarchy must not resize the chat history column."""
 
@@ -375,6 +446,63 @@ def test_agent_history_splitter_survives_layout_changes(configured_frame, wx_app
     restored_splitter = restored_frame.agent_panel._horizontal_splitter
     assert restored_splitter.GetSashPosition() == initial
     assert restored_frame.agent_panel.history_sash == initial
+
+    restored_frame.Destroy()
+    wx_app.Yield()
+
+
+def test_agent_history_drag_persists_between_sessions(configured_frame, wx_app):
+    """Dragging the history sash must persist across saved sessions."""
+
+    frame, config_path = configured_frame("agent_history_drag.ini")
+    menu = frame.agent_chat_menu_item
+    assert menu is not None
+    menu.Check(True)
+    frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+
+    splitter = frame.agent_panel._horizontal_splitter
+    initial = frame.agent_panel.history_sash
+    min_size = splitter.GetMinimumPaneSize()
+    width = splitter.GetClientSize().width
+    if width <= 0:
+        width = splitter.GetSize().width
+    max_left = max(width - min_size, min_size)
+    new_pos = max(min_size, min(initial + splitter.FromDIP(160), max_left))
+    if new_pos == initial:
+        new_pos = max(min_size, min(initial - splitter.FromDIP(160), max_left))
+    assert new_pos > 0
+
+    event = _splitter_event(
+        splitter,
+        wx.wxEVT_SPLITTER_SASH_POS_CHANGED,
+        new_pos,
+        source=frame.agent_panel,
+    )
+    frame.agent_panel._on_history_sash_changed(event)
+    wx_app.Yield()
+
+    assert frame.agent_panel.history_sash == new_pos
+
+    frame._save_layout()
+    frame.Destroy()
+    wx_app.Yield()
+
+    reloaded_config = ConfigManager(path=config_path)
+    reloaded_config.set_mcp_settings(MCPSettings(auto_start=False))
+    restored_frame = MainFrame(None, config=reloaded_config, model=RequirementModel())
+    restored_frame.Show()
+    wx_app.Yield()
+
+    restored_menu = restored_frame.agent_chat_menu_item
+    assert restored_menu is not None
+    restored_menu.Check(True)
+    restored_frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+
+    restored_splitter = restored_frame.agent_panel._horizontal_splitter
+    assert restored_frame.agent_panel.history_sash == new_pos
+    assert restored_splitter.GetSashPosition() == new_pos
 
     restored_frame.Destroy()
     wx_app.Yield()

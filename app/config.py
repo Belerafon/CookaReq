@@ -722,22 +722,36 @@ class ConfigManager:
     def get_agent_chat_sash(self, default: int) -> int:
         """Return stored splitter position for the agent chat pane."""
 
-        return self.get_value("agent_chat_sash", default=default)
+        value = self.get_value("agent_chat_sash", default=default)
+        logger.info(
+            "Config: restored agent chat sash width=%s (default=%s)",
+            value,
+            default,
+        )
+        return value
 
     def set_agent_chat_sash(self, pos: int) -> None:
         """Persist splitter position for the agent chat pane."""
 
+        logger.info("Config: persisting agent chat sash width=%s", pos)
         self.set_value("agent_chat_sash", pos)
         self.flush()
 
     def get_agent_history_sash(self, default: int) -> int:
         """Return stored width of the chat history list."""
 
-        return self.get_value("agent_history_sash", default=default)
+        value = self.get_value("agent_history_sash", default=default)
+        logger.info(
+            "Config: restored agent history sash width=%s (default=%s)",
+            value,
+            default,
+        )
+        return value
 
     def set_agent_history_sash(self, pos: int) -> None:
         """Persist width of the chat history list."""
 
+        logger.info("Config: persisting agent history sash width=%s", pos)
         self.set_value("agent_history_sash", pos)
         self.flush()
 
@@ -921,6 +935,12 @@ class ConfigManager:
                     if agent_chat_sash is not None
                     else agent_splitter.GetSashPosition()
                 )
+                logger.info(
+                    "Config: saving agent chat sash effective=%s (provided=%s actual=%s)",
+                    sash_value,
+                    agent_chat_sash,
+                    agent_splitter.GetSashPosition(),
+                )
             else:
                 self.set_value("agent_chat_shown", False)
                 sash_value = (
@@ -928,9 +948,18 @@ class ConfigManager:
                     if agent_chat_sash is not None
                     else self.get_value("agent_chat_sash")
                 )
+                logger.info(
+                    "Config: saving agent chat sash while hidden effective=%s (provided=%s)",
+                    sash_value,
+                    agent_chat_sash,
+                )
             if sash_value is not None:
                 self.set_value("agent_chat_sash", sash_value)
         if agent_history_sash is not None:
+            logger.info(
+                "Config: saving agent history sash=%s",
+                agent_history_sash,
+            )
             self.set_value("agent_history_sash", agent_history_sash)
         panel.save_column_widths(self)
         panel.save_column_order(self)

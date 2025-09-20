@@ -207,7 +207,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     MIN_COL_WIDTH = 50
     MAX_COL_WIDTH = 1000
     DEFAULT_COLUMN_WIDTH = 160
-    LAZY_REPORT_REFRESH_MAX_ATTEMPTS = 10
     DEFAULT_COLUMN_WIDTHS: dict[str, int] = {
         "title": 340,
         "labels": 200,
@@ -278,14 +277,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._column_widths_scheduled = False
         self._report_refresh_scheduled = False
         self._report_refresh_attempts = 0
-        self._lazy_report_refresh_pending = False
-        self._lazy_report_refresh_attempts = 0
-        self._lazy_report_refresh_stage = ""
+        self._report_refresh_stage = ""
         self._probe_refresh_pending = False
         self._probe_refresh_last_stage = "initial"
         self._probe_deferred_plain_pending = False
         self._probe_deferred_plain_payload: list[Requirement] | None = None
         self._probe_deferred_plain_stage = ""
+        self._probe_deferred_plain_attempts = 0
         sizer = wx.BoxSizer(wx.VERTICAL) if self.debug.sizer_layout else None
         vertical_pad = dip(self, 5)
         orient = getattr(wx, "HORIZONTAL", 0)
@@ -1115,29 +1113,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self.list.ClearAll()
         self._probe_log_column_inventory(stage + "-after-clearall")
 
-    def _should_use_lazy_report_refresh(self) -> bool:
-        """Return ``True`` when a deferred repaint fallback is required."""
-
-        if not self.debug.report_style:
-            return False
-        if self.debug.report_lazy_refresh:
-            return False
-        return not (
-            self.debug.report_immediate_refresh
-            or self.debug.report_immediate_update
-            or self.debug.report_send_size_event
-        )
-
     def _post_population_refresh(self, stage: str | None = None) -> None:
         """Force a repaint when implicit refresh is disabled."""
 
         stage_name = stage or "post-population"
         if self.debug.report_lazy_refresh:
-            self._schedule_report_refresh()
+            self._schedule_report_refresh(stage_name)
         else:
             self._apply_immediate_refresh()
-            if self._should_use_lazy_report_refresh():
-                self._schedule_lazy_report_refresh(stage_name)
         if self.debug.probe_force_refresh:
             self._schedule_force_refresh_probe(stage_name)
 
@@ -1159,119 +1142,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             else:
                 issued = True
         return issued
-
-    def _schedule_lazy_report_refresh(self, stage: str) -> None:
-        """Attempt to repaint the control asynchronously once it becomes ready."""
-
-        if not self._should_use_lazy_report_refresh():
-            return
-        self._lazy_report_refresh_stage = stage
-        if self._lazy_report_refresh_pending:
-            if self._diagnostic_logging:
-                self._log_diagnostics(
-                    "lazy report refresh already pending — stage=%s attempt=%s",
-                    self._lazy_report_refresh_stage,
-                    self._lazy_report_refresh_attempts,
-                )
-            return
-        self._lazy_report_refresh_pending = True
-        self._lazy_report_refresh_attempts = 0
-        call_after = getattr(wx, "CallAfter", None)
-        if callable(call_after):
-            call_after(self._execute_lazy_report_refresh, stage, 0)
-            return
-        self._execute_lazy_report_refresh(stage, 0)
-
-    def _execute_lazy_report_refresh(self, stage: str, attempt: int) -> None:
-        """Run (or retry) the deferred report refresh."""
-
-        self._lazy_report_refresh_pending = False
-        list_ctrl = getattr(self, "list", None)
-        if not list_ctrl:
-            return
-        metrics = self._collect_control_metrics()
-        is_shown_flag = None
-        with suppress(Exception):
-            is_shown_flag = bool(list_ctrl.IsShown())
-        if is_shown_flag is not None:
-            metrics.setdefault("is_shown_flag", is_shown_flag)
-        size = metrics.get("client_size", (0, 0))
-        width = height = 0
-        if isinstance(size, tuple) and len(size) == 2:
-            width, height = size
-        shown_screen = bool(metrics.get("is_shown"))
-        ready = width > 0 and height > 0 and (
-            shown_screen or (is_shown_flag if is_shown_flag is not None else False)
-        )
-        if not ready:
-            if attempt >= self.LAZY_REPORT_REFRESH_MAX_ATTEMPTS:
-                if self._diagnostic_logging:
-                    self._log_diagnostics(
-                        "lazy report refresh giving up — stage=%s attempt=%s metrics=%s",
-                        stage,
-                        attempt,
-                        self._probe_filter_metrics(metrics),
-                    )
-                self._lazy_report_refresh_stage = ""
-                self._lazy_report_refresh_attempts = 0
-                return
-            schedule_kind = "immediate"
-            call_after = getattr(wx, "CallAfter", None)
-            call_later = getattr(wx, "CallLater", None)
-            if callable(call_after):
-                schedule_kind = "CallAfter"
-            elif callable(call_later):
-                schedule_kind = "CallLater"
-            if self._diagnostic_logging:
-                self._log_diagnostics(
-                    "lazy report refresh retry scheduled — stage=%s attempt=%s via=%s metrics=%s",
-                    stage,
-                    attempt,
-                    schedule_kind,
-                    self._probe_filter_metrics(metrics),
-                )
-            self._lazy_report_refresh_pending = True
-            self._lazy_report_refresh_attempts = attempt + 1
-            self._lazy_report_refresh_stage = stage
-            if callable(call_after):
-                call_after(self._execute_lazy_report_refresh, stage, attempt + 1)
-                return
-            if callable(call_later):
-                call_later(max(1, 10 * (attempt + 1)), self._execute_lazy_report_refresh, stage, attempt + 1)
-                return
-            self._execute_lazy_report_refresh(stage, attempt + 1)
-            return
-        issued_refresh = False
-        issued_update = False
-        for name in ("Refresh", "Update"):
-            method = getattr(list_ctrl, name, None)
-            if not callable(method):
-                continue
-            try:
-                method()
-            except Exception:
-                if self._diagnostic_logging:
-                    logger.debug(
-                        "ListPanel lazy report %s() failed",
-                        name.lower(),
-                        exc_info=True,
-                    )
-            else:
-                if name == "Refresh":
-                    issued_refresh = True
-                else:
-                    issued_update = True
-        if self._diagnostic_logging:
-            self._log_diagnostics(
-                "lazy report refresh executed — stage=%s attempt=%s refresh=%s update=%s metrics=%s",
-                stage,
-                attempt,
-                issued_refresh,
-                issued_update,
-                self._probe_filter_metrics(metrics),
-            )
-        self._lazy_report_refresh_stage = ""
-        self._lazy_report_refresh_attempts = 0
 
     def _apply_immediate_refresh(self) -> None:
         """Request the list control to repaint immediately."""
@@ -1418,7 +1288,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if self.debug.probe_deferred_population:
             self._flush_deferred_plain_population("refresh-probe")
 
-    def _schedule_report_refresh(self) -> None:
+    def _schedule_report_refresh(self, stage: str) -> None:
         """Fallback for report mode when lazy refresh fails to repaint."""
 
         if not self.debug.report_style:
@@ -1426,7 +1296,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if self._report_refresh_scheduled:
             return
         self._report_refresh_scheduled = True
-        self._log_diagnostics("scheduled explicit report refresh fallback")
+        self._report_refresh_stage = stage
+        self._log_diagnostics(
+            "scheduled explicit report refresh fallback — stage=%s",
+            stage,
+        )
         call_after = getattr(wx, "CallAfter", None)
         if callable(call_after):
             call_after(self._flush_report_refresh)
@@ -1454,21 +1328,24 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if attempts >= 5 or not callable(call_after):
                 if attempts >= 5:
                     self._log_diagnostics(
-                        "report refresh giving up after %s deferred attempts",
+                        "report refresh giving up after %s deferred attempts — stage=%s",
                         attempts,
+                        self._report_refresh_stage,
                     )
                 else:
                     self._log_diagnostics(
-                        "report refresh fallback without CallAfter (attempt %s)",
+                        "report refresh fallback without CallAfter (attempt %s) — stage=%s",
                         attempts,
+                        self._report_refresh_stage,
                     )
                 self._apply_immediate_refresh()
                 return
             self._log_diagnostics(
-                "report refresh deferred — control not yet shown (attempt %s)",
+                "report refresh deferred — control not yet shown (attempt %s) stage=%s",
                 attempts,
+                self._report_refresh_stage,
             )
-            self._schedule_report_refresh()
+            self._schedule_report_refresh(self._report_refresh_stage or "post-population")
             return
         self._report_refresh_attempts = 0
         count = 0
@@ -1483,7 +1360,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     exc_info=True,
                 )
         self._apply_immediate_refresh()
-        self._log_diagnostics("report refresh applied — count=%s", count)
+        self._log_diagnostics(
+            "report refresh applied — stage=%s count=%s",
+            self._report_refresh_stage,
+            count,
+        )
+        self._report_refresh_stage = ""
 
     def _probe_plain_preview(
         self,
@@ -1521,7 +1403,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             size = list_ctrl.GetClientSize()
             size_tuple = (size.width, size.height)
         metrics["client_size"] = size_tuple
-        ready = bool(shown_screen and size_tuple[0] > 0 and size_tuple[1] > 0)
+        ready = bool(size_tuple[0] > 0 and size_tuple[1] > 0)
+        if shown_screen is not None:
+            ready = ready and shown_screen
+        elif shown_flag is not None:
+            ready = ready and bool(shown_flag)
         return ready, metrics
 
     def _maybe_schedule_deferred_plain_population(
@@ -1531,36 +1417,38 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     ) -> bool:
         """Delay plain population until the widget becomes visible."""
 
-        if not self.debug.probe_deferred_population:
-            return False
         ready, metrics = self._probe_list_ready()
         if ready:
             if self._probe_deferred_plain_pending:
-                logger.info(
-                    "ListPanel deferred population probe: control became ready during %s", stage
-                )
+                if self.debug.probe_deferred_population:
+                    logger.info(
+                        "ListPanel deferred population probe: control became ready during %s",
+                        stage,
+                    )
                 self._flush_deferred_plain_population(f"auto:{stage}")
             return False
         payload = list(requirements)
-        preview = self._probe_plain_preview(payload)
-        if self._probe_deferred_plain_pending:
-            logger.info(
-                "ListPanel deferred population probe: updating pending payload — previous_stage=%s new_stage=%s metrics=%s sample=%s",
-                self._probe_deferred_plain_stage,
-                stage,
-                metrics,
-                preview,
-            )
-        else:
-            logger.info(
-                "ListPanel deferred population probe: deferring plain update (%s) metrics=%s sample=%s",
-                stage,
-                metrics,
-                preview,
-            )
+        if self.debug.probe_deferred_population:
+            preview = self._probe_plain_preview(payload)
+            if self._probe_deferred_plain_pending:
+                logger.info(
+                    "ListPanel deferred population probe: updating pending payload — previous_stage=%s new_stage=%s metrics=%s sample=%s",
+                    self._probe_deferred_plain_stage,
+                    stage,
+                    metrics,
+                    preview,
+                )
+            else:
+                logger.info(
+                    "ListPanel deferred population probe: deferring plain update (%s) metrics=%s sample=%s",
+                    stage,
+                    metrics,
+                    preview,
+                )
         self._probe_deferred_plain_payload = payload
         self._probe_deferred_plain_pending = True
         self._probe_deferred_plain_stage = stage
+        self._probe_deferred_plain_attempts = 0
         call_after = getattr(wx, "CallAfter", None)
         if callable(call_after):
             call_after(self._flush_deferred_plain_population, f"CallAfter:{stage}")
@@ -1569,29 +1457,49 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _flush_deferred_plain_population(self, reason: str | None = None) -> None:
         """Execute any delayed plain population when the control is ready."""
 
-        if not self.debug.probe_deferred_population:
-            return
         if not self._probe_deferred_plain_pending:
             return
         descriptor = reason or self._probe_deferred_plain_stage or "manual"
         ready, metrics = self._probe_list_ready()
         if not ready:
-            logger.info(
-                "ListPanel deferred population probe: still waiting (%s) pending_stage=%s metrics=%s",
-                descriptor,
-                self._probe_deferred_plain_stage,
-                metrics,
-            )
-            return
+            if self.debug.probe_deferred_population:
+                logger.info(
+                    "ListPanel deferred population probe: still waiting (%s) pending_stage=%s metrics=%s",
+                    descriptor,
+                    self._probe_deferred_plain_stage,
+                    metrics,
+                )
+            self._probe_deferred_plain_attempts += 1
+            if self._probe_deferred_plain_attempts >= 20:
+                if self.debug.probe_deferred_population:
+                    logger.warning(
+                        "ListPanel deferred population probe: giving up after %s attempts (%s)",
+                        self._probe_deferred_plain_attempts,
+                        descriptor,
+                    )
+                ready = True
+            else:
+                call_later = getattr(wx, "CallLater", None)
+                delay = min(200, 10 * max(1, self._probe_deferred_plain_attempts))
+                if callable(call_later):
+                    call_later(delay, self._flush_deferred_plain_population, descriptor)
+                else:
+                    call_after = getattr(wx, "CallAfter", None)
+                    if callable(call_after):
+                        call_after(self._flush_deferred_plain_population, descriptor)
+                return
+        else:
+            self._probe_deferred_plain_attempts = 0
         payload = self._probe_deferred_plain_payload or list(self._plain_source)
-        preview = self._probe_plain_preview(payload)
-        logger.info(
-            "ListPanel deferred population probe: executing deferred fill (%s) metrics=%s count=%s sample=%s",
-            descriptor,
-            metrics,
-            len(payload),
-            preview,
-        )
+        if self.debug.probe_deferred_population:
+            preview = self._probe_plain_preview(payload)
+            logger.info(
+                "ListPanel deferred population probe: executing deferred fill (%s) metrics=%s count=%s sample=%s",
+                descriptor,
+                metrics,
+                len(payload),
+                preview,
+            )
         self._probe_deferred_plain_pending = False
         self._probe_deferred_plain_payload = None
         self._probe_deferred_plain_stage = ""
@@ -1605,25 +1513,20 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if hasattr(event, "IsShown"):
             with suppress(Exception):
                 shown = bool(event.IsShown())
-        if self.debug.probe_deferred_population:
-            self._on_probe_list_show(shown)
-        if shown and self._should_use_lazy_report_refresh():
-            stage = self._lazy_report_refresh_stage or "EVT_SHOW"
-            if stage != "EVT_SHOW":
-                stage = f"{stage}:show"
-            self._schedule_lazy_report_refresh(stage)
+        self._on_probe_list_show(shown)
         if hasattr(event, "Skip"):
             event.Skip()
 
     def _on_probe_list_show(self, shown: bool) -> None:
         """Flush deferred population once the list becomes visible."""
 
-        logger.info(
-            "ListPanel deferred population probe: EVT_SHOW shown=%s pending=%s stage=%s",
-            shown,
-            self._probe_deferred_plain_pending,
-            self._probe_deferred_plain_stage,
-        )
+        if self.debug.probe_deferred_population:
+            logger.info(
+                "ListPanel deferred population probe: EVT_SHOW shown=%s pending=%s stage=%s",
+                shown,
+                self._probe_deferred_plain_pending,
+                self._probe_deferred_plain_stage,
+            )
         if shown and self._probe_deferred_plain_pending:
             self._flush_deferred_plain_population("EVT_SHOW")
 

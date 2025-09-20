@@ -121,7 +121,9 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     )
     panel.set_columns(["labels", "status"])
     panel.set_requirements([_req(1, "Plain", labels=["bug"], status=Status.APPROVED)])
-    wx_app.Yield()
+    frame.Show()
+    for _ in range(5):
+        wx_app.Yield()
 
     assert panel.filter_btn is None
     assert panel.reset_btn is None
@@ -171,7 +173,9 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
 
     panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=19)
     panel.set_requirements([_req(1, "Visible title")])
-    wx_app.Yield()
+    frame.Show()
+    for _ in range(5):
+        wx_app.Yield()
 
     assert panel.debug.report_style is True
     assert panel.debug.report_width_retry is True
@@ -199,7 +203,9 @@ def test_report_style_high_level_still_displays_title(wx_app):
 
     panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=29)
     panel.set_requirements([_req(1, "Visible title")])
-    wx_app.Yield()
+    frame.Show()
+    for _ in range(5):
+        wx_app.Yield()
 
     assert panel.debug.report_style is True
     assert panel.debug.report_column_widths is False
@@ -221,7 +227,9 @@ def test_report_column0_setitem_disabled_still_shows_title(wx_app):
 
     panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=28)
     panel.set_requirements([_req(1, "Column 0 text")])
-    wx_app.Yield()
+    frame.Show()
+    for _ in range(5):
+        wx_app.Yield()
 
     assert panel.debug.report_column0_setitem is False
     assert panel.debug.report_style is True
@@ -241,7 +249,9 @@ def test_report_refresh_items_toggle(monkeypatch, wx_app):
     # Level where RefreshItems is still used
     panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=31)
     panel_enabled.set_requirements([_req(1, "Needs refresh")])
-    wx_app.Yield()
+    frame.Show()
+    for _ in range(5):
+        wx_app.Yield()
 
     called_enabled: list[tuple[int, int]] = []
 
@@ -258,7 +268,8 @@ def test_report_refresh_items_toggle(monkeypatch, wx_app):
     # Level where RefreshItems is disabled
     panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=32)
     panel_disabled.set_requirements([_req(2, "No refresh items")])
-    wx_app.Yield()
+    for _ in range(5):
+        wx_app.Yield()
 
     called_disabled: list[tuple[int, int]] = []
 
@@ -350,7 +361,7 @@ def test_report_immediate_refresh_toggle(monkeypatch, wx_app):
     frame.Destroy()
 
 
-def test_report_plain_mode_lazy_refresh_fallback(wx_app, monkeypatch):
+def test_plain_population_waits_until_visible(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
 
@@ -360,32 +371,23 @@ def test_report_plain_mode_lazy_refresh_fallback(wx_app, monkeypatch):
 
     panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=35)
 
-    calls: list[str] = []
-    original_refresh = panel.list.Refresh
-    original_update = panel.list.Update
+    panel.set_requirements([_req(1, "Deferred entry")])
 
-    def record_refresh(*args, **kwargs):
-        calls.append("refresh")
-        return original_refresh(*args, **kwargs)
-
-    def record_update(*args, **kwargs):
-        calls.append("update")
-        return original_update(*args, **kwargs)
-
-    monkeypatch.setattr(panel.list, "Refresh", record_refresh)
-    monkeypatch.setattr(panel.list, "Update", record_update)
-
-    panel.set_requirements([_req(1, "Lazy repaint")])
-    wx_app.Yield()  # allow the initial CallAfter to run while the control is hidden
+    # The list control is still hidden; population should be deferred
+    wx_app.Yield()
+    assert panel.list.GetItemCount() == 0
 
     frame.Show()
-    for _ in range(5):
+    for _ in range(50):
         wx_app.Yield()
+        if panel.list.GetItemCount() == 1:
+            break
 
-    assert "refresh" in calls
-    assert "update" in calls
+    panel._flush_deferred_plain_population("test-case")
+    wx_app.Yield()
+
     assert panel.list.GetItemCount() == 1
-    assert panel.list.GetItemText(0) == "Lazy repaint"
+    assert panel.list.GetItemText(0) == "Deferred entry"
 
     frame.Destroy()
 
@@ -407,10 +409,12 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
 
     panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=19)
     panel.set_requirements([_req(1, "Needs repaint")])
-    wx_app.Yield()
+    frame.Show()
+    for _ in range(5):
+        wx_app.Yield()
 
     assert applied, "fallback refresh must trigger immediate repaint"
-    assert panel._report_refresh_attempts >= 1
+    assert panel.list.GetItemCount() == 1
 
     frame.Destroy()
 

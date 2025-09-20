@@ -379,12 +379,30 @@ def _build_wx_stub():
 
         def Add(self, window, proportion, flag, border):
             self._children.append(window)
+            return window
+
+        def Prepend(self, window, proportion, flag, border):
+            self._children.insert(0, window)
+            return window
 
         def GetChildren(self):
             return [
                 types.SimpleNamespace(GetWindow=lambda w=child: w)
                 for child in self._children
             ]
+
+    class StaticBox(Window):
+        def __init__(self, parent=None, label=""):
+            super().__init__(parent)
+            self._label = label
+
+    class StaticBoxSizer(BoxSizer):
+        def __init__(self, box, orient):
+            super().__init__(orient)
+            self._box = box
+
+        def GetStaticBox(self):
+            return self._box
 
     class Config:
         def read_int(self, key, default):
@@ -398,6 +416,12 @@ def _build_wx_stub():
 
         def write(self, key, value):
             pass
+
+    call_after_calls: list[tuple] = []
+
+    def CallAfter(func, *args, **kwargs):
+        call_after_calls.append((func, args, kwargs))
+        return func(*args, **kwargs)
 
     wx_mod = types.SimpleNamespace(
         Panel=Panel,
@@ -413,10 +437,15 @@ def _build_wx_stub():
         ListCtrl=ListCtrl,
         ImageList=ImageList,
         BoxSizer=BoxSizer,
+        StaticBox=StaticBox,
+        StaticBoxSizer=StaticBoxSizer,
         Window=Window,
         VERTICAL=0,
+        HORIZONTAL=1,
         EXPAND=0,
         ALL=0,
+        LEFT=0,
+        ALIGN_CENTER_VERTICAL=0,
         BU_EXACTFIT=0,
         ART_CLOSE="close",
         ART_BUTTON="button",
@@ -441,7 +470,9 @@ def _build_wx_stub():
         MemoryDC=MemoryDC,
         NullBitmap=object(),
         BLACK=Colour(0, 0, 0),
+        CallAfter=CallAfter,
     )
+    wx_mod._call_after_calls = call_after_calls
 
     class ColumnSorterMixin:
         def __init__(self, *args, **kwargs):
@@ -1068,3 +1099,46 @@ def test_load_column_widths_assigns_defaults(monkeypatch):
         3: list_panel_cls.DEFAULT_COLUMN_WIDTHS["status"],
         4: list_panel_cls.DEFAULT_COLUMN_WIDTHS["priority"],
     }
+
+
+def test_load_column_widths_retries_when_width_rejected(monkeypatch):
+    wx_stub, mixins, ulc = _build_wx_stub()
+    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
+    monkeypatch.setitem(sys.modules, "wx", wx_stub)
+    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
+    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
+
+    list_panel_module = importlib.import_module("app.ui.list_panel")
+    importlib.reload(list_panel_module)
+    requirement_model_cls = importlib.import_module(
+        "app.ui.requirement_model",
+    ).RequirementModel
+    list_panel_cls = list_panel_module.ListPanel
+
+    frame = wx_stub.Panel(None)
+    panel = list_panel_cls(frame, model=requirement_model_cls())
+
+    wx_stub._call_after_calls.clear()
+    desired_width = 275
+    config = types.SimpleNamespace(read_int=lambda key, default: desired_width)
+
+    calls: list[tuple[int, int]] = []
+
+    def failing_set_column_width(col: int, width: int) -> bool:
+        calls.append((col, width))
+        if len(calls) == 1:
+            panel.list._col_widths.pop(col, None)
+            return False
+        panel.list._col_widths[col] = width
+        return True
+
+    panel.list._col_widths.clear()
+    panel.list.SetColumnWidth = failing_set_column_width
+    panel.list.GetColumnWidth = lambda idx: panel.list._col_widths.get(idx, 0)
+
+    panel.load_column_widths(config)
+
+    assert calls == [(0, desired_width), (0, desired_width)]
+    assert wx_stub._call_after_calls
+    assert panel.list._col_widths[0] == desired_width

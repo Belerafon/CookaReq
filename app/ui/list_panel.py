@@ -407,13 +407,27 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def load_column_widths(self, config: ConfigManager) -> None:
         """Restore column widths from config with sane bounds."""
         count = self.list.GetColumnCount()
+        widths: list[int] = []
+        retry = False
         for i in range(count):
             width = config.read_int(f"col_width_{i}", -1)
             if width <= 0:
                 field = self._field_order[i] if i < len(self._field_order) else ""
                 width = self._default_column_width(field)
             width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
-            self.list.SetColumnWidth(i, width)
+            widths.append(width)
+            try:
+                self.list.SetColumnWidth(i, width)
+            except Exception:
+                retry = True
+                continue
+            actual = width
+            with suppress(Exception):
+                actual = self.list.GetColumnWidth(i)
+            if actual < self.MIN_COL_WIDTH:
+                retry = True
+        if retry and hasattr(wx, "CallAfter"):
+            wx.CallAfter(self._apply_column_widths, tuple(widths))
 
     def save_column_widths(self, config: ConfigManager) -> None:
         """Persist current column widths to config."""
@@ -457,6 +471,20 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             return
         names = [self._field_order[idx] for idx in order if idx < len(self._field_order)]
         config.write("col_order", ",".join(names))
+
+    def _apply_column_widths(self, widths: Sequence[int]) -> None:
+        """Retry applying column widths if the initial attempt was rejected."""
+
+        if not widths:
+            return
+        list_ctrl = getattr(self, "list", None)
+        if list_ctrl is None:
+            return
+        count = min(len(widths), list_ctrl.GetColumnCount())
+        for idx in range(count):
+            width = max(self.MIN_COL_WIDTH, min(widths[idx], self.MAX_COL_WIDTH))
+            with suppress(Exception):
+                list_ctrl.SetColumnWidth(idx, width)
 
     def reorder_columns(self, from_col: int, to_col: int) -> None:
         """Move column from ``from_col`` index to ``to_col`` index."""

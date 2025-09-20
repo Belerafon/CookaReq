@@ -224,15 +224,34 @@ class ListPanelDebugProfile:
             probe_deferred_population=tier >= 3,
         )
 
+    # Each threshold maps to a legacy splitter behaviour restored from before
+    # commit fcbd3c2221.  Raising the base level past the threshold activates
+    # the corresponding tier so the rollback can be stepped through level by
+    # level during diagnostics.
+    _ROLLBACK_THRESHOLDS: ClassVar[tuple[int, ...]] = (
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+    )
+
     @property
     def rollback_stage(self) -> int:
         """Return how many post-commit rollback tiers are enabled."""
 
-        # Post-fcbd3c rollbacks (legacy splitters, placeholders, etc.) start
-        # only after the column-width recovery toggles at levels 45–48.  This
-        # keeps the intermediate steps focused on width handling so each
-        # feature can be isolated independently.
-        return max(0, min(10, self.base_level - 47))
+        stage = 0
+        for index, threshold in enumerate(self._ROLLBACK_THRESHOLDS, start=1):
+            if self.base_level >= threshold:
+                stage = index
+                continue
+            break
+        return stage
 
     def disabled_features(self) -> list[str]:
         """Return human-readable names of features disabled at this level."""

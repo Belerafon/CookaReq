@@ -83,6 +83,7 @@ class ListPanelDebugProfile:
         "report_immediate_refresh": "report Refresh() request",
         "report_immediate_update": "report Update() request",
         "report_send_size_event": "report SendSizeEvent fallback",
+        "report_basic_refresh": "report basic refresh fallback",
         "plain_deferred_callafter": "plain deferred CallAfter scheduling",
         "plain_deferred_timer": "plain deferred CallLater retries",
         "plain_deferred_queue": "plain deferred payload queue",
@@ -140,6 +141,7 @@ class ListPanelDebugProfile:
     report_immediate_refresh: bool
     report_immediate_update: bool
     report_send_size_event: bool
+    report_basic_refresh: bool
     plain_deferred_callafter: bool
     plain_deferred_timer: bool
     plain_deferred_queue: bool
@@ -184,10 +186,6 @@ class ListPanelDebugProfile:
             selection_events=base_clamped < 17,
             model_driven=base_clamped < 18,
             model_cache=base_clamped < 19,
-            report_width_fallbacks=base_clamped < 42,
-            report_width_retry_async=base_clamped < 43,
-            report_width_retry=base_clamped < 44,
-            report_column_widths=base_clamped < 45,
             report_list_item=base_clamped < 22,
             report_clear_all=base_clamped < 23,
             report_batch_delete=base_clamped < 24,
@@ -202,12 +200,17 @@ class ListPanelDebugProfile:
             report_immediate_refresh=base_clamped < 33,
             report_immediate_update=base_clamped < 34,
             report_send_size_event=base_clamped < 35,
-            plain_deferred_callafter=base_clamped < 38,
-            plain_deferred_timer=base_clamped < 39,
-            plain_deferred_queue=base_clamped < 40,
-            plain_deferred_population=base_clamped < 41,
-            plain_cached_items=base_clamped < 37,
-            plain_post_refresh=base_clamped < 36,
+            report_basic_refresh=base_clamped < 36,
+            plain_post_refresh=base_clamped < 37,
+            plain_cached_items=base_clamped < 38,
+            plain_deferred_callafter=base_clamped < 39,
+            plain_deferred_timer=base_clamped < 40,
+            plain_deferred_queue=base_clamped < 41,
+            plain_deferred_population=base_clamped < 42,
+            report_width_fallbacks=base_clamped < 43,
+            report_width_retry_async=base_clamped < 44,
+            report_width_retry=base_clamped < 45,
+            report_column_widths=base_clamped < 46,
             report_style=base_clamped < 49,
             sizer_layout=base_clamped < 49,
             probe_force_refresh=tier >= 1,
@@ -487,6 +490,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if getattr(previous, name) != getattr(profile, name)
         }
         allowed_toggles = {
+            "report_basic_refresh",
             "plain_post_refresh",
             "plain_cached_items",
             "plain_deferred_callafter",
@@ -1038,7 +1042,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 except Exception:
                     self.list.SetItemData(index, 0)
         if self.debug.plain_post_refresh:
-            self._post_population_refresh(stage="populate-plain")
+            self._post_population_refresh(
+                stage="populate-plain",
+                allow_basic_refresh=self.debug.report_basic_refresh,
+            )
         self._log_population_snapshot("populate-plain")
 
     def _on_size_plain(self, event: wx.Event | None) -> None:
@@ -1357,14 +1364,22 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self.list.ClearAll()
         self._probe_log_column_inventory(stage + "-after-clearall")
 
-    def _post_population_refresh(self, stage: str | None = None) -> None:
+    def _post_population_refresh(
+        self,
+        stage: str | None = None,
+        *,
+        allow_basic_refresh: bool | None = None,
+    ) -> None:
         """Force a repaint when implicit refresh is disabled."""
 
         stage_name = stage or "post-population"
         if self.debug.report_lazy_refresh:
             self._schedule_report_refresh(stage_name)
         else:
-            self._apply_immediate_refresh(stage_name)
+            self._apply_immediate_refresh(
+                stage_name,
+                allow_basic_refresh=allow_basic_refresh,
+            )
         if self.debug.probe_force_refresh:
             self._schedule_force_refresh_probe(stage_name)
 
@@ -1387,7 +1402,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 issued = True
         return issued
 
-    def _apply_immediate_refresh(self, stage: str | None = None) -> None:
+    def _apply_immediate_refresh(
+        self,
+        stage: str | None = None,
+        *,
+        allow_basic_refresh: bool | None = None,
+    ) -> None:
         """Request the list control to repaint immediately."""
 
         stage_name = stage or "immediate"
@@ -1412,8 +1432,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 issued_update = True
         if self.debug.report_send_size_event:
             issued_size_event = self._request_size_event()
+        allow_basic = (
+            self.debug.report_basic_refresh
+            if allow_basic_refresh is None
+            else allow_basic_refresh
+        )
         if (
-            self.debug.report_style
+            allow_basic
+            and self.debug.report_style
             and not (issued_refresh or issued_update or issued_size_event)
         ):
             self._ensure_basic_refresh(stage_name)

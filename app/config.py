@@ -132,11 +132,15 @@ ConfigFieldName = Literal[
     "log_sash",
     "log_level",
     "log_shown",
+    "agent_chat_sash",
     "agent_chat_shown",
+    "agent_history_sash",
     "win_w",
     "win_h",
     "win_x",
     "win_y",
+    "doc_tree_collapsed",
+    "doc_tree_saved_sash",
     "sash_pos",
     "editor_sash_pos",
 ]
@@ -279,10 +283,20 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         value_type=bool,
         default=False,
     ),
+    "agent_chat_sash": FieldSpec(
+        key="agent_chat_sash",
+        value_type=int,
+        default=400,
+    ),
     "agent_chat_shown": FieldSpec(
         key="agent_chat_shown",
         value_type=bool,
         default=False,
+    ),
+    "agent_history_sash": FieldSpec(
+        key="agent_history_sash",
+        value_type=int,
+        default=320,
     ),
     "editor_shown": FieldSpec(
         key="editor_shown",
@@ -308,6 +322,16 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         key="win_y",
         value_type=int,
         default=-1,
+    ),
+    "doc_tree_collapsed": FieldSpec(
+        key="doc_tree_collapsed",
+        value_type=bool,
+        default=False,
+    ),
+    "doc_tree_saved_sash": FieldSpec(
+        key="doc_tree_saved_sash",
+        value_type=int,
+        default=240,
     ),
     "sash_pos": FieldSpec(
         key="sash_pos",
@@ -692,6 +716,28 @@ class ConfigManager:
         self.set_value("agent_chat_shown", shown)
         self.flush()
 
+    def get_agent_chat_sash(self, default: int) -> int:
+        """Return stored splitter position for the agent chat pane."""
+
+        return self.get_value("agent_chat_sash", default=default)
+
+    def set_agent_chat_sash(self, pos: int) -> None:
+        """Persist splitter position for the agent chat pane."""
+
+        self.set_value("agent_chat_sash", pos)
+        self.flush()
+
+    def get_agent_history_sash(self, default: int) -> int:
+        """Return stored width of the chat history list."""
+
+        return self.get_value("agent_history_sash", default=default)
+
+    def set_agent_history_sash(self, pos: int) -> None:
+        """Persist width of the chat history list."""
+
+        self.set_value("agent_history_sash", pos)
+        self.flush()
+
     # ------------------------------------------------------------------
     # requirement editor panel
     def get_editor_sash(self, default: int) -> int:
@@ -714,6 +760,28 @@ class ConfigManager:
         """Persist visibility flag for the requirement editor."""
 
         self.set_value("editor_shown", shown)
+        self.flush()
+
+    def get_doc_tree_collapsed(self) -> bool:
+        """Return whether the hierarchy pane was collapsed."""
+
+        return self.get_value("doc_tree_collapsed")
+
+    def set_doc_tree_collapsed(self, collapsed: bool) -> None:
+        """Persist collapsed state of the hierarchy pane."""
+
+        self.set_value("doc_tree_collapsed", collapsed)
+        self.flush()
+
+    def get_doc_tree_saved_sash(self, default: int) -> int:
+        """Return stored width of the hierarchy splitter."""
+
+        return self.get_value("doc_tree_saved_sash", default=default)
+
+    def set_doc_tree_saved_sash(self, pos: int) -> None:
+        """Persist width of the hierarchy splitter."""
+
+        self.set_value("doc_tree_saved_sash", pos)
         self.flush()
 
     # ------------------------------------------------------------------
@@ -792,6 +860,11 @@ class ConfigManager:
         panel: ListPanelLike,
         *,
         editor_splitter: wx.SplitterWindow | None = None,
+        agent_splitter: wx.SplitterWindow | None = None,
+        doc_tree_collapsed: bool = False,
+        doc_tree_expanded_sash: int | None = None,
+        agent_chat_sash: int | None = None,
+        agent_history_sash: int | None = None,
     ) -> None:
         """Persist window geometry and splitter positions."""
         w, h = frame.GetSize()
@@ -800,16 +873,14 @@ class ConfigManager:
         self.set_value("win_h", h)
         self.set_value("win_x", x)
         self.set_value("win_y", y)
-        doc_width = doc_splitter.GetSashPosition()
-        if doc_splitter.IsSplit():
-            primary = doc_splitter.GetWindow1()
-            if primary is not None:
-                width = primary.GetSize().width
-                if width <= 0:
-                    width = primary.GetClientSize().width
-                if width > 0:
-                    doc_width = width
-        self.set_value("sash_pos", doc_width)
+        sash_to_store = (
+            doc_tree_expanded_sash
+            if doc_tree_expanded_sash is not None
+            else doc_splitter.GetSashPosition()
+        )
+        self.set_value("sash_pos", sash_to_store)
+        self.set_value("doc_tree_saved_sash", sash_to_store)
+        self.set_value("doc_tree_collapsed", doc_tree_collapsed)
         if editor_splitter is not None:
             if editor_splitter.IsSplit():
                 self.set_value("editor_shown", True)
@@ -821,6 +892,25 @@ class ConfigManager:
             self.set_value("log_sash", main_splitter.GetSashPosition())
         else:
             self.set_value("log_shown", False)
+        if agent_splitter is not None:
+            if agent_splitter.IsSplit():
+                self.set_value("agent_chat_shown", True)
+                sash_value = (
+                    agent_chat_sash
+                    if agent_chat_sash is not None
+                    else agent_splitter.GetSashPosition()
+                )
+            else:
+                self.set_value("agent_chat_shown", False)
+                sash_value = (
+                    agent_chat_sash
+                    if agent_chat_sash is not None
+                    else self.get_value("agent_chat_sash")
+                )
+            if sash_value is not None:
+                self.set_value("agent_chat_sash", sash_value)
+        if agent_history_sash is not None:
+            self.set_value("agent_history_sash", agent_history_sash)
         panel.save_column_widths(self)
         panel.save_column_order(self)
         self.flush()

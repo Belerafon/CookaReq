@@ -75,7 +75,15 @@ class ListPanelDebugProfile:
         "sizer_layout": "panel box sizer",
     }
 
+    INSTRUMENTATION_LABELS: ClassVar[dict[str, str]] = {
+        "probe_force_refresh": "force-refresh probe",
+        "probe_column_reset": "column reset audit",
+        "probe_deferred_population": "deferred population probe",
+    }
+
     level: int
+    base_level: int
+    instrumentation_tier: int
     context_menu: bool
     label_bitmaps: bool
     derived_formatting: bool
@@ -114,6 +122,9 @@ class ListPanelDebugProfile:
     report_send_size_event: bool
     report_style: bool
     sizer_layout: bool
+    probe_force_refresh: bool
+    probe_column_reset: bool
+    probe_deferred_population: bool
 
     @classmethod
     def from_level(cls, level: int | None) -> "ListPanelDebugProfile":
@@ -121,46 +132,53 @@ class ListPanelDebugProfile:
 
         raw = 0 if level is None else int(level)
         clamped = max(0, min(MAX_LIST_PANEL_DEBUG_LEVEL, raw))
+        tier, base = divmod(clamped, 100)
+        base_clamped = max(0, min(37, base))
         return cls(
             level=clamped,
-            context_menu=clamped < 1,
-            label_bitmaps=clamped < 2,
-            derived_formatting=clamped < 3,
-            filter_summary=clamped < 4,
-            filter_button=clamped < 5,
-            filter_logic=clamped < 5,
-            column_persistence=clamped < 6,
-            extra_columns=clamped < 7,
-            sorting=clamped < 8,
-            derived_map=clamped < 9,
-            doc_lookup=clamped < 10,
-            subitem_images=clamped < 11,
-            inherit_background=clamped < 12,
-            sorter_mixin=clamped < 13,
-            rich_rendering=clamped < 14,
-            documents_integration=clamped < 15,
-            callbacks=clamped < 16,
-            selection_events=clamped < 17,
-            model_driven=clamped < 18,
-            model_cache=clamped < 19,
-            report_width_retry=clamped < 20,
-            report_column_widths=clamped < 21,
-            report_list_item=clamped < 22,
-            report_clear_all=clamped < 23,
-            report_batch_delete=clamped < 24,
-            report_column_align=clamped < 25,
-            report_lazy_refresh=clamped < 26,
-            report_placeholder_text=clamped < 27,
-            report_column0_setitem=clamped < 28,
-            report_image_list=clamped < 29,
-            report_item_images=clamped < 30,
-            report_item_data=clamped < 31,
-            report_refresh_items=clamped < 32,
-            report_immediate_refresh=clamped < 33,
-            report_immediate_update=clamped < 34,
-            report_send_size_event=clamped < 35,
-            report_style=clamped < 36,
-            sizer_layout=clamped < 37,
+            base_level=base_clamped,
+            instrumentation_tier=tier,
+            context_menu=base_clamped < 1,
+            label_bitmaps=base_clamped < 2,
+            derived_formatting=base_clamped < 3,
+            filter_summary=base_clamped < 4,
+            filter_button=base_clamped < 5,
+            filter_logic=base_clamped < 5,
+            column_persistence=base_clamped < 6,
+            extra_columns=base_clamped < 7,
+            sorting=base_clamped < 8,
+            derived_map=base_clamped < 9,
+            doc_lookup=base_clamped < 10,
+            subitem_images=base_clamped < 11,
+            inherit_background=base_clamped < 12,
+            sorter_mixin=base_clamped < 13,
+            rich_rendering=base_clamped < 14,
+            documents_integration=base_clamped < 15,
+            callbacks=base_clamped < 16,
+            selection_events=base_clamped < 17,
+            model_driven=base_clamped < 18,
+            model_cache=base_clamped < 19,
+            report_width_retry=base_clamped < 20,
+            report_column_widths=base_clamped < 21,
+            report_list_item=base_clamped < 22,
+            report_clear_all=base_clamped < 23,
+            report_batch_delete=base_clamped < 24,
+            report_column_align=base_clamped < 25,
+            report_lazy_refresh=base_clamped < 26,
+            report_placeholder_text=base_clamped < 27,
+            report_column0_setitem=base_clamped < 28,
+            report_image_list=base_clamped < 29,
+            report_item_images=base_clamped < 30,
+            report_item_data=base_clamped < 31,
+            report_refresh_items=base_clamped < 32,
+            report_immediate_refresh=base_clamped < 33,
+            report_immediate_update=base_clamped < 34,
+            report_send_size_event=base_clamped < 35,
+            report_style=base_clamped < 36,
+            sizer_layout=base_clamped < 37,
+            probe_force_refresh=tier >= 1,
+            probe_column_reset=tier >= 2,
+            probe_deferred_population=tier >= 3,
         )
 
     def disabled_features(self) -> list[str]:
@@ -171,6 +189,15 @@ class ListPanelDebugProfile:
             if not getattr(self, attr):
                 disabled.append(label)
         return disabled
+
+    def instrumentation_features(self) -> list[str]:
+        """Return human-readable names of active instrumentation probes."""
+
+        enabled: list[str] = []
+        for attr, label in self.INSTRUMENTATION_LABELS.items():
+            if getattr(self, attr, False):
+                enabled.append(label)
+        return enabled
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):
@@ -211,21 +238,35 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Initialize list view and controls for requirements."""
         wx.Panel.__init__(self, parent)
         self.debug = ListPanelDebugProfile.from_level(debug_level)
-        self.debug_level = self.debug.level
+        self.debug_raw_level = self.debug.level
+        self.debug_level = self.debug.base_level
         self._diagnostic_logging = self.debug_level >= self.DIAGNOSTIC_LOG_THRESHOLD
         if self.debug.inherit_background:
             inherit_background(self, parent)
         disabled = self.debug.disabled_features()
         if disabled:
             self._debug_summary = (
-                "ListPanel debug level %s disabled features: %s"
-                % (self.debug_level, ", ".join(disabled))
+                "ListPanel debug level %s (base %s) disabled features: %s"
+                % (self.debug_raw_level, self.debug_level, ", ".join(disabled))
             )
         else:
-            self._debug_summary = "ListPanel debug level %s: all features enabled" % (
-                self.debug_level,
+            self._debug_summary = (
+                "ListPanel debug level %s (base %s): all features enabled"
+                % (self.debug_raw_level, self.debug_level)
             )
         logger.info(self._debug_summary)
+        instrumentation = self.debug.instrumentation_features()
+        if instrumentation:
+            self._instrumentation_summary = (
+                "ListPanel debug instrumentation tier %s enabled: %s"
+                % (
+                    self.debug.instrumentation_tier,
+                    ", ".join(instrumentation),
+                )
+            )
+            logger.info(self._instrumentation_summary)
+        else:
+            self._instrumentation_summary = ""
         if self.debug.model_cache:
             self.model = model if model is not None else RequirementModel()
         else:
@@ -236,6 +277,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._column_widths_scheduled = False
         self._report_refresh_scheduled = False
         self._report_refresh_attempts = 0
+        self._probe_refresh_pending = False
+        self._probe_refresh_last_stage = "initial"
+        self._probe_deferred_plain_pending = False
+        self._probe_deferred_plain_payload: list[Requirement] | None = None
+        self._probe_deferred_plain_stage = ""
         sizer = wx.BoxSizer(wx.VERTICAL) if self.debug.sizer_layout else None
         vertical_pad = dip(self, 5)
         orient = getattr(wx, "HORIZONTAL", 0)
@@ -269,6 +315,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 btn_row.Add(self.filter_summary, 0, align_center, 0)
         list_style = wx.LC_REPORT if self.debug.report_style else wx.LC_LIST
         self.list = wx.ListCtrl(self, style=list_style)
+        if self.debug.probe_deferred_population and hasattr(wx, "EVT_SHOW"):
+            self.list.Bind(wx.EVT_SHOW, self._on_probe_list_show)
         if self.debug.subitem_images and hasattr(self.list, "SetExtraStyle"):
             extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
             if extra:
@@ -284,6 +332,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if self.debug.sorter_mixin:
             ColumnSorterMixin.__init__(self, 1)
         self.columns: list[str] = []
+        self._field_order: list[str] = []
         if self.debug.callbacks:
             self._on_clone = on_clone
             self._on_delete = on_delete
@@ -326,6 +375,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
         if getattr(self, "_debug_summary", None):
             logger.info(self._debug_summary)
+        if getattr(self, "_instrumentation_summary", None):
+            logger.info(self._instrumentation_summary)
 
     def _log_diagnostics(self, message: str, *args) -> None:
         """Emit verbose diagnostic information when high debug levels are active."""
@@ -755,7 +806,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetItemData(index, int(req_id))
                 except Exception:
                     self.list.SetItemData(index, 0)
-        self._post_population_refresh()
+        self._post_population_refresh(stage="populate-plain")
         self._log_population_snapshot("populate-plain")
 
     def _on_size_plain(self, event: wx.Event | None) -> None:
@@ -881,11 +932,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         padding before ``Title``. Another workaround is to insert a hidden
         dummy column before ``Title``.
         """
+        if self.debug.probe_column_reset:
+            self._probe_log_column_inventory("pre-reset")
         if self.debug.report_clear_all:
             self.list.ClearAll()
+            if self.debug.probe_column_reset:
+                self._probe_log_column_inventory("post-clearall")
         else:
+            if self.debug.probe_column_reset:
+                self._probe_log_column_inventory("pre-fallback-removal")
             self._clear_items()
             self._remove_all_columns()
+            self._probe_verify_column_removal("fallback-removal")
         self._pending_column_widths.clear()
         self._field_order: list[str] = []
         if not self.debug.report_style:
@@ -930,6 +988,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             format(style_flag if style_flag >= 0 else 0, "x"),
             column_count,
         )
+        if self.debug.probe_column_reset:
+            self._probe_log_column_inventory("post-setup")
 
     def _add_report_column(self, index: int, field: str, label: str) -> None:
         """Insert a report-style column and ensure it has a visible width."""
@@ -1017,13 +1077,50 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     exc_info=True,
                 )
 
-    def _post_population_refresh(self) -> None:
+    def _probe_log_column_inventory(self, stage: str) -> dict[str, object]:
+        """Emit diagnostics about current columns for tier-2 probes."""
+
+        if not self.debug.probe_column_reset:
+            return {}
+        info: dict[str, object] = {"field_order": list(self._field_order)}
+        with suppress(Exception):
+            info["count"] = self.list.GetColumnCount()
+        if info.get("count", 0):
+            info["widths"] = self._snapshot_column_widths(int(info["count"]))
+        with suppress(Exception):
+            style_flag = format(self.list.GetWindowStyleFlag(), "x")
+            info["style"] = style_flag
+        logger.info("ListPanel column reset probe (%s) — %s", stage, info)
+        return info
+
+    def _probe_verify_column_removal(self, stage: str) -> None:
+        """Validate fallback column removal and fall back to ``ClearAll``."""
+
+        if not self.debug.probe_column_reset:
+            return
+        info = self._probe_log_column_inventory(stage)
+        remaining = int(info.get("count", 0) or 0)
+        if remaining <= 0:
+            return
+        logger.warning(
+            "ListPanel column reset probe: %s left %s column(s); invoking ClearAll()",
+            stage,
+            remaining,
+        )
+        with suppress(Exception):
+            self.list.ClearAll()
+        self._probe_log_column_inventory(stage + "-after-clearall")
+
+    def _post_population_refresh(self, stage: str | None = None) -> None:
         """Force a repaint when implicit refresh is disabled."""
 
+        stage_name = stage or "post-population"
         if self.debug.report_lazy_refresh:
             self._schedule_report_refresh()
-            return
-        self._apply_immediate_refresh()
+        else:
+            self._apply_immediate_refresh()
+        if self.debug.probe_force_refresh:
+            self._schedule_force_refresh_probe(stage_name)
 
     def _request_size_event(self) -> bool:
         """Trigger a size event on the list (and panel) for diagnostics."""
@@ -1080,6 +1177,114 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             issued_size_event,
             column0,
         )
+
+    def _probe_filter_metrics(self, metrics: dict[str, object]) -> dict[str, object]:
+        """Return a filtered view of metrics suited for human-readable logs."""
+
+        keys = (
+            "is_shown",
+            "is_enabled",
+            "has_focus",
+            "is_frozen",
+            "client_size",
+            "virtual_size",
+            "view_rect",
+            "top_item",
+            "count_per_page",
+            "scroll_horizontal_pos",
+            "scroll_horizontal_range",
+            "scroll_vertical_pos",
+            "scroll_vertical_range",
+        )
+        return {key: metrics.get(key) for key in keys if key in metrics}
+
+    def _schedule_force_refresh_probe(self, stage: str) -> None:
+        """Schedule the tier-1 instrumentation that forces a repaint."""
+
+        if not self.debug.probe_force_refresh:
+            return
+        self._probe_refresh_last_stage = stage
+        if self._probe_refresh_pending:
+            self._log_diagnostics(
+                "refresh probe already pending — stage=%s", stage
+            )
+            return
+        self._probe_refresh_pending = True
+        call_after = getattr(wx, "CallAfter", None)
+        if callable(call_after):
+            call_after(self._execute_force_refresh_probe)
+            return
+        self._log_diagnostics(
+            "executing refresh probe immediately — CallAfter unavailable"
+        )
+        self._execute_force_refresh_probe()
+
+    def _execute_force_refresh_probe(self) -> None:
+        """Perform the force-refresh probe and log the resulting metrics."""
+
+        self._probe_refresh_pending = False
+        list_ctrl = getattr(self, "list", None)
+        if not list_ctrl:
+            return
+        with suppress(Exception):
+            if list_ctrl.IsBeingDeleted():
+                logger.info(
+                    "ListPanel refresh probe skipped — control destroyed (stage %s)",
+                    self._probe_refresh_last_stage,
+                )
+                return
+        metrics_before = self._collect_control_metrics()
+        is_shown_flag = None
+        with suppress(Exception):
+            is_shown_flag = bool(list_ctrl.IsShown())
+        if is_shown_flag is not None:
+            metrics_before.setdefault("is_shown_flag", is_shown_flag)
+        bounds_code = getattr(wx, "LIST_RECT_BOUNDS", 0)
+        bounds_before = (
+            self._capture_item_rect(0, bounds_code) if bounds_code else None
+        )
+        rows_before = self._snapshot_rows()
+        logger.info(
+            "ListPanel refresh probe (%s) before — metrics=%s bounds=%s rows=%s",
+            self._probe_refresh_last_stage,
+            self._probe_filter_metrics(metrics_before),
+            bounds_before,
+            rows_before,
+        )
+        operations: list[str] = []
+        for name in ("Refresh", "Update"):
+            method = getattr(list_ctrl, name, None)
+            if not callable(method):
+                continue
+            try:
+                method()
+            except Exception:
+                logger.exception(
+                    "ListPanel refresh probe (%s) %s() failed",
+                    self._probe_refresh_last_stage,
+                    name,
+                )
+            else:
+                operations.append(name.lower())
+        size_event = self._request_size_event()
+        metrics_after = self._collect_control_metrics()
+        if is_shown_flag is not None:
+            metrics_after.setdefault("is_shown_flag", is_shown_flag)
+        bounds_after = (
+            self._capture_item_rect(0, bounds_code) if bounds_code else None
+        )
+        rows_after = self._snapshot_rows()
+        logger.info(
+            "ListPanel refresh probe (%s) after — operations=%s size_event=%s metrics=%s bounds=%s rows=%s",
+            self._probe_refresh_last_stage,
+            operations,
+            size_event,
+            self._probe_filter_metrics(metrics_after),
+            bounds_after,
+            rows_after,
+        )
+        if self.debug.probe_deferred_population:
+            self._flush_deferred_plain_population("refresh-probe")
 
     def _schedule_report_refresh(self) -> None:
         """Fallback for report mode when lazy refresh fails to repaint."""
@@ -1147,6 +1352,137 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 )
         self._apply_immediate_refresh()
         self._log_diagnostics("report refresh applied — count=%s", count)
+
+    def _probe_plain_preview(
+        self,
+        requirements: Sequence[Requirement],
+        limit: int = 3,
+    ) -> list[tuple[int, str]]:
+        """Return a condensed preview of requirement ids and titles."""
+
+        preview: list[tuple[int, str]] = []
+        for req in list(requirements)[:limit]:
+            try:
+                req_id = int(getattr(req, "id", 0))
+            except Exception:
+                req_id = 0
+            preview.append((req_id, str(getattr(req, "title", ""))))
+        return preview
+
+    def _probe_list_ready(self) -> tuple[bool, dict[str, object]]:
+        """Return whether the list is ready for population along with metrics."""
+
+        list_ctrl = getattr(self, "list", None)
+        if not list_ctrl:
+            return True, {}
+        metrics: dict[str, object] = {}
+        shown_flag = None
+        with suppress(Exception):
+            shown_flag = bool(list_ctrl.IsShown())
+        metrics["is_shown_flag"] = shown_flag
+        shown_screen = None
+        with suppress(Exception):
+            shown_screen = bool(list_ctrl.IsShownOnScreen())
+        metrics["is_shown_on_screen"] = shown_screen
+        size_tuple = (0, 0)
+        with suppress(Exception):
+            size = list_ctrl.GetClientSize()
+            size_tuple = (size.width, size.height)
+        metrics["client_size"] = size_tuple
+        ready = bool(shown_screen and size_tuple[0] > 0 and size_tuple[1] > 0)
+        return ready, metrics
+
+    def _maybe_schedule_deferred_plain_population(
+        self,
+        requirements: Sequence[Requirement],
+        stage: str,
+    ) -> bool:
+        """Delay plain population until the widget becomes visible."""
+
+        if not self.debug.probe_deferred_population:
+            return False
+        ready, metrics = self._probe_list_ready()
+        if ready:
+            if self._probe_deferred_plain_pending:
+                logger.info(
+                    "ListPanel deferred population probe: control became ready during %s", stage
+                )
+                self._flush_deferred_plain_population(f"auto:{stage}")
+            return False
+        payload = list(requirements)
+        preview = self._probe_plain_preview(payload)
+        if self._probe_deferred_plain_pending:
+            logger.info(
+                "ListPanel deferred population probe: updating pending payload — previous_stage=%s new_stage=%s metrics=%s sample=%s",
+                self._probe_deferred_plain_stage,
+                stage,
+                metrics,
+                preview,
+            )
+        else:
+            logger.info(
+                "ListPanel deferred population probe: deferring plain update (%s) metrics=%s sample=%s",
+                stage,
+                metrics,
+                preview,
+            )
+        self._probe_deferred_plain_payload = payload
+        self._probe_deferred_plain_pending = True
+        self._probe_deferred_plain_stage = stage
+        call_after = getattr(wx, "CallAfter", None)
+        if callable(call_after):
+            call_after(self._flush_deferred_plain_population, f"CallAfter:{stage}")
+        return True
+
+    def _flush_deferred_plain_population(self, reason: str | None = None) -> None:
+        """Execute any delayed plain population when the control is ready."""
+
+        if not self.debug.probe_deferred_population:
+            return
+        if not self._probe_deferred_plain_pending:
+            return
+        descriptor = reason or self._probe_deferred_plain_stage or "manual"
+        ready, metrics = self._probe_list_ready()
+        if not ready:
+            logger.info(
+                "ListPanel deferred population probe: still waiting (%s) pending_stage=%s metrics=%s",
+                descriptor,
+                self._probe_deferred_plain_stage,
+                metrics,
+            )
+            return
+        payload = self._probe_deferred_plain_payload or list(self._plain_source)
+        preview = self._probe_plain_preview(payload)
+        logger.info(
+            "ListPanel deferred population probe: executing deferred fill (%s) metrics=%s count=%s sample=%s",
+            descriptor,
+            metrics,
+            len(payload),
+            preview,
+        )
+        self._probe_deferred_plain_pending = False
+        self._probe_deferred_plain_payload = None
+        self._probe_deferred_plain_stage = ""
+        self._update_plain_items(payload)
+        self._populate_plain_items()
+
+    def _on_probe_list_show(self, event: wx.Event) -> None:
+        """Flush deferred population once the list becomes visible."""
+
+        shown = False
+        if hasattr(event, "IsShown"):
+            with suppress(Exception):
+                shown = bool(event.IsShown())
+        logger.info(
+            "ListPanel deferred population probe: EVT_SHOW shown=%s pending=%s stage=%s",
+            shown,
+            self._probe_deferred_plain_pending,
+            self._probe_deferred_plain_stage,
+        )
+        if shown and self._probe_deferred_plain_pending:
+            self._flush_deferred_plain_population("EVT_SHOW")
+        if hasattr(event, "Skip"):
+            event.Skip()
 
     def _ensure_column_width(self, column: int, width: int) -> None:
         """Guarantee that a column remains visible even if the backend rejects it."""
@@ -1389,6 +1725,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             or not self.debug.model_cache
             or self.model is None
         ):
+            if self._maybe_schedule_deferred_plain_population(
+                self._plain_source,
+                "set_requirements",
+            ):
+                return
             self._update_plain_items(requirements)
             self._populate_plain_items()
             return
@@ -1533,6 +1874,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             or not self.debug.model_cache
             or self.model is None
         ):
+            if self._maybe_schedule_deferred_plain_population(
+                self._plain_source,
+                "refresh-plain",
+            ):
+                return
             self._update_plain_items()
             self._populate_plain_items()
             self._log_population_snapshot("refresh-plain")
@@ -1555,7 +1901,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                         self.list.SetItemData(index, int(req_id))
                     except Exception:
                         self.list.SetItemData(index, 0)
-            self._post_population_refresh()
+            self._post_population_refresh(stage="refresh-report-simple")
             self._log_population_snapshot("refresh-report-simple")
             return
         for req in items:
@@ -1639,7 +1985,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
                 self.list.SetItem(index, col, str(value))
-        self._post_population_refresh()
+        self._post_population_refresh(stage="refresh-report-full")
         self._log_population_snapshot("refresh-report-full")
 
     def refresh(self, *, select_id: int | None = None) -> None:

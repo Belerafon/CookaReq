@@ -18,6 +18,10 @@ from app.core.model import (
 
 pytestmark = pytest.mark.gui
 
+BASE_DEBUG_LEVEL_MAX = list_panel.ListPanelDebugProfile.from_level(
+    list_panel.MAX_LIST_PANEL_DEBUG_LEVEL
+).base_level
+
 
 def _req(req_id: int, title: str, **kwargs) -> Requirement:
     base = {
@@ -113,7 +117,7 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     panel = list_panel.ListPanel(
         frame,
         model=RequirementModel(),
-        debug_level=list_panel.MAX_LIST_PANEL_DEBUG_LEVEL,
+        debug_level=BASE_DEBUG_LEVEL_MAX,
     )
     panel.set_columns(["labels", "status"])
     panel.set_requirements([_req(1, "Plain", labels=["bug"], status=Status.APPROVED)])
@@ -393,9 +397,7 @@ REPORT_FLAG_THRESHOLDS = {
 }
 
 
-@pytest.mark.parametrize(
-    "level", range(19, list_panel.MAX_LIST_PANEL_DEBUG_LEVEL + 1)
-)
+@pytest.mark.parametrize("level", range(19, BASE_DEBUG_LEVEL_MAX + 1))
 def test_report_style_debug_steps(wx_app, level):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

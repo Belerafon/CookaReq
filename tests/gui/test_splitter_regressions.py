@@ -177,6 +177,40 @@ def test_doc_splitter_user_drag_persists_value(configured_frame, wx_app):
     wx_app.Yield()
 
 
+def test_agent_splitter_events_do_not_affect_doc_tree(configured_frame, wx_app):
+    """Sash notifications bubbling from the agent splitter must be ignored."""
+
+    frame, _ = configured_frame("doc_agent_crosstalk.ini")
+    initial_saved = frame._doc_tree_saved_width
+    initial_pos = frame.doc_splitter.GetSashPosition()
+    stray = max(frame._doc_tree_min_pane, initial_saved // 2)
+
+    changing = wx.SplitterEvent(
+        wx.wxEVT_SPLITTER_SASH_POS_CHANGING,
+        frame.agent_splitter,
+    )
+    changing.SetSashPosition(stray)
+    changing.SetEventObject(frame.agent_splitter)
+    frame._on_doc_splitter_sash_changing(changing)
+    wx_app.Yield()
+
+    assert frame._doc_tree_saved_width == initial_saved
+    assert frame._doc_splitter_recent_user is False
+
+    changed = wx.SplitterEvent(
+        wx.wxEVT_SPLITTER_SASH_POS_CHANGED,
+        frame.agent_splitter,
+    )
+    changed.SetSashPosition(stray)
+    changed.SetEventObject(frame.agent_splitter)
+    frame._on_doc_splitter_sash_changed(changed)
+    wx_app.Yield()
+
+    assert frame._doc_tree_saved_width == initial_saved
+    assert frame.doc_splitter.GetSashPosition() == initial_pos
+    assert frame._doc_splitter_recent_user is False
+
+
 def test_agent_chat_toggle_preserves_width(configured_frame, wx_app):
     """Showing and hiding agent chat must not drift the sash position."""
 

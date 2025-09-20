@@ -46,33 +46,46 @@ def configured_frame(wx_app, tmp_path):
 
 
 def test_doc_tree_toggle_preserves_width(configured_frame, wx_app):
-    """Collapsing and expanding the hierarchy keeps the previous width."""
+    """Collapsing and expanding the hierarchy must keep the stored width."""
 
-    frame, _ = configured_frame("doc_tree.ini")
-    initial = _pane_width(frame.doc_tree_container)
+    frame, config_path = configured_frame("doc_tree.ini")
+    initial = frame.doc_splitter.GetSashPosition()
 
-    for _ in range(4):
-        frame._collapse_doc_tree()
+    for _ in range(5):
+        frame._collapse_doc_tree(update_config=True)
         wx_app.Yield()
-        collapsed = _pane_width(frame.doc_tree_container)
-        assert collapsed < initial
-        assert frame._doc_tree_collapsed is True
-
-        frame._expand_doc_tree()
+        frame._expand_doc_tree(update_config=True)
         wx_app.Yield()
-        restored = _pane_width(frame.doc_tree_container)
-        tolerance = frame.doc_tree_container.FromDIP(4)
-        assert abs(restored - initial) <= tolerance
-        assert frame._doc_tree_collapsed is False
 
+    assert frame.doc_splitter.GetSashPosition() == initial
+    assert frame._doc_tree_saved_width == initial
+
+    frame._collapse_doc_tree(update_config=True)
+    wx_app.Yield()
+    frame._save_layout()
     frame.Destroy()
+    wx_app.Yield()
+
+    reloaded_config = ConfigManager(path=config_path)
+    reloaded_config.set_mcp_settings(MCPSettings(auto_start=False))
+    restored_frame = MainFrame(None, config=reloaded_config, model=RequirementModel())
+    restored_frame.Show()
+    wx_app.Yield()
+
+    assert restored_frame._doc_tree_collapsed is True
+    restored_frame._expand_doc_tree(update_config=False)
+    wx_app.Yield()
+    assert restored_frame.doc_splitter.GetSashPosition() == initial
+    assert restored_frame._doc_tree_saved_width == initial
+
+    restored_frame.Destroy()
     wx_app.Yield()
 
 
 def test_agent_chat_toggle_preserves_width(configured_frame, wx_app):
-    """Showing and hiding agent chat keeps a consistent splitter width."""
+    """Showing and hiding agent chat must not drift the sash position."""
 
-    frame, _ = configured_frame("agent.ini")
+    frame, config_path = configured_frame("agent.ini")
     menu = frame.agent_chat_menu_item
     assert menu is not None
 
@@ -82,27 +95,48 @@ def test_agent_chat_toggle_preserves_width(configured_frame, wx_app):
         frame.on_toggle_agent_chat(None)
         wx_app.Yield()
         assert frame.agent_splitter.IsSplit()
-        visible = _pane_width(frame.agent_splitter.GetWindow1())
+        visible = frame.agent_splitter.GetSashPosition()
         if expected is None:
             expected = visible
         else:
             assert visible == expected
-        assert frame._agent_last_width == expected
+        assert frame._agent_saved_sash == expected
 
         menu.Check(False)
         frame.on_toggle_agent_chat(None)
         wx_app.Yield()
         assert not frame.agent_splitter.IsSplit()
-        assert frame._agent_last_width == expected
+        assert frame._agent_saved_sash == expected
 
+    frame._save_layout()
     frame.Destroy()
+    wx_app.Yield()
+
+    reloaded_config = ConfigManager(path=config_path)
+    reloaded_config.set_mcp_settings(MCPSettings(auto_start=False))
+    restored_frame = MainFrame(None, config=reloaded_config, model=RequirementModel())
+    restored_frame.Show()
+    wx_app.Yield()
+
+    assert restored_frame._agent_saved_sash == expected
+    restored_menu = restored_frame.agent_chat_menu_item
+    assert restored_menu is not None
+    restored_menu.Check(True)
+    restored_frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+
+    assert restored_frame.agent_splitter.IsSplit()
+    assert restored_frame.agent_splitter.GetSashPosition() == expected
+    assert restored_frame._agent_saved_sash == expected
+
+    restored_frame.Destroy()
     wx_app.Yield()
 
 
 def test_agent_history_splitter_survives_layout_changes(configured_frame, wx_app):
     """Collapsing hierarchy must not resize the chat history column."""
 
-    frame, _ = configured_frame("agent_history.ini")
+    frame, config_path = configured_frame("agent_history.ini")
     menu = frame.agent_chat_menu_item
     assert menu is not None
 
@@ -111,18 +145,36 @@ def test_agent_history_splitter_survives_layout_changes(configured_frame, wx_app
     wx_app.Yield()
 
     history_splitter = frame.agent_panel._horizontal_splitter
-    history_panel = history_splitter.GetWindow1()
-    initial = _pane_width(history_panel)
+    initial = history_splitter.GetSashPosition()
     assert initial > 0
 
     for _ in range(4):
-        frame._collapse_doc_tree()
+        frame._collapse_doc_tree(update_config=True)
         wx_app.Yield()
-        frame._expand_doc_tree()
+        frame._expand_doc_tree(update_config=True)
         wx_app.Yield()
-        current = _pane_width(history_panel)
-        tolerance = history_panel.FromDIP(4)
-        assert abs(current - initial) <= tolerance
+        assert history_splitter.GetSashPosition() == initial
+        assert frame.agent_panel.history_sash == initial
 
+    frame._save_layout()
     frame.Destroy()
+    wx_app.Yield()
+
+    reloaded_config = ConfigManager(path=config_path)
+    reloaded_config.set_mcp_settings(MCPSettings(auto_start=False))
+    restored_frame = MainFrame(None, config=reloaded_config, model=RequirementModel())
+    restored_frame.Show()
+    wx_app.Yield()
+
+    restored_menu = restored_frame.agent_chat_menu_item
+    assert restored_menu is not None
+    restored_menu.Check(True)
+    restored_frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+
+    restored_splitter = restored_frame.agent_panel._horizontal_splitter
+    assert restored_splitter.GetSashPosition() == initial
+    assert restored_frame.agent_panel.history_sash == initial
+
+    restored_frame.Destroy()
     wx_app.Yield()

@@ -54,4 +54,4 @@ def test_debug_profile_clamps_to_maximum_level():
     over_max = ListPanelDebugProfile.from_level(MAX_LIST_PANEL_DEBUG_LEVEL + 500)
 
     assert over_max.level == MAX_LIST_PANEL_DEBUG_LEVEL
-    assert over_max.base_level <= 37
+    assert over_max.base_level <= 40

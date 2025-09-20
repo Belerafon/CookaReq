@@ -156,6 +156,9 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.debug.report_immediate_refresh is False
     assert panel.debug.report_immediate_update is False
     assert panel.debug.report_send_size_event is False
+    assert panel.debug.plain_deferred_population is False
+    assert panel.debug.plain_cached_items is False
+    assert panel.debug.plain_post_refresh is False
     assert panel.debug.report_style is False
     assert panel.debug.sizer_layout is False
     assert panel.model is None
@@ -398,6 +401,52 @@ def test_plain_population_waits_until_visible(wx_app):
     frame.Destroy()
 
 
+def test_plain_population_immediate_when_deferred_disabled(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=36)
+
+    panel.set_requirements([_req(1, "Immediate entry")])
+
+    wx_app.Yield()
+
+    assert panel.list.GetItemCount() == 1
+    assert panel.list.GetItemText(0) == "Immediate entry"
+
+    frame.Destroy()
+
+
+def test_plain_population_without_cache(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=37)
+
+    panel.set_requirements([_req(1, "No cache first")])
+    wx_app.Yield()
+
+    assert panel.debug.plain_cached_items is False
+    assert panel.list.GetItemCount() == 1
+    assert panel.list.GetItemText(0) == "No cache first"
+
+    panel.set_requirements([_req(2, "No cache second")])
+    wx_app.Yield()
+
+    assert panel.list.GetItemCount() == 1
+    assert panel.list.GetItemText(0) == "No cache second"
+
+    frame.Destroy()
+
+
 def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
@@ -442,8 +491,11 @@ REPORT_FLAG_THRESHOLDS = {
     "report_immediate_refresh": 33,
     "report_immediate_update": 34,
     "report_send_size_event": 35,
-    "report_style": 36,
-    "sizer_layout": 37,
+    "plain_deferred_population": 36,
+    "plain_cached_items": 37,
+    "plain_post_refresh": 38,
+    "report_style": 39,
+    "sizer_layout": 40,
 }
 
 

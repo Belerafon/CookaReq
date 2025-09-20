@@ -71,6 +71,9 @@ class ListPanelDebugProfile:
         "report_immediate_refresh": "report Refresh() request",
         "report_immediate_update": "report Update() request",
         "report_send_size_event": "report SendSizeEvent fallback",
+        "plain_deferred_population": "plain deferred population",
+        "plain_cached_items": "plain item cache",
+        "plain_post_refresh": "plain post-refresh hook",
         "report_style": "report-style layout",
         "sizer_layout": "panel box sizer",
     }
@@ -120,6 +123,9 @@ class ListPanelDebugProfile:
     report_immediate_refresh: bool
     report_immediate_update: bool
     report_send_size_event: bool
+    plain_deferred_population: bool
+    plain_cached_items: bool
+    plain_post_refresh: bool
     report_style: bool
     sizer_layout: bool
     probe_force_refresh: bool
@@ -133,7 +139,7 @@ class ListPanelDebugProfile:
         raw = 0 if level is None else int(level)
         clamped = max(0, min(MAX_LIST_PANEL_DEBUG_LEVEL, raw))
         tier, base = divmod(clamped, 100)
-        base_clamped = max(0, min(37, base))
+        base_clamped = max(0, min(40, base))
         return cls(
             level=clamped,
             base_level=base_clamped,
@@ -174,8 +180,11 @@ class ListPanelDebugProfile:
             report_immediate_refresh=base_clamped < 33,
             report_immediate_update=base_clamped < 34,
             report_send_size_event=base_clamped < 35,
-            report_style=base_clamped < 36,
-            sizer_layout=base_clamped < 37,
+            plain_deferred_population=base_clamped < 36,
+            plain_cached_items=base_clamped < 37,
+            plain_post_refresh=base_clamped < 38,
+            report_style=base_clamped < 39,
+            sizer_layout=base_clamped < 40,
             probe_force_refresh=tier >= 1,
             probe_column_reset=tier >= 2,
             probe_deferred_population=tier >= 3,
@@ -796,11 +805,39 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             plain.append((req_id, title))
         self._plain_items = plain
 
-    def _populate_plain_items(self) -> None:
-        """Render cached plain entries into the list control."""
+    def _populate_plain_items(
+        self,
+        direct_source: Sequence[Requirement] | Sequence[tuple[int, str]] | None = None,
+    ) -> None:
+        """Render plain entries into the list control."""
 
+        if direct_source is None:
+            plain_iterable = list(self._plain_items)
+        else:
+            plain_iterable: list[tuple[int, str]] = []
+            for entry in direct_source:
+                if isinstance(entry, Requirement):
+                    try:
+                        req_id = int(getattr(entry, "id", 0))
+                    except Exception:
+                        req_id = 0
+                    title = str(getattr(entry, "title", ""))
+                    plain_iterable.append((req_id, title))
+                else:
+                    try:
+                        raw_id, raw_title = entry
+                    except Exception:
+                        plain_iterable.append((0, ""))
+                    else:
+                        try:
+                            req_id = int(raw_id)
+                        except Exception:
+                            req_id = 0
+                        plain_iterable.append((req_id, str(raw_title)))
+            self._plain_items = list(plain_iterable)
+            plain_iterable = self._plain_items
         self._clear_items()
-        for req_id, title in self._plain_items:
+        for req_id, title in plain_iterable:
             index = self.list.InsertItem(self.list.GetItemCount(), title)
             if self.debug.report_column0_setitem:
                 with suppress(Exception):
@@ -811,7 +848,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     self.list.SetItemData(index, int(req_id))
                 except Exception:
                     self.list.SetItemData(index, 0)
-        self._post_population_refresh(stage="populate-plain")
+        if self.debug.plain_post_refresh:
+            self._post_population_refresh(stage="populate-plain")
         self._log_population_snapshot("populate-plain")
 
     def _on_size_plain(self, event: wx.Event | None) -> None:
@@ -1537,6 +1575,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     ) -> bool:
         """Delay plain population until the widget becomes visible."""
 
+        if not self.debug.plain_deferred_population:
+            return False
         ready, metrics = self._probe_list_ready()
         if ready:
             if self._probe_deferred_plain_pending:
@@ -1623,8 +1663,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._probe_deferred_plain_pending = False
         self._probe_deferred_plain_payload = None
         self._probe_deferred_plain_stage = ""
-        self._update_plain_items(payload)
-        self._populate_plain_items()
+        if self.debug.plain_cached_items:
+            self._update_plain_items(payload)
+            self._populate_plain_items()
+        else:
+            self._populate_plain_items(payload)
 
     def _on_list_show(self, event: wx.Event) -> None:
         """Handle show/hide transitions for the underlying list control."""
@@ -1890,8 +1933,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 "set_requirements",
             ):
                 return
-            self._update_plain_items(requirements)
-            self._populate_plain_items()
+            if self.debug.plain_cached_items:
+                self._update_plain_items(requirements)
+                self._populate_plain_items()
+            else:
+                self._populate_plain_items(self._plain_source)
             return
         self._rebuild_rid_lookup(self.model.get_all())
         if not self.debug.derived_map:
@@ -2039,8 +2085,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 "refresh-plain",
             ):
                 return
-            self._update_plain_items()
-            self._populate_plain_items()
+            if self.debug.plain_cached_items:
+                self._update_plain_items()
+                self._populate_plain_items()
+            else:
+                self._populate_plain_items(self._plain_source)
             self._log_population_snapshot("refresh-plain")
             return
         try:

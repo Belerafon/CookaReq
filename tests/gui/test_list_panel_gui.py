@@ -515,10 +515,8 @@ def test_report_column_width_attempt_even_when_disabled(monkeypatch, wx_app):
     panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=29)
     wx_app.Yield()
 
-    assert calls, "expected a width attempt even with enforcement disabled"
-    column, width = calls[0]
-    assert column == 0
-    assert width >= list_panel.ListPanel.MIN_COL_WIDTH
+    assert not calls, "width enforcement should be skipped when disabled"
+    assert panel.list.GetColumnWidth(0) >= list_panel.ListPanel.MIN_COL_WIDTH
 
     frame.Destroy()
 

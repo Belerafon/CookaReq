@@ -1656,16 +1656,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
         if not self.debug.report_column_widths:
             self._log_diagnostics(
-                "width enforcement disabled — single attempt for column %s (requested=%s)",
+                "width enforcement disabled — skipping explicit width for column %s (requested=%s)",
                 column,
                 width,
             )
-            success = self._apply_column_width_now(column, width)
-            if not success:
-                self._log_diagnostics(
-                    "column %s width still collapsed with enforcement disabled",
-                    column,
-                )
             return
         if self._apply_column_width_now(column, width):
             self._pending_column_widths.pop(column, None)

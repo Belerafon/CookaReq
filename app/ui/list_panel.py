@@ -149,7 +149,7 @@ class ListPanelDebugProfile:
         raw = 0 if level is None else int(level)
         clamped = max(0, min(MAX_LIST_PANEL_DEBUG_LEVEL, raw))
         tier, base = divmod(clamped, 100)
-        base_clamped = max(0, min(48, base))
+        base_clamped = max(0, min(50, base))
         return cls(
             level=clamped,
             base_level=base_clamped,
@@ -174,10 +174,10 @@ class ListPanelDebugProfile:
             selection_events=base_clamped < 17,
             model_driven=base_clamped < 18,
             model_cache=base_clamped < 19,
-            report_width_retry_async=base_clamped < 36,
-            report_width_retry=base_clamped < 37,
-            report_width_fallbacks=base_clamped < 38,
-            report_column_widths=base_clamped < 39,
+            report_width_retry_async=base_clamped < 39,
+            report_width_retry=base_clamped < 40,
+            report_width_fallbacks=base_clamped < 41,
+            report_column_widths=base_clamped < 42,
             report_list_item=base_clamped < 22,
             report_clear_all=base_clamped < 23,
             report_batch_delete=base_clamped < 24,
@@ -192,14 +192,14 @@ class ListPanelDebugProfile:
             report_immediate_refresh=base_clamped < 33,
             report_immediate_update=base_clamped < 34,
             report_send_size_event=base_clamped < 35,
-            plain_deferred_callafter=base_clamped < 40,
-            plain_deferred_timer=base_clamped < 41,
-            plain_deferred_queue=base_clamped < 42,
-            plain_deferred_population=base_clamped < 43,
-            plain_cached_items=base_clamped < 44,
-            plain_post_refresh=base_clamped < 45,
-            report_style=base_clamped < 46,
-            sizer_layout=base_clamped < 47,
+            plain_deferred_callafter=base_clamped < 43,
+            plain_deferred_timer=base_clamped < 44,
+            plain_deferred_queue=base_clamped < 45,
+            plain_deferred_population=base_clamped < 46,
+            plain_cached_items=base_clamped < 47,
+            plain_post_refresh=base_clamped < 48,
+            report_style=base_clamped < 49,
+            sizer_layout=base_clamped < 49,
             probe_force_refresh=tier >= 1,
             probe_column_reset=tier >= 2,
             probe_deferred_population=tier >= 3,
@@ -209,7 +209,7 @@ class ListPanelDebugProfile:
     def rollback_stage(self) -> int:
         """Return how many post-commit rollback tiers are enabled."""
 
-        return max(0, self.base_level - 45)
+        return max(0, self.base_level - 35)
 
     def disabled_features(self) -> list[str]:
         """Return human-readable names of features disabled at this level."""
@@ -1742,10 +1742,16 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
         if not self.debug.report_column_widths:
             self._log_diagnostics(
-                "width enforcement disabled — skipping explicit width for column %s (requested=%s)",
+                "width enforcement disabled — single attempt for column %s (requested=%s)",
                 column,
                 width,
             )
+            success = self._apply_column_width_now(column, width)
+            if not success:
+                self._log_diagnostics(
+                    "column %s width still collapsed with enforcement disabled",
+                    column,
+                )
             return
         if self._apply_column_width_now(column, width):
             self._pending_column_widths.pop(column, None)

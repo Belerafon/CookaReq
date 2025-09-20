@@ -350,6 +350,46 @@ def test_report_immediate_refresh_toggle(monkeypatch, wx_app):
     frame.Destroy()
 
 
+def test_report_plain_mode_lazy_refresh_fallback(wx_app, monkeypatch):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=35)
+
+    calls: list[str] = []
+    original_refresh = panel.list.Refresh
+    original_update = panel.list.Update
+
+    def record_refresh(*args, **kwargs):
+        calls.append("refresh")
+        return original_refresh(*args, **kwargs)
+
+    def record_update(*args, **kwargs):
+        calls.append("update")
+        return original_update(*args, **kwargs)
+
+    monkeypatch.setattr(panel.list, "Refresh", record_refresh)
+    monkeypatch.setattr(panel.list, "Update", record_update)
+
+    panel.set_requirements([_req(1, "Lazy repaint")])
+    wx_app.Yield()  # allow the initial CallAfter to run while the control is hidden
+
+    frame.Show()
+    for _ in range(5):
+        wx_app.Yield()
+
+    assert "refresh" in calls
+    assert "update" in calls
+    assert panel.list.GetItemCount() == 1
+    assert panel.list.GetItemText(0) == "Lazy repaint"
+
+    frame.Destroy()
+
+
 def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

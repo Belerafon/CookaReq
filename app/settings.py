@@ -12,9 +12,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 # ``ListPanel`` debug levels now encode optional instrumentation tiers.
 # The least-significant two digits control the feature toggle degradations
-# (now capped at 46), while hundreds denote optional probes.  For example,
+# (now capped at 48), while hundreds denote optional probes.  For example,
 # ``135`` keeps the feature set of level 35 but enables the tier-1 probes.
-MAX_LIST_PANEL_DEBUG_LEVEL = 346
+MAX_LIST_PANEL_DEBUG_LEVEL = 348
 
 from .llm.constants import (
     DEFAULT_MAX_CONTEXT_TOKENS,

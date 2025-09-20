@@ -56,6 +56,8 @@ class ListPanelDebugProfile:
         "model_driven": "model-driven refresh",
         "model_cache": "requirement model cache",
         "report_width_retry": "report width retry queue",
+        "report_width_retry_async": "report width CallAfter scheduling",
+        "report_width_fallbacks": "report width fallback attempts",
         "report_column_widths": "report column width enforcement",
         "report_list_item": "report header listitem setup",
         "report_clear_all": "report ClearAll column reset",
@@ -111,6 +113,8 @@ class ListPanelDebugProfile:
     model_driven: bool
     model_cache: bool
     report_width_retry: bool
+    report_width_retry_async: bool
+    report_width_fallbacks: bool
     report_column_widths: bool
     report_list_item: bool
     report_clear_all: bool
@@ -145,7 +149,7 @@ class ListPanelDebugProfile:
         raw = 0 if level is None else int(level)
         clamped = max(0, min(MAX_LIST_PANEL_DEBUG_LEVEL, raw))
         tier, base = divmod(clamped, 100)
-        base_clamped = max(0, min(46, base))
+        base_clamped = max(0, min(48, base))
         return cls(
             level=clamped,
             base_level=base_clamped,
@@ -170,8 +174,10 @@ class ListPanelDebugProfile:
             selection_events=base_clamped < 17,
             model_driven=base_clamped < 18,
             model_cache=base_clamped < 19,
-            report_width_retry=base_clamped < 36,
-            report_column_widths=base_clamped < 37,
+            report_width_retry_async=base_clamped < 36,
+            report_width_retry=base_clamped < 37,
+            report_width_fallbacks=base_clamped < 38,
+            report_column_widths=base_clamped < 39,
             report_list_item=base_clamped < 22,
             report_clear_all=base_clamped < 23,
             report_batch_delete=base_clamped < 24,
@@ -186,14 +192,14 @@ class ListPanelDebugProfile:
             report_immediate_refresh=base_clamped < 33,
             report_immediate_update=base_clamped < 34,
             report_send_size_event=base_clamped < 35,
-            plain_deferred_callafter=base_clamped < 38,
-            plain_deferred_timer=base_clamped < 39,
-            plain_deferred_queue=base_clamped < 40,
-            plain_deferred_population=base_clamped < 41,
-            plain_cached_items=base_clamped < 42,
-            plain_post_refresh=base_clamped < 43,
-            report_style=base_clamped < 44,
-            sizer_layout=base_clamped < 45,
+            plain_deferred_callafter=base_clamped < 40,
+            plain_deferred_timer=base_clamped < 41,
+            plain_deferred_queue=base_clamped < 42,
+            plain_deferred_population=base_clamped < 43,
+            plain_cached_items=base_clamped < 44,
+            plain_post_refresh=base_clamped < 45,
+            report_style=base_clamped < 46,
+            sizer_layout=base_clamped < 47,
             probe_force_refresh=tier >= 1,
             probe_column_reset=tier >= 2,
             probe_deferred_population=tier >= 3,
@@ -203,7 +209,7 @@ class ListPanelDebugProfile:
     def rollback_stage(self) -> int:
         """Return how many post-commit rollback tiers are enabled."""
 
-        return max(0, self.base_level - 43)
+        return max(0, self.base_level - 45)
 
     def disabled_features(self) -> list[str]:
         """Return human-readable names of features disabled at this level."""
@@ -1762,6 +1768,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         )
         if actual and actual > 0:
             return True
+        if not self.debug.report_width_fallbacks:
+            return False
         fallbacks: list[int] = []
         if width != self.MIN_COL_WIDTH:
             fallbacks.append(max(width, self.MIN_COL_WIDTH))
@@ -1808,55 +1816,69 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             width,
             attempts,
         )
-        if not self._column_widths_scheduled:
-            self._column_widths_scheduled = True
+        if self._column_widths_scheduled:
+            return
+        self._column_widths_scheduled = True
+        if self.debug.report_width_retry_async:
             wx.CallAfter(self._flush_pending_column_widths)
             self._log_diagnostics("scheduled deferred column width flush")
+            return
+        self._log_diagnostics("executing column width flush synchronously")
+        self._flush_pending_column_widths()
 
     def _flush_pending_column_widths(self) -> None:
         """Retry collapsed column widths once the widget is fully realized."""
 
-        self._column_widths_scheduled = False
-        pending = list(self._pending_column_widths.items())
-        self._pending_column_widths.clear()
-        if not pending:
-            return
-        self._log_diagnostics("processing %s pending column width attempts", len(pending))
-        for column, (width, attempts) in pending:
-            try:
-                count = self.list.GetColumnCount()
-            except Exception:
+        while True:
+            self._column_widths_scheduled = False
+            pending = list(self._pending_column_widths.items())
+            self._pending_column_widths.clear()
+            if not pending:
                 return
-            if column >= count:
-                continue
-            success = self._apply_column_width_now(column, width)
-            if success:
-                self._log_diagnostics("column %s width recovered after retry", column)
-                continue
-            attempts += 1
-            if attempts >= 3:
-                logger.warning(
-                    "ListPanel column %s remains collapsed after retries; giving up", column
-                )
-                with suppress(Exception):
-                    self.list.SetColumnWidth(column, max(width, self.MIN_COL_WIDTH))
-                actual = self._capture_column_width(column)
-                self._log_diagnostics(
-                    "column %s width give-up — requested=%s actual=%s",
-                    column,
-                    width,
-                    actual,
-                )
-                continue
-            self._pending_column_widths[column] = (width, attempts)
-        if self._pending_column_widths:
+            self._log_diagnostics(
+                "processing %s pending column width attempts",
+                len(pending),
+            )
+            for column, (width, attempts) in pending:
+                try:
+                    count = self.list.GetColumnCount()
+                except Exception:
+                    return
+                if column >= count:
+                    continue
+                success = self._apply_column_width_now(column, width)
+                if success:
+                    self._log_diagnostics("column %s width recovered after retry", column)
+                    continue
+                attempts += 1
+                if attempts >= 3:
+                    logger.warning(
+                        "ListPanel column %s remains collapsed after retries; giving up",
+                        column,
+                    )
+                    with suppress(Exception):
+                        self.list.SetColumnWidth(column, max(width, self.MIN_COL_WIDTH))
+                    actual = self._capture_column_width(column)
+                    self._log_diagnostics(
+                        "column %s width give-up — requested=%s actual=%s",
+                        column,
+                        width,
+                        actual,
+                    )
+                    continue
+                self._pending_column_widths[column] = (width, attempts)
+            if not self._pending_column_widths:
+                return
             self._log_diagnostics(
                 "retry queue still has %s column(s)", len(self._pending_column_widths)
             )
-        if self._pending_column_widths and not self._column_widths_scheduled:
-            self._column_widths_scheduled = True
-            wx.CallAfter(self._flush_pending_column_widths)
-            self._log_diagnostics("rescheduled deferred column width flush")
+            if not self.debug.report_width_retry_async:
+                continue
+            if not self._column_widths_scheduled:
+                self._column_widths_scheduled = True
+                wx.CallAfter(self._flush_pending_column_widths)
+                self._log_diagnostics("rescheduled deferred column width flush")
+            return
 
     # Columns ---------------------------------------------------------
     def load_column_widths(self, config: ConfigManager) -> None:

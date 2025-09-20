@@ -3,8 +3,8 @@
 import json
 import logging
 import weakref
-from collections.abc import Callable, Sequence
-from contextlib import suppress
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import fields, replace
 from importlib import resources
 from pathlib import Path
@@ -38,10 +38,15 @@ from .detached_editor import DetachedEditorFrame
 from .error_dialog import show_error_dialog
 from .editor_panel import EditorPanel
 from .labels_dialog import LabelsDialog
-from .list_panel import ListPanel
+from .list_panel import ListPanel, ListPanelDebugProfile
 from .navigation import Navigation
 from .requirement_model import RequirementModel
 from .settings_dialog import SettingsDialog
+from .splitter_utils import (
+    SplitterEventBlocker,
+    refresh_splitter_highlight,
+    style_splitter,
+)
 from .widgets import SectionContainer
 
 
@@ -99,6 +104,106 @@ class WxLogHandler(logging.Handler):
 class MainFrame(wx.Frame):
     """Top-level frame coordinating UI subsystems."""
 
+    def _update_list_debug_profile(self) -> None:
+        """Refresh cached debug profile derived from the configured level."""
+
+        previous_stage = getattr(self, "_list_debug_stage", 0)
+        profile = ListPanelDebugProfile.from_level(self.list_panel_debug_level)
+        self._list_debug_profile = profile
+        self._list_debug_stage = max(0, profile.base_level - 35)
+        if hasattr(self, "doc_splitter") and self._list_debug_stage != previous_stage:
+            self._apply_splitter_debug_profile()
+
+    def _legacy_doc_tree_enabled(self) -> bool:
+        """Return ``True`` when legacy doc tree logic should be active."""
+
+        return getattr(self, "_list_debug_stage", 0) >= 1
+
+    def _legacy_agent_splitter_enabled(self) -> bool:
+        """Return ``True`` when legacy agent splitter handling is active."""
+
+        return getattr(self, "_list_debug_stage", 0) >= 2
+
+    def _legacy_splitter_styling_enabled(self) -> bool:
+        """Return ``True`` when splitter styling should be restored."""
+
+        return getattr(self, "_list_debug_stage", 0) >= 3
+
+    def _apply_splitter_debug_profile(self, initial: bool = False) -> None:
+        """Apply splitter guards, placeholders and styling based on debug stage."""
+
+        if not hasattr(self, "doc_splitter"):
+            return
+
+        if self._legacy_doc_tree_enabled():
+            if self._doc_splitter_guard is None:
+                self._doc_splitter_guard = SplitterEventBlocker()
+            if self._doc_tree_placeholder is None:
+                self._doc_tree_placeholder = self._create_doc_tree_placeholder(
+                    self.doc_splitter
+                )
+            self._bind_doc_splitter_events()
+            if not self._doc_tree_collapsed:
+                self._doc_tree_saved_sash = max(
+                    self.doc_splitter.GetSashPosition(), self._doc_tree_min_pane
+                )
+        else:
+            self._unbind_doc_splitter_events()
+            self._doc_splitter_guard = None
+            self._unbind_doc_splitter_drag_veto()
+            if (
+                self._doc_tree_placeholder is not None
+                and self.doc_splitter.GetWindow1() is self._doc_tree_placeholder
+                and self.doc_tree_container is not None
+            ):
+                self.doc_splitter.ReplaceWindow(
+                    self._doc_tree_placeholder,
+                    self.doc_tree_container,
+                )
+                self.doc_tree_container.Show()
+            if self._doc_tree_placeholder is not None and not initial:
+                self._doc_tree_placeholder.Hide()
+            self._doc_tree_collapsed = False
+
+        if self._legacy_agent_splitter_enabled():
+            if self._agent_splitter_guard is None:
+                self._agent_splitter_guard = SplitterEventBlocker()
+            self._bind_agent_splitter_events()
+        else:
+            self._unbind_agent_splitter_events()
+            self._agent_splitter_guard = None
+
+        if self._legacy_splitter_styling_enabled():
+            for splitter in (
+                getattr(self, "main_splitter", None),
+                getattr(self, "doc_splitter", None),
+                getattr(self, "agent_splitter", None),
+                getattr(self, "splitter", None),
+            ):
+                if splitter is not None:
+                    style_splitter(splitter)
+                    refresh_splitter_highlight(splitter)
+            if hasattr(wx, "EVT_SPLITTER_DOUBLECLICKED"):
+                for splitter in (
+                    getattr(self, "main_splitter", None),
+                    getattr(self, "doc_splitter", None),
+                    getattr(self, "agent_splitter", None),
+                    getattr(self, "splitter", None),
+                ):
+                    if splitter is not None:
+                        self._disable_splitter_unsplit(splitter)
+        else:
+            for splitter in (
+                getattr(self, "main_splitter", None),
+                getattr(self, "doc_splitter", None),
+                getattr(self, "agent_splitter", None),
+                getattr(self, "splitter", None),
+            ):
+                if splitter is not None:
+                    self._enable_splitter_unsplit(splitter)
+
+        self._update_doc_tree_toggle_state()
+
     def __init__(
         self,
         parent: wx.Window | None,
@@ -130,6 +235,9 @@ class MainFrame(wx.Frame):
         if self.mcp_settings.auto_start:
             self.mcp.start(self.mcp_settings)
         self.docs_controller: DocumentsController | None = None
+        self._list_debug_profile: ListPanelDebugProfile | None = None
+        self._list_debug_stage = 0
+        self._update_list_debug_profile()
         super().__init__(parent=parent, title=self._base_title)
         # Load all available icon sizes so that Windows taskbar and other
         # platforms can pick the most appropriate resolution. Using
@@ -174,13 +282,24 @@ class MainFrame(wx.Frame):
         self.doc_splitter = wx.SplitterWindow(self.main_splitter)
         self._doc_tree_min_pane = max(self.FromDIP(20), 1)
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
+        self._doc_tree_placeholder: wx.Panel | None = None
+        self._doc_tree_placeholder_button: wx.Button | None = None
+        self._doc_tree_placeholder_width = self.FromDIP(20)
+        self._doc_tree_saved_sash = max(self.FromDIP(200), self._doc_tree_min_pane)
+        self._doc_splitter_guard: SplitterEventBlocker | None = None
+        self._doc_splitter_events_bound = False
+        self._doc_tree_sash_veto_bound = False
         self._doc_tree_toggle_size: wx.Size | None = None
         self._doc_tree_collapsed = False
         self._doc_tree_last_width = max(200, self._doc_tree_min_pane)
         self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
         self.agent_splitter.SetMinimumPaneSize(280)
+        self._agent_splitter_guard: SplitterEventBlocker | None = None
+        self._agent_splitter_events_bound = False
         self._agent_last_width = max(self.agent_splitter.GetMinimumPaneSize(), 320)
+        self._agent_saved_sash = self._agent_last_width
         self.splitter = wx.SplitterWindow(self.agent_splitter)
+        self._splitter_unsplit_bound: set[wx.SplitterWindow] = set()
         self.splitter.SetMinimumPaneSize(200)
         (
             self.doc_tree_container,
@@ -248,6 +367,7 @@ class MainFrame(wx.Frame):
         )
         self._doc_tree_last_width = self._current_doc_tree_width()
         self._clear_editor_panel()
+        self._apply_splitter_debug_profile(initial=True)
 
         self.log_panel = wx.Panel(self.main_splitter)
         log_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -433,6 +553,7 @@ class MainFrame(wx.Frame):
 
         if not getattr(self, "panel", None):
             return
+        self._update_list_debug_profile()
         old_panel = self.panel
         container = getattr(self, "list_container", None)
         if container is None:
@@ -570,6 +691,158 @@ class MainFrame(wx.Frame):
         self.doc_tree_toggle.Bind(wx.EVT_TOGGLEBUTTON, self._on_toggle_doc_tree)
         return self.doc_tree_toggle
 
+    def _create_doc_tree_placeholder(self, parent: wx.SplitterWindow) -> wx.Panel:
+        """Build a narrow placeholder shown when the hierarchy pane is hidden."""
+
+        panel = wx.Panel(parent, style=wx.BORDER_NONE)
+        panel.Hide()
+        panel.SetBackgroundColour(parent.GetBackgroundColour())
+        panel.SetDoubleBuffered(True)
+        button = wx.Button(
+            panel,
+            label=_EXPAND_ARROW,
+            style=wx.BU_EXACTFIT | wx.BORDER_NONE,
+        )
+        button.SetWindowVariant(wx.WINDOW_VARIANT_MINI)
+        background = panel.GetBackgroundColour()
+        if background.IsOk():
+            button.SetBackgroundColour(background)
+        foreground = panel.GetForegroundColour()
+        if foreground.IsOk():
+            button.SetForegroundColour(foreground)
+        if self._doc_tree_toggle_size:
+            button.SetMinSize(self._doc_tree_toggle_size)
+            button.SetMaxSize(self._doc_tree_toggle_size)
+        button.SetToolTip(_("Show hierarchy"))
+        button.Bind(wx.EVT_BUTTON, self._on_doc_tree_placeholder_clicked)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(
+            button,
+            0,
+            wx.ALIGN_CENTER_HORIZONTAL | wx.TOP,
+            panel.FromDIP(6),
+        )
+        sizer.AddStretchSpacer()
+        panel.SetSizer(sizer)
+        panel.Layout()
+        best = button.GetBestSize()
+        if self._doc_tree_toggle_size:
+            best = self._doc_tree_toggle_size
+        width = best.width + panel.FromDIP(4)
+        width = max(width, self._doc_tree_placeholder_width)
+        panel.SetMinSize(wx.Size(width, -1))
+        panel.SetMaxSize(wx.Size(width, -1))
+        self._doc_tree_placeholder_width = width
+        self._doc_tree_placeholder_button = button
+        return panel
+
+    def _on_doc_tree_placeholder_clicked(self, _event: wx.Event) -> None:
+        """Restore the hierarchy pane from the placeholder."""
+
+        self._expand_doc_tree()
+
+    @contextmanager
+    def _ignore_doc_splitter_events(self) -> Iterator[None]:
+        """Silence hierarchy sash change handler during adjustments."""
+
+        guard = self._doc_splitter_guard
+        if guard is None:
+            yield
+            return
+        with guard.pause():
+            yield
+
+    def _bind_doc_splitter_events(self) -> None:
+        """Attach legacy sash-change tracking when doc tree rollback is active."""
+
+        if self._doc_splitter_events_bound:
+            return
+        if not getattr(self, "doc_splitter", None):
+            return
+        self.doc_splitter.Bind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGED,
+            self._on_doc_splitter_sash_changed,
+        )
+        self._doc_splitter_events_bound = True
+
+    def _unbind_doc_splitter_events(self) -> None:
+        """Remove legacy sash-change tracking when rollback is disabled."""
+
+        if not self._doc_splitter_events_bound:
+            return
+        if not getattr(self, "doc_splitter", None):
+            return
+        self.doc_splitter.Unbind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGED,
+            handler=self._on_doc_splitter_sash_changed,
+        )
+        self._doc_splitter_events_bound = False
+
+    def _bind_doc_splitter_drag_veto(self) -> None:
+        """Prevent the hierarchy splitter sash from being dragged when hidden."""
+
+        if self._doc_tree_sash_veto_bound:
+            return
+        self.doc_splitter.Bind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGING,
+            self._prevent_doc_splitter_drag,
+        )
+        self._doc_tree_sash_veto_bound = True
+
+    def _unbind_doc_splitter_drag_veto(self) -> None:
+        """Re-enable sash dragging once the hierarchy pane is visible."""
+
+        if not self._doc_tree_sash_veto_bound:
+            return
+        self.doc_splitter.Unbind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGING,
+            handler=self._prevent_doc_splitter_drag,
+        )
+        self._doc_tree_sash_veto_bound = False
+
+    def _prevent_doc_splitter_drag(self, event: wx.SplitterEvent) -> None:
+        """Veto sash movements while the hierarchy pane is collapsed."""
+
+        if self._legacy_doc_tree_enabled():
+            event.Veto()
+
+    @contextmanager
+    def _ignore_agent_splitter_events(self) -> Iterator[None]:
+        """Silence agent chat sash change handler during adjustments."""
+
+        guard = self._agent_splitter_guard
+        if guard is None:
+            yield
+            return
+        with guard.pause():
+            yield
+
+    def _bind_agent_splitter_events(self) -> None:
+        """Enable legacy agent splitter sash tracking when rollback is active."""
+
+        if self._agent_splitter_events_bound:
+            return
+        if not getattr(self, "agent_splitter", None):
+            return
+        self.agent_splitter.Bind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGED,
+            self._on_agent_splitter_sash_changed,
+        )
+        self._agent_splitter_events_bound = True
+
+    def _unbind_agent_splitter_events(self) -> None:
+        """Disable legacy agent splitter sash tracking."""
+
+        if not self._agent_splitter_events_bound:
+            return
+        if not getattr(self, "agent_splitter", None):
+            return
+        self.agent_splitter.Unbind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGED,
+            handler=self._on_agent_splitter_sash_changed,
+        )
+        self._agent_splitter_events_bound = False
+
     def _on_toggle_doc_tree(self, _event: wx.Event) -> None:
         """Collapse or expand the document hierarchy panel."""
 
@@ -634,6 +907,9 @@ class MainFrame(wx.Frame):
 
         if self._doc_tree_collapsed:
             return
+        if self._legacy_doc_tree_enabled():
+            self._collapse_doc_tree_legacy()
+            return
         if self.doc_splitter.IsSplit():
             width = self._current_doc_tree_width()
             if width > self._doc_tree_min_pane:
@@ -654,6 +930,9 @@ class MainFrame(wx.Frame):
 
         if not self._doc_tree_collapsed:
             return
+        if self._legacy_doc_tree_enabled():
+            self._expand_doc_tree_legacy()
+            return
         self.doc_tree_container.SetMinSize(wx.Size(-1, -1))
         if self.doc_tree_label:
             self.doc_tree_label.Show()
@@ -667,6 +946,73 @@ class MainFrame(wx.Frame):
         self.doc_splitter.Layout()
         self._doc_tree_collapsed = False
         self._update_doc_tree_toggle_state()
+
+    def _collapse_doc_tree_legacy(self) -> None:
+        """Legacy collapse logic matching pre-regression behaviour."""
+
+        sash = self.doc_splitter.GetSashPosition()
+        self._doc_tree_saved_sash = max(sash, self._doc_tree_min_pane)
+        self._doc_tree_last_width = self._doc_tree_saved_sash
+        if self.doc_tree_label:
+            self.doc_tree_label.Hide()
+        self.doc_tree.Hide()
+        self.doc_tree_container.Hide()
+        self.doc_splitter.SetMinimumPaneSize(0)
+        handle = self._collapsed_doc_tree_width()
+        if (
+            self._doc_tree_placeholder
+            and self.doc_splitter.GetWindow1() is self.doc_tree_container
+        ):
+            replaced = self.doc_splitter.ReplaceWindow(
+                self.doc_tree_container,
+                self._doc_tree_placeholder,
+            )
+            if not replaced:
+                self._doc_tree_placeholder.Reparent(self.doc_splitter)
+        if self._doc_tree_placeholder:
+            self._doc_tree_placeholder.Show()
+            self._doc_tree_placeholder.Layout()
+        with self._ignore_doc_splitter_events():
+            self.doc_splitter.SetSashPosition(handle, True)
+        if hasattr(self.doc_splitter, "SetSashInvisible"):
+            self.doc_splitter.SetSashInvisible(True)
+        self._bind_doc_splitter_drag_veto()
+        self._doc_tree_collapsed = True
+        self._update_doc_tree_toggle_state()
+        self.doc_splitter.Layout()
+        if self._legacy_splitter_styling_enabled():
+            refresh_splitter_highlight(self.doc_splitter)
+
+    def _expand_doc_tree_legacy(self) -> None:
+        """Legacy expand logic matching pre-regression behaviour."""
+
+        if (
+            self._doc_tree_placeholder
+            and self.doc_splitter.GetWindow1() is self._doc_tree_placeholder
+        ):
+            self.doc_splitter.ReplaceWindow(
+                self._doc_tree_placeholder,
+                self.doc_tree_container,
+            )
+            self._doc_tree_placeholder.Hide()
+        self.doc_tree_container.SetMinSize(wx.Size(-1, -1))
+        if self.doc_tree_label:
+            self.doc_tree_label.Show()
+        self.doc_tree.Show()
+        self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
+        if hasattr(self.doc_splitter, "SetSashInvisible"):
+            self.doc_splitter.SetSashInvisible(False)
+        width = self._desired_doc_tree_sash()
+        self._doc_tree_collapsed = False
+        self._unbind_doc_splitter_drag_veto()
+        with self._ignore_doc_splitter_events():
+            self.doc_splitter.SetSashPosition(width, True)
+        self._doc_tree_last_width = width
+        self._update_doc_tree_toggle_state()
+        self.doc_tree_container.Layout()
+        self.doc_splitter.Layout()
+        if self._legacy_splitter_styling_enabled():
+            refresh_splitter_highlight(self.doc_splitter)
 
     def _update_doc_tree_toggle_state(self) -> None:
         """Synchronize toggle labels, tooltips, and state."""
@@ -684,6 +1030,40 @@ class MainFrame(wx.Frame):
             self.doc_tree_toggle.SetLabel(collapse_label)
             self.doc_tree_toggle.SetToolTip(_("Hide hierarchy"))
         self.doc_tree_toggle.Refresh()
+        if self._doc_tree_placeholder_button:
+            self._doc_tree_placeholder_button.SetLabel(expand_label)
+            self._doc_tree_placeholder_button.SetToolTip(_("Show hierarchy"))
+            self._doc_tree_placeholder_button.Refresh()
+
+    def _desired_doc_tree_sash(self) -> int:
+        """Clamp saved sash position to current splitter dimensions."""
+
+        saved = max(self._doc_tree_saved_sash, self._doc_tree_min_pane)
+        width = self.doc_splitter.GetClientSize().width
+        if width <= 0:
+            width = self.agent_splitter.GetClientSize().width
+        if width <= 0:
+            width = self.GetClientSize().width
+        if width <= 0:
+            width = saved
+        max_left = max(width - self._doc_tree_min_pane, self._doc_tree_min_pane)
+        return max(self._doc_tree_min_pane, min(saved, max_left))
+
+    def _on_doc_splitter_sash_changed(self, event: wx.SplitterEvent) -> None:
+        """Persist doc tree sash changes when legacy mode is enabled."""
+
+        event.Skip()
+        if not self._legacy_doc_tree_enabled():
+            return
+        guard = self._doc_splitter_guard
+        if guard is not None and guard.active:
+            return
+        if self._doc_tree_collapsed:
+            return
+        pos = event.GetSashPosition()
+        if pos > 0:
+            self._doc_tree_saved_sash = max(pos, self._doc_tree_min_pane)
+            self._doc_tree_last_width = self._doc_tree_saved_sash
 
     def _show_editor_panel(self) -> None:
         """Display the editor section alongside its container."""
@@ -699,12 +1079,16 @@ class MainFrame(wx.Frame):
         self.editor.Show()
         self.editor_container.Layout()
         self.editor.Layout()
+        if self._legacy_splitter_styling_enabled():
+            refresh_splitter_highlight(self.splitter)
 
     def _hide_editor_panel(self) -> None:
         """Hide the editor section and its container."""
 
         self.editor.Hide()
         self.editor_container.Hide()
+        if self._legacy_splitter_styling_enabled():
+            refresh_splitter_highlight(self.splitter)
 
     def _clear_editor_panel(self) -> None:
         """Reset editor contents and reflect current visibility setting."""
@@ -729,12 +1113,16 @@ class MainFrame(wx.Frame):
         self.agent_panel.Show()
         self.agent_container.Layout()
         self.agent_panel.Layout()
+        if self._legacy_splitter_styling_enabled():
+            refresh_splitter_highlight(self.agent_splitter)
 
     def _hide_agent_section(self) -> None:
         """Hide the agent chat widgets to free screen space."""
 
         self.agent_panel.Hide()
         self.agent_container.Hide()
+        if self._legacy_splitter_styling_enabled():
+            refresh_splitter_highlight(self.agent_splitter)
 
     def _update_section_labels(self) -> None:
         """Refresh captions for titled sections according to current locale."""
@@ -1591,6 +1979,8 @@ class MainFrame(wx.Frame):
             self.main_splitter.Unsplit(self.log_panel)
             self.log_panel.Hide()
         self.config.set_log_shown(self.navigation.log_menu_item.IsChecked())
+        if self._legacy_splitter_styling_enabled():
+            refresh_splitter_highlight(self.main_splitter)
 
     def on_toggle_agent_chat(self, _event: wx.CommandEvent | None) -> None:
         """Toggle agent chat panel visibility."""
@@ -1645,30 +2035,86 @@ class MainFrame(wx.Frame):
         desired = min(desired, max_left)
         return desired
 
+    def _desired_agent_chat_sash(self) -> int:
+        """Clamp saved agent sash position to current splitter dimensions."""
+
+        saved = max(self._agent_saved_sash, self.agent_splitter.GetMinimumPaneSize())
+        width = self.agent_splitter.GetClientSize().width
+        if width <= 0:
+            width = self.doc_splitter.GetClientSize().width
+        if width <= 0:
+            width = self.GetClientSize().width
+        if width <= 0:
+            width = saved
+        min_size = max(self.agent_splitter.GetMinimumPaneSize(), 200)
+        max_left = max(width - min_size, min_size)
+        return max(min_size, min(saved, max_left))
+
     def _ensure_agent_chat_visible(self) -> None:
-        desired = self._agent_last_width
-        if desired <= 0:
-            desired = self._default_agent_chat_sash()
+        if self._legacy_agent_splitter_enabled():
+            desired = self._desired_agent_chat_sash()
+        else:
+            desired = self._agent_last_width
+            if desired <= 0:
+                desired = self._default_agent_chat_sash()
         desired = max(desired, self.agent_splitter.GetMinimumPaneSize())
         self._show_agent_section()
-        if not self.agent_splitter.IsSplit():
-            self.agent_splitter.SplitVertically(
-                self.splitter,
-                self.agent_container,
-                desired,
-            )
+        if self._legacy_agent_splitter_enabled():
+            with self._ignore_agent_splitter_events():
+                if not self.agent_splitter.IsSplit():
+                    self.agent_splitter.SplitVertically(
+                        self.splitter,
+                        self.agent_container,
+                        desired,
+                    )
+                else:
+                    self.agent_splitter.SetSashPosition(desired)
+            self._agent_saved_sash = desired
         else:
-            self.agent_splitter.SetSashPosition(desired)
+            if not self.agent_splitter.IsSplit():
+                self.agent_splitter.SplitVertically(
+                    self.splitter,
+                    self.agent_container,
+                    desired,
+                )
+            else:
+                self.agent_splitter.SetSashPosition(desired)
         self._agent_last_width = self._current_agent_splitter_width()
+        if self._legacy_splitter_styling_enabled():
+            refresh_splitter_highlight(self.agent_splitter)
         self.agent_panel.focus_input()
         self.config.set_agent_chat_shown(True)
 
     def _hide_agent_chat(self) -> None:
         if self.agent_splitter.IsSplit():
-            self._agent_last_width = self._current_agent_splitter_width()
-            self.agent_splitter.Unsplit(self.agent_container)
+            current = self._current_agent_splitter_width()
+            if self._legacy_agent_splitter_enabled():
+                self._agent_saved_sash = max(current, self.agent_splitter.GetMinimumPaneSize())
+                self._agent_last_width = self._agent_saved_sash
+                with self._ignore_agent_splitter_events():
+                    self.agent_splitter.Unsplit(self.agent_container)
+            else:
+                if current > 0:
+                    self._agent_last_width = current
+                self.agent_splitter.Unsplit(self.agent_container)
         self._hide_agent_section()
+        if self._legacy_splitter_styling_enabled():
+            refresh_splitter_highlight(self.agent_splitter)
         self.config.set_agent_chat_shown(False)
+
+    def _on_agent_splitter_sash_changed(self, event: wx.SplitterEvent) -> None:
+        """Persist agent sash adjustments during legacy rollback."""
+
+        event.Skip()
+        if not self._legacy_agent_splitter_enabled():
+            return
+        guard = self._agent_splitter_guard
+        if guard is not None and guard.active:
+            return
+        pos = event.GetSashPosition()
+        if pos > 0:
+            self._agent_saved_sash = pos
+            self._agent_last_width = pos
 
     def _apply_editor_visibility(self, *, persist: bool) -> None:
         visible = self._is_editor_visible()
@@ -1709,7 +2155,14 @@ class MainFrame(wx.Frame):
             editor_splitter=self.splitter,
         )
         self._doc_tree_last_width = self._current_doc_tree_width()
-        self._doc_tree_collapsed = False
+        if self._legacy_doc_tree_enabled():
+            self._doc_tree_saved_sash = max(
+                self.doc_splitter.GetSashPosition(),
+                self._doc_tree_min_pane,
+            )
+            self._doc_tree_collapsed = False
+        else:
+            self._doc_tree_collapsed = False
         self._update_doc_tree_toggle_state()
         if self.editor_menu_item:
             self.editor_menu_item.Check(self.config.get_editor_shown())
@@ -1718,25 +2171,55 @@ class MainFrame(wx.Frame):
             shown = self.config.get_agent_chat_shown()
             self.agent_chat_menu_item.Check(shown)
             if shown:
-                desired = max(
-                    self._agent_last_width,
-                    self.agent_splitter.GetMinimumPaneSize(),
-                )
-                self._show_agent_section()
-                if not self.agent_splitter.IsSplit():
-                    self.agent_splitter.SplitVertically(
-                        self.splitter,
-                        self.agent_container,
-                        desired,
-                    )
+                if self._legacy_agent_splitter_enabled():
+                    desired = self._desired_agent_chat_sash()
                 else:
-                    self.agent_splitter.SetSashPosition(desired)
+                    desired = max(
+                        self._agent_last_width,
+                        self.agent_splitter.GetMinimumPaneSize(),
+                    )
+                self._show_agent_section()
+                if self._legacy_agent_splitter_enabled():
+                    with self._ignore_agent_splitter_events():
+                        if not self.agent_splitter.IsSplit():
+                            self.agent_splitter.SplitVertically(
+                                self.splitter,
+                                self.agent_container,
+                                desired,
+                            )
+                        else:
+                            self.agent_splitter.SetSashPosition(desired)
+                    self._agent_saved_sash = desired
+                else:
+                    if not self.agent_splitter.IsSplit():
+                        self.agent_splitter.SplitVertically(
+                            self.splitter,
+                            self.agent_container,
+                            desired,
+                        )
+                    else:
+                        self.agent_splitter.SetSashPosition(desired)
                 self._agent_last_width = self._current_agent_splitter_width()
+                if self._legacy_splitter_styling_enabled():
+                    refresh_splitter_highlight(self.agent_splitter)
             else:
                 if self.agent_splitter.IsSplit():
-                    self._agent_last_width = self._current_agent_splitter_width()
-                    self.agent_splitter.Unsplit(self.agent_container)
+                    current = self._current_agent_splitter_width()
+                    if self._legacy_agent_splitter_enabled():
+                        self._agent_saved_sash = max(
+                            current,
+                            self.agent_splitter.GetMinimumPaneSize(),
+                        )
+                        self._agent_last_width = self._agent_saved_sash
+                        with self._ignore_agent_splitter_events():
+                            self.agent_splitter.Unsplit(self.agent_container)
+                    else:
+                        if current > 0:
+                            self._agent_last_width = current
+                        self.agent_splitter.Unsplit(self.agent_container)
                 self._hide_agent_section()
+                if self._legacy_splitter_styling_enabled():
+                    refresh_splitter_highlight(self.agent_splitter)
 
     def _save_layout(self) -> None:
         """Persist window geometry, splitter, console, and column widths."""
@@ -1748,6 +2231,8 @@ class MainFrame(wx.Frame):
             current = self._current_agent_splitter_width()
             if current > 0:
                 self._agent_last_width = current
+                if self._legacy_agent_splitter_enabled():
+                    self._agent_saved_sash = current
         self.config.save_layout(
             self,
             self.doc_splitter,
@@ -1755,6 +2240,37 @@ class MainFrame(wx.Frame):
             self.panel,
             editor_splitter=self.splitter,
         )
+
+    def _disable_splitter_unsplit(self, splitter: wx.SplitterWindow) -> None:
+        """Prevent ``splitter`` from unsplitting panes via double clicks."""
+
+        if splitter in self._splitter_unsplit_bound:
+            return
+        splitter.Bind(wx.EVT_SPLITTER_DOUBLECLICKED, self._prevent_splitter_unsplit)
+        if hasattr(wx, "EVT_SPLITTER_DCLICK"):
+            splitter.Bind(wx.EVT_SPLITTER_DCLICK, self._prevent_splitter_unsplit)
+        self._splitter_unsplit_bound.add(splitter)
+
+    def _enable_splitter_unsplit(self, splitter: wx.SplitterWindow) -> None:
+        """Restore default unsplit behaviour on ``splitter``."""
+
+        if splitter not in self._splitter_unsplit_bound:
+            return
+        splitter.Unbind(
+            wx.EVT_SPLITTER_DOUBLECLICKED,
+            handler=self._prevent_splitter_unsplit,
+        )
+        if hasattr(wx, "EVT_SPLITTER_DCLICK"):
+            splitter.Unbind(
+                wx.EVT_SPLITTER_DCLICK,
+                handler=self._prevent_splitter_unsplit,
+            )
+        self._splitter_unsplit_bound.discard(splitter)
+
+    def _prevent_splitter_unsplit(self, event: wx.SplitterEvent) -> None:
+        """Block attempts to unsplit panes initiated by double clicks."""
+
+        event.Veto()
 
     def register_auxiliary_frame(self, frame: wx.Frame) -> None:
         """Track ``frame`` so it is destroyed during main window shutdown."""

@@ -190,6 +190,12 @@ class ListPanelDebugProfile:
             probe_deferred_population=tier >= 3,
         )
 
+    @property
+    def rollback_stage(self) -> int:
+        """Return how many post-commit rollback tiers are enabled."""
+
+        return max(0, self.base_level - 35)
+
     def disabled_features(self) -> list[str]:
         """Return human-readable names of features disabled at this level."""
 

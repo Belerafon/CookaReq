@@ -6,7 +6,8 @@ import datetime
 import json
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -20,6 +21,7 @@ from ..util.json import make_json_safe
 from ..util.cancellation import CancellationTokenSource, OperationCancelledError
 from .chat_entry import ChatConversation, ChatEntry
 from .helpers import dip, format_error_message, inherit_background
+from .splitter_utils import SplitterEventBlocker, refresh_splitter_highlight, style_splitter
 from .widgets.chat_message import TranscriptMessagePanel
 
 
@@ -124,6 +126,9 @@ class AgentChatPanel(wx.Panel):
         self._bottom_panel: wx.Panel | None = None
         self.transcript = _TranscriptAccessor()
         self._suppress_history_selection = False
+        self._history_splitter_guard = SplitterEventBlocker()
+        self._history_saved_sash = 0
+        self._history_restore_pending = False
         self._run_counter = 0
         self._active_run_handle: _AgentRunHandle | None = None
         self._load_history()
@@ -147,6 +152,7 @@ class AgentChatPanel(wx.Panel):
 
         splitter_style = wx.SP_LIVE_UPDATE | wx.SP_3D
         self._vertical_splitter = wx.SplitterWindow(self, style=splitter_style)
+        style_splitter(self._vertical_splitter)
         self._vertical_splitter.SetMinimumPaneSize(dip(self, 160))
 
         top_panel = wx.Panel(self._vertical_splitter)
@@ -156,9 +162,15 @@ class AgentChatPanel(wx.Panel):
             inherit_background(panel, self)
 
         self._horizontal_splitter = wx.SplitterWindow(top_panel, style=splitter_style)
+        style_splitter(self._horizontal_splitter)
         history_min_width = dip(self, 260)
-        self._history_min_width = history_min_width
         self._horizontal_splitter.SetMinimumPaneSize(history_min_width)
+        self._horizontal_splitter.Bind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGED, self._on_history_sash_changed
+        )
+        self._horizontal_splitter.Bind(
+            wx.EVT_SIZE, self._on_history_splitter_resized
+        )
 
         history_panel = wx.Panel(self._horizontal_splitter)
         self._history_panel = history_panel
@@ -196,7 +208,6 @@ class AgentChatPanel(wx.Panel):
         history_sizer.AddSpacer(spacing)
         history_sizer.Add(self.history_list, 1, wx.EXPAND)
         history_panel.SetSizer(history_sizer)
-        history_panel.Bind(wx.EVT_SIZE, self._on_history_panel_size)
 
         transcript_panel = wx.Panel(self._horizontal_splitter)
         transcript_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -215,10 +226,11 @@ class AgentChatPanel(wx.Panel):
         transcript_sizer.Add(self.transcript_panel, 1, wx.EXPAND)
         transcript_panel.SetSizer(transcript_sizer)
 
-        self._horizontal_splitter.SplitVertically(history_panel, transcript_panel, history_min_width)
-        self._horizontal_splitter.SetSashGravity(0.0)
-        self._default_history_width = history_min_width
-        self._last_history_width = history_min_width
+        self._horizontal_splitter.SplitVertically(
+            history_panel, transcript_panel, history_min_width
+        )
+        self._horizontal_splitter.SetSashGravity(1.0)
+        self._history_saved_sash = self._horizontal_splitter.GetSashPosition()
 
         top_sizer = wx.BoxSizer(wx.VERTICAL)
         top_sizer.Add(self._horizontal_splitter, 1, wx.EXPAND)
@@ -275,70 +287,121 @@ class AgentChatPanel(wx.Panel):
         outer.Add(self._vertical_splitter, 1, wx.EXPAND)
 
         self.SetSizer(outer)
+        self.Bind(wx.EVT_SHOW, self._on_history_panel_show)
+        refresh_splitter_highlight(self._horizontal_splitter)
+        refresh_splitter_highlight(self._vertical_splitter)
         self._refresh_history_list()
         wx.CallAfter(self._adjust_vertical_splitter)
-        wx.CallAfter(self._capture_history_width)
 
     # ------------------------------------------------------------------
     @property
     def history_sash(self) -> int:
-        """Current sash position of the history splitter."""
+        """Return the last user-selected width of the history pane."""
 
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter and splitter.IsSplit():
-            width = self._history_panel_width()
-            if width > 0:
-                return width
-        return max(
-            getattr(self, "_default_history_width", 0),
-            getattr(self, "_history_min_width", 0),
-        )
+        return max(self._history_saved_sash, 0)
 
     def default_history_sash(self) -> int:
-        """Baseline width used when no persisted value is available."""
-
-        width = self._history_panel_width()
-        if width > 0:
-            return width
-        baseline = getattr(self, "_default_history_width", None)
-        if baseline is not None and baseline > 0:
-            return baseline
-        return getattr(self, "_history_min_width", dip(self, 260))
-
-    def apply_history_sash(self, value: int) -> None:
-        """Apply ``value`` to the history splitter if it is active."""
+        """Return reasonable default sash width for the history pane."""
 
         splitter = getattr(self, "_horizontal_splitter", None)
-        if not splitter or not splitter.IsSplit():
+        if splitter is None:
+            return 0
+        pos = splitter.GetSashPosition()
+        minimum = splitter.GetMinimumPaneSize()
+        return max(minimum, pos if pos > 0 else minimum)
+
+    def apply_history_sash(self, value: int) -> None:
+        """Update stored history sash and apply it when layout allows."""
+
+        splitter = getattr(self, "_horizontal_splitter", None)
+        if splitter is None:
+            self._history_saved_sash = max(value, 0)
             return
         minimum = splitter.GetMinimumPaneSize()
-        target = max(value, minimum)
-        splitter.SetSashPosition(target)
-        self._last_history_width = target
-        if getattr(self, "_default_history_width", 0) <= 0:
-            self._default_history_width = target
-        wx.CallAfter(self._capture_history_width)
+        self._history_saved_sash = max(value, minimum)
+        self._schedule_history_sash_restore()
 
-    def _history_panel_width(self) -> int:
-        panel = getattr(self, "_history_panel", None)
-        width = getattr(self, "_last_history_width", 0)
-        if panel is not None:
-            measured = panel.GetSize().width
-            if measured <= 0:
-                measured = panel.GetClientSize().width
-            if measured > 0:
-                width = measured
+    @contextmanager
+    def _suspend_history_splitter_events(self) -> Iterator[None]:
+        """Temporarily block callbacks while adjusting the sash."""
+
+        with self._history_splitter_guard.pause():
+            yield
+
+    def _schedule_history_sash_restore(self) -> None:
+        """Ensure the saved sash is re-applied once events settle."""
+
+        if self._history_restore_pending:
+            return
+        self._history_restore_pending = True
+        wx.CallAfter(self._apply_history_sash)
+
+    def _apply_history_sash(self) -> None:
+        """Restore the saved history sash position if needed."""
+
+        self._history_restore_pending = False
+        splitter = getattr(self, "_horizontal_splitter", None)
+        if splitter is None or not splitter or splitter.IsBeingDeleted():
+            return
+        if not splitter.IsSplit():
+            return
+        desired = self._desired_history_sash()
+        if desired <= 0:
+            return
+        current = splitter.GetSashPosition()
+        if current == desired:
+            return
+        with self._suspend_history_splitter_events():
+            splitter.SetSashPosition(desired)
+        self._history_saved_sash = desired
+
+    def _desired_history_sash(self) -> int:
+        """Clamp stored sash to the available width of the splitter."""
+
+        splitter = getattr(self, "_horizontal_splitter", None)
+        if splitter is None:
+            return max(self._history_saved_sash, 0)
+        saved = max(self._history_saved_sash, splitter.GetMinimumPaneSize())
+        width = splitter.GetClientSize().width
         if width <= 0:
-            width = getattr(self, "_default_history_width", 0)
+            size = splitter.GetSize()
+            width = size.width
         if width <= 0:
-            width = getattr(self, "_history_min_width", 0)
-        return max(width, getattr(self, "_history_min_width", 0))
+            size = self.GetClientSize()
+            width = size.width
+        if width <= 0:
+            return saved
+        min_size = splitter.GetMinimumPaneSize()
+        max_left = max(width - min_size, min_size)
+        return max(min_size, min(saved, max_left))
 
-    def _capture_history_width(self) -> None:
-        self._last_history_width = self._history_panel_width()
+    def _on_history_sash_changed(self, event: wx.SplitterEvent) -> None:
+        """Remember last sash when the user resizes the history column."""
 
-    def _on_history_panel_size(self, _event: wx.SizeEvent) -> None:
-        wx.CallAfter(self._capture_history_width)
+        event.Skip()
+        if self._history_splitter_guard.active:
+            return
+        pos = event.GetSashPosition()
+        if pos > 0:
+            self._history_saved_sash = pos
+
+    def _on_history_splitter_resized(self, event: wx.SizeEvent) -> None:
+        """Trigger sash restoration after external layout changes."""
+
+        event.Skip()
+        if self._history_splitter_guard.active:
+            return
+        splitter = getattr(self, "_horizontal_splitter", None)
+        if splitter is None or not splitter.IsSplit():
+            return
+        self._schedule_history_sash_restore()
+
+    def _on_history_panel_show(self, event: wx.ShowEvent) -> None:
+        """Re-apply saved sash whenever the panel becomes visible."""
+
+        event.Skip()
+        if event.IsShown():
+            self._schedule_history_sash_restore()
 
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------

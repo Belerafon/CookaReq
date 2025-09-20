@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import threading
 import time
 from collections.abc import Iterator, Mapping, Sequence
@@ -23,6 +24,9 @@ from .chat_entry import ChatConversation, ChatEntry
 from .helpers import dip, format_error_message, inherit_background
 from .splitter_utils import SplitterEventBlocker, refresh_splitter_highlight, style_splitter
 from .widgets.chat_message import TranscriptMessagePanel
+
+
+logger = logging.getLogger(__name__)
 
 
 try:  # pragma: no cover - import only used for typing
@@ -328,6 +332,28 @@ class AgentChatPanel(wx.Panel):
         with self._history_splitter_guard.pause():
             yield
 
+    def _should_process_history_splitter_event(
+        self, event: wx.SplitterEvent, *, phase: str
+    ) -> bool:
+        """Return ``True`` when ``event`` targets the history splitter."""
+
+        splitter = getattr(self, "_horizontal_splitter", None)
+        if splitter is None:
+            return False
+        source = event.GetEventObject()
+        if source is None or source is splitter:
+            return True
+        if logger.isEnabledFor(logging.DEBUG):
+            source_id = getattr(source, "GetId", lambda: None)()
+            logger.debug(
+                "Ignoring agent history sash %s event forwarded from splitter id=%s type=%s pos=%s",
+                phase,
+                source_id,
+                type(source).__name__,
+                event.GetSashPosition(),
+            )
+        return False
+
     def _schedule_history_sash_restore(self) -> None:
         """Ensure the saved sash is re-applied once events settle."""
 
@@ -379,6 +405,8 @@ class AgentChatPanel(wx.Panel):
         """Remember last sash when the user resizes the history column."""
 
         event.Skip()
+        if not self._should_process_history_splitter_event(event, phase="change"):
+            return
         if self._history_splitter_guard.active:
             return
         pos = event.GetSashPosition()

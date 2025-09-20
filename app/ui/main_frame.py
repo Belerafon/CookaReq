@@ -529,6 +529,33 @@ class MainFrame(wx.Frame):
         else:
             self._collapse_doc_tree(update_config=True)
 
+    def _should_process_splitter_event(
+        self,
+        *,
+        event: wx.SplitterEvent,
+        splitter: wx.SplitterWindow | None,
+        label: str,
+        phase: str,
+    ) -> bool:
+        """Return ``True`` when ``event`` originates from ``splitter``."""
+
+        if splitter is None:
+            return False
+        source = event.GetEventObject()
+        if source is None or source is splitter:
+            return True
+        if logger.isEnabledFor(logging.DEBUG):
+            source_id = getattr(source, "GetId", lambda: None)()
+            logger.debug(
+                "Ignoring %s sash %s event forwarded from splitter id=%s type=%s pos=%s",
+                label,
+                phase,
+                source_id,
+                type(source).__name__,
+                event.GetSashPosition(),
+            )
+        return False
+
     @contextmanager
     def _ignore_doc_splitter_events(self) -> Iterator[None]:
         """Silence hierarchy sash change handler during adjustments."""
@@ -718,6 +745,14 @@ class MainFrame(wx.Frame):
     def _prevent_doc_splitter_drag(self, event: wx.SplitterEvent) -> None:
         """Veto sash movements while the hierarchy pane is collapsed."""
 
+        if not self._should_process_splitter_event(
+            event=event,
+            splitter=self.doc_splitter,
+            label="hierarchy",
+            phase="changing",
+        ):
+            event.Skip()
+            return
         event.Veto()
 
     def _update_doc_tree_toggle_state(self) -> None:
@@ -791,16 +826,12 @@ class MainFrame(wx.Frame):
         """Record that a live drag is in progress for the hierarchy splitter."""
 
         event.Skip()
-        source = event.GetEventObject()
-        if source is not None and source is not self.doc_splitter:
-            if logger.isEnabledFor(logging.DEBUG):
-                source_id = getattr(source, "GetId", lambda: None)()
-                logger.debug(
-                    "Ignoring hierarchy sash changing event from splitter id=%s type=%s pos=%s",
-                    source_id,
-                    type(source).__name__,
-                    event.GetSashPosition(),
-                )
+        if not self._should_process_splitter_event(
+            event=event,
+            splitter=self.doc_splitter,
+            label="hierarchy",
+            phase="changing",
+        ):
             return
         self._schedule_doc_splitter_user_marker()
 
@@ -808,16 +839,12 @@ class MainFrame(wx.Frame):
         """Remember latest sash position when the tree pane is visible."""
 
         event.Skip()
-        source = event.GetEventObject()
-        if source is not None and source is not self.doc_splitter:
-            if logger.isEnabledFor(logging.DEBUG):
-                source_id = getattr(source, "GetId", lambda: None)()
-                logger.debug(
-                    "Ignoring hierarchy sash change forwarded from splitter id=%s type=%s pos=%s",
-                    source_id,
-                    type(source).__name__,
-                    event.GetSashPosition(),
-                )
+        if not self._should_process_splitter_event(
+            event=event,
+            splitter=self.doc_splitter,
+            label="hierarchy",
+            phase="change",
+        ):
             return
         if self._doc_splitter_guard.active:
             return
@@ -1818,6 +1845,13 @@ class MainFrame(wx.Frame):
         """Remember agent chat sash only when moved by the user."""
 
         event.Skip()
+        if not self._should_process_splitter_event(
+            event=event,
+            splitter=self.agent_splitter,
+            label="agent chat",
+            phase="change",
+        ):
+            return
         if self._agent_splitter_guard.active:
             return
         pos = event.GetSashPosition()

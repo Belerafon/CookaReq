@@ -177,6 +177,32 @@ def test_doc_splitter_user_drag_persists_value(configured_frame, wx_app):
     wx_app.Yield()
 
 
+def test_doc_splitter_veto_skips_foreign_events(configured_frame, wx_app):
+    """Drag veto for the hierarchy splitter must not block other panes."""
+
+    frame, _ = configured_frame("doc_veto_guard.ini")
+    frame._collapse_doc_tree(update_config=True)
+    wx_app.Yield()
+
+    foreign = wx.SplitterEvent(
+        wx.wxEVT_SPLITTER_SASH_POS_CHANGING,
+        frame.agent_splitter,
+    )
+    foreign.SetEventObject(frame.agent_splitter)
+    assert foreign.IsAllowed()
+    frame._prevent_doc_splitter_drag(foreign)
+    assert foreign.IsAllowed()
+
+    native = wx.SplitterEvent(
+        wx.wxEVT_SPLITTER_SASH_POS_CHANGING,
+        frame.doc_splitter,
+    )
+    native.SetEventObject(frame.doc_splitter)
+    assert native.IsAllowed()
+    frame._prevent_doc_splitter_drag(native)
+    assert not native.IsAllowed()
+
+
 def test_agent_splitter_events_do_not_affect_doc_tree(configured_frame, wx_app):
     """Sash notifications bubbling from the agent splitter must be ignored."""
 
@@ -209,6 +235,25 @@ def test_agent_splitter_events_do_not_affect_doc_tree(configured_frame, wx_app):
     assert frame._doc_tree_saved_width == initial_saved
     assert frame.doc_splitter.GetSashPosition() == initial_pos
     assert frame._doc_splitter_recent_user is False
+
+
+def test_agent_splitter_ignores_foreign_events(configured_frame, wx_app):
+    """Agent sash handler must ignore hierarchy notifications."""
+
+    frame, _ = configured_frame("agent_foreign.ini")
+    initial = frame._agent_saved_sash
+    stray = initial + frame.FromDIP(160)
+
+    event = _splitter_event(
+        frame.doc_splitter,
+        wx.wxEVT_SPLITTER_SASH_POS_CHANGED,
+        stray,
+    )
+    event.SetEventObject(frame.doc_splitter)
+    frame._on_agent_splitter_sash_changed(event)
+    wx_app.Yield()
+
+    assert frame._agent_saved_sash == initial
 
 
 def test_agent_chat_toggle_preserves_width(configured_frame, wx_app):
@@ -260,6 +305,32 @@ def test_agent_chat_toggle_preserves_width(configured_frame, wx_app):
 
     restored_frame.Destroy()
     wx_app.Yield()
+
+
+def test_agent_history_splitter_ignores_foreign_events(configured_frame, wx_app):
+    """History splitter must ignore sash events forwarded from parents."""
+
+    frame, _ = configured_frame("agent_history_foreign.ini")
+    menu = frame.agent_chat_menu_item
+    assert menu is not None
+    menu.Check(True)
+    frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+
+    splitter = frame.agent_panel._horizontal_splitter
+    initial = frame.agent_panel.history_sash
+    stray = initial + splitter.FromDIP(120)
+
+    event = _splitter_event(
+        frame.doc_splitter,
+        wx.wxEVT_SPLITTER_SASH_POS_CHANGED,
+        stray,
+    )
+    event.SetEventObject(frame.doc_splitter)
+    frame.agent_panel._on_history_sash_changed(event)
+    wx_app.Yield()
+
+    assert frame.agent_panel.history_sash == initial
 
 
 def test_agent_history_splitter_survives_layout_changes(configured_frame, wx_app):

@@ -174,10 +174,10 @@ class ListPanelDebugProfile:
             selection_events=base_clamped < 17,
             model_driven=base_clamped < 18,
             model_cache=base_clamped < 19,
-            report_width_retry_async=base_clamped < 39,
-            report_width_retry=base_clamped < 40,
-            report_width_fallbacks=base_clamped < 41,
-            report_column_widths=base_clamped < 42,
+            report_width_retry_async=base_clamped < 36,
+            report_width_retry=base_clamped < 37,
+            report_width_fallbacks=base_clamped < 38,
+            report_column_widths=base_clamped < 39,
             report_list_item=base_clamped < 22,
             report_clear_all=base_clamped < 23,
             report_batch_delete=base_clamped < 24,
@@ -192,12 +192,12 @@ class ListPanelDebugProfile:
             report_immediate_refresh=base_clamped < 33,
             report_immediate_update=base_clamped < 34,
             report_send_size_event=base_clamped < 35,
-            plain_deferred_callafter=base_clamped < 43,
-            plain_deferred_timer=base_clamped < 44,
-            plain_deferred_queue=base_clamped < 45,
-            plain_deferred_population=base_clamped < 46,
-            plain_cached_items=base_clamped < 47,
-            plain_post_refresh=base_clamped < 48,
+            plain_deferred_callafter=base_clamped < 40,
+            plain_deferred_timer=base_clamped < 41,
+            plain_deferred_queue=base_clamped < 42,
+            plain_deferred_population=base_clamped < 43,
+            plain_cached_items=base_clamped < 44,
+            plain_post_refresh=base_clamped < 45,
             report_style=base_clamped < 49,
             sizer_layout=base_clamped < 49,
             probe_force_refresh=tier >= 1,
@@ -273,30 +273,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._diagnostic_logging = self.debug_level >= self.DIAGNOSTIC_LOG_THRESHOLD
         if self.debug.inherit_background:
             inherit_background(self, parent)
-        disabled = self.debug.disabled_features()
-        if disabled:
-            self._debug_summary = (
-                "ListPanel debug level %s (base %s) disabled features: %s"
-                % (self.debug_raw_level, self.debug_level, ", ".join(disabled))
-            )
-        else:
-            self._debug_summary = (
-                "ListPanel debug level %s (base %s): all features enabled"
-                % (self.debug_raw_level, self.debug_level)
-            )
-        logger.info(self._debug_summary)
-        instrumentation = self.debug.instrumentation_features()
-        if instrumentation:
-            self._instrumentation_summary = (
-                "ListPanel debug instrumentation tier %s enabled: %s"
-                % (
-                    self.debug.instrumentation_tier,
-                    ", ".join(instrumentation),
-                )
-            )
-            logger.info(self._instrumentation_summary)
-        else:
-            self._instrumentation_summary = ""
+        self._refresh_debug_summaries(log=True)
         if self.debug.model_cache:
             self.model = model if model is not None else RequirementModel()
         else:
@@ -405,6 +382,36 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self.reset_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.reset_filters())
 
     # ColumnSorterMixin requirement
+    def _refresh_debug_summaries(self, *, log: bool) -> None:
+        """Update cached debug summaries and optionally log them."""
+
+        disabled = self.debug.disabled_features()
+        if disabled:
+            self._debug_summary = (
+                "ListPanel debug level %s (base %s) disabled features: %s"
+                % (self.debug_raw_level, self.debug_level, ", ".join(disabled))
+            )
+        else:
+            self._debug_summary = (
+                "ListPanel debug level %s (base %s): all features enabled"
+                % (self.debug_raw_level, self.debug_level)
+            )
+        if log:
+            logger.info(self._debug_summary)
+        instrumentation = self.debug.instrumentation_features()
+        if instrumentation:
+            self._instrumentation_summary = (
+                "ListPanel debug instrumentation tier %s enabled: %s"
+                % (
+                    self.debug.instrumentation_tier,
+                    ", ".join(instrumentation),
+                )
+            )
+            if log:
+                logger.info(self._instrumentation_summary)
+        else:
+            self._instrumentation_summary = ""
+
     def log_debug_profile(self) -> None:
         """Log the cached summary of disabled features."""
 
@@ -412,6 +419,88 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             logger.info(self._debug_summary)
         if getattr(self, "_instrumentation_summary", None):
             logger.info(self._instrumentation_summary)
+
+    def try_apply_debug_profile(self, profile: ListPanelDebugProfile) -> bool:
+        """Attempt to apply ``profile`` without rebuilding the control."""
+
+        previous = getattr(self, "debug", None)
+        if previous is None:
+            return False
+        if profile == previous:
+            self.debug = profile
+            self.debug_raw_level = profile.level
+            self.debug_level = profile.base_level
+            self._diagnostic_logging = (
+                self.debug_level >= self.DIAGNOSTIC_LOG_THRESHOLD
+            )
+            self._refresh_debug_summaries(log=False)
+            return True
+        changed_features = {
+            name
+            for name in ListPanelDebugProfile.FEATURE_LABELS
+            if getattr(previous, name) != getattr(profile, name)
+        }
+        allowed_toggles = {
+            "report_width_retry_async",
+            "report_width_retry",
+            "report_width_fallbacks",
+            "report_column_widths",
+        }
+        instrumentation_changed = any(
+            getattr(previous, name, False) != getattr(profile, name, False)
+            for name in ListPanelDebugProfile.INSTRUMENTATION_LABELS
+        )
+        if changed_features - allowed_toggles or instrumentation_changed:
+            return False
+        self.debug = profile
+        self.debug_raw_level = profile.level
+        self.debug_level = profile.base_level
+        self._diagnostic_logging = (
+            self.debug_level >= self.DIAGNOSTIC_LOG_THRESHOLD
+        )
+        self._refresh_debug_summaries(log=True)
+        self._apply_width_debug_transition(previous, profile)
+        return True
+
+    def _apply_width_debug_transition(
+        self,
+        previous: ListPanelDebugProfile,
+        current: ListPanelDebugProfile,
+    ) -> None:
+        """Synchronize width enforcement state after a debug profile change."""
+
+        if not current.report_column_widths:
+            self._pending_column_widths.clear()
+            self._column_widths_scheduled = False
+        if not current.report_width_retry:
+            self._pending_column_widths.clear()
+            self._column_widths_scheduled = False
+        elif (
+            previous.report_width_retry_async
+            and not current.report_width_retry_async
+            and self._pending_column_widths
+        ):
+            self._log_diagnostics("forcing immediate retry flush after debug toggle")
+            self._flush_pending_column_widths()
+        if current.report_column_widths and not previous.report_column_widths:
+            try:
+                count = self.list.GetColumnCount()
+            except Exception:
+                return
+            for column in range(count):
+                width = self.list.GetColumnWidth(column)
+                if width <= 0:
+                    field = (
+                        self._field_order[column]
+                        if column < len(self._field_order)
+                        else ""
+                    )
+                    width = (
+                        self._default_column_width(field)
+                        if field
+                        else self.DEFAULT_COLUMN_WIDTH
+                    )
+                self._ensure_column_width(column, width)
 
     def _log_diagnostics(self, message: str, *args) -> None:
         """Emit verbose diagnostic information when high debug levels are active."""

@@ -111,6 +111,15 @@ class MainFrame(wx.Frame):
         profile = ListPanelDebugProfile.from_level(self.list_panel_debug_level)
         self._list_debug_profile = profile
         self._list_debug_stage = profile.rollback_stage
+        panel = getattr(self, "panel", None)
+        if panel is not None and hasattr(panel, "try_apply_debug_profile"):
+            try:
+                applied = panel.try_apply_debug_profile(profile)
+            except Exception:
+                logger.exception("Failed to apply ListPanel debug profile on the fly")
+            else:
+                if applied:
+                    panel.log_debug_profile()
         if hasattr(self, "doc_splitter") and self._list_debug_stage != previous_stage:
             self._apply_splitter_debug_profile()
 

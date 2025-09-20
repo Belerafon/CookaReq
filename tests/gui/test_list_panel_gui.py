@@ -156,6 +156,9 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.debug.report_immediate_refresh is False
     assert panel.debug.report_immediate_update is False
     assert panel.debug.report_send_size_event is False
+    assert panel.debug.plain_deferred_callafter is False
+    assert panel.debug.plain_deferred_timer is False
+    assert panel.debug.plain_deferred_queue is False
     assert panel.debug.plain_deferred_population is False
     assert panel.debug.plain_cached_items is False
     assert panel.debug.plain_post_refresh is False
@@ -409,7 +412,7 @@ def test_plain_population_immediate_when_deferred_disabled(wx_app):
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
 
-    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=36)
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=39)
 
     panel.set_requirements([_req(1, "Immediate entry")])
 
@@ -429,7 +432,7 @@ def test_plain_population_without_cache(wx_app):
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
 
-    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=37)
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=40)
 
     panel.set_requirements([_req(1, "No cache first")])
     wx_app.Yield()
@@ -443,6 +446,122 @@ def test_plain_population_without_cache(wx_app):
 
     assert panel.list.GetItemCount() == 1
     assert panel.list.GetItemText(0) == "No cache second"
+
+    frame.Destroy()
+
+
+def test_plain_deferred_callafter_toggle(wx_app, monkeypatch):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    recorded_enabled: list[str] = []
+
+    def capture_call_after(func, *args, **kwargs):
+        if getattr(func, "__name__", "") == "_flush_deferred_plain_population":
+            recorded_enabled.append(func.__name__)
+        func(*args, **kwargs)
+
+    monkeypatch.setattr(wx, "CallAfter", capture_call_after)
+    panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=35)
+    panel_enabled.set_requirements([_req(1, "Deferred entry")])
+    assert recorded_enabled, "CallAfter should be invoked when the toggle is enabled"
+    panel_enabled.Destroy()
+
+    recorded_disabled: list[str] = []
+
+    def capture_call_after_disabled(func, *args, **kwargs):
+        if getattr(func, "__name__", "") == "_flush_deferred_plain_population":
+            recorded_disabled.append("disabled")
+
+    monkeypatch.setattr(wx, "CallAfter", capture_call_after_disabled)
+    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=36)
+    panel_disabled.set_requirements([_req(2, "Immediate entry")])
+    assert not recorded_disabled, "CallAfter must not run when the toggle is disabled"
+    panel_disabled.Destroy()
+
+    frame.Destroy()
+
+
+def test_plain_deferred_timer_toggle(wx_app, monkeypatch):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    call_later_delays: list[int] = []
+
+    def capture_call_after(func, *args, **kwargs):
+        func(*args, **kwargs)
+
+    def capture_call_later(delay, func, *args, **kwargs):
+        call_later_delays.append(delay)
+        func(*args, **kwargs)
+
+    monkeypatch.setattr(wx, "CallAfter", capture_call_after)
+    monkeypatch.setattr(wx, "CallLater", capture_call_later)
+
+    panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=35)
+
+    attempts = {"count": 0}
+
+    def fake_probe_ready():
+        attempts["count"] += 1
+        if attempts["count"] <= 2:
+            return False, {"attempt": attempts["count"]}
+        return True, {"attempt": attempts["count"]}
+
+    monkeypatch.setattr(panel_enabled, "_probe_list_ready", fake_probe_ready)
+    panel_enabled.set_requirements([_req(3, "Needs retries")])
+    assert call_later_delays, "CallLater should be invoked while retries are allowed"
+    panel_enabled.Destroy()
+
+    call_later_delays.clear()
+    attempts["count"] = 0
+
+    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=37)
+
+    def fake_probe_ready_disabled():
+        attempts["count"] += 1
+        if attempts["count"] <= 2:
+            return False, {"attempt": attempts["count"]}
+        return True, {"attempt": attempts["count"]}
+
+    monkeypatch.setattr(panel_disabled, "_probe_list_ready", fake_probe_ready_disabled)
+    panel_disabled.set_requirements([_req(4, "No retries")])
+    assert not call_later_delays, "CallLater should not run when the retry toggle is disabled"
+    panel_disabled.Destroy()
+
+    frame.Destroy()
+
+
+def test_plain_deferred_queue_toggle(wx_app, monkeypatch):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=37)
+
+    def noop_flush(_reason=None):
+        return None
+
+    monkeypatch.setattr(panel_enabled, "_flush_deferred_plain_population", noop_flush)
+    panel_enabled.set_requirements([_req(5, "Queued")])
+    assert panel_enabled._probe_deferred_plain_pending is True
+    panel_enabled.Destroy()
+
+    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=38)
+    panel_disabled.set_requirements([_req(6, "Not queued")])
+    assert panel_disabled._probe_deferred_plain_pending is False
+    panel_disabled.Destroy()
 
     frame.Destroy()
 
@@ -491,11 +610,14 @@ REPORT_FLAG_THRESHOLDS = {
     "report_immediate_refresh": 33,
     "report_immediate_update": 34,
     "report_send_size_event": 35,
-    "plain_deferred_population": 36,
-    "plain_cached_items": 37,
-    "plain_post_refresh": 38,
-    "report_style": 39,
-    "sizer_layout": 40,
+    "plain_deferred_callafter": 36,
+    "plain_deferred_timer": 37,
+    "plain_deferred_queue": 38,
+    "plain_deferred_population": 39,
+    "plain_cached_items": 40,
+    "plain_post_refresh": 41,
+    "report_style": 42,
+    "sizer_layout": 43,
 }
 
 

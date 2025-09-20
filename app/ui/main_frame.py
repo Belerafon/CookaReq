@@ -110,7 +110,7 @@ class MainFrame(wx.Frame):
         previous_stage = getattr(self, "_list_debug_stage", 0)
         profile = ListPanelDebugProfile.from_level(self.list_panel_debug_level)
         self._list_debug_profile = profile
-        self._list_debug_stage = max(0, profile.base_level - 35)
+        self._list_debug_stage = profile.rollback_stage
         if hasattr(self, "doc_splitter") and self._list_debug_stage != previous_stage:
             self._apply_splitter_debug_profile()
 

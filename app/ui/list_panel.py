@@ -71,6 +71,9 @@ class ListPanelDebugProfile:
         "report_immediate_refresh": "report Refresh() request",
         "report_immediate_update": "report Update() request",
         "report_send_size_event": "report SendSizeEvent fallback",
+        "plain_deferred_callafter": "plain deferred CallAfter scheduling",
+        "plain_deferred_timer": "plain deferred CallLater retries",
+        "plain_deferred_queue": "plain deferred payload queue",
         "plain_deferred_population": "plain deferred population",
         "plain_cached_items": "plain item cache",
         "plain_post_refresh": "plain post-refresh hook",
@@ -123,6 +126,9 @@ class ListPanelDebugProfile:
     report_immediate_refresh: bool
     report_immediate_update: bool
     report_send_size_event: bool
+    plain_deferred_callafter: bool
+    plain_deferred_timer: bool
+    plain_deferred_queue: bool
     plain_deferred_population: bool
     plain_cached_items: bool
     plain_post_refresh: bool
@@ -139,7 +145,7 @@ class ListPanelDebugProfile:
         raw = 0 if level is None else int(level)
         clamped = max(0, min(MAX_LIST_PANEL_DEBUG_LEVEL, raw))
         tier, base = divmod(clamped, 100)
-        base_clamped = max(0, min(40, base))
+        base_clamped = max(0, min(46, base))
         return cls(
             level=clamped,
             base_level=base_clamped,
@@ -180,11 +186,14 @@ class ListPanelDebugProfile:
             report_immediate_refresh=base_clamped < 33,
             report_immediate_update=base_clamped < 34,
             report_send_size_event=base_clamped < 35,
-            plain_deferred_population=base_clamped < 36,
-            plain_cached_items=base_clamped < 37,
-            plain_post_refresh=base_clamped < 38,
-            report_style=base_clamped < 39,
-            sizer_layout=base_clamped < 40,
+            plain_deferred_callafter=base_clamped < 36,
+            plain_deferred_timer=base_clamped < 37,
+            plain_deferred_queue=base_clamped < 38,
+            plain_deferred_population=base_clamped < 39,
+            plain_cached_items=base_clamped < 40,
+            plain_post_refresh=base_clamped < 41,
+            report_style=base_clamped < 42,
+            sizer_layout=base_clamped < 43,
             probe_force_refresh=tier >= 1,
             probe_column_reset=tier >= 2,
             probe_deferred_population=tier >= 3,
@@ -194,7 +203,7 @@ class ListPanelDebugProfile:
     def rollback_stage(self) -> int:
         """Return how many post-commit rollback tiers are enabled."""
 
-        return max(0, self.base_level - 35)
+        return max(0, self.base_level - 43)
 
     def disabled_features(self) -> list[str]:
         """Return human-readable names of features disabled at this level."""
@@ -1594,6 +1603,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self._flush_deferred_plain_population(f"auto:{stage}")
             return False
         payload = list(requirements)
+        preview: list[str] | None = None
         if self.debug.probe_deferred_population:
             preview = self._probe_plain_preview(payload)
             if self._probe_deferred_plain_pending:
@@ -1611,13 +1621,25 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     metrics,
                     preview,
                 )
+        if not self.debug.plain_deferred_queue:
+            if self.debug.probe_deferred_population:
+                logger.info(
+                    "ListPanel deferred population probe: queue disabled — executing plain update immediately (%s)",
+                    stage,
+                )
+            return False
         self._probe_deferred_plain_payload = payload
         self._probe_deferred_plain_pending = True
         self._probe_deferred_plain_stage = stage
         self._probe_deferred_plain_attempts = 0
+        if not self.debug.plain_deferred_callafter:
+            self._flush_deferred_plain_population(f"immediate:{stage}")
+            return True
         call_after = getattr(wx, "CallAfter", None)
         if callable(call_after):
             call_after(self._flush_deferred_plain_population, f"CallAfter:{stage}")
+            return True
+        self._flush_deferred_plain_population(f"fallback:{stage}")
         return True
 
     def _flush_deferred_plain_population(self, reason: str | None = None) -> None:
@@ -1636,7 +1658,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     metrics,
                 )
             self._probe_deferred_plain_attempts += 1
-            if self._probe_deferred_plain_attempts >= 20:
+            if (
+                self._probe_deferred_plain_attempts >= 20
+                or not self.debug.plain_deferred_timer
+            ):
                 if self.debug.probe_deferred_population:
                     logger.warning(
                         "ListPanel deferred population probe: giving up after %s attempts (%s)",
@@ -1645,15 +1670,21 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     )
                 ready = True
             else:
-                call_later = getattr(wx, "CallLater", None)
                 delay = min(200, 10 * max(1, self._probe_deferred_plain_attempts))
+                call_later = (
+                    getattr(wx, "CallLater", None)
+                    if self.debug.plain_deferred_timer
+                    else None
+                )
                 if callable(call_later):
                     call_later(delay, self._flush_deferred_plain_population, descriptor)
-                else:
+                    return
+                if self.debug.plain_deferred_callafter:
                     call_after = getattr(wx, "CallAfter", None)
                     if callable(call_after):
                         call_after(self._flush_deferred_plain_population, descriptor)
-                return
+                        return
+                ready = True
         else:
             self._probe_deferred_plain_attempts = 0
         payload = self._probe_deferred_plain_payload or list(self._plain_source)

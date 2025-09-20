@@ -16,6 +16,17 @@ def _pane_width(window: wx.Window) -> int:
     return width
 
 
+def _splitter_event(
+    splitter: wx.SplitterWindow,
+    event_type: int,
+    pos: int,
+) -> wx.SplitterEvent:
+    event = wx.SplitterEvent(event_type, splitter)
+    event.SetEventObject(splitter)
+    event.SetSashPosition(pos)
+    return event
+
+
 @pytest.fixture
 def configured_frame(wx_app, tmp_path):
     """Create a ``MainFrame`` with isolated configuration storage."""
@@ -77,6 +88,90 @@ def test_doc_tree_toggle_preserves_width(configured_frame, wx_app):
     wx_app.Yield()
     assert restored_frame.doc_splitter.GetSashPosition() == initial
     assert restored_frame._doc_tree_saved_width == initial
+
+    restored_frame.Destroy()
+    wx_app.Yield()
+
+
+def test_doc_splitter_programmatic_move_is_ignored(configured_frame, wx_app):
+    """Synthetic sash events without a drag must not overwrite saved width."""
+
+    frame, _ = configured_frame("doc_programmatic.ini")
+    initial = frame._doc_tree_saved_width
+    bogus = initial + frame.FromDIP(300)
+
+    event = _splitter_event(
+        frame.doc_splitter,
+        wx.wxEVT_SPLITTER_SASH_POS_CHANGED,
+        bogus,
+    )
+    frame._on_doc_splitter_sash_changed(event)
+    wx_app.Yield()
+
+    assert frame._doc_tree_saved_width == initial
+
+
+def test_doc_splitter_user_drag_persists_value(configured_frame, wx_app):
+    """User drags update the saved width exactly once and persist to disk."""
+
+    frame, config_path = configured_frame("doc_user_drag.ini")
+    initial = frame._doc_tree_saved_width
+    min_width = frame._doc_tree_min_pane + frame.FromDIP(40)
+    new_width = max(min_width, initial - frame.FromDIP(160))
+    client_width = frame.doc_splitter.GetClientSize().width
+    if client_width > 0:
+        max_allowed = client_width - frame._doc_tree_min_pane
+        new_width = min(new_width, max_allowed)
+    if new_width == initial:
+        new_width = max(min_width, initial // 2)
+
+    frame.doc_splitter.SetSashPosition(new_width)
+    frame._on_doc_splitter_sash_changing(
+        _splitter_event(
+            frame.doc_splitter,
+            wx.wxEVT_SPLITTER_SASH_POS_CHANGING,
+            new_width,
+        )
+    )
+    frame._on_doc_splitter_sash_changed(
+        _splitter_event(
+            frame.doc_splitter,
+            wx.wxEVT_SPLITTER_SASH_POS_CHANGED,
+            new_width,
+        )
+    )
+    wx_app.Yield()
+
+    assert frame._doc_tree_saved_width == new_width
+
+    stray_width = min(new_width + frame.FromDIP(400), client_width or new_width + 1)
+    frame._on_doc_splitter_sash_changed(
+        _splitter_event(
+            frame.doc_splitter,
+            wx.wxEVT_SPLITTER_SASH_POS_CHANGED,
+            stray_width,
+        )
+    )
+    wx_app.Yield()
+
+    assert frame._doc_tree_saved_width == new_width
+
+    frame._save_layout()
+    frame.Destroy()
+    wx_app.Yield()
+
+    reloaded_config = ConfigManager(path=config_path)
+    reloaded_config.set_mcp_settings(MCPSettings(auto_start=False))
+    restored_frame = MainFrame(
+        None,
+        config=reloaded_config,
+        model=RequirementModel(),
+    )
+    restored_frame.Show()
+    wx_app.Yield()
+
+    assert restored_frame.doc_splitter.GetSashPosition() == new_width
+    assert restored_frame._doc_tree_saved_width == new_width
 
     restored_frame.Destroy()
     wx_app.Yield()

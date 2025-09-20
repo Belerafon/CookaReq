@@ -177,11 +177,17 @@ class MainFrame(wx.Frame):
         style_splitter(self.doc_splitter)
         self._disable_splitter_unsplit(self.doc_splitter)
         self._doc_splitter_guard = SplitterEventBlocker()
+        self._doc_splitter_recent_user = False
+        self._doc_splitter_user_timer: wx.CallLater | None = None
         self._doc_tree_min_pane = max(self.FromDIP(20), 1)
         self.doc_splitter.SetMinimumPaneSize(self._doc_tree_min_pane)
         self.doc_splitter.Bind(
             wx.EVT_SPLITTER_SASH_POS_CHANGED,
             self._on_doc_splitter_sash_changed,
+        )
+        self.doc_splitter.Bind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGING,
+            self._on_doc_splitter_sash_changing,
         )
         self._doc_tree_sash_veto_bound = False
         self._doc_tree_placeholder_width = self.FromDIP(20)
@@ -530,6 +536,31 @@ class MainFrame(wx.Frame):
         with self._doc_splitter_guard.pause():
             yield
 
+    def _schedule_doc_splitter_user_marker(self) -> None:
+        """Remember that the next sash change originated from a user drag."""
+
+        self._doc_splitter_recent_user = True
+        if self._doc_splitter_user_timer is not None:
+            self._doc_splitter_user_timer.Stop()
+        self._doc_splitter_user_timer = wx.CallLater(
+            350,
+            self._expire_doc_splitter_user_marker,
+        )
+
+    def _expire_doc_splitter_user_marker(self) -> None:
+        """Reset the drag marker after the debounce interval elapses."""
+
+        self._doc_splitter_recent_user = False
+        self._doc_splitter_user_timer = None
+
+    def _cancel_doc_splitter_user_marker(self) -> None:
+        """Cancel any pending drag marker immediately."""
+
+        if self._doc_splitter_user_timer is not None:
+            self._doc_splitter_user_timer.Stop()
+            self._doc_splitter_user_timer = None
+        self._doc_splitter_recent_user = False
+
     def _collapse_doc_tree(self, *, update_config: bool) -> None:
         """Hide the tree while keeping the toggle handle accessible."""
 
@@ -756,6 +787,12 @@ class MainFrame(wx.Frame):
             client_width,
         )
 
+    def _on_doc_splitter_sash_changing(self, event: wx.SplitterEvent) -> None:
+        """Record that a live drag is in progress for the hierarchy splitter."""
+
+        self._schedule_doc_splitter_user_marker()
+        event.Skip()
+
     def _on_doc_splitter_sash_changed(self, event: wx.SplitterEvent) -> None:
         """Remember latest sash position when the tree pane is visible."""
 
@@ -765,6 +802,13 @@ class MainFrame(wx.Frame):
         if self._doc_tree_collapsed:
             return
         pos = event.GetSashPosition()
+        if not self._doc_splitter_recent_user:
+            logger.debug(
+                "Ignoring hierarchy sash change without preceding drag: pos=%s",
+                pos,
+            )
+            return
+        self._cancel_doc_splitter_user_marker()
         if pos > 0:
             self._doc_tree_saved_sash = pos
             logger.info("Hierarchy sash moved by user to %s", pos)
@@ -1981,6 +2025,10 @@ class MainFrame(wx.Frame):
                 event.Veto()
             return
         self._shutdown_in_progress = True
+        if self._delayed_doc_tree_log is not None:
+            self._delayed_doc_tree_log.Stop()
+            self._delayed_doc_tree_log = None
+        self._cancel_doc_splitter_user_marker()
         logger.info("Proceeding with shutdown sequence")
         logger.info("Shutdown step: saving layout")
         try:

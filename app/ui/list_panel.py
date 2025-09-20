@@ -83,6 +83,8 @@ class ListPanelDebugProfile:
         "report_immediate_refresh": "report Refresh() request",
         "report_immediate_update": "report Update() request",
         "report_send_size_event": "report SendSizeEvent fallback",
+        "report_basic_refresh_force": "report basic refresh force repaint",
+        "report_basic_refresh_queue": "report basic refresh queue",
         "report_basic_refresh": "report basic refresh fallback",
         "plain_deferred_callafter": "plain deferred CallAfter scheduling",
         "plain_deferred_timer": "plain deferred CallLater retries",
@@ -141,6 +143,8 @@ class ListPanelDebugProfile:
     report_immediate_refresh: bool
     report_immediate_update: bool
     report_send_size_event: bool
+    report_basic_refresh_force: bool
+    report_basic_refresh_queue: bool
     report_basic_refresh: bool
     plain_deferred_callafter: bool
     plain_deferred_timer: bool
@@ -161,7 +165,7 @@ class ListPanelDebugProfile:
         raw = 0 if level is None else int(level)
         clamped = max(0, min(MAX_LIST_PANEL_DEBUG_LEVEL, raw))
         tier, base = divmod(clamped, 100)
-        base_clamped = max(0, min(55, base))
+        base_clamped = max(0, min(57, base))
         return cls(
             level=clamped,
             base_level=base_clamped,
@@ -200,19 +204,21 @@ class ListPanelDebugProfile:
             report_immediate_refresh=base_clamped < 33,
             report_immediate_update=base_clamped < 34,
             report_send_size_event=base_clamped < 35,
-            report_basic_refresh=base_clamped < 36,
-            plain_post_refresh=base_clamped < 37,
-            plain_cached_items=base_clamped < 38,
-            plain_deferred_callafter=base_clamped < 39,
-            plain_deferred_timer=base_clamped < 40,
-            plain_deferred_queue=base_clamped < 41,
-            plain_deferred_population=base_clamped < 42,
-            report_width_fallbacks=base_clamped < 43,
-            report_width_retry_async=base_clamped < 44,
-            report_width_retry=base_clamped < 45,
-            report_column_widths=base_clamped < 46,
-            report_style=base_clamped < 49,
-            sizer_layout=base_clamped < 49,
+            report_basic_refresh_force=base_clamped < 36,
+            report_basic_refresh_queue=base_clamped < 37,
+            report_basic_refresh=base_clamped < 38,
+            plain_post_refresh=base_clamped < 39,
+            plain_cached_items=base_clamped < 40,
+            plain_deferred_callafter=base_clamped < 41,
+            plain_deferred_timer=base_clamped < 42,
+            plain_deferred_queue=base_clamped < 43,
+            plain_deferred_population=base_clamped < 44,
+            report_width_fallbacks=base_clamped < 45,
+            report_width_retry_async=base_clamped < 46,
+            report_width_retry=base_clamped < 47,
+            report_column_widths=base_clamped < 48,
+            report_style=base_clamped < 51,
+            sizer_layout=base_clamped < 51,
             probe_force_refresh=tier >= 1,
             probe_column_reset=tier >= 2,
             probe_deferred_population=tier >= 3,
@@ -223,10 +229,10 @@ class ListPanelDebugProfile:
         """Return how many post-commit rollback tiers are enabled."""
 
         # Post-fcbd3c rollbacks (legacy splitters, placeholders, etc.) start
-        # only after the column-width recovery toggles at levels 36–39.  This
+        # only after the column-width recovery toggles at levels 45–48.  This
         # keeps the intermediate steps focused on width handling so each
         # feature can be isolated independently.
-        return max(0, min(10, self.base_level - 45))
+        return max(0, min(10, self.base_level - 47))
 
     def disabled_features(self) -> list[str]:
         """Return human-readable names of features disabled at this level."""
@@ -491,6 +497,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         }
         allowed_toggles = {
             "report_basic_refresh",
+            "report_basic_refresh_force",
+            "report_basic_refresh_queue",
             "plain_post_refresh",
             "plain_cached_items",
             "plain_deferred_callafter",
@@ -543,6 +551,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 "; ".join(toggled_chunks),
             )
         self._apply_width_debug_transition(previous, profile)
+        self._apply_basic_refresh_debug_transition(previous, profile)
         return True
 
     def _apply_width_debug_transition(
@@ -584,6 +593,32 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                         else self.DEFAULT_COLUMN_WIDTH
                     )
                 self._ensure_column_width(column, width)
+
+    def _apply_basic_refresh_debug_transition(
+        self,
+        previous: ListPanelDebugProfile,
+        current: ListPanelDebugProfile,
+    ) -> None:
+        """Reconcile pending basic refresh fallback with new debug toggles."""
+
+        if not current.report_basic_refresh:
+            if self._basic_refresh_pending and self._diagnostic_logging:
+                self._log_diagnostics(
+                    "cancelling basic refresh — disabled at debug level",
+                )
+            self._basic_refresh_pending = False
+            self._basic_refresh_attempts = 0
+            self._basic_refresh_stage = ""
+            return
+        if (
+            self._basic_refresh_pending
+            and previous.report_basic_refresh_queue
+            and not current.report_basic_refresh_queue
+        ):
+            self._log_diagnostics(
+                "basic refresh queue disabled by debug toggle — running pending attempt",
+            )
+            self._perform_basic_refresh()
 
     def _log_diagnostics(self, message: str, *args) -> None:
         """Emit verbose diagnostic information when high debug levels are active."""
@@ -1567,7 +1602,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _ensure_basic_refresh(self, stage: str) -> None:
         """Schedule a minimal repaint when all immediate hooks are disabled."""
 
-        if not self.debug.report_style:
+        if not self.debug.report_style or not self.debug.report_basic_refresh:
             return
         self._basic_refresh_stage = stage
         if self._basic_refresh_pending:
@@ -1581,7 +1616,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._basic_refresh_pending = True
         self._basic_refresh_attempts = 0
         self._log_diagnostics("scheduled basic refresh fallback — stage=%s", stage)
-        self._schedule_basic_refresh()
+        if self.debug.report_basic_refresh_queue:
+            self._schedule_basic_refresh()
+            return
+        self._log_diagnostics("basic refresh queue disabled — running immediately")
+        self._perform_basic_refresh()
 
     def _schedule_basic_refresh(self, delay: int | None = None) -> None:
         """Dispatch the basic refresh attempt via ``CallAfter``/``CallLater``."""
@@ -1600,7 +1639,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _perform_basic_refresh(self) -> None:
         """Run (or re-schedule) the fallback repaint once the list is ready."""
 
-        if not self._basic_refresh_pending:
+        if not self._basic_refresh_pending or not self.debug.report_basic_refresh:
             return
         ready, metrics = self._probe_list_ready()
         if not ready:
@@ -1611,24 +1650,47 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self._basic_refresh_attempts,
                 metrics,
             )
-            if self._basic_refresh_attempts >= 10:
-                self._log_diagnostics(
-                    "basic refresh forcing repaint after %s attempts — stage=%s",
-                    self._basic_refresh_attempts,
-                    self._basic_refresh_stage,
-                )
-                self._force_basic_refresh()
+            give_up = (
+                self._basic_refresh_attempts >= 10
+                or not self.debug.report_basic_refresh_queue
+            )
+            if give_up:
+                if self.debug.report_basic_refresh_force:
+                    self._log_diagnostics(
+                        "basic refresh forcing repaint after %s attempts — stage=%s",
+                        self._basic_refresh_attempts,
+                        self._basic_refresh_stage,
+                    )
+                    self._force_basic_refresh()
                 self._basic_refresh_pending = False
                 return
             delay = min(200, 25 * self._basic_refresh_attempts)
             self._schedule_basic_refresh(delay)
             return
-        self._force_basic_refresh()
+        if self.debug.report_basic_refresh_force:
+            self._force_basic_refresh()
+        else:
+            if self._diagnostic_logging:
+                self._log_diagnostics(
+                    "basic refresh force disabled — stage=%s attempts=%s",
+                    self._basic_refresh_stage,
+                    self._basic_refresh_attempts,
+                )
+            self._basic_refresh_stage = ""
         self._basic_refresh_pending = False
 
     def _force_basic_refresh(self) -> None:
         """Invoke a manual Refresh/Update + size event sequence for report mode."""
 
+        if not self.debug.report_basic_refresh_force:
+            if self._diagnostic_logging:
+                self._log_diagnostics(
+                    "basic refresh force bypassed — stage=%s attempts=%s",
+                    self._basic_refresh_stage,
+                    self._basic_refresh_attempts,
+                )
+            self._basic_refresh_stage = ""
+            return
         list_ctrl = getattr(self, "list", None)
         if not list_ctrl:
             return

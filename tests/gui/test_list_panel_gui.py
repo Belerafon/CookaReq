@@ -158,6 +158,8 @@ def test_list_panel_debug_level_plain_list_ctrl(wx_app):
     assert panel.debug.report_immediate_refresh is False
     assert panel.debug.report_immediate_update is False
     assert panel.debug.report_send_size_event is False
+    assert panel.debug.report_basic_refresh_force is False
+    assert panel.debug.report_basic_refresh_queue is False
     assert panel.debug.report_basic_refresh is False
     assert panel.debug.plain_deferred_callafter is False
     assert panel.debug.plain_deferred_timer is False
@@ -191,6 +193,8 @@ def test_report_style_plain_mode_keeps_title_visible(wx_app):
     assert panel.debug.report_width_retry is True
     assert panel.debug.report_width_fallbacks is True
     assert panel.debug.report_column_widths is True
+    assert panel.debug.report_basic_refresh_force is True
+    assert panel.debug.report_basic_refresh_queue is True
     assert panel.debug.report_basic_refresh is True
     assert panel.debug.report_list_item is True
     assert panel.debug.rich_rendering is False
@@ -213,7 +217,7 @@ def test_report_style_high_level_still_displays_title(wx_app):
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
 
-    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=46)
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=48)
     panel.set_requirements([_req(1, "Visible title")])
     frame.Show()
     for _ in range(5):
@@ -422,7 +426,7 @@ def test_plain_population_immediate_when_deferred_disabled(wx_app):
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
 
-    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=41)
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=44)
 
     panel.set_requirements([_req(1, "Immediate entry")])
 
@@ -442,7 +446,7 @@ def test_plain_population_without_cache(wx_app):
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
 
-    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=41)
+    panel = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=44)
 
     panel.set_requirements([_req(1, "No cache first")])
     wx_app.Yield()
@@ -476,7 +480,7 @@ def test_plain_deferred_callafter_toggle(wx_app, monkeypatch):
         func(*args, **kwargs)
 
     monkeypatch.setattr(wx, "CallAfter", capture_call_after)
-    panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=38)
+    panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=40)
     panel_enabled.set_requirements([_req(1, "Deferred entry")])
     assert recorded_enabled, "CallAfter should be invoked when the toggle is enabled"
     panel_enabled.Destroy()
@@ -488,7 +492,7 @@ def test_plain_deferred_callafter_toggle(wx_app, monkeypatch):
             recorded_disabled.append("disabled")
 
     monkeypatch.setattr(wx, "CallAfter", capture_call_after_disabled)
-    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=39)
+    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=41)
     panel_disabled.set_requirements([_req(2, "Immediate entry")])
     assert not recorded_disabled, "CallAfter must not run when the toggle is disabled"
     panel_disabled.Destroy()
@@ -516,7 +520,7 @@ def test_plain_deferred_timer_toggle(wx_app, monkeypatch):
     monkeypatch.setattr(wx, "CallAfter", capture_call_after)
     monkeypatch.setattr(wx, "CallLater", capture_call_later)
 
-    panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=39)
+    panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=41)
 
     attempts = {"count": 0}
 
@@ -534,7 +538,7 @@ def test_plain_deferred_timer_toggle(wx_app, monkeypatch):
     call_later_delays.clear()
     attempts["count"] = 0
 
-    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=40)
+    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=42)
 
     def fake_probe_ready_disabled():
         attempts["count"] += 1
@@ -558,7 +562,7 @@ def test_plain_deferred_queue_toggle(wx_app, monkeypatch):
     frame = wx.Frame(None)
     from app.ui.requirement_model import RequirementModel
 
-    panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=40)
+    panel_enabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=42)
 
     def noop_flush(_reason=None):
         return None
@@ -568,7 +572,7 @@ def test_plain_deferred_queue_toggle(wx_app, monkeypatch):
     assert panel_enabled._probe_deferred_plain_pending is True
     panel_enabled.Destroy()
 
-    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=41)
+    panel_disabled = list_panel.ListPanel(frame, model=RequirementModel(), debug_level=43)
     panel_disabled.set_requirements([_req(6, "Not queued")])
     assert panel_disabled._probe_deferred_plain_pending is False
     panel_disabled.Destroy()
@@ -604,17 +608,19 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
 
 
 REPORT_FLAG_THRESHOLDS = {
-    "report_basic_refresh": 36,
-    "plain_post_refresh": 37,
-    "plain_cached_items": 38,
-    "plain_deferred_callafter": 39,
-    "plain_deferred_timer": 40,
-    "plain_deferred_queue": 41,
-    "plain_deferred_population": 42,
-    "report_width_fallbacks": 43,
-    "report_width_retry_async": 44,
-    "report_width_retry": 45,
-    "report_column_widths": 46,
+    "report_basic_refresh_force": 36,
+    "report_basic_refresh_queue": 37,
+    "report_basic_refresh": 38,
+    "plain_post_refresh": 39,
+    "plain_cached_items": 40,
+    "plain_deferred_callafter": 41,
+    "plain_deferred_timer": 42,
+    "plain_deferred_queue": 43,
+    "plain_deferred_population": 44,
+    "report_width_fallbacks": 45,
+    "report_width_retry_async": 46,
+    "report_width_retry": 47,
+    "report_column_widths": 48,
     "report_list_item": 22,
     "report_clear_all": 23,
     "report_batch_delete": 24,
@@ -629,8 +635,8 @@ REPORT_FLAG_THRESHOLDS = {
     "report_immediate_refresh": 33,
     "report_immediate_update": 34,
     "report_send_size_event": 35,
-    "report_style": 49,
-    "sizer_layout": 49,
+    "report_style": 51,
+    "sizer_layout": 51,
 }
 
 
@@ -721,7 +727,7 @@ def test_try_apply_debug_profile_toggles_width_guard(wx_app, monkeypatch):
 
     panel._pending_column_widths[0] = (120, 1)
     panel._column_widths_scheduled = True
-    disabled_profile = list_panel.ListPanelDebugProfile.from_level(46)
+    disabled_profile = list_panel.ListPanelDebugProfile.from_level(48)
     assert panel.try_apply_debug_profile(disabled_profile) is True
     assert panel.debug.report_column_widths is False
     assert panel._pending_column_widths == {}

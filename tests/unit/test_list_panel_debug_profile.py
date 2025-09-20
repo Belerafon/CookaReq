@@ -1,7 +1,7 @@
 import pytest
 
 from app.settings import MAX_LIST_PANEL_DEBUG_LEVEL
-from app.ui.list_panel import ListPanelDebugProfile
+from app.ui.list_panel import ListPanelDebugDelta, ListPanelDebugProfile
 
 
 def test_debug_profile_base_level_without_instrumentation():
@@ -82,3 +82,25 @@ def test_debug_profile_rollback_stage_progression():
     for level, expected in expected_progression.items():
         profile = ListPanelDebugProfile.from_level(level)
         assert profile.rollback_stage == expected
+
+
+def test_debug_profile_diff_reports_width_guard_drop():
+    before = ListPanelDebugProfile.from_level(38)
+    after = ListPanelDebugProfile.from_level(39)
+
+    delta = after.diff(before)
+
+    assert delta.enabled_features == ()
+    assert "report column width enforcement" in delta.disabled_features
+    assert not delta.enabled_instrumentation
+    assert not delta.disabled_instrumentation
+
+
+def test_debug_profile_diff_reports_plain_queue_toggle():
+    before = ListPanelDebugProfile.from_level(41)
+    after = ListPanelDebugProfile.from_level(42)
+
+    delta = after.diff(before)
+
+    assert "plain deferred payload queue" in delta.disabled_features
+    assert delta.enabled_features == ()

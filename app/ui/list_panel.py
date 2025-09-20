@@ -31,6 +31,16 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 @dataclass(frozen=True)
+class ListPanelDebugDelta:
+    """Describe feature toggles that changed between two debug profiles."""
+
+    enabled_features: tuple[str, ...]
+    disabled_features: tuple[str, ...]
+    enabled_instrumentation: tuple[str, ...]
+    disabled_instrumentation: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ListPanelDebugProfile:
     """Feature toggles for :class:`ListPanel` based on debug level."""
 
@@ -232,6 +242,38 @@ class ListPanelDebugProfile:
             if getattr(self, attr, False):
                 enabled.append(label)
         return enabled
+
+    def diff(self, previous: "ListPanelDebugProfile") -> ListPanelDebugDelta:
+        """Return feature and instrumentation changes relative to ``previous``."""
+
+        enabled_features: list[str] = []
+        disabled_features: list[str] = []
+        for attr, label in self.FEATURE_LABELS.items():
+            current = bool(getattr(self, attr))
+            before = bool(getattr(previous, attr))
+            if current == before:
+                continue
+            if current:
+                enabled_features.append(label)
+            else:
+                disabled_features.append(label)
+        enabled_instrumentation: list[str] = []
+        disabled_instrumentation: list[str] = []
+        for attr, label in self.INSTRUMENTATION_LABELS.items():
+            current = bool(getattr(self, attr, False))
+            before = bool(getattr(previous, attr, False))
+            if current == before:
+                continue
+            if current:
+                enabled_instrumentation.append(label)
+            else:
+                disabled_instrumentation.append(label)
+        return ListPanelDebugDelta(
+            enabled_features=tuple(enabled_features),
+            disabled_features=tuple(disabled_features),
+            enabled_instrumentation=tuple(enabled_instrumentation),
+            disabled_instrumentation=tuple(disabled_instrumentation),
+        )
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):
@@ -456,6 +498,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         )
         if changed_features - allowed_toggles or instrumentation_changed:
             return False
+        delta = profile.diff(previous)
         self.debug = profile
         self.debug_raw_level = profile.level
         self.debug_level = profile.base_level
@@ -463,6 +506,32 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self.debug_level >= self.DIAGNOSTIC_LOG_THRESHOLD
         )
         self._refresh_debug_summaries(log=True)
+        toggled_chunks: list[str] = []
+        if delta.enabled_features:
+            toggled_chunks.append(
+                "enabled features: %s" % ", ".join(delta.enabled_features)
+            )
+        if delta.disabled_features:
+            toggled_chunks.append(
+                "disabled features: %s" % ", ".join(delta.disabled_features)
+            )
+        if delta.enabled_instrumentation:
+            toggled_chunks.append(
+                "enabled instrumentation: %s"
+                % ", ".join(delta.enabled_instrumentation)
+            )
+        if delta.disabled_instrumentation:
+            toggled_chunks.append(
+                "disabled instrumentation: %s"
+                % ", ".join(delta.disabled_instrumentation)
+            )
+        if toggled_chunks:
+            logger.info(
+                "ListPanel debug transition %s→%s — %s",
+                previous.base_level,
+                profile.base_level,
+                "; ".join(toggled_chunks),
+            )
         self._apply_width_debug_transition(previous, profile)
         return True
 

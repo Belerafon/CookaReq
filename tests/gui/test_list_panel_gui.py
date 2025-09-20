@@ -601,9 +601,9 @@ def test_report_lazy_refresh_schedules_fallback(wx_app, monkeypatch):
 
 
 REPORT_FLAG_THRESHOLDS = {
-    "report_width_retry_async": 36,
-    "report_width_retry": 37,
-    "report_width_fallbacks": 38,
+    "report_width_fallbacks": 36,
+    "report_width_retry_async": 37,
+    "report_width_retry": 38,
     "report_column_widths": 39,
     "report_list_item": 22,
     "report_clear_all": 23,

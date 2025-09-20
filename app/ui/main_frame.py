@@ -188,6 +188,7 @@ class MainFrame(wx.Frame):
         self._doc_tree_placeholder: wx.Panel | None = None
         self._doc_tree_placeholder_button: wx.Button | None = None
         self._doc_tree_toggle_size: wx.Size | None = None
+        self._delayed_doc_tree_log: wx.CallLater | None = None
         self.agent_splitter = wx.SplitterWindow(self.doc_splitter)
         style_splitter(self.agent_splitter)
         self._disable_splitter_unsplit(self.agent_splitter)
@@ -536,6 +537,11 @@ class MainFrame(wx.Frame):
             return
         sash = self.doc_splitter.GetSashPosition()
         self._doc_tree_saved_sash = max(sash, self._doc_tree_min_pane)
+        logger.info(
+            "Hierarchy collapse storing sash=%s clamped=%s",
+            sash,
+            self._doc_tree_saved_sash,
+        )
         self.doc_tree.Hide()
         self.doc_tree_label.Hide()
         self.doc_tree_container.Hide()
@@ -580,6 +586,11 @@ class MainFrame(wx.Frame):
         if hasattr(self.doc_splitter, "SetSashInvisible"):
             self.doc_splitter.SetSashInvisible(False)
         width = self._desired_doc_tree_sash()
+        logger.info(
+            "Hierarchy expand target width=%s (saved=%s)",
+            width,
+            self._doc_tree_saved_sash,
+        )
         self._doc_tree_collapsed = False
         self._unbind_doc_splitter_drag_veto()
         with self._ignore_doc_splitter_events():
@@ -725,6 +736,26 @@ class MainFrame(wx.Frame):
         max_left = max(width - self._doc_tree_min_pane, self._doc_tree_min_pane)
         return max(self._doc_tree_min_pane, min(saved, max_left))
 
+    def _log_doc_tree_sash(self, *, note: str) -> None:
+        """Emit diagnostic information about the hierarchy splitter state."""
+
+        splitter = getattr(self, "doc_splitter", None)
+        if splitter is None:
+            return
+        try:
+            sash = splitter.GetSashPosition()
+        except Exception:
+            sash = None
+        client_width = splitter.GetClientSize().width
+        logger.info(
+            "Hierarchy sash snapshot (%s): pos=%s is_split=%s collapsed=%s width=%s",
+            note,
+            sash,
+            splitter.IsSplit(),
+            self._doc_tree_collapsed,
+            client_width,
+        )
+
     def _on_doc_splitter_sash_changed(self, event: wx.SplitterEvent) -> None:
         """Remember latest sash position when the tree pane is visible."""
 
@@ -736,6 +767,7 @@ class MainFrame(wx.Frame):
         pos = event.GetSashPosition()
         if pos > 0:
             self._doc_tree_saved_sash = pos
+            logger.info("Hierarchy sash moved by user to %s", pos)
 
     def _show_editor_panel(self) -> None:
         """Display the editor section alongside its container."""
@@ -1792,6 +1824,11 @@ class MainFrame(wx.Frame):
         self._doc_tree_saved_sash = self.config.get_doc_tree_saved_sash(
             self.doc_splitter.GetSashPosition()
         )
+        logger.info(
+            "Hierarchy config loaded saved_sash=%s current_sash=%s",
+            self._doc_tree_saved_sash,
+            self.doc_splitter.GetSashPosition(),
+        )
         self._agent_saved_sash = self.config.get_agent_chat_sash(
             self._default_agent_chat_sash()
         )
@@ -1824,6 +1861,13 @@ class MainFrame(wx.Frame):
                 if self.agent_splitter.IsSplit():
                     self.agent_splitter.Unsplit(self.agent_container)
                 self._hide_agent_section()
+
+        self._log_doc_tree_sash(note="after layout restore")
+        self._delayed_doc_tree_log = wx.CallLater(
+            1000,
+            self._log_doc_tree_sash,
+            note="1s after startup",
+        )
 
     def _save_layout(self) -> None:
         """Persist window geometry, splitter, console, and column widths."""

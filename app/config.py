@@ -23,6 +23,9 @@ from .settings import (
 T = TypeVar("T")
 
 
+logger = logging.getLogger(__name__)
+
+
 DEFAULT_LIST_COLUMNS: list[str] = [
     "labels",
     "id",
@@ -776,11 +779,16 @@ class ConfigManager:
     def get_doc_tree_saved_sash(self, default: int) -> int:
         """Return stored width of the hierarchy splitter."""
 
-        return self.get_value("doc_tree_saved_sash", default=default)
+        value = self.get_value("doc_tree_saved_sash", default=default)
+        logger.info(
+            "Config: restored hierarchy sash width=%s (default=%s)", value, default
+        )
+        return value
 
     def set_doc_tree_saved_sash(self, pos: int) -> None:
         """Persist width of the hierarchy splitter."""
 
+        logger.info("Config: persisting hierarchy sash width=%s", pos)
         self.set_value("doc_tree_saved_sash", pos)
         self.flush()
 
@@ -823,8 +831,15 @@ class ConfigManager:
         doc_splitter.SetSize(client_size)
         doc_min = max(doc_splitter.GetMinimumPaneSize(), 100)
         doc_max = max(client_size.width - doc_min, doc_min)
-        doc_sash = self.get_value("sash_pos")
-        doc_sash = max(doc_min, min(doc_sash, doc_max))
+        stored_doc_sash = self.get_value("sash_pos")
+        doc_sash = max(doc_min, min(stored_doc_sash, doc_max))
+        logger.info(
+            "Config: applying hierarchy sash raw=%s clamped=%s (min=%s max=%s)",
+            stored_doc_sash,
+            doc_sash,
+            doc_min,
+            doc_max,
+        )
         doc_splitter.SetSashPosition(doc_sash)
         if editor_splitter is not None and editor_splitter.IsSplit():
             editor_default = editor_splitter.GetSashPosition()
@@ -877,6 +892,12 @@ class ConfigManager:
             doc_tree_expanded_sash
             if doc_tree_expanded_sash is not None
             else doc_splitter.GetSashPosition()
+        )
+        logger.info(
+            "Config: saving hierarchy sash effective=%s (expanded=%s collapsed=%s)",
+            sash_to_store,
+            doc_tree_expanded_sash,
+            doc_tree_collapsed,
         )
         self.set_value("sash_pos", sash_to_store)
         self.set_value("doc_tree_saved_sash", sash_to_store)

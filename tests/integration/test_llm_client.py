@@ -16,7 +16,7 @@ from app.llm.spec import SYSTEM_PROMPT
 from app.log import logger
 from app.mcp.server import JsonlHandler
 from app.settings import LLMSettings
-from app.util.cancellation import CancellationTokenSource, OperationCancelledError
+from app.util.cancellation import CancellationEvent, OperationCancelledError
 from tests.llm_utils import make_openai_mock, settings_with_llm
 
 pytestmark = pytest.mark.integration
@@ -338,12 +338,12 @@ def test_streaming_cancellation_closes_stream(tmp_path: Path, monkeypatch) -> No
     client = LLMClient(settings.llm)
     fake_client = client._client  # type: ignore[attr-defined]
     stream: FakeStream = fake_client.stream  # type: ignore[assignment]
-    cancellation = CancellationTokenSource()
+    cancel_event = CancellationEvent()
     result: dict[str, object] = {}
 
     def target() -> None:
         try:
-            client.respond([], cancellation=cancellation.token)
+            client.respond([], cancellation=cancel_event)
         except Exception as exc:  # pragma: no cover - thread propagation
             result["exc"] = exc
 
@@ -351,7 +351,8 @@ def test_streaming_cancellation_closes_stream(tmp_path: Path, monkeypatch) -> No
     worker.start()
 
     assert stream.started.wait(1.0)
-    cancellation.cancel()
+    cancel_event.set()
+    stream.allow.set()
     worker.join(timeout=1.0)
     assert not worker.is_alive()
 

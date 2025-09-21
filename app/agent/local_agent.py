@@ -14,7 +14,11 @@ from ..mcp.client import MCPClient
 from ..mcp.utils import exception_to_mcp_error
 from ..settings import AppSettings
 from ..telemetry import log_event
-from ..util.cancellation import CancellationToken, OperationCancelledError
+from ..util.cancellation import (
+    CancellationEvent,
+    OperationCancelledError,
+    raise_if_cancelled,
+)
 
 
 @runtime_checkable
@@ -28,7 +32,7 @@ class SupportsAgentLLM(Protocol):
         self,
         conversation: Sequence[Mapping[str, Any]] | None,
         *,
-        cancellation: CancellationToken | None = None,
+        cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Return an assistant reply for *conversation*."""
 
@@ -157,11 +161,10 @@ class LocalAgent:
         return exception_to_mcp_error(exc)["error"]
 
     @staticmethod
-    def _raise_if_cancelled(cancellation: CancellationToken | None) -> None:
+    def _raise_if_cancelled(cancellation: CancellationEvent | None) -> None:
         """Abort execution when *cancellation* has been triggered."""
 
-        if cancellation is not None:
-            cancellation.raise_if_cancelled()
+        raise_if_cancelled(cancellation)
 
     @staticmethod
     def _run_sync(coro: Awaitable[Any]) -> Any:
@@ -212,7 +215,7 @@ class LocalAgent:
         text: str,
         *,
         history: Sequence[Mapping[str, Any]] | None = None,
-        cancellation: CancellationToken | None = None,
+        cancellation: CancellationEvent | None = None,
     ) -> dict[str, Any]:
         """Drive an agent loop that may invoke MCP tools before replying."""
 
@@ -240,7 +243,7 @@ class LocalAgent:
         text: str,
         *,
         history: Sequence[Mapping[str, Any]] | None = None,
-        cancellation: CancellationToken | None = None,
+        cancellation: CancellationEvent | None = None,
     ) -> dict[str, Any]:
         """Asynchronous variant of :meth:`run_command`."""
 
@@ -268,7 +271,7 @@ class LocalAgent:
         self,
         conversation: list[Mapping[str, Any]],
         *,
-        cancellation: CancellationToken | None = None,
+        cancellation: CancellationEvent | None = None,
     ) -> dict[str, Any]:
         accumulated_results: list[Mapping[str, Any]] = []
         for step in range(self._MAX_THOUGHT_STEPS):
@@ -306,7 +309,7 @@ class LocalAgent:
         self,
         tool_calls: Sequence[LLMToolCall],
         *,
-        cancellation: CancellationToken | None = None,
+        cancellation: CancellationEvent | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any] | None, list[Mapping[str, Any]]]:
         messages: list[dict[str, Any]] = []
         successful: list[Mapping[str, Any]] = []

@@ -1,63 +1,57 @@
 import threading
+import time
+
+import pytest
 
 from app.util.cancellation import (
-    CancellationTokenSource,
+    CancellationEvent,
     OperationCancelledError,
+    raise_if_cancelled,
 )
 
 
-def test_cancellation_triggers_callbacks():
-    source = CancellationTokenSource()
-    called = threading.Event()
-
-    def on_cancel() -> None:
-        called.set()
-
-    registration = source.token.register(on_cancel)
-    assert not source.cancelled
-
-    source.cancel()
-
-    assert source.cancelled
-    assert called.wait(0.1)
-
-    # Disposing after cancellation should be a no-op
-    registration.dispose()
+@pytest.fixture(name="cancel_event")
+def _cancel_event() -> CancellationEvent:
+    return CancellationEvent()
 
 
-def test_disposing_registration_prevents_callback():
-    source = CancellationTokenSource()
-    called = threading.Event()
+def test_cancellation_event_notifies_waiters(cancel_event: CancellationEvent) -> None:
+    started = threading.Event()
+    finished = threading.Event()
 
-    def on_cancel() -> None:
-        called.set()
+    def worker() -> None:
+        started.set()
+        cancel_event.wait()
+        finished.set()
 
-    registration = source.token.register(on_cancel)
-    registration.dispose()
+    thread = threading.Thread(target=worker)
+    thread.start()
 
-    source.cancel()
+    assert started.wait(0.2)
+    assert not finished.is_set()
 
-    assert not called.is_set()
+    cancel_event.set()
 
-
-def test_register_after_cancellation_invokes_immediately():
-    source = CancellationTokenSource()
-    source.cancel()
-
-    called = threading.Event()
-
-    source.token.register(lambda: called.set())
-
-    assert called.wait(0.1)
+    thread.join(timeout=0.5)
+    assert not thread.is_alive()
+    assert finished.is_set()
 
 
-def test_raise_if_cancelled():
-    source = CancellationTokenSource()
-    source.cancel()
+def test_wait_respects_timeout(cancel_event: CancellationEvent) -> None:
+    start = time.perf_counter()
+    assert not cancel_event.wait(0.05)
+    elapsed = time.perf_counter() - start
+    assert elapsed >= 0.05
 
-    try:
-        source.token.raise_if_cancelled()
-    except OperationCancelledError:
-        pass
-    else:  # pragma: no cover - sanity guard
-        raise AssertionError("Expected OperationCancelledError")
+
+def test_raise_if_cancelled(cancel_event: CancellationEvent) -> None:
+    cancel_event.set()
+    with pytest.raises(OperationCancelledError):
+        cancel_event.raise_if_cancelled()
+    with pytest.raises(OperationCancelledError):
+        raise_if_cancelled(cancel_event)
+
+
+def test_raise_if_cancelled_ignored_for_none() -> None:
+    # ``raise_if_cancelled`` should tolerate ``None`` without raising.
+    raise_if_cancelled(None)

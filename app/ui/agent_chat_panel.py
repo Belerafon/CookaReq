@@ -20,7 +20,7 @@ from wx.lib.scrolledpanel import ScrolledPanel
 
 from ..i18n import _
 from ..util.json import make_json_safe
-from ..util.cancellation import CancellationTokenSource, OperationCancelledError
+from ..util.cancellation import CancellationEvent, OperationCancelledError
 from .chat_entry import ChatConversation, ChatEntry
 from .helpers import dip, format_error_message, inherit_background
 from .splitter_utils import refresh_splitter_highlight, style_splitter
@@ -120,15 +120,15 @@ class _AgentRunHandle:
 
     run_id: int
     prompt: str
-    cancellation: CancellationTokenSource
+    cancel_event: CancellationEvent
     future: Future[Any] | None = None
 
     @property
     def is_cancelled(self) -> bool:
-        return self.cancellation.cancelled
+        return self.cancel_event.is_set()
 
     def cancel(self) -> None:
-        self.cancellation.cancel()
+        self.cancel_event.set()
         future = self.future
         if future is not None:
             future.cancel()
@@ -464,11 +464,11 @@ class AgentChatPanel(wx.Panel):
         prompt = text
         self.input.SetValue("")
         self._run_counter += 1
-        cancellation = CancellationTokenSource()
+        cancel_event = CancellationEvent()
         handle = _AgentRunHandle(
             run_id=self._run_counter,
             prompt=prompt,
-            cancellation=cancellation,
+            cancel_event=cancel_event,
         )
         self._active_run_handle = handle
         self._ensure_active_conversation()
@@ -482,7 +482,7 @@ class AgentChatPanel(wx.Panel):
                 return agent.run_command(
                     prompt,
                     history=history_messages,
-                    cancellation=handle.cancellation.token,
+                    cancellation=handle.cancel_event,
                 )
             except OperationCancelledError:
                 raise

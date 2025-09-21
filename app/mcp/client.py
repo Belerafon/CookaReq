@@ -6,8 +6,9 @@ import asyncio
 import json
 import time
 from collections.abc import Callable, Mapping
-from http.client import HTTPConnection
 from typing import Any
+
+import httpx
 
 from ..i18n import _
 from ..settings import MCPSettings
@@ -30,6 +31,7 @@ class MCPClient:
     """Simple HTTP client for the MCP server."""
 
     _READY_CACHE_TTL = 5.0
+    _REQUEST_TIMEOUT = httpx.Timeout(5.0)
 
     def __init__(
         self,
@@ -43,6 +45,56 @@ class MCPClient:
         self._last_ready_check: float | None = None
         self._last_ready_ok = False
         self._last_ready_error: dict[str, Any] | None = None
+        self._base_url = self._build_base_url()
+
+    # ------------------------------------------------------------------
+    def _build_base_url(self) -> str:
+        """Return base URL for requests, wrapping IPv6 literals if required."""
+
+        host = self.settings.host
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"http://{host}:{self.settings.port}"
+
+    def _headers(self, *, json_body: bool = False) -> dict[str, str]:
+        """Return default headers for requests."""
+
+        headers: dict[str, str] = {}
+        if json_body:
+            headers["Content-Type"] = "application/json"
+        if self.settings.require_token and self.settings.token:
+            headers["Authorization"] = f"Bearer {self.settings.token}"
+        return headers
+
+    def _request_sync(
+        self,
+        method: str,
+        path: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+        json_body: Any | None = None,
+    ) -> httpx.Response:
+        """Execute *method* request synchronously and return the response."""
+
+        request_headers = dict(headers or {})
+        with httpx.Client(base_url=self._base_url, timeout=self._REQUEST_TIMEOUT) as client:
+            return client.request(method, path, json=json_body, headers=request_headers)
+
+    async def _request_async(
+        self,
+        method: str,
+        path: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+        json_body: Any | None = None,
+    ) -> httpx.Response:
+        """Execute *method* request asynchronously and return the response."""
+
+        request_headers = dict(headers or {})
+        async with httpx.AsyncClient(
+            base_url=self._base_url, timeout=self._REQUEST_TIMEOUT
+        ) as client:
+            return await client.request(method, path, json=json_body, headers=request_headers)
 
     # ------------------------------------------------------------------
     def check_tools(self) -> dict[str, Any]:
@@ -63,9 +115,7 @@ class MCPClient:
             "token": self.settings.token if self.settings.require_token else "",
         }
         request_body = {"name": "list_requirements", "arguments": {"per_page": 1}}
-        headers = {"Content-Type": "application/json"}
-        if self.settings.require_token and self.settings.token:
-            headers["Authorization"] = f"Bearer {self.settings.token}"
+        headers = self._headers(json_body=True)
         start = time.monotonic()
         # ``log_event`` выполняет собственную очистку чувствительных данных.
         log_debug_payload(
@@ -87,17 +137,10 @@ class MCPClient:
             {"tool": "list_requirements", "params": params},
         )
         try:
-            conn = HTTPConnection(self.settings.host, self.settings.port, timeout=5)
-            try:
-                payload = json.dumps(request_body)
-                conn.request("POST", "/mcp", body=payload, headers=headers)
-                resp = conn.getresponse()
-                getheaders = getattr(resp, "getheaders", None)
-                response_headers = list(getheaders()) if callable(getheaders) else []
-                body = resp.read().decode()
-            finally:
-                conn.close()
-        except Exception as exc:  # pragma: no cover - network errors
+            resp = self._request_sync("POST", "/mcp", headers=headers, json_body=request_body)
+            response_headers = list(resp.headers.items())
+            body = resp.text
+        except httpx.HTTPError as exc:  # pragma: no cover - network errors
             err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
             log_debug_payload(
@@ -117,18 +160,18 @@ class MCPClient:
                 {
                     "direction": "inbound",
                     "tool": "list_requirements",
-                    "status": resp.status,
+                    "status": resp.status_code,
                     "headers": response_headers,
                     "body": body,
                 },
             )
-            if resp.status == 200 and "error" not in data:
+            if resp.status_code == 200 and "error" not in data:
                 log_event("TOOL_RESULT", {"ok": True}, start_time=start)
                 self._update_ready_state(True, None)
                 return {"ok": True, "error": None}
             err = data.get("error")
             if not err:
-                err = {"code": str(resp.status), "message": data.get("message", "")}
+                err = {"code": str(resp.status_code), "message": data.get("message", "")}
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
             self._update_ready_state(False, err)
             return {"ok": False, "error": err}
@@ -137,7 +180,74 @@ class MCPClient:
     async def check_tools_async(self) -> dict[str, Any]:
         """Asynchronous counterpart to :meth:`check_tools`."""
 
-        return await asyncio.to_thread(self.check_tools)
+        request_body = {"name": "list_requirements", "arguments": {"per_page": 1}}
+        headers = self._headers(json_body=True)
+        params = {
+            "host": self.settings.host,
+            "port": self.settings.port,
+            "base_path": self.settings.base_path,
+            "token": self.settings.token if self.settings.require_token else "",
+        }
+        start = time.monotonic()
+        log_debug_payload(
+            "MCP_REQUEST",
+            {
+                "direction": "outbound",
+                "tool": "list_requirements",
+                "http": {
+                    "host": self.settings.host,
+                    "port": self.settings.port,
+                    "path": "/mcp",
+                    "headers": headers,
+                    "body": request_body,
+                },
+            },
+        )
+        log_event(
+            "TOOL_CALL",
+            {"tool": "list_requirements", "params": params},
+        )
+        try:
+            resp = await self._request_async(
+                "POST", "/mcp", headers=headers, json_body=request_body
+            )
+            response_headers = list(resp.headers.items())
+            body = resp.text
+        except httpx.HTTPError as exc:  # pragma: no cover - network errors
+            err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
+            log_event("TOOL_RESULT", {"error": err}, start_time=start)
+            log_debug_payload(
+                "MCP_RESPONSE",
+                {
+                    "direction": "inbound",
+                    "tool": "list_requirements",
+                    "error": err,
+                },
+            )
+            self._update_ready_state(False, err)
+            return {"ok": False, "error": err}
+
+        data = json.loads(body or "{}")
+        log_debug_payload(
+            "MCP_RESPONSE",
+            {
+                "direction": "inbound",
+                "tool": "list_requirements",
+                "status": resp.status_code,
+                "headers": response_headers,
+                "body": body,
+            },
+        )
+        if resp.status_code == 200 and "error" not in data:
+            log_event("TOOL_RESULT", {"ok": True}, start_time=start)
+            self._update_ready_state(True, None)
+            return {"ok": True, "error": None}
+        err = data.get("error")
+        if not err:
+            err = {"code": str(resp.status_code), "message": data.get("message", "")}
+        log_event("TOOL_RESULT", {"error": err}, start_time=start)
+        self._update_ready_state(False, err)
+        return {"ok": False, "error": err}
 
     # ------------------------------------------------------------------
     def call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
@@ -170,9 +280,7 @@ class MCPClient:
             {"tool": name, "params": dict(arguments)},
         )
         request_body = {"name": name, "arguments": dict(arguments)}
-        headers = {"Content-Type": "application/json"}
-        if self.settings.require_token and self.settings.token:
-            headers["Authorization"] = f"Bearer {self.settings.token}"
+        headers = self._headers(json_body=True)
         start = time.monotonic()
         log_debug_payload(
             "MCP_REQUEST",
@@ -189,17 +297,10 @@ class MCPClient:
             },
         )
         try:
-            conn = HTTPConnection(self.settings.host, self.settings.port, timeout=5)
-            try:
-                payload = json.dumps(request_body)
-                conn.request("POST", "/mcp", body=payload, headers=headers)
-                resp = conn.getresponse()
-                getheaders = getattr(resp, "getheaders", None)
-                response_headers = list(getheaders()) if callable(getheaders) else []
-                body = resp.read().decode()
-            finally:
-                conn.close()
-        except Exception as exc:  # pragma: no cover - network errors
+            resp = self._request_sync("POST", "/mcp", headers=headers, json_body=request_body)
+            response_headers = list(resp.headers.items())
+            body = resp.text
+        except httpx.HTTPError as exc:  # pragma: no cover - network errors
             err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
             log_event("ERROR", {"error": err})
@@ -216,22 +317,22 @@ class MCPClient:
                 {
                     "direction": "inbound",
                     "tool": name,
-                    "status": resp.status,
+                    "status": resp.status_code,
                     "headers": response_headers,
                     "body": body,
                 },
             )
-            if resp.status == 200 and "error" not in data:
+            if resp.status_code == 200 and "error" not in data:
                 log_event("TOOL_RESULT", {"result": data}, start_time=start)
                 log_event("DONE")
                 self._update_ready_state(True, None)
                 return {"ok": True, "error": None, "result": data}
             err = data.get("error")
             if not err:
-                err = {"code": str(resp.status), "message": data.get("message", "")}
+                err = {"code": str(resp.status_code), "message": data.get("message", "")}
             log_event("TOOL_RESULT", {"error": err}, start_time=start)
             log_event("ERROR", {"error": err})
-            if resp.status == 200:
+            if resp.status_code == 200:
                 self._update_ready_state(True, None)
             else:
                 self._update_ready_state(False, err)
@@ -243,7 +344,83 @@ class MCPClient:
     ) -> dict[str, Any]:
         """Asynchronous counterpart to :meth:`call_tool`."""
 
-        return await asyncio.to_thread(self.call_tool, name, arguments)
+        if name in {"delete_requirement", "patch_requirement"}:
+            log_event("CONFIRM", {"tool": name})
+            if name == "delete_requirement":
+                msg = _("Delete requirement?")
+            else:
+                msg = _("Update requirement?")
+            confirmed = self._confirm(msg)
+            log_event("CONFIRM_RESULT", {"tool": name, "confirmed": confirmed})
+            if not confirmed:
+                err = mcp_error("CANCELLED", _("Cancelled by user"))["error"]
+                log_event("CANCELLED", {"tool": name})
+                return {"ok": False, "error": err}
+
+        log_event(
+            "TOOL_CALL",
+            {"tool": name, "params": dict(arguments)},
+        )
+        headers = self._headers(json_body=True)
+        request_body = {"name": name, "arguments": dict(arguments)}
+        start = time.monotonic()
+        log_debug_payload(
+            "MCP_REQUEST",
+            {
+                "direction": "outbound",
+                "tool": name,
+                "http": {
+                    "host": self.settings.host,
+                    "port": self.settings.port,
+                    "path": "/mcp",
+                    "headers": headers,
+                    "body": request_body,
+                },
+            },
+        )
+        try:
+            resp = await self._request_async(
+                "POST", "/mcp", headers=headers, json_body=request_body
+            )
+            response_headers = list(resp.headers.items())
+            body = resp.text
+        except httpx.HTTPError as exc:  # pragma: no cover - network errors
+            err = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
+            log_event("TOOL_RESULT", {"error": err}, start_time=start)
+            log_event("ERROR", {"error": err})
+            log_debug_payload(
+                "MCP_RESPONSE",
+                {"direction": "inbound", "tool": name, "error": err},
+            )
+            self._update_ready_state(False, err)
+            return {"ok": False, "error": err}
+
+        data = json.loads(body or "{}")
+        log_debug_payload(
+            "MCP_RESPONSE",
+            {
+                "direction": "inbound",
+                "tool": name,
+                "status": resp.status_code,
+                "headers": response_headers,
+                "body": body,
+            },
+        )
+        if resp.status_code == 200 and "error" not in data:
+            log_event("TOOL_RESULT", {"result": data}, start_time=start)
+            log_event("DONE")
+            self._update_ready_state(True, None)
+            return {"ok": True, "error": None, "result": data}
+        err = data.get("error")
+        if not err:
+            err = {"code": str(resp.status_code), "message": data.get("message", "")}
+        log_event("TOOL_RESULT", {"error": err}, start_time=start)
+        log_event("ERROR", {"error": err})
+        if resp.status_code == 200:
+            self._update_ready_state(True, None)
+        else:
+            self._update_ready_state(False, err)
+        return {"ok": False, "error": err}
 
     # ------------------------------------------------------------------
     def ensure_ready(self, *, force: bool = False) -> None:
@@ -263,9 +440,7 @@ class MCPClient:
             "port": self.settings.port,
             "base_path": self.settings.base_path,
         }
-        headers = {}
-        if self.settings.require_token and self.settings.token:
-            headers["Authorization"] = f"Bearer {self.settings.token}"
+        headers = self._headers()
 
         start = time.monotonic()
         log_event("HEALTH_CHECK", {"params": params})
@@ -282,16 +457,10 @@ class MCPClient:
             },
         )
         try:
-            conn = HTTPConnection(self.settings.host, self.settings.port, timeout=5)
-            try:
-                conn.request("GET", "/health", headers=headers)
-                resp = conn.getresponse()
-                getheaders = getattr(resp, "getheaders", None)
-                response_headers = list(getheaders()) if callable(getheaders) else []
-                body = resp.read().decode()
-            finally:
-                conn.close()
-        except Exception as exc:  # pragma: no cover - network errors
+            resp = self._request_sync("GET", "/health", headers=headers)
+            response_headers = list(resp.headers.items())
+            body = resp.text
+        except httpx.HTTPError as exc:  # pragma: no cover - network errors
             error = self._health_error(
                 _(
                     "MCP server is not reachable at %(host)s:%(port)s",
@@ -310,13 +479,13 @@ class MCPClient:
             "MCP_HEALTH_RESPONSE",
             {
                 "direction": "inbound",
-                "status": resp.status,
+                "status": resp.status_code,
                 "headers": response_headers,
                 "body": body,
             },
         )
 
-        if resp.status == 200:
+        if resp.status_code == 200:
             try:
                 data = json.loads(body or "{}")
             except json.JSONDecodeError as exc:  # pragma: no cover - malformed health response
@@ -343,9 +512,9 @@ class MCPClient:
             data = json.loads(body or "{}")
         except json.JSONDecodeError:  # pragma: no cover - fallback to raw body
             data = body
-        code = ErrorCode.UNAUTHORIZED if resp.status in {401, 403} else ErrorCode.INTERNAL
+        code = ErrorCode.UNAUTHORIZED if resp.status_code in {401, 403} else ErrorCode.INTERNAL
         message = _("MCP server health check failed")
-        details: dict[str, Any] = {"status": resp.status, **params}
+        details: dict[str, Any] = {"status": resp.status_code, **params}
         if data:
             details["response"] = data
         error = mcp_error(code, message, details)["error"]
@@ -357,7 +526,101 @@ class MCPClient:
     async def ensure_ready_async(self, *, force: bool = False) -> None:
         """Asynchronous counterpart to :meth:`ensure_ready`."""
 
-        await asyncio.to_thread(self.ensure_ready, force=force)
+        now = time.monotonic()
+        if (
+            not force
+            and self._last_ready_ok
+            and self._last_ready_check is not None
+            and now - self._last_ready_check < self._READY_CACHE_TTL
+        ):
+            return
+
+        params = {
+            "host": self.settings.host,
+            "port": self.settings.port,
+            "base_path": self.settings.base_path,
+        }
+        headers = self._headers()
+
+        start = time.monotonic()
+        log_event("HEALTH_CHECK", {"params": params})
+        log_debug_payload(
+            "MCP_HEALTH_REQUEST",
+            {
+                "direction": "outbound",
+                "http": {
+                    "host": self.settings.host,
+                    "port": self.settings.port,
+                    "path": "/health",
+                    "headers": headers,
+                },
+            },
+        )
+        try:
+            resp = await self._request_async("GET", "/health", headers=headers)
+            response_headers = list(resp.headers.items())
+            body = resp.text
+        except httpx.HTTPError as exc:  # pragma: no cover - network errors
+            error = self._health_error(
+                _(
+                    "MCP server is not reachable at %(host)s:%(port)s",
+                )
+                % {"host": self.settings.host, "port": self.settings.port},
+                details={"cause": str(exc), **params},
+            )
+            log_event("HEALTH_RESULT", {"error": error}, start_time=start)
+            log_debug_payload(
+                "MCP_HEALTH_RESPONSE",
+                {"direction": "inbound", "error": error},
+            )
+            self._update_ready_state(False, error)
+            raise MCPNotReadyError(error) from exc
+        log_debug_payload(
+            "MCP_HEALTH_RESPONSE",
+            {
+                "direction": "inbound",
+                "status": resp.status_code,
+                "headers": response_headers,
+                "body": body,
+            },
+        )
+
+        if resp.status_code == 200:
+            try:
+                data = json.loads(body or "{}")
+            except json.JSONDecodeError as exc:  # pragma: no cover - malformed health response
+                error = self._health_error(
+                    _("MCP health endpoint returned invalid JSON"),
+                    details={"cause": str(exc), **params, "body": body},
+                )
+                log_event("HEALTH_RESULT", {"error": error}, start_time=start)
+                self._update_ready_state(False, error)
+                raise MCPNotReadyError(error) from exc
+            if isinstance(data, Mapping) and data.get("status") == "ok":
+                log_event("HEALTH_RESULT", {"ok": True}, start_time=start)
+                self._update_ready_state(True, None)
+                return
+            error = self._health_error(
+                _("MCP server health check failed"),
+                details={"response": data, **params},
+            )
+            log_event("HEALTH_RESULT", {"error": error}, start_time=start)
+            self._update_ready_state(False, error)
+            raise MCPNotReadyError(error)
+
+        try:
+            data = json.loads(body or "{}")
+        except json.JSONDecodeError:  # pragma: no cover - fallback to raw body
+            data = body
+        code = ErrorCode.UNAUTHORIZED if resp.status_code in {401, 403} else ErrorCode.INTERNAL
+        message = _("MCP server health check failed")
+        details: dict[str, Any] = {"status": resp.status_code, **params}
+        if data:
+            details["response"] = data
+        error = mcp_error(code, message, details)["error"]
+        log_event("HEALTH_RESULT", {"error": error}, start_time=start)
+        self._update_ready_state(False, error)
+        raise MCPNotReadyError(error)
 
     # ------------------------------------------------------------------
     def _update_ready_state(

@@ -169,6 +169,27 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
         pool.shutdown(wait=True, cancel_futures=True)
 
 
+def test_agent_chat_panel_activity_indicator_layout(tmp_path, wx_app):
+    class IdleAgent:
+        def run_command(self, text, *, history=None, cancellation=None):  # pragma: no cover - defensive
+            return {"ok": True, "error": None, "result": text}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, IdleAgent())
+
+    try:
+        panel._set_wait_state(True)
+        flush_wx_events(wx)
+
+        activity_pos = panel.activity.GetPosition()
+        status_pos = panel.status_label.GetPosition()
+        indicator_height = max(1, panel.activity.GetSize().GetHeight())
+
+        assert abs(activity_pos.y - status_pos.y) <= indicator_height
+    finally:
+        panel._set_wait_state(False)
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_shuts_down_executor_pool_on_destroy(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, text, *, history=None, cancellation=None):  # pragma: no cover - defensive

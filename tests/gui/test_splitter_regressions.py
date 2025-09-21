@@ -154,3 +154,39 @@ def test_agent_history_apply_sash(configured_frame, wx_app):
 
     assert panel.history_sash == splitter.GetSashPosition()
     assert panel.history_sash >= minimum
+
+
+def test_agent_history_persists_between_sessions(configured_frame, wx_app):
+    frame, config_path = configured_frame("history_persist.ini")
+
+    frame.agent_chat_menu_item.Check(True)
+    frame.on_toggle_agent_chat(None)
+    wx_app.Yield()
+
+    panel = frame.agent_panel
+    splitter = panel._horizontal_splitter
+    minimum = splitter.GetMinimumPaneSize()
+    base = splitter.GetSashPosition()
+    desired = max(base + frame.FromDIP(120), minimum + frame.FromDIP(40))
+    splitter.SetSashPosition(desired)
+    wx_app.Yield()
+
+    assert panel.history_sash == desired
+
+    frame._save_layout()
+    frame.Destroy()
+    wx_app.Yield()
+
+    config = ConfigManager(path=config_path)
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    restored = MainFrame(None, config=config, model=RequirementModel())
+    restored.Show()
+    wx_app.Yield()
+
+    assert restored.agent_chat_menu_item.IsChecked()
+    restored_panel = restored.agent_panel
+    restored_splitter = restored_panel._horizontal_splitter
+    assert restored_panel.history_sash == desired
+    assert restored_splitter.GetSashPosition() == desired
+    restored.Destroy()
+    wx_app.Yield()

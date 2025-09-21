@@ -99,9 +99,11 @@ def test_log_directory_and_files_created(
     assert json_path.name.endswith(".jsonl")
 
 
-def test_configure_logging_rotates_previous_run(
-    reset_logger: None, log_dir_env: Path
+def test_configure_logging_preserves_small_logs(
+    reset_logger: None, log_dir_env: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(log_module, "_TEXT_LOG_MAX_BYTES", 64)
+    monkeypatch.setattr(log_module, "_JSON_LOG_MAX_BYTES", 64)
     text_path = log_dir_env / log_module._TEXT_LOG_NAME
     json_path = log_dir_env / log_module._JSON_LOG_NAME
     text_path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,14 +112,38 @@ def test_configure_logging_rotates_previous_run(
 
     configure_logging()
 
+    assert not (log_dir_env / f"{log_module._TEXT_LOG_NAME}.1").exists()
+    assert not (log_dir_env / f"{log_module._JSON_LOG_NAME}.1").exists()
+    assert text_path.read_text(encoding="utf-8") == "old text log"
+    assert (
+        json_path.read_text(encoding="utf-8")
+        == "{\"message\": \"old json\"}\n"
+    )
+
+
+def test_configure_logging_rotates_full_logs(
+    reset_logger: None, log_dir_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(log_module, "_TEXT_LOG_MAX_BYTES", 32)
+    monkeypatch.setattr(log_module, "_JSON_LOG_MAX_BYTES", 40)
+    text_path = log_dir_env / log_module._TEXT_LOG_NAME
+    json_path = log_dir_env / log_module._JSON_LOG_NAME
+    text_path.parent.mkdir(parents=True, exist_ok=True)
+    text_payload = "x" * 32
+    json_payload = "{" + "x" * 42 + "}\n"
+    text_path.write_text(text_payload, encoding="utf-8")
+    json_path.write_text(json_payload, encoding="utf-8")
+
+    configure_logging()
+
     rotated_text = log_dir_env / f"{log_module._TEXT_LOG_NAME}.1"
     rotated_json = log_dir_env / f"{log_module._JSON_LOG_NAME}.1"
     assert rotated_text.exists()
     assert rotated_json.exists()
-    assert rotated_text.read_text(encoding="utf-8") == "old text log"
-    assert rotated_json.read_text(encoding="utf-8") == "{\"message\": \"old json\"}\n"
-    assert text_path.exists()
-    assert json_path.exists()
+    assert rotated_text.read_text(encoding="utf-8") == text_payload
+    assert rotated_json.read_text(encoding="utf-8") == json_payload
+    assert text_path.stat().st_size == 0
+    assert json_path.stat().st_size == 0
 
 
 def test_jsonl_handler_rotates_when_size_exceeded(tmp_path: Path) -> None:

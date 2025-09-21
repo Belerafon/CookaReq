@@ -27,6 +27,38 @@ logger = logging.getLogger("cookareq")
 _log_dir: Path | None = None
 
 
+def _rotate_if_already_full(
+    handler: RotatingFileHandler, existing_size: int
+) -> None:
+    """Rotate *handler* if the pre-existing log already reaches the limit."""
+
+    max_bytes = getattr(handler, "maxBytes", 0) or 0
+    if max_bytes <= 0 or existing_size < max_bytes:
+        return
+
+    level = handler.level or logging.INFO
+    probe = logging.LogRecord(
+        name="cookareq",
+        level=level,
+        pathname=__file__,
+        lineno=0,
+        msg="",
+        args=(),
+        exc_info=None,
+    )
+
+    should_rollover = True
+    rollover_check = getattr(handler, "shouldRollover", None)
+    if callable(rollover_check):
+        try:
+            should_rollover = bool(rollover_check(probe))
+        except Exception:
+            should_rollover = True
+
+    if should_rollover:
+        handler.doRollover()
+
+
 class JsonFormatter(logging.Formatter):
     """Convert log records into JSON strings."""
 
@@ -133,8 +165,7 @@ def configure_logging(level: int = logging.INFO, *, log_dir: str | Path | None =
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     )
-    if text_size > 0:
-        file_handler.doRollover()
+    _rotate_if_already_full(file_handler, text_size)
     logger.addHandler(file_handler)
 
     json_path = resolved_dir / _JSON_LOG_NAME
@@ -144,8 +175,7 @@ def configure_logging(level: int = logging.INFO, *, log_dir: str | Path | None =
         backup_count=_ROTATION_BACKUPS,
     )
     json_handler.setLevel(logging.DEBUG)
-    if json_size > 0:
-        json_handler.doRollover()
+    _rotate_if_already_full(json_handler, json_size)
     logger.addHandler(json_handler)
 
     logger.setLevel(logging.DEBUG)

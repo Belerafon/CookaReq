@@ -22,7 +22,13 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from ..log import JsonlHandler, configure_logging, get_log_directory, logger
+from ..log import (
+    JsonlHandler,
+    _rotate_if_already_full,
+    configure_logging,
+    get_log_directory,
+    logger,
+)
 from ..util.time import utc_now_iso
 from . import tools_read, tools_write
 from .utils import ErrorCode, exception_to_mcp_error, mcp_error, sanitize
@@ -73,8 +79,7 @@ def _configure_request_logging(log_dir: str | Path | None) -> Path:
     text_handler.setFormatter(
         logging.Formatter("%(asctime)s %(levelname)s %(message)s"),
     )
-    if text_size > 0:
-        text_handler.doRollover()
+    _rotate_if_already_full(text_handler, text_size)
     text_handler.cookareq_request = True
     request_logger.addHandler(text_handler)
 
@@ -85,8 +90,7 @@ def _configure_request_logging(log_dir: str | Path | None) -> Path:
         backup_count=_REQUEST_BACKUP_COUNT,
     )
     json_handler.setLevel(logging.INFO)
-    if json_size > 0:
-        json_handler.doRollover()
+    _rotate_if_already_full(json_handler, json_size)
     json_handler.cookareq_request = True
     request_logger.addHandler(json_handler)
     return log_dir_path

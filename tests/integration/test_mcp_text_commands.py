@@ -2,6 +2,7 @@
 
 import json
 import logging
+from http.client import HTTPConnection
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from app.agent import LocalAgent
 from app.log import logger
 from app.mcp.server import JsonlHandler
 from app.mcp.server import app as mcp_app
+from app.mcp.utils import ErrorCode
 from tests.llm_utils import make_openai_mock, settings_with_mcp
 
 pytestmark = pytest.mark.integration
@@ -93,3 +95,43 @@ def test_run_command_error_logs(tmp_path: Path, monkeypatch, mcp_server) -> None
         "TOOL_RESULT",
         "ERROR",
     } <= events
+
+
+def test_mcp_endpoint_direct_call(tmp_path: Path, mcp_server) -> None:
+    port = mcp_server
+    mcp_app.state.base_path = str(tmp_path)
+    conn = HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        conn.request(
+            "POST",
+            "/mcp",
+            body=json.dumps({"name": "list_requirements", "arguments": {"per_page": 1}}),
+            headers={"Content-Type": "application/json"},
+        )
+        resp = conn.getresponse()
+        body = resp.read().decode()
+    finally:
+        conn.close()
+    assert resp.status == 200
+    payload = json.loads(body)
+    assert payload["items"] == []
+
+
+def test_mcp_endpoint_unknown_tool(tmp_path: Path, mcp_server) -> None:
+    port = mcp_server
+    mcp_app.state.base_path = str(tmp_path)
+    conn = HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        conn.request(
+            "POST",
+            "/mcp",
+            body=json.dumps({"name": "unknown_tool", "arguments": {}}),
+            headers={"Content-Type": "application/json"},
+        )
+        resp = conn.getresponse()
+        body = resp.read().decode()
+    finally:
+        conn.close()
+    assert resp.status == 404
+    payload = json.loads(body)
+    assert payload["error"]["code"] == ErrorCode.NOT_FOUND.value

@@ -11,21 +11,25 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from contextlib import suppress
 from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from mcp.server.fastmcp import FastMCP
 
-from ..log import JsonlHandler, configure_logging, logger
+from ..log import JsonlHandler, configure_logging, get_log_directory, logger
 from ..util.time import utc_now_iso
 from . import tools_read, tools_write
-from .utils import ErrorCode, mcp_error, sanitize
+from .utils import ErrorCode, exception_to_mcp_error, mcp_error, sanitize
 
 # Dedicated logger for MCP request logging so global handlers remain untouched
 request_logger = logger.getChild("mcp.requests")
+request_logger.setLevel(logging.INFO)
+request_logger.propagate = False
 
 # Public FastAPI application and MCP server instances -----------------------
 
@@ -39,7 +43,7 @@ _TEXT_LOG_NAME = "server.log"
 _JSONL_LOG_NAME = "server.jsonl"
 
 
-def _configure_request_logging(log_dir: str | Path) -> None:
+def _configure_request_logging(log_dir: str | Path | None) -> Path:
     """Attach file handlers for request logging without mutating the global logger."""
     configure_logging()
     # Remove previous request handlers if any from the dedicated logger
@@ -48,7 +52,10 @@ def _configure_request_logging(log_dir: str | Path) -> None:
             request_logger.removeHandler(h)
             h.close()
 
-    log_dir_path = Path(log_dir)
+    if log_dir:
+        log_dir_path = Path(log_dir).expanduser()
+    else:
+        log_dir_path = get_log_directory() / "mcp"
     log_dir_path.mkdir(parents=True, exist_ok=True)
 
     text_path = log_dir_path / _TEXT_LOG_NAME
@@ -63,12 +70,19 @@ def _configure_request_logging(log_dir: str | Path) -> None:
     json_handler = JsonlHandler(json_path)
     json_handler.cookareq_request = True
     request_logger.addHandler(json_handler)
+    return log_dir_path
 
 
-def _log_request(request: Request, status: int) -> None:
+def _log_request(
+    request: Request,
+    status: int,
+    *,
+    duration_ms: float | None = None,
+    error: str | None = None,
+) -> None:
     headers = sanitize(dict(request.headers))
     query = sanitize(dict(request.query_params))
-    entry = {
+    entry: dict[str, Any] = {
         "timestamp": utc_now_iso(),
         "method": request.method,
         "path": request.url.path,
@@ -76,6 +90,16 @@ def _log_request(request: Request, status: int) -> None:
         "headers": headers,
         "status": status,
     }
+    request_id = getattr(request.state, "request_id", None)
+    if request_id:
+        entry["request_id"] = request_id
+    client = request.client
+    if client:
+        entry["client"] = {"host": client.host, "port": client.port}
+    if duration_ms is not None:
+        entry["duration_ms"] = round(duration_ms, 3)
+    if error is not None:
+        entry["error"] = error
     request_logger.info(
         "%s %s -> %s",
         request.method,
@@ -88,6 +112,8 @@ def _log_request(request: Request, status: int) -> None:
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     """Validate Authorization header and log every request."""
+    request.state.request_id = uuid4().hex
+    start = time.perf_counter()
     token = app.state.expected_token
     if token:
         header = request.headers.get("Authorization")
@@ -96,10 +122,18 @@ async def auth_middleware(request: Request, call_next):
                 mcp_error(ErrorCode.UNAUTHORIZED, "unauthorized"),
                 status_code=401,
             )
-            _log_request(request, response.status_code)
+            elapsed = (time.perf_counter() - start) * 1000
+            _log_request(request, response.status_code, duration_ms=elapsed)
             return response
-    response = await call_next(request)
-    _log_request(request, response.status_code)
+    try:
+        response = await call_next(request)
+    except Exception as exc:  # pragma: no cover - framework guard
+        elapsed = (time.perf_counter() - start) * 1000
+        error = f"{type(exc).__name__}: {exc}"
+        _log_request(request, 500, duration_ms=elapsed, error=error)
+        raise
+    elapsed = (time.perf_counter() - start) * 1000
+    _log_request(request, response.status_code, duration_ms=elapsed)
     return response
 
 
@@ -109,16 +143,39 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# FastMCP provides the server-side implementation of the MCP protocol.
-# Tools are registered via decorators below and invoked through the custom
-# `/mcp` HTTP endpoint defined later in this module.
-mcp_server = FastMCP(name="CookaReq")
-
-
 # ----------------------------- MCP Tools -----------------------------------
 
+ToolCallable = Callable[..., dict | None]
 
-@mcp_server.tool()
+_TOOLS: dict[str, ToolCallable] = {}
+
+
+def register_tool(
+    func: ToolCallable | None = None,
+    *,
+    name: str | None = None,
+) -> ToolCallable | Callable[[ToolCallable], ToolCallable]:
+    """Register *func* in the global tools registry.
+
+    When used as ``@register_tool()`` the tool is stored under ``func.__name__``.
+    A custom *name* may be provided via ``@register_tool(name="foo")``.  The
+    decorator returns the original function unchanged so regular unit testing
+    remains straightforward.
+    """
+
+    def decorator(target: ToolCallable) -> ToolCallable:
+        tool_name = name or target.__name__
+        if tool_name in _TOOLS:
+            raise ValueError(f"duplicate MCP tool registered: {tool_name}")
+        _TOOLS[tool_name] = target
+        return target
+
+    if func is not None:
+        return decorator(func)
+    return decorator
+
+
+@register_tool()
 def list_requirements(
     *,
     page: int = 1,
@@ -137,14 +194,14 @@ def list_requirements(
     )
 
 
-@mcp_server.tool()
+@register_tool()
 def get_requirement(rid: str) -> dict:
     """Return a single requirement by identifier."""
     directory = app.state.base_path
     return tools_read.get_requirement(directory, rid)
 
 
-@mcp_server.tool()
+@register_tool()
 def search_requirements(
     *,
     query: str | None = None,
@@ -165,14 +222,14 @@ def search_requirements(
     )
 
 
-@mcp_server.tool()
+@register_tool()
 def create_requirement(prefix: str, data: Mapping[str, object]) -> dict:
     """Create a requirement in the configured directory."""
     directory = app.state.base_path
     return tools_write.create_requirement(directory, prefix=prefix, data=data)
 
 
-@mcp_server.tool()
+@register_tool()
 def patch_requirement(
     rid: str,
     patch: list[dict],
@@ -184,14 +241,14 @@ def patch_requirement(
     return tools_write.patch_requirement(directory, rid, patch, rev=rev)
 
 
-@mcp_server.tool()
+@register_tool()
 def delete_requirement(rid: str, *, rev: int) -> dict | None:
     """Delete a requirement if revision matches."""
     directory = app.state.base_path
     return tools_write.delete_requirement(directory, rid, rev=rev)
 
 
-@mcp_server.tool()
+@register_tool()
 def link_requirements(
     *,
     source_rid: str,
@@ -210,24 +267,13 @@ def link_requirements(
     )
 
 
-# Mapping of tool names to wrapper functions for direct dispatch
-_TOOLS: dict[str, callable] = {
-    "list_requirements": list_requirements,
-    "get_requirement": get_requirement,
-    "search_requirements": search_requirements,
-    "create_requirement": create_requirement,
-    "patch_requirement": patch_requirement,
-    "delete_requirement": delete_requirement,
-    "link_requirements": link_requirements,
-}
-
-
 # --------------------------- MCP endpoint ----------------------------------
 
 
 @app.post("/mcp")
 async def call_tool(request: Request) -> JSONResponse:
     """Invoke a registered MCP tool via HTTP."""
+    request_id = getattr(request.state, "request_id", None)
     try:
         body = await request.json()
     except Exception:  # pragma: no cover - defensive
@@ -254,11 +300,53 @@ async def call_tool(request: Request) -> JSONResponse:
     try:
         result = func(**arguments)
     except TypeError as exc:
+        _log_tool_event(
+            name,
+            arguments,
+            "invalid-arguments",
+            request_id=request_id,
+            error=str(exc),
+        )
         return JSONResponse(
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
             status_code=400,
         )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Unhandled MCP tool failure for %s", name)
+        error_payload = exception_to_mcp_error(exc)
+        _log_tool_event(
+            name,
+            arguments,
+            "error",
+            request_id=request_id,
+            error=str(exc),
+        )
+        return JSONResponse(error_payload, status_code=500)
+    _log_tool_event(name, arguments, "ok", request_id=request_id)
     return JSONResponse(result)
+
+
+def _log_tool_event(
+    name: str,
+    arguments: Mapping[str, Any] | None,
+    outcome: str,
+    *,
+    request_id: str | None,
+    error: str | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "timestamp": utc_now_iso(),
+        "tool": name,
+        "outcome": outcome,
+    }
+    if arguments is not None:
+        with suppress(Exception):
+            payload["arguments"] = sanitize(dict(arguments))
+    if request_id:
+        payload["request_id"] = request_id
+    if error is not None:
+        payload["error"] = error
+    request_logger.info("tool %s %s", name, outcome, extra={"json": payload})
 
 
 # Internal state for the background server
@@ -291,11 +379,10 @@ def start_server(
         # Server already running
         return
 
-    log_dir = base_path or "."
     app.state.base_path = base_path
     app.state.expected_token = token
-    app.state.log_dir = log_dir
-    _configure_request_logging(log_dir)
+    resolved_log_dir = _configure_request_logging(base_path or None)
+    app.state.log_dir = str(resolved_log_dir)
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     _uvicorn_server = uvicorn.Server(config)
     # Disable signal handlers so uvicorn can run outside the main thread

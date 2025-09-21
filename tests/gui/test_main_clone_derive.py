@@ -21,6 +21,19 @@ from app.ui.requirement_model import RequirementModel
 pytestmark = pytest.mark.gui
 
 
+class _StubMCP:
+    """Lightweight stand-in for the MCP controller used by the frame."""
+
+    def start(self, settings) -> None:  # pragma: no cover - trivial stub
+        pass
+
+    def stop(self) -> None:  # pragma: no cover - trivial stub
+        pass
+
+    def is_running(self) -> bool:  # pragma: no cover - trivial stub
+        return False
+
+
 def _req(req_id: int, title: str) -> Requirement:
     return Requirement(
         id=req_id,
@@ -35,17 +48,21 @@ def _req(req_id: int, title: str) -> Requirement:
     )
 
 
-def _prepare_frame(monkeypatch, tmp_path, extra_requirements=None):
+def _prepare_frame(tmp_path, extra_requirements=None):
     wx = pytest.importorskip("wx")
     import app.ui.main_frame as main_frame_mod
 
     importlib.reload(main_frame_mod)
-    monkeypatch.setattr(main_frame_mod.MCPController, "start", lambda self, settings: None)
 
     model = RequirementModel()
     config = ConfigManager(path=tmp_path / "clone.ini")
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    frame = main_frame_mod.MainFrame(None, config=config, model=model)
+    frame = main_frame_mod.MainFrame(
+        None,
+        config=config,
+        model=model,
+        mcp_factory=_StubMCP,
+    )
     doc = Document(prefix="REQ", title="Doc")
     doc_dir = tmp_path / "REQ"
     save_document(doc_dir, doc)
@@ -69,8 +86,8 @@ def _prepare_frame(monkeypatch, tmp_path, extra_requirements=None):
     return frame
 
 
-def test_clone_creates_new_requirement(monkeypatch, wx_app, tmp_path):
-    frame = _prepare_frame(monkeypatch, tmp_path)
+def test_clone_creates_new_requirement(wx_app, tmp_path):
+    frame = _prepare_frame(tmp_path)
     wx = pytest.importorskip("wx")
 
     try:
@@ -93,8 +110,8 @@ def test_clone_creates_new_requirement(monkeypatch, wx_app, tmp_path):
         frame.Destroy()
 
 
-def test_derive_creates_linked_requirement(monkeypatch, wx_app, tmp_path):
-    frame = _prepare_frame(monkeypatch, tmp_path)
+def test_derive_creates_linked_requirement(wx_app, tmp_path):
+    frame = _prepare_frame(tmp_path)
     wx = pytest.importorskip("wx")
 
     try:
@@ -131,7 +148,7 @@ def test_derive_creates_linked_requirement(monkeypatch, wx_app, tmp_path):
 
 def test_delete_many_removes_requirements(monkeypatch, wx_app, tmp_path):
     extra = [_req(2, "Second"), _req(3, "Third")]
-    frame = _prepare_frame(monkeypatch, tmp_path, extra_requirements=extra)
+    frame = _prepare_frame(tmp_path, extra_requirements=extra)
     wx = pytest.importorskip("wx")
     import app.ui.main_frame as main_frame_mod
 
@@ -167,7 +184,7 @@ def test_delete_many_removes_requirements(monkeypatch, wx_app, tmp_path):
 
 
 def test_save_derived_requirement_with_missing_parent_rid(monkeypatch, wx_app, tmp_path):
-    frame = _prepare_frame(monkeypatch, tmp_path)
+    frame = _prepare_frame(tmp_path)
     _ = pytest.importorskip("wx")
     import app.ui.error_dialog as error_dialog_module
     import app.ui.main_frame as main_frame_mod

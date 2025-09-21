@@ -30,19 +30,22 @@ class _StubMCP:
         return self._running
 
 
-def _make_frame(monkeypatch, tmp_path, *, auto_start: bool):
+def _make_frame(tmp_path, *, auto_start: bool):
     pytest.importorskip("wx")
     import app.ui.main_frame as main_frame_module
     from app.config import ConfigManager
     from app.settings import MCPSettings
     from app.ui.requirement_model import RequirementModel
 
-    monkeypatch.setattr(main_frame_module, "MCPController", _StubMCP)
-
     config_path = tmp_path / ("config_auto.ini" if auto_start else "config_manual.ini")
     config = ConfigManager(path=config_path)
     config.set_mcp_settings(MCPSettings(auto_start=auto_start, base_path=""))
-    frame = main_frame_module.MainFrame(None, config=config, model=RequirementModel())
+    frame = main_frame_module.MainFrame(
+        None,
+        config=config,
+        model=RequirementModel(),
+        mcp_factory=_StubMCP,
+    )
     return frame, config
 
 
@@ -50,10 +53,10 @@ def _sample_requirements_dir() -> Path:
     return (Path(__file__).resolve().parents[1] / "requirements").resolve()
 
 
-def test_load_directory_updates_mcp_base_path(tmp_path, wx_app, monkeypatch):
+def test_load_directory_updates_mcp_base_path(tmp_path, wx_app):
     """Opening a directory should persist it as the MCP base path."""
 
-    frame, config = _make_frame(monkeypatch, tmp_path, auto_start=False)
+    frame, config = _make_frame(tmp_path, auto_start=False)
     try:
         repo = _sample_requirements_dir()
         frame._load_directory(repo)
@@ -68,10 +71,10 @@ def test_load_directory_updates_mcp_base_path(tmp_path, wx_app, monkeypatch):
         wx_app.Yield()
 
 
-def test_auto_start_restarts_mcp_with_new_base_path(tmp_path, wx_app, monkeypatch):
+def test_auto_start_restarts_mcp_with_new_base_path(tmp_path, wx_app):
     """When MCP auto-start is enabled the server should restart for new paths."""
 
-    frame, config = _make_frame(monkeypatch, tmp_path, auto_start=True)
+    frame, config = _make_frame(tmp_path, auto_start=True)
     stub = frame.mcp
     try:
         assert stub.start_calls == [""]

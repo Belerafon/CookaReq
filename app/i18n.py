@@ -1,66 +1,70 @@
-"""Minimal gettext-like translations using .po files.
-
-This module loads translations from plain text ``.po`` files at runtime,
-avoiding the need for compiled ``.mo`` binaries.  It provides a small subset
-of the ``gettext`` API: ``gettext`` (aliased as ``_``) and ``install`` to set
-the active language.
-"""
+"""High-level helpers for runtime gettext translations."""
 
 from __future__ import annotations
 
-import threading
-from collections.abc import Iterable
+import gettext as _gettext
+import os
+from collections.abc import Iterable, Sequence
+from io import BytesIO
 from pathlib import Path
+from typing import Final
+
+import polib
+from gettext import GNUTranslations, NullTranslations, _expand_lang
+
+__all__ = [
+    "_",
+    "gettext",
+    "ngettext",
+    "pgettext",
+    "npgettext",
+    "install",
+    "translate_resource",
+    "get_translation",
+]
+
+_TRANSLATION: NullTranslations = NullTranslations()
 
 
-def _unescape(text: str) -> str:
-    """Unescape common sequences in PO file strings."""
-    return (
-        text.replace("\\n", "\n")
-        .replace("\\t", "\t")
-        .replace('\\"', '"')
-        .replace("\\\\", "\\")
-    )
+def get_translation() -> NullTranslations:
+    """Return the currently active translation object."""
 
-
-def _escape(text: str) -> str:
-    """Escape strings for writing to PO files."""
-    return (
-        text.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", "\\n")
-        .replace("\t", "\\t")
-    )
-
-
-_translations: dict[str, str] = {}
-_missing: set[str] = set()
-_lock = threading.Lock()
+    return _TRANSLATION
 
 
 def gettext(message: str) -> str:
-    """Return translated ``message`` or the original if not found.
+    """Translate *message* using the active gettext catalogue."""
 
-    Untranslated messages are collected for later persistence in
-    ``missing.po`` so they can be added to the main catalog.
-    """
-    translated = _translations.get(message)
-    if translated is None:
-        with _lock:
-            _missing.add(message)
-        return message
-    return translated
+    return _TRANSLATION.gettext(message)
 
 
-_ = gettext  # public alias used by UI modules
+def ngettext(singular: str, plural: str, number: int) -> str:
+    """Translate pluralisable message based on *number*."""
+
+    return _TRANSLATION.ngettext(singular, plural, number)
+
+
+def pgettext(context: str, message: str) -> str:
+    """Translate *message* for the supplied *context*."""
+
+    return _TRANSLATION.pgettext(context, message)
+
+
+def npgettext(context: str, singular: str, plural: str, number: int) -> str:
+    """Translate pluralisable message tied to *context*."""
+
+    return _TRANSLATION.npgettext(context, singular, plural, number)
+
+
+_: Final = gettext
 
 
 def translate_resource(message: str | Iterable[str]) -> str:
-    """Translate text loaded from external resources.
+    """Translate text loaded from bundled resources.
 
-    ``message`` may be a single string or an iterable of string fragments.  In
-    the latter case the fragments are joined with a single space before being
-    translated so that PO files see the complete sentence.
+    ``message`` may be a string or an iterable of fragments. In the latter case
+    the fragments are joined with a single space before translation so that the
+    catalogue sees the full sentence.
     """
 
     if isinstance(message, str):
@@ -70,89 +74,77 @@ def translate_resource(message: str | Iterable[str]) -> str:
     return gettext(combined)
 
 
-def _parse_po(path: Path) -> dict[str, str]:
-    """Parse a very small subset of the PO file format.
-
-    Only ``msgid``/``msgstr`` pairs are supported; comments, plural forms and
-    contexts are ignored.  This is sufficient for the project's current
-    translation needs.
-    """
-    result: dict[str, str] = {}
-    msgid: str | None = None
-    msgstr: str | None = None
-    state: str | None = None
-    with path.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                if msgid not in (None, "") and msgstr is not None:
-                    result[msgid] = msgstr
-                msgid = msgstr = state = None
-                continue
-            if line.startswith("msgid "):
-                msgid = _unescape(line[6:].strip().strip('"'))
-                msgstr = None
-                state = "msgid"
-                continue
-            if line.startswith("msgstr "):
-                msgstr = _unescape(line[7:].strip().strip('"'))
-                state = "msgstr"
-                continue
-            if line.startswith('"') and state == "msgid":
-                msgid += _unescape(line.strip('"'))
-                continue
-            if line.startswith('"') and state == "msgstr":
-                msgstr += _unescape(line.strip('"'))
-                continue
-    if msgid not in (None, "") and msgstr is not None:
-        result[msgid] = msgstr
-    return result
-
-
-def flush_missing(path: Path) -> None:
-    """Atomically write collected missing ``msgid`` values to ``path``.
-
-    The file is written in ``.po`` format with empty ``msgstr`` fields.  Only
-    new ``msgid`` values are appended; existing entries are preserved.
-    ``path`` is created along with its parent directories if needed.
-    """
-    with _lock:
-        if not _missing:
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        existing: set[str] = set()
-        if path.exists():
-            existing = set(_parse_po(path))
-            with path.open(encoding="utf-8") as f:
-                lines = f.readlines()
-        else:
-            lines = []
-        new = [m for m in sorted(_missing) if m not in existing]
-        if not new:
-            _missing.clear()
-            return
-        for msg in new:
-            lines.append(f'msgid "{_escape(msg)}"\n')
-            lines.append('msgstr ""\n\n')
-        tmp_path = path.with_suffix(path.suffix + ".tmp")
-        with tmp_path.open("w", encoding="utf-8") as f:
-            f.writelines(lines)
-        tmp_path.replace(path)
-        _missing.clear()
-
-
 def install(
     domain: str,
-    localedir: str,
+    localedir: str | os.PathLike[str],
     languages: Iterable[str] | None = None,
-) -> None:
-    """Load translations for ``languages`` and make ``gettext`` use them."""
-    global _translations
-    languages = list(languages or [])
-    for lang in languages:
-        po_path = Path(localedir) / lang / "LC_MESSAGES" / f"{domain}.po"
-        if po_path.exists():
-            _translations = _parse_po(po_path)
-            break
-    else:
-        _translations = {}
+) -> NullTranslations:
+    """Load translations for *domain* and make them globally available."""
+
+    localedir_path = Path(localedir)
+    requested = _prepare_language_list(languages)
+    translation = _gettext.translation(
+        domain,
+        localedir=str(localedir_path),
+        languages=requested or None,
+        fallback=True,
+    )
+    if isinstance(translation, NullTranslations):
+        fallback = _load_po_translation(domain, localedir_path, requested)
+        if fallback is not None:
+            translation = fallback
+    _set_translation(translation)
+    translation.install(names=("gettext", "ngettext", "pgettext", "npgettext"))
+    return translation
+
+
+def _set_translation(translation: NullTranslations) -> None:
+    global _TRANSLATION
+    _TRANSLATION = translation
+
+
+def _prepare_language_list(languages: Iterable[str] | None) -> list[str]:
+    if languages is None:
+        return _languages_from_environment()
+    return _expand_languages(languages)
+
+
+def _languages_from_environment() -> list[str]:
+    raw: list[str] = []
+    for name in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(name)
+        if not value:
+            continue
+        raw.extend(token.strip() for token in value.split(":") if token.strip())
+    return _expand_languages(raw)
+
+
+def _expand_languages(languages: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    expanded: list[str] = []
+    for language in languages:
+        if not language:
+            continue
+        for candidate in _expand_lang(language):
+            if candidate and candidate not in seen:
+                seen.add(candidate)
+                expanded.append(candidate)
+    return expanded
+
+
+def _load_po_translation(
+    domain: str,
+    localedir: Path,
+    languages: Sequence[str],
+) -> NullTranslations | None:
+    for language in languages:
+        po_path = localedir / language / "LC_MESSAGES" / f"{domain}.po"
+        if not po_path.exists():
+            continue
+        try:
+            catalog = polib.pofile(str(po_path))
+        except Exception:  # pragma: no cover - propagates to fallback behaviour
+            continue
+        mo_data = catalog.to_binary()
+        return GNUTranslations(BytesIO(mo_data))
+    return None

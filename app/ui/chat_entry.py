@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
+from ..llm.tokenizer import TokenCountResult, combine_token_counts
 from ..util.time import utc_now_iso
 
 
@@ -19,10 +20,16 @@ class ChatEntry:
     display_response: str | None = None
     raw_result: Any | None = None
     tool_results: list[Any] | None = None
+    token_info: TokenCountResult | None = None
 
     def __post_init__(self) -> None:  # pragma: no cover - trivial
         if self.display_response is None:
             self.display_response = self.response
+        if self.token_info is None:
+            self.token_info = TokenCountResult.approximate(
+                self.tokens,
+                reason="legacy_tokens",
+            )
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ChatEntry":
@@ -46,6 +53,18 @@ class ChatEntry:
             tool_results = list(tool_results_raw)
         else:
             tool_results = None
+        token_info_raw = payload.get("token_info")
+        token_info: TokenCountResult | None = None
+        if isinstance(token_info_raw, Mapping):
+            try:
+                token_info = TokenCountResult.from_dict(token_info_raw)
+            except Exception:  # pragma: no cover - defensive
+                token_info = None
+        if token_info is None and tokens:
+            token_info = TokenCountResult.approximate(
+                tokens,
+                reason="legacy_tokens",
+            )
         return cls(
             prompt=prompt,
             response=response,
@@ -53,6 +72,7 @@ class ChatEntry:
             display_response=display_response,
             raw_result=raw_result,
             tool_results=tool_results,
+            token_info=token_info,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -65,6 +85,9 @@ class ChatEntry:
             "display_response": self.display_response,
             "raw_result": self.raw_result,
             "tool_results": self.tool_results,
+            "token_info": self.token_info.to_dict()
+            if self.token_info is not None
+            else None,
         }
 
 
@@ -156,10 +179,26 @@ class ChatConversation:
         if not self.title:
             self.ensure_title()
 
+    def total_token_info(self) -> TokenCountResult:
+        """Return aggregated token statistics for the conversation."""
+
+        results: list[TokenCountResult] = []
+        for item in self.entries:
+            if item.token_info is not None:
+                results.append(item.token_info)
+            else:
+                results.append(
+                    TokenCountResult.approximate(
+                        item.tokens,
+                        reason="legacy_tokens",
+                    )
+                )
+        return combine_token_counts(results)
+
     def total_tokens(self) -> int:
         """Return total token count across all entries."""
 
-        return sum(item.tokens for item in self.entries)
+        return self.total_token_info().tokens or 0
 
     def to_dict(self) -> dict[str, Any]:
         """Return representation suitable for JSON storage."""

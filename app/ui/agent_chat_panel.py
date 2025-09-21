@@ -19,6 +19,7 @@ import wx.dataview as dv
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from ..i18n import _
+from ..llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
 from ..util.json import make_json_safe
 from ..util.cancellation import CancellationEvent, OperationCancelledError
 from .chat_entry import ChatConversation, ChatEntry
@@ -38,12 +39,7 @@ def _default_history_path() -> Path:
     """Return default location for persisted chat history."""
 
     return Path.home() / ".cookareq" / "agent_chats.json"
-
-
-def _token_count(text: str) -> int:
-    """Very naive token count using whitespace separation."""
-
-    return len(text.split())
+TOKEN_UNAVAILABLE_LABEL = "n/a"
 
 
 def _history_json_safe(value: Any) -> Any:
@@ -103,6 +99,7 @@ class _AgentRunHandle:
 
     run_id: int
     prompt: str
+    prompt_tokens: TokenCountResult
     cancel_event: CancellationEvent
     future: Future[Any] | None = None
 
@@ -127,6 +124,7 @@ class AgentChatPanel(wx.Panel):
         agent_supplier: Callable[[], LocalAgent],
         history_path: Path | None = None,
         command_executor: AgentCommandExecutor | None = None,
+        token_model_resolver: Callable[[], str | None] | None = None,
     ) -> None:
         """Create panel bound to ``agent_supplier``."""
 
@@ -135,6 +133,9 @@ class AgentChatPanel(wx.Panel):
         inherit_background(self, parent)
         self._agent_supplier = agent_supplier
         self._history_path = history_path or _default_history_path()
+        self._token_model_resolver = (
+            token_model_resolver if token_model_resolver is not None else lambda: None
+        )
         self._executor_pool: ThreadPoolExecutor | None = None
         if command_executor is None:
             pool = ThreadPoolExecutor(
@@ -154,7 +155,7 @@ class AgentChatPanel(wx.Panel):
         self._timer = wx.Timer(self)
         self._timer.Bind(wx.EVT_TIMER, self._on_timer)
         self._start_time: float | None = None
-        self._current_tokens: int = 0
+        self._current_tokens: TokenCountResult = TokenCountResult.exact(0)
         self._new_chat_btn: wx.Button | None = None
         self._clear_history_btn: wx.Button | None = None
         self._stop_btn: wx.Button | None = None
@@ -200,6 +201,22 @@ class AgentChatPanel(wx.Panel):
                 shutdown(wait=False, cancel_futures=True)
             except TypeError:
                 shutdown(wait=False)
+
+    # ------------------------------------------------------------------
+    def _token_model(self) -> str | None:
+        """Return configured model name for token accounting."""
+
+        resolver = getattr(self, "_token_model_resolver", None)
+        if resolver is None:
+            return None
+        try:
+            model = resolver()
+        except Exception:  # pragma: no cover - defensive
+            return None
+        if not isinstance(model, str):
+            return None
+        text = model.strip()
+        return text or None
 
     # ------------------------------------------------------------------
     def focus_input(self) -> None:
@@ -522,16 +539,17 @@ class AgentChatPanel(wx.Panel):
         self.input.SetValue("")
         self._run_counter += 1
         cancel_event = CancellationEvent()
+        prompt_tokens = count_text_tokens(prompt, model=self._token_model())
         handle = _AgentRunHandle(
             run_id=self._run_counter,
             prompt=prompt,
+            prompt_tokens=prompt_tokens,
             cancel_event=cancel_event,
         )
         self._active_run_handle = handle
         self._ensure_active_conversation()
-        tokens = _token_count(prompt)
         history_messages = self._conversation_messages()
-        self._set_wait_state(True, tokens)
+        self._set_wait_state(True, prompt_tokens)
 
         def worker() -> Any:
             try:
@@ -629,7 +647,11 @@ class AgentChatPanel(wx.Panel):
         self.input.SetFocus()
 
     # ------------------------------------------------------------------
-    def _set_wait_state(self, active: bool, tokens: int = 0) -> None:
+    def _set_wait_state(
+        self,
+        active: bool,
+        tokens: TokenCountResult | None = None,
+    ) -> None:
         """Enable or disable busy indicators."""
 
         self._is_running = active
@@ -639,13 +661,19 @@ class AgentChatPanel(wx.Panel):
             self._stop_btn.Enable(active)
         self._update_history_controls()
         if active:
-            self._current_tokens = tokens
+            self._current_tokens = (
+                tokens if tokens is not None else TokenCountResult.exact(0)
+            )
             self._start_time = time.monotonic()
             self.activity.Show()
             self.activity.Start()
             self._update_status(0.0)
             self._timer.Start(100)
         else:
+            if tokens is not None:
+                self._current_tokens = tokens
+            else:
+                self._current_tokens = TokenCountResult.exact(0)
             self._timer.Stop()
             self.activity.Stop()
             self.activity.Hide()
@@ -674,13 +702,31 @@ class AgentChatPanel(wx.Panel):
         elapsed = time.monotonic() - self._start_time
         self._update_status(elapsed)
 
+    def _format_tokens_for_status(self, tokens: TokenCountResult) -> str:
+        """Return status label representation for ``tokens``."""
+
+        if tokens.tokens is None:
+            return TOKEN_UNAVAILABLE_LABEL
+        quantity = tokens.tokens / 1000 if tokens.tokens else 0.0
+        label = f"{quantity:.2f} ktok"
+        return f"~{label}" if tokens.approximate else label
+
+    def _format_tokens_for_summary(self, tokens: TokenCountResult) -> str:
+        """Return history summary representation for ``tokens``."""
+
+        if tokens.tokens is None:
+            return TOKEN_UNAVAILABLE_LABEL
+        quantity = tokens.tokens / 1000 if tokens.tokens else 0.0
+        label = f"{quantity:.2f}k"
+        return f"~{label}" if tokens.approximate else label
+
     def _update_status(self, elapsed: float) -> None:
         """Show formatted timer and prompt size."""
 
         minutes, seconds = divmod(int(elapsed), 60)
-        label = _("Waiting for agent… {time} • {tokens:.2f} ktok").format(
+        label = _("Waiting for agent… {time} • {tokens}").format(
             time=f"{minutes:02d}:{seconds:02d}",
-            tokens=self._current_tokens / 1000 if self._current_tokens else 0.0,
+            tokens=self._format_tokens_for_status(self._current_tokens),
         )
         self.status_label.SetLabel(label)
 
@@ -701,23 +747,36 @@ class AgentChatPanel(wx.Panel):
             if self._start_time is not None
             else 0.0
         )
+        final_tokens: TokenCountResult | None = None
         try:
             conversation_text, display_text, raw_result, tool_results = self._process_result(result)
+            response_tokens = count_text_tokens(
+                conversation_text,
+                model=self._token_model(),
+            )
+            final_tokens = combine_token_counts(
+                [handle.prompt_tokens, response_tokens]
+            )
             self._append_history(
                 prompt,
                 conversation_text,
                 display_text,
                 raw_result,
                 tool_results,
+                final_tokens,
             )
             self._render_transcript()
         finally:
-            self._set_wait_state(False)
+            self._set_wait_state(False, final_tokens)
             if elapsed:
                 minutes, seconds = divmod(int(elapsed), 60)
-                label = _("Received response in {time} • {tokens:.2f} ktok").format(
+                if final_tokens is None:
+                    tokens_label = self._format_tokens_for_status(TokenCountResult.exact(0))
+                else:
+                    tokens_label = self._format_tokens_for_status(final_tokens)
+                label = _("Received response in {time} • {tokens}").format(
                     time=f"{minutes:02d}:{seconds:02d}",
-                    tokens=self._current_tokens / 1000 if self._current_tokens else 0.0,
+                    tokens=tokens_label,
                 )
                 self.status_label.SetLabel(label)
 
@@ -782,9 +841,17 @@ class AgentChatPanel(wx.Panel):
         display_response: str,
         raw_result: Any | None,
         tool_results: list[Any] | None,
+        token_info: TokenCountResult | None,
     ) -> None:
         conversation = self._ensure_active_conversation()
-        tokens = _token_count(prompt) + _token_count(response)
+        if token_info is None:
+            token_info = combine_token_counts(
+                [
+                    count_text_tokens(prompt, model=self._token_model()),
+                    count_text_tokens(response, model=self._token_model()),
+                ]
+            )
+        tokens = token_info.tokens or 0
         entry = ChatEntry(
             prompt=prompt,
             response=response,
@@ -792,6 +859,7 @@ class AgentChatPanel(wx.Panel):
             display_response=display_response,
             raw_result=raw_result,
             tool_results=tool_results,
+            token_info=token_info,
         )
         conversation.append_entry(entry)
         self._save_history()
@@ -1026,10 +1094,10 @@ class AgentChatPanel(wx.Panel):
             return _("No messages yet")
         count = len(conversation.entries)
         parts = [_("Messages: {count}").format(count=count)]
-        tokens = conversation.total_tokens()
+        tokens = conversation.total_token_info()
         parts.append(
-            _("Tokens: {tokens:.2f}k").format(
-                tokens=tokens / 1000 if tokens else 0.0
+            _("Tokens: {tokens}").format(
+                tokens=self._format_tokens_for_summary(tokens)
             )
         )
         preview = self._conversation_preview(conversation)

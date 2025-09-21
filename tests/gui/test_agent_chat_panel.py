@@ -456,9 +456,8 @@ def test_agent_history_sash_waits_for_ready_size(tmp_path, wx_app, monkeypatch):
 
     assert attempts[0] == desired
     assert len(attempts) == 1
-    assert panel._desired_history_sash == desired
-    assert panel._history_sash_pending
-    assert not panel._history_sash_idle_bound
+    assert panel._history_sash_goal == desired
+    assert panel._history_sash_dirty
 
     wx_app.Yield()
     assert attempts == [desired]
@@ -474,15 +473,14 @@ def test_agent_history_sash_waits_for_ready_size(tmp_path, wx_app, monkeypatch):
     assert attempts[0] == desired
     assert attempts[-1] == desired
     assert len(attempts) >= 2
-    assert panel._desired_history_sash == desired
-    assert not panel._history_sash_pending
+    assert panel._history_sash_goal == desired
+    assert not panel._history_sash_dirty
     assert panel.history_sash == splitter.GetSashPosition()
     assert splitter.GetSashPosition() >= minimum
 
     wx_app.Yield()
     assert attempts[-1] == desired
-    assert not panel._history_sash_pending
-    assert not panel._history_sash_idle_bound
+    assert not panel._history_sash_dirty
 
     destroy_panel(frame, panel)
     wx_app.Yield()

@@ -4,6 +4,9 @@ import importlib
 
 import pytest
 
+from app.config import ConfigManager
+from app.settings import MCPSettings
+
 pytestmark = pytest.mark.gui
 
 
@@ -14,7 +17,9 @@ def test_recent_dirs_history(tmp_path, wx_app):
 
     importlib.reload(list_panel)
     importlib.reload(main_frame)
-    frame = main_frame.MainFrame(None)
+    config = ConfigManager(path=tmp_path / "recent.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    frame = main_frame.MainFrame(None, config=config)
 
     dirs = [tmp_path / f"d{i}" for i in range(6)]
     for d in dirs:

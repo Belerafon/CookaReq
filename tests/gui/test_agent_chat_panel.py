@@ -387,3 +387,64 @@ def test_agent_chat_panel_history_columns_show_metadata(tmp_path, wx_app):
     assert "check metadata" in summary
 
     destroy_panel(frame, panel)
+
+
+def test_agent_history_sash_waits_for_ready_size(tmp_path, wx_app, monkeypatch):
+    class DummyAgent:
+        def run_command(self, text, *, history=None, cancellation=None):
+            return {"ok": True, "error": None, "result": text}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
+
+    sizer = wx.BoxSizer(wx.VERTICAL)
+    sizer.Add(panel, 1, wx.EXPAND)
+    frame.SetSizer(sizer)
+
+    splitter = panel._horizontal_splitter
+    minimum = splitter.GetMinimumPaneSize()
+    desired = minimum + panel.FromDIP(180)
+    attempts: list[int] = []
+    original_attempt = panel._attempt_set_history_sash
+
+    def tracking_attempt(target: int) -> bool:
+        attempts.append(target)
+        if len(attempts) == 1:
+            return False
+        return original_attempt(target)
+
+    monkeypatch.setattr(panel, "_attempt_set_history_sash", tracking_attempt)
+
+    panel.apply_history_sash(desired)
+
+    assert attempts[0] == desired
+    assert len(attempts) == 1
+    assert panel._desired_history_sash == desired
+    assert panel._history_sash_pending
+    assert not panel._history_sash_idle_bound
+
+    wx_app.Yield()
+    assert attempts == [desired]
+
+    frame.Show()
+    large_width = desired + panel.FromDIP(320)
+    frame.SetClientSize((int(large_width), int(panel.FromDIP(400))))
+    frame.Layout()
+    frame.SendSizeEvent()
+    wx_app.Yield()
+    wx_app.Yield()
+
+    assert attempts[0] == desired
+    assert attempts[-1] == desired
+    assert len(attempts) >= 2
+    assert panel._desired_history_sash == desired
+    assert not panel._history_sash_pending
+    assert panel.history_sash == splitter.GetSashPosition()
+    assert splitter.GetSashPosition() >= minimum
+
+    wx_app.Yield()
+    assert attempts[-1] == desired
+    assert not panel._history_sash_pending
+    assert not panel._history_sash_idle_bound
+
+    destroy_panel(frame, panel)
+    wx_app.Yield()

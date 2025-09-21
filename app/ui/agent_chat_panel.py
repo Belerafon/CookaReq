@@ -5,7 +5,6 @@ from __future__ import annotations
 import datetime
 import json
 import logging
-import threading
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -13,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 
 import wx
 import wx.dataview as dv
@@ -95,24 +94,24 @@ class AgentCommandExecutor(Protocol):
 
 
 class ThreadedAgentCommandExecutor:
-    """Background executor creating a dedicated thread per submission."""
+    """Agent executor backed by a shared :class:`ThreadPoolExecutor`."""
+
+    def __init__(self, pool: ThreadPoolExecutor | None = None) -> None:
+        if pool is None:
+            pool = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="AgentChatCommand",
+            )
+        self._pool = pool
+
+    @property
+    def pool(self) -> ThreadPoolExecutor:
+        """Expose the underlying thread pool."""
+
+        return self._pool
 
     def submit(self, func: Callable[[], Any]) -> Future[Any]:
-        future: Future[Any] = Future()
-
-        def runner() -> None:
-            if not future.set_running_or_notify_cancel():
-                return
-            try:
-                result = func()
-            except BaseException as exc:  # pragma: no cover - defensive
-                future.set_exception(exc)
-            else:
-                future.set_result(result)
-
-        thread = threading.Thread(target=runner, daemon=True, name="AgentChatCommand")
-        thread.start()
-        return future
+        return self._pool.submit(func)
 
 
 @dataclass(slots=True)
@@ -149,10 +148,23 @@ class AgentChatPanel(wx.Panel):
         """Create panel bound to ``agent_supplier``."""
 
         super().__init__(parent)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         inherit_background(self, parent)
         self._agent_supplier = agent_supplier
         self._history_path = history_path or _default_history_path()
-        self._command_executor = command_executor or ThreadedAgentCommandExecutor()
+        self._executor_pool: ThreadPoolExecutor | None = None
+        if command_executor is None:
+            pool = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="AgentChatCommand",
+            )
+            self._executor_pool = pool
+            self._command_executor = ThreadedAgentCommandExecutor(pool)
+        else:
+            self._command_executor = command_executor
+            pool = getattr(command_executor, "pool", None)
+            if pool is not None:
+                self._executor_pool = pool
         self.conversations: list[ChatConversation] = []
         self._active_conversation_id: str | None = None
         self._is_running = False
@@ -176,6 +188,34 @@ class AgentChatPanel(wx.Panel):
         self._build_ui()
         self.transcript.bind(self)
         self._render_transcript()
+
+    # ------------------------------------------------------------------
+    def Destroy(self) -> bool:  # pragma: no cover - exercised via GUI tests
+        self._cleanup_executor()
+        return super().Destroy()
+
+    # ------------------------------------------------------------------
+    def _on_destroy(self, event: wx.WindowDestroyEvent) -> None:
+        if event.GetEventObject() is self:
+            self._cleanup_executor()
+        event.Skip()
+
+    # ------------------------------------------------------------------
+    def _cleanup_executor(self) -> None:
+        handle = getattr(self, "_active_run_handle", None)
+        if handle is not None:
+            handle.cancel()
+            self._active_run_handle = None
+        pool = self._executor_pool
+        if pool is None:
+            return
+        self._executor_pool = None
+        shutdown = getattr(pool, "shutdown", None)
+        if callable(shutdown):
+            try:
+                shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                shutdown(wait=False)
 
     # ------------------------------------------------------------------
     def focus_input(self) -> None:

@@ -1,6 +1,6 @@
 import json
 import threading
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 
 import pytest
 
@@ -128,32 +128,69 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
                 self.completed.set()
 
     agent = BlockingAgent()
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="TestAgentChat")
+    frame = panel = None
+    try:
+        wx, frame, panel = create_panel(
+            tmp_path,
+            wx_app,
+            agent,
+            executor=ThreadedAgentCommandExecutor(pool),
+        )
+
+        panel.input.SetValue("stop me")
+        panel._on_send(None)
+
+        assert agent.started.wait(1.0)
+        assert panel._stop_btn is not None and panel._stop_btn.IsEnabled()
+
+        panel._on_stop(None)
+
+        assert panel.input.GetValue() == "stop me"
+        assert panel.status_label.GetLabel() == _("Generation cancelled")
+        assert panel._stop_btn is not None and not panel._stop_btn.IsEnabled()
+
+        assert agent.cancel_seen.wait(1.0)
+        assert agent.completed.wait(1.0)
+        wx.Yield()
+
+        assert panel.history == []
+    finally:
+        if frame is not None and panel is not None:
+            destroy_panel(frame, panel)
+        pool.shutdown(wait=True, cancel_futures=True)
+
+
+def test_agent_chat_panel_shuts_down_executor_pool_on_destroy(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, text, *, history=None, cancellation=None):  # pragma: no cover - defensive
+            raise AssertionError("Should not be called")
+
+    class DummyPool:
+        def __init__(self) -> None:
+            self.shutdown_called = False
+
+        def submit(self, func):
+            future = Future()
+            future.set_result(None)
+            return future
+
+        def shutdown(self, wait=True, cancel_futures=False):
+            self.shutdown_called = True
+
+    from app.ui.agent_chat_panel import ThreadedAgentCommandExecutor
+
+    pool = DummyPool()
     wx, frame, panel = create_panel(
         tmp_path,
         wx_app,
-        agent,
-        executor=ThreadedAgentCommandExecutor(),
+        DummyAgent(),
+        executor=ThreadedAgentCommandExecutor(pool),
     )
 
-    panel.input.SetValue("stop me")
-    panel._on_send(None)
-
-    assert agent.started.wait(1.0)
-    assert panel._stop_btn is not None and panel._stop_btn.IsEnabled()
-
-    panel._on_stop(None)
-
-    assert panel.input.GetValue() == "stop me"
-    assert panel.status_label.GetLabel() == _("Generation cancelled")
-    assert panel._stop_btn is not None and not panel._stop_btn.IsEnabled()
-
-    assert agent.cancel_seen.wait(1.0)
-    assert agent.completed.wait(1.0)
-    wx.Yield()
-
-    assert panel.history == []
-
     destroy_panel(frame, panel)
+
+    assert pool.shutdown_called
 
 
 def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):

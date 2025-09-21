@@ -21,11 +21,7 @@ from .constants import (
 # подменять ``openai.OpenAI`` до первого использования и тем самым избежать
 # реальных сетевых запросов.
 from ..telemetry import log_debug_payload, log_event
-from ..util.cancellation import (
-    CancellationRegistration,
-    CancellationToken,
-    OperationCancelledError,
-)
+from ..util.cancellation import CancellationEvent, OperationCancelledError
 from .spec import SYSTEM_PROMPT, TOOLS
 from .validation import ToolValidationError, validate_tool_call
 
@@ -88,7 +84,7 @@ class LLMClient:
         text: str,
         *,
         history: Sequence[Mapping[str, Any]] | None = None,
-        cancellation: CancellationToken | None = None,
+        cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Interpret *text* into an assistant reply with optional tool calls.
 
@@ -106,7 +102,7 @@ class LLMClient:
         text: str,
         *,
         history: Sequence[Mapping[str, Any]] | None = None,
-        cancellation: CancellationToken | None = None,
+        cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Asynchronous counterpart to :meth:`parse_command`."""
 
@@ -121,7 +117,7 @@ class LLMClient:
         self,
         conversation: Sequence[Mapping[str, Any]] | None,
         *,
-        cancellation: CancellationToken | None = None,
+        cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Send the full *conversation* to the model and return its reply."""
 
@@ -133,7 +129,7 @@ class LLMClient:
         self,
         conversation: Sequence[Mapping[str, Any]] | None,
         *,
-        cancellation: CancellationToken | None = None,
+        cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Asynchronous counterpart to :meth:`respond`."""
 
@@ -284,7 +280,7 @@ class LLMClient:
         self,
         conversation: Sequence[Mapping[str, Any]],
         *,
-        cancellation: CancellationToken | None = None,
+        cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Implementation shared by sync and async response helpers."""
 
@@ -400,7 +396,7 @@ class LLMClient:
         self,
         stream: Iterable[Any],
         *,
-        cancellation: CancellationToken | None,
+        cancellation: CancellationEvent | None,
     ) -> tuple[str, list[dict[str, Any]]]:
         """Read streaming response and return message text with raw tool calls."""
 
@@ -408,15 +404,26 @@ class LLMClient:
         tool_chunks: dict[tuple[int, int], dict[str, Any]] = {}
         order: list[tuple[int, int]] = []
         closer = getattr(stream, "close", None)
-        registration: CancellationRegistration | None = None
-        try:
-            if cancellation is not None and cancellation.cancelled:
+        cancel_event = cancellation
+        closed_by_cancel = False
+
+        def ensure_not_cancelled() -> None:
+            nonlocal closed_by_cancel
+            if cancel_event is None:
+                return
+            if cancel_event.wait(timeout=0) or cancel_event.is_set():
+                if callable(closer) and not closed_by_cancel:
+                    closed_by_cancel = True
+                    try:
+                        closer()
+                    except Exception:  # pragma: no cover - defensive
+                        pass
                 raise OperationCancelledError()
-            if cancellation is not None and callable(closer):
-                registration = cancellation.register(closer)
+
+        try:
+            ensure_not_cancelled()
             for chunk in stream:  # pragma: no cover - network/streaming
-                if cancellation is not None and cancellation.cancelled:
-                    raise OperationCancelledError()
+                ensure_not_cancelled()
                 chunk_map = self._extract_mapping(chunk)
                 choices = getattr(chunk, "choices", None)
                 if choices is None and chunk_map is not None:
@@ -464,21 +471,19 @@ class LLMClient:
                     text = self._extract_message_content(content)
                     if text:
                         message_parts.append(text)
-                if cancellation is not None and cancellation.cancelled:
-                    raise OperationCancelledError()
+                if cancel_event is not None and cancel_event.is_set():
+                    ensure_not_cancelled()
         except httpx.HTTPError as exc:  # pragma: no cover - network errors
-            if cancellation is not None and cancellation.cancelled:
+            if cancel_event is not None and cancel_event.is_set():
                 raise OperationCancelledError() from exc
             raise
         finally:
-            if registration is not None:
-                registration.dispose()
-            if callable(closer):
+            if callable(closer) and not closed_by_cancel:
                 try:
                     closer()
                 except Exception:  # pragma: no cover - defensive
                     pass
-        if cancellation is not None and cancellation.cancelled:
+        if cancel_event is not None and cancel_event.is_set():
             raise OperationCancelledError()
         raw_calls: list[dict[str, Any]] = []
         for key in order:

@@ -155,6 +155,8 @@ class MainFrameDocumentsMixin:
         self.navigation.update_recent_menu()
         self.SetTitle(f"{self._base_title} - {path}")
         self.current_dir = path
+        if hasattr(self, "agent_panel"):
+            self.agent_panel.set_history_directory(path)
         self._sync_mcp_base_path(path)
         if docs:
             first = sorted(docs)[0]

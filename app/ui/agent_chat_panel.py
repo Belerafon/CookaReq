@@ -40,6 +40,21 @@ def _default_history_path() -> Path:
     """Return default location for persisted chat history."""
 
     return Path.home() / ".cookareq" / "agent_chats.json"
+
+
+def _normalize_history_path(path: Path | str) -> Path:
+    """Expand user references and coerce *path* into :class:`Path`."""
+
+    return Path(path).expanduser()
+
+
+def history_path_for_documents(base_directory: Path | str | None) -> Path:
+    """Return history file path colocated with a requirements directory."""
+
+    if base_directory is None:
+        return _default_history_path()
+    base_path = _normalize_history_path(base_directory)
+    return base_path / ".cookareq" / "agent_chats.json"
 TOKEN_UNAVAILABLE_LABEL = "n/a"
 
 
@@ -124,7 +139,7 @@ class AgentChatPanel(wx.Panel):
         parent: wx.Window,
         *,
         agent_supplier: Callable[[], LocalAgent],
-        history_path: Path | None = None,
+        history_path: Path | str | None = None,
         command_executor: AgentCommandExecutor | None = None,
         token_model_resolver: Callable[[], str | None] | None = None,
     ) -> None:
@@ -134,7 +149,10 @@ class AgentChatPanel(wx.Panel):
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         inherit_background(self, parent)
         self._agent_supplier = agent_supplier
-        self._history_path = history_path or _default_history_path()
+        if history_path is None:
+            self._history_path = _default_history_path()
+        else:
+            self._history_path = _normalize_history_path(history_path)
         self._token_model_resolver = (
             token_model_resolver if token_model_resolver is not None else lambda: None
         )
@@ -201,6 +219,31 @@ class AgentChatPanel(wx.Panel):
                 shutdown(wait=False, cancel_futures=True)
             except TypeError:
                 shutdown(wait=False)
+
+    # ------------------------------------------------------------------
+    def set_history_path(self, path: Path | str | None) -> None:
+        """Switch to *path* reloading conversations from disk."""
+
+        new_path = _default_history_path() if path is None else _normalize_history_path(path)
+        if new_path == self._history_path:
+            return
+        if getattr(self, "conversations", []):
+            self._save_history()
+        self._history_path = new_path
+        self._load_history()
+        self._refresh_history_list()
+        self._render_transcript()
+
+    def set_history_directory(self, directory: Path | str | None) -> None:
+        """Persist chat history inside *directory* when provided."""
+
+        self.set_history_path(history_path_for_documents(directory))
+
+    @property
+    def history_path(self) -> Path:
+        """Return the path of the current chat history file."""
+
+        return self._history_path
 
     # ------------------------------------------------------------------
     def _token_model(self) -> str | None:

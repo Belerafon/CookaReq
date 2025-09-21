@@ -5,7 +5,6 @@ from __future__ import annotations
 import datetime
 import json
 import logging
-import math
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -38,6 +37,7 @@ try:  # pragma: no cover - import only used for typing
     from ..agent import LocalAgent  # noqa: TCH004
 except Exception:  # pragma: no cover - fallback when wx stubs are used
     LocalAgent = object  # type: ignore[assignment]
+
 def _default_history_path() -> Path:
     """Return default location for persisted chat history."""
 
@@ -1179,25 +1179,10 @@ class AgentChatPanel(wx.Panel):
                 panel.ScrollChildIntoView(window)
             except RuntimeError:
                 window = None
-        bottom_pos = self._compute_transcript_bottom(panel)
+        bottom_pos = max(0, panel.GetScrollRange(wx.VERTICAL))
         view_x, view_y = panel.GetViewStart()
         if bottom_pos != view_y:
             panel.Scroll(view_x, bottom_pos)
-
-    @staticmethod
-    def _compute_transcript_bottom(panel: ScrolledPanel) -> int:
-        max_y = panel.GetScrollRange(wx.VERTICAL)
-        if max_y > 0:
-            return max_y
-        _, pixels_per_unit_y = panel.GetScrollPixelsPerUnit()
-        if pixels_per_unit_y <= 0:
-            pixels_per_unit_y = 1
-        virtual_height = panel.GetVirtualSize().height
-        client_height = panel.GetClientSize().height
-        if virtual_height <= client_height:
-            return 0
-        extra = virtual_height - client_height
-        return max(0, math.ceil(extra / pixels_per_unit_y))
 
     def _ensure_history_visible(self, index: int) -> None:
         if not (0 <= index < self.history_list.GetItemCount()):

@@ -1,5 +1,6 @@
 import json
 import threading
+from concurrent.futures import Future
 
 import pytest
 
@@ -7,7 +8,28 @@ import pytest
 pytestmark = [pytest.mark.gui, pytest.mark.integration]
 
 
-def create_panel(tmp_path, wx_app, agent):
+class SynchronousAgentCommandExecutor:
+    """Executor that runs submitted functions immediately on the caller thread."""
+
+    def submit(self, func):
+        future: Future = Future()
+        if not future.set_running_or_notify_cancel():
+            return future
+        try:
+            result = func()
+        except BaseException as exc:  # pragma: no cover - defensive
+            future.set_exception(exc)
+        else:
+            future.set_result(result)
+        return future
+
+
+def flush_wx_events(wx, count: int = 3) -> None:
+    for _ in range(count):
+        wx.Yield()
+
+
+def create_panel(tmp_path, wx_app, agent, executor=None):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
 
@@ -16,6 +38,7 @@ def create_panel(tmp_path, wx_app, agent):
         frame,
         agent_supplier=lambda: agent,
         history_path=tmp_path / "history.json",
+        command_executor=executor or SynchronousAgentCommandExecutor(),
     )
     return wx, frame, panel
 
@@ -34,6 +57,7 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
 
     panel.input.SetValue("run")
     panel._on_send(None)
+    flush_wx_events(wx)
 
     transcript = panel.transcript.GetValue()
     assert "run" in transcript
@@ -70,6 +94,7 @@ def test_agent_chat_panel_handles_error(tmp_path, wx_app):
 
     panel.input.SetValue("go")
     panel._on_send(None)
+    flush_wx_events(wx)
 
     transcript = panel.transcript.GetValue()
     assert "FAIL" in transcript
@@ -78,8 +103,9 @@ def test_agent_chat_panel_handles_error(tmp_path, wx_app):
     destroy_panel(frame, panel)
 
 
-def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app, monkeypatch):
+def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
     from app.i18n import _
+    from app.ui.agent_chat_panel import ThreadedAgentCommandExecutor
 
     class BlockingAgent:
         def __init__(self) -> None:
@@ -102,10 +128,12 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app, monkeypatch)
                 self.completed.set()
 
     agent = BlockingAgent()
-    wx, frame, panel = create_panel(tmp_path, wx_app, agent)
-
-    app = wx.GetApp()
-    monkeypatch.setattr(app, "IsMainLoopRunning", lambda: True)
+    wx, frame, panel = create_panel(
+        tmp_path,
+        wx_app,
+        agent,
+        executor=ThreadedAgentCommandExecutor(),
+    )
 
     panel.input.SetValue("stop me")
     panel._on_send(None)
@@ -136,6 +164,7 @@ def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):
     wx, frame1, panel1 = create_panel(tmp_path, wx_app, EchoAgent())
     panel1.input.SetValue("hello")
     panel1._on_send(None)
+    flush_wx_events(wx)
     destroy_panel(frame1, panel1)
 
     wx, frame2, panel2 = create_panel(tmp_path, wx_app, EchoAgent())
@@ -207,11 +236,13 @@ def test_agent_chat_panel_provides_history_context(tmp_path, wx_app):
 
     panel.input.SetValue("first question")
     panel._on_send(None)
+    flush_wx_events(wx)
     assert agent.calls[0]["history"] == []
     first_response = panel.history[0].response
 
     panel.input.SetValue("second question")
     panel._on_send(None)
+    flush_wx_events(wx)
 
     expected_history = [
         {"role": "user", "content": "first question"},
@@ -237,6 +268,7 @@ def test_agent_chat_panel_clear_history_resets_context(tmp_path, wx_app):
 
     panel.input.SetValue("keep this")
     panel._on_send(None)
+    flush_wx_events(wx)
     assert agent.calls[0]["history"] == []
 
     panel._on_clear_history(None)
@@ -246,6 +278,7 @@ def test_agent_chat_panel_clear_history_resets_context(tmp_path, wx_app):
 
     panel.input.SetValue("after clear")
     panel._on_send(None)
+    flush_wx_events(wx)
     assert agent.calls[-1]["history"] == []
 
     destroy_panel(frame, panel)
@@ -266,6 +299,7 @@ def test_agent_chat_panel_new_chat_creates_separate_conversation(tmp_path, wx_ap
 
     panel.input.SetValue("first request")
     panel._on_send(None)
+    flush_wx_events(wx)
     assert agent.calls[0]["history"] == []
     assert len(panel.history) == 1
 
@@ -276,6 +310,7 @@ def test_agent_chat_panel_new_chat_creates_separate_conversation(tmp_path, wx_ap
 
     panel.input.SetValue("second request")
     panel._on_send(None)
+    flush_wx_events(wx)
     assert agent.calls[-1]["history"] == []
     assert len(panel.history) == 1
 
@@ -301,6 +336,7 @@ def test_agent_chat_panel_history_columns_show_metadata(tmp_path, wx_app):
 
     panel.input.SetValue("check metadata")
     panel._on_send(None)
+    flush_wx_events(wx)
 
     assert panel.history_list.GetItemCount() == 1
     title = panel.history_list.GetTextValue(0, 0)

@@ -2,10 +2,13 @@
 
 import json
 import logging
+from pathlib import Path
 
 import pytest
 
+from app.mcp.server import app as mcp_app
 from app.mcp.server import start_server, stop_server
+from app.log import get_log_directory
 from tests.mcp_utils import _request, _wait_until_ready
 
 pytestmark = pytest.mark.integration
@@ -50,3 +53,16 @@ def test_stop_server_does_not_log_cancelled_error(caplog):
         stop_server()
 
     assert not any("CancelledError" in record.getMessage() for record in caplog.records)
+
+
+def test_default_log_directory_used_when_base_path_missing():
+    port = 8129
+    stop_server()
+    start_server(port=port, base_path="")
+    try:
+        _wait_until_ready(port)
+        log_dir = Path(mcp_app.state.log_dir)
+        expected = get_log_directory() / "mcp"
+        assert log_dir == expected
+    finally:
+        stop_server()

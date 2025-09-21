@@ -90,6 +90,12 @@ def configure_logging(level: int = logging.INFO, *, log_dir: str | Path | None =
     global _log_dir, _text_log_path, _json_log_path
 
     if logger.handlers:
+        if _log_dir is None:
+            resolved_dir = _resolve_log_dir(log_dir).resolve()
+            _log_dir = resolved_dir
+            _text_log_path = resolved_dir / _TEXT_LOG_NAME
+            _json_log_path = resolved_dir / _JSON_LOG_NAME
+            _json_log_path.touch(exist_ok=True)
         return
 
     resolved_dir = _resolve_log_dir(log_dir).resolve()

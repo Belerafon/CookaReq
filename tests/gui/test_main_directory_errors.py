@@ -6,6 +6,9 @@ import json
 
 import pytest
 
+from app.config import ConfigManager
+from app.settings import MCPSettings
+
 
 pytestmark = pytest.mark.gui
 
@@ -30,7 +33,10 @@ def test_load_directory_reports_validation_error(tmp_path, monkeypatch, wx_app):
 
     monkeypatch.setattr(wx, "MessageBox", fake_message)
 
-    frame = main_frame.MainFrame(None)
+    config = ConfigManager(path=tmp_path / "config.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+
+    frame = main_frame.MainFrame(None, config=config)
 
     frame._load_directory(root_dir)
 

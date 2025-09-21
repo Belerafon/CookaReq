@@ -2,16 +2,26 @@
 
 import pytest
 
+from app.config import ConfigManager
+from app.settings import MCPSettings
+from app.ui.requirement_model import RequirementModel
+
 
 pytestmark = pytest.mark.gui
 
 
-def test_confirm_discard_changes(monkeypatch, wx_app):
+def _create_frame(module, tmp_path, *, name: str = "config.ini"):
+    config = ConfigManager(path=tmp_path / name)
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    return module.MainFrame(None, config=config, model=RequirementModel())
+
+
+def test_confirm_discard_changes(monkeypatch, wx_app, tmp_path):
     pytest.importorskip("wx")
 
     import app.ui.main_frame as main_frame_mod
 
-    frame = main_frame_mod.MainFrame(None)
+    frame = _create_frame(main_frame_mod, tmp_path)
     try:
         frame.editor.fields["title"].ChangeValue("Dirty")
         assert frame.editor.is_dirty() is True
@@ -41,14 +51,14 @@ def test_confirm_discard_changes(monkeypatch, wx_app):
         frame.Destroy()
 
 
-def test_close_cancel_does_not_lock_shutdown(monkeypatch, wx_app):
+def test_close_cancel_does_not_lock_shutdown(monkeypatch, wx_app, tmp_path):
     pytest.importorskip("wx")
 
     import wx
 
     import app.ui.main_frame as main_frame_mod
 
-    frame = main_frame_mod.MainFrame(None)
+    frame = _create_frame(main_frame_mod, tmp_path, name="cancel.ini")
     try:
         frame.editor.fields["title"].ChangeValue("Dirty")
         assert frame.editor.is_dirty() is True
@@ -75,7 +85,7 @@ def test_close_cancel_does_not_lock_shutdown(monkeypatch, wx_app):
         wx_app.Yield()
 
 
-def test_confirm_discard_changes_reload_from_model(monkeypatch, wx_app):
+def test_confirm_discard_changes_reload_from_model(monkeypatch, wx_app, tmp_path):
     pytest.importorskip("wx")
 
     from dataclasses import replace
@@ -89,7 +99,7 @@ def test_confirm_discard_changes_reload_from_model(monkeypatch, wx_app):
         Verification,
     )
 
-    frame = main_frame_mod.MainFrame(None)
+    frame = _create_frame(main_frame_mod, tmp_path, name="reload.ini")
     try:
         requirement = Requirement(
             id=1,
@@ -137,7 +147,7 @@ def test_document_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path):
     import app.ui.main_frame as main_frame_mod
     from app.core.document_store import Document
 
-    frame = main_frame_mod.MainFrame(None)
+    frame = _create_frame(main_frame_mod, tmp_path, name="doc_select.ini")
     try:
         doc_a = Document(prefix="DOC", title="Doc")
         doc_b = Document(prefix="FEA", title="Feature")
@@ -209,7 +219,7 @@ def test_requirement_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path
         Verification,
     )
 
-    frame = main_frame_mod.MainFrame(None)
+    frame = _create_frame(main_frame_mod, tmp_path, name="req_select.ini")
     try:
         doc = Document(prefix="DOC", title="Doc")
         docs = {"DOC": doc}

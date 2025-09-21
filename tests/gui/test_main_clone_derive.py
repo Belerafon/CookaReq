@@ -13,6 +13,8 @@ from app.core.model import (
     Verification,
     requirement_to_dict,
 )
+from app.config import ConfigManager
+from app.settings import MCPSettings
 from app.ui.controllers import DocumentsController
 from app.ui.requirement_model import RequirementModel
 
@@ -41,7 +43,9 @@ def _prepare_frame(monkeypatch, tmp_path, extra_requirements=None):
     monkeypatch.setattr(main_frame_mod.MCPController, "start", lambda self, settings: None)
 
     model = RequirementModel()
-    frame = main_frame_mod.MainFrame(None, model=model)
+    config = ConfigManager(path=tmp_path / "clone.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    frame = main_frame_mod.MainFrame(None, config=config, model=model)
     doc = Document(prefix="REQ", title="Doc")
     doc_dir = tmp_path / "REQ"
     save_document(doc_dir, doc)

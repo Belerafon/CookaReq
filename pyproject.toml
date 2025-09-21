@@ -10,6 +10,7 @@ dependencies = [
     "uvicorn",
     "mcp",
     "openai",
+    "markdown",
 ]
 
 [project.optional-dependencies]

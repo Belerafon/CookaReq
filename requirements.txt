@@ -9,3 +9,4 @@ jsonpatch
 openai
 pydantic
 polib>=1.2
+markdown>=3.9

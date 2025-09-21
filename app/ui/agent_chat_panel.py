@@ -330,7 +330,12 @@ class AgentChatPanel(wx.Panel):
             width=dip(self, 260),
         )
         summary_col.SetMinWidth(dip(self, 220))
-        self.history_list.Bind(dv.EVT_DATAVIEW_SELECTION_CHANGED, self._on_select_history)
+        self.history_list.Bind(
+            dv.EVT_DATAVIEW_SELECTION_CHANGED, self._on_select_history
+        )
+        self.history_list.Bind(
+            dv.EVT_DATAVIEW_ITEM_CONTEXT_MENU, self._on_history_item_context_menu
+        )
         self.history_list.Bind(wx.EVT_CONTEXT_MENU, self._on_history_context_menu)
         inherit_background(history_panel, self)
         history_sizer.Add(history_header, 0, wx.EXPAND)
@@ -770,26 +775,44 @@ class AgentChatPanel(wx.Panel):
             self.input.SetValue("")
         self.input.SetFocus()
 
-    def _on_history_context_menu(self, event: wx.ContextMenuEvent) -> None:
-        if self._is_running:
+    def _on_history_item_context_menu(self, event: dv.DataViewEvent) -> None:
+        if event.GetEventObject() is not self.history_list:
+            event.Skip()
             return
+        item = event.GetItem()
+        row = None
+        if item and item.IsOk():
+            row = self.history_list.ItemToRow(item)
+        self._show_history_context_menu(row)
+
+    def _on_history_context_menu(self, event: wx.ContextMenuEvent) -> None:
         if event.GetEventObject() is not self.history_list:
             event.Skip()
             return
         pos = event.GetPosition()
-        if pos == wx.DefaultPosition:
-            pos = wx.GetMousePosition()
-        client = self.history_list.ScreenToClient(pos)
-        item, _column = self.history_list.HitTest(client)
-        if item and item.IsOk():
-            row = self.history_list.ItemToRow(item)
-            if row != wx.NOT_FOUND:
-                selected_rows = set(self._selected_history_rows())
-                if row not in selected_rows:
+        row = None
+        if pos != wx.DefaultPosition:
+            client = self.history_list.ScreenToClient(pos)
+            item, _column = self.history_list.HitTest(client)
+            if item and item.IsOk():
+                row = self.history_list.ItemToRow(item)
+        self._show_history_context_menu(row)
+
+    def _show_history_context_menu(self, row: int | None) -> None:
+        if self._is_running:
+            return
+        if row is not None and not (0 <= row < self.history_list.GetItemCount()):
+            row = None
+        if row is not None:
+            selected_rows = set(self._selected_history_rows())
+            if row not in selected_rows:
+                try:
+                    item = self.history_list.RowToItem(row)
+                except (AttributeError, RuntimeError):
+                    item = None
+                if item and item.IsOk():
                     self.history_list.UnselectAll()
                     self.history_list.Select(item)
-        elif not self._selected_history_rows():
-            return
         selected_rows = self._selected_history_rows()
         if not selected_rows:
             return
@@ -800,7 +823,7 @@ class AgentChatPanel(wx.Panel):
         delete_item = menu.Append(wx.ID_ANY, label)
         menu.Bind(wx.EVT_MENU, self._on_clear_history, delete_item)
         try:
-            self.PopupMenu(menu)
+            self.history_list.PopupMenu(menu)
         finally:
             menu.Destroy()
 
@@ -813,7 +836,9 @@ class AgentChatPanel(wx.Panel):
 
         index = self._extract_history_index(event)
         if index is not None:
-            self._activate_conversation_by_index(index)
+            self._activate_conversation_by_index(
+                index, persist=True, refresh_history=False
+            )
         event.Skip()
 
     def _on_stop(self, _event: wx.Event) -> None:
@@ -1712,14 +1737,23 @@ class AgentChatPanel(wx.Panel):
             return row
         return None
 
-    def _activate_conversation_by_index(self, index: int, *, persist: bool = True) -> None:
+    def _activate_conversation_by_index(
+        self,
+        index: int,
+        *,
+        persist: bool = True,
+        refresh_history: bool = True,
+    ) -> None:
         if not (0 <= index < len(self.conversations)):
             return
         conversation = self.conversations[index]
         self._active_conversation_id = conversation.conversation_id
         if persist:
             self._save_history()
-        self._refresh_history_list()
+        if refresh_history:
+            self._refresh_history_list()
+        else:
+            self._update_history_controls()
         self._ensure_history_visible(index)
         self._render_transcript()
         self.input.SetFocus()

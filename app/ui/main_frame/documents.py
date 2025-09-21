@@ -37,6 +37,47 @@ class MainFrameDocumentsMixin:
 
         return self.config.get_recent_dirs()
 
+    def _current_document_summary(self: "MainFrame") -> str | None:
+        """Return prefix and title of the active document for the header."""
+
+        prefix = self.current_doc_prefix
+        if not prefix:
+            return None
+        controller = getattr(self, "docs_controller", None)
+        if not controller:
+            return None
+        document = controller.documents.get(prefix)
+        if document is None:
+            return prefix
+        prefix_text = document.prefix.strip()
+        title_text = document.title.strip()
+        if prefix_text and title_text:
+            return f"{prefix_text}: {title_text}"
+        if title_text:
+            return title_text
+        if prefix_text:
+            return prefix_text
+        return prefix
+
+    def _update_requirements_label(self: "MainFrame") -> None:
+        """Adjust requirements pane title to reflect active document."""
+
+        label_ctrl = getattr(self, "list_label", None)
+        if not label_ctrl:
+            return
+        base_label = _("Requirements")
+        summary = self._current_document_summary()
+        if summary:
+            text = _("Requirements - {document}").format(document=summary)
+        else:
+            text = base_label
+        label_ctrl.SetLabel(text)
+        parent = getattr(label_ctrl, "GetParent", None)
+        if callable(parent):
+            container = parent()
+            if container and hasattr(container, "Layout"):
+                container.Layout()
+
     def on_open_folder(self: "MainFrame", _event: wx.Event) -> None:
         """Handle "Open Folder" menu action."""
 
@@ -129,6 +170,7 @@ class MainFrameDocumentsMixin:
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([])
             self.panel.update_labels_list([])
+        self._update_requirements_label()
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
         self._selected_requirement_id = None
@@ -175,12 +217,14 @@ class MainFrameDocumentsMixin:
             self.panel.update_labels_list([])
             self._selected_requirement_id = None
             self._clear_editor_panel()
+            self._update_requirements_label()
 
     def _load_document_contents(self: "MainFrame", prefix: str) -> bool:
         """Load items and labels for ``prefix`` and update the views."""
 
         if not self.docs_controller:
             return False
+        self._update_requirements_label()
         try:
             derived_map = self.docs_controller.load_items(prefix)
         except Exception as exc:  # pragma: no cover - GUI side effect

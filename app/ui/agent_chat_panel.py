@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import textwrap
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -350,6 +351,17 @@ class AgentChatPanel(wx.Panel):
         )
         self._copy_conversation_btn.Enable(False)
         transcript_header.Add(self._copy_conversation_btn, 0, wx.ALIGN_CENTER_VERTICAL)
+        transcript_header.AddSpacer(dip(self, 4))
+        self._copy_transcript_log_btn = self._create_copy_button(
+            transcript_panel,
+            tooltip=_("Copy technical log"),
+            fallback_label=_("Copy technical log"),
+            handler=self._on_copy_transcript_log,
+        )
+        self._copy_transcript_log_btn.Enable(False)
+        transcript_header.Add(
+            self._copy_transcript_log_btn, 0, wx.ALIGN_CENTER_VERTICAL
+        )
         self.transcript_panel = ScrolledPanel(
             transcript_panel,
             style=wx.TAB_TRAVERSAL,
@@ -1137,7 +1149,6 @@ class AgentChatPanel(wx.Panel):
                         self.transcript_panel,
                         prompt=entry.prompt,
                         response=entry.display_response or entry.response,
-                        tool_results=entry.tool_results,
                         prompt_timestamp=self._format_entry_timestamp(entry.prompt_at),
                         response_timestamp=self._format_entry_timestamp(entry.response_at),
                     )
@@ -1151,7 +1162,7 @@ class AgentChatPanel(wx.Panel):
             self.transcript_panel.Thaw()
             if last_panel is not None:
                 self._scroll_transcript_to_bottom(last_panel)
-        self._update_transcript_copy_button(has_entries)
+        self._update_transcript_copy_buttons(has_entries)
 
     @staticmethod
     def _is_window_alive(window: wx.Window | None) -> bool:
@@ -1201,6 +1212,11 @@ class AgentChatPanel(wx.Panel):
 
         return self._compose_transcript_text()
 
+    def get_transcript_log_text(self) -> str:
+        """Return detailed transcript log for diagnostic purposes."""
+
+        return self._compose_transcript_log_text()
+
     def _compose_transcript_text(self) -> str:
         conversation = self._get_active_conversation()
         if conversation is None:
@@ -1211,7 +1227,8 @@ class AgentChatPanel(wx.Panel):
         blocks: list[str] = []
         for idx, entry in enumerate(conversation.entries, start=1):
             prompt_text = normalize_for_display(entry.prompt)
-            response_text = normalize_for_display(entry.response)
+            response_source = entry.display_response or entry.response
+            response_text = normalize_for_display(response_source)
             block = (
                 f"{idx}. "
                 + _("You:")
@@ -1222,13 +1239,184 @@ class AgentChatPanel(wx.Panel):
             blocks.append(block)
         return "\n\n".join(blocks)
 
-    def _update_transcript_copy_button(self, enabled: bool) -> None:
-        button = self._copy_conversation_btn
-        if button is not None:
-            button.Enable(enabled)
+    def _compose_transcript_log_text(self) -> str:
+        conversation = self._get_active_conversation()
+        if conversation is None:
+            return _("Start chatting with the agent to see responses here.")
+        if not conversation.entries:
+            return _("This chat does not have any messages yet. Send one to get started.")
+
+        def format_timestamp(value: str | None) -> str:
+            if not value:
+                return _("not recorded")
+            return normalize_for_display(value)
+
+        def format_json_block(value: Any) -> str:
+            if value is None:
+                return _("(none)")
+            if isinstance(value, str):
+                text = value
+            else:
+                try:
+                    text = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+                except (TypeError, ValueError):
+                    text = str(value)
+            return normalize_for_display(text)
+
+        def indent_block(value: str, *, prefix: str = "    ") -> str:
+            return textwrap.indent(value, prefix)
+
+        def format_tool_payload(index: int, payload: Any) -> list[str]:
+            lines: list[str] = []
+            if isinstance(payload, Mapping):
+                raw_name = (
+                    payload.get("tool_name")
+                    or payload.get("name")
+                    or payload.get("tool")
+                )
+                name = (
+                    normalize_for_display(str(raw_name))
+                    if raw_name
+                    else _("Unnamed tool")
+                )
+                ok_value = payload.get("ok")
+                if ok_value is True:
+                    status = _("Success")
+                elif ok_value is False:
+                    status = _("Error")
+                else:
+                    status = _("Unknown")
+                lines.append(
+                    _("  [{index}] {name} — Status: {status}").format(
+                        index=index,
+                        name=name,
+                        status=status,
+                    )
+                )
+                call_id = payload.get("call_id") or payload.get("tool_call_id")
+                if call_id:
+                    lines.append(
+                        _("    Call ID: {value}").format(
+                            value=normalize_for_display(str(call_id))
+                        )
+                    )
+                arguments = payload.get("tool_arguments")
+                if arguments is not None:
+                    lines.append(_("    Arguments:"))
+                    lines.append(indent_block(format_json_block(arguments), prefix="      "))
+                result_payload = payload.get("result")
+                if result_payload is not None:
+                    lines.append(_("    Result payload:"))
+                    lines.append(indent_block(format_json_block(result_payload), prefix="      "))
+                error_payload = payload.get("error")
+                if error_payload and ok_value is not True:
+                    lines.append(_("    Error details:"))
+                    lines.append(indent_block(format_json_block(error_payload), prefix="      "))
+                extras = {
+                    key: value
+                    for key, value in payload.items()
+                    if key
+                    not in {
+                        "tool_name",
+                        "name",
+                        "tool",
+                        "call_id",
+                        "tool_call_id",
+                        "ok",
+                        "tool_arguments",
+                        "result",
+                        "error",
+                    }
+                }
+                if extras:
+                    lines.append(_("    Extra fields:"))
+                    lines.append(indent_block(format_json_block(extras), prefix="      "))
+            else:
+                lines.append(
+                    _("  [{index}] {summary}").format(
+                        index=index,
+                        summary=normalize_for_display(str(payload)),
+                    )
+                )
+            return lines
+
+        lines: list[str] = []
+        lines.append(
+            _("Conversation ID: {conversation_id}").format(
+                conversation_id=normalize_for_display(conversation.conversation_id)
+            )
+        )
+        lines.append(
+            _("Created at: {timestamp}").format(
+                timestamp=format_timestamp(conversation.created_at)
+            )
+        )
+        lines.append(
+            _("Updated at: {timestamp}").format(
+                timestamp=format_timestamp(conversation.updated_at)
+            )
+        )
+        lines.append(_("Entries: {count}").format(count=len(conversation.entries)))
+        lines.append("")
+
+        for index, entry in enumerate(conversation.entries, start=1):
+            lines.append(_("=== Interaction {index} ===").format(index=index))
+            lines.append(
+                _("Prompt timestamp: {timestamp}").format(
+                    timestamp=format_timestamp(entry.prompt_at)
+                )
+            )
+            prompt_text = normalize_for_display(entry.prompt)
+            if prompt_text:
+                lines.append(_("Prompt:"))
+                lines.append(indent_block(prompt_text))
+            else:
+                lines.append(_("Prompt: (empty)"))
+            lines.append(
+                _("Response timestamp: {timestamp}").format(
+                    timestamp=format_timestamp(entry.response_at)
+                )
+            )
+            agent_text = normalize_for_display(entry.display_response or entry.response)
+            if agent_text:
+                lines.append(_("Agent response:"))
+                lines.append(indent_block(agent_text))
+            else:
+                lines.append(_("Agent response:"))
+                lines.append(indent_block(_("(empty)")))
+            stored_response = normalize_for_display(entry.response)
+            if stored_response and stored_response != agent_text:
+                lines.append(_("Stored response payload:"))
+                lines.append(indent_block(stored_response))
+            lines.append(_("Tokens: {count}").format(count=entry.tokens))
+            if entry.raw_result is not None:
+                lines.append(_("Raw result payload:"))
+                lines.append(indent_block(format_json_block(entry.raw_result)))
+            tool_results = entry.tool_results or []
+            if tool_results:
+                lines.append(_("Tool calls:"))
+                for tool_index, payload in enumerate(tool_results, start=1):
+                    lines.extend(format_tool_payload(tool_index, payload))
+            lines.append("")
+
+        return "\n".join(line for line in lines if line is not None).strip()
+
+    def _update_transcript_copy_buttons(self, enabled: bool) -> None:
+        for button in (
+            getattr(self, "_copy_conversation_btn", None),
+            getattr(self, "_copy_transcript_log_btn", None),
+        ):
+            if button is not None:
+                button.Enable(enabled)
 
     def _on_copy_conversation(self, _event: wx.CommandEvent) -> None:
         text = self._compose_transcript_text()
+        if not text:
+            return
+        self._copy_text_to_clipboard(text)
+
+    def _on_copy_transcript_log(self, _event: wx.CommandEvent) -> None:
+        text = self._compose_transcript_log_text()
         if not text:
             return
         self._copy_text_to_clipboard(text)

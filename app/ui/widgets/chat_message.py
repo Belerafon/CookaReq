@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Sequence
+from typing import Any
 
 import wx
 
@@ -239,7 +239,7 @@ class MessageBubble(wx.Panel):
 
 
 class TranscriptMessagePanel(wx.Panel):
-    """Compact chat entry view with optional tool details."""
+    """Compact chat entry view for a prompt/response pair."""
 
     def __init__(
         self,
@@ -247,7 +247,6 @@ class TranscriptMessagePanel(wx.Panel):
         *,
         prompt: str,
         response: str,
-        tool_results: Sequence[Any] | None = None,
         prompt_timestamp: str = "",
         response_timestamp: str = "",
     ) -> None:
@@ -278,177 +277,4 @@ class TranscriptMessagePanel(wx.Panel):
         )
         outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, padding)
 
-        if tool_results:
-            outer.Add(
-                self._create_tool_results_section(tool_results),
-                0,
-                wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
-                padding,
-            )
-
         self.SetSizer(outer)
-
-    def _create_tool_results_section(
-        self, tool_results: Sequence[Any]
-    ) -> wx.Window:
-        container = wx.Panel(self)
-        container.SetBackgroundColour(self.GetBackgroundColour())
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        container.SetSizer(sizer)
-
-        label = wx.StaticText(container, label=_("Tool results"))
-        label_font = label.GetFont()
-        if label_font.IsOk():
-            label_font.MakeBold()
-            label.SetFont(label_font)
-        sizer.Add(label, 0, wx.BOTTOM, self.FromDIP(2))
-
-        for tool_index, payload in enumerate(tool_results, start=1):
-            pane_label = self._build_pane_label(payload, tool_index)
-            pane = wx.CollapsiblePane(
-                container,
-                label=pane_label,
-                style=wx.CP_DEFAULT_STYLE | wx.CP_NO_TLW_RESIZE,
-            )
-            sizer.Add(pane, 0, wx.EXPAND | wx.BOTTOM, self.FromDIP(4))
-            body = pane.GetPane()
-            body_sizer = wx.BoxSizer(wx.VERTICAL)
-            body.SetSizer(body_sizer)
-            body.SetBackgroundColour(container.GetBackgroundColour())
-
-            status = wx.StaticText(body, label=self._describe_tool_status(payload))
-            body_sizer.Add(status, 0, wx.BOTTOM, self.FromDIP(2))
-
-            arguments = self._extract_arguments(payload)
-            if arguments is not None:
-                args_label = wx.StaticText(body, label=_("Arguments:"))
-                args_font = args_label.GetFont()
-                if args_font.IsOk():
-                    args_font.MakeBold()
-                    args_label.SetFont(args_font)
-                body_sizer.Add(args_label, 0, wx.BOTTOM, self.FromDIP(1))
-                body_sizer.Add(
-                    self._create_json_text(body, arguments),
-                    0,
-                    wx.EXPAND | wx.BOTTOM,
-                    self.FromDIP(4),
-                )
-
-            json_text = self._format_json(payload)
-            controls = wx.BoxSizer(wx.HORIZONTAL)
-            controls.AddStretchSpacer()
-            copy_button = wx.Button(body, label=_("Copy JSON"))
-            copy_button.Bind(
-                wx.EVT_BUTTON,
-                lambda event, text=json_text: self._copy_to_clipboard(text),
-            )
-            controls.Add(copy_button, 0)
-            body_sizer.Add(controls, 0, wx.EXPAND | wx.BOTTOM, self.FromDIP(2))
-
-            body_sizer.Add(
-                self._create_json_text(body, json_text, is_preformatted=True),
-                0,
-                wx.EXPAND | wx.BOTTOM,
-                self.FromDIP(4),
-            )
-
-        return container
-
-    def _create_json_text(
-        self,
-        parent: wx.Window,
-        value: str,
-        *,
-        is_preformatted: bool = False,
-    ) -> wx.TextCtrl:
-        ctrl = wx.TextCtrl(
-            parent,
-            value=value,
-            style=(
-                wx.TE_MULTILINE
-                | wx.TE_READONLY
-                | wx.TE_DONTWRAP
-                | wx.TE_NO_VSCROLL
-                | wx.BORDER_SIMPLE
-            ),
-        )
-        ctrl.SetBackgroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW))
-        ctrl.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT))
-        ctrl.SetMinSize(wx.Size(-1, self.FromDIP(96 if is_preformatted else 72)))
-        font = wx.SystemSettings.GetFont(wx.SYS_ANSI_FIXED_FONT)
-        if font.IsOk():
-            ctrl.SetFont(font)
-        return ctrl
-
-    def _build_pane_label(self, payload: Any, index: int) -> str:
-        status_prefix = "✓" if self._is_ok(payload) else "⚠"
-        name = self._extract_tool_name(payload)
-        if name:
-            return f"{status_prefix} {name}"
-        return _("{status} Tool #{index}").format(
-            status=status_prefix,
-            index=index,
-        )
-
-    def _describe_tool_status(self, payload: Any) -> str:
-        status = _("Success") if self._is_ok(payload) else _("Error")
-        error = self._extract_error(payload)
-        if error:
-            return _("Status: {status} — {details}").format(status=status, details=error)
-        return _("Status: {status}").format(status=status)
-
-    @staticmethod
-    def _is_ok(payload: Any) -> bool:
-        if isinstance(payload, dict):
-            return bool(payload.get("ok", False))
-        return False
-
-    @staticmethod
-    def _extract_tool_name(payload: Any) -> str | None:
-        if isinstance(payload, dict):
-            name = payload.get("tool_name") or payload.get("name")
-            if name:
-                return str(name)
-        return None
-
-    @staticmethod
-    def _extract_arguments(payload: Any) -> str | None:
-        if isinstance(payload, dict):
-            arguments = payload.get("tool_arguments")
-            if arguments is None:
-                return None
-            try:
-                return json.dumps(arguments, ensure_ascii=False, indent=2, sort_keys=True)
-            except (TypeError, ValueError):
-                return str(arguments)
-        return None
-
-    @staticmethod
-    def _extract_error(payload: Any) -> str | None:
-        if isinstance(payload, dict):
-            error = payload.get("error")
-            if not error:
-                return None
-            if isinstance(error, dict):
-                message = error.get("message")
-                if message:
-                    return str(message)
-            return str(error)
-        return None
-
-    @staticmethod
-    def _format_json(payload: Any) -> str:
-        try:
-            return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
-        except (TypeError, ValueError):
-            return str(payload)
-
-    @staticmethod
-    def _copy_to_clipboard(text: str) -> None:
-        if not text:
-            return
-        if wx.TheClipboard.Open():
-            try:
-                wx.TheClipboard.SetData(wx.TextDataObject(text))
-            finally:
-                wx.TheClipboard.Close()

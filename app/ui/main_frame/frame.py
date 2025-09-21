@@ -77,7 +77,6 @@ class MainFrame(
             self.mcp.start(self.mcp_settings)
         self.docs_controller: DocumentsController | None = None
         self._detached_editors: dict[tuple[str, int], wx.Frame] = {}
-        self._auxiliary_frames: set[wx.Frame] = set()
         self._shutdown_in_progress = False
 
         super().__init__(parent=parent, title=self._base_title)

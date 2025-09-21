@@ -19,7 +19,33 @@ from app.settings import AppSettings
 pytestmark = pytest.mark.integration
 
 
-class FailingLLM:
+class LLMAsyncBridge:
+    async def check_llm_async(self):
+        return self.check_llm()
+
+    async def respond_async(
+        self,
+        conversation,
+        *,
+        cancellation=None,
+    ):
+        return self.respond(conversation)
+
+
+class MCPAsyncBridge:
+    async def check_tools_async(self):
+        return self.check_tools()
+
+    async def call_tool_async(self, name, arguments):
+        return self.call_tool(name, arguments)
+
+    async def ensure_ready_async(self):
+        ensure_ready = getattr(self, "ensure_ready", None)
+        if callable(ensure_ready):
+            ensure_ready()
+
+
+class FailingLLM(LLMAsyncBridge):
     def check_llm(self):
         raise RuntimeError("llm failure")
 
@@ -27,7 +53,7 @@ class FailingLLM:
         raise AssertionError("respond should not be called in this test")
 
 
-class FailingMCP:
+class FailingMCP(MCPAsyncBridge):
     def check_tools(self):
         raise RuntimeError("mcp failure")
 
@@ -35,7 +61,7 @@ class FailingMCP:
         raise RuntimeError("call fail")
 
 
-class DummyMCP:
+class DummyMCP(MCPAsyncBridge):
     def check_tools(self):
         return {"ok": True, "error": None}
 
@@ -43,7 +69,7 @@ class DummyMCP:
         raise AssertionError("should not be called")
 
 
-class JSONFailingLLM:
+class JSONFailingLLM(LLMAsyncBridge):
     def check_llm(self):
         return {"ok": True}
 
@@ -51,7 +77,7 @@ class JSONFailingLLM:
         raise json.JSONDecodeError("Expecting value", "", 0)
 
 
-class OpenAINetworkLLM:
+class OpenAINetworkLLM(LLMAsyncBridge):
     def check_llm(self):
         return {"ok": True}
 
@@ -69,6 +95,32 @@ def test_check_llm_and_check_tools_propagate_errors():
         agent.check_llm()
     with pytest.raises(RuntimeError, match="mcp failure"):
         agent.check_tools()
+
+
+def test_local_agent_rejects_clients_without_async_interface():
+    class LegacyLLM:
+        def check_llm(self):  # pragma: no cover - simple stub
+            return {"ok": True}
+
+        def respond(self, conversation):  # pragma: no cover - simple stub
+            return LLMResponse("", ())
+
+    with pytest.raises(TypeError, match="LLM client must implement async methods"):
+        LocalAgent(llm=LegacyLLM(), mcp=DummyMCP())
+
+    class OkLLM(LLMAsyncBridge):
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            return LLMResponse("", ())
+
+    class LegacyMCP:
+        async def check_tools_async(self):  # pragma: no cover - simple stub
+            return {"ok": True, "error": None}
+
+    with pytest.raises(TypeError, match="MCP client must implement async methods"):
+        LocalAgent(llm=OkLLM(), mcp=LegacyMCP())
 
 
 def test_run_command_reports_validation_error_for_json_failure():
@@ -90,7 +142,7 @@ def test_run_command_reports_internal_error_for_openai_failure():
 
 
 def test_run_command_propagates_mcp_exception():
-    class ToolCallingLLM:
+    class ToolCallingLLM(LLMAsyncBridge):
         def check_llm(self):
             return {"ok": True}
 
@@ -110,7 +162,7 @@ def test_run_command_propagates_mcp_exception():
 
 
 def test_run_command_aborts_when_mcp_unavailable():
-    class ToolCallingLLM:
+    class ToolCallingLLM(LLMAsyncBridge):
         def check_llm(self):
             return {"ok": True}
 
@@ -126,10 +178,10 @@ def test_run_command_aborts_when_mcp_unavailable():
                 ),
             )
 
-        async def respond_async(self, conversation):
+        async def respond_async(self, conversation, *, cancellation=None):
             return self.respond(conversation)
 
-    class UnavailableMCP:
+    class UnavailableMCP(MCPAsyncBridge):
         def __init__(self) -> None:
             self.ensure_calls = 0
 
@@ -160,7 +212,7 @@ def test_run_command_aborts_when_mcp_unavailable():
 
 
 def test_run_command_executes_tool_and_returns_final_message():
-    class SequencedLLM:
+    class SequencedLLM(LLMAsyncBridge):
         def __init__(self) -> None:
             self.calls = 0
             self.last_conversation: list[dict[str, Any]] | None = None
@@ -184,7 +236,7 @@ def test_run_command_executes_tool_and_returns_final_message():
             self.last_conversation = list(conversation)
             return LLMResponse("Нашёл 0 записей", ())
 
-    class RecordingMCP:
+    class RecordingMCP(MCPAsyncBridge):
         def __init__(self) -> None:
             self.calls: list[tuple[str, Mapping[str, Any]]] = []
 
@@ -222,7 +274,7 @@ def test_run_command_executes_tool_and_returns_final_message():
 
 
 def test_run_command_returns_tool_error_result():
-    class ToolLLM:
+    class ToolLLM(LLMAsyncBridge):
         def check_llm(self):
             return {"ok": True}
 
@@ -238,7 +290,7 @@ def test_run_command_returns_tool_error_result():
                 ),
             )
 
-    class ErrorMCP:
+    class ErrorMCP(MCPAsyncBridge):
         def check_tools(self):
             return {"ok": True, "error": None}
 
@@ -261,7 +313,7 @@ def test_run_command_returns_tool_error_result():
 
 
 def test_run_command_returns_message_without_mcp_call():
-    class MessageLLM:
+    class MessageLLM(LLMAsyncBridge):
         def __init__(self) -> None:
             self.conversations: list[list[dict[str, Any]]] = []
 
@@ -272,10 +324,10 @@ def test_run_command_returns_message_without_mcp_call():
             self.conversations.append(list(conversation))
             return LLMResponse("Привет!", ())
 
-        async def respond_async(self, conversation):
+        async def respond_async(self, conversation, *, cancellation=None):
             return self.respond(conversation)
 
-    class RecordingMCP:
+    class RecordingMCP(MCPAsyncBridge):
         def __init__(self) -> None:
             self.called = False
 
@@ -307,7 +359,7 @@ def test_run_command_returns_message_without_mcp_call():
 
 
 def test_run_command_passes_history_to_llm():
-    class RecordingLLM:
+    class RecordingLLM(LLMAsyncBridge):
         def __init__(self) -> None:
             self.conversations: list[list[dict[str, Any]]] = []
 
@@ -318,7 +370,7 @@ def test_run_command_passes_history_to_llm():
             self.conversations.append(list(conversation))
             return LLMResponse("Готово", ())
 
-    class SilentMCP:
+    class SilentMCP(MCPAsyncBridge):
         def check_tools(self):
             return {"ok": True, "error": None}
 
@@ -352,7 +404,7 @@ def test_custom_confirm_message(monkeypatch):
         messages.append(msg)
         return True
 
-    class StubLLM:
+    class StubLLM(LLMAsyncBridge):
         def __init__(self, settings):
             self._calls = 0
 
@@ -374,10 +426,10 @@ def test_custom_confirm_message(monkeypatch):
                 )
             return LLMResponse("Удалено", ())
 
-        async def respond_async(self, conversation):
+        async def respond_async(self, conversation, *, cancellation=None):
             return self.respond(conversation)
 
-    class StubMCP:
+    class StubMCP(MCPAsyncBridge):
         def __init__(self, settings, *, confirm):
             self.confirm = confirm
 
@@ -406,7 +458,7 @@ def test_custom_confirm_message(monkeypatch):
 def test_async_methods_offload_to_threads():
     main_thread = threading.get_ident()
 
-    class RecordingLLM:
+    class RecordingLLM(LLMAsyncBridge):
         def __init__(self) -> None:
             self.check_thread: int | None = None
             self.respond_thread: int | None = None
@@ -432,7 +484,13 @@ def test_async_methods_offload_to_threads():
                 )
             return LLMResponse("готово", ())
 
-    class RecordingMCP:
+        async def check_llm_async(self):
+            return await asyncio.to_thread(self.check_llm)
+
+        async def respond_async(self, conversation, *, cancellation=None):
+            return await asyncio.to_thread(self.respond, conversation)
+
+    class RecordingMCP(MCPAsyncBridge):
         def __init__(self) -> None:
             self.check_thread: int | None = None
             self.call_thread: int | None = None
@@ -444,6 +502,12 @@ def test_async_methods_offload_to_threads():
         def call_tool(self, name, arguments):
             self.call_thread = threading.get_ident()
             return {"ok": True, "error": None, "result": {}}
+
+        async def check_tools_async(self):
+            return await asyncio.to_thread(self.check_tools)
+
+        async def call_tool_async(self, name, arguments):
+            return await asyncio.to_thread(self.call_tool, name, arguments)
 
     llm = RecordingLLM()
     mcp = RecordingMCP()
@@ -480,7 +544,7 @@ def test_async_methods_prefer_native_coroutines():
             self.check_called = True
             return {"ok": True}
 
-        async def respond_async(self, conversation):
+        async def respond_async(self, conversation, *, cancellation=None):
             self.respond_called = True
             self._calls += 1
             if self._calls == 1:
@@ -508,6 +572,9 @@ def test_async_methods_prefer_native_coroutines():
         async def call_tool_async(self, name, arguments):
             self.call_called = True
             return {"ok": True, "error": None, "result": {}}
+
+        async def ensure_ready_async(self):
+            return None
 
     llm = AsyncLLM()
     mcp = AsyncMCP()

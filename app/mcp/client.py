@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import Callable, Mapping
@@ -133,6 +134,12 @@ class MCPClient:
             return {"ok": False, "error": err}
 
     # ------------------------------------------------------------------
+    async def check_tools_async(self) -> dict[str, Any]:
+        """Asynchronous counterpart to :meth:`check_tools`."""
+
+        return await asyncio.to_thread(self.check_tools)
+
+    # ------------------------------------------------------------------
     def call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Invoke *name* tool with *arguments* on the MCP server.
 
@@ -229,6 +236,14 @@ class MCPClient:
             else:
                 self._update_ready_state(False, err)
             return {"ok": False, "error": err}
+
+    # ------------------------------------------------------------------
+    async def call_tool_async(
+        self, name: str, arguments: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Asynchronous counterpart to :meth:`call_tool`."""
+
+        return await asyncio.to_thread(self.call_tool, name, arguments)
 
     # ------------------------------------------------------------------
     def ensure_ready(self, *, force: bool = False) -> None:
@@ -337,6 +352,12 @@ class MCPClient:
         log_event("HEALTH_RESULT", {"error": error}, start_time=start)
         self._update_ready_state(False, error)
         raise MCPNotReadyError(error)
+
+    # ------------------------------------------------------------------
+    async def ensure_ready_async(self, *, force: bool = False) -> None:
+        """Asynchronous counterpart to :meth:`ensure_ready`."""
+
+        await asyncio.to_thread(self.ensure_ready, force=force)
 
     # ------------------------------------------------------------------
     def _update_ready_state(

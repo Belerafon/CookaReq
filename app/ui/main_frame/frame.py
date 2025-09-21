@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import fields
 from importlib import resources
 from pathlib import Path
@@ -52,6 +53,7 @@ class MainFrame(
         *,
         config: ConfigManager | None = None,
         model: RequirementModel | None = None,
+        mcp_factory: Callable[[], MCPController] = MCPController,
     ) -> None:
         """Set up main application window and controllers."""
 
@@ -70,9 +72,7 @@ class MainFrame(
         self.sort_column, self.sort_ascending = self.config.get_sort_settings()
         self.llm_settings = self.config.get_llm_settings()
         self.mcp_settings = self.config.get_mcp_settings()
-        from . import MCPController as PackageMCPController
-
-        self.mcp = PackageMCPController()
+        self.mcp = mcp_factory()
         if self.mcp_settings.auto_start:
             self.mcp.start(self.mcp_settings)
         self.docs_controller: DocumentsController | None = None

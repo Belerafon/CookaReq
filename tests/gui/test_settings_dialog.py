@@ -2,8 +2,6 @@
 
 import pytest
 
-from app.llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
-
 pytestmark = [pytest.mark.gui, pytest.mark.integration]
 
 
@@ -30,8 +28,6 @@ def test_settings_dialog_returns_language(wx_app):
         model="gpt-test",
         api_key="key",
         max_retries=2,
-        max_output_tokens=1000,
-        token_limit_parameter="max_completion_tokens",
         timeout_minutes=30,
         stream=True,
         auto_start=True,
@@ -50,8 +46,6 @@ def test_settings_dialog_returns_language(wx_app):
         "gpt-test",
         "key",
         2,
-        1000,
-        "max_completion_tokens",
         30,
         True,
         True,
@@ -62,56 +56,6 @@ def test_settings_dialog_returns_language(wx_app):
         "abc",
     )
     dlg.Destroy()
-
-
-def test_max_output_tokens_text_input(wx_app):
-    wx = pytest.importorskip("wx")
-    from app.ui.settings_dialog import SettingsDialog
-
-    dlg = SettingsDialog(
-        None,
-        open_last=False,
-        remember_sort=False,
-        language="en",
-        base_url="http://api",
-        model="gpt",
-        api_key="key",
-        max_retries=3,
-        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-        token_limit_parameter=None,
-        timeout_minutes=10,
-        stream=False,
-        auto_start=True,
-        host="localhost",
-        port=8123,
-        base_path="/tmp",
-        require_token=False,
-        token="",
-    )
-
-    assert isinstance(dlg._max_output_tokens, wx.TextCtrl)
-
-    dlg._max_output_tokens.SetValue("12abc")
-    wx.GetApp().Yield()
-    assert dlg._max_output_tokens.GetValue() == "12"
-
-    dlg._max_output_tokens.SetValue("")
-    wx.GetApp().Yield()
-    max_tokens = dlg.get_values()[7]
-    assert max_tokens == DEFAULT_MAX_OUTPUT_TOKENS
-
-    dlg._max_output_tokens.SetValue("500")
-    wx.GetApp().Yield()
-    max_tokens = dlg.get_values()[7]
-    assert max_tokens == MIN_MAX_OUTPUT_TOKENS
-
-    dlg._max_output_tokens.SetValue("7500")
-    wx.GetApp().Yield()
-    max_tokens = dlg.get_values()[7]
-    assert max_tokens == 7500
-
-    dlg.Destroy()
-
 
 def test_mcp_start_stop_server(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
@@ -150,8 +94,6 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         model="",
         api_key="",
         max_retries=3,
-        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-        token_limit_parameter=None,
         timeout_minutes=60,
         stream=False,
         auto_start=True,
@@ -228,8 +170,6 @@ def test_mcp_check_status(monkeypatch, wx_app):
         model="",
         api_key="",
         max_retries=3,
-        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-        token_limit_parameter=None,
         timeout_minutes=60,
         stream=False,
         auto_start=True,
@@ -298,8 +238,6 @@ def test_llm_agent_checks(monkeypatch, wx_app):
         model="gpt",
         api_key="key",
         max_retries=3,
-        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-        token_limit_parameter="max_completion_tokens",
         timeout_minutes=30,
         stream=False,
         auto_start=True,
@@ -312,7 +250,6 @@ def test_llm_agent_checks(monkeypatch, wx_app):
 
     dlg._on_check_llm(wx.CommandEvent())
     assert dlg._llm_status.GetLabel() == sd._("ok")
-    assert DummyLLM.last_settings.token_limit_parameter == "max_completion_tokens"
 
     dlg._on_check_tools(wx.CommandEvent())
     assert dlg._tools_status.GetLabel() == sd._("ok")
@@ -358,8 +295,6 @@ def test_llm_agent_check_failure_logs(monkeypatch, wx_app):
         model="gpt",
         api_key="key",
         max_retries=3,
-        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-        token_limit_parameter="max_completion_tokens",
         timeout_minutes=30,
         stream=False,
         auto_start=True,
@@ -402,8 +337,6 @@ def test_settings_help_buttons(monkeypatch, wx_app):
         model="",
         api_key="",
         max_retries=3,
-        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-        token_limit_parameter=None,
         timeout_minutes=10,
         stream=False,
         auto_start=True,
@@ -421,14 +354,6 @@ def test_settings_help_buttons(monkeypatch, wx_app):
     )
     base_btn.GetEventHandler().ProcessEvent(wx.CommandEvent(wx.EVT_BUTTON.typeId))
     assert shown[-1] == (dlg, base_btn, LLM_HELP["base_url"])
-
-    token_btn = next(
-        item.GetWindow()
-        for item in dlg._token_limit_parameter.GetContainingSizer().GetChildren()
-        if isinstance(item.GetWindow(), wx.Button)
-    )
-    token_btn.GetEventHandler().ProcessEvent(wx.CommandEvent(wx.EVT_BUTTON.typeId))
-    assert shown[-1] == (dlg, token_btn, LLM_HELP["token_limit_parameter"])
 
     host_btn = next(
         item.GetWindow()

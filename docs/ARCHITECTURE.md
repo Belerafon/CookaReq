@@ -46,7 +46,7 @@
 
 ### `app/util/`
 - `cancellation.py` — примитивы отмены (`CancellationTokenSource`, `CancellationToken`, `CancellationRegistration`) и исключение `OperationCancelledError`, позволяющие из GUI и сервисов закрывать потоковые запросы и снимать ожидания в фоновых потоках.【F:app/util/cancellation.py†L1-L117】
-- `constants.py` — дефолтные и минимальные лимиты токенов; `spec.py` содержит системный промпт и описание MCP-инструментов; `validation.py` проверяет аргументы вызовов инструментов.
+- `constants.py` — дефолтные и минимальные лимиты токенов контекста; `spec.py` содержит системный промпт и описание MCP-инструментов; `validation.py` проверяет аргументы вызовов инструментов.
 
 ### `app/mcp/`
 - `server.py` — FastAPI + FastMCP: регистрация инструментов (`list_requirements`, `create_requirement`, …), middleware авторизации, логирование запросов, запуск через `uvicorn` (используется `start_server`/`stop_server`).【F:app/mcp/server.py†L1-L94】【F:app/mcp/server.py†L96-L164】

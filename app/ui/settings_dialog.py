@@ -9,7 +9,6 @@ import wx
 from ..i18n import _
 from ..log import logger
 from ..llm.client import LLMClient
-from ..llm.constants import DEFAULT_MAX_OUTPUT_TOKENS, MIN_MAX_OUTPUT_TOKENS
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
 from ..settings import LLMSettings, MCPSettings
@@ -47,14 +46,6 @@ LLM_HELP: dict[str, str] = {
     "max_retries": _(
         "Number of times to retry a failed HTTP request. Example: 3\n"
         "Optional; defaults to 3 retries.",
-    ),
-    "max_output_tokens": _(
-        "Maximum number of tokens returned by the model. Example: 4096\n"
-        "Minimum allowed value is 1000 tokens; CookaReq defaults to 5000 when unset.",
-    ),
-    "token_limit_parameter": _(
-        "Name of the completion parameter limiting response tokens. Example: max_output_tokens\n"
-        "Leave blank to omit the argument when the service chooses the limit itself.",
     ),
     "timeout_minutes": _(
         "HTTP request timeout in minutes. Example: 1\n"
@@ -142,8 +133,6 @@ class SettingsDialog(wx.Dialog):
         model: str,
         api_key: str,
         max_retries: int,
-        max_output_tokens: int,
-        token_limit_parameter: str | None,
         timeout_minutes: int,
         stream: bool,
         auto_start: bool,
@@ -220,20 +209,6 @@ class SettingsDialog(wx.Dialog):
         self._model = wx.TextCtrl(llm, value=model)
         self._api_key = wx.TextCtrl(llm, value=api_key, style=wx.TE_PASSWORD)
         self._max_retries = wx.SpinCtrl(llm, min=0, max=10, initial=max_retries)
-        normalized_tokens = self._normalize_max_output_tokens(max_output_tokens)
-        self._max_output_tokens = wx.TextCtrl(
-            llm,
-            value=str(normalized_tokens),
-        )
-        if hasattr(self._max_output_tokens, "SetHint"):
-            self._max_output_tokens.SetHint(str(DEFAULT_MAX_OUTPUT_TOKENS))
-        self._max_output_tokens.Bind(wx.EVT_TEXT, self._on_max_output_tokens_changed)
-        self._token_limit_parameter = wx.TextCtrl(
-            llm,
-            value=token_limit_parameter or "",
-        )
-        if hasattr(self._token_limit_parameter, "SetHint"):
-            self._token_limit_parameter.SetHint(_("e.g. max_completion_tokens"))
         self._timeout = wx.SpinCtrl(llm, min=1, max=9999, initial=timeout_minutes)
         self._stream = wx.CheckBox(llm, label=_("Stream"))
         self._stream.SetValue(stream)
@@ -308,44 +283,6 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         llm_sizer.Add(retries_sz, 0, wx.ALL | wx.EXPAND, 5)
-        tokens_sz = wx.BoxSizer(wx.HORIZONTAL)
-        tokens_sz.Add(
-            wx.StaticText(llm, label=_("Max output tokens")),
-            0,
-            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
-            5,
-        )
-        tokens_sz.Add(self._max_output_tokens, 1, wx.ALIGN_CENTER_VERTICAL)
-        tokens_sz.Add(
-            make_help_button(
-                llm,
-                LLM_HELP["max_output_tokens"],
-                dialog_parent=self,
-            ),
-            0,
-            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
-            5,
-        )
-        llm_sizer.Add(tokens_sz, 0, wx.ALL | wx.EXPAND, 5)
-        token_param_sz = wx.BoxSizer(wx.HORIZONTAL)
-        token_param_sz.Add(
-            wx.StaticText(llm, label=_("Token parameter")),
-            0,
-            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
-            5,
-        )
-        token_param_sz.Add(self._token_limit_parameter, 1, wx.ALIGN_CENTER_VERTICAL)
-        token_param_sz.Add(
-            make_help_button(
-                llm,
-                LLM_HELP["token_limit_parameter"],
-                dialog_parent=self,
-            ),
-            0,
-            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
-            5,
-        )
-        llm_sizer.Add(token_param_sz, 0, wx.ALL | wx.EXPAND, 5)
         timeout_sz = wx.BoxSizer(wx.HORIZONTAL)
         timeout_sz.Add(
             wx.StaticText(llm, label=_("Timeout (min)")),
@@ -565,42 +502,6 @@ class SettingsDialog(wx.Dialog):
             dlg_sizer.Add(btn_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
         self.SetSizerAndFit(dlg_sizer)
 
-    def _on_max_output_tokens_changed(self, event: wx.CommandEvent) -> None:
-        """Keep the max token input numeric while allowing quick typing."""
-
-        value = event.GetString()
-        filtered = "".join(ch for ch in value if ch.isdigit())
-        if filtered != value:
-            insertion_point = self._max_output_tokens.GetInsertionPoint()
-            adjustment = len(value) - len(filtered)
-            self._max_output_tokens.ChangeValue(filtered)
-            self._max_output_tokens.SetInsertionPoint(max(0, insertion_point - adjustment))
-            return
-
-        event.Skip()
-
-    @staticmethod
-    def _normalize_max_output_tokens(value: int) -> int:
-        """Clamp initial values to supported defaults."""
-
-        if value <= 0:
-            return DEFAULT_MAX_OUTPUT_TOKENS
-        if value < MIN_MAX_OUTPUT_TOKENS:
-            return MIN_MAX_OUTPUT_TOKENS
-        return value
-
-    def _read_max_output_tokens(self) -> int:
-        """Return sanitized token limit from the input field."""
-
-        raw = self._max_output_tokens.GetValue().strip()
-        if not raw:
-            return DEFAULT_MAX_OUTPUT_TOKENS
-        try:
-            numeric = int(raw)
-        except ValueError:
-            return DEFAULT_MAX_OUTPUT_TOKENS
-        return self._normalize_max_output_tokens(numeric)
-
     # ------------------------------------------------------------------
     def _on_toggle_token(
         self,
@@ -639,9 +540,6 @@ class SettingsDialog(wx.Dialog):
             model=self._model.GetValue(),
             api_key=self._api_key.GetValue() or None,
             max_retries=self._max_retries.GetValue(),
-            max_output_tokens=self._read_max_output_tokens(),
-            token_limit_parameter=self._token_limit_parameter.GetValue().strip()
-            or None,
             timeout_minutes=self._timeout.GetValue(),
             stream=self._stream.GetValue(),
         )
@@ -782,11 +680,9 @@ class SettingsDialog(wx.Dialog):
         str,
         int,
         int,
-        str,
-        int,
+        bool,
         bool,
         str,
-        bool,
         int,
         str,
         bool,
@@ -802,8 +698,6 @@ class SettingsDialog(wx.Dialog):
             self._model.GetValue(),
             self._api_key.GetValue(),
             self._max_retries.GetValue(),
-            self._read_max_output_tokens(),
-            self._token_limit_parameter.GetValue().strip(),
             self._timeout.GetValue(),
             self._stream.GetValue(),
             self._auto_start.GetValue(),

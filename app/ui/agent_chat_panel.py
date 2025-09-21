@@ -617,6 +617,17 @@ class AgentChatPanel(wx.Panel):
         self.input.SetFocus()
 
     # ------------------------------------------------------------------
+    def _refresh_bottom_panel_layout(self) -> None:
+        """Request layout update for controls hosted in the bottom panel."""
+
+        panel = self._bottom_panel
+        if panel is None:
+            return
+        panel.Layout()
+        panel.SendSizeEvent()
+        self.Layout()
+
+    # ------------------------------------------------------------------
     def _set_wait_state(
         self,
         active: bool,
@@ -637,6 +648,7 @@ class AgentChatPanel(wx.Panel):
             self._start_time = time.monotonic()
             self.activity.Show()
             self.activity.Start()
+            self._refresh_bottom_panel_layout()
             self._update_status(0.0)
             self._timer.Start(100)
         else:
@@ -647,6 +659,7 @@ class AgentChatPanel(wx.Panel):
             self._timer.Stop()
             self.activity.Stop()
             self.activity.Hide()
+            self._refresh_bottom_panel_layout()
             self.status_label.SetLabel(_("Ready"))
             self._start_time = None
             self.input.SetFocus()

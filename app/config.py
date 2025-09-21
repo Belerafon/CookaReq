@@ -114,6 +114,7 @@ ConfigFieldName = Literal[
     "mcp_host",
     "mcp_port",
     "mcp_base_path",
+    "mcp_log_dir",
     "mcp_require_token",
     "mcp_token",
     "llm_base_url",
@@ -192,6 +193,13 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         key="mcp_base_path",
         value_type=str,
         default_factory=default_requirements_path,
+    ),
+    "mcp_log_dir": FieldSpec(
+        key="mcp_log_dir",
+        value_type=str | None,
+        default=None,
+        reader=_optional_string_reader,
+        writer=_optional_string_writer,
     ),
     "mcp_require_token": FieldSpec(
         key="mcp_require_token",
@@ -541,6 +549,7 @@ class ConfigManager:
             host=self.get_value("mcp_host"),
             port=self.get_value("mcp_port"),
             base_path=self.get_value("mcp_base_path"),
+            log_dir=self.get_value("mcp_log_dir"),
             require_token=self.get_value("mcp_require_token"),
             token=self.get_value("mcp_token"),
         )
@@ -552,6 +561,7 @@ class ConfigManager:
         self.set_value("mcp_host", settings.host)
         self.set_value("mcp_port", settings.port)
         self.set_value("mcp_base_path", settings.base_path)
+        self.set_value("mcp_log_dir", settings.log_dir)
         self.set_value("mcp_require_token", settings.require_token)
         self.set_value("mcp_token", settings.token)
         self.flush()

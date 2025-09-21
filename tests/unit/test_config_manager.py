@@ -256,6 +256,7 @@ def test_app_settings_round_trip(tmp_path, wx_app):
             host="1.2.3.4",
             port=9999,
             base_path="/m",
+            log_dir="/logs",
             require_token=True,
             token="t",
         ),
@@ -282,12 +283,14 @@ def test_get_mcp_settings_uses_default_requirements(tmp_path, wx_app):
     settings = cfg.get_mcp_settings()
 
     assert settings.base_path == default_requirements_path()
+    assert settings.log_dir is None
 
 
 def test_app_settings_default_uses_sample_requirements():
     settings = AppSettings()
 
     assert settings.mcp.base_path == default_requirements_path()
+    assert settings.mcp.log_dir is None
 
 
 def test_get_llm_settings_normalises_context_zero(tmp_path, wx_app):

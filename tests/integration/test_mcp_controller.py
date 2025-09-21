@@ -78,12 +78,17 @@ def test_controller_start_stop(monkeypatch):
 
     calls = []
 
-    monkeypatch.setattr(
-        "app.mcp.controller.start_server",
-        lambda host, port, base_path, token: calls.append(
-            ("start", host, port, base_path, token),
-        ),
-    )
+    def fake_start(
+        host,
+        port,
+        base_path,
+        token,
+        *,
+        log_dir=None,
+    ) -> None:
+        calls.append(("start", host, port, base_path, token, log_dir))
+
+    monkeypatch.setattr("app.mcp.controller.start_server", fake_start)
     monkeypatch.setattr(
         "app.mcp.controller.stop_server",
         lambda: calls.append(("stop",)),
@@ -93,4 +98,7 @@ def test_controller_start_stop(monkeypatch):
     settings = MCPSettings(host="localhost", port=8123, base_path="/tmp", token="")
     ctrl.start(settings)
     ctrl.stop()
-    assert calls == [("start", "localhost", 8123, "/tmp", ""), ("stop",)]
+    assert calls == [
+        ("start", "localhost", 8123, "/tmp", "", None),
+        ("stop",),
+    ]

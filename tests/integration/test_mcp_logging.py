@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
+from app.mcp.server import app as mcp_app
 from app.mcp.server import start_server, stop_server
 from tests.mcp_utils import _request, _wait_until_ready
 
@@ -18,11 +19,12 @@ def test_request_logged_and_token_masked():
     with TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         stop_server()
-        start_server(port=port, base_path=tmp, token="secret")
+        start_server(port=port, base_path=tmp, token="secret", log_dir=tmp_path)
         try:
             _wait_until_ready(port, {"Authorization": "Bearer secret"})
             status, _ = _request(port, {"Authorization": "Bearer secret"})
             assert status == 200
+            assert Path(mcp_app.state.log_dir) == tmp_path
         finally:
             stop_server()
 
@@ -52,7 +54,7 @@ def test_request_logged_and_token_masked():
 def test_tool_request_logs_share_request_id(tmp_path: Path):
     port = 8128
     stop_server()
-    start_server(port=port, base_path=str(tmp_path))
+    start_server(port=port, base_path=str(tmp_path), log_dir=tmp_path)
     try:
         _wait_until_ready(port)
         conn = HTTPConnection("127.0.0.1", port, timeout=5)

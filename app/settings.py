@@ -85,8 +85,19 @@ class MCPSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 59362
     base_path: str = Field(default_factory=default_requirements_path)
+    log_dir: str | None = None
     require_token: bool = False
     token: str = ""
+
+    @field_validator("log_dir", mode="before")
+    @classmethod
+    def _normalize_log_dir(cls, value: str | Path | None) -> str | None:
+        """Convert empty strings to ``None`` and normalise paths."""
+
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
 
 
 class UISettings(BaseModel):

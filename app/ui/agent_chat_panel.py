@@ -22,6 +22,7 @@ from ..i18n import _
 from ..llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
 from ..util.json import make_json_safe
 from ..util.cancellation import CancellationEvent, OperationCancelledError
+from ..util.time import utc_now_iso
 from .chat_entry import ChatConversation, ChatEntry
 from .helpers import dip, format_error_message, inherit_background
 from .splitter_utils import refresh_splitter_highlight, style_splitter
@@ -101,6 +102,7 @@ class _AgentRunHandle:
     prompt: str
     prompt_tokens: TokenCountResult
     cancel_event: CancellationEvent
+    prompt_at: str
     future: Future[Any] | None = None
 
     @property
@@ -536,6 +538,7 @@ class AgentChatPanel(wx.Panel):
             return
 
         prompt = text
+        prompt_at = utc_now_iso()
         self.input.SetValue("")
         self._run_counter += 1
         cancel_event = CancellationEvent()
@@ -545,6 +548,7 @@ class AgentChatPanel(wx.Panel):
             prompt=prompt,
             prompt_tokens=prompt_tokens,
             cancel_event=cancel_event,
+            prompt_at=prompt_at,
         )
         self._active_run_handle = handle
         self._ensure_active_conversation()
@@ -757,6 +761,8 @@ class AgentChatPanel(wx.Panel):
             final_tokens = combine_token_counts(
                 [handle.prompt_tokens, response_tokens]
             )
+            response_at = utc_now_iso()
+            prompt_at = getattr(handle, "prompt_at", None) or response_at
             self._append_history(
                 prompt,
                 conversation_text,
@@ -764,6 +770,8 @@ class AgentChatPanel(wx.Panel):
                 raw_result,
                 tool_results,
                 final_tokens,
+                prompt_at=prompt_at,
+                response_at=response_at,
             )
             self._render_transcript()
         finally:
@@ -842,6 +850,9 @@ class AgentChatPanel(wx.Panel):
         raw_result: Any | None,
         tool_results: list[Any] | None,
         token_info: TokenCountResult | None,
+        *,
+        prompt_at: str | None = None,
+        response_at: str | None = None,
     ) -> None:
         conversation = self._ensure_active_conversation()
         if token_info is None:
@@ -860,6 +871,8 @@ class AgentChatPanel(wx.Panel):
             raw_result=raw_result,
             tool_results=tool_results,
             token_info=token_info,
+            prompt_at=prompt_at,
+            response_at=response_at,
         )
         conversation.append_entry(entry)
         self._save_history()
@@ -913,13 +926,14 @@ class AgentChatPanel(wx.Panel):
                     dip(self, 8),
                 )
             else:
-                for idx, entry in enumerate(conversation.entries, start=1):
+                for entry in conversation.entries:
                     panel = TranscriptMessagePanel(
                         self.transcript_panel,
-                        index=idx,
                         prompt=entry.prompt,
                         response=entry.display_response or entry.response,
                         tool_results=entry.tool_results,
+                        prompt_timestamp=self._format_entry_timestamp(entry.prompt_at),
+                        response_timestamp=self._format_entry_timestamp(entry.response_at),
                     )
                     panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_transcript_pane_toggled)
                     self._transcript_sizer.Add(panel, 0, wx.EXPAND)
@@ -1087,6 +1101,18 @@ class AgentChatPanel(wx.Panel):
             return _("Yesterday {time}").format(time=local_moment.strftime("%H:%M"))
         if date_value.year == today.year:
             return local_moment.strftime("%d %b %H:%M")
+        return local_moment.strftime("%Y-%m-%d %H:%M")
+
+    def _format_entry_timestamp(self, timestamp: str | None) -> str:
+        if not timestamp:
+            return ""
+        try:
+            moment = datetime.datetime.fromisoformat(timestamp)
+        except ValueError:
+            return timestamp
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=datetime.timezone.utc)
+        local_moment = moment.astimezone()
         return local_moment.strftime("%Y-%m-%d %H:%M")
 
     def _format_conversation_summary(self, conversation: ChatConversation) -> str:

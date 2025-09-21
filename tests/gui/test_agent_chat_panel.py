@@ -94,7 +94,7 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
 
 def test_agent_response_normalizes_dash_characters(tmp_path, wx_app):
     class HyphenAgent:
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             return "одно\u2010папочный"
 
     wx, frame, panel = create_panel(tmp_path, wx_app, HyphenAgent())
@@ -209,6 +209,58 @@ def test_agent_response_allows_text_selection(tmp_path, wx_app):
         assert not agent_text.IsEditable()
 
     destroy_panel(frame, panel)
+
+
+def test_transcript_scrolls_to_bottom_on_new_messages(tmp_path, wx_app):
+    class EchoAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
+            return text
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, EchoAgent())
+
+    try:
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(panel, 1, wx.EXPAND)
+        frame.SetSizer(sizer)
+        frame.SetClientSize((panel.FromDIP(320), panel.FromDIP(220)))
+        frame.Layout()
+        frame.SendSizeEvent()
+        flush_wx_events(wx, count=3)
+
+        base_response = "\n".join(f"entry line {line}" for line in range(30))
+        for idx in range(4):
+            prompt = f"prompt {idx}"
+            panel._append_history(prompt, base_response, base_response, None, None, None)
+            panel._render_transcript()
+        flush_wx_events(wx, count=5)
+
+        transcript_panel = panel.transcript_panel
+        assert transcript_panel.GetVirtualSize().GetHeight() > transcript_panel.GetClientSize().GetHeight()
+
+        transcript_panel.Scroll(0, 0)
+        flush_wx_events(wx, count=2)
+        view_x, view_y = transcript_panel.GetViewStart()
+        assert view_y == 0
+
+        long_response = "\n".join(f"final line {line}" for line in range(40))
+        panel._append_history("final prompt", long_response, long_response, None, None, None)
+        panel._render_transcript()
+        flush_wx_events(wx, count=6)
+
+        view_x, view_y = transcript_panel.GetViewStart()
+        assert view_y > 0
+
+        children = transcript_panel.GetChildren()
+        assert children, "expected transcript to contain message panels"
+        last_panel = children[-1]
+        last_top = last_panel.GetPosition().y
+        last_bottom = last_top + last_panel.GetSize().GetHeight()
+        client_height = transcript_panel.GetClientSize().GetHeight()
+        assert last_bottom <= client_height
+        tolerance = max(panel.FromDIP(64), last_panel.GetSize().GetHeight() // 4)
+        assert client_height - last_bottom <= tolerance
+    finally:
+        destroy_panel(frame, panel)
 
 
 def test_copy_conversation_button_copies_transcript(monkeypatch, tmp_path, wx_app):

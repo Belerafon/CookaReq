@@ -37,6 +37,7 @@ try:  # pragma: no cover - import only used for typing
     from ..agent import LocalAgent  # noqa: TCH004
 except Exception:  # pragma: no cover - fallback when wx stubs are used
     LocalAgent = object  # type: ignore[assignment]
+
 def _default_history_path() -> Path:
     """Return default location for persisted chat history."""
 
@@ -1149,8 +1150,39 @@ class AgentChatPanel(wx.Panel):
             self.transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
             self.transcript_panel.Thaw()
             if last_panel is not None:
-                self.transcript_panel.ScrollChildIntoView(last_panel)
+                self._scroll_transcript_to_bottom(last_panel)
         self._update_transcript_copy_button(has_entries)
+
+    @staticmethod
+    def _is_window_alive(window: wx.Window | None) -> bool:
+        if window is None:
+            return False
+        try:
+            return bool(window) and not window.IsBeingDeleted()
+        except RuntimeError:
+            return False
+
+    def _scroll_transcript_to_bottom(self, target: wx.Window | None) -> None:
+        self._apply_transcript_scroll(target)
+        wx.CallAfter(self._apply_transcript_scroll, target)
+
+    def _apply_transcript_scroll(self, target: wx.Window | None) -> None:
+        panel = getattr(self, "transcript_panel", None)
+        if not self._is_window_alive(panel):
+            return
+        assert isinstance(panel, ScrolledPanel)
+        window: wx.Window | None = target if self._is_window_alive(target) else None
+        if window is not None and window.GetParent() is not panel:
+            window = None
+        if window is not None:
+            try:
+                panel.ScrollChildIntoView(window)
+            except RuntimeError:
+                window = None
+        bottom_pos = max(0, panel.GetScrollRange(wx.VERTICAL))
+        view_x, view_y = panel.GetViewStart()
+        if bottom_pos != view_y:
+            panel.Scroll(view_x, bottom_pos)
 
     def _ensure_history_visible(self, index: int) -> None:
         if not (0 <= index < self.history_list.GetItemCount()):

@@ -8,6 +8,8 @@ import markdown
 import wx
 import wx.html as html
 
+from ..text import normalize_for_display
+
 
 def _colour_to_hex(colour: wx.Colour) -> str:
     return f"#{colour.Red():02x}{colour.Green():02x}{colour.Blue():02x}"
@@ -107,6 +109,7 @@ class MarkdownView(html.HtmlWindow):
 
         self._markdown = markdown_text
         html_markup = self._wrap_html(_render_markdown(markdown_text))
+        html_markup = normalize_for_display(html_markup)
         self.SetPage(html_markup)
         self._refresh_best_size()
 

@@ -231,6 +231,7 @@ class MainFrame(
             factory=lambda parent: AgentChatPanel(
                 parent,
                 agent_supplier=self._create_agent,
+                token_model_resolver=lambda: self.llm_settings.model,
             ),
         )
         self._hide_agent_section()
@@ -310,6 +311,7 @@ class MainFrame(
             self.agent_panel = AgentChatPanel(
                 self.agent_container,
                 agent_supplier=self._create_agent,
+                token_model_resolver=lambda: self.llm_settings.model,
             )
             history_sash = self.config.get_agent_history_sash(
                 self.agent_panel.default_history_sash()

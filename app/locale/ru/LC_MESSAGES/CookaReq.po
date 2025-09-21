@@ -607,14 +607,17 @@ msgstr "Стоп"
 msgid "Ready"
 msgstr "Готово"
 
-msgid "Waiting for agent… {time} • {tokens:.2f} ktok"
-msgstr "Ожидание ответа… {time} • {tokens:.2f} кток"
+msgid "Waiting for agent… {time} • {tokens}"
+msgstr "Ожидание ответа… {time} • {tokens}"
 
-msgid "Received response in {time} • {tokens:.2f} ktok"
-msgstr "Ответ получен за {time} • {tokens:.2f} кток"
+msgid "Received response in {time} • {tokens}"
+msgstr "Ответ получен за {time} • {tokens}"
 
 msgid "Generation cancelled"
 msgstr "Генерация остановлена"
+
+msgid "Tokens: {tokens}"
+msgstr "Токены: {tokens}"
 
 msgid "Start chatting with the agent to see responses here."
 msgstr "Начните чат с агентом, чтобы увидеть ответы здесь."

@@ -599,14 +599,17 @@ msgstr "Stop"
 msgid "Ready"
 msgstr "Ready"
 
-msgid "Waiting for agent… {time} • {tokens:.2f} ktok"
-msgstr "Waiting for agent… {time} • {tokens:.2f} ktok"
+msgid "Waiting for agent… {time} • {tokens}"
+msgstr "Waiting for agent… {time} • {tokens}"
 
-msgid "Received response in {time} • {tokens:.2f} ktok"
-msgstr "Received response in {time} • {tokens:.2f} ktok"
+msgid "Received response in {time} • {tokens}"
+msgstr "Received response in {time} • {tokens}"
 
 msgid "Generation cancelled"
 msgstr "Generation cancelled"
+
+msgid "Tokens: {tokens}"
+msgstr "Tokens: {tokens}"
 
 msgid "Start chatting with the agent to see responses here."
 msgstr "Start chatting with the agent to see responses here."

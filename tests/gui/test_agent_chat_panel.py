@@ -2,6 +2,8 @@ import json
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 
+from app.llm.tokenizer import TokenCountResult
+
 import pytest
 
 
@@ -71,8 +73,11 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     assert isinstance(saved.get("active_id"), str)
     conversations = saved["conversations"]
     assert len(conversations) == 1
-    assert conversations[0]["entries"][0]["prompt"] == "run"
-    assert conversations[0]["entries"][0]["response"].strip().startswith("{")
+    entry_payload = conversations[0]["entries"][0]
+    assert entry_payload["prompt"] == "run"
+    assert entry_payload["response"].strip().startswith("{")
+    assert entry_payload.get("token_info") is not None
+    assert entry_payload["token_info"]["tokens"] == entry_payload["tokens"]
 
     panel._on_clear_input(None)
     assert panel.input.GetValue() == ""
@@ -98,7 +103,10 @@ def test_agent_chat_panel_handles_error(tmp_path, wx_app):
 
     transcript = panel.get_transcript_text()
     assert "FAIL" in transcript
-    assert panel.history[0].tokens >= 2
+    entry = panel.history[0]
+    assert entry.token_info is not None
+    assert entry.token_info.tokens is not None
+    assert entry.token_info.tokens >= 1
 
     destroy_panel(frame, panel)
 
@@ -384,7 +392,37 @@ def test_agent_chat_panel_history_columns_show_metadata(tmp_path, wx_app):
     assert last_activity != ""
     assert "Messages: 1" in summary
     assert "Tokens:" in summary
+    assert "Tokens: ~" in summary or "Tokens: n/a" in summary
     assert "check metadata" in summary
+
+    destroy_panel(frame, panel)
+
+
+def test_agent_chat_panel_handles_tokenizer_failure(tmp_path, wx_app, monkeypatch):
+    class EchoAgent:
+        def run_command(self, text, *, history=None, cancellation=None):
+            return {"ok": True, "error": None, "result": text}
+
+    def failing_counter(*_args, **_kwargs) -> TokenCountResult:
+        return TokenCountResult.unavailable(reason="boom")
+
+    monkeypatch.setattr(
+        "app.ui.agent_chat_panel.count_text_tokens",
+        failing_counter,
+    )
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, EchoAgent())
+
+    panel.input.SetValue("token failure")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    summary = panel.history_list.GetTextValue(0, 2)
+    assert "Tokens: n/a" in summary
+    assert "n/a" in panel.status_label.GetLabel()
+    entry = panel.history[0]
+    assert entry.token_info is not None
+    assert entry.token_info.tokens is None
 
     destroy_panel(frame, panel)
 

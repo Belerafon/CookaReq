@@ -23,6 +23,7 @@ from .constants import (
 from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
 from .spec import SYSTEM_PROMPT, TOOLS
+from .tokenizer import count_text_tokens
 from .validation import ToolValidationError, validate_tool_call
 
 
@@ -625,15 +626,11 @@ class LLMClient:
             return MIN_MAX_CONTEXT_TOKENS
         return limit
 
-    @staticmethod
-    def _count_tokens(text: Any) -> int:
-        """Very simple whitespace-based token counter."""
+    def _count_tokens(self, text: Any) -> int:
+        """Return token usage for ``text`` using the configured model."""
 
-        if not text:
-            return 0
-        if not isinstance(text, str):
-            text = str(text)
-        return len(text.split())
+        result = count_text_tokens(text, model=self.settings.model)
+        return result.tokens or 0
 
     @staticmethod
     def _extract_message_content(content: Any) -> str:

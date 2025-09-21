@@ -8,7 +8,7 @@ from app.llm.tokenizer import TokenCountResult
 import pytest
 
 
-pytestmark = [pytest.mark.gui, pytest.mark.integration]
+pytestmark = [pytest.mark.gui, pytest.mark.integration, pytest.mark.gui_smoke]
 
 
 class SynchronousAgentCommandExecutor:

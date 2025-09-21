@@ -3,7 +3,7 @@
 import pytest
 
 
-pytestmark = pytest.mark.gui
+pytestmark = [pytest.mark.gui, pytest.mark.gui_smoke]
 
 
 def test_editor_panel_dirty_detection_fields(wx_app):

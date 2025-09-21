@@ -14,6 +14,9 @@ from app.ui.document_dialog import DocumentProperties
 from app.ui.main_frame import MainFrame
 
 
+pytestmark = [pytest.mark.gui, pytest.mark.gui_smoke]
+
+
 @pytest.fixture
 def main_frame(wx_app, tmp_path):
     """Provide a ``MainFrame`` instance with MCP auto-start disabled."""

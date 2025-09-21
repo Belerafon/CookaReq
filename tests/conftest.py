@@ -5,7 +5,9 @@ import re
 import sys
 import time
 import types
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 # Ensure project root is on sys.path for imports
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -23,6 +25,137 @@ from tests.mcp_utils import _wait_until_ready
 
 APP_NAME = "CookaReq"
 LOCALE_DIR = Path(__file__).resolve().parents[1] / "app" / "locale"
+TESTS_ROOT = Path(__file__).resolve().parent
+
+
+@dataclass(frozen=True)
+class SuiteConfig:
+    """Definition of a logical pytest suite."""
+
+    mark_expression: str | None
+    description: str
+    note: str | None = None
+
+
+SUITE_DEFINITIONS: dict[str, SuiteConfig] = {
+    "core": SuiteConfig(
+        "core",
+        "Fast local checks (unit tests, smoke tests, isolated helpers).",
+    ),
+    "service": SuiteConfig(
+        "core or service",
+        "Integration scenarios for the MCP/CLI stack; runs the core suite first.",
+    ),
+    "gui-smoke": SuiteConfig(
+        "gui_smoke",
+        "Minimal GUI subset that opens the main windows without exhaustive coverage.",
+    ),
+    "gui": SuiteConfig(
+        "gui_full",
+        "Complete GUI regression matrix (slow, uses real wx widgets).",
+    ),
+    "quality": SuiteConfig(
+        "quality",
+        "Static analysis wrappers (ruff, pydocstyle, vulture, translations).",
+    ),
+    "all": SuiteConfig(
+        None,
+        "Entire pytest suite with no marker filtering.",
+    ),
+    "real-llm": SuiteConfig(
+        "real_llm",
+        "Live OpenRouter integration checks (requires COOKAREQ_RUN_REAL_LLM_TESTS=1)",
+        note="Set OPEN_ROUTER and COOKAREQ_RUN_REAL_LLM_TESTS=1 before running.",
+    ),
+}
+
+
+_PATH_MARKERS: tuple[tuple[Path, tuple[str, ...]], ...] = tuple(
+    (path.resolve(), markers)
+    for path, markers in (
+        (TESTS_ROOT / "unit", ("unit", "core")),
+        (TESTS_ROOT / "smoke", ("smoke", "core")),
+        (TESTS_ROOT / "integration", ("integration", "service")),
+        (TESTS_ROOT / "gui", ("gui", "gui_full")),
+        (TESTS_ROOT / "slow", ("slow", "quality")),
+    )
+)
+
+_FILE_MARKERS: dict[Path, tuple[str, ...]] = {
+    (TESTS_ROOT / "test_util_cancellation.py").resolve(): ("core",),
+}
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register custom suite options so the CLI documents available groups."""
+
+    group = parser.getgroup("CookaReq test suites")
+    group.addoption(
+        "--suite",
+        action="store",
+        default=None,
+        choices=list(SUITE_DEFINITIONS),
+        help="Run a predefined CookaReq suite (see --list-suites).",
+    )
+    group.addoption(
+        "--list-suites",
+        action="store_true",
+        help="List the predefined CookaReq suites and exit.",
+    )
+
+
+def pytest_cmdline_main(config: pytest.Config) -> int | None:
+    """Handle ``--list-suites`` before tests start running."""
+
+    if not config.getoption("--list-suites"):
+        return None
+
+    from _pytest.config import create_terminal_writer
+
+    terminal_writer = create_terminal_writer(config)
+    terminal_writer.line("Available CookaReq test suites:\n")
+    name_width = max(len(name) for name in SUITE_DEFINITIONS)
+    expr_width = max(len(cfg.mark_expression or "<all>") for cfg in SUITE_DEFINITIONS.values())
+
+    for name, cfg in SUITE_DEFINITIONS.items():
+        expression = cfg.mark_expression or "<all>"
+        terminal_writer.line(f"  {name.ljust(name_width)}  {expression.ljust(expr_width)}  {cfg.description}")
+        if cfg.note:
+            terminal_writer.line(f"      note: {cfg.note}")
+
+    return 0
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Apply suite marker expressions unless the user overrode ``-m`` manually."""
+
+    suite_name = config.getoption("--suite")
+    if not suite_name:
+        return
+    if config.option.markexpr:
+        # Respect an explicit ``-m`` expression from the command line.
+        return
+
+    suite_config = SUITE_DEFINITIONS[suite_name]
+    if suite_config.mark_expression is None:
+        config.option.markexpr = None
+    else:
+        config.option.markexpr = suite_config.mark_expression
+
+
+def _iter_path_markers(path: Path) -> Iterable[str]:
+    for root, markers in _PATH_MARKERS:
+        try:
+            path.relative_to(root)
+        except ValueError:
+            continue
+        yield from markers
+
+
+def _iter_file_markers(path: Path) -> Iterable[str]:
+    markers = _FILE_MARKERS.get(path)
+    if markers:
+        yield from markers
 
 
 @pytest.fixture(autouse=True)
@@ -98,7 +231,7 @@ def _isolate_wx_config(monkeypatch, tmp_path_factory):
                 pass
 
 def pytest_collection_modifyitems(config, items):
-    """Automatically add markers based on module-level requirements flags."""
+    """Automatically add markers based on module flags and file locations."""
 
     for item in items:
         module = getattr(item, "module", None)
@@ -110,6 +243,24 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker("real_llm")
         if getattr(module, "REQUIRES_GUI", False) and not item.get_closest_marker("gui"):
             item.add_marker("gui")
+
+    for item in items:
+        path = Path(str(item.fspath)).resolve()
+        for marker in _iter_path_markers(path):
+            if not item.get_closest_marker(marker):
+                item.add_marker(marker)
+        for marker in _iter_file_markers(path):
+            if not item.get_closest_marker(marker):
+                item.add_marker(marker)
+
+        if item.get_closest_marker("gui") and not item.get_closest_marker("gui_full"):
+            item.add_marker("gui_full")
+        if item.get_closest_marker("gui_smoke") and not item.get_closest_marker("gui_full"):
+            item.add_marker("gui_full")
+        if item.get_closest_marker("slow") and not item.get_closest_marker("quality"):
+            item.add_marker("quality")
+        if item.get_closest_marker("smoke") and not item.get_closest_marker("core"):
+            item.add_marker("core")
 
 
 def _start_virtual_display_if_needed():

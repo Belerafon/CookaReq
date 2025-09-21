@@ -2,7 +2,6 @@
 
 import importlib
 import json
-import sys
 import types
 
 import pytest
@@ -18,448 +17,7 @@ from app.core.model import (
 )
 
 pytestmark = pytest.mark.gui
-
-
-def _build_wx_stub():
-    class Window:
-        def __init__(self, parent=None):
-            self._parent = parent
-            self._bindings = {}
-            self._shown = True
-            self._tooltip = None
-
-        def GetParent(self):
-            return self._parent
-
-        def Bind(self, event, handler):
-            self._bindings[event] = handler
-
-        def Show(self, show=True):
-            self._shown = bool(show)
-
-        def Hide(self):
-            self._shown = False
-
-        def IsShown(self):
-            return self._shown
-
-        def SetToolTip(self, tip):
-            self._tooltip = tip
-
-        # helper for tests
-        def get_bound_handler(self, event):
-            return self._bindings.get(event)
-
-    class Panel(Window):
-        def __init__(self, parent=None):
-            super().__init__(parent)
-            self._sizer = None
-
-        def SetSizer(self, sizer):
-            self._sizer = sizer
-
-        def GetSizer(self):
-            return self._sizer
-
-    class SearchCtrl(Window):
-        def __init__(self, parent=None):
-            super().__init__(parent)
-            self._value = ""
-
-        def SetValue(self, value):
-            self._value = value
-
-        def GetValue(self):
-            return self._value
-
-    class TextCtrl(SearchCtrl):
-        pass
-
-    class ComboCtrl(SearchCtrl):
-        pass
-
-    class CheckBox(Window):
-        def __init__(self, parent=None, label=""):
-            super().__init__(parent)
-            self._value = False
-
-        def SetValue(self, value):
-            self._value = bool(value)
-
-        def GetValue(self):
-            return self._value
-
-    class Button(Window):
-        def __init__(self, parent=None, label=""):
-            super().__init__(parent)
-            self._label = label
-
-        def GetLabel(self):
-            return self._label
-
-    class BitmapButton(Button):
-        def __init__(self, parent=None, bitmap=None, style=0):
-            super().__init__(parent)
-            self._bitmap = bitmap
-
-    class ArtProvider:
-        @staticmethod
-        def GetBitmap(*args, **kwargs):
-            return object()
-
-    class Font:
-        pass
-
-    class Colour:
-        def __init__(self, *args, **kwargs):
-            pass
-
-    class Brush:
-        def __init__(self, colour):
-            self._colour = colour
-
-    class Pen:
-        def __init__(self, colour):
-            self._colour = colour
-
-    class Bitmap:
-        def __init__(self, width, height):
-            self._w = width
-            self._h = height
-
-        def GetWidth(self):
-            return self._w
-
-        def GetHeight(self):
-            return self._h
-
-    class MemoryDC:
-        def __init__(self):
-            self._bmp = None
-
-        def SelectObject(self, bmp):
-            self._bmp = bmp
-
-        def SetFont(self, font):
-            pass
-
-        def SetBackground(self, brush):
-            pass
-
-        def Clear(self):
-            pass
-
-        def SetBrush(self, brush):
-            pass
-
-        def SetPen(self, pen):
-            pass
-
-        def DrawRectangle(self, x, y, w, h):
-            pass
-
-        def SetTextForeground(self, colour):
-            pass
-
-        def DrawText(self, text, x, y):
-            pass
-
-        def GetTextExtent(self, text):
-            return (len(text) * 6, 10)
-
-        def DrawBitmap(self, bmp, x, y, use_mask=False):
-            pass
-
-    class Dialog(Window):
-        def __init__(self, parent=None, title=""):
-            super().__init__(parent)
-            self._title = title
-
-        def CreateButtonSizer(self, flags):
-            return BoxSizer(0)
-
-        def SetSizerAndFit(self, sizer):
-            self._sizer = sizer
-
-        def ShowModal(self):
-            return 0
-
-        def Destroy(self):
-            pass
-
-    class CheckListBox(Window):
-        def __init__(self, parent=None, choices=None):
-            super().__init__(parent)
-            self._choices = choices or []
-            self._checked: set[int] = set()
-
-        def GetCount(self):
-            return len(self._choices)
-
-        def IsChecked(self, idx):
-            return idx in self._checked
-
-        def Check(self, idx, check=True):
-            if check:
-                self._checked.add(idx)
-            else:
-                self._checked.discard(idx)
-
-    class StaticText(Window):
-        def __init__(self, parent=None, label=""):
-            super().__init__(parent)
-            self.label = label
-
-    class _BaseList(Window):
-        def __init__(self, parent=None, style=0):
-            super().__init__(parent)
-            self._items = []
-            self._data = []
-            self._cols = []
-            self._imagelist = None
-            self._col_images = {}
-            self._item_images = []
-            self._cells = {}
-            self._col_widths = {}
-
-        def InsertColumn(self, col, heading):
-            if col >= len(self._cols):
-                self._cols.extend([None] * (col - len(self._cols) + 1))
-            self._cols[col] = heading
-
-        def ClearAll(self):
-            self._items.clear()
-            self._data.clear()
-            self._cols.clear()
-            self._col_images.clear()
-            self._item_images.clear()
-            self._cells.clear()
-
-        def DeleteAllItems(self):
-            self._items.clear()
-            self._data.clear()
-            self._col_images.clear()
-            self._item_images.clear()
-            self._cells.clear()
-
-        def GetItemCount(self):
-            return len(self._items)
-
-        def GetColumnCount(self):
-            return len(self._cols)
-
-        def InsertItem(self, index, text, image=-1):
-            self._items.insert(index, text)
-            self._data.insert(index, 0)
-            self._item_images.insert(index, image)
-            return index
-
-        InsertStringItem = InsertItem
-
-        def SetItem(self, index, col, text, image=-1):
-            if col == 0:
-                self._items[index] = text
-            self._cells[(index, col)] = text
-
-        SetStringItem = SetItem
-
-        def SetItemData(self, index, data):
-            self._data[index] = data
-
-        def GetItemData(self, index):
-            return self._data[index]
-
-        def HitTest(self, pt):
-            return -1, 0
-
-        def HitTestSubItem(self, pt):
-            return -1, 0, -1
-
-        def SetItemColumnImage(self, index, col, img):
-            self._col_images[(index, col)] = img
-
-        def SetItemImage(self, index, img):
-            if index >= len(self._item_images):
-                self._item_images.extend([-1] * (index - len(self._item_images) + 1))
-            self._item_images[index] = img
-
-        def GetItem(self, index, col=0):
-            text = self._items[index] if col == 0 else self._cells.get((index, col), "")
-            img = (
-                self._item_images[index]
-                if col == 0
-                else self._col_images.get((index, col), -1)
-            )
-            return types.SimpleNamespace(GetText=lambda: text, GetImage=lambda: img)
-
-        def GetFont(self):
-            return Font()
-
-        def GetBackgroundColour(self):
-            return Colour("#ffffff")
-
-        def SetImageList(self, il, which):
-            self._imagelist = il
-
-        def GetImageList(self, which):
-            return self._imagelist
-
-        def SetColumnWidth(self, col, width):
-            self._col_widths[col] = width
-
-        def GetColumnWidth(self, col):
-            return self._col_widths.get(col, 0)
-
-    class UltimateListItem:
-        def __init__(self):
-            self._id = 0
-            self._col = 0
-            self._text = ""
-            self._renderer = None
-
-        def SetId(self, value):
-            self._id = value
-
-        def GetId(self):
-            return self._id
-
-        def SetColumn(self, value):
-            self._col = value
-
-        def GetColumn(self):
-            return self._col
-
-        def SetText(self, text):
-            self._text = text
-
-        def GetText(self):
-            return self._text
-
-        def SetCustomRenderer(self, rend):
-            self._renderer = rend
-
-        def GetCustomRenderer(self):
-            return self._renderer
-
-    class UltimateListCtrl(_BaseList):
-        def __init__(self, parent=None, agw_style=0, **kwargs):
-            super().__init__(parent)
-
-        def SetItem(self, item):
-            pass
-
-    class ListCtrl(_BaseList):
-        # kept for compatibility if needed elsewhere
-        pass
-
-    class ImageList:
-        def __init__(self, width, height):
-            self._w = width
-            self._h = height
-            self._images = []
-
-        def Add(self, bmp):
-            if bmp.GetWidth() != self._w or bmp.GetHeight() != self._h:
-                raise ValueError("bitmap size mismatch")
-            self._images.append(bmp)
-            return len(self._images) - 1
-
-        def GetSize(self):
-            return self._w, self._h
-
-        def GetImageCount(self):
-            return len(self._images)
-
-        def GetBitmap(self, idx):
-            return self._images[idx]
-
-    class BoxSizer:
-        def __init__(self, orient):
-            self._children = []
-
-        def Add(self, window, proportion, flag, border):
-            self._children.append(window)
-
-        def GetChildren(self):
-            return [
-                types.SimpleNamespace(GetWindow=lambda w=child: w)
-                for child in self._children
-            ]
-
-    class Config:
-        def read_int(self, key, default):
-            return default
-
-        def write_int(self, key, value):
-            pass
-
-        def read(self, key, default=""):
-            return default
-
-        def write(self, key, value):
-            pass
-
-    wx_mod = types.SimpleNamespace(
-        Panel=Panel,
-        SearchCtrl=SearchCtrl,
-        TextCtrl=TextCtrl,
-        ComboCtrl=ComboCtrl,
-        CheckBox=CheckBox,
-        Button=Button,
-        BitmapButton=BitmapButton,
-        Dialog=Dialog,
-        CheckListBox=CheckListBox,
-        StaticText=StaticText,
-        ListCtrl=ListCtrl,
-        ImageList=ImageList,
-        BoxSizer=BoxSizer,
-        Window=Window,
-        VERTICAL=0,
-        EXPAND=0,
-        ALL=0,
-        BU_EXACTFIT=0,
-        ART_CLOSE="close",
-        ART_BUTTON="button",
-        OK=1,
-        CANCEL=2,
-        EVT_BUTTON=object(),
-        LC_REPORT=0,
-        EVT_LIST_ITEM_RIGHT_CLICK=object(),
-        EVT_CONTEXT_MENU=object(),
-        EVT_LIST_COL_CLICK=object(),
-        EVT_TEXT=object(),
-        EVT_CHECKBOX=object(),
-        IMAGE_LIST_SMALL=0,
-        Config=Config,
-        ContextMenuEvent=types.SimpleNamespace,
-        ArtProvider=ArtProvider,
-        Font=Font,
-        Colour=Colour,
-        Brush=Brush,
-        Pen=Pen,
-        Bitmap=Bitmap,
-        MemoryDC=MemoryDC,
-        NullBitmap=object(),
-        BLACK=Colour(0, 0, 0),
-    )
-
-    class ColumnSorterMixin:
-        def __init__(self, *args, **kwargs):
-            ctrl = self.GetListCtrl()
-            ctrl.Bind(wx_mod.EVT_LIST_COL_CLICK, self._mixin_col_click)
-
-        def _mixin_col_click(self, event):
-            # default mixin handler does nothing in stub
-            pass
-
-    mixins_mod = types.SimpleNamespace(ColumnSorterMixin=ColumnSorterMixin)
-    ulc_mod = types.SimpleNamespace(
-        UltimateListCtrl=UltimateListCtrl,
-        UltimateListItem=UltimateListItem,
-        ULC_REPORT=0,
-    )
-    return wx_mod, mixins_mod, ulc_mod
-
+pytest_plugins = ("tests.gui.wx_stub_utils",)
 
 def _req(req_id: int, title: str, **kwargs) -> Requirement:
     base = {
@@ -477,23 +35,10 @@ def _req(req_id: int, title: str, **kwargs) -> Requirement:
     return Requirement(**base)
 
 
-def test_list_panel_has_filter_and_list(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    model_module = importlib.import_module("app.ui.requirement_model")
-    importlib.reload(model_module)
-    list_panel_cls = list_panel_module.ListPanel
-    requirement_model_cls = model_module.RequirementModel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_list_panel_has_filter_and_list(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    wx_stub = env.wx
+    panel = env.create_panel()
 
     assert isinstance(panel.filter_btn, wx_stub.Button)
     assert isinstance(panel.reset_btn, wx_stub.BitmapButton)
@@ -513,23 +58,10 @@ def test_list_panel_has_filter_and_list(monkeypatch):
     assert children[1] is panel.list
 
 
-def test_column_click_sorts(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_column_click_sorts(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    wx_stub = env.wx
+    panel = env.create_panel()
     panel.set_columns(["id"])
     panel.set_requirements(
         [
@@ -548,23 +80,10 @@ def test_column_click_sorts(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [2, 1]
 
 
-def test_column_click_after_set_columns_triggers_sort(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_column_click_after_set_columns_triggers_sort(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    wx_stub = env.wx
+    panel = env.create_panel()
     panel.set_columns(["id"])
     panel.set_requirements(
         [
@@ -578,23 +97,9 @@ def test_column_click_after_set_columns_triggers_sort(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
 
-def test_search_and_label_filters(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_search_and_label_filters(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
     panel.set_requirements(
         [
             _req(1, "Login", labels=["ui"]),
@@ -614,23 +119,9 @@ def test_search_and_label_filters(monkeypatch):
     assert panel.model.get_visible() == []
 
 
-def test_apply_filters(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_apply_filters(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
     panel.set_requirements(
         [
             _req(1, "Login", labels=["ui"], owner="alice"),
@@ -645,23 +136,9 @@ def test_apply_filters(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [2]
 
 
-def test_reset_button_visibility(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_reset_button_visibility(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
     assert not panel.reset_btn.IsShown()
     panel.set_search_query("X")
     assert panel.reset_btn.IsShown()
@@ -669,23 +146,9 @@ def test_reset_button_visibility(monkeypatch):
     assert not panel.reset_btn.IsShown()
 
 
-def test_apply_status_filter(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_apply_status_filter(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
     panel.set_requirements(
         [
             _req(1, "A", status=Status.DRAFT),
@@ -699,23 +162,10 @@ def test_apply_status_filter(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
 
-def test_labels_column_uses_imagelist(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_labels_column_uses_imagelist(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    wx_stub = env.wx
+    panel = env.create_panel()
     panel.set_columns(["labels"])
     panel.set_requirements([
         _req(1, "A", labels=["ui", "backend"]),
@@ -731,23 +181,10 @@ def test_labels_column_uses_imagelist(monkeypatch):
         assert panel.list._item_images[0] == -1
 
 
-def test_label_imagelist_handles_resizes(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_label_imagelist_handles_resizes(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    wx_stub = env.wx
+    panel = env.create_panel()
     panel.set_columns(["labels"])
 
     # initial narrow label
@@ -791,23 +228,10 @@ def test_label_imagelist_handles_resizes(monkeypatch):
             assert panel.list._col_images[(row, labels_col)] >= 0
 
 
-def test_label_image_add_failure_falls_back_to_text(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_label_image_add_failure_falls_back_to_text(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    wx_stub = env.wx
+    panel = env.create_panel()
     panel.set_columns(["labels"])
     panel.set_requirements([_req(1, "A", labels=["aa"])])
 
@@ -832,23 +256,9 @@ def test_label_image_add_failure_falls_back_to_text(monkeypatch):
     assert panel._label_images[("bb",)] == -1
 
 
-def test_sort_by_labels(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_sort_by_labels(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
     panel.set_columns(["labels"])
     panel.set_requirements(
         [
@@ -861,23 +271,9 @@ def test_sort_by_labels(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [2, 1]
 
 
-def test_sort_by_multiple_labels(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_sort_by_multiple_labels(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
     panel.set_columns(["labels"])
     panel.set_requirements(
         [
@@ -890,23 +286,9 @@ def test_sort_by_multiple_labels(monkeypatch):
     assert [r.id for r in panel.model.get_visible()] == [2, 1]
 
 
-def test_bulk_edit_updates_requirements(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_bulk_edit_updates_requirements(stubbed_list_panel_env, monkeypatch):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
     panel.set_columns(["revision"])
     reqs = [
         _req(1, "A", revision=1),
@@ -919,23 +301,14 @@ def test_bulk_edit_updates_requirements(monkeypatch):
     assert [r.revision for r in reqs] == [2, 2]
 
 
-def test_context_edit_saves_to_disk(monkeypatch, tmp_path):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
+def test_context_edit_saves_to_disk(
+    stubbed_list_panel_env, monkeypatch, tmp_path
+):
+    env = stubbed_list_panel_env
+    requirement_model_cls = env.requirement_model_cls
     documents_controller_cls = importlib.import_module(
         "app.ui.controllers.documents",
     ).DocumentsController
-    list_panel_cls = list_panel_module.ListPanel
 
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
@@ -948,12 +321,7 @@ def test_context_edit_saves_to_disk(monkeypatch, tmp_path):
     controller.load_documents()
     derived_map = controller.load_items("SYS")
 
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(
-        frame,
-        model=model,
-        docs_controller=controller,
-    )
+    panel = env.create_panel(model=model, docs_controller=controller)
     panel.set_columns(["owner"])
     panel.set_active_document("SYS")
     panel.set_requirements(model.get_all(), derived_map)
@@ -970,28 +338,10 @@ def test_context_edit_saves_to_disk(monkeypatch, tmp_path):
     assert stored["owner"] == "bob"
 
 
-def test_sort_method_and_callback(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
+def test_sort_method_and_callback(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
     calls = []
-    panel = list_panel_cls(
-        frame,
-        model=requirement_model_cls(),
-        on_sort_changed=lambda c, a: calls.append((c, a)),
-    )
+    panel = env.create_panel(on_sort_changed=lambda c, a: calls.append((c, a)))
     panel.set_columns(["id"])
     panel.set_requirements(
         [
@@ -1009,23 +359,10 @@ def test_sort_method_and_callback(monkeypatch):
     assert calls[-1] == (1, False)
 
 
-def test_reorder_columns(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_reorder_columns(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
+    list_panel_module = env.list_panel_module
     panel.set_columns(["id", "status", "priority"])
     panel.reorder_columns(1, 3)
     assert panel.columns == ["status", "priority", "id"]
@@ -1039,23 +376,10 @@ def test_reorder_columns(monkeypatch):
     ]
 
 
-def test_load_column_widths_assigns_defaults(monkeypatch):
-    wx_stub, mixins, ulc = _build_wx_stub()
-    agw = types.SimpleNamespace(ultimatelistctrl=ulc)
-    monkeypatch.setitem(sys.modules, "wx", wx_stub)
-    monkeypatch.setitem(sys.modules, "wx.lib.mixins.listctrl", mixins)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw", agw)
-    monkeypatch.setitem(sys.modules, "wx.lib.agw.ultimatelistctrl", ulc)
-
-    list_panel_module = importlib.import_module("app.ui.list_panel")
-    importlib.reload(list_panel_module)
-    requirement_model_cls = importlib.import_module(
-        "app.ui.requirement_model",
-    ).RequirementModel
-    list_panel_cls = list_panel_module.ListPanel
-
-    frame = wx_stub.Panel(None)
-    panel = list_panel_cls(frame, model=requirement_model_cls())
+def test_load_column_widths_assigns_defaults(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
+    list_panel_cls = env.list_panel_cls
     panel.set_columns(["labels", "id", "status", "priority"])
 
     config = types.SimpleNamespace(read_int=lambda key, default: -1)

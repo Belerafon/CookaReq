@@ -2,7 +2,7 @@
 
 import pytest
 
-pytestmark = [pytest.mark.gui, pytest.mark.integration]
+pytestmark = [pytest.mark.gui, pytest.mark.integration, pytest.mark.gui_smoke]
 
 
 def test_available_translations_contains_locales():

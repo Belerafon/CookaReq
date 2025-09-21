@@ -13,7 +13,7 @@ from app.core.model import (
     Verification,
 )
 
-pytestmark = pytest.mark.gui
+pytestmark = [pytest.mark.gui, pytest.mark.gui_smoke]
 
 
 def _req(req_id: int, title: str, **kwargs) -> Requirement:

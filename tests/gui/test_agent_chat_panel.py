@@ -668,6 +668,67 @@ def test_agent_chat_panel_delete_multiple_chats(tmp_path, wx_app):
     destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_history_context_menu_handles_multiselect(
+    monkeypatch, tmp_path, wx_app
+):
+    class QuietAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
+            return {"ok": True, "error": None, "result": text}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, QuietAgent())
+
+    try:
+        for idx in range(3):
+            panel._append_history(
+                f"prompt {idx}",
+                f"response {idx}",
+                f"response {idx}",
+                None,
+                None,
+                TokenCountResult.exact(1),
+            )
+            flush_wx_events(wx)
+            if idx < 2:
+                panel._create_conversation(persist=True)
+                flush_wx_events(wx)
+
+        assert panel.history_list.GetItemCount() == 3
+
+        panel.history_list.UnselectAll()
+        first_item = panel.history_list.RowToItem(0)
+        second_item = panel.history_list.RowToItem(1)
+        panel.history_list.Select(first_item)
+        panel._activate_conversation_by_index(0, refresh_history=False)
+        flush_wx_events(wx)
+        panel.history_list.Select(second_item)
+        panel._activate_conversation_by_index(1, refresh_history=False)
+        flush_wx_events(wx)
+
+        assert panel._selected_history_rows() == [0, 1]
+        assert panel._active_index() == 1
+
+        captured_labels: list[list[str]] = []
+
+        def fake_popup(menu, pos=wx.DefaultPosition):
+            labels = [item.GetItemLabelText() for item in menu.GetMenuItems()]
+            captured_labels.append(labels)
+            return True
+
+        monkeypatch.setattr(panel.history_list, "PopupMenu", fake_popup)
+
+        panel._show_history_context_menu(1)
+        flush_wx_events(wx)
+        assert captured_labels and captured_labels[0][0] == "Delete selected chats"
+        assert panel._selected_history_rows() == [0, 1]
+
+        panel._show_history_context_menu(2)
+        flush_wx_events(wx)
+        assert len(captured_labels) >= 2 and captured_labels[1][0] == "Delete chat"
+        assert panel._selected_history_rows() == [2]
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_new_chat_creates_separate_conversation(tmp_path, wx_app):
     class RecordingAgent:
         def __init__(self) -> None:

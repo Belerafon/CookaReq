@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import math
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -1149,8 +1150,54 @@ class AgentChatPanel(wx.Panel):
             self.transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
             self.transcript_panel.Thaw()
             if last_panel is not None:
-                self.transcript_panel.ScrollChildIntoView(last_panel)
+                self._scroll_transcript_to_bottom(last_panel)
         self._update_transcript_copy_button(has_entries)
+
+    @staticmethod
+    def _is_window_alive(window: wx.Window | None) -> bool:
+        if window is None:
+            return False
+        try:
+            return bool(window) and not window.IsBeingDeleted()
+        except RuntimeError:
+            return False
+
+    def _scroll_transcript_to_bottom(self, target: wx.Window | None) -> None:
+        self._apply_transcript_scroll(target)
+        wx.CallAfter(self._apply_transcript_scroll, target)
+
+    def _apply_transcript_scroll(self, target: wx.Window | None) -> None:
+        panel = getattr(self, "transcript_panel", None)
+        if not self._is_window_alive(panel):
+            return
+        assert isinstance(panel, ScrolledPanel)
+        window: wx.Window | None = target if self._is_window_alive(target) else None
+        if window is not None and window.GetParent() is not panel:
+            window = None
+        if window is not None:
+            try:
+                panel.ScrollChildIntoView(window)
+            except RuntimeError:
+                window = None
+        bottom_pos = self._compute_transcript_bottom(panel)
+        view_x, view_y = panel.GetViewStart()
+        if bottom_pos != view_y:
+            panel.Scroll(view_x, bottom_pos)
+
+    @staticmethod
+    def _compute_transcript_bottom(panel: ScrolledPanel) -> int:
+        max_y = panel.GetScrollRange(wx.VERTICAL)
+        if max_y > 0:
+            return max_y
+        _, pixels_per_unit_y = panel.GetScrollPixelsPerUnit()
+        if pixels_per_unit_y <= 0:
+            pixels_per_unit_y = 1
+        virtual_height = panel.GetVirtualSize().height
+        client_height = panel.GetClientSize().height
+        if virtual_height <= client_height:
+            return 0
+        extra = virtual_height - client_height
+        return max(0, math.ceil(extra / pixels_per_unit_y))
 
     def _ensure_history_visible(self, index: int) -> None:
         if not (0 <= index < self.history_list.GetItemCount()):

@@ -303,6 +303,52 @@ def test_copy_conversation_button_copies_transcript(monkeypatch, tmp_path, wx_ap
     destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
+    class ToolAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
+            return {
+                "ok": True,
+                "error": None,
+                "result": "done",
+                "tool_results": [
+                    {
+                        "tool_name": "demo_tool",
+                        "ok": True,
+                        "tool_arguments": {"query": text},
+                        "result": {"status": "ok"},
+                    }
+                ],
+            }
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, ToolAgent())
+
+    panel.input.SetValue("inspect")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    try:
+        def collect_collapsible(window):
+            panes: list[wx.CollapsiblePane] = []
+            for child in window.GetChildren():
+                if isinstance(child, wx.CollapsiblePane):
+                    panes.append(child)
+                panes.extend(collect_collapsible(child))
+            return panes
+
+        assert not collect_collapsible(panel.transcript_panel)
+
+        transcript_text = panel.get_transcript_text()
+        assert "demo_tool" not in transcript_text
+        assert "tool_results" not in transcript_text
+
+        log_text = panel.get_transcript_log_text()
+        assert "demo_tool" in log_text
+        assert "Tool calls" in log_text
+        assert "query" in log_text
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_message_copy_selection(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.widgets.chat_message import MessageBubble

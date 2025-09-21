@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
 import time
 from collections.abc import Iterable, Mapping, Sequence
@@ -15,7 +14,6 @@ import httpx
 from ..settings import LLMSettings
 from .constants import (
     DEFAULT_MAX_CONTEXT_TOKENS,
-    DEFAULT_MAX_OUTPUT_TOKENS,
     MIN_MAX_CONTEXT_TOKENS,
 )
 
@@ -72,8 +70,6 @@ class LLMClient:
             timeout=self.settings.timeout_minutes * 60,
             max_retries=self.settings.max_retries,
         )
-        self._token_parameter = self._determine_token_parameter()
-        self._token_parameter_notice_emitted = False
 
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
@@ -145,39 +141,6 @@ class LLMClient:
             self._respond,
             list(conversation or []),
             cancellation=cancellation,
-        )
-
-    # ------------------------------------------------------------------
-    def _determine_token_parameter(self) -> str | None:
-        """Resolve configured token limit parameter name with validation."""
-
-        configured = self.settings.token_limit_parameter
-        if configured is None:
-            return None
-        parameter = configured.strip()
-        if not parameter:
-            return None
-        create = self._client.chat.completions.create
-        if self._supports_parameter(create, parameter):
-            return parameter
-        raise ValueError(
-            "Configured token limit parameter "
-            f"{parameter!r} is not supported by the LLM client."
-        )
-
-    @staticmethod
-    def _supports_parameter(func: Any, parameter: str) -> bool:
-        """Return ``True`` when *func* accepts *parameter* as a keyword."""
-
-        try:
-            signature = inspect.signature(func)
-        except (TypeError, ValueError):
-            return True
-        if parameter in signature.parameters:
-            return True
-        return any(
-            p.kind is inspect.Parameter.VAR_KEYWORD
-            for p in signature.parameters.values()
         )
 
     def _format_invalid_completion_error(
@@ -279,18 +242,11 @@ class LLMClient:
     def _check_llm(self) -> dict[str, Any]:
         """Implementation shared by sync and async ``check_llm`` variants."""
 
-        max_output_tokens = self._resolved_max_output_tokens()
-        token_param = self._token_parameter
         payload = {
             "base_url": self.settings.base_url,
             "model": self.settings.model,
             "api_key": self.settings.api_key,
             "messages": [{"role": "user", "content": "ping"}],
-            # Respect configured limit; when пользователь ничего не указал,
-            # применяем собственный консервативный дефолт, чтобы сервер не
-            # приходилось угадывать ограничения.
-            "max_output_tokens": max_output_tokens,
-            "token_parameter": token_param,
         }
         start = time.monotonic()
         log_debug_payload("LLM_REQUEST", {"direction": "outbound", **payload})
@@ -332,8 +288,6 @@ class LLMClient:
     ) -> LLMResponse:
         """Implementation shared by sync and async response helpers."""
 
-        max_output_tokens = self._resolved_max_output_tokens()
-        token_param = self._token_parameter
         messages = self._prepare_messages(conversation)
         use_stream = bool(cancellation) or self.settings.stream
         payload = {
@@ -343,9 +297,7 @@ class LLMClient:
             "messages": messages,
             "tools": TOOLS,
             "temperature": 0,
-            "max_output_tokens": max_output_tokens,
             "stream": use_stream,
-            "token_parameter": token_param,
         }
         start = time.monotonic()
         log_debug_payload("LLM_REQUEST", {"direction": "outbound", **payload})
@@ -642,54 +594,21 @@ class LLMClient:
         messages: Sequence[Mapping[str, Any]],
         **kwargs: Any,
     ) -> Any:
-        """Call the chat completions endpoint honouring token limit settings."""
+        """Call the chat completions endpoint with normalized arguments."""
 
-        token_limit = self._resolved_max_output_tokens()
         base_kwargs: dict[str, Any] = {
             "model": self.settings.model,
             "messages": messages,
         }
         if kwargs:
             base_kwargs.update(kwargs)
-
-        param = self._token_parameter
-        call_kwargs = dict(base_kwargs)
-        if param:
-            call_kwargs[param] = token_limit
-        else:
-            self._log_token_parameter_skipped(token_limit)
         try:
-            return self._client.chat.completions.create(**call_kwargs)
+            return self._client.chat.completions.create(**base_kwargs)
         except TypeError as exc:
-            if param:
-                raise TypeError(
-                    "LLM client rejected configured token limit parameter "
-                    f"{param!r}."
-                ) from exc
-            raise
-
-    def _log_token_parameter_skipped(self, token_limit: int) -> None:
-        """Emit a telemetry event when no token parameter will be sent."""
-
-        if self._token_parameter_notice_emitted:
-            return
-        log_event(
-            "LLM_TOKEN_LIMIT_SKIPPED",
-            {
-                "reason": "parameter-disabled",
-                "max_output_tokens": token_limit,
-            },
-        )
-        self._token_parameter_notice_emitted = True
-
-    # ------------------------------------------------------------------
-    def _resolved_max_output_tokens(self) -> int:
-        """Return an explicit token cap for requests."""
-
-        limit = self.settings.max_output_tokens
-        if limit is None or limit <= 0:
-            return DEFAULT_MAX_OUTPUT_TOKENS
-        return limit
+            raise TypeError(
+                "LLM client rejected provided arguments; "
+                "verify that the backend is OpenAI-compatible."
+            ) from exc
 
     def _resolved_max_context_tokens(self) -> int:
         """Return an explicit prompt context cap for requests."""

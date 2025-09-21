@@ -11,9 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from .llm.constants import (
     DEFAULT_MAX_CONTEXT_TOKENS,
-    DEFAULT_MAX_OUTPUT_TOKENS,
     MIN_MAX_CONTEXT_TOKENS,
-    MIN_MAX_OUTPUT_TOKENS,
 )
 
 
@@ -26,15 +24,10 @@ class LLMSettings(BaseModel):
     model: str = ""
     api_key: str | None = None
     max_retries: int = 3
-    max_output_tokens: int = Field(
-        DEFAULT_MAX_OUTPUT_TOKENS,
-        ge=MIN_MAX_OUTPUT_TOKENS,
-    )
     max_context_tokens: int = Field(
         DEFAULT_MAX_CONTEXT_TOKENS,
         ge=MIN_MAX_CONTEXT_TOKENS,
     )
-    token_limit_parameter: str | None = "max_output_tokens"
     timeout_minutes: int = 60
     stream: bool = False
 
@@ -63,17 +56,6 @@ class LLMSettings(BaseModel):
             return minimum
         return numeric
 
-    @field_validator("max_output_tokens", mode="before")
-    @classmethod
-    def _normalize_max_output_tokens(cls, value: int | str | None) -> int:
-        """Clamp misconfigured response limits to supported ranges."""
-
-        return cls._normalize_token_limit(
-            value,
-            default=DEFAULT_MAX_OUTPUT_TOKENS,
-            minimum=MIN_MAX_OUTPUT_TOKENS,
-        )
-
     @field_validator("max_context_tokens", mode="before")
     @classmethod
     def _normalize_max_context_tokens(cls, value: int | str | None) -> int:
@@ -84,18 +66,6 @@ class LLMSettings(BaseModel):
             default=DEFAULT_MAX_CONTEXT_TOKENS,
             minimum=MIN_MAX_CONTEXT_TOKENS,
         )
-
-    @field_validator("token_limit_parameter", mode="before")
-    @classmethod
-    def _normalize_token_limit_parameter(
-        cls, value: str | None
-    ) -> str | None:
-        """Normalise blank strings to ``None`` for optional parameter names."""
-
-        if value is None:
-            return None
-        text = str(value).strip()
-        return text or None
 
 
 def default_requirements_path() -> str:

@@ -8,7 +8,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.llm.constants import DEFAULT_MAX_OUTPUT_TOKENS
 from app.settings import AppSettings, load_app_settings
 
 
@@ -136,7 +135,6 @@ def settings_with_llm(tmp_path: Path, *, api_key: str = "dummy") -> AppSettings:
             "model": "qwen/qwen3-4b:free",
             "api_key": api_key,
             "max_retries": 3,
-            "max_output_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
             "timeout_minutes": 60,
             "stream": False,
         },
@@ -168,7 +166,6 @@ def settings_with_mcp(
             "model": "qwen/qwen3-4b:free",
             "api_key": api_key,
             "max_retries": 3,
-            "max_output_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
             "timeout_minutes": 60,
             "stream": False,
         },
@@ -188,7 +185,6 @@ base_url = \"{settings["llm"]["base_url"]}\"
 model = \"{settings["llm"]["model"]}\"
 api_key = \"{settings["llm"]["api_key"]}\"
 max_retries = {settings["llm"]["max_retries"]}
-max_output_tokens = {settings["llm"]["max_output_tokens"]}
 timeout_minutes = {settings["llm"]["timeout_minutes"]}
 stream = {str(settings["llm"]["stream"]).lower()}
 

@@ -11,7 +11,9 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
+
+from concurrent.futures import Future
 
 import wx
 import wx.dataview as dv
@@ -85,6 +87,34 @@ class _TranscriptAccessor:
         return self._owner._compose_transcript_text()
 
 
+class AgentCommandExecutor(Protocol):
+    """Simple protocol for running agent commands asynchronously."""
+
+    def submit(self, func: Callable[[], Any]) -> Future[Any]:  # pragma: no cover - protocol
+        """Schedule ``func`` for execution and return a future with its result."""
+
+
+class ThreadedAgentCommandExecutor:
+    """Background executor creating a dedicated thread per submission."""
+
+    def submit(self, func: Callable[[], Any]) -> Future[Any]:
+        future: Future[Any] = Future()
+
+        def runner() -> None:
+            if not future.set_running_or_notify_cancel():
+                return
+            try:
+                result = func()
+            except BaseException as exc:  # pragma: no cover - defensive
+                future.set_exception(exc)
+            else:
+                future.set_result(result)
+
+        thread = threading.Thread(target=runner, daemon=True, name="AgentChatCommand")
+        thread.start()
+        return future
+
+
 @dataclass(slots=True)
 class _AgentRunHandle:
     """Track metadata for an in-flight agent invocation."""
@@ -92,6 +122,7 @@ class _AgentRunHandle:
     run_id: int
     prompt: str
     cancellation: CancellationTokenSource
+    future: Future[Any] | None = None
 
     @property
     def is_cancelled(self) -> bool:
@@ -99,6 +130,9 @@ class _AgentRunHandle:
 
     def cancel(self) -> None:
         self.cancellation.cancel()
+        future = self.future
+        if future is not None:
+            future.cancel()
 
 
 class AgentChatPanel(wx.Panel):
@@ -110,6 +144,7 @@ class AgentChatPanel(wx.Panel):
         *,
         agent_supplier: Callable[[], LocalAgent],
         history_path: Path | None = None,
+        command_executor: AgentCommandExecutor | None = None,
     ) -> None:
         """Create panel bound to ``agent_supplier``."""
 
@@ -117,6 +152,7 @@ class AgentChatPanel(wx.Panel):
         inherit_background(self, parent)
         self._agent_supplier = agent_supplier
         self._history_path = history_path or _default_history_path()
+        self._command_executor = command_executor or ThreadedAgentCommandExecutor()
         self.conversations: list[ChatConversation] = []
         self._active_conversation_id: str | None = None
         self._is_running = False
@@ -348,10 +384,6 @@ class AgentChatPanel(wx.Panel):
         history_messages = self._conversation_messages()
         self._set_wait_state(True, tokens)
 
-        app = wx.GetApp()
-        is_main_loop_running = bool(
-            app and getattr(app, "IsMainLoopRunning", lambda: False)()
-        )
         def worker() -> Any:
             try:
                 agent = self._agent_supplier()
@@ -368,35 +400,25 @@ class AgentChatPanel(wx.Panel):
                     "error": {"type": type(exc).__name__, "message": str(exc)},
                 }
 
-        if is_main_loop_running:
-            # In live GUI sessions we offload the work to a background thread and
-            # marshal the result back to the UI thread via ``wx.CallAfter`` so the
-            # interface stays responsive.
-            def async_runner(current_handle: _AgentRunHandle) -> None:
-                try:
-                    result = worker()
-                except OperationCancelledError:
-                    return
-                if current_handle.is_cancelled:
-                    return
-                wx.CallAfter(self._finalize_prompt, prompt, result, current_handle)
+        future = self._command_executor.submit(worker)
+        handle.future = future
 
-            thread = threading.Thread(
-                target=async_runner,
-                args=(handle,),
-                daemon=True,
-            )
-            thread.start()
-        else:
-            # When the main loop is not running (typical for unit tests) we are free
-            # to execute synchronously: no GUI events are pending and the tests
-            # expect deterministic completion before assertions run.
+        def on_complete(task: Future[Any]) -> None:
+            if handle.is_cancelled:
+                return
             try:
-                result = worker()
+                result = task.result()
             except OperationCancelledError:
                 return
-            if not handle.is_cancelled:
-                self._finalize_prompt(prompt, result, handle)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.exception("Agent command failed", exc_info=exc)
+                result = {
+                    "ok": False,
+                    "error": {"type": type(exc).__name__, "message": str(exc)},
+                }
+            wx.CallAfter(self._finalize_prompt, prompt, result, handle)
+
+        future.add_done_callback(on_complete)
 
     def _on_clear_input(self, _event: wx.Event) -> None:
         """Clear input field and reset selection."""

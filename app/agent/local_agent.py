@@ -180,10 +180,52 @@ class LocalAgent:
         )
 
     @staticmethod
+    def _normalise_context(
+        context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        if not context:
+            return []
+        if isinstance(context, Mapping):
+            role = context.get("role")
+            if role is None:
+                return []
+            return [
+                {
+                    "role": str(role),
+                    "content": ""
+                    if context.get("content") is None
+                    else str(context.get("content")),
+                }
+            ]
+        normalised: list[dict[str, Any]] = []
+        for message in context:
+            if not isinstance(message, Mapping):
+                continue
+            role = message.get("role")
+            if role is None:
+                continue
+            entry: dict[str, Any] = {
+                "role": str(role),
+                "content": ""
+                if message.get("content") is None
+                else str(message.get("content")),
+            }
+            if "tool_calls" in message and isinstance(
+                message.get("tool_calls"), Sequence
+            ):
+                entry["tool_calls"] = message.get("tool_calls")
+            normalised.append(entry)
+        return normalised
+
     def _prepare_conversation(
-        text: str, history: Sequence[Mapping[str, Any]] | None
+        self,
+        text: str,
+        history: Sequence[Mapping[str, Any]] | None,
+        *,
+        context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
     ) -> list[Mapping[str, Any]]:
         conversation: list[Mapping[str, Any]] = list(history or [])
+        conversation.extend(self._normalise_context(context))
         conversation.append({"role": "user", "content": text})
         return conversation
 
@@ -215,11 +257,12 @@ class LocalAgent:
         text: str,
         *,
         history: Sequence[Mapping[str, Any]] | None = None,
+        context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
         cancellation: CancellationEvent | None = None,
     ) -> dict[str, Any]:
         """Drive an agent loop that may invoke MCP tools before replying."""
 
-        conversation = self._prepare_conversation(text, history)
+        conversation = self._prepare_conversation(text, history, context=context)
         log_event(
             "AGENT_START",
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},
@@ -243,11 +286,12 @@ class LocalAgent:
         text: str,
         *,
         history: Sequence[Mapping[str, Any]] | None = None,
+        context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
         cancellation: CancellationEvent | None = None,
     ) -> dict[str, Any]:
         """Asynchronous variant of :meth:`run_command`."""
 
-        conversation = self._prepare_conversation(text, history)
+        conversation = self._prepare_conversation(text, history, context=context)
         log_event(
             "AGENT_START",
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},

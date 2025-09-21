@@ -1,5 +1,11 @@
-"""Tests for i18n."""
+"""Tests for gettext integration helpers."""
 
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import polib
 import pytest
 
 from app import i18n
@@ -7,53 +13,64 @@ from app import i18n
 pytestmark = pytest.mark.unit
 
 
-def test_parse_po_multiline_and_unfinished(tmp_path):
-    po_content = (
-        "# comment\n"
-        'msgid "hello"\n'
-        'msgstr ""\n\n'
-        'msgid "multi"\n'
-        '"id"\n'
-        'msgstr "multi"\n'
-        '"str"\n\n'
-        'msgid "unfinished"\n'
-        "# TODO\n"
+def _make_catalog(base: Path, language: str) -> Path:
+    directory = base / language / "LC_MESSAGES"
+    directory.mkdir(parents=True)
+    po_path = directory / "app.po"
+    catalog = polib.POFile()
+    catalog.metadata = {
+        "Content-Type": "text/plain; charset=UTF-8",
+        "Language": language,
+        "Plural-Forms": "nplurals=2; plural=(n != 1);",
+    }
+    catalog.append(polib.POEntry(msgid="hello", msgstr="bonjour"))
+    catalog.append(
+        polib.POEntry(
+            msgid="apple",
+            msgid_plural="apples",
+            msgstr_plural={0: "pomme", 1: "pommes"},
+        )
     )
-    po_path = tmp_path / "sample.po"
-    po_path.write_text(po_content, encoding="utf-8")
-    data = i18n._parse_po(po_path)
-    assert data == {"hello": "", "multiid": "multistr"}
-
-
-def test_install_selects_locale_and_falls_back(tmp_path, monkeypatch):
-    fr_dir = tmp_path / "fr" / "LC_MESSAGES"
-    fr_dir.mkdir(parents=True)
-    (fr_dir / "app.po").write_text(
-        'msgid "hello"\nmsgstr "bonjour"\n',
-        encoding="utf-8",
+    catalog.append(
+        polib.POEntry(msgctxt="menu", msgid="File", msgstr="Fichier"),
     )
+    catalog.append(
+        polib.POEntry(msgctxt="button", msgid="File", msgstr="Déposer"),
+    )
+    catalog.save(po_path)
+    return po_path
 
-    monkeypatch.setattr(i18n, "_translations", {})
-    monkeypatch.setattr(i18n, "_missing", set())
 
-    i18n.install("app", str(tmp_path), languages=["de", "fr"])
+def test_install_falls_back_to_po_catalog(tmp_path: Path) -> None:
+    _make_catalog(tmp_path, "fr")
+    i18n.install("app", tmp_path, ["fr"])
     assert i18n.gettext("hello") == "bonjour"
 
-    i18n.install("app", str(tmp_path), languages=["es"])
-    assert i18n._translations == {}
-    assert i18n.gettext("hello") == "hello"
+
+def test_install_detects_language_from_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(os.environ, "LANGUAGE", "fr")
+    _make_catalog(tmp_path, "fr")
+    i18n.install("app", tmp_path)
+    assert i18n.gettext("hello") == "bonjour"
 
 
-def test_translate_resource_combines_fragments(monkeypatch):
+def test_translate_resource_combines_fragments(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, str] = {}
 
     def fake_gettext(message: str) -> str:
         captured["message"] = message
         return f"translated:{message}"
 
-    monkeypatch.setattr(i18n, "gettext", fake_gettext)
-
+    monkeypatch.setattr(i18n, "gettext", fake_gettext, raising=False)
     result = i18n.translate_resource(["first", "second"])
-
     assert captured["message"] == "first second"
     assert result == "translated:first second"
+
+
+def test_plural_and_context_translations(tmp_path: Path) -> None:
+    _make_catalog(tmp_path, "fr")
+    i18n.install("app", tmp_path, ["fr"])
+    assert i18n.ngettext("apple", "apples", 1) == "pomme"
+    assert i18n.ngettext("apple", "apples", 3) == "pommes"
+    assert i18n.pgettext("menu", "File") == "Fichier"
+    assert i18n.pgettext("button", "File") == "Déposer"

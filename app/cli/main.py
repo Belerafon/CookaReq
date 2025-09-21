@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import atexit
 from pathlib import Path
 
 from app import i18n
@@ -16,10 +15,9 @@ from .commands import COMMANDS
 
 APP_NAME = "CookaReq"
 LOCALE_DIR = Path(__file__).resolve().parent.parent / "locale"
-MISSING_PATH = LOCALE_DIR / "missing.po"
-atexit.register(i18n.flush_missing, MISSING_PATH)
 
 set_confirm(auto_confirm)
+i18n.install(APP_NAME, LOCALE_DIR)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -45,6 +43,9 @@ def main(argv: list[str] | None = None) -> int:
     settings = AppSettings()
     if args.settings:
         settings = load_app_settings(args.settings)
+    preferred_language = settings.ui.language
+    if preferred_language:
+        i18n.install(APP_NAME, LOCALE_DIR, [preferred_language])
     args.app_settings = settings
     args.func(args)
     return 0

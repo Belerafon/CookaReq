@@ -133,7 +133,7 @@ Search, filtering and derivation logic operate on these JSON structures across t
 
 ## Localization
 
-Translations live in plain-text `.po` files inside `app/locale/`. They are loaded directly at runtime, so generating `.mo` files is unnecessary. Missing keys can be flushed during development using utilities from `app/i18n.py`.
+Translations live in plain-text `.po` files inside `app/locale/`. The helper `app/i18n.py` wraps :mod:`gettext`: it first asks `gettext.translation` for a catalogue and transparently falls back to parsing the `.po` with `polib` when only text sources are present. The CLI and GUI share the same installer, so switching languages works consistently without generating `.mo` binaries.
 
 ## Development workflow
 

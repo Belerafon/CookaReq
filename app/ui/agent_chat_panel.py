@@ -25,6 +25,7 @@ from ..util.cancellation import CancellationEvent, OperationCancelledError
 from ..util.time import utc_now_iso
 from .chat_entry import ChatConversation, ChatEntry
 from .helpers import dip, format_error_message, inherit_background
+from .text import normalize_for_display
 from .splitter_utils import refresh_splitter_highlight, style_splitter
 from .widgets.chat_message import TranscriptMessagePanel
 
@@ -914,7 +915,10 @@ class AgentChatPanel(wx.Panel):
             conversation_parts.append(display_text)
 
         conversation_text = "\n\n".join(part for part in conversation_parts if part)
-        if not display_text:
+        conversation_text = normalize_for_display(conversation_text)
+        if display_text:
+            display_text = normalize_for_display(display_text)
+        else:
             display_text = conversation_text
 
         return conversation_text, display_text, raw_payload, tool_results
@@ -939,8 +943,9 @@ class AgentChatPanel(wx.Panel):
         *,
         prompt_at: str,
     ) -> ChatEntry:
+        prompt_text = normalize_for_display(prompt)
         entry = ChatEntry(
-            prompt=prompt,
+            prompt=prompt_text,
             response="",
             tokens=0,
             display_response=_("Waiting for agent response…"),
@@ -966,19 +971,22 @@ class AgentChatPanel(wx.Panel):
         response_at: str | None = None,
     ) -> None:
         conversation = self._ensure_active_conversation()
+        prompt_text = normalize_for_display(prompt)
+        response_text = normalize_for_display(response)
+        display_text = normalize_for_display(display_response)
         if token_info is None:
             token_info = combine_token_counts(
                 [
-                    count_text_tokens(prompt, model=self._token_model()),
-                    count_text_tokens(response, model=self._token_model()),
+                    count_text_tokens(prompt_text, model=self._token_model()),
+                    count_text_tokens(response_text, model=self._token_model()),
                 ]
             )
         tokens = token_info.tokens or 0
         entry = ChatEntry(
-            prompt=prompt,
-            response=response,
+            prompt=prompt_text,
+            response=response_text,
             tokens=tokens,
-            display_response=display_response,
+            display_response=display_text,
             raw_result=raw_result,
             tool_results=tool_results,
             token_info=token_info,
@@ -1003,9 +1011,12 @@ class AgentChatPanel(wx.Panel):
         prompt_at: str,
         response_at: str,
     ) -> None:
-        entry.prompt = prompt
-        entry.response = response
-        entry.display_response = display_response or response
+        prompt_text = normalize_for_display(prompt)
+        response_text = normalize_for_display(response)
+        display_text = normalize_for_display(display_response or response)
+        entry.prompt = prompt_text
+        entry.response = response_text
+        entry.display_response = display_text
         entry.raw_result = raw_result
         entry.tool_results = tool_results
         tokens_info = token_info if token_info is not None else TokenCountResult.exact(0)
@@ -1138,12 +1149,14 @@ class AgentChatPanel(wx.Panel):
 
         blocks: list[str] = []
         for idx, entry in enumerate(conversation.entries, start=1):
+            prompt_text = normalize_for_display(entry.prompt)
+            response_text = normalize_for_display(entry.response)
             block = (
                 f"{idx}. "
                 + _("You:")
-                + f"\n{entry.prompt}\n\n"
+                + f"\n{prompt_text}\n\n"
                 + _("Agent:")
-                + f"\n{entry.response}"
+                + f"\n{response_text}"
             )
             blocks.append(block)
         return "\n\n".join(blocks)
@@ -1277,6 +1290,8 @@ class AgentChatPanel(wx.Panel):
             title = title[:57] + "…"
         last_activity = self._format_last_activity(conversation.updated_at)
         summary = self._format_conversation_summary(conversation)
+        title = normalize_for_display(title)
+        summary = normalize_for_display(summary)
         return title, last_activity, summary
 
     def _format_last_activity(self, timestamp: str | None) -> str:
@@ -1341,7 +1356,7 @@ class AgentChatPanel(wx.Panel):
         normalized = " ".join(text.split())
         if len(normalized) > 80:
             normalized = normalized[:77] + "…"
-        return normalized
+        return normalize_for_display(normalized)
 
     def _extract_history_index(self, event: dv.DataViewEvent | None) -> int | None:
         item = None

@@ -8,6 +8,7 @@ from typing import Any, Sequence
 import wx
 
 from ...i18n import _
+from ..text import normalize_for_display
 
 
 def _blend_colour(base: wx.Colour, other: wx.Colour, weight: float) -> wx.Colour:
@@ -37,7 +38,8 @@ class MessageBubble(wx.Panel):
         self.SetBackgroundColour(parent.GetBackgroundColour())
         self.SetDoubleBuffered(True)
 
-        self._text_value = text
+        display_text = normalize_for_display(text)
+        self._text_value = display_text
         self._wrap_width = 0
         self._content_padding = self.FromDIP(12)
         self._copy_menu_id = wx.Window.NewControlId()
@@ -116,7 +118,7 @@ class MessageBubble(wx.Panel):
                     | wx.TE_NO_VSCROLL
                     | wx.BORDER_NONE
                 )
-                text_ctrl = wx.TextCtrl(bubble, value=text, style=style)
+                text_ctrl = wx.TextCtrl(bubble, value=display_text, style=style)
                 text_ctrl.SetBackgroundColour(bubble_bg)
                 text_ctrl.SetForegroundColour(bubble_fg)
                 text_ctrl.SetMinSize(wx.Size(self.FromDIP(160), -1))
@@ -130,7 +132,7 @@ class MessageBubble(wx.Panel):
                 self._selection_getter = text_ctrl.GetStringSelection
         else:
             text_align_flag = wx.ALIGN_RIGHT if align == "right" else 0
-            self._text = wx.StaticText(bubble, label=text, style=text_align_flag)
+            self._text = wx.StaticText(bubble, label=display_text, style=text_align_flag)
             self._text.SetForegroundColour(bubble_fg)
             self._text.Wrap(self.FromDIP(320))
         bubble_sizer.Add(

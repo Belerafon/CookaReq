@@ -90,6 +90,28 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     destroy_panel(frame, panel)
 
 
+def test_agent_response_normalizes_dash_characters(tmp_path, wx_app):
+    class HyphenAgent:
+        def run_command(self, text, *, history=None, cancellation=None):
+            return "одно\u2010папочный"
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, HyphenAgent())
+
+    panel.input.SetValue("dash")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    transcript = panel.get_transcript_text()
+    assert "одно-папочный" in transcript
+
+    assert panel.history
+    entry = panel.history[0]
+    assert entry.response == "одно-папочный"
+    assert entry.display_response == "одно-папочный"
+
+    destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_handles_error(tmp_path, wx_app):
     class FailingAgent:
         def run_command(self, text, *, history=None, cancellation=None):

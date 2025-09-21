@@ -142,6 +142,7 @@ def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
     assert messages[1:-1] == [
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "hi"},
+        {"role": "system", "content": "drop me"},
     ]
 
 
@@ -415,6 +416,143 @@ def test_parse_command_trims_history_by_tokens(tmp_path: Path, monkeypatch) -> N
     ]
 
 
+def test_respond_preserves_context_for_patch(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    captured: dict[str, object] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                captured["messages"] = messages
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                tool_calls=[
+                                    SimpleNamespace(
+                                        function=SimpleNamespace(
+                                            name="patch_requirement",
+                                            arguments=json.dumps(
+                                                {
+                                                    "rid": "SYS-1",
+                                                    "rev": 3,
+                                                    "patch": [],
+                                                }
+                                            ),
+                                        ),
+                                        id="call-0",
+                                    )
+                                ]
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    conversation = [
+        {
+            "role": "system",
+            "content": (
+                "[Workspace context]\n"
+                "Active requirements list: SYS — System Requirements\n"
+                "Selected requirements (1):\n"
+                "- SYS-1 (id=1, prefix=SYS) — Power control"
+            ),
+        },
+        {
+            "role": "user",
+            "content": "впиши в текст этого требования дополнительную информацию",
+        },
+    ]
+
+    response = client.respond(conversation)
+    assert isinstance(response, LLMResponse)
+    assert response.tool_calls
+    tool_call = response.tool_calls[0]
+    assert tool_call.name == "patch_requirement"
+    assert tool_call.arguments == {"rid": "SYS-1", "rev": 3, "patch": []}
+
+    messages = captured["messages"]
+    system_messages = [msg for msg in messages if msg.get("role") == "system"]
+    assert len(system_messages) >= 2
+    assert any(
+        "Selected requirements (1)" in msg.get("content", "")
+        for msg in system_messages[1:]
+    )
+
+
+def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    captured: dict[str, object] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                captured["messages"] = messages
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                tool_calls=[
+                                    SimpleNamespace(
+                                        function=SimpleNamespace(
+                                            name="delete_requirement",
+                                            arguments=json.dumps({"rid": "SYS-2", "rev": 1}),
+                                        ),
+                                        id="call-0",
+                                    ),
+                                    SimpleNamespace(
+                                        function=SimpleNamespace(
+                                            name="delete_requirement",
+                                            arguments=json.dumps({"rid": "SYS-3", "rev": 1}),
+                                        ),
+                                        id="call-1",
+                                    ),
+                                ]
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    conversation = [
+        {
+            "role": "system",
+            "content": (
+                "[Workspace context]\n"
+                "Active requirements list: SYS — System Requirements\n"
+                "Selected requirements (2):\n"
+                "- SYS-2 (id=2, prefix=SYS) — Secondary\n"
+                "- SYS-3 (id=3, prefix=SYS) — Legacy"
+            ),
+        },
+        {"role": "user", "content": "удали эти требования"},
+    ]
+
+    response = client.respond(conversation)
+    assert isinstance(response, LLMResponse)
+    assert len(response.tool_calls) == 2
+    assert {call.name for call in response.tool_calls} == {"delete_requirement"}
+    ids = {call.arguments["rid"] for call in response.tool_calls}
+    assert ids == {"SYS-2", "SYS-3"}
+
+    messages = captured["messages"]
+    system_messages = [msg for msg in messages if msg.get("role") == "system"]
+    assert len(system_messages) >= 2
+    assert any(
+        "Selected requirements (2)" in msg.get("content", "")
+        for msg in system_messages[1:]
+    )
 def test_check_llm_async_uses_thread(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
     captured: dict[str, object] = {}

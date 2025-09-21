@@ -397,6 +397,47 @@ def test_run_command_passes_history_to_llm():
     ]
 
 
+def test_run_command_includes_context_messages():
+    class RecordingLLM(LLMAsyncBridge):
+        def __init__(self) -> None:
+            self.conversations: list[list[dict[str, Any]]] = []
+
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            self.conversations.append(list(conversation))
+            return LLMResponse("готово", ())
+
+    class PassiveMCP(MCPAsyncBridge):
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def call_tool(self, name, arguments):
+            raise AssertionError("tool should not be invoked")
+
+    llm = RecordingLLM()
+    agent = LocalAgent(llm=llm, mcp=PassiveMCP())
+    context_message = {"role": "system", "content": "Selected requirements (1): - SYS-1"}
+
+    agent.run_command("выполни", context=context_message)
+    assert llm.conversations[0][-2] == context_message
+    assert llm.conversations[0][-1] == {"role": "user", "content": "выполни"}
+
+    async def exercise() -> None:
+        await agent.run_command_async(
+            "повтори",
+            context=[{"role": "system", "content": "Selected requirements: - SYS-2"}],
+        )
+
+    asyncio.run(exercise())
+    assert llm.conversations[1][-2] == {
+        "role": "system",
+        "content": "Selected requirements: - SYS-2",
+    }
+    assert llm.conversations[1][-1] == {"role": "user", "content": "повтори"}
+
+
 def test_custom_confirm_message(monkeypatch):
     messages = []
 

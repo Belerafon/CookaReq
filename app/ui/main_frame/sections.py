@@ -226,9 +226,12 @@ class MainFrameSectionsMixin:
         """Refresh captions for titled sections according to current locale."""
 
         self.doc_tree_label.SetLabel(_("Hierarchy"))
-        self.list_label.SetLabel(_("Requirements"))
         self.editor_label.SetLabel(_("Editor"))
         self.agent_label.SetLabel(_("Agent Chat"))
+        if hasattr(self, "_update_requirements_label"):
+            self._update_requirements_label()
+        else:  # pragma: no cover - defensive fallback if mixin missing
+            self.list_label.SetLabel(_("Requirements"))
         self.update_log_console_labels()
 
     def _confirm_discard_changes(self: "MainFrame") -> bool:

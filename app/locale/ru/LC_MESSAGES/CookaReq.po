@@ -246,6 +246,9 @@ msgstr "Иерархия"
 msgid "Requirements"
 msgstr "Требования"
 
+msgid "Requirements - {document}"
+msgstr "Требования - {document}"
+
 msgid "Editor"
 msgstr "Редактор"
 

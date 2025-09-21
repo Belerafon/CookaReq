@@ -261,6 +261,9 @@ msgstr "Hierarchy"
 msgid "Requirements"
 msgstr "Requirements"
 
+msgid "Requirements - {document}"
+msgstr "Requirements - {document}"
+
 msgid "Editor"
 msgstr "Editor"
 

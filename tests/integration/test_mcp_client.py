@@ -157,11 +157,10 @@ def test_call_tool_delete_requires_confirmation(monkeypatch) -> None:
 
     client = MCPClient(settings, confirm=confirm)
 
-    class DummyConn:
-        def __init__(self, *a, **k):  # pragma: no cover - should not be used
-            raise AssertionError("HTTPConnection should not be created")
+    def fail_request(self, *args, **kwargs):  # pragma: no cover - helper
+        raise AssertionError("HTTP request should not be issued")
 
-    monkeypatch.setattr("app.mcp.client.HTTPConnection", DummyConn)
+    monkeypatch.setattr(MCPClient, "_request_sync", fail_request)
 
     res = client.call_tool("delete_requirement", {"rid": "SYS1", "rev": 1})
     assert res["ok"] is False
@@ -191,36 +190,33 @@ def test_call_tool_delete_confirm_yes(monkeypatch) -> None:
 
     monkeypatch.setattr("app.mcp.client.log_event", fake_log)
 
-    class DummyResp:
-        status = 200
+    class DummyResponse:
+        def __init__(self) -> None:
+            self.status_code = 200
+            self.headers: dict[str, str] = {}
+            self._text = "{}"
 
-        def read(self) -> bytes:
-            return b"{}"
+        @property
+        def text(self) -> str:
+            return self._text
 
-    class DummyConn:
-        def __init__(self, *a, **k) -> None:
-            self.requested = False
+    calls: list[tuple[str, str, dict[str, str] | None, dict[str, object] | None]] = []
 
-        def request(self, *a, **k) -> None:
-            self.requested = True
+    def fake_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        headers: dict[str, str] | None = None,
+        json_body: dict | None = None,
+    ) -> DummyResponse:  # pragma: no cover - helper
+        calls.append((method, path, headers, json_body))
+        return DummyResponse()
 
-        def getresponse(self) -> DummyResp:
-            return DummyResp()
-
-        def close(self) -> None:
-            pass
-
-    conns: list[DummyConn] = []
-
-    def factory(*a, **k) -> DummyConn:  # pragma: no cover - helper
-        conn = DummyConn()
-        conns.append(conn)
-        return conn
-
-    monkeypatch.setattr("app.mcp.client.HTTPConnection", factory)
+    monkeypatch.setattr(MCPClient, "_request_sync", fake_request)
 
     res = client.call_tool("delete_requirement", {})
     assert res == {"ok": True, "error": None, "result": {}}
-    assert conns and conns[0].requested is True
+    assert calls and calls[0][0] == "POST"
     assert ("CONFIRM", {"tool": "delete_requirement"}) in events
     assert any(e[0] == "CONFIRM_RESULT" for e in events)

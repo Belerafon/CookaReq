@@ -55,9 +55,7 @@ class MessageBubble(wx.Panel):
             bubble_fg = agent_text
             meta_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT)
 
-        outer = wx.BoxSizer(wx.HORIZONTAL)
-        if align == "right":
-            outer.AddStretchSpacer()
+        outer = wx.BoxSizer(wx.VERTICAL)
 
         bubble = wx.Panel(self, style=wx.BORDER_NONE)
         bubble.SetBackgroundColour(bubble_bg)
@@ -67,7 +65,8 @@ class MessageBubble(wx.Panel):
         bubble.SetSizer(bubble_sizer)
 
         header_text = role_label if not timestamp else f"{role_label} • {timestamp}"
-        header = wx.StaticText(bubble, label=header_text)
+        header_align_flag = wx.ALIGN_RIGHT if align == "right" else 0
+        header = wx.StaticText(bubble, label=header_text, style=header_align_flag)
         header.SetForegroundColour(meta_colour)
         header_font = header.GetFont()
         if header_font.IsOk():
@@ -76,17 +75,18 @@ class MessageBubble(wx.Panel):
         bubble_sizer.Add(
             header,
             0,
-            wx.TOP | wx.LEFT | wx.RIGHT,
+            wx.TOP | wx.LEFT | wx.RIGHT | header_align_flag,
             self._content_padding,
         )
 
-        self._text = wx.StaticText(bubble, label=text)
+        text_align_flag = wx.ALIGN_RIGHT if align == "right" else 0
+        self._text = wx.StaticText(bubble, label=text, style=text_align_flag)
         self._text.SetForegroundColour(bubble_fg)
         self._text.Wrap(self.FromDIP(320))
         bubble_sizer.Add(
             self._text,
             0,
-            wx.EXPAND | wx.ALL,
+            wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
             self._content_padding,
         )
 
@@ -95,8 +95,6 @@ class MessageBubble(wx.Panel):
             widget.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
 
         outer.Add(bubble, 0, wx.EXPAND)
-        if align == "left":
-            outer.AddStretchSpacer()
 
         self.SetSizer(outer)
 

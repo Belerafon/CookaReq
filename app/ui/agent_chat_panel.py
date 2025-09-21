@@ -119,6 +119,8 @@ class _AgentRunHandle:
     cancel_event: CancellationEvent
     prompt_at: str
     future: Future[Any] | None = None
+    conversation_id: str | None = None
+    pending_entry: ChatEntry | None = None
 
     @property
     def is_cancelled(self) -> bool:
@@ -180,6 +182,7 @@ class AgentChatPanel(wx.Panel):
         self._clear_history_btn: wx.Button | None = None
         self._stop_btn: wx.Button | None = None
         self._bottom_panel: wx.Panel | None = None
+        self._copy_conversation_btn: wx.Window | None = None
         self._suppress_history_selection = False
         self._history_last_sash = 0
         self._history_sash_goal: int | None = None
@@ -329,7 +332,18 @@ class AgentChatPanel(wx.Panel):
 
         transcript_panel = wx.Panel(self._horizontal_splitter)
         transcript_sizer = wx.BoxSizer(wx.VERTICAL)
+        transcript_header = wx.BoxSizer(wx.HORIZONTAL)
         transcript_label = wx.StaticText(transcript_panel, label=_("Conversation"))
+        transcript_header.Add(transcript_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        transcript_header.AddStretchSpacer()
+        self._copy_conversation_btn = self._create_copy_button(
+            transcript_panel,
+            tooltip=_("Copy conversation"),
+            fallback_label=_("Copy conversation"),
+            handler=self._on_copy_conversation,
+        )
+        self._copy_conversation_btn.Enable(False)
+        transcript_header.Add(self._copy_conversation_btn, 0, wx.ALIGN_CENTER_VERTICAL)
         self.transcript_panel = ScrolledPanel(
             transcript_panel,
             style=wx.TAB_TRAVERSAL,
@@ -339,7 +353,7 @@ class AgentChatPanel(wx.Panel):
         self.transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
         self._transcript_sizer = wx.BoxSizer(wx.VERTICAL)
         self.transcript_panel.SetSizer(self._transcript_sizer)
-        transcript_sizer.Add(transcript_label, 0)
+        transcript_sizer.Add(transcript_header, 0, wx.EXPAND)
         transcript_sizer.AddSpacer(spacing)
         transcript_sizer.Add(self.transcript_panel, 1, wx.EXPAND)
         transcript_panel.SetSizer(transcript_sizer)
@@ -413,6 +427,32 @@ class AgentChatPanel(wx.Panel):
         refresh_splitter_highlight(self._vertical_splitter)
         self._refresh_history_list()
         wx.CallAfter(self._adjust_vertical_splitter)
+
+    # ------------------------------------------------------------------
+    def _create_copy_button(
+        self,
+        parent: wx.Window,
+        *,
+        tooltip: str,
+        fallback_label: str,
+        handler: Callable[[wx.CommandEvent], None],
+    ) -> wx.Window:
+        """Create a bitmap copy button with textual fallback."""
+
+        size = wx.Size(dip(self, 16), dip(self, 16))
+        bitmap = wx.ArtProvider.GetBitmap(wx.ART_COPY, wx.ART_BUTTON, size)
+        if bitmap.IsOk():
+            button = wx.BitmapButton(
+                parent,
+                bitmap=bitmap,
+                style=wx.BU_EXACTFIT | wx.BORDER_NONE,
+            )
+        else:
+            button = wx.Button(parent, label=fallback_label, style=wx.BU_EXACTFIT)
+        inherit_background(button, parent)
+        button.SetToolTip(tooltip)
+        button.Bind(wx.EVT_BUTTON, handler)
+        return button
 
     # ------------------------------------------------------------------
     @property
@@ -560,8 +600,18 @@ class AgentChatPanel(wx.Panel):
             prompt_at=prompt_at,
         )
         self._active_run_handle = handle
-        self._ensure_active_conversation()
+        conversation = self._ensure_active_conversation()
         history_messages = self._conversation_messages()
+        pending_entry = self._add_pending_entry(
+            conversation,
+            prompt,
+            prompt_at=prompt_at,
+        )
+        handle.conversation_id = conversation.conversation_id
+        handle.pending_entry = pending_entry
+        self._save_history()
+        self._refresh_history_list()
+        self._render_transcript()
         self._set_wait_state(True, prompt_tokens)
 
         def worker() -> Any:
@@ -652,6 +702,7 @@ class AgentChatPanel(wx.Panel):
         if handle is None:
             return
         handle.cancel()
+        self._discard_pending_entry(handle)
         self._active_run_handle = None
         self._set_wait_state(False)
         self.status_label.SetLabel(_("Generation cancelled"))
@@ -785,16 +836,33 @@ class AgentChatPanel(wx.Panel):
             )
             response_at = utc_now_iso()
             prompt_at = getattr(handle, "prompt_at", None) or response_at
-            self._append_history(
-                prompt,
-                conversation_text,
-                display_text,
-                raw_result,
-                tool_results,
-                final_tokens,
-                prompt_at=prompt_at,
-                response_at=response_at,
-            )
+            conversation = self._get_conversation_by_id(handle.conversation_id)
+            pending_entry = handle.pending_entry
+            if conversation is not None and pending_entry is not None:
+                self._complete_pending_entry(
+                    conversation,
+                    pending_entry,
+                    prompt=prompt,
+                    response=conversation_text,
+                    display_response=display_text,
+                    raw_result=raw_result,
+                    tool_results=tool_results,
+                    token_info=final_tokens,
+                    prompt_at=prompt_at,
+                    response_at=response_at,
+                )
+            else:
+                self._append_history(
+                    prompt,
+                    conversation_text,
+                    display_text,
+                    raw_result,
+                    tool_results,
+                    final_tokens,
+                    prompt_at=prompt_at,
+                    response_at=response_at,
+                )
+            handle.pending_entry = None
             self._render_transcript()
         finally:
             self._set_wait_state(False, final_tokens)
@@ -864,6 +932,27 @@ class AgentChatPanel(wx.Panel):
                 messages.append({"role": "assistant", "content": entry.response})
         return messages
 
+    def _add_pending_entry(
+        self,
+        conversation: ChatConversation,
+        prompt: str,
+        *,
+        prompt_at: str,
+    ) -> ChatEntry:
+        entry = ChatEntry(
+            prompt=prompt,
+            response="",
+            tokens=0,
+            display_response=_("Waiting for agent response…"),
+            raw_result=None,
+            tool_results=None,
+            token_info=TokenCountResult.exact(0),
+            prompt_at=prompt_at,
+            response_at=None,
+        )
+        conversation.append_entry(entry)
+        return entry
+
     def _append_history(
         self,
         prompt: str,
@@ -900,6 +989,58 @@ class AgentChatPanel(wx.Panel):
         self._save_history()
         self._refresh_history_list()
 
+    def _complete_pending_entry(
+        self,
+        conversation: ChatConversation,
+        entry: ChatEntry,
+        *,
+        prompt: str,
+        response: str,
+        display_response: str,
+        raw_result: Any | None,
+        tool_results: list[Any] | None,
+        token_info: TokenCountResult | None,
+        prompt_at: str,
+        response_at: str,
+    ) -> None:
+        entry.prompt = prompt
+        entry.response = response
+        entry.display_response = display_response or response
+        entry.raw_result = raw_result
+        entry.tool_results = tool_results
+        tokens_info = token_info if token_info is not None else TokenCountResult.exact(0)
+        entry.token_info = tokens_info
+        entry.tokens = tokens_info.tokens or 0
+        entry.prompt_at = prompt_at
+        entry.response_at = response_at
+        conversation.updated_at = response_at
+        conversation.ensure_title()
+        self._save_history()
+        self._refresh_history_list()
+
+    def _discard_pending_entry(self, handle: _AgentRunHandle) -> None:
+        entry = handle.pending_entry
+        if entry is None:
+            return
+        conversation = self._get_conversation_by_id(handle.conversation_id)
+        if conversation is None:
+            return
+        try:
+            conversation.entries.remove(entry)
+        except ValueError:
+            return
+        if conversation.entries:
+            last = conversation.entries[-1]
+            conversation.updated_at = (
+                last.response_at or last.prompt_at or conversation.updated_at
+            )
+        else:
+            conversation.updated_at = conversation.created_at
+        handle.pending_entry = None
+        self._save_history()
+        self._refresh_history_list()
+        self._render_transcript()
+
     def _refresh_history_list(self) -> None:
         self.history_list.Freeze()
         self._suppress_history_selection = True
@@ -921,6 +1062,7 @@ class AgentChatPanel(wx.Panel):
 
     def _render_transcript(self) -> None:
         last_panel: wx.Window | None = None
+        has_entries = False
         self.transcript_panel.Freeze()
         try:
             self._transcript_sizer.Clear(delete_windows=True)
@@ -948,6 +1090,7 @@ class AgentChatPanel(wx.Panel):
                     dip(self, 8),
                 )
             else:
+                has_entries = True
                 for entry in conversation.entries:
                     panel = TranscriptMessagePanel(
                         self.transcript_panel,
@@ -967,6 +1110,7 @@ class AgentChatPanel(wx.Panel):
             self.transcript_panel.Thaw()
             if last_panel is not None:
                 self.transcript_panel.ScrollChildIntoView(last_panel)
+        self._update_transcript_copy_button(has_entries)
 
     def _ensure_history_visible(self, index: int) -> None:
         if not (0 <= index < self.history_list.GetItemCount()):
@@ -1003,6 +1147,27 @@ class AgentChatPanel(wx.Panel):
             )
             blocks.append(block)
         return "\n\n".join(blocks)
+
+    def _update_transcript_copy_button(self, enabled: bool) -> None:
+        button = self._copy_conversation_btn
+        if button is not None:
+            button.Enable(enabled)
+
+    def _on_copy_conversation(self, _event: wx.CommandEvent) -> None:
+        text = self._compose_transcript_text()
+        if not text:
+            return
+        self._copy_text_to_clipboard(text)
+
+    @staticmethod
+    def _copy_text_to_clipboard(text: str) -> None:
+        if not text:
+            return
+        if wx.TheClipboard.Open():
+            try:
+                wx.TheClipboard.SetData(wx.TextDataObject(text))
+            finally:
+                wx.TheClipboard.Close()
 
     def _on_transcript_pane_toggled(self, event: wx.CollapsiblePaneEvent) -> None:
         """Recalculate layout when tool details are expanded or collapsed."""
@@ -1067,6 +1232,16 @@ class AgentChatPanel(wx.Panel):
         for idx, conversation in enumerate(self.conversations):
             if conversation.conversation_id == self._active_conversation_id:
                 return idx
+        return None
+
+    def _get_conversation_by_id(
+        self, conversation_id: str | None
+    ) -> ChatConversation | None:
+        if conversation_id is None:
+            return None
+        for conversation in self.conversations:
+            if conversation.conversation_id == conversation_id:
+                return conversation
         return None
 
     def _get_active_conversation(self) -> ChatConversation | None:

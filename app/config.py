@@ -21,11 +21,6 @@ from .settings import (
 
 
 T = TypeVar("T")
-
-
-logger = logging.getLogger(__name__)
-
-
 DEFAULT_LIST_COLUMNS: list[str] = [
     "labels",
     "id",
@@ -716,36 +711,22 @@ class ConfigManager:
     def get_agent_chat_sash(self, default: int) -> int:
         """Return stored splitter position for the agent chat pane."""
 
-        value = self.get_value("agent_chat_sash", default=default)
-        logger.info(
-            "Config: restored agent chat sash width=%s (default=%s)",
-            value,
-            default,
-        )
-        return value
+        return self.get_value("agent_chat_sash", default=default)
 
     def set_agent_chat_sash(self, pos: int) -> None:
         """Persist splitter position for the agent chat pane."""
 
-        logger.info("Config: persisting agent chat sash width=%s", pos)
         self.set_value("agent_chat_sash", pos)
         self.flush()
 
     def get_agent_history_sash(self, default: int) -> int:
         """Return stored width of the chat history list."""
 
-        value = self.get_value("agent_history_sash", default=default)
-        logger.info(
-            "Config: restored agent history sash width=%s (default=%s)",
-            value,
-            default,
-        )
-        return value
+        return self.get_value("agent_history_sash", default=default)
 
     def set_agent_history_sash(self, pos: int) -> None:
         """Persist width of the chat history list."""
 
-        logger.info("Config: persisting agent history sash width=%s", pos)
         self.set_value("agent_history_sash", pos)
         self.flush()
 
@@ -804,15 +785,11 @@ class ConfigManager:
             except Exception:  # pragma: no cover - defensive fallback
                 legacy = default
             value = legacy
-        logger.info(
-            "Config: restored hierarchy sash width=%s (default=%s)", value, default
-        )
         return max(value, 0)
 
     def set_doc_tree_sash(self, pos: int) -> None:
         """Persist width of the hierarchy splitter."""
 
-        logger.info("Config: persisting hierarchy sash width=%s", pos)
         self.set_value("sash_pos", pos)
         self.flush()
 
@@ -857,13 +834,6 @@ class ConfigManager:
         doc_max = max(client_size.width - doc_min, doc_min)
         stored_doc_sash = self.get_value("sash_pos")
         doc_sash = max(doc_min, min(stored_doc_sash, doc_max))
-        logger.info(
-            "Config: applying hierarchy sash raw=%s clamped=%s (min=%s max=%s)",
-            stored_doc_sash,
-            doc_sash,
-            doc_min,
-            doc_max,
-        )
         doc_splitter.SetSashPosition(doc_sash)
         if editor_splitter is not None and editor_splitter.IsSplit():
             editor_default = editor_splitter.GetSashPosition()
@@ -918,11 +888,6 @@ class ConfigManager:
             if doc_tree_sash is not None
             else doc_splitter.GetSashPosition()
         )
-        logger.info(
-            "Config: saving hierarchy sash=%s (provided=%s)",
-            sash_to_store,
-            doc_tree_sash,
-        )
         self.set_value("sash_pos", sash_to_store)
         if doc_tree_shown is None:
             doc_tree_shown = doc_splitter.IsSplit()
@@ -948,15 +913,8 @@ class ConfigManager:
                 else:
                     agent_chat_sash = self.get_value("agent_chat_sash")
             if agent_chat_sash is not None:
-                logger.info(
-                    "Config: saving agent chat sash=%s", agent_chat_sash,
-                )
                 self.set_value("agent_chat_sash", agent_chat_sash)
         if agent_history_sash is not None:
-            logger.info(
-                "Config: saving agent history sash=%s",
-                agent_history_sash,
-            )
             self.set_value("agent_history_sash", agent_history_sash)
         panel.save_column_widths(self)
         panel.save_column_order(self)

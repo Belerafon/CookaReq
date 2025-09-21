@@ -26,7 +26,7 @@ from ..util.json import make_json_safe
 from ..util.cancellation import CancellationEvent, OperationCancelledError
 from ..util.time import utc_now_iso
 from .chat_entry import ChatConversation, ChatEntry
-from .helpers import dip, format_error_message, inherit_background
+from .helpers import dip, format_error_message, inherit_background, make_help_button
 from .text import normalize_for_display
 from .splitter_utils import refresh_splitter_highlight, style_splitter
 from .widgets.chat_message import TranscriptMessagePanel
@@ -60,6 +60,16 @@ def history_path_for_documents(base_directory: Path | str | None) -> Path:
     base_path = _normalize_history_path(base_directory)
     return base_path / ".cookareq" / "agent_chats.json"
 TOKEN_UNAVAILABLE_LABEL = "n/a"
+
+
+STATUS_HELP_TEXT = _(
+    "The waiting status shows four elements:\n"
+    "• The timer reports how long the agent has been running in mm:ss and updates every second.\n"
+    "• The centered bullet (•) separates the timer from the token counter.\n"
+    "• The token counter reports the prompt size in thousands of tokens (k tokens); a leading ~"
+    " marks an approximate value when the tokenizer cannot provide an exact figure.\n"
+    "• The spinning indicator on the left stays active while the agent is still working."
+)
 
 
 def _history_json_safe(value: Any) -> Any:
@@ -182,7 +192,7 @@ class AgentChatPanel(wx.Panel):
         self._active_conversation_id: str | None = None
         self._is_running = False
         self._timer = wx.Timer(self)
-        self._timer.Bind(wx.EVT_TIMER, self._on_timer)
+        self.Bind(wx.EVT_TIMER, self._on_timer, self._timer)
         self._start_time: float | None = None
         self._current_tokens: TokenCountResult = TokenCountResult.exact(0)
         self._new_chat_btn: wx.Button | None = None
@@ -417,8 +427,15 @@ class AgentChatPanel(wx.Panel):
         self.activity = wx.ActivityIndicator(bottom_panel)
         self.activity.Hide()
         self.status_label = wx.StaticText(bottom_panel, label=_("Ready"))
+        dialog_parent = self.GetTopLevelParent()
+        help_btn = make_help_button(
+            bottom_panel,
+            STATUS_HELP_TEXT,
+            dialog_parent=dialog_parent,
+        )
         status_sizer.Add(self.activity, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         status_sizer.Add(self.status_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        status_sizer.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, spacing)
 
         controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
         controls_sizer.Add(status_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -906,7 +923,7 @@ class AgentChatPanel(wx.Panel):
         if tokens.tokens is None:
             return TOKEN_UNAVAILABLE_LABEL
         quantity = tokens.tokens / 1000 if tokens.tokens else 0.0
-        label = f"{quantity:.2f} ktok"
+        label = f"{quantity:.2f} k tokens"
         return f"~{label}" if tokens.approximate else label
 
     def _format_tokens_for_summary(self, tokens: TokenCountResult) -> str:

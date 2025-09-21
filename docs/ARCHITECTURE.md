@@ -18,7 +18,7 @@
 - `settings.py` — pydantic-модели `AppSettings`, `LLMSettings`, `MCPSettings`, `UISettings` и функции загрузки конфигов из JSON/TOML.【F:app/settings.py†L1-L89】【F:app/settings.py†L118-L149】
 - `confirm.py` — регистрация и реализация подтверждающих диалогов (`set_confirm`, `confirm`, `wx_confirm`, `auto_confirm`).【F:app/confirm.py†L1-L31】
 - `i18n.py` — лёгкая обёртка над стандартным `gettext`: сначала пробует `gettext.translation`, а при отсутствии `.mo` компилирует `.po` через `polib` в памяти и выставляет `_`/`ngettext`/`pgettext` для GUI и CLI.【F:app/i18n.py†L1-L122】
-- `log.py` и `telemetry.py` — настройка логирования (`configure_logging`, `JsonlHandler`) с ротацией файлов при старте процесса и одновременной записью в поток, текстовый и JSONL-логи, управление каталогом логов (`get_log_directory`, `open_log_directory`) и структурированная телеметрия (`log_event`, санитайзинг чувствительных данных).【F:app/log.py†L1-L131】【F:app/telemetry.py†L1-L49】
+- `log.py` и `telemetry.py` — настройка логирования (`configure_logging`, `JsonlHandler`) с использованием стандартных обработчиков `RotatingFileHandler` для потокового, текстового и JSONL-логов, встроенная ротация файлов при старте процесса и одновременная запись в поток, управление каталогом логов (`get_log_directory`, `open_log_directory`) и структурированная телеметрия (`log_event`, санитайзинг чувствительных данных).【F:app/log.py†L1-L173】【F:app/telemetry.py†L1-L49】
 - `util/` — вспомогательные функции времени (`utc_now_iso`, `normalize_timestamp`) и другие мелкие утилиты.【F:app/util/time.py†L1-L27】
 - `resources/` и `locale/` — иконки приложения и каталоги перевода, используемые `MainFrame` и `init_locale`.
 

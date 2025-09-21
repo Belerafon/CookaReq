@@ -9,6 +9,7 @@ loop remains responsive.
 from __future__ import annotations
 
 import logging
+from logging.handlers import RotatingFileHandler
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -41,6 +42,8 @@ app.state.log_dir = "."
 
 _TEXT_LOG_NAME = "server.log"
 _JSONL_LOG_NAME = "server.jsonl"
+_REQUEST_LOG_MAX_BYTES = 2 * 1024 * 1024
+_REQUEST_BACKUP_COUNT = 5
 
 
 def _configure_request_logging(log_dir: str | Path | None) -> Path:
@@ -59,15 +62,31 @@ def _configure_request_logging(log_dir: str | Path | None) -> Path:
     log_dir_path.mkdir(parents=True, exist_ok=True)
 
     text_path = log_dir_path / _TEXT_LOG_NAME
-    text_handler = logging.FileHandler(text_path)
+    text_size = text_path.stat().st_size if text_path.exists() else 0
+    text_handler = RotatingFileHandler(
+        text_path,
+        encoding="utf-8",
+        maxBytes=_REQUEST_LOG_MAX_BYTES,
+        backupCount=_REQUEST_BACKUP_COUNT,
+    )
+    text_handler.setLevel(logging.INFO)
     text_handler.setFormatter(
         logging.Formatter("%(asctime)s %(levelname)s %(message)s"),
     )
+    if text_size > 0:
+        text_handler.doRollover()
     text_handler.cookareq_request = True
     request_logger.addHandler(text_handler)
 
     json_path = log_dir_path / _JSONL_LOG_NAME
-    json_handler = JsonlHandler(json_path)
+    json_size = json_path.stat().st_size if json_path.exists() else 0
+    json_handler = JsonlHandler(
+        json_path,
+        backup_count=_REQUEST_BACKUP_COUNT,
+    )
+    json_handler.setLevel(logging.INFO)
+    if json_size > 0:
+        json_handler.doRollover()
     json_handler.cookareq_request = True
     request_logger.addHandler(json_handler)
     return log_dir_path

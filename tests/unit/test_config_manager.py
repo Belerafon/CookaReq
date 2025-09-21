@@ -85,7 +85,6 @@ def _recent_dirs_factory(tmp_path):
         ("editor_sash_pos", 600),
         ("editor_shown", True),
         ("doc_tree_collapsed", False),
-        ("doc_tree_saved_sash", 240),
     ],
 )
 def test_schema_default_values(tmp_path, wx_app, name, expected):
@@ -157,7 +156,6 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
         pytest.param("editor_sash_pos", _const(456), _const(456), id="editor_sash_pos"),
         pytest.param("editor_shown", _const(False), _const(False), id="editor_shown"),
         pytest.param("doc_tree_collapsed", _const(True), _const(True), id="doc_tree_collapsed"),
-        pytest.param("doc_tree_saved_sash", _const(280), _const(280), id="doc_tree_saved_sash"),
     ],
 )
 def test_schema_round_trip(tmp_path, wx_app, name, value_factory, expected_factory):
@@ -476,12 +474,12 @@ def test_save_layout_tracks_doc_tree_collapse(tmp_path, wx_app):
         main_splitter,
         panel,
         editor_splitter=editor_splitter,
-        doc_tree_collapsed=True,
-        doc_tree_expanded_sash=250,
+        doc_tree_shown=False,
+        doc_tree_sash=250,
     )
 
-    assert cfg.get_doc_tree_collapsed() is True
-    assert cfg.get_doc_tree_saved_sash(100) == 250
+    assert cfg.get_doc_tree_shown() is False
+    assert cfg.get_doc_tree_sash(100) == 250
 
 
 def test_save_layout_tracks_agent_history(tmp_path, wx_app):

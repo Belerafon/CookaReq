@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import threading
 import time
 from collections.abc import Iterator, Mapping, Sequence
@@ -21,8 +22,11 @@ from ..util.json import make_json_safe
 from ..util.cancellation import CancellationTokenSource, OperationCancelledError
 from .chat_entry import ChatConversation, ChatEntry
 from .helpers import dip, format_error_message, inherit_background
-from .splitter_utils import SplitterEventBlocker, refresh_splitter_highlight, style_splitter
+from .splitter_utils import refresh_splitter_highlight, style_splitter
 from .widgets.chat_message import TranscriptMessagePanel
+
+
+logger = logging.getLogger(__name__)
 
 
 try:  # pragma: no cover - import only used for typing
@@ -126,9 +130,7 @@ class AgentChatPanel(wx.Panel):
         self._bottom_panel: wx.Panel | None = None
         self.transcript = _TranscriptAccessor()
         self._suppress_history_selection = False
-        self._history_splitter_guard = SplitterEventBlocker()
-        self._history_saved_sash = 0
-        self._history_restore_pending = False
+        self._history_last_sash = 0
         self._run_counter = 0
         self._active_run_handle: _AgentRunHandle | None = None
         self._load_history()
@@ -165,12 +167,6 @@ class AgentChatPanel(wx.Panel):
         style_splitter(self._horizontal_splitter)
         history_min_width = dip(self, 260)
         self._horizontal_splitter.SetMinimumPaneSize(history_min_width)
-        self._horizontal_splitter.Bind(
-            wx.EVT_SPLITTER_SASH_POS_CHANGED, self._on_history_sash_changed
-        )
-        self._horizontal_splitter.Bind(
-            wx.EVT_SIZE, self._on_history_splitter_resized
-        )
 
         history_panel = wx.Panel(self._horizontal_splitter)
         self._history_panel = history_panel
@@ -230,7 +226,7 @@ class AgentChatPanel(wx.Panel):
             history_panel, transcript_panel, history_min_width
         )
         self._horizontal_splitter.SetSashGravity(1.0)
-        self._history_saved_sash = self._horizontal_splitter.GetSashPosition()
+        self._history_last_sash = self._horizontal_splitter.GetSashPosition()
 
         top_sizer = wx.BoxSizer(wx.VERTICAL)
         top_sizer.Add(self._horizontal_splitter, 1, wx.EXPAND)
@@ -287,7 +283,6 @@ class AgentChatPanel(wx.Panel):
         outer.Add(self._vertical_splitter, 1, wx.EXPAND)
 
         self.SetSizer(outer)
-        self.Bind(wx.EVT_SHOW, self._on_history_panel_show)
         refresh_splitter_highlight(self._horizontal_splitter)
         refresh_splitter_highlight(self._vertical_splitter)
         self._refresh_history_list()
@@ -296,115 +291,38 @@ class AgentChatPanel(wx.Panel):
     # ------------------------------------------------------------------
     @property
     def history_sash(self) -> int:
-        """Return the last user-selected width of the history pane."""
+        """Return the current width of the history pane."""
 
-        return max(self._history_saved_sash, 0)
+        splitter = getattr(self, "_horizontal_splitter", None)
+        if splitter and splitter.IsSplit():
+            pos = splitter.GetSashPosition()
+            if pos > 0:
+                self._history_last_sash = pos
+        return max(self._history_last_sash, 0)
 
     def default_history_sash(self) -> int:
         """Return reasonable default sash width for the history pane."""
 
         splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter is None:
-            return 0
-        pos = splitter.GetSashPosition()
-        minimum = splitter.GetMinimumPaneSize()
-        return max(minimum, pos if pos > 0 else minimum)
+        if splitter and splitter.IsSplit():
+            pos = splitter.GetSashPosition()
+            if pos > 0:
+                return pos
+            return splitter.GetMinimumPaneSize()
+        return max(self._history_last_sash, 0)
 
     def apply_history_sash(self, value: int) -> None:
-        """Update stored history sash and apply it when layout allows."""
+        """Apply a stored history sash if the splitter is available."""
 
         splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter is None:
-            self._history_saved_sash = max(value, 0)
-            return
-        minimum = splitter.GetMinimumPaneSize()
-        self._history_saved_sash = max(value, minimum)
-        self._schedule_history_sash_restore()
+        if splitter and splitter.IsSplit():
+            minimum = splitter.GetMinimumPaneSize()
+            target = max(value, minimum)
+            splitter.SetSashPosition(target)
+            self._history_last_sash = target
+        else:
+            self._history_last_sash = max(value, 0)
 
-    @contextmanager
-    def _suspend_history_splitter_events(self) -> Iterator[None]:
-        """Temporarily block callbacks while adjusting the sash."""
-
-        with self._history_splitter_guard.pause():
-            yield
-
-    def _schedule_history_sash_restore(self) -> None:
-        """Ensure the saved sash is re-applied once events settle."""
-
-        if self._history_restore_pending:
-            return
-        self._history_restore_pending = True
-        wx.CallAfter(self._apply_history_sash)
-
-    def _apply_history_sash(self) -> None:
-        """Restore the saved history sash position if needed."""
-
-        self._history_restore_pending = False
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter is None or not splitter or splitter.IsBeingDeleted():
-            return
-        if not splitter.IsSplit():
-            return
-        desired = self._desired_history_sash()
-        if desired <= 0:
-            return
-        current = splitter.GetSashPosition()
-        if current == desired:
-            return
-        with self._suspend_history_splitter_events():
-            splitter.SetSashPosition(desired)
-        self._history_saved_sash = desired
-
-    def _desired_history_sash(self) -> int:
-        """Clamp stored sash to the available width of the splitter."""
-
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter is None:
-            return max(self._history_saved_sash, 0)
-        saved = max(self._history_saved_sash, splitter.GetMinimumPaneSize())
-        width = splitter.GetClientSize().width
-        if width <= 0:
-            size = splitter.GetSize()
-            width = size.width
-        if width <= 0:
-            size = self.GetClientSize()
-            width = size.width
-        if width <= 0:
-            return saved
-        min_size = splitter.GetMinimumPaneSize()
-        max_left = max(width - min_size, min_size)
-        return max(min_size, min(saved, max_left))
-
-    def _on_history_sash_changed(self, event: wx.SplitterEvent) -> None:
-        """Remember last sash when the user resizes the history column."""
-
-        event.Skip()
-        if self._history_splitter_guard.active:
-            return
-        pos = event.GetSashPosition()
-        if pos > 0:
-            self._history_saved_sash = pos
-
-    def _on_history_splitter_resized(self, event: wx.SizeEvent) -> None:
-        """Trigger sash restoration after external layout changes."""
-
-        event.Skip()
-        if self._history_splitter_guard.active:
-            return
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter is None or not splitter.IsSplit():
-            return
-        self._schedule_history_sash_restore()
-
-    def _on_history_panel_show(self, event: wx.ShowEvent) -> None:
-        """Re-apply saved sash whenever the panel becomes visible."""
-
-        event.Skip()
-        if event.IsShown():
-            self._schedule_history_sash_restore()
-
-    # ------------------------------------------------------------------
-    # ------------------------------------------------------------------
     def _on_send(self, _event: wx.Event) -> None:
         """Send prompt to agent."""
 

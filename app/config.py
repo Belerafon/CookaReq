@@ -21,8 +21,6 @@ from .settings import (
 
 
 T = TypeVar("T")
-
-
 DEFAULT_LIST_COLUMNS: list[str] = [
     "labels",
     "id",
@@ -140,7 +138,6 @@ ConfigFieldName = Literal[
     "win_x",
     "win_y",
     "doc_tree_collapsed",
-    "doc_tree_saved_sash",
     "sash_pos",
     "editor_sash_pos",
 ]
@@ -327,11 +324,6 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         key="doc_tree_collapsed",
         value_type=bool,
         default=False,
-    ),
-    "doc_tree_saved_sash": FieldSpec(
-        key="doc_tree_saved_sash",
-        value_type=int,
-        default=240,
     ),
     "sash_pos": FieldSpec(
         key="sash_pos",
@@ -773,15 +765,32 @@ class ConfigManager:
         self.set_value("doc_tree_collapsed", collapsed)
         self.flush()
 
-    def get_doc_tree_saved_sash(self, default: int) -> int:
+    def get_doc_tree_shown(self) -> bool:
+        """Return whether the hierarchy pane should be visible."""
+
+        return not self.get_doc_tree_collapsed()
+
+    def set_doc_tree_shown(self, shown: bool) -> None:
+        """Persist hierarchy visibility flag."""
+
+        self.set_doc_tree_collapsed(not shown)
+
+    def get_doc_tree_sash(self, default: int) -> int:
         """Return stored width of the hierarchy splitter."""
 
-        return self.get_value("doc_tree_saved_sash", default=default)
+        value = self.get_value("sash_pos", default=default)
+        if value == default:
+            try:
+                legacy = self._cfg.ReadInt("doc_tree_saved_sash", default)
+            except Exception:  # pragma: no cover - defensive fallback
+                legacy = default
+            value = legacy
+        return max(value, 0)
 
-    def set_doc_tree_saved_sash(self, pos: int) -> None:
+    def set_doc_tree_sash(self, pos: int) -> None:
         """Persist width of the hierarchy splitter."""
 
-        self.set_value("doc_tree_saved_sash", pos)
+        self.set_value("sash_pos", pos)
         self.flush()
 
     # ------------------------------------------------------------------
@@ -823,8 +832,8 @@ class ConfigManager:
         doc_splitter.SetSize(client_size)
         doc_min = max(doc_splitter.GetMinimumPaneSize(), 100)
         doc_max = max(client_size.width - doc_min, doc_min)
-        doc_sash = self.get_value("sash_pos")
-        doc_sash = max(doc_min, min(doc_sash, doc_max))
+        stored_doc_sash = self.get_value("sash_pos")
+        doc_sash = max(doc_min, min(stored_doc_sash, doc_max))
         doc_splitter.SetSashPosition(doc_sash)
         if editor_splitter is not None and editor_splitter.IsSplit():
             editor_default = editor_splitter.GetSashPosition()
@@ -861,8 +870,9 @@ class ConfigManager:
         *,
         editor_splitter: wx.SplitterWindow | None = None,
         agent_splitter: wx.SplitterWindow | None = None,
-        doc_tree_collapsed: bool = False,
-        doc_tree_expanded_sash: int | None = None,
+        doc_tree_shown: bool | None = None,
+        doc_tree_sash: int | None = None,
+        agent_chat_shown: bool | None = None,
         agent_chat_sash: int | None = None,
         agent_history_sash: int | None = None,
     ) -> None:
@@ -874,13 +884,14 @@ class ConfigManager:
         self.set_value("win_x", x)
         self.set_value("win_y", y)
         sash_to_store = (
-            doc_tree_expanded_sash
-            if doc_tree_expanded_sash is not None
+            doc_tree_sash
+            if doc_tree_sash is not None
             else doc_splitter.GetSashPosition()
         )
         self.set_value("sash_pos", sash_to_store)
-        self.set_value("doc_tree_saved_sash", sash_to_store)
-        self.set_value("doc_tree_collapsed", doc_tree_collapsed)
+        if doc_tree_shown is None:
+            doc_tree_shown = doc_splitter.IsSplit()
+        self.set_doc_tree_shown(bool(doc_tree_shown))
         if editor_splitter is not None:
             if editor_splitter.IsSplit():
                 self.set_value("editor_shown", True)
@@ -893,22 +904,16 @@ class ConfigManager:
         else:
             self.set_value("log_shown", False)
         if agent_splitter is not None:
-            if agent_splitter.IsSplit():
-                self.set_value("agent_chat_shown", True)
-                sash_value = (
-                    agent_chat_sash
-                    if agent_chat_sash is not None
-                    else agent_splitter.GetSashPosition()
-                )
-            else:
-                self.set_value("agent_chat_shown", False)
-                sash_value = (
-                    agent_chat_sash
-                    if agent_chat_sash is not None
-                    else self.get_value("agent_chat_sash")
-                )
-            if sash_value is not None:
-                self.set_value("agent_chat_sash", sash_value)
+            if agent_chat_shown is None:
+                agent_chat_shown = agent_splitter.IsSplit()
+            self.set_value("agent_chat_shown", bool(agent_chat_shown))
+            if agent_chat_sash is None:
+                if agent_chat_shown:
+                    agent_chat_sash = agent_splitter.GetSashPosition()
+                else:
+                    agent_chat_sash = self.get_value("agent_chat_sash")
+            if agent_chat_sash is not None:
+                self.set_value("agent_chat_sash", agent_chat_sash)
         if agent_history_sash is not None:
             self.set_value("agent_history_sash", agent_history_sash)
         panel.save_column_widths(self)

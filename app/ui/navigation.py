@@ -28,6 +28,7 @@ class Navigation:
         on_open_recent: Callable[[wx.CommandEvent], None],
         on_toggle_column: Callable[[wx.CommandEvent], None],
         on_toggle_log_console: Callable[[wx.CommandEvent], None],
+        on_toggle_hierarchy: Callable[[wx.CommandEvent], None],
         on_toggle_requirement_editor: Callable[[wx.CommandEvent], None],
         on_toggle_agent_chat: Callable[[wx.CommandEvent], None],
         on_show_derivation_graph: Callable[[wx.Event], None],
@@ -47,6 +48,7 @@ class Navigation:
         self.on_open_recent = on_open_recent
         self.on_toggle_column = on_toggle_column
         self.on_toggle_log_console = on_toggle_log_console
+        self.on_toggle_hierarchy = on_toggle_hierarchy
         self.on_toggle_requirement_editor = on_toggle_requirement_editor
         self.on_toggle_agent_chat = on_toggle_agent_chat
         self.on_show_derivation_graph = on_show_derivation_graph
@@ -58,6 +60,7 @@ class Navigation:
         self._column_items: dict[int, str] = {}
         self.menu_bar = wx.MenuBar()
         self.log_menu_item: wx.MenuItem | None = None
+        self.hierarchy_menu_item: wx.MenuItem | None = None
         self.editor_menu_item: wx.MenuItem | None = None
         self.agent_chat_menu_item: wx.MenuItem | None = None
         self.recent_menu = wx.Menu()
@@ -101,6 +104,15 @@ class Navigation:
             self.frame.Bind(wx.EVT_MENU, self.on_toggle_column, item)
             self._column_items[item.GetId()] = field
         view_menu.AppendSubMenu(columns_menu, _("Columns"))
+        self.hierarchy_menu_item = view_menu.AppendCheckItem(
+            wx.ID_ANY,
+            _("Show Hierarchy"),
+        )
+        self.frame.Bind(
+            wx.EVT_MENU,
+            self.on_toggle_hierarchy,
+            self.hierarchy_menu_item,
+        )
         self.editor_menu_item = view_menu.AppendCheckItem(
             wx.ID_ANY,
             _("Show Requirement Editor"),

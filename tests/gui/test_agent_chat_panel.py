@@ -111,6 +111,127 @@ def test_agent_chat_panel_handles_error(tmp_path, wx_app):
     destroy_panel(frame, panel)
 
 
+def test_agent_response_allows_text_selection(tmp_path, wx_app):
+    class EchoAgent:
+        def run_command(self, text, *, history=None, cancellation=None):
+            return f"agent: {text}"
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, EchoAgent())
+
+    panel.input.SetValue("hello world")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    transcript_children = panel.transcript_panel.GetChildren()
+    assert transcript_children
+    entry_panel = transcript_children[0]
+
+    text_controls: list = []
+
+    def collect_text_controls(window) -> None:
+        for child in window.GetChildren():
+            if isinstance(child, wx.TextCtrl):
+                text_controls.append(child)
+            collect_text_controls(child)
+
+    collect_text_controls(entry_panel)
+    assert text_controls, "Expected agent message to expose a selectable control"
+    agent_text = text_controls[0]
+    assert agent_text.GetValue() == "agent: hello world"
+    assert not agent_text.IsEditable()
+
+    destroy_panel(frame, panel)
+
+
+def test_copy_conversation_button_copies_transcript(monkeypatch, tmp_path, wx_app):
+    clipboard: dict[str, str] = {}
+
+    class DummyClipboard:
+        def __init__(self) -> None:
+            self.opened = False
+
+        def Open(self) -> bool:  # noqa: N802 - wx naming convention
+            self.opened = True
+            return True
+
+        def Close(self) -> None:  # noqa: N802 - wx naming convention
+            self.opened = False
+
+        def SetData(self, data) -> None:  # noqa: N802 - wx naming convention
+            clipboard["text"] = data.GetText()
+
+    class SimpleAgent:
+        def run_command(self, text, *, history=None, cancellation=None):
+            return f"response to {text}"
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, SimpleAgent())
+    monkeypatch.setattr(wx, "TheClipboard", DummyClipboard())
+
+    assert panel._copy_conversation_btn is not None
+    assert not panel._copy_conversation_btn.IsEnabled()
+
+    panel.input.SetValue("copy me")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    assert panel._copy_conversation_btn.IsEnabled()
+
+    panel._on_copy_conversation(None)
+
+    assert "response to copy me" in clipboard["text"]
+
+    destroy_panel(frame, panel)
+
+
+def test_agent_message_copy_selection(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.widgets.chat_message import MessageBubble
+
+    clipboard: dict[str, str] = {}
+
+    class DummyClipboard:
+        def Open(self) -> bool:  # noqa: N802 - wx naming convention
+            return True
+
+        def Close(self) -> None:  # noqa: N802 - wx naming convention
+            pass
+
+        def SetData(self, data) -> None:  # noqa: N802 - wx naming convention
+            clipboard["text"] = data.GetText()
+
+    monkeypatch.setattr(wx, "TheClipboard", DummyClipboard())
+
+    frame = wx.Frame(None)
+    bubble = MessageBubble(
+        frame,
+        role_label="Agent",
+        timestamp="",
+        text="selectable text",
+        align="left",
+        allow_selection=True,
+    )
+
+    text_ctrls = []
+
+    def gather(window) -> None:
+        for child in window.GetChildren():
+            if isinstance(child, wx.TextCtrl):
+                text_ctrls.append(child)
+            gather(child)
+
+    gather(bubble)
+    assert text_ctrls
+    text_ctrl = text_ctrls[0]
+    text_ctrl.SetSelection(0, 10)
+
+    bubble._on_copy_selection(None)
+
+    assert clipboard.get("text") == "selectable"
+
+    bubble.Destroy()
+    frame.Destroy()
+
+
 def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
     from app.i18n import _
     from app.ui.agent_chat_panel import ThreadedAgentCommandExecutor

@@ -20,7 +20,7 @@ def _blend_colour(base: wx.Colour, other: wx.Colour, weight: float) -> wx.Colour
 
 
 class MessageBubble(wx.Panel):
-    """Simple chat bubble with copy support and automatic wrapping."""
+    """Simple chat bubble with copy support and optional text selection."""
 
     def __init__(
         self,
@@ -30,6 +30,7 @@ class MessageBubble(wx.Panel):
         timestamp: str,
         text: str,
         align: str,
+        allow_selection: bool = False,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
@@ -40,6 +41,11 @@ class MessageBubble(wx.Panel):
         self._content_padding = self.FromDIP(12)
         self._copy_menu_id = wx.Window.NewControlId()
         self.Bind(wx.EVT_MENU, self._on_copy, id=self._copy_menu_id)
+        self._allow_selection = allow_selection
+        self._copy_selection_menu_id: int | None = None
+        if allow_selection:
+            self._copy_selection_menu_id = wx.Window.NewControlId()
+            self.Bind(wx.EVT_MENU, self._on_copy_selection, id=self._copy_selection_menu_id)
 
         user_highlight = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
         user_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHTTEXT)
@@ -72,17 +78,36 @@ class MessageBubble(wx.Panel):
         if header_font.IsOk():
             header_font.MakeSmaller()
             header.SetFont(header_font)
+
+        header_row = wx.BoxSizer(wx.HORIZONTAL)
+        header_row.Add(header, 1, wx.ALIGN_CENTER_VERTICAL)
+        header_row.AddSpacer(self.FromDIP(4))
+        header_row.Add(self._create_copy_button(bubble), 0, wx.ALIGN_CENTER_VERTICAL)
         bubble_sizer.Add(
-            header,
+            header_row,
             0,
-            wx.TOP | wx.LEFT | wx.RIGHT | header_align_flag,
+            wx.TOP | wx.LEFT | wx.RIGHT,
             self._content_padding,
         )
 
-        text_align_flag = wx.ALIGN_RIGHT if align == "right" else 0
-        self._text = wx.StaticText(bubble, label=text, style=text_align_flag)
-        self._text.SetForegroundColour(bubble_fg)
-        self._text.Wrap(self.FromDIP(320))
+        if allow_selection:
+            style = (
+                wx.TE_MULTILINE
+                | wx.TE_READONLY
+                | wx.TE_WORDWRAP
+                | wx.TE_NO_VSCROLL
+                | wx.BORDER_NONE
+            )
+            text_ctrl = wx.TextCtrl(bubble, value=text, style=style)
+            text_ctrl.SetBackgroundColour(bubble_bg)
+            text_ctrl.SetForegroundColour(bubble_fg)
+            text_ctrl.SetMinSize(wx.Size(self.FromDIP(160), -1))
+            self._text = text_ctrl
+        else:
+            text_align_flag = wx.ALIGN_RIGHT if align == "right" else 0
+            self._text = wx.StaticText(bubble, label=text, style=text_align_flag)
+            self._text.SetForegroundColour(bubble_fg)
+            self._text.Wrap(self.FromDIP(320))
         bubble_sizer.Add(
             self._text,
             0,
@@ -102,12 +127,39 @@ class MessageBubble(wx.Panel):
         event.Skip()
         width = event.GetSize().width - 2 * self._content_padding
         width = max(width, self.FromDIP(120))
-        if abs(width - self._wrap_width) > self.FromDIP(4):
-            self._wrap_width = width
-            self._text.Wrap(width)
+        if isinstance(self._text, wx.StaticText):
+            if abs(width - self._wrap_width) > self.FromDIP(4):
+                self._wrap_width = width
+                self._text.Wrap(width)
+        elif isinstance(self._text, wx.TextCtrl):
+            self._text.SetMinSize(wx.Size(width, -1))
+            self._text.Layout()
+
+    def _create_copy_button(self, parent: wx.Window) -> wx.Window:
+        icon_size = self.FromDIP(16)
+        bitmap = wx.ArtProvider.GetBitmap(
+            wx.ART_COPY,
+            wx.ART_BUTTON,
+            wx.Size(icon_size, icon_size),
+        )
+        if bitmap.IsOk():
+            button = wx.BitmapButton(
+                parent,
+                bitmap=bitmap,
+                style=wx.BU_EXACTFIT | wx.BORDER_NONE,
+            )
+            button.SetBackgroundColour(parent.GetBackgroundColour())
+        else:
+            button = wx.Button(parent, label=_("Copy"), style=wx.BU_EXACTFIT)
+        button.SetToolTip(_("Copy message"))
+        button.Bind(wx.EVT_BUTTON, self._on_copy)
+        return button
 
     def _on_context_menu(self, event: wx.ContextMenuEvent) -> None:
         menu = wx.Menu()
+        if self._copy_selection_menu_id is not None:
+            item = menu.Append(self._copy_selection_menu_id, _("Copy selection"))
+            item.Enable(self._has_selection())
         menu.Append(self._copy_menu_id, _("Copy message"))
         self.PopupMenu(menu)
         menu.Destroy()
@@ -121,6 +173,29 @@ class MessageBubble(wx.Panel):
                 wx.TheClipboard.SetData(wx.TextDataObject(self._text_value))
             finally:
                 wx.TheClipboard.Close()
+
+    def _on_copy_selection(self, _event: wx.CommandEvent) -> None:
+        if not self._allow_selection:
+            return
+        selection = self._get_selection_text()
+        if not selection:
+            return
+        if wx.TheClipboard.Open():
+            try:
+                wx.TheClipboard.SetData(wx.TextDataObject(selection))
+            finally:
+                wx.TheClipboard.Close()
+
+    def _has_selection(self) -> bool:
+        if isinstance(self._text, wx.TextCtrl):
+            start, end = self._text.GetSelection()
+            return end > start
+        return False
+
+    def _get_selection_text(self) -> str:
+        if isinstance(self._text, wx.TextCtrl):
+            return self._text.GetStringSelection()
+        return ""
 
 
 class TranscriptMessagePanel(wx.Panel):
@@ -158,6 +233,7 @@ class TranscriptMessagePanel(wx.Panel):
             timestamp=response_timestamp,
             text=response,
             align="left",
+            allow_selection=True,
         )
         outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, padding)
 

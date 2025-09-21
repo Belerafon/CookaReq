@@ -59,7 +59,7 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     panel._on_send(None)
     flush_wx_events(wx)
 
-    transcript = panel.transcript.GetValue()
+    transcript = panel.get_transcript_text()
     assert "run" in transcript
     assert "\"echo\": \"run\"" in transcript
     assert panel.history_list.GetItemCount() == 1
@@ -96,7 +96,7 @@ def test_agent_chat_panel_handles_error(tmp_path, wx_app):
     panel._on_send(None)
     flush_wx_events(wx)
 
-    transcript = panel.transcript.GetValue()
+    transcript = panel.get_transcript_text()
     assert "FAIL" in transcript
     assert panel.history[0].tokens >= 2
 
@@ -253,7 +253,7 @@ def test_agent_chat_panel_ignores_flat_legacy_history(tmp_path, wx_app):
 
     assert panel.history == []
     assert panel.history_list.GetItemCount() == 0
-    assert "Start chatting" in panel.transcript.GetValue()
+    assert "Start chatting" in panel.get_transcript_text()
 
     destroy_panel(frame, panel)
 
@@ -311,7 +311,7 @@ def test_agent_chat_panel_clear_history_resets_context(tmp_path, wx_app):
     panel._on_clear_history(None)
     assert panel.history == []
     assert panel.history_list.GetItemCount() == 0
-    assert "Start chatting" in panel.transcript.GetValue()
+    assert "Start chatting" in panel.get_transcript_text()
 
     panel.input.SetValue("after clear")
     panel._on_send(None)
@@ -343,7 +343,7 @@ def test_agent_chat_panel_new_chat_creates_separate_conversation(tmp_path, wx_ap
     panel._on_new_chat(None)
     assert panel.history == []
     assert panel.history_list.GetItemCount() == 2
-    assert "does not have any messages yet" in panel.transcript.GetValue()
+    assert "does not have any messages yet" in panel.get_transcript_text()
 
     panel.input.SetValue("second request")
     panel._on_send(None)
@@ -352,10 +352,10 @@ def test_agent_chat_panel_new_chat_creates_separate_conversation(tmp_path, wx_ap
     assert len(panel.history) == 1
 
     panel._activate_conversation_by_index(0)
-    assert "first request" in panel.transcript.GetValue()
+    assert "first request" in panel.get_transcript_text()
 
     panel._activate_conversation_by_index(1)
-    assert "second request" in panel.transcript.GetValue()
+    assert "second request" in panel.get_transcript_text()
 
     saved = json.loads((tmp_path / "history.json").read_text())
     prompts = [conv["entries"][0]["prompt"] for conv in saved["conversations"]]

@@ -69,23 +69,6 @@ def _stringify_payload(payload: Any) -> str:
         return json.dumps(payload, ensure_ascii=False, indent=2)
     except (TypeError, ValueError):  # pragma: no cover - defensive
         return str(payload)
-
-
-class _TranscriptAccessor:
-    """Compatibility wrapper exposing legacy ``GetValue`` API for tests."""
-
-    def __init__(self, owner: "AgentChatPanel" | None = None) -> None:
-        self._owner = owner
-
-    def bind(self, owner: "AgentChatPanel") -> None:
-        self._owner = owner
-
-    def GetValue(self) -> str:  # pragma: no cover - exercised via GUI tests
-        if self._owner is None:
-            return ""
-        return self._owner._compose_transcript_text()
-
-
 class AgentCommandExecutor(Protocol):
     """Simple protocol for running agent commands asynchronously."""
 
@@ -176,7 +159,6 @@ class AgentChatPanel(wx.Panel):
         self._clear_history_btn: wx.Button | None = None
         self._stop_btn: wx.Button | None = None
         self._bottom_panel: wx.Panel | None = None
-        self.transcript = _TranscriptAccessor()
         self._suppress_history_selection = False
         self._history_last_sash = 0
         self._pending_history_sash: int | None = None
@@ -186,7 +168,6 @@ class AgentChatPanel(wx.Panel):
         self._load_history()
 
         self._build_ui()
-        self.transcript.bind(self)
         self._render_transcript()
 
     # ------------------------------------------------------------------
@@ -813,6 +794,16 @@ class AgentChatPanel(wx.Panel):
         item = self.history_list.RowToItem(index)
         if item.IsOk():
             self.history_list.EnsureVisible(item)
+
+    def get_transcript_text(self) -> str:
+        """Return plain-text transcript of the active conversation.
+
+        This method is intentionally public so tests and other automation can
+        assert against the transcript without accessing wx-specific widgets or
+        recreating helper wrappers.
+        """
+
+        return self._compose_transcript_text()
 
     def _compose_transcript_text(self) -> str:
         conversation = self._get_active_conversation()

@@ -167,6 +167,8 @@ class AgentChatPanel(wx.Panel):
         self.transcript = _TranscriptAccessor()
         self._suppress_history_selection = False
         self._history_last_sash = 0
+        self._pending_history_sash: int | None = None
+        self._pending_history_attempts = 0
         self._run_counter = 0
         self._active_run_handle: _AgentRunHandle | None = None
         self._load_history()
@@ -262,6 +264,7 @@ class AgentChatPanel(wx.Panel):
             history_panel, transcript_panel, history_min_width
         )
         self._horizontal_splitter.SetSashGravity(1.0)
+        self._horizontal_splitter.Bind(wx.EVT_SIZE, self._on_history_splitter_size)
         self._history_last_sash = self._horizontal_splitter.GetSashPosition()
 
         top_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -350,14 +353,63 @@ class AgentChatPanel(wx.Panel):
     def apply_history_sash(self, value: int) -> None:
         """Apply a stored history sash if the splitter is available."""
 
+        target = max(int(value), 0)
+        self._pending_history_sash = target
+        self._pending_history_attempts = 20
+        self._history_last_sash = max(target, 0)
+        self._apply_pending_history_sash()
+
+    def _on_history_splitter_size(self, event: wx.SizeEvent) -> None:
+        """Attempt pending sash application when the splitter is resized."""
+
+        event.Skip()
+        if self._pending_history_sash is not None:
+            self._apply_pending_history_sash()
+
+    def _apply_pending_history_sash(self) -> None:
+        """Try applying a deferred history sash, scheduling retries if needed."""
+
+        pending = self._pending_history_sash
+        if pending is None:
+            return
+        if self._pending_history_attempts <= 0:
+            self._pending_history_sash = None
+            self._pending_history_attempts = 0
+            return
         splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter and splitter.IsSplit():
-            minimum = splitter.GetMinimumPaneSize()
-            target = max(value, minimum)
-            splitter.SetSashPosition(target)
-            self._history_last_sash = target
+        if splitter is None or not splitter.IsSplit():
+            self._pending_history_attempts -= 1
+            if self._pending_history_attempts > 0:
+                wx.CallAfter(self._apply_pending_history_sash)
+            else:
+                self._pending_history_sash = None
+            return
+        minimum = splitter.GetMinimumPaneSize()
+        desired = max(pending, minimum)
+        if self._attempt_set_history_sash(desired):
+            self._pending_history_attempts -= 1
+            if self._pending_history_attempts > 0:
+                wx.CallAfter(self._apply_pending_history_sash)
+            else:
+                self._pending_history_sash = None
+                self._pending_history_attempts = 0
+            return
+        self._pending_history_attempts -= 1
+        if self._pending_history_attempts > 0:
+            wx.CallAfter(self._apply_pending_history_sash)
         else:
-            self._history_last_sash = max(value, 0)
+            self._pending_history_sash = None
+
+    def _attempt_set_history_sash(self, target: int) -> bool:
+        """Apply ``target`` if splitter dimensions are ready, return success flag."""
+
+        splitter = getattr(self, "_horizontal_splitter", None)
+        if splitter is None or not splitter.IsSplit():
+            return False
+        splitter.SetSashPosition(target)
+        actual = splitter.GetSashPosition()
+        self._history_last_sash = max(actual, 0)
+        return abs(actual - target) <= 1
 
     def _on_send(self, _event: wx.Event) -> None:
         """Send prompt to agent."""

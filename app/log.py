@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import subprocess
 import sys
@@ -18,34 +19,68 @@ _DEFAULT_LOG_SUBDIR = "logs"
 _TEXT_LOG_NAME = "cookareq.log"
 _JSON_LOG_NAME = "cookareq.jsonl"
 _ROTATION_BACKUPS = 5
+_TEXT_LOG_MAX_BYTES = 5 * 1024 * 1024
+_JSON_LOG_MAX_BYTES = 5 * 1024 * 1024
 
 logger = logging.getLogger("cookareq")
 
 _log_dir: Path | None = None
-_text_log_path: Path | None = None
-_json_log_path: Path | None = None
 
 
-class JsonlHandler(logging.Handler):
-    """Write log records as JSON lines with timestamps."""
+class JsonFormatter(logging.Formatter):
+    """Convert log records into JSON strings."""
 
-    def __init__(self, filename: Path | str) -> None:
-        """Create handler writing JSON lines to *filename*."""
-        super().__init__(level=logging.DEBUG)
-        self.filename = Path(filename)
-
-    def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - simple IO
-        """Serialize ``record`` to JSONL with a timestamp."""
-
-        data: Any = getattr(record, "json", None)
-        if data is None:
-            data = {"message": record.getMessage(), "level": record.levelname}
+    def format(self, record: logging.LogRecord) -> str:
+        record.message = record.getMessage()
+        payload: Any = getattr(record, "json", None)
+        if payload is None:
+            data: dict[str, Any] = {
+                "message": record.message,
+                "level": record.levelname,
+            }
+        elif isinstance(payload, dict):
+            data = dict(payload)
+            data.setdefault("message", record.message)
+            data.setdefault("level", record.levelname)
+        else:
+            data = {
+                "message": record.message,
+                "level": record.levelname,
+                "data": payload,
+            }
         if "timestamp" not in data:
             data["timestamp"] = utc_now_iso()
-        self.filename.parent.mkdir(parents=True, exist_ok=True)
-        with self.filename.open("a", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False)
-            fh.write("\n")
+        if record.exc_info and "exc_info" not in data:
+            data["exc_info"] = self.formatException(record.exc_info)
+        if record.stack_info and "stack_info" not in data:
+            data["stack_info"] = self.formatStack(record.stack_info)
+        return json.dumps(data, ensure_ascii=False)
+
+
+class JsonlHandler(RotatingFileHandler):
+    """Write log records as JSON lines with built-in rotation."""
+
+    def __init__(
+        self,
+        filename: Path | str,
+        *,
+        max_bytes: int | None = None,
+        backup_count: int = _ROTATION_BACKUPS,
+        encoding: str = "utf-8",
+        delay: bool = False,
+    ) -> None:
+        path = Path(filename)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if max_bytes is None:
+            max_bytes = _JSON_LOG_MAX_BYTES
+        super().__init__(
+            path,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding=encoding,
+            delay=delay,
+        )
+        self.setFormatter(JsonFormatter())
 
 
 def _default_log_dir() -> Path:
@@ -67,60 +102,50 @@ def _resolve_log_dir(log_dir: str | Path | None) -> Path:
     return path
 
 
-def _rotate_log_file(path: Path, *, backups: int = _ROTATION_BACKUPS) -> None:
-    """Rotate ``path`` preserving up to ``backups`` previous generations."""
-
-    if backups <= 0:
-        path.unlink(missing_ok=True)
-        return
-
-    for index in range(backups, 0, -1):
-        rotated = path.with_name(f"{path.name}.{index}")
-        source = path if index == 1 else path.with_name(f"{path.name}.{index - 1}")
-        if not source.exists():
-            continue
-        if rotated.exists():
-            rotated.unlink()
-        source.rename(rotated)
-
-
 def configure_logging(level: int = logging.INFO, *, log_dir: str | Path | None = None) -> None:
     """Configure application logger once."""
 
-    global _log_dir, _text_log_path, _json_log_path
+    global _log_dir
 
     if logger.handlers:
         if _log_dir is None:
             resolved_dir = _resolve_log_dir(log_dir).resolve()
             _log_dir = resolved_dir
-            _text_log_path = resolved_dir / _TEXT_LOG_NAME
-            _json_log_path = resolved_dir / _JSON_LOG_NAME
-            _json_log_path.touch(exist_ok=True)
         return
 
     resolved_dir = _resolve_log_dir(log_dir).resolve()
     _log_dir = resolved_dir
-    _text_log_path = resolved_dir / _TEXT_LOG_NAME
-    _json_log_path = resolved_dir / _JSON_LOG_NAME
-
-    _rotate_log_file(_text_log_path)
-    _rotate_log_file(_json_log_path)
-    _json_log_path.touch(exist_ok=True)
 
     stream_handler = logging.StreamHandler()
     stream_handler.setLevel(level)
     stream_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
     logger.addHandler(stream_handler)
 
-    file_handler = logging.FileHandler(_text_log_path, encoding="utf-8")
+    text_path = resolved_dir / _TEXT_LOG_NAME
+    text_size = text_path.stat().st_size if text_path.exists() else 0
+    file_handler = RotatingFileHandler(
+        text_path,
+        encoding="utf-8",
+        maxBytes=_TEXT_LOG_MAX_BYTES,
+        backupCount=_ROTATION_BACKUPS,
+    )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     )
+    if text_size > 0:
+        file_handler.doRollover()
     logger.addHandler(file_handler)
 
-    json_handler = JsonlHandler(_json_log_path)
+    json_path = resolved_dir / _JSON_LOG_NAME
+    json_size = json_path.stat().st_size if json_path.exists() else 0
+    json_handler = JsonlHandler(
+        json_path,
+        backup_count=_ROTATION_BACKUPS,
+    )
     json_handler.setLevel(logging.DEBUG)
+    if json_size > 0:
+        json_handler.doRollover()
     logger.addHandler(json_handler)
 
     logger.setLevel(logging.DEBUG)
@@ -138,11 +163,10 @@ def get_log_directory() -> Path:
 def get_log_file_paths() -> tuple[Path, Path]:
     """Return paths to text and JSONL log files, configuring logging if needed."""
 
-    if _text_log_path is None or _json_log_path is None:
+    if _log_dir is None:
         configure_logging()
-    assert _text_log_path is not None
-    assert _json_log_path is not None
-    return _text_log_path, _json_log_path
+    assert _log_dir is not None
+    return _log_dir / _TEXT_LOG_NAME, _log_dir / _JSON_LOG_NAME
 
 
 def open_log_directory() -> bool:

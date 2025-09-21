@@ -21,16 +21,10 @@ pytestmark = pytest.mark.unit
 def reset_logger() -> None:
     prev_handlers = list(logger.handlers)
     prev_level = logger.level
-    prev_state = (
-        log_module._log_dir,
-        log_module._text_log_path,
-        log_module._json_log_path,
-    )
+    prev_log_dir = log_module._log_dir
     logger.handlers.clear()
     logger.setLevel(logging.NOTSET)
     log_module._log_dir = None
-    log_module._text_log_path = None
-    log_module._json_log_path = None
     try:
         yield
     finally:
@@ -39,11 +33,7 @@ def reset_logger() -> None:
         logger.handlers.clear()
         logger.handlers.extend(prev_handlers)
         logger.setLevel(prev_level)
-        (
-            log_module._log_dir,
-            log_module._text_log_path,
-            log_module._json_log_path,
-        ) = prev_state
+        log_module._log_dir = prev_log_dir
 
 
 @pytest.fixture
@@ -65,7 +55,11 @@ def test_configure_logging_attaches_handlers_once(
         if isinstance(h, logging.StreamHandler)
         and not isinstance(h, logging.FileHandler)
     ]
-    file_handlers = [h for h in handlers if isinstance(h, logging.FileHandler)]
+    file_handlers = [
+        h
+        for h in handlers
+        if isinstance(h, logging.FileHandler) and not isinstance(h, JsonlHandler)
+    ]
     json_handlers = [h for h in handlers if isinstance(h, JsonlHandler)]
     assert len(stream_handlers) == 1
     assert len(file_handlers) == 1
@@ -124,3 +118,30 @@ def test_configure_logging_rotates_previous_run(
     assert rotated_json.read_text(encoding="utf-8") == "{\"message\": \"old json\"}\n"
     assert text_path.exists()
     assert json_path.exists()
+
+
+def test_jsonl_handler_rotates_when_size_exceeded(tmp_path: Path) -> None:
+    log_path = tmp_path / "data.jsonl"
+    handler = JsonlHandler(
+        log_path,
+        max_bytes=60,
+        backup_count=2,
+    )
+    try:
+        record = logging.LogRecord(
+            name="cookareq.test",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=0,
+            msg="message %s",
+            args=("one",),
+            exc_info=None,
+        )
+        for _ in range(5):
+            handler.handle(record)
+        assert log_path.exists()
+        rotated = sorted(tmp_path.glob("data.jsonl.*"))
+        assert rotated, "rotation did not create backup files"
+        assert any(r.suffix == ".1" for r in rotated)
+    finally:
+        handler.close()

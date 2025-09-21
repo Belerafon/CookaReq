@@ -31,6 +31,7 @@ class MessageBubble(wx.Panel):
         text: str,
         align: str,
         allow_selection: bool = False,
+        render_markdown: bool = False,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
@@ -43,6 +44,8 @@ class MessageBubble(wx.Panel):
         self.Bind(wx.EVT_MENU, self._on_copy, id=self._copy_menu_id)
         self._allow_selection = allow_selection
         self._copy_selection_menu_id: int | None = None
+        self._selection_checker: Callable[[], bool] | None = None
+        self._selection_getter: Callable[[], str] | None = None
         if allow_selection:
             self._copy_selection_menu_id = wx.Window.NewControlId()
             self.Bind(wx.EVT_MENU, self._on_copy_selection, id=self._copy_selection_menu_id)
@@ -91,18 +94,40 @@ class MessageBubble(wx.Panel):
         )
 
         if allow_selection:
-            style = (
-                wx.TE_MULTILINE
-                | wx.TE_READONLY
-                | wx.TE_WORDWRAP
-                | wx.TE_NO_VSCROLL
-                | wx.BORDER_NONE
-            )
-            text_ctrl = wx.TextCtrl(bubble, value=text, style=style)
-            text_ctrl.SetBackgroundColour(bubble_bg)
-            text_ctrl.SetForegroundColour(bubble_fg)
-            text_ctrl.SetMinSize(wx.Size(self.FromDIP(160), -1))
-            self._text = text_ctrl
+            if render_markdown:
+                from .markdown_view import MarkdownContent
+
+                markdown = MarkdownContent(
+                    bubble,
+                    markdown=text,
+                    background_colour=bubble_bg,
+                    foreground_colour=bubble_fg,
+                )
+                markdown.SetMinSize(wx.Size(self.FromDIP(160), -1))
+                self._text = markdown
+
+                self._selection_checker = markdown.HasSelection
+                self._selection_getter = markdown.GetSelectionText
+            else:
+                style = (
+                    wx.TE_MULTILINE
+                    | wx.TE_READONLY
+                    | wx.TE_WORDWRAP
+                    | wx.TE_NO_VSCROLL
+                    | wx.BORDER_NONE
+                )
+                text_ctrl = wx.TextCtrl(bubble, value=text, style=style)
+                text_ctrl.SetBackgroundColour(bubble_bg)
+                text_ctrl.SetForegroundColour(bubble_fg)
+                text_ctrl.SetMinSize(wx.Size(self.FromDIP(160), -1))
+                self._text = text_ctrl
+
+                def has_selection(tc: wx.TextCtrl = text_ctrl) -> bool:
+                    start, end = tc.GetSelection()
+                    return end > start
+
+                self._selection_checker = has_selection
+                self._selection_getter = text_ctrl.GetStringSelection
         else:
             text_align_flag = wx.ALIGN_RIGHT if align == "right" else 0
             self._text = wx.StaticText(bubble, label=text, style=text_align_flag)
@@ -116,12 +141,20 @@ class MessageBubble(wx.Panel):
         )
 
         bubble.Bind(wx.EVT_SIZE, self._on_bubble_resize)
-        for widget in (self, bubble, self._text):
-            widget.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
+        self.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
+        bubble.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
+        self._attach_context_menu_handlers(self._text)
 
         outer.Add(bubble, 0, wx.EXPAND)
 
         self.SetSizer(outer)
+
+    def _attach_context_menu_handlers(self, widget: wx.Window | None) -> None:
+        if widget is None:
+            return
+        widget.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
+        for child in widget.GetChildren():
+            self._attach_context_menu_handlers(child)
 
     def _on_bubble_resize(self, event: wx.SizeEvent) -> None:
         event.Skip()
@@ -187,14 +220,19 @@ class MessageBubble(wx.Panel):
                 wx.TheClipboard.Close()
 
     def _has_selection(self) -> bool:
-        if isinstance(self._text, wx.TextCtrl):
-            start, end = self._text.GetSelection()
-            return end > start
-        return False
+        if self._selection_checker is None:
+            return False
+        try:
+            return bool(self._selection_checker())
+        except Exception:  # pragma: no cover - defensive
+            return False
 
     def _get_selection_text(self) -> str:
-        if isinstance(self._text, wx.TextCtrl):
-            return self._text.GetStringSelection()
+        if self._selection_getter is not None:
+            try:
+                return self._selection_getter()
+            except Exception:  # pragma: no cover - defensive
+                return ""
         return ""
 
 
@@ -234,6 +272,7 @@ class TranscriptMessagePanel(wx.Panel):
             text=response,
             align="left",
             allow_selection=True,
+            render_markdown=True,
         )
         outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, padding)
 

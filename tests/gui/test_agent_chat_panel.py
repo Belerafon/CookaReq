@@ -126,19 +126,31 @@ def test_agent_response_allows_text_selection(tmp_path, wx_app):
     assert transcript_children
     entry_panel = transcript_children[0]
 
-    text_controls: list = []
+    from app.ui.widgets.markdown_view import MarkdownContent
+
+    text_controls: list[wx.TextCtrl] = []
+    markdown_controls: list[MarkdownContent] = []
 
     def collect_text_controls(window) -> None:
         for child in window.GetChildren():
             if isinstance(child, wx.TextCtrl):
                 text_controls.append(child)
+            if isinstance(child, MarkdownContent):
+                markdown_controls.append(child)
             collect_text_controls(child)
 
     collect_text_controls(entry_panel)
-    assert text_controls, "Expected agent message to expose a selectable control"
-    agent_text = text_controls[0]
-    assert agent_text.GetValue() == "agent: hello world"
-    assert not agent_text.IsEditable()
+    if markdown_controls:
+        agent_markdown = markdown_controls[0]
+        assert agent_markdown.GetPlainText().strip() == "agent: hello world"
+        agent_markdown.SelectAll()
+        assert agent_markdown.HasSelection()
+        assert agent_markdown.GetSelectionText().strip().startswith("agent: hello world")
+    else:
+        assert text_controls, "Expected agent message to expose a selectable control"
+        agent_text = text_controls[0]
+        assert agent_text.GetValue() == "agent: hello world"
+        assert not agent_text.IsEditable()
 
     destroy_panel(frame, panel)
 
@@ -209,24 +221,17 @@ def test_agent_message_copy_selection(monkeypatch, wx_app):
         text="selectable text",
         align="left",
         allow_selection=True,
+        render_markdown=True,
     )
 
-    text_ctrls = []
+    from app.ui.widgets.markdown_view import MarkdownContent
 
-    def gather(window) -> None:
-        for child in window.GetChildren():
-            if isinstance(child, wx.TextCtrl):
-                text_ctrls.append(child)
-            gather(child)
-
-    gather(bubble)
-    assert text_ctrls
-    text_ctrl = text_ctrls[0]
-    text_ctrl.SetSelection(0, 10)
+    assert isinstance(bubble._text, MarkdownContent)
+    bubble._text.SelectAll()
 
     bubble._on_copy_selection(None)
 
-    assert clipboard.get("text") == "selectable"
+    assert clipboard.get("text", "").strip().startswith("selectable text")
 
     bubble.Destroy()
     frame.Destroy()

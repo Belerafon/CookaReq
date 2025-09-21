@@ -617,6 +617,7 @@ def test_agent_chat_panel_clear_history_resets_context(tmp_path, wx_app):
     flush_wx_events(wx)
     assert agent.calls[0]["history"] == []
 
+    panel.history_list.SelectRow(0)
     panel._on_clear_history(None)
     assert panel.history == []
     assert panel.history_list.GetItemCount() == 0
@@ -626,6 +627,43 @@ def test_agent_chat_panel_clear_history_resets_context(tmp_path, wx_app):
     panel._on_send(None)
     flush_wx_events(wx)
     assert agent.calls[-1]["history"] == []
+
+    destroy_panel(frame, panel)
+
+
+def test_agent_chat_panel_delete_multiple_chats(tmp_path, wx_app):
+    class RecordingAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
+            return {"ok": True, "error": None, "result": f"answer {text}"}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, RecordingAgent())
+
+    panel.input.SetValue("first request")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    panel._on_new_chat(None)
+    panel.input.SetValue("second request")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    panel._on_new_chat(None)
+    panel.input.SetValue("third request")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    assert len(panel.conversations) == 3
+    to_remove = list(panel.conversations[:2])
+    last_id = panel.conversations[-1].conversation_id
+    panel.input.SetValue("draft text")
+
+    panel._remove_conversations(to_remove)
+
+    assert len(panel.conversations) == 1
+    assert panel.history_list.GetItemCount() == 1
+    assert panel.conversations[0].conversation_id == last_id
+    assert panel._active_conversation_id == last_id
+    assert panel.input.GetValue() == "draft text"
 
     destroy_panel(frame, panel)
 

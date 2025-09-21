@@ -19,6 +19,7 @@ import wx
 import wx.dataview as dv
 from wx.lib.scrolledpanel import ScrolledPanel
 
+from ..confirm import confirm
 from ..i18n import _
 from ..llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
 from ..util.json import make_json_safe
@@ -185,7 +186,6 @@ class AgentChatPanel(wx.Panel):
         self._start_time: float | None = None
         self._current_tokens: TokenCountResult = TokenCountResult.exact(0)
         self._new_chat_btn: wx.Button | None = None
-        self._clear_history_btn: wx.Button | None = None
         self._stop_btn: wx.Button | None = None
         self._bottom_panel: wx.Panel | None = None
         self._copy_conversation_btn: wx.Window | None = None
@@ -309,7 +309,7 @@ class AgentChatPanel(wx.Panel):
         self._new_chat_btn.Bind(wx.EVT_BUTTON, self._on_new_chat)
         history_header.Add(history_label, 1, wx.ALIGN_CENTER_VERTICAL)
         history_header.Add(self._new_chat_btn, 0, wx.ALIGN_CENTER_VERTICAL)
-        style = dv.DV_SINGLE | dv.DV_ROW_LINES | dv.DV_VERT_RULES
+        style = dv.DV_MULTIPLE | dv.DV_ROW_LINES | dv.DV_VERT_RULES
         self.history_list = dv.DataViewListCtrl(history_panel, style=style)
         self.history_list.SetMinSize(wx.Size(dip(self, 260), -1))
         title_col = self.history_list.AppendTextColumn(
@@ -331,6 +331,7 @@ class AgentChatPanel(wx.Panel):
         )
         summary_col.SetMinWidth(dip(self, 220))
         self.history_list.Bind(dv.EVT_DATAVIEW_SELECTION_CHANGED, self._on_select_history)
+        self.history_list.Bind(wx.EVT_CONTEXT_MENU, self._on_history_context_menu)
         inherit_background(history_panel, self)
         history_sizer.Add(history_header, 0, wx.EXPAND)
         history_sizer.AddSpacer(spacing)
@@ -401,8 +402,6 @@ class AgentChatPanel(wx.Panel):
         self.input.Bind(wx.EVT_TEXT_ENTER, self._on_send)
 
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self._clear_history_btn = wx.Button(bottom_panel, label=_("Delete chat"))
-        self._clear_history_btn.Bind(wx.EVT_BUTTON, self._on_clear_history)
         clear_btn = wx.Button(bottom_panel, label=_("Clear input"))
         clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_input)
         self._stop_btn = wx.Button(bottom_panel, label=_("Stop"))
@@ -410,7 +409,6 @@ class AgentChatPanel(wx.Panel):
         self._stop_btn.Enable(False)
         self._send_btn = wx.Button(bottom_panel, label=_("Send"))
         self._send_btn.Bind(wx.EVT_BUTTON, self._on_send)
-        button_sizer.Add(self._clear_history_btn, 0, wx.RIGHT, spacing)
         button_sizer.Add(clear_btn, 0, wx.RIGHT, spacing)
         button_sizer.Add(self._stop_btn, 0, wx.RIGHT, spacing)
         button_sizer.Add(self._send_btn, 0)
@@ -685,32 +683,126 @@ class AgentChatPanel(wx.Panel):
         self.input.SetValue("")
         self.input.SetFocus()
 
-    def _on_clear_history(self, _event: wx.Event) -> None:
-        """Delete the currently selected conversation."""
+    def _on_clear_history(self, _event: wx.Event | None = None) -> None:
+        """Delete selected conversations from history."""
 
+        self._delete_selected_conversations(require_confirmation=True)
+
+    def _delete_selected_conversations(self, *, require_confirmation: bool) -> None:
         if self._is_running:
             return
-        active_index = self._active_index()
-        conversation = self._get_active_conversation()
-        if conversation is None:
+        rows = self._selected_history_rows()
+        if not rows:
             return
-        try:
-            self.conversations.remove(conversation)
-        except ValueError:  # pragma: no cover - defensive
-            pass
+        conversations = [self.conversations[row] for row in rows]
+        if require_confirmation:
+            message = self._format_delete_confirmation_message(conversations)
+            if not confirm(message):
+                return
+        self._remove_conversations(conversations)
+
+    def _selected_history_rows(self) -> list[int]:
+        selections = self.history_list.GetSelections()
+        rows: list[int] = []
+        for item in selections:
+            if not item.IsOk():
+                continue
+            row = self.history_list.ItemToRow(item)
+            if row != wx.NOT_FOUND:
+                rows.append(row)
+        if not rows:
+            item = self.history_list.GetSelection()
+            if item and item.IsOk():
+                row = self.history_list.ItemToRow(item)
+                if row != wx.NOT_FOUND:
+                    rows.append(row)
+        rows.sort()
+        return rows
+
+    def _format_delete_confirmation_message(
+        self, conversations: Sequence[ChatConversation]
+    ) -> str:
+        if len(conversations) == 1:
+            conversation = conversations[0]
+            title = (conversation.title or conversation.derive_title()).strip()
+            if not title:
+                title = _("this chat")
+            return _("Delete chat \"{title}\"?").format(
+                title=normalize_for_display(title)
+            )
+        return _("Delete {count} selected chats?").format(count=len(conversations))
+
+    def _remove_conversations(
+        self, conversations: Sequence[ChatConversation]
+    ) -> None:
+        if not conversations:
+            return
+        ids_to_remove = {conv.conversation_id for conv in conversations}
+        indices_to_remove = [
+            idx
+            for idx, conv in enumerate(self.conversations)
+            if conv.conversation_id in ids_to_remove
+        ]
+        if not indices_to_remove:
+            return
+        removed_active = (
+            self._active_conversation_id is not None
+            and self._active_conversation_id in ids_to_remove
+        )
+        remaining = [
+            conv for conv in self.conversations if conv.conversation_id not in ids_to_remove
+        ]
+        self.conversations = remaining
         if self.conversations:
-            if active_index is None:
-                self._active_conversation_id = self.conversations[-1].conversation_id
-            else:
-                next_index = min(active_index, len(self.conversations) - 1)
-                self._active_conversation_id = self.conversations[next_index].conversation_id
+            if self._active_conversation_id not in {
+                conv.conversation_id for conv in self.conversations
+            }:
+                fallback_index = min(indices_to_remove[0], len(self.conversations) - 1)
+                self._active_conversation_id = self.conversations[
+                    fallback_index
+                ].conversation_id
         else:
             self._active_conversation_id = None
         self._save_history()
         self._refresh_history_list()
         self._render_transcript()
-        self.input.SetValue("")
+        if removed_active:
+            self.input.SetValue("")
         self.input.SetFocus()
+
+    def _on_history_context_menu(self, event: wx.ContextMenuEvent) -> None:
+        if self._is_running:
+            return
+        if event.GetEventObject() is not self.history_list:
+            event.Skip()
+            return
+        pos = event.GetPosition()
+        if pos == wx.DefaultPosition:
+            pos = wx.GetMousePosition()
+        client = self.history_list.ScreenToClient(pos)
+        item, _column = self.history_list.HitTest(client)
+        if item and item.IsOk():
+            row = self.history_list.ItemToRow(item)
+            if row != wx.NOT_FOUND:
+                selected_rows = set(self._selected_history_rows())
+                if row not in selected_rows:
+                    self.history_list.UnselectAll()
+                    self.history_list.Select(item)
+        elif not self._selected_history_rows():
+            return
+        selected_rows = self._selected_history_rows()
+        if not selected_rows:
+            return
+        menu = wx.Menu()
+        label = _("Delete chat") if len(selected_rows) == 1 else _(
+            "Delete selected chats"
+        )
+        delete_item = menu.Append(wx.ID_ANY, label)
+        menu.Bind(wx.EVT_MENU, self._on_clear_history, delete_item)
+        try:
+            self.PopupMenu(menu)
+        finally:
+            menu.Destroy()
 
     def _on_select_history(self, event: dv.DataViewEvent) -> None:
         """Load prompt from history selection."""
@@ -1635,8 +1727,6 @@ class AgentChatPanel(wx.Panel):
     def _update_history_controls(self) -> None:
         has_conversations = bool(self.conversations)
         self.history_list.Enable(has_conversations and not self._is_running)
-        if self._clear_history_btn is not None:
-            self._clear_history_btn.Enable(has_conversations and not self._is_running)
         if self._new_chat_btn is not None:
             self._new_chat_btn.Enable(not self._is_running)
 

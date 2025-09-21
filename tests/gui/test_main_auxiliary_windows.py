@@ -1,6 +1,8 @@
-"""Tests for tracking auxiliary top-level frames in :class:`MainFrame`."""
+"""Tests for auxiliary top-level frames managed by :class:`MainFrame`."""
 
 from __future__ import annotations
+
+import types
 
 import pytest
 
@@ -14,7 +16,7 @@ pytestmark = pytest.mark.gui
 
 
 def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path):
-    """Ensure graph/matrix frames are tracked, auto-unregistered and closed."""
+    """Ensure graph/matrix frames close automatically with the main window."""
 
     wx = pytest.importorskip("wx")
 
@@ -37,25 +39,41 @@ def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path):
 
         monkeypatch.setattr(wx, "MessageBox", _record_message)
 
+        created_frames: list[wx.Frame] = []
+        original_register = frame.register_auxiliary_frame
+
+        def _tracking_register(self, aux_frame: wx.Frame) -> None:
+            created_frames.append(aux_frame)
+            original_register(aux_frame)
+
+        monkeypatch.setattr(
+            frame,
+            "register_auxiliary_frame",
+            types.MethodType(_tracking_register, frame),
+        )
+
         frame.on_show_derivation_graph(None)
         frame.on_show_trace_matrix(None)
         wx_app.Yield()
 
-        assert len(frame._auxiliary_frames) == 2  # type: ignore[attr-defined]
+        assert len(created_frames) == 2
 
-        created_frames = list(frame._auxiliary_frames)  # type: ignore[attr-defined]
-        manual_close = created_frames[0]
-        manual_close.Close(True)
-        wx_app.Yield()
+        destroyed: set[int] = set()
 
-        assert manual_close not in frame._auxiliary_frames  # type: ignore[attr-defined]
+        for idx, aux in enumerate(created_frames):
+            def _on_destroy(event: wx.WindowDestroyEvent, marker=idx) -> None:
+                destroyed.add(marker)
+                event.Skip()
+
+            aux.Bind(wx.EVT_WINDOW_DESTROY, _on_destroy)
 
         frame._on_close(None)
         wx_app.Yield()
 
-        assert frame._auxiliary_frames == set()  # type: ignore[attr-defined]
-        for wnd in created_frames[1:]:
-            assert wnd.IsBeingDeleted() or not wnd.IsShownOnScreen()
+        assert destroyed == {0, 1}
+        for aux in created_frames:
+            with pytest.raises(RuntimeError):
+                aux.IsShownOnScreen()
 
         assert message_calls == []
     finally:

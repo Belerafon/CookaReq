@@ -715,7 +715,7 @@ class LLMClient:
             if role is None:
                 continue
             role_str = str(role)
-            if role_str not in {"user", "assistant", "tool"}:
+            if role_str not in {"user", "assistant", "tool", "system"}:
                 continue
             entry: dict[str, Any] = {
                 "role": role_str,

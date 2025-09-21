@@ -25,3 +25,29 @@ def test_openrouter_check_llm(tmp_path):
     client = LLMClient(settings.llm)
     result = client.check_llm()
     assert result["ok"] is True
+
+
+def test_openrouter_handles_context_prompt(tmp_path):
+    require_real_llm_tests_flag()
+    key = _load_openrouter_key()
+    if not key:
+        pytest.skip("OPEN_ROUTER key not available")
+    settings = settings_with_llm(tmp_path, api_key=key)
+    client = LLMClient(settings.llm)
+    conversation = [
+        {
+            "role": "system",
+            "content": (
+                "[Workspace context]\n"
+                "Active requirements list: SYS — System Requirements\n"
+                "Selected requirements (1):\n"
+                "- SYS-1 (id=1, prefix=SYS) — Demo"
+            ),
+        },
+        {
+            "role": "user",
+            "content": "удали это требование",
+        },
+    ]
+    response = client.respond(conversation)
+    assert isinstance(response.content, str)

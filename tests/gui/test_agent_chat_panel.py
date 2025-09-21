@@ -1,6 +1,7 @@
 import json
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Any
 
 from app.llm.tokenizer import TokenCountResult
 
@@ -31,7 +32,7 @@ def flush_wx_events(wx, count: int = 3) -> None:
         wx.Yield()
 
 
-def create_panel(tmp_path, wx_app, agent, executor=None):
+def create_panel(tmp_path, wx_app, agent, executor=None, context_provider=None):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
 
@@ -41,6 +42,7 @@ def create_panel(tmp_path, wx_app, agent, executor=None):
         agent_supplier=lambda: agent,
         history_path=tmp_path / "history.json",
         command_executor=executor or SynchronousAgentCommandExecutor(),
+        context_provider=context_provider,
     )
     return wx, frame, panel
 
@@ -52,7 +54,7 @@ def destroy_panel(frame, panel):
 
 def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     class DummyAgent:
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             return {"ok": True, "error": None, "result": {"echo": text}}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
@@ -92,7 +94,7 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
 
 def test_agent_chat_panel_handles_error(tmp_path, wx_app):
     class FailingAgent:
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             return {"ok": False, "error": {"code": "FAIL", "message": "bad"}}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, FailingAgent())
@@ -111,9 +113,41 @@ def test_agent_chat_panel_handles_error(tmp_path, wx_app):
     destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_passes_context(tmp_path, wx_app):
+    captured: list[dict[str, Any]] = []
+
+    class RecordingAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
+            captured.append({"text": text, "context": context})
+            return {"ok": True, "error": None, "result": "ok"}
+
+    context_payload = {"role": "system", "content": "Active requirements list: SYS"}
+
+    wx, frame, panel = create_panel(
+        tmp_path,
+        wx_app,
+        RecordingAgent(),
+        context_provider=lambda: context_payload,
+    )
+
+    panel.input.SetValue("context run")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    try:
+        assert captured
+        first_call = captured[0]
+        assert first_call["text"] == "context run"
+        assert first_call["context"] == (
+            {"role": "system", "content": "Active requirements list: SYS"},
+        )
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_response_allows_text_selection(tmp_path, wx_app):
     class EchoAgent:
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             return f"agent: {text}"
 
     wx, frame, panel = create_panel(tmp_path, wx_app, EchoAgent())
@@ -173,7 +207,7 @@ def test_copy_conversation_button_copies_transcript(monkeypatch, tmp_path, wx_ap
             clipboard["text"] = data.GetText()
 
     class SimpleAgent:
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             return f"response to {text}"
 
     wx, frame, panel = create_panel(tmp_path, wx_app, SimpleAgent())
@@ -248,7 +282,7 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
             self.release = threading.Event()
             self.cancel_seen = threading.Event()
 
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             self.started.set()
             try:
                 while True:
@@ -297,7 +331,7 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
 
 def test_agent_chat_panel_activity_indicator_layout(tmp_path, wx_app):
     class IdleAgent:
-        def run_command(self, text, *, history=None, cancellation=None):  # pragma: no cover - defensive
+        def run_command(self, text, *, history=None, context=None, cancellation=None):  # pragma: no cover - defensive
             return {"ok": True, "error": None, "result": text}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, IdleAgent())
@@ -318,7 +352,7 @@ def test_agent_chat_panel_activity_indicator_layout(tmp_path, wx_app):
 
 def test_agent_chat_panel_shuts_down_executor_pool_on_destroy(tmp_path, wx_app):
     class DummyAgent:
-        def run_command(self, text, *, history=None, cancellation=None):  # pragma: no cover - defensive
+        def run_command(self, text, *, history=None, context=None, cancellation=None):  # pragma: no cover - defensive
             raise AssertionError("Should not be called")
 
     class DummyPool:
@@ -350,7 +384,7 @@ def test_agent_chat_panel_shuts_down_executor_pool_on_destroy(tmp_path, wx_app):
 
 def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):
     class EchoAgent:
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             return {"ok": True, "error": None, "result": text}
 
     wx, frame1, panel1 = create_panel(tmp_path, wx_app, EchoAgent())
@@ -373,7 +407,7 @@ def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
     bad_file.write_text("{not json}")
 
     class DummyAgent:
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             return {"ok": True, "error": None, "result": {}}
 
     frame = wx.Frame(None)
@@ -400,7 +434,7 @@ def test_agent_chat_panel_ignores_flat_legacy_history(tmp_path, wx_app):
     )
 
     class DummyAgent:
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             return {"ok": True, "error": None, "result": {}}
 
     frame = wx.Frame(None)
@@ -418,7 +452,7 @@ def test_agent_chat_panel_provides_history_context(tmp_path, wx_app):
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
 
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             recorded_history = list(history or [])
             self.calls.append({"text": text, "history": recorded_history})
             return {"ok": True, "error": None, "result": f"answer {len(self.calls)}"}
@@ -450,7 +484,7 @@ def test_agent_chat_panel_clear_history_resets_context(tmp_path, wx_app):
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
 
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             recorded_history = list(history or [])
             self.calls.append({"text": text, "history": recorded_history})
             return {"ok": True, "error": None, "result": f"answer {len(self.calls)}"}
@@ -481,7 +515,7 @@ def test_agent_chat_panel_new_chat_creates_separate_conversation(tmp_path, wx_ap
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
 
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             recorded_history = list(history or [])
             self.calls.append({"text": text, "history": recorded_history})
             return {"ok": True, "error": None, "result": f"echo {len(self.calls)}"}
@@ -521,7 +555,7 @@ def test_agent_chat_panel_new_chat_creates_separate_conversation(tmp_path, wx_ap
 
 def test_agent_chat_panel_history_columns_show_metadata(tmp_path, wx_app):
     class EchoAgent:
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             return {"ok": True, "error": None, "result": text.upper()}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, EchoAgent())
@@ -547,7 +581,7 @@ def test_agent_chat_panel_history_columns_show_metadata(tmp_path, wx_app):
 
 def test_agent_chat_panel_handles_tokenizer_failure(tmp_path, wx_app, monkeypatch):
     class EchoAgent:
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             return {"ok": True, "error": None, "result": text}
 
     def failing_counter(*_args, **_kwargs) -> TokenCountResult:
@@ -576,7 +610,7 @@ def test_agent_chat_panel_handles_tokenizer_failure(tmp_path, wx_app, monkeypatc
 
 def test_agent_history_sash_waits_for_ready_size(tmp_path, wx_app, monkeypatch):
     class DummyAgent:
-        def run_command(self, text, *, history=None, cancellation=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
             return {"ok": True, "error": None, "result": text}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())

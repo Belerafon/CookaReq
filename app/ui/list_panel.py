@@ -862,6 +862,18 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             idx = self.list.GetNextSelected(idx)
         return indices
 
+    def get_selected_ids(self) -> list[int]:
+        """Return identifiers of currently selected requirements."""
+
+        ordered: list[int] = []
+        seen: set[int] = set()
+        for req_id in self._indices_to_ids(self._get_selected_indices()):
+            if req_id in seen:
+                continue
+            seen.add(req_id)
+            ordered.append(req_id)
+        return ordered
+
     def _indices_to_ids(self, indices: Sequence[int]) -> list[int]:
         ids: list[int] = []
         for idx in indices:

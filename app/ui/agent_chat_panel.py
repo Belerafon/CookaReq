@@ -144,6 +144,9 @@ class AgentChatPanel(wx.Panel):
         history_path: Path | str | None = None,
         command_executor: AgentCommandExecutor | None = None,
         token_model_resolver: Callable[[], str | None] | None = None,
+        context_provider: Callable[
+            [], Mapping[str, Any] | Sequence[Mapping[str, Any]] | None
+        ] | None = None,
     ) -> None:
         """Create panel bound to ``agent_supplier``."""
 
@@ -190,6 +193,7 @@ class AgentChatPanel(wx.Panel):
         self._history_sash_internal_adjust = 0
         self._run_counter = 0
         self._active_run_handle: _AgentRunHandle | None = None
+        self._context_provider = context_provider
         self._load_history()
 
         self._build_ui()
@@ -602,6 +606,16 @@ class AgentChatPanel(wx.Panel):
         self._active_run_handle = handle
         conversation = self._ensure_active_conversation()
         history_messages = self._conversation_messages()
+        context_messages: tuple[dict[str, Any], ...] | None = None
+        if self._context_provider is not None:
+            try:
+                provided_context = self._context_provider()
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception("Failed to collect agent context")
+                provided_context = None
+            context_messages = self._prepare_context_messages(provided_context)
+            if not context_messages:
+                context_messages = None
         pending_entry = self._add_pending_entry(
             conversation,
             prompt,
@@ -620,6 +634,7 @@ class AgentChatPanel(wx.Panel):
                 return agent.run_command(
                     prompt,
                     history=history_messages,
+                    context=context_messages,
                     cancellation=handle.cancel_event,
                 )
             except OperationCancelledError:
@@ -931,6 +946,20 @@ class AgentChatPanel(wx.Panel):
             if entry.response:
                 messages.append({"role": "assistant", "content": entry.response})
         return messages
+
+    @staticmethod
+    def _prepare_context_messages(
+        raw: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
+    ) -> tuple[dict[str, Any], ...]:
+        if not raw:
+            return ()
+        if isinstance(raw, Mapping):
+            return (dict(raw),)
+        prepared: list[dict[str, Any]] = []
+        for entry in raw:
+            if isinstance(entry, Mapping):
+                prepared.append(dict(entry))
+        return tuple(prepared)
 
     def _add_pending_entry(
         self,

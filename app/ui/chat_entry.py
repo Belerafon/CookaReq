@@ -21,6 +21,8 @@ class ChatEntry:
     raw_result: Any | None = None
     tool_results: list[Any] | None = None
     token_info: TokenCountResult | None = None
+    prompt_at: str | None = None
+    response_at: str | None = None
 
     def __post_init__(self) -> None:  # pragma: no cover - trivial
         if self.display_response is None:
@@ -65,6 +67,11 @@ class ChatEntry:
                 tokens,
                 reason="legacy_tokens",
             )
+        prompt_at_raw = payload.get("prompt_at")
+        prompt_at = str(prompt_at_raw) if isinstance(prompt_at_raw, str) else None
+        response_at_raw = payload.get("response_at")
+        response_at = str(response_at_raw) if isinstance(response_at_raw, str) else None
+
         return cls(
             prompt=prompt,
             response=response,
@@ -73,6 +80,8 @@ class ChatEntry:
             raw_result=raw_result,
             tool_results=tool_results,
             token_info=token_info,
+            prompt_at=prompt_at,
+            response_at=response_at,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -88,6 +97,8 @@ class ChatEntry:
             "token_info": self.token_info.to_dict()
             if self.token_info is not None
             else None,
+            "prompt_at": self.prompt_at,
+            "response_at": self.response_at,
         }
 
 
@@ -175,7 +186,11 @@ class ChatConversation:
         """Add ``entry`` to the conversation and refresh metadata."""
 
         self.entries.append(entry)
-        self.updated_at = utc_now_iso()
+        candidate = entry.response_at or entry.prompt_at
+        if candidate:
+            self.updated_at = candidate
+        else:
+            self.updated_at = utc_now_iso()
         if not self.title:
             self.ensure_title()
 

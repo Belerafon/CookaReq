@@ -66,3 +66,17 @@ def test_default_log_directory_used_when_base_path_missing():
         assert log_dir == expected
     finally:
         stop_server()
+
+
+def test_base_path_does_not_override_log_directory(tmp_path: Path):
+    port = 8130
+    stop_server()
+    start_server(port=port, base_path=str(tmp_path))
+    try:
+        _wait_until_ready(port)
+        log_dir = Path(mcp_app.state.log_dir)
+        expected = get_log_directory() / "mcp"
+        assert log_dir == expected
+        assert log_dir != tmp_path
+    finally:
+        stop_server()

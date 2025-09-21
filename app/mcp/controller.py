@@ -37,7 +37,13 @@ class MCPController:
         """Launch the MCP server with ``settings``."""
 
         token = settings.token if settings.require_token else ""
-        start_server(settings.host, settings.port, settings.base_path, token)
+        start_server(
+            settings.host,
+            settings.port,
+            settings.base_path,
+            token,
+            log_dir=settings.log_dir,
+        )
 
     def stop(self) -> None:
         """Shut down the MCP server if running."""

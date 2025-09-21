@@ -81,6 +81,10 @@ MCP_HELP: dict[str, str] = {
         "Base folder with requirements. Example: /tmp/reqs\n"
         "Required; the server serves files from this directory.",
     ),
+    "log_dir": _(
+        "Directory for MCP request logs. Example: /var/log/cookareq\n"
+        "Leave empty to store logs in the standard application log folder.",
+    ),
     "require_token": _(
         "When enabled, the server requires an authentication token.",
     ),
@@ -139,6 +143,7 @@ class SettingsDialog(wx.Dialog):
         host: str,
         port: int,
         base_path: str,
+        log_dir: str | None,
         require_token: bool,
         token: str,
     ) -> None:
@@ -344,6 +349,8 @@ class SettingsDialog(wx.Dialog):
         self._host = wx.TextCtrl(mcp, value=host)
         self._port = wx.SpinCtrl(mcp, min=1, max=65535, initial=port)
         self._base_path = wx.TextCtrl(mcp, value=base_path)
+        log_dir_value = str(log_dir) if log_dir else ""
+        self._log_dir = wx.TextCtrl(mcp, value=log_dir_value)
         self._require_token = wx.CheckBox(mcp, label=_("Require token"))
         self._require_token.SetValue(require_token)
         self._token = wx.TextCtrl(mcp, value=token)
@@ -422,6 +429,21 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         mcp_sizer.Add(base_sz, 0, wx.ALL | wx.EXPAND, 5)
+        log_sz = wx.BoxSizer(wx.HORIZONTAL)
+        log_sz.Add(
+            wx.StaticText(mcp, label=_("Log directory")),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            5,
+        )
+        log_sz.Add(self._log_dir, 1, wx.ALIGN_CENTER_VERTICAL)
+        log_sz.Add(
+            make_help_button(mcp, MCP_HELP["log_dir"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        mcp_sizer.Add(log_sz, 0, wx.ALL | wx.EXPAND, 5)
         token_toggle_sz = wx.BoxSizer(wx.HORIZONTAL)
         token_toggle_sz.Add(self._require_token, 0, wx.ALIGN_CENTER_VERTICAL)
         token_toggle_sz.Add(
@@ -550,6 +572,7 @@ class SettingsDialog(wx.Dialog):
             host=self._host.GetValue(),
             port=self._port.GetValue(),
             base_path=self._base_path.GetValue(),
+            log_dir=self._log_dir.GetValue().strip() or None,
             require_token=self._require_token.GetValue(),
             token=self._token.GetValue(),
         )
@@ -685,6 +708,7 @@ class SettingsDialog(wx.Dialog):
         str,
         int,
         str,
+        str,
         bool,
         str,
     ]:
@@ -704,6 +728,7 @@ class SettingsDialog(wx.Dialog):
             self._host.GetValue(),
             self._port.GetValue(),
             self._base_path.GetValue(),
+            self._log_dir.GetValue().strip(),
             self._require_token.GetValue(),
             self._token.GetValue(),
         )

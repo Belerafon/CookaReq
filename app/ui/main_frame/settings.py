@@ -39,6 +39,7 @@ class MainFrameSettingsMixin:
             host=self.mcp_settings.host,
             port=self.mcp_settings.port,
             base_path=self.mcp_settings.base_path,
+            log_dir=self.mcp_settings.log_dir,
             require_token=self.mcp_settings.require_token,
             token=self.mcp_settings.token,
         )
@@ -57,6 +58,7 @@ class MainFrameSettingsMixin:
                 host,
                 port,
                 base_path,
+                log_dir,
                 require_token,
                 token,
             ) = dlg.get_values()
@@ -74,6 +76,7 @@ class MainFrameSettingsMixin:
                 host=host,
                 port=port,
                 base_path=base_path,
+                log_dir=log_dir or None,
                 require_token=require_token,
                 token=token,
             )

@@ -383,6 +383,8 @@ def start_server(
     port: int = 59362,
     base_path: str = "",
     token: str = "",
+    *,
+    log_dir: str | Path | None = None,
 ) -> None:
     """Start the HTTP server in a background thread.
 
@@ -391,6 +393,8 @@ def start_server(
         port: TCP port where the server listens.
         base_path: Base filesystem path available to the MCP server.
         token: Authorization token expected in the ``Authorization`` header.
+        log_dir: Directory where request logs are stored.  Defaults to the
+            application log directory under ``mcp`` when not provided.
     """
     global _uvicorn_server, _server_thread
 
@@ -400,7 +404,7 @@ def start_server(
 
     app.state.base_path = base_path
     app.state.expected_token = token
-    resolved_log_dir = _configure_request_logging(base_path or None)
+    resolved_log_dir = _configure_request_logging(log_dir)
     app.state.log_dir = str(resolved_log_dir)
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     _uvicorn_server = uvicorn.Server(config)

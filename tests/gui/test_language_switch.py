@@ -51,6 +51,7 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app, tmp_path):
                 frame.mcp_settings.host,
                 frame.mcp_settings.port,
                 frame.mcp_settings.base_path,
+                frame.mcp_settings.log_dir or "",
                 frame.mcp_settings.require_token,
                 frame.mcp_settings.token,
             )

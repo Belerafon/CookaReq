@@ -621,19 +621,34 @@ class AgentChatPanel(wx.Panel):
         if not text:
             return
 
-        prompt = text
-        prompt_at = utc_now_iso()
         self.input.SetValue("")
+        self._submit_prompt(text)
+
+    def _submit_prompt(self, prompt: str, *, prompt_at: str | None = None) -> None:
+        """Submit ``prompt`` to the agent pipeline."""
+
+        if self._is_running:
+            return
+
+        normalized_prompt = prompt.strip()
+        if not normalized_prompt:
+            return
+
+        effective_prompt_at = prompt_at or utc_now_iso()
         self._run_counter += 1
         cancel_event = CancellationEvent()
-        prompt_tokens = count_text_tokens(prompt, model=self._token_model())
+        prompt_tokens = count_text_tokens(normalized_prompt, model=self._token_model())
         handle = _AgentRunHandle(
             run_id=self._run_counter,
-            prompt=prompt,
+            prompt=normalized_prompt,
             prompt_tokens=prompt_tokens,
             cancel_event=cancel_event,
+<<<<< slztez-codex/add-regenerate-button-to-chat-response
+            prompt_at=effective_prompt_at,
+=======
             prompt_at=prompt_at,
             context_messages=context_messages,
+>>>>> main
         )
         self._active_run_handle = handle
         conversation = self._ensure_active_conversation()
@@ -650,9 +665,14 @@ class AgentChatPanel(wx.Panel):
                 context_messages = None
         pending_entry = self._add_pending_entry(
             conversation,
+<<<<< slztez-codex/add-regenerate-button-to-chat-response
+            normalized_prompt,
+            prompt_at=effective_prompt_at,
+=======
             prompt,
             prompt_at=prompt_at,
             context_messages=context_messages,
+>>>>> main
         )
         handle.conversation_id = conversation.conversation_id
         handle.pending_entry = pending_entry
@@ -665,7 +685,7 @@ class AgentChatPanel(wx.Panel):
             try:
                 agent = self._agent_supplier()
                 return agent.run_command(
-                    prompt,
+                    normalized_prompt,
                     history=history_messages,
                     context=context_messages,
                     cancellation=handle.cancel_event,
@@ -694,7 +714,7 @@ class AgentChatPanel(wx.Panel):
                     "ok": False,
                     "error": {"type": type(exc).__name__, "message": str(exc)},
                 }
-            wx.CallAfter(self._finalize_prompt, prompt, result, handle)
+            wx.CallAfter(self._finalize_prompt, normalized_prompt, result, handle)
 
         future.add_done_callback(on_complete)
 
@@ -1226,17 +1246,17 @@ class AgentChatPanel(wx.Panel):
         self._save_history()
         self._refresh_history_list()
 
-    def _discard_pending_entry(self, handle: _AgentRunHandle) -> None:
-        entry = handle.pending_entry
-        if entry is None:
-            return
-        conversation = self._get_conversation_by_id(handle.conversation_id)
-        if conversation is None:
-            return
+    def _pop_conversation_entry(
+        self,
+        conversation: ChatConversation,
+        entry: ChatEntry,
+    ) -> tuple[int, ChatEntry, str] | None:
         try:
-            conversation.entries.remove(entry)
+            index = conversation.entries.index(entry)
         except ValueError:
-            return
+            return None
+        previous_updated = conversation.updated_at
+        removed = conversation.entries.pop(index)
         if conversation.entries:
             last = conversation.entries[-1]
             conversation.updated_at = (
@@ -1244,6 +1264,28 @@ class AgentChatPanel(wx.Panel):
             )
         else:
             conversation.updated_at = conversation.created_at
+        return index, removed, previous_updated
+
+    @staticmethod
+    def _restore_conversation_entry(
+        conversation: ChatConversation,
+        index: int,
+        entry: ChatEntry,
+        previous_updated: str,
+    ) -> None:
+        conversation.entries.insert(index, entry)
+        conversation.updated_at = previous_updated
+
+    def _discard_pending_entry(self, handle: _AgentRunHandle) -> None:
+        entry = handle.pending_entry
+        if entry is None:
+            return
+        conversation = self._get_conversation_by_id(handle.conversation_id)
+        if conversation is None:
+            return
+        removal = self._pop_conversation_entry(conversation, entry)
+        if removal is None:
+            return
         handle.pending_entry = None
         self._save_history()
         self._refresh_history_list()
@@ -1299,13 +1341,22 @@ class AgentChatPanel(wx.Panel):
                 )
             else:
                 has_entries = True
+                last_entry = conversation.entries[-1]
                 for entry in conversation.entries:
+                    can_regenerate = entry is last_entry and entry.response_at is not None
+                    on_regenerate = (
+                        (lambda e=entry, cid=conversation.conversation_id: self._on_regenerate_entry(cid, e))
+                        if can_regenerate
+                        else None
+                    )
                     panel = TranscriptMessagePanel(
                         self.transcript_panel,
                         prompt=entry.prompt,
                         response=entry.display_response or entry.response,
                         prompt_timestamp=self._format_entry_timestamp(entry.prompt_at),
                         response_timestamp=self._format_entry_timestamp(entry.response_at),
+                        on_regenerate=on_regenerate,
+                        regenerate_enabled=not self._is_running,
                     )
                     panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_transcript_pane_toggled)
                     self._transcript_sizer.Add(panel, 0, wx.EXPAND)
@@ -1318,6 +1369,39 @@ class AgentChatPanel(wx.Panel):
             if last_panel is not None:
                 self._scroll_transcript_to_bottom(last_panel)
         self._update_transcript_copy_buttons(has_entries)
+
+    def _on_regenerate_entry(
+        self,
+        conversation_id: str,
+        entry: ChatEntry,
+    ) -> None:
+        if self._is_running:
+            return
+        conversation = self._get_conversation_by_id(conversation_id)
+        if conversation is None or not conversation.entries:
+            return
+        if entry is not conversation.entries[-1]:
+            return
+        prompt = entry.prompt
+        if not prompt.strip():
+            return
+        removal = self._pop_conversation_entry(conversation, entry)
+        if removal is None:
+            return
+        index, removed_entry, previous_updated = removal
+        try:
+            self._submit_prompt(prompt)
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Failed to regenerate agent response")
+            self._restore_conversation_entry(
+                conversation,
+                index,
+                removed_entry,
+                previous_updated,
+            )
+            self._save_history()
+            self._refresh_history_list()
+            self._render_transcript()
 
     @staticmethod
     def _is_window_alive(window: wx.Window | None) -> bool:

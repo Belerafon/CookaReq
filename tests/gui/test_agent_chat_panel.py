@@ -32,7 +32,14 @@ def flush_wx_events(wx, count: int = 3) -> None:
         wx.Yield()
 
 
-def create_panel(tmp_path, wx_app, agent, executor=None, context_provider=None):
+def create_panel(
+    tmp_path,
+    wx_app,
+    agent,
+    executor=None,
+    context_provider=None,
+    context_window=4096,
+):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
 
@@ -43,6 +50,7 @@ def create_panel(tmp_path, wx_app, agent, executor=None, context_provider=None):
         history_path=tmp_path / "history.json",
         command_executor=executor or SynchronousAgentCommandExecutor(),
         context_provider=context_provider,
+        context_window_resolver=lambda: context_window,
     )
     return wx, frame, panel
 
@@ -59,9 +67,23 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
 
     wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
 
+    baseline_total = panel._compute_context_token_breakdown().total
+    baseline_label = panel._conversation_label.GetLabel()
+
     panel.input.SetValue("run")
     panel._on_send(None)
     flush_wx_events(wx)
+
+    updated_total = panel._compute_context_token_breakdown().total
+    updated_label = panel._conversation_label.GetLabel()
+    assert updated_label != baseline_label
+    assert (updated_total.tokens or 0) >= (baseline_total.tokens or 0)
+    expected_tokens = panel._format_tokens_for_status(updated_total)
+    assert expected_tokens in updated_label
+    expected_percent = panel._format_context_percentage(
+        updated_total, panel._context_token_limit()
+    )
+    assert expected_percent in updated_label
 
     transcript = panel.get_transcript_text()
     assert "run" in transcript
@@ -850,16 +872,12 @@ def test_agent_chat_panel_history_columns_show_metadata(tmp_path, wx_app):
     flush_wx_events(wx)
 
     assert panel.history_list.GetItemCount() == 1
+    assert panel.history_list.GetColumnCount() == 2
     title = panel.history_list.GetTextValue(0, 0)
     last_activity = panel.history_list.GetTextValue(0, 1)
-    summary = panel.history_list.GetTextValue(0, 2)
 
     assert "check metadata" in title
     assert last_activity != ""
-    assert "Messages: 1" in summary
-    assert "Tokens:" in summary
-    assert "Tokens: ~" in summary or "Tokens: n/a" in summary
-    assert "check metadata" in summary
 
     destroy_panel(frame, panel)
 
@@ -883,8 +901,6 @@ def test_agent_chat_panel_handles_tokenizer_failure(tmp_path, wx_app, monkeypatc
     panel._on_send(None)
     flush_wx_events(wx)
 
-    summary = panel.history_list.GetTextValue(0, 2)
-    assert "Tokens: n/a" in summary
     assert "n/a" in panel.status_label.GetLabel()
     entry = panel.history[0]
     assert entry.token_info is not None

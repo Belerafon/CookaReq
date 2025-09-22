@@ -12,6 +12,7 @@ from ..core.document_store import LabelDef
 from ..core.model import Requirement
 from ..i18n import _
 from .editor_panel import EditorPanel
+from .helpers import inherit_background
 
 
 class DetachedEditorFrame(wx.Frame):
@@ -33,6 +34,8 @@ class DetachedEditorFrame(wx.Frame):
 
         title = self._format_title(requirement, doc_prefix)
         super().__init__(parent, title=title)
+        background_source = self._resolve_background_source(parent)
+        self._apply_background(self, background_source)
         self._on_save = on_save
         self._on_close = on_close
         self._closing_via_cancel = False
@@ -42,13 +45,20 @@ class DetachedEditorFrame(wx.Frame):
         self._allow_freeform = allow_freeform
         self._labels: list[LabelDef] = list(labels)
 
+        container = wx.Panel(self)
+        self._apply_background(container, background_source)
+
         self.editor = EditorPanel(
-            self,
+            container,
             on_save=self._handle_save,
             on_discard=self._handle_cancel,
         )
+        editor_sizer = wx.BoxSizer(wx.VERTICAL)
+        editor_sizer.Add(self.editor, 1, wx.EXPAND)
+        container.SetSizer(editor_sizer)
+
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(self.editor, 1, wx.EXPAND)
+        sizer.Add(container, 1, wx.EXPAND)
         self.SetSizer(sizer)
 
         self.editor.set_directory(self.directory)
@@ -58,6 +68,41 @@ class DetachedEditorFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self._on_close_window)
         self.SetSize((900, 700))
         self.CentreOnParent()
+
+    # ------------------------------------------------------------------
+    def _resolve_background_source(self, parent: wx.Window | None) -> wx.Window | None:
+        """Return a widget whose colours should be mirrored by this frame."""
+
+        if parent is None:
+            return None
+        try:
+            candidate = getattr(parent, "editor", None)
+        except Exception:  # pragma: no cover - defensive: attribute may raise
+            candidate = None
+        if isinstance(candidate, wx.Window):
+            return candidate
+        if isinstance(parent, wx.Window):
+            return parent
+        return None
+
+    def _apply_background(
+        self, target: wx.Window, source: wx.Window | None
+    ) -> None:
+        """Copy background colour to ``target`` falling back to system defaults."""
+
+        if source is not None:
+            inherit_background(target, source)
+            return
+        try:
+            colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
+        except Exception:  # pragma: no cover - backend specific failure
+            return
+        if hasattr(colour, "IsOk") and not colour.IsOk():
+            return
+        try:
+            target.SetBackgroundColour(colour)
+        except Exception:  # pragma: no cover - backend quirk
+            return
 
     # ------------------------------------------------------------------
     @property

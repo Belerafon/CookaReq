@@ -214,6 +214,41 @@ def test_agent_chat_panel_handles_error(tmp_path, wx_app):
     destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_applies_vertical_sash(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
+            return {"ok": True, "result": text, "error": None}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
+
+    try:
+        frame.SetSize((900, 700))
+        frame.Show()
+        frame.SendSizeEvent()
+        flush_wx_events(wx, count=5)
+
+        splitter = panel._vertical_splitter
+        minimum = splitter.GetMinimumPaneSize()
+        total = splitter.GetClientSize().GetHeight()
+        if total <= 0:
+            frame.SendSizeEvent()
+            flush_wx_events(wx, count=5)
+            total = splitter.GetClientSize().GetHeight()
+        assert total > 0
+
+        max_top = max(minimum, total - minimum)
+        target = max(minimum, min(max_top, minimum + 120))
+
+        panel.apply_vertical_sash(target)
+        flush_wx_events(wx, count=5)
+        assert abs(panel.vertical_sash - target) <= 2
+
+        panel._adjust_vertical_splitter()
+        assert abs(panel.vertical_sash - target) <= 2
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_passes_context(tmp_path, wx_app):
     captured: list[dict[str, Any]] = []
 

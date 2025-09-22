@@ -778,25 +778,13 @@ class ConfigManager:
     def get_doc_tree_sash(self, default: int) -> int:
         """Return stored width of the hierarchy splitter."""
 
-        value: int
-        if self.has_value("sash_pos"):
-            value = int(self.get_value("sash_pos", default=default))
-        else:
-            try:
-                value = int(self._cfg.ReadInt("doc_tree_saved_sash", default))
-            except Exception:  # pragma: no cover - defensive fallback
-                value = int(default)
+        value = int(self.get_value("sash_pos", default=default))
         return max(value, 0)
 
     def set_doc_tree_sash(self, pos: int) -> None:
         """Persist width of the hierarchy splitter."""
 
         self.set_value("sash_pos", pos)
-        try:
-            if self._cfg.HasEntry("doc_tree_saved_sash"):
-                self._cfg.DeleteEntry("doc_tree_saved_sash")
-        except Exception:  # pragma: no cover - defensive compatibility cleanup
-            pass
         self.flush()
 
     # ------------------------------------------------------------------

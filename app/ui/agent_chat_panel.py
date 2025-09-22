@@ -232,6 +232,8 @@ class AgentChatPanel(wx.Panel):
         self._history_sash_goal: int | None = None
         self._history_sash_dirty = False
         self._history_sash_internal_adjust = 0
+        self._vertical_sash_goal: int | None = None
+        self._vertical_last_sash = 0
         self._run_counter = 0
         self._active_run_handle: _AgentRunHandle | None = None
         self._context_provider = context_provider
@@ -478,6 +480,10 @@ class AgentChatPanel(wx.Panel):
 
         self._vertical_splitter.SplitHorizontally(top_panel, bottom_panel)
         self._vertical_splitter.SetSashGravity(1.0)
+        self._vertical_splitter.Bind(
+            wx.EVT_SPLITTER_SASH_POS_CHANGED, self._on_vertical_sash_changed
+        )
+        self._vertical_last_sash = self._vertical_splitter.GetSashPosition()
 
         outer.Add(self._vertical_splitter, 1, wx.EXPAND)
 
@@ -545,6 +551,27 @@ class AgentChatPanel(wx.Panel):
         self._history_sash_dirty = True
         self._log_history_layout("apply-request", requested=target)
         self._apply_history_sash_if_ready()
+
+    @property
+    def vertical_sash(self) -> int:
+        """Return the current top pane height for the vertical splitter."""
+
+        splitter = getattr(self, "_vertical_splitter", None)
+        if splitter and splitter.IsSplit():
+            pos = splitter.GetSashPosition()
+            if pos > 0:
+                self._vertical_last_sash = pos
+        return max(self._vertical_last_sash, 0)
+
+    def apply_vertical_sash(self, value: int | None) -> None:
+        """Apply previously stored vertical sash height if available."""
+
+        if value is None:
+            return
+        target = max(int(value), 0)
+        self._vertical_sash_goal = target
+        self._vertical_last_sash = max(target, 0)
+        self._apply_vertical_sash_if_ready()
 
     def _on_history_splitter_size(self, event: wx.SizeEvent) -> None:
         """Attempt pending sash application when the splitter is resized."""
@@ -1023,6 +1050,9 @@ class AgentChatPanel(wx.Panel):
     def _adjust_vertical_splitter(self) -> None:
         """Size the vertical splitter so the bottom pane hugs the controls."""
 
+        if self._vertical_sash_goal is not None:
+            self._apply_vertical_sash_if_ready()
+            return
         if self._bottom_panel is None:
             return
         total_height = self._vertical_splitter.GetClientSize().GetHeight()
@@ -1032,6 +1062,40 @@ class AgentChatPanel(wx.Panel):
         min_top = self._vertical_splitter.GetMinimumPaneSize()
         sash_position = max(min_top, total_height - bottom_height)
         self._vertical_splitter.SetSashPosition(sash_position, True)
+        self._vertical_last_sash = self._vertical_splitter.GetSashPosition()
+
+    def _apply_vertical_sash_if_ready(self) -> None:
+        """Attempt to apply stored vertical sash once metrics are available."""
+
+        target = self._vertical_sash_goal
+        if target is None:
+            return
+        splitter = getattr(self, "_vertical_splitter", None)
+        if splitter is None or not splitter.IsSplit():
+            return
+        size = splitter.GetClientSize()
+        total = size.GetHeight()
+        if total <= 0:
+            wx.CallAfter(self._apply_vertical_sash_if_ready)
+            return
+        minimum = splitter.GetMinimumPaneSize()
+        max_top = max(minimum, total - minimum)
+        desired = max(minimum, min(target, max_top))
+        splitter.SetSashPosition(desired)
+        actual = splitter.GetSashPosition()
+        self._vertical_last_sash = max(actual, 0)
+
+    def _on_vertical_sash_changed(self, event: wx.SplitterEvent) -> None:
+        """Track user-driven adjustments of the vertical splitter."""
+
+        splitter = getattr(self, "_vertical_splitter", None)
+        if splitter is None or event.GetEventObject() is not splitter:
+            event.Skip()
+            return
+        pos = splitter.GetSashPosition()
+        self._vertical_last_sash = max(pos, 0)
+        self._vertical_sash_goal = self._vertical_last_sash
+        event.Skip()
 
     def _on_timer(self, _event: wx.TimerEvent) -> None:
         """Refresh elapsed time display while waiting for response."""

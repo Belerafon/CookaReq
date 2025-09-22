@@ -46,9 +46,9 @@ class MainFrameSettingsMixin:
         )
         if dlg.ShowModal() == wx.ID_OK:
             (
-                self.auto_open_last,
-                self.remember_sort,
-                self.language,
+                auto_open_last,
+                remember_sort,
+                language,
                 base_url,
                 model,
                 api_key,
@@ -64,6 +64,11 @@ class MainFrameSettingsMixin:
                 require_token,
                 token,
             ) = dlg.get_values()
+            previous_language = self.language
+            language_changed = previous_language != language
+            self.auto_open_last = auto_open_last
+            self.remember_sort = remember_sort
+            self.language = language
             previous_mcp = self.mcp_settings
             self.llm_settings = LLMSettings(
                 base_url=base_url,
@@ -103,5 +108,6 @@ class MainFrameSettingsMixin:
             elif self.mcp_settings.auto_start and server_config_changed:
                 self.mcp.stop()
                 self.mcp.start(self.mcp_settings)
-            self._apply_language()
+            if language_changed:
+                self._apply_language()
         dlg.Destroy()

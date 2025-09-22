@@ -435,25 +435,23 @@ def test_save_layout_tracks_doc_tree_collapse(tmp_path, wx_app):
     assert cfg.get_doc_tree_sash(100) == 250
 
 
-def test_get_doc_tree_sash_prefers_explicit_entry(tmp_path, wx_app):
+def test_get_doc_tree_sash_ignores_legacy_entry(tmp_path, wx_app):
     cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg_doc.ini")
 
     cfg.set_value("sash_pos", 221)
     cfg.write_int("doc_tree_saved_sash", 1125)
     cfg.flush()
 
-    assert cfg.has_value("sash_pos") is True
-    assert cfg.get_doc_tree_sash(221) == 221
+    assert cfg.get_doc_tree_sash(99) == 221
 
 
-def test_get_doc_tree_sash_falls_back_to_legacy(tmp_path, wx_app):
+def test_get_doc_tree_sash_defaults_without_modern_key(tmp_path, wx_app):
     cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg_doc.ini")
 
     cfg.write_int("doc_tree_saved_sash", 777)
     cfg.flush()
 
-    assert cfg.has_value("sash_pos") is False
-    assert cfg.get_doc_tree_sash(123) == 777
+    assert cfg.get_doc_tree_sash(123) == 123
 
 
 def test_save_layout_tracks_agent_history(tmp_path, wx_app):

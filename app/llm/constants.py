@@ -1,6 +1,6 @@
 """Shared constants for LLM configuration limits."""
 
-DEFAULT_MAX_CONTEXT_TOKENS = 12000
+DEFAULT_MAX_CONTEXT_TOKENS = 131072
 """Maximum prompt size sent to the LLM when the user does not override it."""
 
 MIN_MAX_CONTEXT_TOKENS = 2000

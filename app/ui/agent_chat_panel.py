@@ -64,11 +64,9 @@ TOKEN_UNAVAILABLE_LABEL = "n/a"
 
 
 STATUS_HELP_TEXT = _(
-    "The waiting status shows four elements:\n"
+    "The waiting status shows three elements:\n"
     "• The timer reports how long the agent has been running in mm:ss and updates every second.\n"
-    "• The centered bullet (•) separates the timer from the token counter.\n"
-    "• The token counter reports the prompt size in thousands of tokens (k tokens); a leading ~"
-    " marks an approximate value when the tokenizer cannot provide an exact figure.\n"
+    "• The status text describes whether the agent is still working or has finished.\n"
     "• The spinning indicator on the left stays active while the agent is still working."
 )
 
@@ -1074,9 +1072,8 @@ class AgentChatPanel(wx.Panel):
         """Show formatted timer and prompt size."""
 
         minutes, seconds = divmod(int(elapsed), 60)
-        label = _("Waiting for agent… {time} • {tokens}").format(
+        label = _("Waiting for agent… {time}").format(
             time=f"{minutes:02d}:{seconds:02d}",
-            tokens=self._format_tokens_for_status(self._current_tokens),
         )
         self.status_label.SetLabel(label)
 
@@ -1230,6 +1227,18 @@ class AgentChatPanel(wx.Panel):
             total_tokens, self._context_token_limit()
         )
 
+        limit = self._context_token_limit()
+        if limit is not None:
+            limit_tokens = TokenCountResult.exact(
+                limit,
+                model=total_tokens.model,
+            )
+            limit_text = self._format_tokens_for_status(limit_tokens)
+            tokens_text = _("{used} / {limit}").format(
+                used=tokens_text,
+                limit=limit_text,
+            )
+
         stats_text = _("Tokens: {tokens} • Context window: {usage}").format(
             tokens=tokens_text,
             usage=percent_text,
@@ -1308,13 +1317,8 @@ class AgentChatPanel(wx.Panel):
             self._set_wait_state(False, final_tokens)
             if elapsed:
                 minutes, seconds = divmod(int(elapsed), 60)
-                if final_tokens is None:
-                    tokens_label = self._format_tokens_for_status(TokenCountResult.exact(0))
-                else:
-                    tokens_label = self._format_tokens_for_status(final_tokens)
-                label = _("Received response in {time} • {tokens}").format(
+                label = _("Received response in {time}").format(
                     time=f"{minutes:02d}:{seconds:02d}",
-                    tokens=tokens_label,
                 )
                 self.status_label.SetLabel(label)
 

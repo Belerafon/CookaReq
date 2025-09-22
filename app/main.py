@@ -6,7 +6,12 @@ import wx
 
 from . import i18n
 from .config import ConfigManager
-from .confirm import set_confirm, wx_confirm
+from .confirm import (
+    set_confirm,
+    set_requirement_update_confirm,
+    wx_confirm,
+    wx_confirm_requirement_update,
+)
 from .log import configure_logging
 from .ui.main_frame import MainFrame
 from .ui.requirement_model import RequirementModel
@@ -40,6 +45,7 @@ def main() -> None:
     configure_logging()
     app = wx.App()
     set_confirm(wx_confirm)
+    set_requirement_update_confirm(wx_confirm_requirement_update)
     config = ConfigManager(APP_NAME)
     language = config.get_language()
     app.locale = init_locale(language)

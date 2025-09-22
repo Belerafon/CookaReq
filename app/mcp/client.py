@@ -5,11 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import httpx
 
+from ..confirm import (
+    ConfirmDecision,
+    RequirementUpdatePrompt,
+    confirm_requirement_update as global_confirm_requirement_update,
+)
 from ..i18n import _
 from ..settings import MCPSettings
 from ..telemetry import log_debug_payload, log_event
@@ -38,14 +43,100 @@ class MCPClient:
         settings: MCPSettings,
         *,
         confirm: Callable[[str], bool],
+        confirm_requirement_update: Callable[[RequirementUpdatePrompt], ConfirmDecision]
+        | None = None,
     ) -> None:
         """Initialize client with MCP ``settings`` and confirmation callback."""
         self.settings = settings
         self._confirm = confirm
+        self._confirm_requirement_update = (
+            confirm_requirement_update or global_confirm_requirement_update
+        )
         self._last_ready_check: float | None = None
         self._last_ready_ok = False
         self._last_ready_error: dict[str, Any] | None = None
         self._base_url = self._build_base_url()
+
+    # ------------------------------------------------------------------
+    def _confirm_sensitive_tool(
+        self, name: str, arguments: Mapping[str, Any]
+    ) -> bool:
+        """Return ``True`` when the write operation should proceed."""
+
+        prompt: RequirementUpdatePrompt | None = None
+        confirm_payload: dict[str, Any] = {"tool": name}
+        if name == "patch_requirement":
+            prompt = self._build_requirement_update_prompt(arguments)
+            confirm_payload.update(
+                {
+                    "rid": prompt.rid,
+                    "directory": prompt.directory,
+                    "revision": prompt.revision,
+                }
+            )
+        log_event("CONFIRM", confirm_payload)
+
+        decision_value: str | None = None
+        if name == "delete_requirement":
+            msg = _("Delete requirement?")
+            confirmed = self._confirm(msg)
+        elif name == "patch_requirement":
+            if prompt is None:
+                prompt = self._build_requirement_update_prompt(arguments)
+            decision = self._confirm_requirement_update(prompt)
+            decision_value = decision.value
+            confirmed = decision is not ConfirmDecision.NO
+        else:
+            return True
+
+        result_payload: dict[str, Any] = {"tool": name, "confirmed": confirmed}
+        if decision_value is not None:
+            result_payload["decision"] = decision_value
+        log_event("CONFIRM_RESULT", result_payload)
+        return confirmed
+
+    @staticmethod
+    def _build_requirement_update_prompt(
+        arguments: Mapping[str, Any]
+    ) -> RequirementUpdatePrompt:
+        """Create :class:`RequirementUpdatePrompt` from MCP tool *arguments*."""
+
+        directory = arguments.get("directory")
+        rid = arguments.get("rid")
+        revision = MCPClient._coerce_revision(arguments.get("rev"))
+        patch = MCPClient._normalise_patch(arguments.get("patch"))
+        return RequirementUpdatePrompt(
+            rid=str(rid) if rid is not None else "",
+            directory=str(directory) if directory is not None else None,
+            revision=revision,
+            patch=patch,
+        )
+
+    @staticmethod
+    def _normalise_patch(data: Any) -> tuple[Any, ...]:
+        """Return tuple representation of JSON Patch payload preserving order."""
+
+        if isinstance(data, Sequence) and not isinstance(data, (str, bytes, bytearray)):
+            return tuple(
+                dict(item) if isinstance(item, Mapping) else item for item in data
+            )
+        if data is None:
+            return ()
+        return (data,)
+
+    @staticmethod
+    def _coerce_revision(value: Any) -> int | None:
+        """Convert revision *value* to ``int`` when possible."""
+
+        if isinstance(value, bool):
+            # ``bool`` is an ``int`` subclass, but revisions should never be boolean.
+            return None
+        if isinstance(value, int):
+            return value
+        try:
+            return int(str(value))
+        except (TypeError, ValueError):
+            return None
 
     # ------------------------------------------------------------------
     def _build_base_url(self) -> str:
@@ -262,13 +353,7 @@ class MCPClient:
         """
 
         if name in {"delete_requirement", "patch_requirement"}:
-            log_event("CONFIRM", {"tool": name})
-            if name == "delete_requirement":
-                msg = _("Delete requirement?")
-            else:
-                msg = _("Update requirement?")
-            confirmed = self._confirm(msg)
-            log_event("CONFIRM_RESULT", {"tool": name, "confirmed": confirmed})
+            confirmed = self._confirm_sensitive_tool(name, arguments)
             if not confirmed:
                 err = mcp_error("CANCELLED", _("Cancelled by user"))["error"]
                 log_event("CANCELLED", {"tool": name})
@@ -345,13 +430,7 @@ class MCPClient:
         """Asynchronous counterpart to :meth:`call_tool`."""
 
         if name in {"delete_requirement", "patch_requirement"}:
-            log_event("CONFIRM", {"tool": name})
-            if name == "delete_requirement":
-                msg = _("Delete requirement?")
-            else:
-                msg = _("Update requirement?")
-            confirmed = self._confirm(msg)
-            log_event("CONFIRM_RESULT", {"tool": name, "confirmed": confirmed})
+            confirmed = self._confirm_sensitive_tool(name, arguments)
             if not confirmed:
                 err = mcp_error("CANCELLED", _("Cancelled by user"))["error"]
                 log_event("CANCELLED", {"tool": name})

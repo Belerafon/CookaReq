@@ -540,6 +540,45 @@ msgstr "Токен"
 msgid "Update requirement?"
 msgstr "Обновить требование?"
 
+msgid "(unknown requirement)"
+msgstr "(неизвестное требование)"
+
+msgid "Update requirement \"{rid}\"?"
+msgstr "Обновить требование \"{rid}\"?"
+
+msgid "Directory: {directory}"
+msgstr "Каталог: {directory}"
+
+msgid "Expected revision: {revision}"
+msgstr "Ожидаемая ревизия: {revision}"
+
+msgid "Planned changes:"
+msgstr "Планируемые изменения:"
+
+msgid "{index}. Invalid patch operation"
+msgstr "{index}. Некорректная операция патча"
+
+msgid "(missing op)"
+msgstr "(операция не указана)"
+
+msgid "{index}. {op} {path} → {value}"
+msgstr "{index}. {op} {path} → {value}"
+
+msgid "{index}. {op} {path}"
+msgstr "{index}. {op} {path}"
+
+msgid "{index}. {op} {source} → {path}"
+msgstr "{index}. {op} {source} → {path}"
+
+msgid "{index}. {op} ({details})"
+msgstr "{index}. {op} ({details})"
+
+msgid "Confirm requirement update"
+msgstr "Подтвердите обновление требования"
+
+msgid "Always for this session (all requirements)"
+msgstr "Всегда для этой сессии для всех требований"
+
 msgid "Verifies"
 msgstr "Проверяет"
 

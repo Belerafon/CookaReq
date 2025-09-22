@@ -552,8 +552,15 @@ def test_custom_confirm_message(monkeypatch):
             return self.respond(conversation)
 
     class StubMCP(MCPAsyncBridge):
-        def __init__(self, settings, *, confirm):
+        def __init__(
+            self,
+            settings,
+            *,
+            confirm,
+            confirm_requirement_update=None,
+        ):
             self.confirm = confirm
+            self.confirm_requirement_update = confirm_requirement_update
 
         def check_tools(self):
             return {"ok": True, "error": None}

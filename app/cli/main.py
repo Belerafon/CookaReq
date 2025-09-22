@@ -6,7 +6,12 @@ import argparse
 from pathlib import Path
 
 from app import i18n
-from app.confirm import auto_confirm, set_confirm
+from app.confirm import (
+    auto_confirm,
+    auto_confirm_requirement_update,
+    set_confirm,
+    set_requirement_update_confirm,
+)
 from app.i18n import _
 from app.log import configure_logging
 from app.settings import AppSettings, load_app_settings
@@ -17,6 +22,7 @@ APP_NAME = "CookaReq"
 LOCALE_DIR = Path(__file__).resolve().parent.parent / "locale"
 
 set_confirm(auto_confirm)
+set_requirement_update_confirm(auto_confirm_requirement_update)
 i18n.install(APP_NAME, LOCALE_DIR)
 
 

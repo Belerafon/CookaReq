@@ -1899,19 +1899,10 @@ class AgentChatPanel(wx.Panel):
                 )
             )
             prompt_text = normalize_for_display(entry.prompt)
-            lines.append(_("User → Agent prompt:"))
-            if prompt_text:
-                lines.append(indent_block(prompt_text))
-            else:
-                lines.append(indent_block(_("(empty)")))
             context_snapshot = [
                 dict(message) for message in (entry.context_messages or ())
             ]
-            lines.append(_("Agent context messages included in LLM request:"))
-            lines.append(indent_block(format_message_list(context_snapshot)))
             history_messages = gather_history_messages(index - 1)
-            lines.append(_("Agent → LLM history messages:"))
-            lines.append(indent_block(format_message_list(history_messages)))
             llm_request_messages: list[dict[str, Any]] = [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 *history_messages,
@@ -1920,6 +1911,12 @@ class AgentChatPanel(wx.Panel):
             ]
             lines.append(_("Agent → LLM compiled request:"))
             lines.append(indent_block(format_message_list(llm_request_messages)))
+            if TOOLS:
+                lines.append(
+                    _(
+                        "Tool specifications are sent as a separate payload and therefore do not appear inside the compiled request messages."
+                    )
+                )
             lines.append(
                 _("Response timestamp: {timestamp}").format(
                     timestamp=format_timestamp(entry.response_at)

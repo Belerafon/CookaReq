@@ -1332,6 +1332,9 @@ msgstr "Агент → LLM: сообщения истории"
 msgid "Agent → LLM compiled request:"
 msgstr "Агент → LLM: итоговый запрос"
 
+msgid "Tool specifications are sent as a separate payload and therefore do not appear inside the compiled request messages."
+msgstr "Спецификации инструментов передаются отдельным параметром, поэтому их не видно внутри сообщений собранного запроса."
+
 msgid "LLM system prompt:"
 msgstr "Системный промпт LLM:"
 

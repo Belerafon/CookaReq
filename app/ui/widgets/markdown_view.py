@@ -158,6 +158,14 @@ class MarkdownView(html.HtmlWindow):
         font_size = _font_size(font)
         mono_face = _font_face(mono_font)
 
+        body_attributes = (
+            f" bgcolor=\"{background_hex}\""
+            f" text=\"{foreground_hex}\""
+            f" link=\"{foreground_hex}\""
+            f" vlink=\"{foreground_hex}\""
+            f" alink=\"{foreground_hex}\""
+        )
+
         return (
             "<!DOCTYPE html>"
             "<html>"
@@ -224,7 +232,7 @@ class MarkdownView(html.HtmlWindow):
             "}"
             "</style>"
             "</head>"
-            "<body>"
+            f"<body{body_attributes}>"
             f"{body_html}"
             "</body>"
             "</html>"

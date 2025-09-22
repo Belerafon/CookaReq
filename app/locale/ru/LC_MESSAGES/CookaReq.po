@@ -1323,11 +1323,14 @@ msgstr ""
 msgid "Entries: {count}"
 msgstr "Записей: {count}"
 
-msgid "History sent to LLM:"
-msgstr "История, отправленная LLM:"
+msgid "Agent context messages included in LLM request:"
+msgstr "Контекстные сообщения агента, добавленные к запросу LLM:"
 
-msgid "LLM request messages:"
-msgstr "Сообщения запроса к LLM:"
+msgid "Agent → LLM history messages:"
+msgstr "Агент → LLM: сообщения истории"
+
+msgid "Agent → LLM compiled request:"
+msgstr "Агент → LLM: итоговый запрос"
 
 msgid "LLM system prompt:"
 msgstr "Системный промпт LLM:"
@@ -1380,14 +1383,23 @@ msgstr "Открыть папку с логами"
 msgid "Prompt timestamp: {timestamp}"
 msgstr "Время промпта: {timestamp}"
 
-msgid "Prompt:"
-msgstr "Промпт:"
+msgid "LLM → Agent final message:"
+msgstr "LLM → Агент: итоговое сообщение"
 
-msgid "Prompt: (empty)"
-msgstr "Промпт: (пусто)"
+msgid "User → Agent prompt:"
+msgstr "Пользователь → Агент: запрос"
 
-msgid "Raw result payload:"
-msgstr "Сырые данные результата:"
+msgid "Agent → User response:"
+msgstr "Агент → Пользователь: ответ"
+
+msgid "Agent stored response payload:"
+msgstr "Сохранённый ответ агента:"
+
+msgid "Agent reported error payload:"
+msgstr "Сообщённая агентом ошибка:"
+
+msgid "Agent raw result payload:"
+msgstr "Сырой итоговый пакет агента:"
 
 msgid "Regenerate"
 msgstr "Перегенерить"
@@ -1401,8 +1413,8 @@ msgstr "Запустить генерацию ответа заново"
 msgid "Show Hierarchy"
 msgstr "Показать иерархию"
 
-msgid "Stored response payload:"
-msgstr "Сохранённый ответ:"
+msgid "LLM ↔ MCP tool exchanges:"
+msgstr "Обмен инструментов между LLM и MCP:"
 
 msgid "Success"
 msgstr "Успешно"
@@ -1432,8 +1444,23 @@ msgstr "Сегодня {time}"
 msgid "Tokens: {count}"
 msgstr "Токенов: {count}"
 
-msgid "Tool calls:"
-msgstr "Вызовы инструментов:"
+msgid "  Tool call {index}: {name} — Status: {status}"
+msgstr "  Вызов инструмента {index}: {name} — Статус: {status}"
+
+msgid "    LLM tool call ID: {value}"
+msgstr "    Идентификатор вызова инструмента LLM: {value}"
+
+msgid "    LLM → MCP arguments:"
+msgstr "    LLM → MCP: аргументы"
+
+msgid "    MCP → Agent result payload:"
+msgstr "    MCP → Агент: результат"
+
+msgid "    MCP → Agent error payload:"
+msgstr "    MCP → Агент: ошибка"
+
+msgid "    Additional fields:"
+msgstr "    Дополнительные поля:"
 
 msgid "Unknown"
 msgstr "Неизвестно"

@@ -2,6 +2,8 @@
 
 import pytest
 
+from app.llm.constants import DEFAULT_MAX_CONTEXT_TOKENS
+
 pytestmark = [pytest.mark.gui, pytest.mark.integration, pytest.mark.gui_smoke]
 
 
@@ -28,6 +30,7 @@ def test_settings_dialog_returns_language(wx_app):
         model="gpt-test",
         api_key="key",
         max_retries=2,
+        max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS,
         timeout_minutes=30,
         stream=True,
         auto_start=True,
@@ -47,6 +50,7 @@ def test_settings_dialog_returns_language(wx_app):
         "gpt-test",
         "key",
         2,
+        DEFAULT_MAX_CONTEXT_TOKENS,
         30,
         True,
         True,
@@ -96,6 +100,7 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         model="",
         api_key="",
         max_retries=3,
+        max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS,
         timeout_minutes=60,
         stream=False,
         auto_start=True,
@@ -174,6 +179,7 @@ def test_mcp_check_status(monkeypatch, wx_app):
         model="",
         api_key="",
         max_retries=3,
+        max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS,
         timeout_minutes=60,
         stream=False,
         auto_start=True,
@@ -243,6 +249,7 @@ def test_llm_agent_checks(monkeypatch, wx_app):
         model="gpt",
         api_key="key",
         max_retries=3,
+        max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS,
         timeout_minutes=30,
         stream=False,
         auto_start=True,
@@ -301,6 +308,7 @@ def test_llm_agent_check_failure_logs(monkeypatch, wx_app):
         model="gpt",
         api_key="key",
         max_retries=3,
+        max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS,
         timeout_minutes=30,
         stream=False,
         auto_start=True,
@@ -344,6 +352,7 @@ def test_settings_help_buttons(monkeypatch, wx_app):
         model="",
         api_key="",
         max_retries=3,
+        max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS,
         timeout_minutes=10,
         stream=False,
         auto_start=True,

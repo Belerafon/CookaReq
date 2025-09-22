@@ -43,6 +43,18 @@ class LLMResponse:
     content: str
     tool_calls: tuple[LLMToolCall, ...] = ()
 
+
+@dataclass(frozen=True, slots=True)
+class HistoryTrimResult:
+    """Container describing the outcome of history trimming."""
+
+    kept_messages: list[dict[str, Any]]
+    dropped_messages: int
+    dropped_tokens: int
+    total_messages: int
+    total_tokens: int
+    kept_tokens: int
+
 # When the backend does not require authentication, the official OpenAI client
 # still insists on a non-empty ``api_key``.  Using a harmless placeholder allows
 # talking to such endpoints while making it explicit that no real key is
@@ -678,21 +690,29 @@ class LLMClient:
         limit = self._resolved_max_context_tokens()
         reserved = self._count_tokens(SYSTEM_PROMPT)
         remaining = max(limit - reserved, 0)
-        trimmed_history, dropped_messages, dropped_tokens = self._trim_history(
+        trim_result = self._trim_history(
             sanitized_history,
             remaining_tokens=remaining,
         )
-        if dropped_messages:
+        if trim_result.dropped_messages:
+            history_messages_after = len(trim_result.kept_messages)
             log_event(
                 "LLM_CONTEXT_TRIMMED",
                 {
-                    "dropped_messages": dropped_messages,
-                    "dropped_tokens": dropped_tokens,
+                    "dropped_messages": trim_result.dropped_messages,
+                    "dropped_tokens": trim_result.dropped_tokens,
+                    "history_messages_before": trim_result.total_messages,
+                    "history_messages_after": history_messages_after,
+                    "history_tokens_before": trim_result.total_tokens,
+                    "history_tokens_after": trim_result.kept_tokens,
+                    "max_context_tokens": limit,
+                    "system_prompt_tokens": reserved,
+                    "history_token_budget": remaining,
                 },
             )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            *trimmed_history,
+            *trim_result.kept_messages,
         ]
         return messages
 
@@ -852,14 +872,29 @@ class LLMClient:
         history: list[dict[str, Any]],
         *,
         remaining_tokens: int,
-    ) -> tuple[list[dict[str, str]], int, int]:
+    ) -> HistoryTrimResult:
         if not history:
-            return [], 0, 0
+            return HistoryTrimResult(
+                kept_messages=[],
+                dropped_messages=0,
+                dropped_tokens=0,
+                total_messages=0,
+                total_tokens=0,
+                kept_tokens=0,
+            )
         total_tokens = sum(self._count_tokens(msg["content"]) for msg in history)
+        total_messages = len(history)
         if remaining_tokens <= 0:
-            return [], len(history), total_tokens
+            return HistoryTrimResult(
+                kept_messages=[],
+                dropped_messages=total_messages,
+                dropped_tokens=total_tokens,
+                total_messages=total_messages,
+                total_tokens=total_tokens,
+                kept_tokens=0,
+            )
 
-        kept_rev: list[dict[str, str]] = []
+        kept_rev: list[dict[str, Any]] = []
         kept_tokens = 0
         for index, message in enumerate(reversed(history)):
             tokens = self._count_tokens(message["content"])
@@ -869,6 +904,13 @@ class LLMClient:
             kept_tokens += tokens
             remaining_tokens = max(remaining_tokens - tokens, 0)
         kept = list(reversed(kept_rev))
-        dropped_messages = len(history) - len(kept)
+        dropped_messages = total_messages - len(kept)
         dropped_tokens = total_tokens - kept_tokens
-        return kept, dropped_messages, dropped_tokens
+        return HistoryTrimResult(
+            kept_messages=kept,
+            dropped_messages=dropped_messages,
+            dropped_tokens=dropped_tokens,
+            total_messages=total_messages,
+            total_tokens=total_tokens,
+            kept_tokens=kept_tokens,
+        )

@@ -1307,11 +1307,14 @@ msgstr ""
 msgid "Entries: {count}"
 msgstr "Entries: {count}"
 
-msgid "History sent to LLM:"
-msgstr "History sent to LLM:"
+msgid "Agent context messages included in LLM request:"
+msgstr "Agent context messages included in LLM request:"
 
-msgid "LLM request messages:"
-msgstr "LLM request messages:"
+msgid "Agent → LLM history messages:"
+msgstr "Agent → LLM history messages:"
+
+msgid "Agent → LLM compiled request:"
+msgstr "Agent → LLM compiled request:"
 
 msgid "LLM system prompt:"
 msgstr "LLM system prompt:"
@@ -1364,14 +1367,23 @@ msgstr "Open Log Folder"
 msgid "Prompt timestamp: {timestamp}"
 msgstr "Prompt timestamp: {timestamp}"
 
-msgid "Prompt:"
-msgstr "Prompt:"
+msgid "LLM → Agent final message:"
+msgstr "LLM → Agent final message:"
 
-msgid "Prompt: (empty)"
-msgstr "Prompt: (empty)"
+msgid "User → Agent prompt:"
+msgstr "User → Agent prompt:"
 
-msgid "Raw result payload:"
-msgstr "Raw result payload:"
+msgid "Agent → User response:"
+msgstr "Agent → User response:"
+
+msgid "Agent stored response payload:"
+msgstr "Agent stored response payload:"
+
+msgid "Agent reported error payload:"
+msgstr "Agent reported error payload:"
+
+msgid "Agent raw result payload:"
+msgstr "Agent raw result payload:"
 
 msgid "Regenerate"
 msgstr "Regenerate"
@@ -1385,8 +1397,8 @@ msgstr "Restart response generation"
 msgid "Show Hierarchy"
 msgstr "Show Hierarchy"
 
-msgid "Stored response payload:"
-msgstr "Stored response payload:"
+msgid "LLM ↔ MCP tool exchanges:"
+msgstr "LLM ↔ MCP tool exchanges:"
 
 msgid "Success"
 msgstr "Success"
@@ -1416,8 +1428,23 @@ msgstr "Today {time}"
 msgid "Tokens: {count}"
 msgstr "Tokens: {count}"
 
-msgid "Tool calls:"
-msgstr "Tool calls:"
+msgid "  Tool call {index}: {name} — Status: {status}"
+msgstr "  Tool call {index}: {name} — Status: {status}"
+
+msgid "    LLM tool call ID: {value}"
+msgstr "    LLM tool call ID: {value}"
+
+msgid "    LLM → MCP arguments:"
+msgstr "    LLM → MCP arguments:"
+
+msgid "    MCP → Agent result payload:"
+msgstr "    MCP → Agent result payload:"
+
+msgid "    MCP → Agent error payload:"
+msgstr "    MCP → Agent error payload:"
+
+msgid "    Additional fields:"
+msgstr "    Additional fields:"
 
 msgid "Unknown"
 msgstr "Unknown"

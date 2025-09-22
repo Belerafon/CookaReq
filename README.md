@@ -96,7 +96,7 @@ Every command validates input before writing any files. The CLI loads applicatio
 The background FastAPI application in `app/mcp/server.py` runs in a dedicated thread so the GUI stays responsive. It exposes:
 
 - `GET /health` for readiness checks.
-- `POST /mcp` to access MCP tools including `list_requirements`, `get_requirement`, `search_requirements`, `create_requirement`, `patch_requirement`, `delete_requirement` and `link_requirements`.
+- `POST /mcp` to access MCP tools including `list_requirements`, `get_requirement`, `search_requirements`, `create_requirement`, `update_requirement_field`, `set_requirement_labels`, `set_requirement_attachments`, `set_requirement_links`, `delete_requirement` and `link_requirements`.
 
 Tools operate on the directory configured in the settings dialog (`base_path`) and enforce optional bearer-token authentication. Request and response metadata are logged both as human-readable text and structured JSON.
 

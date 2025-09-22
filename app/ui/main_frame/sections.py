@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
@@ -14,9 +13,6 @@ from ..widgets import SectionContainer
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .frame import MainFrame
-
-
-layout_logger = logging.getLogger("cookareq.ui.layout")
 
 
 class MainFrameSectionsMixin:
@@ -345,16 +341,6 @@ class MainFrameSectionsMixin:
         history_sash = self.config.get_agent_history_sash(
             self.agent_panel.default_history_sash()
         )
-        layout_logger.info(
-            "main_frame layout config: doc_tree_last=%s agent_last=%s history_requested=%s flags={hierarchy:%s,agent:%s,editor:%s,log:%s}",
-            self._doc_tree_last_sash,
-            self._agent_last_sash,
-            history_sash,
-            self.config.get_doc_tree_shown(),
-            self.config.get_agent_chat_shown(),
-            self.config.get_editor_shown(),
-            self.config.get_value("log_shown"),
-        )
         self.agent_panel.apply_history_sash(history_sash)
         if self.hierarchy_menu_item:
             self.hierarchy_menu_item.Check(self.config.get_doc_tree_shown())
@@ -365,15 +351,6 @@ class MainFrameSectionsMixin:
         if self.agent_chat_menu_item:
             self.agent_chat_menu_item.Check(self.config.get_agent_chat_shown())
             self._apply_agent_chat_visibility(persist=False)
-        if hasattr(self, "_log_splitter_snapshot"):
-            try:
-                self._log_splitter_snapshot("after-load-layout")
-            except Exception:  # pragma: no cover - defensive logging
-                layout_logger.exception("Failed to capture initial layout snapshot")
-            else:
-                wx.CallLater(200, self._log_splitter_snapshot, "post-load-200ms")
-                wx.CallLater(1000, self._log_splitter_snapshot, "post-load-1s")
-                wx.CallLater(3000, self._log_splitter_snapshot, "post-load-3s")
 
     def _save_layout(self: "MainFrame") -> None:
         """Persist window geometry, splitter, console, and column widths."""

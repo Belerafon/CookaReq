@@ -643,12 +643,7 @@ class AgentChatPanel(wx.Panel):
             prompt=normalized_prompt,
             prompt_tokens=prompt_tokens,
             cancel_event=cancel_event,
-<<<<< slztez-codex/add-regenerate-button-to-chat-response
             prompt_at=effective_prompt_at,
-=======
-            prompt_at=prompt_at,
-            context_messages=context_messages,
->>>>> main
         )
         self._active_run_handle = handle
         conversation = self._ensure_active_conversation()
@@ -663,16 +658,12 @@ class AgentChatPanel(wx.Panel):
             context_messages = self._prepare_context_messages(provided_context)
             if not context_messages:
                 context_messages = None
+        handle.context_messages = context_messages
         pending_entry = self._add_pending_entry(
             conversation,
-<<<<< slztez-codex/add-regenerate-button-to-chat-response
             normalized_prompt,
             prompt_at=effective_prompt_at,
-=======
-            prompt,
-            prompt_at=prompt_at,
             context_messages=context_messages,
->>>>> main
         )
         handle.conversation_id = conversation.conversation_id
         handle.pending_entry = pending_entry

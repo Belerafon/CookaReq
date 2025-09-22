@@ -233,6 +233,7 @@ class MainFrame(
                 agent_supplier=self._create_agent,
                 token_model_resolver=lambda: self.llm_settings.model,
                 context_provider=self._agent_context_messages,
+                context_window_resolver=lambda: self.llm_settings.max_context_tokens,
             ),
         )
         self._hide_agent_section()
@@ -314,6 +315,7 @@ class MainFrame(
                 agent_supplier=self._create_agent,
                 token_model_resolver=lambda: self.llm_settings.model,
                 context_provider=self._agent_context_messages,
+                context_window_resolver=lambda: self.llm_settings.max_context_tokens,
             )
             history_sash = self.config.get_agent_history_sash(
                 self.agent_panel.default_history_sash()

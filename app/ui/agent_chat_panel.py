@@ -149,6 +149,24 @@ class _AgentRunHandle:
             future.cancel()
 
 
+@dataclass(frozen=True)
+class _ContextTokenBreakdown:
+    """Aggregated token usage for the prompt context."""
+
+    system: TokenCountResult
+    history: TokenCountResult
+    context: TokenCountResult
+    prompt: TokenCountResult
+
+    @property
+    def total(self) -> TokenCountResult:
+        """Return combined token usage across all components."""
+
+        return combine_token_counts(
+            [self.system, self.history, self.context, self.prompt]
+        )
+
+
 class AgentChatPanel(wx.Panel):
     """Interactive chat panel driving the :class:`LocalAgent`."""
 
@@ -163,6 +181,7 @@ class AgentChatPanel(wx.Panel):
         context_provider: Callable[
             [], Mapping[str, Any] | Sequence[Mapping[str, Any]] | None
         ] | None = None,
+        context_window_resolver: Callable[[], int | None] | None = None,
     ) -> None:
         """Create panel bound to ``agent_supplier``."""
 
@@ -176,6 +195,11 @@ class AgentChatPanel(wx.Panel):
             self._history_path = _normalize_history_path(history_path)
         self._token_model_resolver = (
             token_model_resolver if token_model_resolver is not None else lambda: None
+        )
+        self._context_window_resolver = (
+            context_window_resolver
+            if context_window_resolver is not None
+            else (lambda: None)
         )
         self._executor_pool: ThreadPoolExecutor | None = None
         if command_executor is None:
@@ -198,6 +222,7 @@ class AgentChatPanel(wx.Panel):
         self._start_time: float | None = None
         self._current_tokens: TokenCountResult = TokenCountResult.exact(0)
         self._new_chat_btn: wx.Button | None = None
+        self._conversation_label: wx.StaticText | None = None
         self._stop_btn: wx.Button | None = None
         self._bottom_panel: wx.Panel | None = None
         self._copy_conversation_btn: wx.Window | None = None
@@ -336,12 +361,6 @@ class AgentChatPanel(wx.Panel):
             width=dip(self, 140),
         )
         activity_col.SetMinWidth(dip(self, 120))
-        summary_col = self.history_list.AppendTextColumn(
-            _("Summary"),
-            mode=dv.DATAVIEW_CELL_INERT,
-            width=dip(self, 260),
-        )
-        summary_col.SetMinWidth(dip(self, 220))
         self.history_list.Bind(
             dv.EVT_DATAVIEW_SELECTION_CHANGED, self._on_select_history
         )
@@ -358,8 +377,10 @@ class AgentChatPanel(wx.Panel):
         transcript_panel = wx.Panel(self._horizontal_splitter)
         transcript_sizer = wx.BoxSizer(wx.VERTICAL)
         transcript_header = wx.BoxSizer(wx.HORIZONTAL)
-        transcript_label = wx.StaticText(transcript_panel, label=_("Conversation"))
-        transcript_header.Add(transcript_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        self._conversation_label = wx.StaticText(
+            transcript_panel, label=_("Conversation")
+        )
+        transcript_header.Add(self._conversation_label, 0, wx.ALIGN_CENTER_VERTICAL)
         transcript_header.AddStretchSpacer()
         self._copy_conversation_btn = self._create_copy_button(
             transcript_panel,
@@ -393,6 +414,8 @@ class AgentChatPanel(wx.Panel):
         transcript_sizer.AddSpacer(spacing)
         transcript_sizer.Add(self.transcript_panel, 1, wx.EXPAND)
         transcript_panel.SetSizer(transcript_sizer)
+
+        self._update_conversation_header()
 
         self._horizontal_splitter.SplitVertically(
             history_panel, transcript_panel, history_min_width
@@ -930,6 +953,7 @@ class AgentChatPanel(wx.Panel):
             self.status_label.SetLabel(_("Ready"))
             self._start_time = None
             self.input.SetFocus()
+        self._update_conversation_header()
 
     def _adjust_vertical_splitter(self) -> None:
         """Size the vertical splitter so the bottom pane hugs the controls."""
@@ -961,15 +985,6 @@ class AgentChatPanel(wx.Panel):
         label = f"{quantity:.2f} k tokens"
         return f"~{label}" if tokens.approximate else label
 
-    def _format_tokens_for_summary(self, tokens: TokenCountResult) -> str:
-        """Return history summary representation for ``tokens``."""
-
-        if tokens.tokens is None:
-            return TOKEN_UNAVAILABLE_LABEL
-        quantity = tokens.tokens / 1000 if tokens.tokens else 0.0
-        label = f"{quantity:.2f}k"
-        return f"~{label}" if tokens.approximate else label
-
     def _update_status(self, elapsed: float) -> None:
         """Show formatted timer and prompt size."""
 
@@ -979,6 +994,169 @@ class AgentChatPanel(wx.Panel):
             tokens=self._format_tokens_for_status(self._current_tokens),
         )
         self.status_label.SetLabel(label)
+
+    def _context_token_limit(self) -> int | None:
+        """Return resolved context window size when available."""
+
+        resolver = getattr(self, "_context_window_resolver", None)
+        if resolver is None:
+            return None
+        try:
+            value = resolver()
+        except Exception:  # pragma: no cover - defensive
+            return None
+        if value is None:
+            return None
+        try:
+            numeric = int(value)
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            return None
+        return numeric if numeric > 0 else None
+
+    @staticmethod
+    def _count_context_message_tokens(
+        message: Mapping[str, Any],
+        model: str | None,
+    ) -> TokenCountResult:
+        """Return token usage for *message* passed as contextual metadata."""
+
+        if not isinstance(message, Mapping):
+            return TokenCountResult.exact(0, model=model)
+
+        parts: list[TokenCountResult] = []
+        role = message.get("role")
+        if role:
+            parts.append(count_text_tokens(str(role), model=model))
+        name = message.get("name")
+        if name:
+            parts.append(count_text_tokens(str(name), model=model))
+
+        content = message.get("content")
+        if content not in (None, ""):
+            if isinstance(content, str):
+                content_text = content
+            else:
+                try:
+                    content_text = json.dumps(content, ensure_ascii=False)
+                except Exception:  # pragma: no cover - defensive
+                    content_text = str(content)
+            parts.append(count_text_tokens(content_text, model=model))
+
+        tool_calls = message.get("tool_calls")
+        if tool_calls:
+            try:
+                serialized = json.dumps(tool_calls, ensure_ascii=False)
+            except Exception:  # pragma: no cover - defensive
+                serialized = str(tool_calls)
+            parts.append(count_text_tokens(serialized, model=model))
+
+        if not parts:
+            return TokenCountResult.exact(0, model=model)
+        return combine_token_counts(parts)
+
+    def _active_context_messages(self) -> tuple[Mapping[str, Any], ...]:
+        """Return contextual messages relevant to the current prompt."""
+
+        handle = getattr(self, "_active_run_handle", None)
+        if handle is not None and handle.context_messages:
+            return handle.context_messages
+
+        conversation = self._get_active_conversation()
+        if conversation and conversation.entries:
+            for entry in reversed(conversation.entries):
+                if entry.context_messages:
+                    return entry.context_messages
+        return ()
+
+    def _compute_context_token_breakdown(self) -> _ContextTokenBreakdown:
+        """Calculate token usage for the system prompt and conversation."""
+
+        model = self._token_model()
+        system_tokens = count_text_tokens(SYSTEM_PROMPT, model=model)
+
+        history_counts: list[TokenCountResult] = []
+        conversation = self._get_active_conversation()
+        pending_entry = None
+        if self._active_run_handle is not None:
+            pending_entry = getattr(self._active_run_handle, "pending_entry", None)
+        if conversation is not None:
+            for entry in conversation.entries:
+                if pending_entry is not None and entry is pending_entry:
+                    continue
+                if entry.prompt:
+                    history_counts.append(
+                        count_text_tokens(entry.prompt, model=model)
+                    )
+                if entry.response:
+                    history_counts.append(
+                        count_text_tokens(entry.response, model=model)
+                    )
+        history_tokens = combine_token_counts(history_counts)
+
+        context_counts = [
+            self._count_context_message_tokens(message, model)
+            for message in self._active_context_messages()
+        ]
+        context_tokens = combine_token_counts(context_counts)
+
+        if self._active_run_handle is not None:
+            prompt_tokens = self._active_run_handle.prompt_tokens
+        else:
+            prompt_tokens = TokenCountResult.exact(0, model=model)
+
+        return _ContextTokenBreakdown(
+            system=system_tokens,
+            history=history_tokens,
+            context=context_tokens,
+            prompt=prompt_tokens,
+        )
+
+    def _format_context_percentage(
+        self, tokens: TokenCountResult, limit: int | None
+    ) -> str:
+        """Return percentage representation of context usage."""
+
+        if limit is None or limit <= 0:
+            return TOKEN_UNAVAILABLE_LABEL
+        if tokens.tokens is None:
+            return TOKEN_UNAVAILABLE_LABEL
+        percentage = (tokens.tokens / limit) * 100
+        if percentage >= 10:
+            formatted = f"{percentage:.0f}%"
+        elif percentage >= 1:
+            formatted = f"{percentage:.1f}%"
+        else:
+            formatted = f"{percentage:.2f}%"
+        if tokens.approximate:
+            return f"~{formatted}"
+        return formatted
+
+    def _update_conversation_header(self) -> None:
+        """Refresh the transcript header with token statistics."""
+
+        label = getattr(self, "_conversation_label", None)
+        if label is None:
+            return
+
+        breakdown = self._compute_context_token_breakdown()
+        total_tokens = breakdown.total
+        tokens_text = self._format_tokens_for_status(total_tokens)
+        percent_text = self._format_context_percentage(
+            total_tokens, self._context_token_limit()
+        )
+
+        stats_text = _("Tokens: {tokens} • Context window: {usage}").format(
+            tokens=tokens_text,
+            usage=percent_text,
+        )
+        combined_label = _("{base} — {details}").format(
+            base=_("Conversation"),
+            details=stats_text,
+        )
+        label.SetLabel(combined_label)
+        parent = label.GetParent()
+        if parent is not None:
+            parent.Layout()
 
     def _finalize_prompt(
         self,
@@ -1360,6 +1538,7 @@ class AgentChatPanel(wx.Panel):
             if last_panel is not None:
                 self._scroll_transcript_to_bottom(last_panel)
         self._update_transcript_copy_buttons(has_entries)
+        self._update_conversation_header()
 
     def _on_regenerate_entry(
         self,
@@ -1815,17 +1994,17 @@ class AgentChatPanel(wx.Panel):
             return conversation
         return self._create_conversation(persist=False)
 
-    def _format_conversation_row(self, conversation: ChatConversation) -> tuple[str, str, str]:
+    def _format_conversation_row(
+        self, conversation: ChatConversation
+    ) -> tuple[str, str]:
         title = (conversation.title or conversation.derive_title()).strip()
         if not title:
             title = _("New chat")
         if len(title) > 60:
             title = title[:57] + "…"
         last_activity = self._format_last_activity(conversation.updated_at)
-        summary = self._format_conversation_summary(conversation)
         title = normalize_for_display(title)
-        summary = normalize_for_display(summary)
-        return title, last_activity, summary
+        return title, last_activity
 
     def _format_last_activity(self, timestamp: str | None) -> str:
         if not timestamp:
@@ -1860,21 +2039,6 @@ class AgentChatPanel(wx.Panel):
         local_moment = moment.astimezone()
         return local_moment.strftime("%Y-%m-%d %H:%M")
 
-    def _format_conversation_summary(self, conversation: ChatConversation) -> str:
-        if not conversation.entries:
-            return _("No messages yet")
-        count = len(conversation.entries)
-        parts = [_("Messages: {count}").format(count=count)]
-        tokens = conversation.total_token_info()
-        parts.append(
-            _("Tokens: {tokens}").format(
-                tokens=self._format_tokens_for_summary(tokens)
-            )
-        )
-        preview = self._conversation_preview(conversation)
-        if preview:
-            parts.append(preview)
-        return " • ".join(parts)
 
     def _conversation_preview(self, conversation: ChatConversation) -> str:
         if not conversation.entries:

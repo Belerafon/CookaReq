@@ -113,6 +113,12 @@ class MarkdownView(html.HtmlWindow):
         self.SetPage(html_markup)
         self._refresh_best_size()
 
+    def DoSetFont(self, font: wx.Font | None) -> bool:  # noqa: N802 - wx naming convention
+        changed = super().DoSetFont(font)
+        if changed:
+            self.SetMarkdown(self._markdown)
+        return changed
+
     def HasSelection(self) -> bool:  # noqa: N802 - wx naming convention
         return bool(self.SelectionToText())
 
@@ -249,6 +255,16 @@ class MarkdownContent(wx.Panel):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self._view, 1, wx.EXPAND)
         self.SetSizer(sizer)
+
+    def DoSetFont(self, font: wx.Font | None) -> bool:  # noqa: N802 - wx naming convention
+        changed = super().DoSetFont(font)
+        if changed:
+            effective = font if font is not None else self.GetFont()
+            if effective.IsOk():
+                self._view.SetFont(effective)
+            else:
+                self._view.SetFont(wx.NullFont)
+        return changed
 
     def HasSelection(self) -> bool:  # noqa: N802 - wx naming convention
         return self._view.HasSelection()

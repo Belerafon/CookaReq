@@ -20,6 +20,60 @@ def _blend_colour(base: wx.Colour, other: wx.Colour, weight: float) -> wx.Colour
     )
 
 
+def _relative_luminance(colour: wx.Colour) -> float:
+    if not colour.IsOk():
+        return 255.0
+    return 0.2126 * colour.Red() + 0.7152 * colour.Green() + 0.0722 * colour.Blue()
+
+
+def _is_dark_colour(colour: wx.Colour) -> bool:
+    return _relative_luminance(colour) < 128.0
+
+
+def _contrast_ratio(colour_a: wx.Colour, colour_b: wx.Colour) -> float:
+    lum_a = _relative_luminance(colour_a) / 255.0
+    lum_b = _relative_luminance(colour_b) / 255.0
+    lighter = max(lum_a, lum_b)
+    darker = min(lum_a, lum_b)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def _pick_best_contrast(background: wx.Colour, *candidates: wx.Colour) -> wx.Colour:
+    if not candidates:
+        return wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT)
+    best = candidates[0]
+    best_ratio = _contrast_ratio(best, background)
+    for candidate in candidates[1:]:
+        ratio = _contrast_ratio(candidate, background)
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best = candidate
+    return best
+
+
+def _soften_user_highlight(
+    highlight: wx.Colour, *, background: wx.Colour
+) -> wx.Colour:
+    """Return pastel variant of the system highlight colour."""
+
+    if not background.IsOk():
+        background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
+    weight = 0.55 if not _is_dark_colour(background) else 0.3
+    return _blend_colour(highlight, background, weight)
+
+
+def _agent_tint(base: wx.Colour) -> wx.Colour:
+    """Add a soft green tint to the agent message background."""
+
+    if not base.IsOk():
+        base = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
+    if _is_dark_colour(base):
+        accent = wx.Colour(58, 96, 70)
+        return _blend_colour(base, accent, 0.22)
+    accent = wx.Colour(207, 233, 214)
+    return _blend_colour(base, accent, 0.3)
+
+
 FooterFactory = Callable[[wx.Window], wx.Sizer | wx.Window | None]
 
 
@@ -56,19 +110,23 @@ class MessageBubble(wx.Panel):
             self._copy_selection_menu_id = wx.Window.NewControlId()
             self.Bind(wx.EVT_MENU, self._on_copy_selection, id=self._copy_selection_menu_id)
 
+        parent_background = self.GetBackgroundColour()
         user_highlight = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
         user_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHTTEXT)
         agent_bg = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
         agent_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT)
 
         if align == "right":
-            bubble_bg = user_highlight
-            bubble_fg = user_text
-            meta_colour = _blend_colour(user_text, wx.Colour(255, 255, 255), 0.4)
+            bubble_bg = _soften_user_highlight(
+                user_highlight,
+                background=parent_background,
+            )
+            bubble_fg = _pick_best_contrast(bubble_bg, user_text, agent_text)
+            meta_colour = _blend_colour(bubble_fg, bubble_bg, 0.35)
         else:
-            bubble_bg = agent_bg
+            bubble_bg = _agent_tint(agent_bg)
             bubble_fg = agent_text
-            meta_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT)
+            meta_colour = _blend_colour(agent_text, bubble_bg, 0.45)
 
         outer = wx.BoxSizer(wx.VERTICAL)
 
@@ -104,6 +162,8 @@ class MessageBubble(wx.Panel):
             self._content_padding,
         )
 
+        base_font = self.GetFont()
+
         if allow_selection:
             if render_markdown:
                 from .markdown_view import MarkdownContent
@@ -115,6 +175,8 @@ class MessageBubble(wx.Panel):
                     foreground_colour=bubble_fg,
                 )
                 markdown.SetMinSize(wx.Size(self.FromDIP(160), -1))
+                if base_font.IsOk():
+                    markdown.SetFont(base_font)
                 self._text = markdown
 
                 self._selection_checker = markdown.HasSelection
@@ -131,6 +193,8 @@ class MessageBubble(wx.Panel):
                 text_ctrl.SetBackgroundColour(bubble_bg)
                 text_ctrl.SetForegroundColour(bubble_fg)
                 text_ctrl.SetMinSize(wx.Size(self.FromDIP(160), -1))
+                if base_font.IsOk():
+                    text_ctrl.SetFont(base_font)
                 self._text = text_ctrl
 
                 def has_selection(tc: wx.TextCtrl = text_ctrl) -> bool:
@@ -144,6 +208,8 @@ class MessageBubble(wx.Panel):
             self._text = wx.StaticText(bubble, label=display_text, style=text_align_flag)
             self._text.SetForegroundColour(bubble_fg)
             self._text.SetBackgroundColour(bubble_bg)
+            if base_font.IsOk():
+                self._text.SetFont(base_font)
             self._text.Wrap(self.FromDIP(320))
         bubble_sizer.Add(
             self._text,

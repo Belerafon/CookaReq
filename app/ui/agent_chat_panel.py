@@ -1769,7 +1769,7 @@ class AgentChatPanel(wx.Panel):
         def indent_block(value: str, *, prefix: str = "    ") -> str:
             return textwrap.indent(value, prefix)
 
-        def format_tool_payload(index: int, payload: Any) -> list[str]:
+        def format_tool_exchange(index: int, payload: Any) -> list[str]:
             lines: list[str] = []
             if isinstance(payload, Mapping):
                 raw_name = (
@@ -1790,7 +1790,9 @@ class AgentChatPanel(wx.Panel):
                 else:
                     status = _("Unknown")
                 lines.append(
-                    _("  Tool call {index}: {name} — Status: {status}").format(
+                    _(
+                        "Agent → MCP call {index}: {name} — Status: {status}"
+                    ).format(
                         index=index,
                         name=name,
                         status=status,
@@ -1799,35 +1801,33 @@ class AgentChatPanel(wx.Panel):
                 call_id = payload.get("call_id") or payload.get("tool_call_id")
                 if call_id:
                     lines.append(
-                        _("    LLM tool call ID: {value}").format(
+                        _("  MCP call ID: {value}").format(
                             value=normalize_for_display(str(call_id))
                         )
                     )
                 arguments = payload.get("tool_arguments")
                 if arguments is not None:
-                    lines.append(_("    LLM → MCP arguments:"))
+                    lines.append(_("  Arguments:"))
                     lines.append(
                         indent_block(
                             format_json_block(arguments),
-                            prefix="      ",
+                            prefix="    ",
                         )
                     )
                 result_payload = payload.get("result")
                 if result_payload is not None:
-                    lines.append(_("    MCP → Agent result payload:"))
+                    lines.append(_("MCP → Agent result payload:"))
                     lines.append(
                         indent_block(
                             format_json_block(result_payload),
-                            prefix="      ",
                         )
                     )
                 error_payload = payload.get("error")
                 if error_payload and ok_value is not True:
-                    lines.append(_("    MCP → Agent error payload:"))
+                    lines.append(_("MCP → Agent error payload:"))
                     lines.append(
                         indent_block(
                             format_json_block(error_payload),
-                            prefix="      ",
                         )
                     )
                 extras = {
@@ -1847,16 +1847,16 @@ class AgentChatPanel(wx.Panel):
                     }
                 }
                 if extras:
-                    lines.append(_("    Additional fields:"))
+                    lines.append(_("  Additional fields:"))
                     lines.append(
                         indent_block(
                             format_json_block(extras),
-                            prefix="      ",
+                            prefix="    ",
                         )
                     )
             else:
                 lines.append(
-                    _("  [{index}] {summary}").format(
+                    _("Agent ↔ MCP exchange {index}: {summary}").format(
                         index=index,
                         summary=normalize_for_display(str(payload)),
                     )
@@ -1961,9 +1961,16 @@ class AgentChatPanel(wx.Panel):
                 error_payload = raw_payload.get("error")
             else:
                 error_payload = None
+            tool_payloads = _collect_tool_payloads(entry)
+
             if llm_message_text:
                 lines.append(_("LLM → Agent final message:"))
                 lines.append(indent_block(llm_message_text))
+
+            if tool_payloads:
+                for tool_index, payload in enumerate(tool_payloads, start=1):
+                    lines.extend(format_tool_exchange(tool_index, payload))
+
             agent_text = normalize_for_display(entry.display_response or entry.response)
             lines.append(_("Agent → User response:"))
             if agent_text:
@@ -1981,11 +1988,6 @@ class AgentChatPanel(wx.Panel):
                     lines.append(indent_block(format_json_block(error_payload)))
                 lines.append(_("Agent raw result payload:"))
                 lines.append(indent_block(format_json_block(entry.raw_result)))
-            tool_payloads = _collect_tool_payloads(entry)
-            if tool_payloads:
-                lines.append(_("LLM ↔ MCP tool exchanges:"))
-                for tool_index, payload in enumerate(tool_payloads, start=1):
-                    lines.extend(format_tool_payload(tool_index, payload))
             lines.append("")
 
         return "\n".join(line for line in lines if line is not None).strip()

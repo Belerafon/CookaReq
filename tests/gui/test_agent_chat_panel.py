@@ -92,6 +92,58 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
+    class CountingAgent:
+        def __init__(self) -> None:
+            self.calls: int = 0
+
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
+            self.calls += 1
+            return f"answer {self.calls}"
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, CountingAgent())
+
+    try:
+        panel.input.SetValue("regen")
+        panel._on_send(None)
+        flush_wx_events(wx, count=5)
+
+        assert panel.history
+        assert len(panel.history) == 1
+        first_entry = panel.history[0]
+        assert first_entry.response.endswith("1")
+
+        def find_regenerate_button(window):
+            for child in window.GetChildren():
+                if isinstance(child, wx.Button) and child.GetLabel() == "Перегенерить":
+                    return child
+                found = find_regenerate_button(child)
+                if found is not None:
+                    return found
+            return None
+
+        transcript_children = panel.transcript_panel.GetChildren()
+        assert transcript_children
+        regen_button = find_regenerate_button(transcript_children[-1])
+        assert regen_button is not None
+        assert regen_button.IsEnabled()
+
+        evt = wx.CommandEvent(wx.EVT_BUTTON.typeId, regen_button.GetId())
+        evt.SetEventObject(regen_button)
+        regen_button.GetEventHandler().ProcessEvent(evt)
+        flush_wx_events(wx, count=6)
+
+        assert panel.history
+        assert len(panel.history) == 1
+        entry = panel.history[0]
+        assert entry.response.endswith("2")
+        transcript = panel.get_transcript_text()
+        assert "answer 2" in transcript
+        assert "answer 1" not in transcript
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_response_normalizes_dash_characters(tmp_path, wx_app):
     class HyphenAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None):

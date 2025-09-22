@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Callable
 
 import wx
 
@@ -20,6 +20,9 @@ def _blend_colour(base: wx.Colour, other: wx.Colour, weight: float) -> wx.Colour
     )
 
 
+FooterFactory = Callable[[wx.Window], wx.Sizer | wx.Window | None]
+
+
 class MessageBubble(wx.Panel):
     """Simple chat bubble with copy support and optional text selection."""
 
@@ -33,6 +36,7 @@ class MessageBubble(wx.Panel):
         align: str,
         allow_selection: bool = False,
         render_markdown: bool = False,
+        footer_factory: FooterFactory | None = None,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
@@ -142,10 +146,35 @@ class MessageBubble(wx.Panel):
             self._content_padding,
         )
 
+        footer_targets: list[wx.Window] = []
+        if footer_factory is not None:
+            footer = footer_factory(bubble)
+            if isinstance(footer, wx.Sizer):
+                bubble_sizer.Add(
+                    footer,
+                    0,
+                    wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
+                    self._content_padding,
+                )
+                for item in footer.GetChildren():
+                    window = item.GetWindow()
+                    if window is not None:
+                        footer_targets.append(window)
+            elif isinstance(footer, wx.Window):
+                bubble_sizer.Add(
+                    footer,
+                    0,
+                    wx.LEFT | wx.RIGHT | wx.BOTTOM,
+                    self._content_padding,
+                )
+                footer_targets.append(footer)
+
         bubble.Bind(wx.EVT_SIZE, self._on_bubble_resize)
         self.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
         bubble.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
         self._attach_context_menu_handlers(self._text)
+        for target in footer_targets:
+            self._attach_context_menu_handlers(target)
 
         outer.Add(bubble, 0, wx.EXPAND)
 
@@ -249,6 +278,8 @@ class TranscriptMessagePanel(wx.Panel):
         response: str,
         prompt_timestamp: str = "",
         response_timestamp: str = "",
+        on_regenerate: Callable[[], None] | None = None,
+        regenerate_enabled: bool = True,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
@@ -274,7 +305,34 @@ class TranscriptMessagePanel(wx.Panel):
             align="left",
             allow_selection=True,
             render_markdown=True,
+            footer_factory=(
+                lambda container: self._create_regenerate_footer(
+                    container,
+                    on_regenerate=on_regenerate,
+                    enabled=regenerate_enabled,
+                )
+                if on_regenerate is not None
+                else None
+            ),
         )
         outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, padding)
 
         self.SetSizer(outer)
+
+    def _create_regenerate_footer(
+        self,
+        container: wx.Window,
+        *,
+        on_regenerate: Callable[[], None],
+        enabled: bool,
+    ) -> wx.Sizer:
+        button = wx.Button(container, label=_("Перегенерить"), style=wx.BU_EXACTFIT)
+        button.SetBackgroundColour(container.GetBackgroundColour())
+        button.SetForegroundColour(container.GetForegroundColour())
+        button.SetToolTip(_("Запустить генерацию ответа заново"))
+        button.Bind(wx.EVT_BUTTON, lambda _event: on_regenerate())
+        button.Enable(enabled)
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        sizer.AddStretchSpacer()
+        sizer.Add(button, 0, wx.ALIGN_CENTER_VERTICAL)
+        return sizer

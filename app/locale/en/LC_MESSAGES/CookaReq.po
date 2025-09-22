@@ -532,6 +532,45 @@ msgstr "Token"
 msgid "Update requirement?"
 msgstr "Update requirement?"
 
+msgid "(unknown requirement)"
+msgstr "(unknown requirement)"
+
+msgid "Update requirement \"{rid}\"?"
+msgstr "Update requirement \"{rid}\"?"
+
+msgid "Directory: {directory}"
+msgstr "Directory: {directory}"
+
+msgid "Expected revision: {revision}"
+msgstr "Expected revision: {revision}"
+
+msgid "Planned changes:"
+msgstr "Planned changes:"
+
+msgid "{index}. Invalid patch operation"
+msgstr "{index}. Invalid patch operation"
+
+msgid "(missing op)"
+msgstr "(missing op)"
+
+msgid "{index}. {op} {path} → {value}"
+msgstr "{index}. {op} {path} → {value}"
+
+msgid "{index}. {op} {path}"
+msgstr "{index}. {op} {path}"
+
+msgid "{index}. {op} {source} → {path}"
+msgstr "{index}. {op} {source} → {path}"
+
+msgid "{index}. {op} ({details})"
+msgstr "{index}. {op} ({details})"
+
+msgid "Confirm requirement update"
+msgstr "Confirm requirement update"
+
+msgid "Always for this session (all requirements)"
+msgstr "Always for this session (all requirements)"
+
 msgid "Verifies"
 msgstr "Verifies"
 

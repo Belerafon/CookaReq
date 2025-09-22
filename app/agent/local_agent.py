@@ -7,7 +7,12 @@ import json
 from collections.abc import Sequence
 from typing import Any, Awaitable, Callable, Mapping, Protocol, runtime_checkable
 
-from ..confirm import confirm as default_confirm
+from ..confirm import (
+    ConfirmDecision,
+    RequirementUpdatePrompt,
+    confirm as default_confirm,
+    confirm_requirement_update as default_update_confirm,
+)
 from ..llm.client import LLMClient, LLMResponse, LLMToolCall
 from ..llm.validation import ToolValidationError
 from ..mcp.client import MCPClient
@@ -66,15 +71,23 @@ class LocalAgent:
         llm: SupportsAgentLLM | None = None,
         mcp: SupportsAgentMCP | None = None,
         confirm: Callable[[str], bool] | None = None,
+        confirm_requirement_update: Callable[[RequirementUpdatePrompt], ConfirmDecision]
+        | None = None,
     ) -> None:
         """Initialize agent with optional settings or prebuilt clients."""
         if settings is not None:
             if confirm is None:
                 confirm = default_confirm
+            if confirm_requirement_update is None:
+                confirm_requirement_update = default_update_confirm
             if llm is None:
                 llm = LLMClient(settings.llm)
             if mcp is None:
-                mcp = MCPClient(settings.mcp, confirm=confirm)
+                mcp = MCPClient(
+                    settings.mcp,
+                    confirm=confirm,
+                    confirm_requirement_update=confirm_requirement_update,
+                )
         if llm is None or mcp is None:
             raise TypeError("settings or clients must be provided")
         if not isinstance(llm, SupportsAgentLLM):

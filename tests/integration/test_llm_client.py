@@ -364,6 +364,7 @@ def test_streaming_cancellation_closes_stream(tmp_path: Path, monkeypatch) -> No
 def test_parse_command_trims_history_by_tokens(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
     captured: dict[str, object] = {}
+    logged_events: list[tuple[str, dict[str, object]]] = []
 
     class FakeOpenAI:
         def __init__(self, *a, **k):  # pragma: no cover - simple container
@@ -393,6 +394,16 @@ def test_parse_command_trims_history_by_tokens(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     monkeypatch.setattr(LLMClient, "_resolved_max_context_tokens", lambda self: 4)
     monkeypatch.setattr(LLMClient, "_count_tokens", staticmethod(lambda text: 1 if text else 0))
+    
+    def fake_log_event(
+        event: str,
+        payload: dict[str, object] | None = None,
+        *,
+        start_time: float | None = None,
+    ) -> None:
+        logged_events.append((event, dict(payload or {})))
+
+    monkeypatch.setattr("app.llm.client.log_event", fake_log_event)
     client = LLMClient(settings.llm)
     history = [
         {"role": "user", "content": "h1"},
@@ -414,6 +425,21 @@ def test_parse_command_trims_history_by_tokens(tmp_path: Path, monkeypatch) -> N
         {"role": "user", "content": "h2"},
         {"role": "assistant", "content": "a2"},
     ]
+
+    trim_payloads = [payload for event, payload in logged_events if event == "LLM_CONTEXT_TRIMMED"]
+    assert len(trim_payloads) == 1
+    payload = trim_payloads[0]
+    assert payload == {
+        "dropped_messages": 2,
+        "dropped_tokens": 2,
+        "history_messages_before": 5,
+        "history_messages_after": 3,
+        "history_tokens_before": 5,
+        "history_tokens_after": 3,
+        "max_context_tokens": 4,
+        "system_prompt_tokens": 1,
+        "history_token_budget": 3,
+    }
 
 
 def test_respond_preserves_context_for_patch(tmp_path: Path, monkeypatch) -> None:

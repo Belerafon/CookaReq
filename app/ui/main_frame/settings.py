@@ -33,6 +33,7 @@ class MainFrameSettingsMixin:
             model=self.llm_settings.model,
             api_key=self.llm_settings.api_key or "",
             max_retries=self.llm_settings.max_retries,
+            max_context_tokens=self.llm_settings.max_context_tokens,
             timeout_minutes=self.llm_settings.timeout_minutes,
             stream=self.llm_settings.stream,
             auto_start=self.mcp_settings.auto_start,
@@ -52,6 +53,7 @@ class MainFrameSettingsMixin:
                 model,
                 api_key,
                 max_retries,
+                max_context_tokens,
                 timeout_minutes,
                 stream,
                 auto_start,
@@ -68,6 +70,7 @@ class MainFrameSettingsMixin:
                 model=model,
                 api_key=api_key or None,
                 max_retries=max_retries,
+                max_context_tokens=max_context_tokens,
                 timeout_minutes=timeout_minutes,
                 stream=stream,
             )

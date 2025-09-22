@@ -9,6 +9,7 @@ import wx
 from ..i18n import _
 from ..log import logger
 from ..llm.client import LLMClient
+from ..llm.constants import DEFAULT_MAX_CONTEXT_TOKENS, MIN_MAX_CONTEXT_TOKENS
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
 from ..settings import LLMSettings, MCPSettings
@@ -46,6 +47,15 @@ LLM_HELP: dict[str, str] = {
     "max_retries": _(
         "Number of times to retry a failed HTTP request. Example: 3\n"
         "Optional; defaults to 3 retries.",
+    ),
+    "max_context_tokens": _(
+        "Maximum number of tokens reserved for the conversation history when"
+        " sending prompts.\n"
+        "Default: {default} tokens.\n"
+        "Minimum allowed: {minimum} tokens."
+    ).format(
+        default=DEFAULT_MAX_CONTEXT_TOKENS,
+        minimum=MIN_MAX_CONTEXT_TOKENS,
     ),
     "timeout_minutes": _(
         "HTTP request timeout in minutes. Example: 1\n"
@@ -110,6 +120,10 @@ MCP_HELP: dict[str, str] = {
 }
 
 
+MAX_CONTEXT_TOKEN_SPIN_MAX = 2_147_483_647
+"""Upper bound supported by :class:`wx.SpinCtrl` for context token input."""
+
+
 def available_translations() -> list[tuple[str, str]]:
     """Return list of (language_code, display_name) for available translations."""
     langs: list[tuple[str, str]] = []
@@ -137,6 +151,7 @@ class SettingsDialog(wx.Dialog):
         model: str,
         api_key: str,
         max_retries: int,
+        max_context_tokens: int,
         timeout_minutes: int,
         stream: bool,
         auto_start: bool,
@@ -214,6 +229,22 @@ class SettingsDialog(wx.Dialog):
         self._model = wx.TextCtrl(llm, value=model)
         self._api_key = wx.TextCtrl(llm, value=api_key, style=wx.TE_PASSWORD)
         self._max_retries = wx.SpinCtrl(llm, min=0, max=10, initial=max_retries)
+        clamped_context_tokens = max(
+            MIN_MAX_CONTEXT_TOKENS,
+            min(max_context_tokens, MAX_CONTEXT_TOKEN_SPIN_MAX),
+        )
+        if max_context_tokens != clamped_context_tokens:
+            logger.warning(
+                "Max context tokens value %s exceeds UI range; clamped to %s for editing",
+                max_context_tokens,
+                clamped_context_tokens,
+            )
+        self._max_context_tokens = wx.SpinCtrl(
+            llm,
+            min=MIN_MAX_CONTEXT_TOKENS,
+            max=MAX_CONTEXT_TOKEN_SPIN_MAX,
+            initial=clamped_context_tokens,
+        )
         self._timeout = wx.SpinCtrl(llm, min=1, max=9999, initial=timeout_minutes)
         self._stream = wx.CheckBox(llm, label=_("Stream"))
         self._stream.SetValue(stream)
@@ -288,6 +319,21 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         llm_sizer.Add(retries_sz, 0, wx.ALL | wx.EXPAND, 5)
+        context_sz = wx.BoxSizer(wx.HORIZONTAL)
+        context_sz.Add(
+            wx.StaticText(llm, label=_("Max context tokens")),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            5,
+        )
+        context_sz.Add(self._max_context_tokens, 1, wx.ALIGN_CENTER_VERTICAL)
+        context_sz.Add(
+            make_help_button(llm, LLM_HELP["max_context_tokens"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        llm_sizer.Add(context_sz, 0, wx.ALL | wx.EXPAND, 5)
         timeout_sz = wx.BoxSizer(wx.HORIZONTAL)
         timeout_sz.Add(
             wx.StaticText(llm, label=_("Timeout (min)")),
@@ -562,6 +608,7 @@ class SettingsDialog(wx.Dialog):
             model=self._model.GetValue(),
             api_key=self._api_key.GetValue() or None,
             max_retries=self._max_retries.GetValue(),
+            max_context_tokens=self._max_context_tokens.GetValue(),
             timeout_minutes=self._timeout.GetValue(),
             stream=self._stream.GetValue(),
         )
@@ -703,6 +750,7 @@ class SettingsDialog(wx.Dialog):
         str,
         int,
         int,
+        int,
         bool,
         bool,
         str,
@@ -722,6 +770,7 @@ class SettingsDialog(wx.Dialog):
             self._model.GetValue(),
             self._api_key.GetValue(),
             self._max_retries.GetValue(),
+            self._max_context_tokens.GetValue(),
             self._timeout.GetValue(),
             self._stream.GetValue(),
             self._auto_start.GetValue(),

@@ -394,6 +394,15 @@ class ConfigManager:
             return spec.reader(self, spec, resolved_default)
         return self._read_native(spec, resolved_default)
 
+    def has_value(self, name: ConfigFieldName) -> bool:
+        """Return ``True`` if ``name`` is explicitly stored in the config."""
+
+        spec = self.FIELDS[name]
+        try:
+            return bool(self._cfg.HasEntry(spec.key))
+        except Exception:  # pragma: no cover - defensive compatibility path
+            return True
+
     def set_value(self, name: ConfigFieldName, value: Any) -> None:
         """Write ``value`` for ``name`` using :data:`CONFIG_FIELD_SPECS`."""
 
@@ -768,13 +777,7 @@ class ConfigManager:
     def get_doc_tree_sash(self, default: int) -> int:
         """Return stored width of the hierarchy splitter."""
 
-        value = self.get_value("sash_pos", default=default)
-        if value == default:
-            try:
-                legacy = self._cfg.ReadInt("doc_tree_saved_sash", default)
-            except Exception:  # pragma: no cover - defensive fallback
-                legacy = default
-            value = legacy
+        value = int(self.get_value("sash_pos", default=default))
         return max(value, 0)
 
     def set_doc_tree_sash(self, pos: int) -> None:
@@ -830,10 +833,10 @@ class ConfigManager:
             editor_min = max(editor_splitter.GetMinimumPaneSize(), 100)
             available_width = max(client_size.width - doc_sash, editor_min * 2)
             editor_max = max(available_width - editor_min, editor_min)
-            editor_sash = self.get_value(
+            stored_editor_sash = self.get_value(
                 "editor_sash_pos", default=editor_default
             )
-            editor_sash = max(editor_min, min(editor_sash, editor_max))
+            editor_sash = max(editor_min, min(stored_editor_sash, editor_max))
             editor_splitter.SetSize(wx.Size(available_width, client_size.height))
             editor_splitter.SetSashPosition(editor_sash)
         panel.load_column_widths(self)

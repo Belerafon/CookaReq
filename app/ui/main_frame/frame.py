@@ -33,7 +33,6 @@ from ..navigation import Navigation
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .controllers import DocumentsController
 
-
 class MainFrame(
     MainFrameRequirementsMixin,
     MainFrameEditorMixin,
@@ -310,6 +309,11 @@ class MainFrame(
             old_agent_panel = self.agent_panel
             agent_was_split = self.agent_splitter.IsSplit()
             sash_pos = self.agent_splitter.GetSashPosition() if agent_was_split else None
+            vertical_sash: int | None = None
+            if hasattr(old_agent_panel, "vertical_sash"):
+                vertical_value = old_agent_panel.vertical_sash  # type: ignore[attr-defined]
+                if isinstance(vertical_value, int) and vertical_value > 0:
+                    vertical_sash = vertical_value
             self.agent_panel = AgentChatPanel(
                 self.agent_container,
                 agent_supplier=self._create_agent,
@@ -321,6 +325,8 @@ class MainFrame(
                 self.agent_panel.default_history_sash()
             )
             self.agent_panel.apply_history_sash(history_sash)
+            if vertical_sash is not None:
+                self.agent_panel.apply_vertical_sash(vertical_sash)
             agent_sizer = self.agent_container.GetSizer()
             if agent_sizer is not None:
                 agent_sizer.Replace(old_agent_panel, self.agent_panel)

@@ -80,6 +80,11 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     assert entry_payload["response"].strip().startswith("{")
     assert entry_payload.get("token_info") is not None
     assert entry_payload["token_info"]["tokens"] == entry_payload["tokens"]
+    assert "context_messages" in entry_payload
+    assert entry_payload["context_messages"] is None
+
+    history_entry = panel.history[0]
+    assert history_entry.context_messages is None
 
     panel._on_clear_input(None)
     assert panel.input.GetValue() == ""
@@ -213,6 +218,11 @@ def test_agent_chat_panel_passes_context(tmp_path, wx_app):
         first_call = captured[0]
         assert first_call["text"] == "context run"
         assert first_call["context"] == (
+            {"role": "system", "content": "Active requirements list: SYS"},
+        )
+        assert panel.history
+        stored_entry = panel.history[0]
+        assert stored_entry.context_messages == (
             {"role": "system", "content": "Active requirements list: SYS"},
         )
     finally:
@@ -397,6 +407,10 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
         assert "demo_tool" in log_text
         assert "Tool calls" in log_text
         assert "query" in log_text
+        assert "LLM system prompt" in log_text
+        assert "LLM tool specification" in log_text
+        assert "Context messages" in log_text
+        assert "LLM request messages" in log_text
     finally:
         destroy_panel(frame, panel)
 

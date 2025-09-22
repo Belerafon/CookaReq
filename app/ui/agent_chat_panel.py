@@ -21,6 +21,7 @@ from wx.lib.scrolledpanel import ScrolledPanel
 
 from ..confirm import confirm
 from ..i18n import _
+from ..llm.spec import SYSTEM_PROMPT, TOOLS
 from ..llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
 from ..util.json import make_json_safe
 from ..util.cancellation import CancellationEvent, OperationCancelledError
@@ -135,6 +136,7 @@ class _AgentRunHandle:
     future: Future[Any] | None = None
     conversation_id: str | None = None
     pending_entry: ChatEntry | None = None
+    context_messages: tuple[dict[str, Any], ...] | None = None
 
     @property
     def is_cancelled(self) -> bool:
@@ -641,7 +643,12 @@ class AgentChatPanel(wx.Panel):
             prompt=normalized_prompt,
             prompt_tokens=prompt_tokens,
             cancel_event=cancel_event,
+<<<<< slztez-codex/add-regenerate-button-to-chat-response
             prompt_at=effective_prompt_at,
+=======
+            prompt_at=prompt_at,
+            context_messages=context_messages,
+>>>>> main
         )
         self._active_run_handle = handle
         conversation = self._ensure_active_conversation()
@@ -658,8 +665,14 @@ class AgentChatPanel(wx.Panel):
                 context_messages = None
         pending_entry = self._add_pending_entry(
             conversation,
+<<<<< slztez-codex/add-regenerate-button-to-chat-response
             normalized_prompt,
             prompt_at=effective_prompt_at,
+=======
+            prompt,
+            prompt_at=prompt_at,
+            context_messages=context_messages,
+>>>>> main
         )
         handle.conversation_id = conversation.conversation_id
         handle.pending_entry = pending_entry
@@ -1019,6 +1032,7 @@ class AgentChatPanel(wx.Panel):
                     token_info=final_tokens,
                     prompt_at=prompt_at,
                     response_at=response_at,
+                    context_messages=handle.context_messages,
                 )
             else:
                 self._append_history(
@@ -1030,6 +1044,7 @@ class AgentChatPanel(wx.Panel):
                     final_tokens,
                     prompt_at=prompt_at,
                     response_at=response_at,
+                    context_messages=handle.context_messages,
                 )
             handle.pending_entry = None
             self._render_transcript()
@@ -1118,12 +1133,27 @@ class AgentChatPanel(wx.Panel):
                 prepared.append(dict(entry))
         return tuple(prepared)
 
+    @staticmethod
+    def _clone_context_messages(
+        context: Sequence[Mapping[str, Any]] | None,
+    ) -> tuple[dict[str, Any], ...] | None:
+        if not context:
+            return None
+        cloned: list[dict[str, Any]] = []
+        for message in context:
+            if isinstance(message, Mapping):
+                cloned.append(dict(message))
+        if not cloned:
+            return None
+        return tuple(cloned)
+
     def _add_pending_entry(
         self,
         conversation: ChatConversation,
         prompt: str,
         *,
         prompt_at: str,
+        context_messages: tuple[dict[str, Any], ...] | None,
     ) -> ChatEntry:
         prompt_text = normalize_for_display(prompt)
         entry = ChatEntry(
@@ -1136,6 +1166,7 @@ class AgentChatPanel(wx.Panel):
             token_info=TokenCountResult.exact(0),
             prompt_at=prompt_at,
             response_at=None,
+            context_messages=self._clone_context_messages(context_messages),
         )
         conversation.append_entry(entry)
         return entry
@@ -1151,6 +1182,7 @@ class AgentChatPanel(wx.Panel):
         *,
         prompt_at: str | None = None,
         response_at: str | None = None,
+        context_messages: tuple[dict[str, Any], ...] | None = None,
     ) -> None:
         conversation = self._ensure_active_conversation()
         prompt_text = normalize_for_display(prompt)
@@ -1174,6 +1206,7 @@ class AgentChatPanel(wx.Panel):
             token_info=token_info,
             prompt_at=prompt_at,
             response_at=response_at,
+            context_messages=self._clone_context_messages(context_messages),
         )
         conversation.append_entry(entry)
         self._save_history()
@@ -1192,6 +1225,7 @@ class AgentChatPanel(wx.Panel):
         token_info: TokenCountResult | None,
         prompt_at: str,
         response_at: str,
+        context_messages: tuple[dict[str, Any], ...] | None,
     ) -> None:
         prompt_text = normalize_for_display(prompt)
         response_text = normalize_for_display(response)
@@ -1206,6 +1240,7 @@ class AgentChatPanel(wx.Panel):
         entry.tokens = tokens_info.tokens or 0
         entry.prompt_at = prompt_at
         entry.response_at = response_at
+        entry.context_messages = self._clone_context_messages(context_messages)
         conversation.updated_at = response_at
         conversation.ensure_title()
         self._save_history()
@@ -1544,6 +1579,39 @@ class AgentChatPanel(wx.Panel):
                 )
             return lines
 
+        def format_message_list(
+            messages: Sequence[Mapping[str, Any]] | None,
+        ) -> str:
+            if not messages:
+                return format_json_block(None)
+            prepared: list[dict[str, Any]] = []
+            for message in messages:
+                if isinstance(message, Mapping):
+                    prepared.append(dict(message))
+            if not prepared:
+                return format_json_block(None)
+            safe_value = _history_json_safe(prepared)
+            return format_json_block(safe_value)
+
+        def gather_history_messages(limit: int) -> list[dict[str, Any]]:
+            history_messages: list[dict[str, Any]] = []
+            for previous in conversation.entries[:limit]:
+                if previous.prompt:
+                    history_messages.append(
+                        {
+                            "role": "user",
+                            "content": normalize_for_display(previous.prompt),
+                        }
+                    )
+                if previous.response:
+                    history_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": normalize_for_display(previous.response),
+                        }
+                    )
+            return history_messages
+
         lines: list[str] = []
         lines.append(
             _("Conversation ID: {conversation_id}").format(
@@ -1562,6 +1630,11 @@ class AgentChatPanel(wx.Panel):
         )
         lines.append(_("Entries: {count}").format(count=len(conversation.entries)))
         lines.append("")
+        lines.append(_("LLM system prompt:"))
+        lines.append(indent_block(normalize_for_display(SYSTEM_PROMPT)))
+        lines.append(_("LLM tool specification:"))
+        lines.append(indent_block(format_message_list(TOOLS)))
+        lines.append("")
 
         for index, entry in enumerate(conversation.entries, start=1):
             lines.append(_("=== Interaction {index} ===").format(index=index))
@@ -1576,6 +1649,22 @@ class AgentChatPanel(wx.Panel):
                 lines.append(indent_block(prompt_text))
             else:
                 lines.append(_("Prompt: (empty)"))
+            context_snapshot = [
+                dict(message) for message in (entry.context_messages or ())
+            ]
+            lines.append(_("Context messages:"))
+            lines.append(indent_block(format_message_list(context_snapshot)))
+            history_messages = gather_history_messages(index - 1)
+            lines.append(_("History sent to LLM:"))
+            lines.append(indent_block(format_message_list(history_messages)))
+            llm_request_messages: list[dict[str, Any]] = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                *history_messages,
+                *context_snapshot,
+                {"role": "user", "content": prompt_text if prompt_text else ""},
+            ]
+            lines.append(_("LLM request messages:"))
+            lines.append(indent_block(format_message_list(llm_request_messages)))
             lines.append(
                 _("Response timestamp: {timestamp}").format(
                     timestamp=format_timestamp(entry.response_at)

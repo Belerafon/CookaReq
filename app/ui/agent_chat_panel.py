@@ -26,7 +26,7 @@ from ..util.json import make_json_safe
 from ..util.cancellation import CancellationEvent, OperationCancelledError
 from ..util.time import utc_now_iso
 from .chat_entry import ChatConversation, ChatEntry
-from .helpers import dip, format_error_message, inherit_background, make_help_button
+from .helpers import dip, format_error_message, inherit_background
 from .text import normalize_for_display
 from .splitter_utils import refresh_splitter_highlight, style_splitter
 from .widgets.chat_message import TranscriptMessagePanel
@@ -432,15 +432,10 @@ class AgentChatPanel(wx.Panel):
         self.activity = wx.ActivityIndicator(bottom_panel)
         self.activity.Hide()
         self.status_label = wx.StaticText(bottom_panel, label=_("Ready"))
-        dialog_parent = self.GetTopLevelParent()
-        help_btn = make_help_button(
-            bottom_panel,
-            STATUS_HELP_TEXT,
-            dialog_parent=dialog_parent,
-        )
         status_sizer.Add(self.activity, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         status_sizer.Add(self.status_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        status_sizer.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, spacing)
+        self.activity.SetToolTip(STATUS_HELP_TEXT)
+        self.status_label.SetToolTip(STATUS_HELP_TEXT)
 
         controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
         controls_sizer.Add(status_sizer, 0, wx.ALIGN_CENTER_VERTICAL)

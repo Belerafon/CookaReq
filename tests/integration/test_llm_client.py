@@ -475,7 +475,7 @@ def test_parse_command_trims_history_by_tokens(tmp_path: Path, monkeypatch) -> N
     }
 
 
-def test_respond_preserves_context_for_patch(tmp_path: Path, monkeypatch) -> None:
+def test_respond_preserves_context_for_update(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
     captured: dict[str, object] = {}
 
@@ -490,12 +490,12 @@ def test_respond_preserves_context_for_patch(tmp_path: Path, monkeypatch) -> Non
                                 tool_calls=[
                                     SimpleNamespace(
                                         function=SimpleNamespace(
-                                            name="patch_requirement",
+                                            name="update_requirement_field",
                                             arguments=json.dumps(
                                                 {
                                                     "rid": "SYS-1",
-                                                    "rev": 3,
-                                                    "patch": [],
+                                                    "field": "statement",
+                                                    "value": "Updated",
                                                 }
                                             ),
                                         ),
@@ -533,8 +533,12 @@ def test_respond_preserves_context_for_patch(tmp_path: Path, monkeypatch) -> Non
     assert isinstance(response, LLMResponse)
     assert response.tool_calls
     tool_call = response.tool_calls[0]
-    assert tool_call.name == "patch_requirement"
-    assert tool_call.arguments == {"rid": "SYS-1", "rev": 3, "patch": []}
+    assert tool_call.name == "update_requirement_field"
+    assert tool_call.arguments == {
+        "rid": "SYS-1",
+        "field": "statement",
+        "value": "Updated",
+    }
 
     messages = captured["messages"]
     system_messages = [msg for msg in messages if msg.get("role") == "system"]

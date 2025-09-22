@@ -96,6 +96,35 @@ def _stringify_payload(payload: Any) -> str:
         return json.dumps(payload, ensure_ascii=False, indent=2)
     except (TypeError, ValueError):  # pragma: no cover - defensive
         return str(payload)
+
+
+def _looks_like_tool_payload(payload: Mapping[str, Any]) -> bool:
+    """Heuristically determine whether *payload* originates from an MCP tool."""
+
+    tool_keys = {
+        "tool_arguments",
+        "tool_name",
+        "tool",
+        "tool_call_id",
+        "call_id",
+    }
+    return any(key in payload for key in tool_keys)
+
+
+def _collect_tool_payloads(entry: ChatEntry) -> list[Any]:
+    """Return tool payloads associated with *entry* for diagnostic logs."""
+
+    payloads: list[Any] = []
+    if entry.tool_results:
+        payloads.extend(entry.tool_results)
+    if payloads:
+        return payloads
+
+    raw_result = entry.raw_result
+    if isinstance(raw_result, Mapping) and _looks_like_tool_payload(raw_result):
+        payloads.append(_history_json_safe(raw_result))
+    return payloads
+
 class AgentCommandExecutor(Protocol):
     """Simple protocol for running agent commands asynchronously."""
 
@@ -1952,10 +1981,10 @@ class AgentChatPanel(wx.Panel):
                     lines.append(indent_block(format_json_block(error_payload)))
                 lines.append(_("Agent raw result payload:"))
                 lines.append(indent_block(format_json_block(entry.raw_result)))
-            tool_results = entry.tool_results or []
-            if tool_results:
+            tool_payloads = _collect_tool_payloads(entry)
+            if tool_payloads:
                 lines.append(_("LLM ↔ MCP tool exchanges:"))
-                for tool_index, payload in enumerate(tool_results, start=1):
+                for tool_index, payload in enumerate(tool_payloads, start=1):
                     lines.extend(format_tool_payload(tool_index, payload))
             lines.append("")
 

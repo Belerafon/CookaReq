@@ -76,12 +76,17 @@ class MessageBubble(wx.Panel):
         bubble.SetBackgroundColour(bubble_bg)
         bubble.SetForegroundColour(bubble_fg)
         bubble.SetDoubleBuffered(True)
+        bubble.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        bubble.Bind(wx.EVT_PAINT, self._on_bubble_paint)
+        bubble.Bind(wx.EVT_ERASE_BACKGROUND, self._on_bubble_erase_background)
+        self._bubble_corner_radius: float = max(float(self.FromDIP(8)), 2.0)
         bubble_sizer = wx.BoxSizer(wx.VERTICAL)
         bubble.SetSizer(bubble_sizer)
 
         header_text = role_label if not timestamp else f"{role_label} • {timestamp}"
         header_align_flag = wx.ALIGN_RIGHT if align == "right" else 0
         header = wx.StaticText(bubble, label=header_text, style=header_align_flag)
+        header.SetBackgroundColour(bubble_bg)
         header.SetForegroundColour(meta_colour)
         header_font = header.GetFont()
         if header_font.IsOk():
@@ -138,6 +143,7 @@ class MessageBubble(wx.Panel):
             text_align_flag = wx.ALIGN_RIGHT if align == "right" else 0
             self._text = wx.StaticText(bubble, label=display_text, style=text_align_flag)
             self._text.SetForegroundColour(bubble_fg)
+            self._text.SetBackgroundColour(bubble_bg)
             self._text.Wrap(self.FromDIP(320))
         bubble_sizer.Add(
             self._text,
@@ -179,6 +185,39 @@ class MessageBubble(wx.Panel):
         outer.Add(bubble, 0, wx.EXPAND)
 
         self.SetSizer(outer)
+
+    def _on_bubble_erase_background(self, event: wx.EraseEvent) -> None:
+        event.Skip(False)
+
+    def _on_bubble_paint(self, event: wx.PaintEvent) -> None:
+        bubble = event.GetEventObject()
+        if not isinstance(bubble, wx.Window):
+            return
+        size = bubble.GetClientSize()
+        if size.width <= 0 or size.height <= 0:
+            return
+
+        parent_colour = self.GetBackgroundColour()
+        bubble_colour = bubble.GetBackgroundColour()
+        radius = min(self._bubble_corner_radius, min(size.width, size.height) / 2.0)
+
+        dc = wx.AutoBufferedPaintDC(bubble)
+        dc.SetBackground(wx.Brush(parent_colour))
+        dc.Clear()
+
+        gc = wx.GraphicsContext.Create(dc)
+        rect_width = max(size.width - 1, 0)
+        rect_height = max(size.height - 1, 0)
+        if gc is not None:
+            gc.SetPen(wx.Pen(bubble_colour))
+            gc.SetBrush(wx.Brush(bubble_colour))
+            gc.DrawRoundedRectangle(0, 0, rect_width, rect_height, radius)
+        else:
+            brush = wx.Brush(bubble_colour)
+            pen = wx.Pen(bubble_colour)
+            dc.SetBrush(brush)
+            dc.SetPen(pen)
+            dc.DrawRoundedRectangle(0, 0, rect_width, rect_height, radius)
 
     def _attach_context_menu_handlers(self, widget: wx.Window | None) -> None:
         if widget is None:

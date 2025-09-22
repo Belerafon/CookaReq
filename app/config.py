@@ -395,6 +395,15 @@ class ConfigManager:
             return spec.reader(self, spec, resolved_default)
         return self._read_native(spec, resolved_default)
 
+    def has_value(self, name: ConfigFieldName) -> bool:
+        """Return ``True`` if ``name`` is explicitly stored in the config."""
+
+        spec = self.FIELDS[name]
+        try:
+            return bool(self._cfg.HasEntry(spec.key))
+        except Exception:  # pragma: no cover - defensive compatibility path
+            return True
+
     def set_value(self, name: ConfigFieldName, value: Any) -> None:
         """Write ``value`` for ``name`` using :data:`CONFIG_FIELD_SPECS`."""
 
@@ -769,19 +778,25 @@ class ConfigManager:
     def get_doc_tree_sash(self, default: int) -> int:
         """Return stored width of the hierarchy splitter."""
 
-        value = self.get_value("sash_pos", default=default)
-        if value == default:
+        value: int
+        if self.has_value("sash_pos"):
+            value = int(self.get_value("sash_pos", default=default))
+        else:
             try:
-                legacy = self._cfg.ReadInt("doc_tree_saved_sash", default)
+                value = int(self._cfg.ReadInt("doc_tree_saved_sash", default))
             except Exception:  # pragma: no cover - defensive fallback
-                legacy = default
-            value = legacy
+                value = int(default)
         return max(value, 0)
 
     def set_doc_tree_sash(self, pos: int) -> None:
         """Persist width of the hierarchy splitter."""
 
         self.set_value("sash_pos", pos)
+        try:
+            if self._cfg.HasEntry("doc_tree_saved_sash"):
+                self._cfg.DeleteEntry("doc_tree_saved_sash")
+        except Exception:  # pragma: no cover - defensive compatibility cleanup
+            pass
         self.flush()
 
     # ------------------------------------------------------------------

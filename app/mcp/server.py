@@ -253,15 +253,40 @@ def create_requirement(prefix: str, data: Mapping[str, object]) -> dict:
 
 
 @register_tool()
-def patch_requirement(
-    rid: str,
-    patch: list[dict],
-    *,
-    rev: int,
-) -> dict:
-    """Apply JSON Patch to a requirement."""
+def update_requirement_field(rid: str, *, field: str, value: Any) -> dict:
+    """Update a single field of a requirement."""
     directory = app.state.base_path
-    return tools_write.patch_requirement(directory, rid, patch, rev=rev)
+    return tools_write.update_requirement_field(
+        directory,
+        rid,
+        field=field,
+        value=value,
+    )
+
+
+@register_tool()
+def set_requirement_labels(rid: str, labels: list[str] | None) -> dict:
+    """Replace labels of a requirement."""
+    directory = app.state.base_path
+    return tools_write.set_requirement_labels(directory, rid, labels)
+
+
+@register_tool()
+def set_requirement_attachments(
+    rid: str, attachments: list[Mapping[str, Any]] | None
+) -> dict:
+    """Replace attachments of a requirement."""
+    directory = app.state.base_path
+    return tools_write.set_requirement_attachments(directory, rid, attachments)
+
+
+@register_tool()
+def set_requirement_links(
+    rid: str, links: list[Mapping[str, Any]] | list[str] | None
+) -> dict:
+    """Replace outgoing links of a requirement."""
+    directory = app.state.base_path
+    return tools_write.set_requirement_links(directory, rid, links)
 
 
 @register_tool()

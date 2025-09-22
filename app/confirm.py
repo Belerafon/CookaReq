@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence, TypeVar
 
 ConfirmCallback = Callable[[str], bool]
 _callback: ConfirmCallback | None = None
@@ -41,6 +42,8 @@ class RequirementUpdatePrompt:
 RequirementUpdateConfirmCallback = Callable[[RequirementUpdatePrompt], ConfirmDecision]
 _requirement_update_callback: RequirementUpdateConfirmCallback | None = None
 _requirement_update_always: bool = False
+
+_T = TypeVar("_T")
 
 
 def set_confirm(callback: ConfirmCallback) -> None:
@@ -92,6 +95,57 @@ def confirm_requirement_update(prompt: RequirementUpdatePrompt) -> ConfirmDecisi
     if decision is ConfirmDecision.ALWAYS:
         _requirement_update_always = True
     return decision
+
+
+def _call_in_wx_main_thread(
+    func: Callable[..., _T], /, *args: Any, **kwargs: Any
+) -> _T:
+    """Execute *func* on the wx main thread and return its result."""
+
+    import wx  # type: ignore
+
+    is_main_thread = True
+    if hasattr(wx, "IsMainThread"):
+        try:
+            is_main_thread = bool(wx.IsMainThread())
+        except Exception:  # pragma: no cover - defensive guard
+            is_main_thread = True
+    if is_main_thread:
+        return func(*args, **kwargs)
+
+    get_app = getattr(wx, "GetApp", None)
+    try:
+        app = get_app() if callable(get_app) else None
+    except Exception:  # pragma: no cover - defensive guard
+        app = None
+    if app is None:
+        return func(*args, **kwargs)
+
+    done = threading.Event()
+    result: dict[str, Any] = {}
+
+    def _invoke() -> None:
+        try:
+            result["value"] = func(*args, **kwargs)
+        except Exception as exc:  # pragma: no cover - propagate later
+            result["error"] = exc
+        finally:
+            done.set()
+
+    try:
+        wx.CallAfter(_invoke)
+    except Exception:  # pragma: no cover - fallback when CallAfter fails
+        return func(*args, **kwargs)
+
+    done.wait()
+
+    if "error" in result:
+        raise result["error"]
+
+    if "value" not in result:  # pragma: no cover - defensive
+        raise RuntimeError("wx main-thread callback did not provide a result")
+
+    return result["value"]
 
 
 def _fallback_requirement_update_confirm(
@@ -205,29 +259,32 @@ def _format_change_value(value: Any) -> str:
 def wx_confirm(message: str) -> bool:
     """GUI confirmation dialog using wxWidgets."""
 
-    import wx  # type: ignore
-
     from .i18n import _
 
-    try:
-        parent = wx.GetActiveWindow()
-    except AttributeError:  # pragma: no cover - stubs may omit helper
-        parent = None
-    if not parent:
+    def _show_dialog() -> bool:
+        import wx  # type: ignore
+
         try:
-            windows = wx.GetTopLevelWindows()
+            parent = wx.GetActiveWindow()
         except AttributeError:  # pragma: no cover - stubs may omit helper
-            windows = []
-        parent = windows[0] if windows else None
+            parent = None
+        if not parent:
+            try:
+                windows = wx.GetTopLevelWindows()
+            except AttributeError:  # pragma: no cover - stubs may omit helper
+                windows = []
+            parent = windows[0] if windows else None
 
-    style = wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING
-    dialog = wx.MessageDialog(parent, message, _("Confirm"), style=style)
-    try:
-        result = dialog.ShowModal()
-    finally:
-        dialog.Destroy()
+        style = wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING
+        dialog = wx.MessageDialog(parent, message, _("Confirm"), style=style)
+        try:
+            result = dialog.ShowModal()
+        finally:
+            dialog.Destroy()
 
-    return result in {wx.ID_YES, wx.YES, wx.ID_OK, wx.OK}
+        return result in {wx.ID_YES, wx.YES, wx.ID_OK, wx.OK}
+
+    return _call_in_wx_main_thread(_show_dialog)
 
 
 def wx_confirm_requirement_update(
@@ -235,88 +292,92 @@ def wx_confirm_requirement_update(
 ) -> ConfirmDecision:
     """Show a rich confirmation dialog for MCP requirement updates."""
 
-    import wx  # type: ignore
-
-    from .i18n import _
-
     if _requirement_update_always:
         return ConfirmDecision.ALWAYS
 
-    try:
-        parent = wx.GetActiveWindow()
-    except AttributeError:  # pragma: no cover - stubs may omit helper
-        parent = None
-    if not parent:
+    from .i18n import _
+
+    def _show_dialog() -> ConfirmDecision:
+        import wx  # type: ignore
+
         try:
-            windows = wx.GetTopLevelWindows()
+            parent = wx.GetActiveWindow()
         except AttributeError:  # pragma: no cover - stubs may omit helper
-            windows = []
-        parent = windows[0] if windows else None
+            parent = None
+        if not parent:
+            try:
+                windows = wx.GetTopLevelWindows()
+            except AttributeError:  # pragma: no cover - stubs may omit helper
+                windows = []
+            parent = windows[0] if windows else None
 
-    dialog = wx.Dialog(parent, title=_("Confirm requirement update"))
-    sizer = wx.BoxSizer(wx.VERTICAL)
+        dialog = wx.Dialog(parent, title=_("Confirm requirement update"))
+        sizer = wx.BoxSizer(wx.VERTICAL)
 
-    intro = format_requirement_update_prompt(prompt, include_changes=False)
-    intro_ctrl = wx.StaticText(dialog, label=intro)
-    intro_ctrl.Wrap(600)
-    sizer.Add(intro_ctrl, 0, wx.ALL | wx.EXPAND, 12)
+        intro = format_requirement_update_prompt(prompt, include_changes=False)
+        intro_ctrl = wx.StaticText(dialog, label=intro)
+        intro_ctrl.Wrap(600)
+        sizer.Add(intro_ctrl, 0, wx.ALL | wx.EXPAND, 12)
 
-    changes = list(summarise_requirement_changes(prompt.changes))
-    if changes:
-        planned = wx.StaticText(dialog, label=_("Planned changes:"))
-        sizer.Add(planned, 0, wx.LEFT | wx.RIGHT, 12)
-        change_text = "\n".join(changes)
-        summary = wx.TextCtrl(
+        changes = list(summarise_requirement_changes(prompt.changes))
+        if changes:
+            planned = wx.StaticText(dialog, label=_("Planned changes:"))
+            sizer.Add(planned, 0, wx.LEFT | wx.RIGHT, 12)
+            change_text = "\n".join(changes)
+            summary = wx.TextCtrl(
+                dialog,
+                value=change_text,
+                style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP,
+            )
+            summary.SetMinSize((520, 200))
+            sizer.Add(summary, 1, wx.ALL | wx.EXPAND, 12)
+
+        button_sizer = wx.StdDialogButtonSizer()
+        yes_btn = wx.Button(dialog, wx.ID_YES, label=_("Yes"))
+        no_btn = wx.Button(dialog, wx.ID_NO, label=_("No"))
+        always_btn = wx.Button(
             dialog,
-            value=change_text,
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP,
+            wx.ID_APPLY,
+            label=_("Always for this session (all requirements)"),
         )
-        summary.SetMinSize((520, 200))
-        sizer.Add(summary, 1, wx.ALL | wx.EXPAND, 12)
+        no_btn.SetDefault()
+        no_btn.SetFocus()
+        button_sizer.AddButton(always_btn)
+        button_sizer.AddButton(no_btn)
+        button_sizer.AddButton(yes_btn)
+        button_sizer.SetAffirmativeButton(yes_btn)
+        button_sizer.SetNegativeButton(no_btn)
 
-    button_sizer = wx.StdDialogButtonSizer()
-    yes_btn = wx.Button(dialog, wx.ID_YES, label=_("Yes"))
-    no_btn = wx.Button(dialog, wx.ID_NO, label=_("No"))
-    always_btn = wx.Button(
-        dialog, wx.ID_APPLY, label=_("Always for this session (all requirements)")
-    )
-    no_btn.SetDefault()
-    no_btn.SetFocus()
-    button_sizer.AddButton(always_btn)
-    button_sizer.AddButton(no_btn)
-    button_sizer.AddButton(yes_btn)
-    button_sizer.SetAffirmativeButton(yes_btn)
-    button_sizer.SetNegativeButton(no_btn)
+        def _on_button(event: wx.CommandEvent) -> None:  # type: ignore[name-defined]
+            dialog.EndModal(event.GetId())
 
-    def _on_button(event: wx.CommandEvent) -> None:  # type: ignore[name-defined]
-        dialog.EndModal(event.GetId())
+        for btn in (always_btn, no_btn, yes_btn):
+            btn.Bind(wx.EVT_BUTTON, _on_button)
 
-    for btn in (always_btn, no_btn, yes_btn):
-        btn.Bind(wx.EVT_BUTTON, _on_button)
+        button_sizer.Realize()
+        sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 12)
 
-    button_sizer.Realize()
-    sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 12)
+        dialog.SetSizerAndFit(sizer)
+        dialog.SetMinSize(dialog.GetSize())
+        dialog.CentreOnParent()
 
-    dialog.SetSizerAndFit(sizer)
-    dialog.SetMinSize(dialog.GetSize())
-    dialog.CentreOnParent()
+        def _on_close(_event: wx.Event) -> None:  # type: ignore[name-defined]
+            dialog.EndModal(wx.ID_NO)
 
-    def _on_close(_event: wx.Event) -> None:  # type: ignore[name-defined]
-        dialog.EndModal(wx.ID_NO)
+        dialog.Bind(wx.EVT_CLOSE, _on_close)
 
-    dialog.Bind(wx.EVT_CLOSE, _on_close)
+        try:
+            result = dialog.ShowModal()
+        finally:
+            dialog.Destroy()
 
-    result: int
-    try:
-        result = dialog.ShowModal()
-    finally:
-        dialog.Destroy()
+        if result in {wx.ID_YES, wx.YES}:
+            return ConfirmDecision.YES
+        if result == wx.ID_APPLY:
+            return ConfirmDecision.ALWAYS
+        return ConfirmDecision.NO
 
-    if result in {wx.ID_YES, wx.YES}:
-        return ConfirmDecision.YES
-    if result == wx.ID_APPLY:
-        return ConfirmDecision.ALWAYS
-    return ConfirmDecision.NO
+    return _call_in_wx_main_thread(_show_dialog)
 
 
 def auto_confirm(_message: str) -> bool:

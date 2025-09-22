@@ -23,6 +23,7 @@ class ChatEntry:
     token_info: TokenCountResult | None = None
     prompt_at: str | None = None
     response_at: str | None = None
+    context_messages: tuple[dict[str, Any], ...] | None = None
 
     def __post_init__(self) -> None:  # pragma: no cover - trivial
         if self.display_response is None:
@@ -32,6 +33,14 @@ class ChatEntry:
                 self.tokens,
                 reason="legacy_tokens",
             )
+        if self.context_messages is not None and not isinstance(
+            self.context_messages, tuple
+        ):
+            normalized: list[dict[str, Any]] = []
+            for message in self.context_messages:
+                if isinstance(message, Mapping):
+                    normalized.append(dict(message))
+            self.context_messages = tuple(normalized) if normalized else None
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ChatEntry":
@@ -72,6 +81,18 @@ class ChatEntry:
         response_at_raw = payload.get("response_at")
         response_at = str(response_at_raw) if isinstance(response_at_raw, str) else None
 
+        context_raw = payload.get("context_messages")
+        context_messages: tuple[dict[str, Any], ...] | None = None
+        if isinstance(context_raw, Sequence) and not isinstance(
+            context_raw, (str, bytes, bytearray)
+        ):
+            prepared: list[dict[str, Any]] = []
+            for item in context_raw:
+                if isinstance(item, Mapping):
+                    prepared.append(dict(item))
+            if prepared:
+                context_messages = tuple(prepared)
+
         return cls(
             prompt=prompt,
             response=response,
@@ -82,6 +103,7 @@ class ChatEntry:
             token_info=token_info,
             prompt_at=prompt_at,
             response_at=response_at,
+            context_messages=context_messages,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -99,6 +121,9 @@ class ChatEntry:
             else None,
             "prompt_at": self.prompt_at,
             "response_at": self.response_at,
+            "context_messages": [dict(message) for message in self.context_messages]
+            if self.context_messages is not None
+            else None,
         }
 
 

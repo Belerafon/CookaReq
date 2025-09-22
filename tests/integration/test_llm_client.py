@@ -245,6 +245,39 @@ def test_parse_command_without_tool_call(tmp_path: Path, monkeypatch) -> None:
     assert response.content == "Привет"
 
 
+def test_parse_command_reports_tool_validation_details(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = settings_with_llm(tmp_path)
+
+    monkeypatch.setattr(
+        "openai.OpenAI",
+        make_openai_mock(
+            {
+                "Напиши текст первого требования": [
+                    (
+                        "create_requirement",
+                        {"prefix": "SYS", "data": {"title": "Req-1"}},
+                    )
+                ]
+            }
+        ),
+    )
+
+    client = LLMClient(settings.llm)
+
+    with pytest.raises(ToolValidationError) as excinfo:
+        client.parse_command("Напиши текст первого требования")
+
+    exc = excinfo.value
+    assert hasattr(exc, "llm_tool_calls")
+    assert exc.llm_tool_calls
+    first_call = exc.llm_tool_calls[0]
+    assert first_call["function"]["name"] == "create_requirement"
+    arguments = json.loads(first_call["function"]["arguments"])
+    assert arguments["data"]["title"] == "Req-1"
+
+
 def test_parse_command_streaming_message(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
     settings.llm.stream = True

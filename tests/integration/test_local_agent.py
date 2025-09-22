@@ -3,6 +3,7 @@
 import asyncio
 import json
 import threading
+from pathlib import Path
 from typing import Any, Mapping
 
 import httpx
@@ -11,10 +12,12 @@ import pytest
 
 from app.agent import local_agent as la
 from app.agent.local_agent import LocalAgent
-from app.llm.client import LLMResponse, LLMToolCall
+from app.llm.client import LLMClient, LLMResponse, LLMToolCall
 from app.mcp.client import MCPNotReadyError
 from app.mcp.utils import ErrorCode
 from app.settings import AppSettings
+
+from tests.llm_utils import make_openai_mock, settings_with_llm
 
 pytestmark = pytest.mark.integration
 
@@ -130,6 +133,61 @@ def test_run_command_reports_validation_error_for_json_failure():
     assert result["error"]["code"] == ErrorCode.VALIDATION_ERROR
     assert "Expecting value" in result["error"]["message"]
     assert result["error"]["details"]["type"] == "JSONDecodeError"
+
+
+def test_run_command_reports_llm_tool_validation_details(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = settings_with_llm(tmp_path)
+    monkeypatch.setattr(
+        "openai.OpenAI",
+        make_openai_mock(
+            {
+                "Напиши текст первого требования": [
+                    (
+                        "create_requirement",
+                        {"prefix": "SYS", "data": {"title": "Req-1"}},
+                    )
+                ]
+            }
+        ),
+    )
+
+    llm_client = LLMClient(settings.llm)
+
+    class RecordingMCP(MCPAsyncBridge):
+        def __init__(self) -> None:
+            self.ensure_calls = 0
+            self.call_calls = 0
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def ensure_ready(self) -> None:
+            self.ensure_calls += 1
+
+        def call_tool(self, name, arguments):  # pragma: no cover - defensive
+            self.call_calls += 1
+            return {"ok": True, "error": None, "result": {}}
+
+    mcp = RecordingMCP()
+    agent = LocalAgent(llm=llm_client, mcp=mcp)
+
+    result = agent.run_command("Напиши текст первого требования")
+
+    assert result["ok"] is False
+    error = result["error"]
+    assert error["code"] == ErrorCode.VALIDATION_ERROR
+    details = error.get("details") or {}
+    assert details.get("type") == "ToolValidationError"
+    tool_calls = details.get("llm_tool_calls")
+    assert tool_calls
+    first_call = tool_calls[0]
+    assert first_call["function"]["name"] == "create_requirement"
+    arguments = json.loads(first_call["function"]["arguments"])
+    assert arguments["data"]["title"] == "Req-1"
+    assert mcp.call_calls == 0
+    assert mcp.ensure_calls == 0
 
 
 def test_run_command_reports_internal_error_for_openai_failure():

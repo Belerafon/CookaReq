@@ -509,6 +509,46 @@ def test_agent_transcript_log_orders_sections_for_errors(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+def test_agent_transcript_log_includes_planned_tool_calls(tmp_path, wx_app):
+    class ToolErrorAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
+            return {
+                "ok": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Invalid arguments",
+                    "details": {
+                        "type": "ToolValidationError",
+                        "llm_message": "Готовлю обращение",
+                        "llm_tool_calls": [
+                            {
+                                "id": "call-0",
+                                "type": "function",
+                                "function": {
+                                    "name": "create_requirement",
+                                    "arguments": "{\"prefix\": \"SYS\", \"data\": {\"title\": \"Req\"}}",
+                                },
+                            }
+                        ],
+                    },
+                },
+            }
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, ToolErrorAgent())
+
+    panel.input.SetValue("draft requirement")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    try:
+        log_text = panel.get_transcript_log_text()
+        assert "LLM planned tool calls:" in log_text
+        assert "create_requirement" in log_text
+        assert "\"prefix\": \"SYS\"" in log_text
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_message_copy_selection(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.widgets.chat_message import MessageBubble

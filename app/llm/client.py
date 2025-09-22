@@ -312,6 +312,10 @@ class LLMClient:
         log_debug_payload("LLM_REQUEST", {"direction": "outbound", **payload})
         log_event("LLM_REQUEST", payload)
 
+        llm_message_text: str = ""
+        normalized_tool_calls: list[dict[str, Any]] = []
+        raw_tool_calls_payload: Any = []
+
         try:
             completion = self._chat_completion(
                 messages=messages,
@@ -320,10 +324,9 @@ class LLMClient:
                 stream=use_stream,
             )
             if use_stream:
-                message_text, raw_tool_calls = self._consume_stream(
+                message_text, raw_tool_calls_payload = self._consume_stream(
                     completion, cancellation=cancellation
                 )
-                tool_calls = self._parse_tool_calls(raw_tool_calls)
             else:
                 choices = getattr(completion, "choices", None)
                 if not choices:
@@ -341,12 +344,15 @@ class LLMClient:
                             completion,
                         )
                     )
-                tool_calls = self._parse_tool_calls(
-                    getattr(message, "tool_calls", None) or []
-                )
+                raw_tool_calls_payload = getattr(message, "tool_calls", None) or []
                 message_text = self._extract_message_content(
                     getattr(message, "content", None)
                 ).strip()
+            llm_message_text = message_text
+            normalized_tool_calls = self._normalise_tool_calls(
+                raw_tool_calls_payload
+            )
+            tool_calls = self._parse_tool_calls(raw_tool_calls_payload)
             response = LLMResponse(
                 content=message_text,
                 tool_calls=tool_calls,
@@ -365,6 +371,31 @@ class LLMClient:
                 "LLM_RESPONSE",
                 {"direction": "inbound", "cancelled": True},
             )
+            raise
+        except ToolValidationError as exc:
+            log_payload: dict[str, Any] = {
+                "error": {
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                }
+            }
+            if llm_message_text:
+                log_payload["message"] = llm_message_text
+            if normalized_tool_calls:
+                log_payload["tool_calls"] = normalized_tool_calls
+            log_event(
+                "LLM_RESPONSE",
+                log_payload,
+                start_time=start,
+            )
+            log_debug_payload(
+                "LLM_RESPONSE",
+                {"direction": "inbound", **log_payload},
+            )
+            if not hasattr(exc, "llm_message"):
+                exc.llm_message = llm_message_text
+            if not hasattr(exc, "llm_tool_calls"):
+                exc.llm_tool_calls = tuple(normalized_tool_calls)
             raise
         except Exception as exc:  # pragma: no cover - network errors
             log_event(

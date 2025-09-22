@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from typing import Any
 
 import httpx
 
 from ..confirm import (
     ConfirmDecision,
+    RequirementChange,
     RequirementUpdatePrompt,
     confirm_requirement_update as global_confirm_requirement_update,
 )
@@ -37,6 +38,12 @@ class MCPClient:
 
     _READY_CACHE_TTL = 5.0
     _REQUEST_TIMEOUT = httpx.Timeout(5.0)
+    _UPDATE_TOOLS = {
+        "update_requirement_field",
+        "set_requirement_labels",
+        "set_requirement_attachments",
+        "set_requirement_links",
+    }
 
     def __init__(
         self,
@@ -65,13 +72,16 @@ class MCPClient:
 
         prompt: RequirementUpdatePrompt | None = None
         confirm_payload: dict[str, Any] = {"tool": name}
-        if name == "patch_requirement":
-            prompt = self._build_requirement_update_prompt(arguments)
+        if name in self._UPDATE_TOOLS:
+            prompt = self._build_requirement_update_prompt(name, arguments)
             confirm_payload.update(
                 {
                     "rid": prompt.rid,
                     "directory": prompt.directory,
-                    "revision": prompt.revision,
+                    "changes": [
+                        {"kind": change.kind, "field": change.field}
+                        for change in prompt.changes
+                    ],
                 }
             )
         log_event("CONFIRM", confirm_payload)
@@ -80,9 +90,9 @@ class MCPClient:
         if name == "delete_requirement":
             msg = _("Delete requirement?")
             confirmed = self._confirm(msg)
-        elif name == "patch_requirement":
+        elif name in self._UPDATE_TOOLS:
             if prompt is None:
-                prompt = self._build_requirement_update_prompt(arguments)
+                prompt = self._build_requirement_update_prompt(name, arguments)
             decision = self._confirm_requirement_update(prompt)
             decision_value = decision.value
             confirmed = decision is not ConfirmDecision.NO
@@ -97,46 +107,49 @@ class MCPClient:
 
     @staticmethod
     def _build_requirement_update_prompt(
-        arguments: Mapping[str, Any]
+        name: str, arguments: Mapping[str, Any]
     ) -> RequirementUpdatePrompt:
         """Create :class:`RequirementUpdatePrompt` from MCP tool *arguments*."""
 
         directory = arguments.get("directory")
         rid = arguments.get("rid")
-        revision = MCPClient._coerce_revision(arguments.get("rev"))
-        patch = MCPClient._normalise_patch(arguments.get("patch"))
         return RequirementUpdatePrompt(
             rid=str(rid) if rid is not None else "",
             directory=str(directory) if directory is not None else None,
-            revision=revision,
-            patch=patch,
+            tool=name,
+            changes=MCPClient._normalise_requirement_changes(name, arguments),
         )
 
     @staticmethod
-    def _normalise_patch(data: Any) -> tuple[Any, ...]:
-        """Return tuple representation of JSON Patch payload preserving order."""
+    def _normalise_requirement_changes(
+        name: str, arguments: Mapping[str, Any]
+    ) -> tuple[RequirementChange, ...]:
+        """Return canonical representation of planned updates for prompts."""
 
-        if isinstance(data, Sequence) and not isinstance(data, (str, bytes, bytearray)):
-            return tuple(
-                dict(item) if isinstance(item, Mapping) else item for item in data
+        if name == "update_requirement_field":
+            field = arguments.get("field")
+            return (
+                RequirementChange(
+                    kind="field",
+                    field=str(field) if field is not None else None,
+                    value=arguments.get("value"),
+                ),
             )
-        if data is None:
-            return ()
-        return (data,)
-
-    @staticmethod
-    def _coerce_revision(value: Any) -> int | None:
-        """Convert revision *value* to ``int`` when possible."""
-
-        if isinstance(value, bool):
-            # ``bool`` is an ``int`` subclass, but revisions should never be boolean.
-            return None
-        if isinstance(value, int):
-            return value
-        try:
-            return int(str(value))
-        except (TypeError, ValueError):
-            return None
+        if name == "set_requirement_labels":
+            return (
+                RequirementChange(kind="labels", value=arguments.get("labels")),
+            )
+        if name == "set_requirement_attachments":
+            return (
+                RequirementChange(
+                    kind="attachments", value=arguments.get("attachments")
+                ),
+            )
+        if name == "set_requirement_links":
+            return (
+                RequirementChange(kind="links", value=arguments.get("links")),
+            )
+        return ()
 
     # ------------------------------------------------------------------
     def _build_base_url(self) -> str:
@@ -352,7 +365,7 @@ class MCPClient:
             optional ``result`` key contains the payload returned by the server.
         """
 
-        if name in {"delete_requirement", "patch_requirement"}:
+        if name == "delete_requirement" or name in self._UPDATE_TOOLS:
             confirmed = self._confirm_sensitive_tool(name, arguments)
             if not confirmed:
                 err = mcp_error("CANCELLED", _("Cancelled by user"))["error"]
@@ -429,7 +442,7 @@ class MCPClient:
     ) -> dict[str, Any]:
         """Asynchronous counterpart to :meth:`call_tool`."""
 
-        if name in {"delete_requirement", "patch_requirement"}:
+        if name == "delete_requirement" or name in self._UPDATE_TOOLS:
             confirmed = self._confirm_sensitive_tool(name, arguments)
             if not confirmed:
                 err = mcp_error("CANCELLED", _("Cancelled by user"))["error"]

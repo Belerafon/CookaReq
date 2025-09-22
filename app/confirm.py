@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 ConfirmCallback = Callable[[str], bool]
 _callback: ConfirmCallback | None = None
@@ -20,13 +20,22 @@ class ConfirmDecision(Enum):
 
 
 @dataclass(frozen=True)
+class RequirementChange:
+    """Description of a single requirement update for confirmation prompts."""
+
+    kind: str
+    field: str | None = None
+    value: Any | None = None
+
+
+@dataclass(frozen=True)
 class RequirementUpdatePrompt:
     """Information shown when confirming an MCP requirement update."""
 
     rid: str
-    patch: Sequence[Any]
+    changes: Sequence[RequirementChange] = field(default_factory=tuple)
     directory: str | None = None
-    revision: int | None = None
+    tool: str | None = None
 
 
 RequirementUpdateConfirmCallback = Callable[[RequirementUpdatePrompt], ConfirmDecision]
@@ -112,13 +121,11 @@ def format_requirement_update_prompt(
         details.append(
             _("Directory: {directory}").format(directory=str(prompt.directory))
         )
-    if prompt.revision is not None:
-        details.append(
-            _("Expected revision: {revision}").format(revision=prompt.revision)
-        )
+    if prompt.tool:
+        details.append(_("Tool: {tool}").format(tool=prompt.tool))
 
     if include_changes:
-        changes = list(summarise_requirement_patch(prompt.patch))
+        changes = list(summarise_requirement_changes(prompt.changes))
         if changes:
             details.append("")
             details.append(_("Planned changes:"))
@@ -127,49 +134,61 @@ def format_requirement_update_prompt(
     return "\n".join(details)
 
 
-def summarise_requirement_patch(
-    patch: Sequence[Any] | Iterable[Any]
+def summarise_requirement_changes(
+    changes: Sequence[RequirementChange] | Iterable[RequirementChange],
 ) -> Iterable[str]:
-    """Yield textual descriptions for JSON Patch operations in *patch*."""
+    """Yield textual descriptions for requirement updates in *changes*."""
 
     from .i18n import _
 
-    for index, operation in enumerate(patch, start=1):
-        if not isinstance(operation, Mapping):
-            yield _("{index}. Invalid patch operation").format(index=index)
+    for index, change in enumerate(changes, start=1):
+        if not isinstance(change, RequirementChange):
+            yield _("{index}. Invalid change payload").format(index=index)
             continue
 
-        op = str(operation.get("op", "")) or _("(missing op)")
-        path = str(operation.get("path", "")) or "/"
-        value_known = "value" in operation
-        from_path = str(operation.get("from", "")) if operation.get("from") else None
+        kind = change.kind or ""
+        value = change.value
 
-        if op in {"add", "replace", "test"} and value_known:
-            value_text = _format_patch_value(operation.get("value"))
-            yield _("{index}. {op} {path} → {value}").format(
-                index=index, op=op, path=path, value=value_text
+        if kind == "field":
+            field_name = change.field or _("(missing field)")
+            value_text = _format_change_value(value)
+            yield _("{index}. set {field} → {value}").format(
+                index=index,
+                field=field_name,
+                value=value_text,
             )
-        elif op == "remove":
-            yield _("{index}. {op} {path}").format(index=index, op=op, path=path)
-        elif op in {"move", "copy"} and from_path:
-            yield _("{index}. {op} {source} → {path}").format(
-                index=index, op=op, source=from_path, path=path
+        elif kind == "labels":
+            labels_value = [] if value is None else value
+            value_text = _format_change_value(labels_value)
+            yield _("{index}. replace labels → {value}").format(
+                index=index,
+                value=value_text,
+            )
+        elif kind == "attachments":
+            attachments_value = [] if value is None else value
+            value_text = _format_change_value(attachments_value)
+            yield _("{index}. replace attachments → {value}").format(
+                index=index,
+                value=value_text,
+            )
+        elif kind == "links":
+            links_value = [] if value is None else value
+            value_text = _format_change_value(links_value)
+            yield _("{index}. replace links → {value}").format(
+                index=index,
+                value=value_text,
             )
         else:
-            remaining = {
-                key: value
-                for key, value in operation.items()
-                if key not in {"op"}
-            }
-            yield _("{index}. {op} ({details})").format(
+            value_text = _format_change_value(value)
+            yield _("{index}. {kind} → {value}").format(
                 index=index,
-                op=op,
-                details=_format_patch_value(remaining),
+                kind=kind or _("update"),
+                value=value_text,
             )
 
 
-def _format_patch_value(value: Any) -> str:
-    """Return short preview of JSON Patch *value* suitable for prompts."""
+def _format_change_value(value: Any) -> str:
+    """Return short preview of change *value* suitable for prompts."""
 
     if isinstance(value, str):
         formatted = json.dumps(value, ensure_ascii=False)
@@ -242,7 +261,7 @@ def wx_confirm_requirement_update(
     intro_ctrl.Wrap(600)
     sizer.Add(intro_ctrl, 0, wx.ALL | wx.EXPAND, 12)
 
-    changes = list(summarise_requirement_patch(prompt.patch))
+    changes = list(summarise_requirement_changes(prompt.changes))
     if changes:
         planned = wx.StaticText(dialog, label=_("Planned changes:"))
         sizer.Add(planned, 0, wx.LEFT | wx.RIGHT, 12)

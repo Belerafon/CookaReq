@@ -566,7 +566,12 @@ def test_custom_confirm_message(monkeypatch):
             return {"ok": True, "error": None}
 
         def call_tool(self, name, arguments):
-            if name in {"delete_requirement", "patch_requirement"}:
+            if name == "delete_requirement" or name in {
+                "update_requirement_field",
+                "set_requirement_labels",
+                "set_requirement_attachments",
+                "set_requirement_links",
+            }:
                 self.confirm("Delete requirement?")
             return {"ok": True, "error": None, "result": {}}
 

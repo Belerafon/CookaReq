@@ -15,8 +15,9 @@ from app.core.document_store.items import (
     item_path,
     move_requirement,
     parse_rid,
-    patch_requirement,
     rid_for,
+    set_requirement_labels,
+    update_requirement_field,
 )
 from app.core.model import requirement_fingerprint
 
@@ -47,7 +48,9 @@ def _base_payload() -> dict[str, str]:
     }
 
 
-def test_create_patch_and_delete_requirement(tmp_path: Path, _document: Document) -> None:
+def test_create_update_and_delete_requirement(
+    tmp_path: Path, _document: Document
+) -> None:
     docs = load_documents(tmp_path)
 
     with pytest.raises(ValidationError):
@@ -67,26 +70,33 @@ def test_create_patch_and_delete_requirement(tmp_path: Path, _document: Document
     assert created.rid == rid_for(_document, 1)
     assert parse_rid(created.rid) == ("SYS", 1)
 
-    patched = patch_requirement(
+    updated = update_requirement_field(
         tmp_path,
         created.rid,
-        [
-            {"op": "replace", "path": "/statement", "value": "Updated"},
-            {"op": "replace", "path": "/revision", "value": 5},
-        ],
-        expected_revision=created.revision,
+        field="statement",
+        value="Updated",
         docs=docs,
     )
-    assert patched.statement == "Updated"
-    assert patched.revision == 5
+    assert updated.statement == "Updated"
+    assert updated.revision == created.revision + 1
+
+    relabeled = set_requirement_labels(
+        tmp_path,
+        created.rid,
+        labels=[],
+        docs=docs,
+    )
+    assert relabeled.labels == []
+    assert relabeled.revision == updated.revision + 1
 
     fetched = get_requirement(tmp_path, created.rid, docs=docs)
     assert fetched.statement == "Updated"
+    assert fetched.labels == []
 
     deleted = delete_requirement(
         tmp_path,
         created.rid,
-        expected_revision=patched.revision,
+        expected_revision=relabeled.revision,
         docs=docs,
     )
     assert deleted == created.rid

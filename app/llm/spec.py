@@ -22,6 +22,24 @@ _STATUS_VALUES = [
 ]
 _STATUS_VALUES_WITH_NULL = _STATUS_VALUES + [None]
 
+_EDITABLE_FIELDS = [
+    "title",
+    "statement",
+    "type",
+    "status",
+    "owner",
+    "priority",
+    "source",
+    "verification",
+    "acceptance",
+    "conditions",
+    "rationale",
+    "assumptions",
+    "notes",
+    "modified_at",
+    "approved_at",
+]
+
 
 # Prompt instructing the model to prefer MCP tool calls while allowing
 # conversational fallbacks when tools are not relevant.
@@ -35,15 +53,30 @@ SYSTEM_PROMPT = (
     "`list_requirements` accepts optional `page`, `per_page`, `status` and "
     "`labels`; `search_requirements` accepts `query`, `labels`, `status`, "
     "`page` and `per_page`. Status values: draft, in_review, approved, "
-    "baselined, retired. Labels must be arrays of strings. When the user "
-    "references a requirement, always use its requirement identifier (RID) "
+    "baselined, retired. Labels must be arrays of strings. "
+    "When editing a requirement use the specialised tools instead of JSON patches: "
+    "`update_requirement_field` changes exactly one field at a time. Allowed "
+    "field names: "
+    + ", ".join(_EDITABLE_FIELDS)
+    + ". Provide the new content via the `value` argument (use plain strings for "
+    "text, ISO 8601 for timestamps). The server increments the revision automatically.\n"
+    "`set_requirement_labels` replaces the full label list; pass an array of "
+    "strings (use [] to clear all labels).\n"
+    "`set_requirement_attachments` replaces attachments; supply an array of "
+    "objects such as {\"path\": \"docs/spec.pdf\", \"note\": \"optional comment\"} or [] to "
+    "remove them.\n"
+    "`set_requirement_links` replaces outgoing trace links; provide an array of "
+    "link objects (with at least `rid`) or plain RID strings; unknown RIDs will be marked suspect automatically. "
+    "When the user references a requirement, always use its requirement identifier (RID) "
     "exactly as shown in the workspace context using the `<prefix><number>` "
     "format (case-sensitive). Never pass only the numeric `id`. Examples:\n"
     "- Context entry \"SYS11 (id=11, prefix=SYS)\" and user request \"Write the text of the "
     "first requirement\" → call `get_requirement` with {\"rid\": \"SYS11\"}.\n"
     "- Context entry \"SYS3 (id=3, prefix=SYS)\" and user request \"Update the status of SYS3 "
-    "to approved\" → call `patch_requirement` with {\"rid\": \"SYS3\", \"rev\": 1, \"patch\": "
-    "[{\"op\": \"replace\", \"path\": \"/status\", \"value\": \"approved\"}]}.\n"
+    "to approved\" → call `update_requirement_field` with {\"rid\": \"SYS3\", "
+    "\"field\": \"status\", \"value\": \"approved\"}.\n"
+    "- Context entry \"SYS4 (id=4, prefix=SYS)\" and request \"Очисти все метки у SYS4\" → call "
+    "`set_requirement_labels` with {\"rid\": \"SYS4\", \"labels\": []}.\n"
     "- Context entries \"HLR5 (id=5, prefix=HLR)\" and \"SYS11 (id=11, prefix=SYS)\" with user "
     "request \"Link SYS11 as a child of HLR5\" → call `link_requirements` with "
     "{\"source_rid\": \"HLR5\", \"derived_rid\": \"SYS11\", \"link_type\": \"parent\", \"rev\": 1}.\n"
@@ -199,19 +232,104 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "patch_requirement",
-            "description": "Apply a JSON patch to a requirement",
+            "name": "update_requirement_field",
+            "description": "Update a single field of a requirement",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "rid": {"type": "string"},
-                    "patch": {
-                        "type": "array",
-                        "items": {"type": "object"},
+                    "field": {"type": "string", "enum": _EDITABLE_FIELDS},
+                    "value": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {"type": "number"},
+                            {"type": "boolean"},
+                            {"type": "object"},
+                            {"type": "array"},
+                            {"type": "null"},
+                        ]
                     },
-                    "rev": {"type": "integer"},
                 },
-                "required": ["rid", "patch", "rev"],
+                "required": ["rid", "field", "value"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_requirement_labels",
+            "description": "Replace all labels attached to a requirement",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rid": {"type": "string"},
+                    "labels": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": ["rid", "labels"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_requirement_attachments",
+            "description": "Replace the attachment list of a requirement",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rid": {"type": "string"},
+                    "attachments": {
+                        "type": ["array", "null"],
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                                "note": {"type": "string"},
+                            },
+                            "required": ["path"],
+                            "additionalProperties": True,
+                        },
+                    },
+                },
+                "required": ["rid", "attachments"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_requirement_links",
+            "description": "Replace outgoing trace links of a requirement",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rid": {"type": "string"},
+                    "links": {
+                        "type": ["array", "null"],
+                        "items": {
+                            "oneOf": [
+                                {"type": "string"},
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "rid": {"type": "string"},
+                                        "fingerprint": {"type": ["string", "null"]},
+                                        "suspect": {"type": "boolean"},
+                                    },
+                                    "required": ["rid"],
+                                    "additionalProperties": True,
+                                },
+                            ]
+                        },
+                    },
+                },
+                "required": ["rid", "links"],
                 "additionalProperties": False,
             },
         },

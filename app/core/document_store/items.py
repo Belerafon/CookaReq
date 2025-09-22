@@ -4,9 +4,7 @@ import json
 import re
 from dataclasses import fields
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
-
-import jsonpatch
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from ..model import (
     Link,
@@ -28,8 +26,38 @@ from . import (
 from .documents import is_ancestor, load_documents, validate_labels
 
 RID_RE = re.compile(r"^([A-Z][A-Z0-9_]*?)(\d+)$")
-READ_ONLY_PATCH_FIELDS = {"id", "links"}
 KNOWN_REQUIREMENT_FIELDS = {f.name for f in fields(Requirement)}
+
+EDITABLE_SINGLE_FIELDS = {
+    "title",
+    "statement",
+    "type",
+    "status",
+    "owner",
+    "priority",
+    "source",
+    "verification",
+    "acceptance",
+    "conditions",
+    "rationale",
+    "assumptions",
+    "notes",
+    "modified_at",
+    "approved_at",
+}
+
+EDITABLE_COLLECTION_FIELDS = {
+    "labels",
+    "attachments",
+    "links",
+}
+
+READ_ONLY_FIELDS = {
+    "id",
+    "revision",
+    "doc_prefix",
+    "rid",
+}
 
 
 def _load_fingerprint_for_rid(
@@ -412,62 +440,127 @@ def create_requirement(
     return req
 
 
-def _validate_patch_operations(patch: Sequence[Mapping[str, Any]]) -> None:
-    for op in patch:
-        for key in ("path", "from"):
-            path = op.get(key)
-            if not path:
-                continue
-            target = path.lstrip("/").split("/", 1)[0]
-            if target in READ_ONLY_PATCH_FIELDS:
-                raise ValidationError(f"field is read-only: {target}")
-            if target and target not in KNOWN_REQUIREMENT_FIELDS:
-                raise ValidationError(f"unknown field: {target}")
+def _next_revision(raw: Any) -> int:
+    if raw in (None, ""):
+        current = 1
+    else:
+        try:
+            current = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("revision must be an integer") from exc
+    if current <= 0:
+        raise ValidationError("revision must be positive")
+    return current + 1
 
 
-def patch_requirement(
+def _update_requirement(
     root: str | Path,
     rid: str,
-    patch: Sequence[Mapping[str, Any]],
-    *,
-    expected_revision: int,
-    docs: Mapping[str, Document] | None = None,
+    docs: Mapping[str, Document] | None,
+    mutate: Callable[[dict[str, Any], str, Document], None],
 ) -> Requirement:
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
     prefix, item_id, doc, directory, data = _resolve_requirement(root_path, rid, docs_map)
-    try:
-        current = int(data.get("revision", 1))
-    except (TypeError, ValueError) as exc:
-        raise ValidationError("revision must be an integer") from exc
-    if current <= 0:
-        raise ValidationError("revision must be positive")
-    if current != expected_revision:
-        raise RevisionMismatchError(expected_revision, current)
-    _validate_patch_operations(patch)
-    try:
-        updated = jsonpatch.apply_patch(data, patch, in_place=False)
-    except jsonpatch.JsonPatchException as exc:
-        raise ValidationError(str(exc)) from exc
-    updated = dict(updated)
-    updated["id"] = item_id
-    labels = _normalize_labels(updated.get("labels"))
+    payload = dict(data)
+    mutate(payload, prefix, doc)
+    payload["id"] = item_id
+    payload["revision"] = _next_revision(payload.get("revision"))
+    labels = _normalize_labels(payload.get("labels"))
     err = validate_labels(prefix, labels, docs_map)
     if err:
         raise ValidationError(err)
-    updated["labels"] = labels
-    revision_value = updated.get("revision", current)
-    try:
-        revision = int(revision_value)
-    except (TypeError, ValueError) as exc:
-        raise ValidationError("revision must be an integer") from exc
-    if revision <= 0:
-        raise ValidationError("revision must be positive")
-    updated["revision"] = revision
-    req = requirement_from_dict(updated, doc_prefix=prefix, rid=rid)
+    payload["labels"] = labels
+    req = requirement_from_dict(payload, doc_prefix=prefix, rid=rid)
     _update_link_suspicions(root_path, docs_map, req)
     save_item(directory, doc, requirement_to_dict(req))
     return req
+
+
+def update_requirement_field(
+    root: str | Path,
+    rid: str,
+    *,
+    field: str,
+    value: Any,
+    docs: Mapping[str, Document] | None = None,
+) -> Requirement:
+    if not isinstance(field, str) or not field:
+        raise ValidationError("field must be a non-empty string")
+    if field in READ_ONLY_FIELDS:
+        raise ValidationError(f"field is read-only: {field}")
+    if field in EDITABLE_COLLECTION_FIELDS:
+        raise ValidationError(
+            f"field {field} requires a dedicated collection update tool"
+        )
+    if field not in EDITABLE_SINGLE_FIELDS:
+        if field not in KNOWN_REQUIREMENT_FIELDS:
+            raise ValidationError(f"unknown field: {field}")
+        raise ValidationError(f"field cannot be updated directly: {field}")
+
+    def mutate(payload: dict[str, Any], _prefix: str, _doc: Document) -> None:
+        payload[field] = value
+
+    return _update_requirement(root, rid, docs, mutate)
+
+
+def set_requirement_labels(
+    root: str | Path,
+    rid: str,
+    labels: Sequence[str] | None,
+    *,
+    docs: Mapping[str, Document] | None = None,
+) -> Requirement:
+
+    def mutate(payload: dict[str, Any], _prefix: str, _doc: Document) -> None:
+        if labels is None:
+            payload["labels"] = []
+        elif isinstance(labels, Sequence) and not isinstance(labels, (str, bytes)):
+            payload["labels"] = list(labels)
+        else:
+            payload["labels"] = labels
+
+    return _update_requirement(root, rid, docs, mutate)
+
+
+def set_requirement_attachments(
+    root: str | Path,
+    rid: str,
+    attachments: Sequence[Mapping[str, Any]] | None,
+    *,
+    docs: Mapping[str, Document] | None = None,
+) -> Requirement:
+
+    def mutate(payload: dict[str, Any], _prefix: str, _doc: Document) -> None:
+        if attachments is None:
+            payload["attachments"] = []
+        elif isinstance(attachments, Sequence) and not isinstance(
+            attachments, (str, bytes)
+        ):
+            payload["attachments"] = list(attachments)
+        else:
+            payload["attachments"] = attachments
+
+    return _update_requirement(root, rid, docs, mutate)
+
+
+def set_requirement_links(
+    root: str | Path,
+    rid: str,
+    links: Sequence[Mapping[str, Any]] | Sequence[str] | None,
+    *,
+    docs: Mapping[str, Document] | None = None,
+) -> Requirement:
+
+    def mutate(payload: dict[str, Any], _prefix: str, _doc: Document) -> None:
+        if links is None:
+            payload.pop("links", None)
+        elif isinstance(links, Sequence) and not isinstance(links, (str, bytes)):
+            payload["links"] = list(links)
+        else:
+            payload["links"] = links
+
+    return _update_requirement(root, rid, docs, mutate)
 
 
 def move_requirement(

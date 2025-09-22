@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from ..core import document_store as doc_store
 from ..core.model import requirement_to_dict
@@ -38,51 +38,164 @@ def create_requirement(directory: str | Path, *, prefix: str, data: Mapping[str,
     return log_tool("create_requirement", params, _result_payload(req))
 
 
-def patch_requirement(
+def update_requirement_field(
     directory: str | Path,
     rid: str,
-    patch: list[dict[str, Any]],
     *,
-    rev: int,
+    field: str,
+    value: Any,
 ) -> dict:
-    """Apply JSON Patch *patch* to requirement *rid* if revision matches."""
-    params = {"directory": str(directory), "rid": rid, "patch": patch, "rev": rev}
+    """Update a single field of a requirement."""
+
+    params = {
+        "directory": str(directory),
+        "rid": rid,
+        "field": field,
+        "value": value,
+    }
     try:
-        req = doc_store.patch_requirement(
+        req = doc_store.update_requirement_field(
             directory,
             rid,
-            patch,
-            expected_revision=rev,
-        )
-    except ValueError as exc:
-        return log_tool(
-            "patch_requirement",
-            params,
-            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
-        )
-    except doc_store.RevisionMismatchError as exc:
-        return log_tool(
-            "patch_requirement",
-            params,
-            mcp_error(ErrorCode.CONFLICT, str(exc)),
+            field=field,
+            value=value,
         )
     except doc_store.RequirementNotFoundError as exc:
         return log_tool(
-            "patch_requirement",
+            "update_requirement_field",
             params,
             mcp_error(ErrorCode.NOT_FOUND, str(exc)),
         )
     except doc_store.ValidationError as exc:
         return log_tool(
-            "patch_requirement",
+            "update_requirement_field",
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
         )
     except Exception as exc:  # pragma: no cover - defensive
         return log_tool(
-            "patch_requirement", params, mcp_error(ErrorCode.INTERNAL, str(exc))
+            "update_requirement_field",
+            params,
+            mcp_error(ErrorCode.INTERNAL, str(exc)),
         )
-    return log_tool("patch_requirement", params, _result_payload(req))
+    return log_tool("update_requirement_field", params, _result_payload(req))
+
+
+def set_requirement_labels(
+    directory: str | Path,
+    rid: str,
+    labels: Sequence[str] | None,
+) -> dict:
+    """Replace the label list of a requirement."""
+
+    params = {
+        "directory": str(directory),
+        "rid": rid,
+        "labels": labels,
+    }
+    try:
+        req = doc_store.set_requirement_labels(
+            directory,
+            rid,
+            labels=labels,
+        )
+    except doc_store.RequirementNotFoundError as exc:
+        return log_tool(
+            "set_requirement_labels",
+            params,
+            mcp_error(ErrorCode.NOT_FOUND, str(exc)),
+        )
+    except doc_store.ValidationError as exc:
+        return log_tool(
+            "set_requirement_labels",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        return log_tool(
+            "set_requirement_labels",
+            params,
+            mcp_error(ErrorCode.INTERNAL, str(exc)),
+        )
+    return log_tool("set_requirement_labels", params, _result_payload(req))
+
+
+def set_requirement_attachments(
+    directory: str | Path,
+    rid: str,
+    attachments: Sequence[Mapping[str, Any]] | None,
+) -> dict:
+    """Replace attachments of a requirement."""
+
+    params = {
+        "directory": str(directory),
+        "rid": rid,
+        "attachments": attachments,
+    }
+    try:
+        req = doc_store.set_requirement_attachments(
+            directory,
+            rid,
+            attachments=attachments,
+        )
+    except doc_store.RequirementNotFoundError as exc:
+        return log_tool(
+            "set_requirement_attachments",
+            params,
+            mcp_error(ErrorCode.NOT_FOUND, str(exc)),
+        )
+    except (doc_store.ValidationError, TypeError, ValueError) as exc:
+        return log_tool(
+            "set_requirement_attachments",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        return log_tool(
+            "set_requirement_attachments",
+            params,
+            mcp_error(ErrorCode.INTERNAL, str(exc)),
+        )
+    return log_tool("set_requirement_attachments", params, _result_payload(req))
+
+
+def set_requirement_links(
+    directory: str | Path,
+    rid: str,
+    links: Sequence[Mapping[str, Any]] | Sequence[str] | None,
+) -> dict:
+    """Replace the outgoing links of a requirement."""
+
+    params = {
+        "directory": str(directory),
+        "rid": rid,
+        "links": links,
+    }
+    try:
+        req = doc_store.set_requirement_links(
+            directory,
+            rid,
+            links=links,
+        )
+    except doc_store.RequirementNotFoundError as exc:
+        return log_tool(
+            "set_requirement_links",
+            params,
+            mcp_error(ErrorCode.NOT_FOUND, str(exc)),
+        )
+    except (doc_store.ValidationError, TypeError, ValueError) as exc:
+        return log_tool(
+            "set_requirement_links",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        return log_tool(
+            "set_requirement_links",
+            params,
+            mcp_error(ErrorCode.INTERNAL, str(exc)),
+        )
+    return log_tool("set_requirement_links", params, _result_payload(req))
 
 
 def delete_requirement(directory: str | Path, rid: str, *, rev: int) -> dict:

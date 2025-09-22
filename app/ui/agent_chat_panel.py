@@ -1810,6 +1810,7 @@ class AgentChatPanel(wx.Panel):
 
         llm_message: str | None = None
         error_payload: Any | None = None
+        planned_tool_calls: list[Any] | None = None
         if raw_result_mapping:
             result_value = raw_result_mapping.get("result")
             if isinstance(result_value, str):
@@ -1817,6 +1818,23 @@ class AgentChatPanel(wx.Panel):
             error_value = raw_result_mapping.get("error")
             if error_value:
                 error_payload = _history_json_safe(error_value)
+                if isinstance(error_payload, Mapping):
+                    details_payload = error_payload.get("details")
+                    if isinstance(details_payload, Mapping):
+                        raw_llm_message = details_payload.get("llm_message")
+                        if (
+                            llm_message in (None, "")
+                            and isinstance(raw_llm_message, str)
+                            and raw_llm_message.strip()
+                        ):
+                            llm_message = normalize_for_display(raw_llm_message)
+                        raw_tool_calls = details_payload.get("llm_tool_calls")
+                        if raw_tool_calls:
+                            safe_calls = _history_json_safe(raw_tool_calls)
+                            if isinstance(safe_calls, list):
+                                planned_tool_calls = safe_calls or None
+                            elif safe_calls is not None:
+                                planned_tool_calls = [safe_calls]
 
         tool_payloads: list[Any] = []
         if tool_results:
@@ -1833,6 +1851,7 @@ class AgentChatPanel(wx.Panel):
             "history_messages": history_messages,
             "context_messages": context_messages,
             "llm_final_message": llm_message,
+            "llm_tool_calls": planned_tool_calls,
             "tool_exchanges": tool_payloads,
             "agent_response_text": display_text,
             "agent_stored_response": stored_text
@@ -2109,6 +2128,11 @@ class AgentChatPanel(wx.Panel):
                 lines.append(indent_block(normalize_for_display(str(llm_message_text))))
             else:
                 lines.append(indent_block(_("(none)")))
+
+            planned_calls = diagnostic.get("llm_tool_calls")
+            if planned_calls:
+                lines.append(_("LLM planned tool calls:"))
+                lines.append(indent_block(format_json_block(planned_calls)))
 
             tool_payloads = diagnostic.get("tool_exchanges") or []
             if tool_payloads:

@@ -170,5 +170,17 @@ def exception_to_mcp_error(exc: BaseException) -> dict[str, Any]:
 
     code = map_exception_to_error_code(exc)
     message = str(exc) or type(exc).__name__
-    details = {"type": type(exc).__name__}
+    details: dict[str, Any] = {"type": type(exc).__name__}
+    llm_message = getattr(exc, "llm_message", None)
+    if llm_message is not None:
+        details["llm_message"] = str(llm_message)
+    llm_tool_calls = getattr(exc, "llm_tool_calls", None)
+    if llm_tool_calls:
+        serialized_calls: list[Any] = []
+        for call in llm_tool_calls:
+            if isinstance(call, Mapping):
+                serialized_calls.append(dict(call))
+            else:
+                serialized_calls.append(call)
+        details["llm_tool_calls"] = serialized_calls
     return mcp_error(code, message, details)

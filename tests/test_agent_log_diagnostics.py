@@ -71,3 +71,43 @@ def test_build_entry_diagnostic_omits_duplicate_stored_response():
     )
 
     assert diagnostic["agent_stored_response"] is None
+
+
+def test_build_entry_diagnostic_includes_llm_details():
+    diagnostic = AgentChatPanel._build_entry_diagnostic(
+        prompt="generate",
+        prompt_at="2025-01-02T00:00:00Z",
+        response_at="2025-01-02T00:00:05Z",
+        display_response="validation error",
+        stored_response="validation error",
+        raw_result={
+            "ok": False,
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "Invalid arguments",
+                "details": {
+                    "type": "ToolValidationError",
+                    "llm_message": "Подготавливаю требование",
+                    "llm_tool_calls": [
+                        {
+                            "id": "call-0",
+                            "type": "function",
+                            "function": {
+                                "name": "create_requirement",
+                                "arguments": "{\"prefix\": \"SYS\", \"data\": {\"title\": \"Req\"}}",
+                            },
+                        }
+                    ],
+                },
+            },
+        },
+        tool_results=None,
+        history_snapshot=None,
+        context_snapshot=None,
+    )
+
+    assert diagnostic["llm_final_message"] == "Подготавливаю требование"
+    planned = diagnostic["llm_tool_calls"]
+    assert isinstance(planned, list)
+    assert planned
+    assert planned[0]["function"]["name"] == "create_requirement"

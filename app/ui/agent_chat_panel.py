@@ -33,7 +33,8 @@ from .splitter_utils import refresh_splitter_highlight, style_splitter
 from .widgets.chat_message import TranscriptMessagePanel
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("cookareq.ui.agent_chat_panel")
+layout_logger = logging.getLogger("cookareq.ui.layout")
 
 
 try:  # pragma: no cover - import only used for typing
@@ -542,6 +543,7 @@ class AgentChatPanel(wx.Panel):
         self._history_sash_goal = target
         self._history_last_sash = max(target, 0)
         self._history_sash_dirty = True
+        self._log_history_layout("apply-request", requested=target)
         self._apply_history_sash_if_ready()
 
     def _on_history_splitter_size(self, event: wx.SizeEvent) -> None:
@@ -558,6 +560,11 @@ class AgentChatPanel(wx.Panel):
         if not self._history_sash_dirty and abs(current - target) <= 1:
             return
         self._history_sash_dirty = True
+        self._log_history_layout(
+            "splitter-resize",
+            current=current,
+            target=target,
+        )
         self._apply_history_sash_if_ready()
 
     def _on_history_sash_changed(self, event: wx.SplitterEvent) -> None:
@@ -574,6 +581,7 @@ class AgentChatPanel(wx.Panel):
         self._history_last_sash = max(pos, 0)
         self._history_sash_goal = pos
         self._history_sash_dirty = False
+        self._log_history_layout("user-adjust", new_position=pos)
         event.Skip()
 
     def _apply_history_sash_if_ready(self) -> None:
@@ -582,19 +590,28 @@ class AgentChatPanel(wx.Panel):
         target = self._history_sash_goal
         if target is None:
             self._history_sash_dirty = False
+            self._log_history_layout("apply-if-ready-skip", reason="no-target")
             return
         splitter = getattr(self, "_horizontal_splitter", None)
         if splitter is None or not splitter.IsSplit():
+            self._log_history_layout("apply-if-ready-wait", reason="splitter-unavailable")
             return
         size = splitter.GetClientSize()
         if size.width <= 0:
+            self._log_history_layout(
+                "apply-if-ready-wait",
+                reason="no-width",
+                splitter_size=(size.width, size.height),
+            )
             return
         minimum = splitter.GetMinimumPaneSize()
         desired = max(target, minimum)
         if not self._attempt_set_history_sash(desired):
             self._history_sash_dirty = True
+            self._log_history_layout("apply-if-ready-retry", desired=desired)
             return
         self._history_sash_dirty = False
+        self._log_history_layout("apply-if-ready-success", desired=desired)
         wx.CallAfter(self._verify_history_sash_after_apply)
 
     def _attempt_set_history_sash(self, target: int) -> bool:
@@ -602,13 +619,25 @@ class AgentChatPanel(wx.Panel):
 
         splitter = getattr(self, "_horizontal_splitter", None)
         if splitter is None or not splitter.IsSplit():
+            self._log_history_layout(
+                "attempt-set-skip",
+                target=target,
+                reason="splitter-unavailable",
+            )
             return False
         self._history_sash_internal_adjust += 1
         splitter.SetSashPosition(target)
         actual = splitter.GetSashPosition()
         wx.CallAfter(self._release_history_sash_adjust)
         self._history_last_sash = max(actual, 0)
-        return abs(actual - target) <= 1
+        success = abs(actual - target) <= 1
+        self._log_history_layout(
+            "attempt-set",
+            target=target,
+            actual=actual,
+            success=success,
+        )
+        return success
 
     def _release_history_sash_adjust(self) -> None:
         """Lower the internal adjustment guard after splitter callbacks run."""
@@ -630,9 +659,45 @@ class AgentChatPanel(wx.Panel):
         self._history_last_sash = max(current, 0)
         expected = max(target, splitter.GetMinimumPaneSize())
         if abs(current - expected) <= 1:
+            self._log_history_layout(
+                "verify-success",
+                expected=expected,
+                current=current,
+            )
             return
         self._history_sash_dirty = True
+        self._log_history_layout(
+            "verify-mismatch",
+            expected=expected,
+            current=current,
+        )
         self._apply_history_sash_if_ready()
+
+    def _log_history_layout(self, stage: str, **extra: Any) -> None:
+        """Emit diagnostic log entries describing history sash state."""
+
+        splitter = getattr(self, "_horizontal_splitter", None)
+        state: dict[str, Any] = {
+            "stage": stage,
+            "goal": self._history_sash_goal,
+            "last": self._history_last_sash,
+            "dirty": self._history_sash_dirty,
+            "internal_adjust": getattr(self, "_history_sash_internal_adjust", 0),
+        }
+        if splitter is not None and not splitter.IsBeingDeleted():
+            size = splitter.GetClientSize()
+            state.update(
+                {
+                    "splitter_is_split": splitter.IsSplit(),
+                    "splitter_size": (size.width, size.height),
+                    "splitter_min": splitter.GetMinimumPaneSize(),
+                    "splitter_sash": splitter.GetSashPosition(),
+                }
+            )
+        else:
+            state["splitter"] = "unavailable"
+        state.update(extra)
+        layout_logger.info("agent history layout: %s", state)
 
     def _on_send(self, _event: wx.Event) -> None:
         """Send prompt to agent."""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import fields
 from importlib import resources
@@ -32,6 +33,9 @@ from ..navigation import Navigation
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .controllers import DocumentsController
+
+
+layout_logger = logging.getLogger("cookareq.ui.layout")
 
 
 class MainFrame(
@@ -121,6 +125,84 @@ class MainFrame(
             path = Path(self.recent_dirs[0])
             if path.exists():
                 self._load_directory(path)
+
+    def _log_splitter_snapshot(self, stage: str) -> None:
+        """Emit diagnostic information about splitter geometry."""
+
+        if not getattr(self, "doc_splitter", None):
+            return
+        if self.IsBeingDeleted():  # pragma: no cover - defensive GUI guard
+            return
+
+        def _size(window: wx.Window | None) -> tuple[int, int] | None:
+            if window is None or window.IsBeingDeleted():
+                return None
+            size = window.GetClientSize()
+            return (size.width, size.height)
+
+        try:
+            snapshot: dict[str, object] = {
+                "stage": stage,
+                "frame": {
+                    "size": tuple(self.GetSize()),
+                    "client": tuple(self.GetClientSize()),
+                    "position": tuple(self.GetPosition()),
+                    "shown": self.IsShown(),
+                },
+                "doc_splitter": {
+                    "is_split": self.doc_splitter.IsSplit(),
+                    "sash": self.doc_splitter.GetSashPosition(),
+                    "min": self.doc_splitter.GetMinimumPaneSize(),
+                    "size": _size(self.doc_splitter),
+                    "last_cached": getattr(self, "_doc_tree_last_sash", None),
+                    "menu_checked": bool(
+                        self.hierarchy_menu_item
+                        and self.hierarchy_menu_item.IsChecked()
+                    ),
+                },
+                "agent_splitter": {
+                    "is_split": self.agent_splitter.IsSplit(),
+                    "sash": self.agent_splitter.GetSashPosition(),
+                    "min": self.agent_splitter.GetMinimumPaneSize(),
+                    "size": _size(self.agent_splitter),
+                    "last_cached": getattr(self, "_agent_last_sash", None),
+                    "menu_checked": bool(
+                        self.agent_chat_menu_item
+                        and self.agent_chat_menu_item.IsChecked()
+                    ),
+                },
+                "editor_splitter": {
+                    "is_split": self.splitter.IsSplit(),
+                    "sash": self.splitter.GetSashPosition(),
+                    "min": self.splitter.GetMinimumPaneSize(),
+                    "size": _size(self.splitter),
+                    "menu_checked": bool(
+                        self.editor_menu_item
+                        and self.editor_menu_item.IsChecked()
+                    ),
+                },
+                "main_splitter": {
+                    "is_split": self.main_splitter.IsSplit(),
+                    "sash": self.main_splitter.GetSashPosition()
+                    if self.main_splitter.IsSplit()
+                    else None,
+                    "size": _size(self.main_splitter),
+                },
+            }
+            agent_panel = getattr(self, "agent_panel", None)
+            if agent_panel is not None:
+                history_goal = getattr(agent_panel, "_history_sash_goal", None)
+                history_dirty = getattr(agent_panel, "_history_sash_dirty", None)
+                snapshot["agent_history"] = {
+                    "current": agent_panel.history_sash,
+                    "goal": history_goal,
+                    "dirty": history_dirty,
+                }
+        except Exception:  # pragma: no cover - defensive logging path
+            layout_logger.exception("Failed to build layout snapshot for %s", stage)
+            return
+
+        layout_logger.info("layout snapshot: %s", snapshot)
 
     # ------------------------------------------------------------------
     # initialization helpers

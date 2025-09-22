@@ -21,6 +21,7 @@ from .settings import (
 
 
 T = TypeVar("T")
+layout_logger = logging.getLogger("cookareq.ui.layout")
 DEFAULT_LIST_COLUMNS: list[str] = [
     "labels",
     "id",
@@ -799,6 +800,13 @@ class ConfigManager:
         """Restore window geometry and splitter positions."""
         w = self.get_value("win_w")
         h = self.get_value("win_h")
+        layout_logger.info(
+            "restore_layout:start size_raw=(%s, %s) pos_raw=(%s, %s)",
+            w,
+            h,
+            self.get_value("win_x"),
+            self.get_value("win_y"),
+        )
         w = max(400, min(w, 3000))
         h = max(300, min(h, 2000))
         frame.SetSize((w, h))
@@ -806,8 +814,16 @@ class ConfigManager:
         y = self.get_value("win_y")
         if x != -1 and y != -1:
             frame.SetPosition((x, y))
+            layout_logger.info(
+                "restore_layout:apply window_size=%s window_pos=%s",
+                tuple(frame.GetSize()),
+                tuple(frame.GetPosition()),
+            )
         else:
             frame.Centre()
+            layout_logger.info(
+                "restore_layout:apply window_size=%s centered", tuple(frame.GetSize())
+            )
         # Ensure layout calculations are performed even if the frame is not shown yet.
         # ``wx.Yield`` has been observed to segfault when called in quick succession
         # during automated tests, so prefer processing the pending events directly.
@@ -818,6 +834,9 @@ class ConfigManager:
         client_size = frame.GetClientSize()
         if client_size.width <= 1 or client_size.height <= 1:
             client_size = wx.Size(w, h)
+        layout_logger.info(
+            "restore_layout:client_size width=%s height=%s", client_size.width, client_size.height
+        )
         main_splitter.SetSize(client_size)
         doc_splitter.SetSize(client_size)
         doc_min = max(doc_splitter.GetMinimumPaneSize(), 100)
@@ -825,17 +844,33 @@ class ConfigManager:
         stored_doc_sash = self.get_value("sash_pos")
         doc_sash = max(doc_min, min(stored_doc_sash, doc_max))
         doc_splitter.SetSashPosition(doc_sash)
+        layout_logger.info(
+            "restore_layout:doc_splitter stored=%s applied=%s bounds=(%s,%s) min_pane=%s",
+            stored_doc_sash,
+            doc_sash,
+            doc_min,
+            doc_max,
+            doc_splitter.GetMinimumPaneSize(),
+        )
         if editor_splitter is not None and editor_splitter.IsSplit():
             editor_default = editor_splitter.GetSashPosition()
             editor_min = max(editor_splitter.GetMinimumPaneSize(), 100)
             available_width = max(client_size.width - doc_sash, editor_min * 2)
             editor_max = max(available_width - editor_min, editor_min)
-            editor_sash = self.get_value(
+            stored_editor_sash = self.get_value(
                 "editor_sash_pos", default=editor_default
             )
-            editor_sash = max(editor_min, min(editor_sash, editor_max))
+            editor_sash = max(editor_min, min(stored_editor_sash, editor_max))
             editor_splitter.SetSize(wx.Size(available_width, client_size.height))
             editor_splitter.SetSashPosition(editor_sash)
+            layout_logger.info(
+                "restore_layout:editor_splitter stored=%s applied=%s bounds=(%s,%s) available_width=%s",
+                stored_editor_sash,
+                editor_sash,
+                editor_min,
+                editor_max,
+                available_width,
+            )
         panel.load_column_widths(self)
         panel.load_column_order(self)
         log_shown = self.get_value("log_shown")
@@ -845,11 +880,17 @@ class ConfigManager:
             main_splitter.SplitHorizontally(doc_splitter, log_console, log_sash)
             if log_menu_item:
                 log_menu_item.Check(True)
+            layout_logger.info(
+                "restore_layout:log_console shown sash=%s min_height=%s",
+                log_sash,
+                log_console.GetMinHeight() if hasattr(log_console, "GetMinHeight") else None,
+            )
         else:
             main_splitter.Initialize(doc_splitter)
             log_console.Hide()
             if log_menu_item:
                 log_menu_item.Check(False)
+            layout_logger.info("restore_layout:log_console hidden")
 
     def save_layout(
         self,
@@ -908,4 +949,18 @@ class ConfigManager:
             self.set_value("agent_history_sash", agent_history_sash)
         panel.save_column_widths(self)
         panel.save_column_order(self)
+        layout_logger.info(
+            "save_layout snapshot: size=%s pos=%s doc_tree_shown=%s doc_tree_sash=%s agent_chat_shown=%s agent_chat_sash=%s agent_history_sash=%s log_shown=%s log_sash=%s editor_shown=%s editor_sash=%s",
+            (w, h),
+            (x, y),
+            bool(doc_tree_shown),
+            sash_to_store,
+            bool(agent_chat_shown) if agent_splitter is not None else None,
+            agent_chat_sash if agent_splitter is not None else None,
+            agent_history_sash,
+            main_splitter.IsSplit(),
+            main_splitter.GetSashPosition() if main_splitter.IsSplit() else None,
+            editor_splitter.IsSplit() if editor_splitter is not None else None,
+            editor_splitter.GetSashPosition() if editor_splitter is not None and editor_splitter.IsSplit() else None,
+        )
         self.flush()

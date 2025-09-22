@@ -365,10 +365,10 @@ class TranscriptMessagePanel(wx.Panel):
         on_regenerate: Callable[[], None],
         enabled: bool,
     ) -> wx.Sizer:
-        button = wx.Button(container, label=_("Перегенерить"), style=wx.BU_EXACTFIT)
+        button = wx.Button(container, label=_("Regenerate"), style=wx.BU_EXACTFIT)
         button.SetBackgroundColour(container.GetBackgroundColour())
         button.SetForegroundColour(container.GetForegroundColour())
-        button.SetToolTip(_("Запустить генерацию ответа заново"))
+        button.SetToolTip(_("Restart response generation"))
         button.Bind(wx.EVT_BUTTON, lambda _event: on_regenerate())
         button.Enable(enabled)
         sizer = wx.BoxSizer(wx.HORIZONTAL)

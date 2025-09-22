@@ -1214,3 +1214,231 @@ msgstr "unknown document prefix: {prefix}\n"
 
 msgid "{msg}\n"
 msgstr "{msg}\n"
+
+msgid "    Arguments:"
+msgstr "    Arguments:"
+
+msgid "    Call ID: {value}"
+msgstr "    Call ID: {value}"
+
+msgid "    Error details:"
+msgstr "    Error details:"
+
+msgid "    Extra fields:"
+msgstr "    Extra fields:"
+
+msgid "    Result payload:"
+msgstr "    Result payload:"
+
+msgid "  [{index}] {name} — Status: {status}"
+msgstr "  [{index}] {name} — Status: {status}"
+
+msgid "  [{index}] {summary}"
+msgstr "  [{index}] {summary}"
+
+msgid "(empty)"
+msgstr "(empty)"
+
+msgid "=== Interaction {index} ==="
+msgstr "=== Interaction {index} ==="
+
+msgid "Agent"
+msgstr "Agent"
+
+msgid "Agent response:"
+msgstr "Agent response:"
+
+msgid "Cancel"
+msgstr "Cancel"
+
+msgid "Chats"
+msgstr "Chats"
+
+msgid "Context messages:"
+msgstr "Context messages:"
+
+msgid "Conversation ID: {conversation_id}"
+msgstr "Conversation ID: {conversation_id}"
+
+msgid "Copy"
+msgstr "Copy"
+
+msgid "Copy conversation"
+msgstr "Copy conversation"
+
+msgid "Copy message"
+msgstr "Copy message"
+
+msgid "Copy selection"
+msgstr "Copy selection"
+
+msgid "Copy technical log"
+msgstr "Copy technical log"
+
+msgid ""
+"Could not open log folder:\n"
+"%s"
+msgstr ""
+"Could not open log folder:\n"
+"%s"
+
+msgid "Created at: {timestamp}"
+msgstr "Created at: {timestamp}"
+
+msgid "Delete chat"
+msgstr "Delete chat"
+
+msgid "Delete chat \"{title}\"?"
+msgstr "Delete chat \"{title}\"?"
+
+msgid "Delete selected chats"
+msgstr "Delete selected chats"
+
+msgid "Delete {count} selected chats?"
+msgstr "Delete {count} selected chats?"
+
+msgid ""
+"Directory for MCP request logs. Example: /var/log/cookareq\n"
+"Leave empty to store logs in the standard application log folder."
+msgstr ""
+"Directory for MCP request logs. Example: /var/log/cookareq\n"
+"Leave empty to store logs in the standard application log folder."
+
+msgid "Entries: {count}"
+msgstr "Entries: {count}"
+
+msgid "History sent to LLM:"
+msgstr "History sent to LLM:"
+
+msgid "LLM request messages:"
+msgstr "LLM request messages:"
+
+msgid "LLM system prompt:"
+msgstr "LLM system prompt:"
+
+msgid "LLM tool specification:"
+msgstr "LLM tool specification:"
+
+msgid "Last activity"
+msgstr "Last activity"
+
+msgid "Log directory"
+msgstr "Log directory"
+
+msgid "MCP health endpoint returned invalid JSON"
+msgstr "MCP health endpoint returned invalid JSON"
+
+msgid "MCP server health check failed"
+msgstr "MCP server health check failed"
+
+msgid "MCP server is not reachable at %(host)s:%(port)s"
+msgstr "MCP server is not reachable at %(host)s:%(port)s"
+
+msgid "Max context tokens"
+msgstr "Max context tokens"
+
+msgid ""
+"Maximum number of tokens reserved for the conversation history when sending prompts.\n"
+"Default: {default} tokens.\n"
+"Minimum allowed: {minimum} tokens."
+msgstr ""
+"Maximum number of tokens reserved for the conversation history when sending prompts.\n"
+"Default: {default} tokens.\n"
+"Minimum allowed: {minimum} tokens."
+
+msgid "Messages: {count}"
+msgstr "Messages: {count}"
+
+msgid "New chat"
+msgstr "New chat"
+
+msgid "No activity yet"
+msgstr "No activity yet"
+
+msgid "No messages yet"
+msgstr "No messages yet"
+
+msgid "Open Log Folder"
+msgstr "Open Log Folder"
+
+msgid "Prompt timestamp: {timestamp}"
+msgstr "Prompt timestamp: {timestamp}"
+
+msgid "Prompt:"
+msgstr "Prompt:"
+
+msgid "Prompt: (empty)"
+msgstr "Prompt: (empty)"
+
+msgid "Raw result payload:"
+msgstr "Raw result payload:"
+
+msgid "Regenerate"
+msgstr "Regenerate"
+
+msgid "Response timestamp: {timestamp}"
+msgstr "Response timestamp: {timestamp}"
+
+msgid "Restart response generation"
+msgstr "Restart response generation"
+
+msgid "Show Hierarchy"
+msgstr "Show Hierarchy"
+
+msgid "Stored response payload:"
+msgstr "Stored response payload:"
+
+msgid "Success"
+msgstr "Success"
+
+msgid "Summary"
+msgstr "Summary"
+
+msgid ""
+"The waiting status shows four elements:\n"
+"• The timer reports how long the agent has been running in mm:ss and updates every second.\n"
+"• The centered bullet (•) separates the timer from the token counter.\n"
+"• The token counter reports the prompt size in thousands of tokens (k tokens); a leading ~ marks an approximate value when the tokenizer cannot provide an exact figure.\n"
+"• The spinning indicator on the left stays active while the agent is still working."
+msgstr ""
+"The waiting status shows four elements:\n"
+"• The timer reports how long the agent has been running in mm:ss and updates every second.\n"
+"• The centered bullet (•) separates the timer from the token counter.\n"
+"• The token counter reports the prompt size in thousands of tokens (k tokens); a leading ~ marks an approximate value when the tokenizer cannot provide an exact figure.\n"
+"• The spinning indicator on the left stays active while the agent is still working."
+
+msgid "This chat does not have any messages yet. Send one to get started."
+msgstr "This chat does not have any messages yet. Send one to get started."
+
+msgid "Today {time}"
+msgstr "Today {time}"
+
+msgid "Tokens: {count}"
+msgstr "Tokens: {count}"
+
+msgid "Tool calls:"
+msgstr "Tool calls:"
+
+msgid "Unknown"
+msgstr "Unknown"
+
+msgid "Unnamed tool"
+msgstr "Unnamed tool"
+
+msgid "Updated at: {timestamp}"
+msgstr "Updated at: {timestamp}"
+
+msgid "Waiting for agent response…"
+msgstr "Waiting for agent response…"
+
+msgid "Yesterday {time}"
+msgstr "Yesterday {time}"
+
+msgid "You"
+msgstr "You"
+
+msgid "not recorded"
+msgstr "not recorded"
+
+msgid "this chat"
+msgstr "this chat"

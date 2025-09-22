@@ -200,12 +200,25 @@ def test_run_command_aborts_when_mcp_unavailable():
     agent = LocalAgent(llm=llm, mcp=mcp)
 
     result = agent.run_command("list")
-    assert result == {"ok": False, "error": {"code": "INTERNAL", "message": "server offline"}}
+    expected_error = {"code": "INTERNAL", "message": "server offline"}
+    assert result["ok"] is False
+    assert result["error"] == expected_error
+    assert result["tool_name"] == "list_requirements"
+    assert result["tool_call_id"] == "call-0"
+    assert result["call_id"] == "call-0"
+    assert result.get("tool_arguments") == {}
+    assert "tool_results" not in result
     assert mcp.ensure_calls == 1
 
     async def exercise() -> None:
         async_result = await agent.run_command_async("list async")
-        assert async_result == {"ok": False, "error": {"code": "INTERNAL", "message": "server offline"}}
+        assert async_result["ok"] is False
+        assert async_result["error"] == expected_error
+        assert async_result["tool_name"] == "list_requirements"
+        assert async_result["tool_call_id"] == "call-0"
+        assert async_result["call_id"] == "call-0"
+        assert async_result.get("tool_arguments") == {}
+        assert "tool_results" not in async_result
 
     asyncio.run(exercise())
     assert mcp.ensure_calls == 2
@@ -260,17 +273,24 @@ def test_run_command_executes_tool_and_returns_final_message():
     assert first_tool["ok"] is True
     assert first_tool["tool_name"] == "list_requirements"
     assert first_tool["tool_arguments"] == {"per_page": 1}
+    assert first_tool["tool_call_id"] == "call-0"
+    assert first_tool["call_id"] == "call-0"
     for tool_payload in result["tool_results"]:
         assert "tool_name" in tool_payload
         assert "tool_arguments" in tool_payload
+        assert "tool_call_id" in tool_payload
+        assert "call_id" in tool_payload
     assert mcp.calls == [("list_requirements", {"per_page": 1})]
     assert llm.last_conversation is not None
     assert llm.last_conversation[-1]["role"] == "tool"
-    assert json.loads(llm.last_conversation[-1]["content"]) == {
-        "ok": True,
-        "error": None,
-        "result": {"items": []},
-    }
+    tool_message = json.loads(llm.last_conversation[-1]["content"])
+    assert tool_message["tool_name"] == "list_requirements"
+    assert tool_message["tool_call_id"] == "call-0"
+    assert tool_message["call_id"] == "call-0"
+    assert tool_message["tool_arguments"] == {"per_page": 1}
+    assert tool_message["ok"] is True
+    assert tool_message["error"] is None
+    assert tool_message["result"] == {"items": []}
 
 
 def test_run_command_returns_tool_error_result():
@@ -305,10 +325,13 @@ def test_run_command_returns_tool_error_result():
 
     agent = LocalAgent(llm=ToolLLM(), mcp=ErrorMCP())
     result = agent.run_command("list")
-    assert result == {
-        "ok": False,
-        "error": {"code": ErrorCode.INTERNAL, "message": "boom"},
-    }
+    expected_error = {"code": ErrorCode.INTERNAL, "message": "boom"}
+    assert result["ok"] is False
+    assert result["error"] == expected_error
+    assert result["tool_name"] == "list_requirements"
+    assert result["tool_call_id"] == "call-0"
+    assert result["call_id"] == "call-0"
+    assert result.get("tool_arguments") == {}
     assert "tool_results" not in result
 
 
@@ -493,6 +516,8 @@ def test_custom_confirm_message(monkeypatch):
     for tool_payload in result["tool_results"]:
         assert "tool_name" in tool_payload
         assert "tool_arguments" in tool_payload
+        assert "tool_call_id" in tool_payload
+        assert "call_id" in tool_payload
     assert messages == ["Delete requirement?"]
 
 
@@ -565,6 +590,8 @@ def test_async_methods_offload_to_threads():
         for tool_payload in result["tool_results"]:
             assert "tool_name" in tool_payload
             assert "tool_arguments" in tool_payload
+            assert "tool_call_id" in tool_payload
+            assert "call_id" in tool_payload
 
     asyncio.run(exercise())
 
@@ -632,6 +659,8 @@ def test_async_methods_prefer_native_coroutines():
         for tool_payload in result["tool_results"]:
             assert "tool_name" in tool_payload
             assert "tool_arguments" in tool_payload
+            assert "tool_call_id" in tool_payload
+            assert "call_id" in tool_payload
 
     asyncio.run(exercise())
 

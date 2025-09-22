@@ -382,20 +382,32 @@ class LocalAgent:
                         "error": error,
                     },
                 )
-                payload = {"ok": False, "error": error}
+                payload = self._prepare_tool_payload(
+                    call,
+                    {"ok": False, "error": error},
+                    include_arguments=True,
+                )
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
             if not isinstance(result, Mapping):
-                payload = {
-                    "ok": False,
-                    "error": {
-                        "type": "ToolProtocolError",
-                        "message": "Tool returned unexpected payload",
+                payload = self._prepare_tool_payload(
+                    call,
+                    {
+                        "ok": False,
+                        "error": {
+                            "type": "ToolProtocolError",
+                            "message": "Tool returned unexpected payload",
+                        },
                     },
-                }
+                    include_arguments=True,
+                )
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
-            result_dict = dict(result)
+            result_dict = self._prepare_tool_payload(
+                call,
+                result,
+                include_arguments=True,
+            )
             log_payload: dict[str, Any] = {
                 "call_id": call.id,
                 "tool_name": call.name,
@@ -404,10 +416,10 @@ class LocalAgent:
             if not log_payload["ok"] and result_dict.get("error"):
                 log_payload["error"] = result_dict["error"]
             log_event("AGENT_TOOL_RESULT", log_payload)
-            messages.append(self._tool_message(call, result))
+            messages.append(self._tool_message(call, result_dict))
             if not result_dict.get("ok", False):
                 return messages, result_dict, successful
-            successful.append(self._enrich_tool_result(call, result))
+            successful.append(result_dict)
             self._raise_if_cancelled(cancellation)
         return messages, None, successful
 
@@ -424,19 +436,32 @@ class LocalAgent:
             payload["tool_results"] = [dict(result) for result in tool_results]
         return payload
 
-    def _enrich_tool_result(
-        self, call: LLMToolCall, result: Mapping[str, Any]
+    def _normalise_tool_arguments(self, call: LLMToolCall) -> Any:
+        """Return JSON-compatible representation of tool arguments."""
+
+        try:
+            return json.loads(self._format_tool_arguments(call.arguments))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            if isinstance(call.arguments, Mapping):
+                return dict(call.arguments)
+            return call.arguments
+
+    def _prepare_tool_payload(
+        self,
+        call: LLMToolCall,
+        payload: Mapping[str, Any],
+        *,
+        include_arguments: bool = True,
     ) -> dict[str, Any]:
-        payload = dict(result)
-        payload.setdefault("tool_name", call.name)
-        if "tool_arguments" not in payload:
-            try:
-                payload["tool_arguments"] = json.loads(
-                    self._format_tool_arguments(call.arguments)
-                )
-            except (TypeError, ValueError, json.JSONDecodeError):
-                payload["tool_arguments"] = dict(call.arguments)
-        return payload
+        """Attach identifying metadata for *call* to the tool *payload*."""
+
+        prepared = dict(payload)
+        prepared.setdefault("tool_name", call.name)
+        prepared.setdefault("tool_call_id", call.id)
+        prepared.setdefault("call_id", call.id)
+        if include_arguments and "tool_arguments" not in prepared:
+            prepared["tool_arguments"] = self._normalise_tool_arguments(call)
+        return prepared
 
     def _assistant_message(self, response: LLMResponse) -> dict[str, Any]:
         message: dict[str, Any] = {

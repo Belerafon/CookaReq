@@ -1230,3 +1230,231 @@ msgstr "неизвестный префикс документа: {prefix}\n"
 
 msgid "{msg}\n"
 msgstr "{msg}\n"
+
+msgid "    Arguments:"
+msgstr "    Аргументы:"
+
+msgid "    Call ID: {value}"
+msgstr "    Идентификатор вызова: {value}"
+
+msgid "    Error details:"
+msgstr "    Подробности ошибки:"
+
+msgid "    Extra fields:"
+msgstr "    Дополнительные поля:"
+
+msgid "    Result payload:"
+msgstr "    Результат:"
+
+msgid "  [{index}] {name} — Status: {status}"
+msgstr "  [{index}] {name} — Статус: {status}"
+
+msgid "  [{index}] {summary}"
+msgstr "  [{index}] {summary}"
+
+msgid "(empty)"
+msgstr "(пусто)"
+
+msgid "=== Interaction {index} ==="
+msgstr "=== Взаимодействие {index} ==="
+
+msgid "Agent"
+msgstr "Агент"
+
+msgid "Agent response:"
+msgstr "Ответ агента:"
+
+msgid "Cancel"
+msgstr "Отмена"
+
+msgid "Chats"
+msgstr "Чаты"
+
+msgid "Context messages:"
+msgstr "Контекстные сообщения:"
+
+msgid "Conversation ID: {conversation_id}"
+msgstr "Идентификатор беседы: {conversation_id}"
+
+msgid "Copy"
+msgstr "Копировать"
+
+msgid "Copy conversation"
+msgstr "Скопировать переписку"
+
+msgid "Copy message"
+msgstr "Скопировать сообщение"
+
+msgid "Copy selection"
+msgstr "Скопировать выделенное"
+
+msgid "Copy technical log"
+msgstr "Скопировать технический лог"
+
+msgid ""
+"Could not open log folder:\n"
+"%s"
+msgstr ""
+"Не удалось открыть каталог с логами:\n"
+"%s"
+
+msgid "Created at: {timestamp}"
+msgstr "Создано: {timestamp}"
+
+msgid "Delete chat"
+msgstr "Удалить чат"
+
+msgid "Delete chat \"{title}\"?"
+msgstr "Удалить чат «{title}»?"
+
+msgid "Delete selected chats"
+msgstr "Удалить выбранные чаты"
+
+msgid "Delete {count} selected chats?"
+msgstr "Удалить {count} выбранных чатов?"
+
+msgid ""
+"Directory for MCP request logs. Example: /var/log/cookareq\n"
+"Leave empty to store logs in the standard application log folder."
+msgstr ""
+"Каталог для логов запросов MCP. Например: /var/log/cookareq\n"
+"Оставьте пустым, чтобы использовать стандартную папку логов приложения."
+
+msgid "Entries: {count}"
+msgstr "Записей: {count}"
+
+msgid "History sent to LLM:"
+msgstr "История, отправленная LLM:"
+
+msgid "LLM request messages:"
+msgstr "Сообщения запроса к LLM:"
+
+msgid "LLM system prompt:"
+msgstr "Системный промпт LLM:"
+
+msgid "LLM tool specification:"
+msgstr "Спецификация инструментов LLM:"
+
+msgid "Last activity"
+msgstr "Последняя активность"
+
+msgid "Log directory"
+msgstr "Каталог логов"
+
+msgid "MCP health endpoint returned invalid JSON"
+msgstr "Endpoint проверки состояния MCP вернул некорректный JSON"
+
+msgid "MCP server health check failed"
+msgstr "Не удалось выполнить проверку состояния сервера MCP"
+
+msgid "MCP server is not reachable at %(host)s:%(port)s"
+msgstr "Сервер MCP недоступен по адресу %(host)s:%(port)s"
+
+msgid "Max context tokens"
+msgstr "Максимум токенов контекста"
+
+msgid ""
+"Maximum number of tokens reserved for the conversation history when sending prompts.\n"
+"Default: {default} tokens.\n"
+"Minimum allowed: {minimum} tokens."
+msgstr ""
+"Максимальное число токенов, резервируемых для истории переписки при отправке промптов.\n"
+"По умолчанию: {default} токенов.\n"
+"Минимально допустимо: {minimum} токенов."
+
+msgid "Messages: {count}"
+msgstr "Сообщений: {count}"
+
+msgid "New chat"
+msgstr "Новый чат"
+
+msgid "No activity yet"
+msgstr "Активность отсутствует"
+
+msgid "No messages yet"
+msgstr "Пока нет сообщений"
+
+msgid "Open Log Folder"
+msgstr "Открыть папку с логами"
+
+msgid "Prompt timestamp: {timestamp}"
+msgstr "Время промпта: {timestamp}"
+
+msgid "Prompt:"
+msgstr "Промпт:"
+
+msgid "Prompt: (empty)"
+msgstr "Промпт: (пусто)"
+
+msgid "Raw result payload:"
+msgstr "Сырые данные результата:"
+
+msgid "Regenerate"
+msgstr "Перегенерить"
+
+msgid "Response timestamp: {timestamp}"
+msgstr "Время ответа: {timestamp}"
+
+msgid "Restart response generation"
+msgstr "Запустить генерацию ответа заново"
+
+msgid "Show Hierarchy"
+msgstr "Показать иерархию"
+
+msgid "Stored response payload:"
+msgstr "Сохранённый ответ:"
+
+msgid "Success"
+msgstr "Успешно"
+
+msgid "Summary"
+msgstr "Сводка"
+
+msgid ""
+"The waiting status shows four elements:\n"
+"• The timer reports how long the agent has been running in mm:ss and updates every second.\n"
+"• The centered bullet (•) separates the timer from the token counter.\n"
+"• The token counter reports the prompt size in thousands of tokens (k tokens); a leading ~ marks an approximate value when the tokenizer cannot provide an exact figure.\n"
+"• The spinning indicator on the left stays active while the agent is still working."
+msgstr ""
+"Индикатор ожидания показывает четыре элемента:\n"
+"• Таймер отображает время работы агента в формате мм:сс и обновляется каждую секунду.\n"
+"• Центральная точка (•) отделяет таймер от счётчика токенов.\n"
+"• Счётчик токенов показывает размер промпта в тысячах токенов (k токенов); символ ~ перед значением обозначает приблизительную оценку, когда токенайзер не может дать точное число.\n"
+"• Анимация вращения слева активна, пока агент продолжает работать."
+
+msgid "This chat does not have any messages yet. Send one to get started."
+msgstr "В этом чате пока нет сообщений. Отправьте сообщение, чтобы начать."
+
+msgid "Today {time}"
+msgstr "Сегодня {time}"
+
+msgid "Tokens: {count}"
+msgstr "Токенов: {count}"
+
+msgid "Tool calls:"
+msgstr "Вызовы инструментов:"
+
+msgid "Unknown"
+msgstr "Неизвестно"
+
+msgid "Unnamed tool"
+msgstr "Инструмент без названия"
+
+msgid "Updated at: {timestamp}"
+msgstr "Обновлено: {timestamp}"
+
+msgid "Waiting for agent response…"
+msgstr "Ожидание ответа агента…"
+
+msgid "Yesterday {time}"
+msgstr "Вчера {time}"
+
+msgid "You"
+msgstr "Вы"
+
+msgid "not recorded"
+msgstr "не записано"
+
+msgid "this chat"
+msgstr "этот чат"

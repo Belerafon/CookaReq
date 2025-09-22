@@ -111,20 +111,6 @@ def _looks_like_tool_payload(payload: Mapping[str, Any]) -> bool:
     return any(key in payload for key in tool_keys)
 
 
-def _collect_tool_payloads(entry: ChatEntry) -> list[Any]:
-    """Return tool payloads associated with *entry* for diagnostic logs."""
-
-    payloads: list[Any] = []
-    if entry.tool_results:
-        payloads.extend(entry.tool_results)
-    if payloads:
-        return payloads
-
-    raw_result = entry.raw_result
-    if isinstance(raw_result, Mapping) and _looks_like_tool_payload(raw_result):
-        payloads.append(_history_json_safe(raw_result))
-    return payloads
-
 class AgentCommandExecutor(Protocol):
     """Simple protocol for running agent commands asynchronously."""
 
@@ -166,6 +152,7 @@ class _AgentRunHandle:
     conversation_id: str | None = None
     pending_entry: ChatEntry | None = None
     context_messages: tuple[dict[str, Any], ...] | None = None
+    history_snapshot: tuple[dict[str, Any], ...] | None = None
 
     @property
     def is_cancelled(self) -> bool:
@@ -739,6 +726,10 @@ class AgentChatPanel(wx.Panel):
             if not context_messages:
                 context_messages = None
         handle.context_messages = context_messages
+        if history_messages:
+            handle.history_snapshot = tuple(dict(message) for message in history_messages)
+        else:
+            handle.history_snapshot = None
         pending_entry = self._add_pending_entry(
             conversation,
             normalized_prompt,
@@ -1296,6 +1287,7 @@ class AgentChatPanel(wx.Panel):
                     prompt_at=prompt_at,
                     response_at=response_at,
                     context_messages=handle.context_messages,
+                    history_snapshot=handle.history_snapshot,
                 )
             else:
                 self._append_history(
@@ -1308,6 +1300,7 @@ class AgentChatPanel(wx.Panel):
                     prompt_at=prompt_at,
                     response_at=response_at,
                     context_messages=handle.context_messages,
+                    history_snapshot=handle.history_snapshot,
                 )
             handle.pending_entry = None
             self._render_transcript()
@@ -1446,6 +1439,7 @@ class AgentChatPanel(wx.Panel):
         prompt_at: str | None = None,
         response_at: str | None = None,
         context_messages: tuple[dict[str, Any], ...] | None = None,
+        history_snapshot: tuple[dict[str, Any], ...] | None = None,
     ) -> None:
         conversation = self._ensure_active_conversation()
         prompt_text = normalize_for_display(prompt)
@@ -1459,6 +1453,7 @@ class AgentChatPanel(wx.Panel):
                 ]
             )
         tokens = token_info.tokens or 0
+        context_clone = self._clone_context_messages(context_messages)
         entry = ChatEntry(
             prompt=prompt_text,
             response=response_text,
@@ -1469,7 +1464,18 @@ class AgentChatPanel(wx.Panel):
             token_info=token_info,
             prompt_at=prompt_at,
             response_at=response_at,
-            context_messages=self._clone_context_messages(context_messages),
+            context_messages=context_clone,
+            diagnostic=self._build_entry_diagnostic(
+                prompt=prompt_text,
+                prompt_at=prompt_at,
+                response_at=response_at,
+                display_response=display_text,
+                stored_response=response_text,
+                raw_result=raw_result,
+                tool_results=tool_results,
+                history_snapshot=history_snapshot,
+                context_snapshot=context_clone,
+            ),
         )
         conversation.append_entry(entry)
         self._save_history()
@@ -1489,6 +1495,7 @@ class AgentChatPanel(wx.Panel):
         prompt_at: str,
         response_at: str,
         context_messages: tuple[dict[str, Any], ...] | None,
+        history_snapshot: tuple[dict[str, Any], ...] | None = None,
     ) -> None:
         prompt_text = normalize_for_display(prompt)
         response_text = normalize_for_display(response)
@@ -1503,7 +1510,19 @@ class AgentChatPanel(wx.Panel):
         entry.tokens = tokens_info.tokens or 0
         entry.prompt_at = prompt_at
         entry.response_at = response_at
-        entry.context_messages = self._clone_context_messages(context_messages)
+        context_clone = self._clone_context_messages(context_messages)
+        entry.context_messages = context_clone
+        entry.diagnostic = self._build_entry_diagnostic(
+            prompt=prompt_text,
+            prompt_at=prompt_at,
+            response_at=response_at,
+            display_response=display_text,
+            stored_response=response_text,
+            raw_result=raw_result,
+            tool_results=tool_results,
+            history_snapshot=history_snapshot,
+            context_snapshot=context_clone,
+        )
         conversation.updated_at = response_at
         conversation.ensure_title()
         self._save_history()
@@ -1720,6 +1739,111 @@ class AgentChatPanel(wx.Panel):
 
         return self._compose_transcript_log_text()
 
+    @staticmethod
+    def _sanitize_log_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
+        safe_mapping_raw = _history_json_safe(value)
+        mapping: dict[str, Any] = {}
+        if isinstance(safe_mapping_raw, Mapping):
+            for key, val in safe_mapping_raw.items():
+                key_str = str(key)
+                if isinstance(val, str):
+                    mapping[key_str] = normalize_for_display(val)
+                else:
+                    mapping[key_str] = val
+        if "role" not in mapping and "role" in value:
+            mapping["role"] = normalize_for_display(str(value["role"]))
+        if "content" not in mapping:
+            if "content" in value:
+                content_value = value["content"]
+                if content_value is None:
+                    mapping["content"] = ""
+                elif isinstance(content_value, str):
+                    mapping["content"] = normalize_for_display(content_value)
+                else:
+                    mapping["content"] = _history_json_safe(content_value)
+            else:
+                mapping["content"] = ""
+        return mapping
+
+    @classmethod
+    def _sanitize_log_messages(
+        cls, messages: Sequence[Mapping[str, Any]] | None
+    ) -> list[dict[str, Any]]:
+        sanitized: list[dict[str, Any]] = []
+        if not messages:
+            return sanitized
+        for message in messages:
+            if isinstance(message, Mapping):
+                sanitized.append(cls._sanitize_log_mapping(message))
+        return sanitized
+
+    @classmethod
+    def _build_entry_diagnostic(
+        cls,
+        *,
+        prompt: str,
+        prompt_at: str | None,
+        response_at: str | None,
+        display_response: str,
+        stored_response: str,
+        raw_result: Any | None,
+        tool_results: Sequence[Any] | None,
+        history_snapshot: Sequence[Mapping[str, Any]] | None,
+        context_snapshot: Sequence[Mapping[str, Any]] | None,
+    ) -> dict[str, Any]:
+        prompt_text = normalize_for_display(prompt)
+        display_text = normalize_for_display(display_response)
+        stored_text = normalize_for_display(stored_response)
+        history_messages = cls._sanitize_log_messages(history_snapshot)
+        context_messages = cls._sanitize_log_messages(context_snapshot)
+        llm_request_messages: list[dict[str, Any]] = [
+            {"role": "system", "content": normalize_for_display(SYSTEM_PROMPT)},
+            *history_messages,
+            *context_messages,
+            {"role": "user", "content": prompt_text},
+        ]
+
+        raw_result_safe = _history_json_safe(raw_result) if raw_result is not None else None
+        raw_result_mapping = (
+            raw_result_safe if isinstance(raw_result_safe, Mapping) else None
+        )
+
+        llm_message: str | None = None
+        error_payload: Any | None = None
+        if raw_result_mapping:
+            result_value = raw_result_mapping.get("result")
+            if isinstance(result_value, str):
+                llm_message = normalize_for_display(result_value)
+            error_value = raw_result_mapping.get("error")
+            if error_value:
+                error_payload = _history_json_safe(error_value)
+
+        tool_payloads: list[Any] = []
+        if tool_results:
+            for payload in tool_results:
+                tool_payloads.append(_history_json_safe(payload))
+        elif raw_result_mapping and _looks_like_tool_payload(raw_result_mapping):
+            tool_payloads.append(raw_result_mapping)
+
+        diagnostic_payload = {
+            "prompt_text": prompt_text,
+            "prompt_at": prompt_at,
+            "response_at": response_at,
+            "llm_request_messages": llm_request_messages,
+            "history_messages": history_messages,
+            "context_messages": context_messages,
+            "llm_final_message": llm_message,
+            "tool_exchanges": tool_payloads,
+            "agent_response_text": display_text,
+            "agent_stored_response": stored_text
+            if stored_text != display_text
+            else None,
+            "raw_result": raw_result_safe,
+            "error_payload": error_payload,
+        }
+
+        return _history_json_safe(diagnostic_payload)
+
     def _compose_transcript_text(self) -> str:
         conversation = self._get_active_conversation()
         if conversation is None:
@@ -1771,97 +1895,132 @@ class AgentChatPanel(wx.Panel):
 
         def format_tool_exchange(index: int, payload: Any) -> list[str]:
             lines: list[str] = []
-            if isinstance(payload, Mapping):
-                raw_name = (
-                    payload.get("tool_name")
-                    or payload.get("name")
-                    or payload.get("tool")
-                )
-                name = (
-                    normalize_for_display(str(raw_name))
-                    if raw_name
-                    else _("Unnamed tool")
-                )
-                ok_value = payload.get("ok")
-                if ok_value is True:
-                    status = _("Success")
-                elif ok_value is False:
-                    status = _("Error")
-                else:
-                    status = _("Unknown")
+            if not isinstance(payload, Mapping):
                 lines.append(
-                    _(
-                        "Agent → MCP call {index}: {name} — Status: {status}"
-                    ).format(
-                        index=index,
-                        name=name,
-                        status=status,
-                    )
-                )
-                call_id = payload.get("call_id") or payload.get("tool_call_id")
-                if call_id:
-                    lines.append(
-                        _("  MCP call ID: {value}").format(
-                            value=normalize_for_display(str(call_id))
-                        )
-                    )
-                arguments = payload.get("tool_arguments")
-                if arguments is not None:
-                    lines.append(_("  Arguments:"))
-                    lines.append(
-                        indent_block(
-                            format_json_block(arguments),
-                            prefix="    ",
-                        )
-                    )
-                result_payload = payload.get("result")
-                if result_payload is not None:
-                    lines.append(_("MCP → Agent result payload:"))
-                    lines.append(
-                        indent_block(
-                            format_json_block(result_payload),
-                        )
-                    )
-                error_payload = payload.get("error")
-                if error_payload and ok_value is not True:
-                    lines.append(_("MCP → Agent error payload:"))
-                    lines.append(
-                        indent_block(
-                            format_json_block(error_payload),
-                        )
-                    )
-                extras = {
-                    key: value
-                    for key, value in payload.items()
-                    if key
-                    not in {
-                        "tool_name",
-                        "name",
-                        "tool",
-                        "call_id",
-                        "tool_call_id",
-                        "ok",
-                        "tool_arguments",
-                        "result",
-                        "error",
-                    }
-                }
-                if extras:
-                    lines.append(_("  Additional fields:"))
-                    lines.append(
-                        indent_block(
-                            format_json_block(extras),
-                            prefix="    ",
-                        )
-                    )
-            else:
-                lines.append(
-                    _("Agent ↔ MCP exchange {index}: {summary}").format(
+                    _("Agent → MCP call {index}: {summary}").format(
                         index=index,
                         summary=normalize_for_display(str(payload)),
                     )
                 )
+                lines.append(
+                    _("MCP → Agent response {index}: (unavailable)").format(
+                        index=index
+                    )
+                )
+                return lines
+
+            raw_name = (
+                payload.get("tool_name")
+                or payload.get("name")
+                or payload.get("tool")
+            )
+            name = (
+                normalize_for_display(str(raw_name))
+                if raw_name
+                else _("Unnamed tool")
+            )
+            ok_value = payload.get("ok")
+            if ok_value is True:
+                status = _("Success")
+            elif ok_value is False:
+                status = _("Error")
+            else:
+                status = _("Unknown")
+            lines.append(
+                _("Agent → MCP call {index}: {name}").format(
+                    index=index,
+                    name=name,
+                )
+            )
+            call_id = payload.get("call_id") or payload.get("tool_call_id")
+            if call_id:
+                lines.append(
+                    indent_block(
+                        _("MCP call ID: {value}").format(
+                            value=normalize_for_display(str(call_id))
+                        )
+                    )
+                )
+            arguments = payload.get("tool_arguments")
+            if arguments is not None:
+                lines.append(indent_block(_("Arguments:")))
+                lines.append(
+                    indent_block(
+                        format_json_block(arguments),
+                        prefix="        ",
+                    )
+                )
+            lines.append(
+                _("MCP → Agent response {index}: {status}").format(
+                    index=index,
+                    status=status,
+                )
+            )
+            result_payload = payload.get("result")
+            if result_payload is not None:
+                lines.append(indent_block(_("Result payload:")))
+                lines.append(
+                    indent_block(
+                        format_json_block(result_payload),
+                        prefix="        ",
+                    )
+                )
+            error_payload = payload.get("error")
+            if error_payload is not None:
+                lines.append(indent_block(_("Error payload:")))
+                lines.append(
+                    indent_block(
+                        format_json_block(error_payload),
+                        prefix="        ",
+                    )
+                )
+            extras = {
+                key: value
+                for key, value in payload.items()
+                if key
+                not in {
+                    "tool_name",
+                    "name",
+                    "tool",
+                    "call_id",
+                    "tool_call_id",
+                    "ok",
+                    "tool_arguments",
+                    "result",
+                    "error",
+                }
+            }
+            if extras:
+                lines.append(indent_block(_("Additional fields:")))
+                lines.append(
+                    indent_block(
+                        format_json_block(extras),
+                        prefix="        ",
+                    )
+                )
             return lines
+
+        def ensure_diagnostic(
+            entry: ChatEntry, history_messages: Sequence[Mapping[str, Any]]
+        ) -> Mapping[str, Any]:
+            diagnostic = entry.diagnostic
+            if isinstance(diagnostic, Mapping):
+                return diagnostic
+            diagnostic = self._build_entry_diagnostic(
+                prompt=entry.prompt,
+                prompt_at=entry.prompt_at,
+                response_at=entry.response_at,
+                display_response=entry.display_response or entry.response,
+                stored_response=entry.response,
+                raw_result=entry.raw_result,
+                tool_results=entry.tool_results,
+                history_snapshot=history_messages,
+                context_snapshot=entry.context_messages,
+            )
+            if isinstance(diagnostic, Mapping):
+                entry.diagnostic = diagnostic
+                return diagnostic
+            return {}
 
         def format_message_list(
             messages: Sequence[Mapping[str, Any]] | None,
@@ -1927,19 +2086,11 @@ class AgentChatPanel(wx.Panel):
                     timestamp=format_timestamp(entry.prompt_at)
                 )
             )
-            prompt_text = normalize_for_display(entry.prompt)
-            context_snapshot = [
-                dict(message) for message in (entry.context_messages or ())
-            ]
             history_messages = gather_history_messages(index - 1)
-            llm_request_messages: list[dict[str, Any]] = [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                *history_messages,
-                *context_snapshot,
-                {"role": "user", "content": prompt_text if prompt_text else ""},
-            ]
-            lines.append(_("Agent → LLM compiled request:"))
-            lines.append(indent_block(format_message_list(llm_request_messages)))
+            diagnostic = ensure_diagnostic(entry, history_messages)
+            llm_request_messages = diagnostic.get("llm_request_messages")
+            lines.append(_("Agent → LLM request:"))
+            lines.append(indent_block(format_json_block(llm_request_messages)))
             if TOOLS:
                 lines.append(
                     _(
@@ -1951,43 +2102,50 @@ class AgentChatPanel(wx.Panel):
                     timestamp=format_timestamp(entry.response_at)
                 )
             )
-            raw_payload = entry.raw_result
-            llm_message_text: str | None = None
-            error_payload: Any | None = None
-            if isinstance(raw_payload, Mapping):
-                raw_result_value = raw_payload.get("result")
-                if isinstance(raw_result_value, str) and raw_result_value.strip():
-                    llm_message_text = normalize_for_display(raw_result_value)
-                error_payload = raw_payload.get("error")
-            else:
-                error_payload = None
-            tool_payloads = _collect_tool_payloads(entry)
 
+            llm_message_text = diagnostic.get("llm_final_message")
+            lines.append(_("LLM → Agent message:"))
             if llm_message_text:
-                lines.append(_("LLM → Agent final message:"))
-                lines.append(indent_block(llm_message_text))
+                lines.append(indent_block(normalize_for_display(str(llm_message_text))))
+            else:
+                lines.append(indent_block(_("(none)")))
 
+            tool_payloads = diagnostic.get("tool_exchanges") or []
             if tool_payloads:
                 for tool_index, payload in enumerate(tool_payloads, start=1):
                     lines.extend(format_tool_exchange(tool_index, payload))
+            else:
+                lines.append(_("Agent → MCP calls: (none)"))
+                lines.append(_("MCP → Agent responses: (none)"))
 
-            agent_text = normalize_for_display(entry.display_response or entry.response)
+            agent_text = diagnostic.get("agent_response_text")
+            if not agent_text:
+                agent_text = entry.display_response or entry.response
+            agent_text = normalize_for_display(agent_text or "")
             lines.append(_("Agent → User response:"))
             if agent_text:
                 lines.append(indent_block(agent_text))
             else:
                 lines.append(indent_block(_("(empty)")))
-            stored_response = normalize_for_display(entry.response)
+            stored_response = diagnostic.get("agent_stored_response")
+            if not stored_response:
+                stored_response = entry.response
+            stored_response = normalize_for_display(stored_response or "")
             if stored_response and stored_response != agent_text:
                 lines.append(_("Agent stored response payload:"))
                 lines.append(indent_block(stored_response))
             lines.append(_("Tokens: {count}").format(count=entry.tokens))
-            if entry.raw_result is not None:
+
+            error_payload = diagnostic.get("error_payload")
+            raw_result_payload = diagnostic.get("raw_result")
+            if raw_result_payload is None and entry.raw_result is not None:
+                raw_result_payload = entry.raw_result
+            if raw_result_payload is not None:
                 if error_payload:
                     lines.append(_("Agent reported error payload:"))
                     lines.append(indent_block(format_json_block(error_payload)))
                 lines.append(_("Agent raw result payload:"))
-                lines.append(indent_block(format_json_block(entry.raw_result)))
+                lines.append(indent_block(format_json_block(raw_result_payload)))
             lines.append("")
 
         return "\n".join(line for line in lines if line is not None).strip()

@@ -462,12 +462,49 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
 
         log_text = panel.get_transcript_log_text()
         assert "demo_tool" in log_text
-        assert "Tool calls" in log_text
+        assert "Agent → MCP call 1" in log_text
+        assert "MCP → Agent response 1" in log_text
         assert "query" in log_text
         assert "LLM system prompt" in log_text
         assert "LLM tool specification" in log_text
-        assert "Context messages" in log_text
-        assert "LLM request messages" in log_text
+        assert "Agent → LLM request" in log_text
+        assert "LLM → Agent message" in log_text
+    finally:
+        destroy_panel(frame, panel)
+
+
+def test_agent_transcript_log_orders_sections_for_errors(tmp_path, wx_app):
+    class ErrorAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
+            return {
+                "ok": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Invalid arguments",
+                },
+            }
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, ErrorAgent())
+
+    panel.input.SetValue("trigger error")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    try:
+        log_text = panel.get_transcript_log_text()
+        assert "VALIDATION_ERROR" in log_text
+
+        order = {
+            "agent_llm": log_text.index("Agent → LLM request"),
+            "llm_agent": log_text.index("LLM → Agent message"),
+            "agent_mcp": log_text.index("Agent → MCP calls: (none)"),
+            "mcp_agent": log_text.index("MCP → Agent responses: (none)"),
+            "agent_user": log_text.index("Agent → User response"),
+        }
+
+        assert order["agent_llm"] < order["llm_agent"] < order["agent_mcp"]
+        assert order["agent_mcp"] < order["mcp_agent"] < order["agent_user"]
+        assert "Agent reported error payload" in log_text
     finally:
         destroy_panel(frame, panel)
 

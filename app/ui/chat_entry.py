@@ -24,6 +24,7 @@ class ChatEntry:
     prompt_at: str | None = None
     response_at: str | None = None
     context_messages: tuple[dict[str, Any], ...] | None = None
+    diagnostic: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:  # pragma: no cover - trivial
         if self.display_response is None:
@@ -93,6 +94,11 @@ class ChatEntry:
             if prepared:
                 context_messages = tuple(prepared)
 
+        diagnostic_raw = payload.get("diagnostic")
+        diagnostic: dict[str, Any] | None = None
+        if isinstance(diagnostic_raw, Mapping):
+            diagnostic = dict(diagnostic_raw)
+
         return cls(
             prompt=prompt,
             response=response,
@@ -104,6 +110,7 @@ class ChatEntry:
             prompt_at=prompt_at,
             response_at=response_at,
             context_messages=context_messages,
+            diagnostic=diagnostic,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -124,6 +131,7 @@ class ChatEntry:
             "context_messages": [dict(message) for message in self.context_messages]
             if self.context_messages is not None
             else None,
+            "diagnostic": dict(self.diagnostic) if self.diagnostic is not None else None,
         }
 
 

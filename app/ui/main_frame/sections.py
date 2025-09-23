@@ -75,6 +75,58 @@ class MainFrameSectionsMixin:
         return container, label_ctrl, content
 
     # ------------------------------------------------------------------
+    # layout helpers
+    def _splitter_width(self: "MainFrame", splitter: wx.SplitterWindow) -> int:
+        """Return the current width available to ``splitter``."""
+
+        width = splitter.GetClientSize().width
+        if width <= 0:
+            width = splitter.GetSize().width
+        if width <= 0:
+            parent = splitter.GetParent()
+            if parent is not None:
+                width = parent.GetClientSize().width
+        if width <= 0:
+            width = self.GetClientSize().width
+        if width <= 0:
+            width = self.GetSize().width
+        return max(int(width), 1)
+
+    def _clamp_doc_tree_sash(
+        self: "MainFrame",
+        desired: int,
+        *,
+        agent_visible: bool,
+        editor_visible: bool,
+    ) -> int:
+        """Limit the hierarchy splitter so nested panes keep their minima."""
+
+        total = self._splitter_width(self.doc_splitter)
+        doc_min = max(self.doc_splitter.GetMinimumPaneSize(), self._doc_tree_min_pane, 1)
+        list_min = max(self.splitter.GetMinimumPaneSize(), 1)
+        requirements_min = list_min * 2 if editor_visible else list_min
+        agent_min = max(self.agent_splitter.GetMinimumPaneSize(), 1)
+        if agent_visible:
+            left_min = max(requirements_min, agent_min)
+            required_right = left_min + agent_min
+        else:
+            left_min = requirements_min
+            required_right = left_min
+        max_left = max(total - required_right, doc_min)
+        return max(doc_min, min(int(desired), max_left))
+
+    def _clamp_agent_sash(self: "MainFrame", desired: int) -> int:
+        """Limit the agent splitter sash to honour both pane minima."""
+
+        total = self._splitter_width(self.agent_splitter)
+        agent_min = max(self.agent_splitter.GetMinimumPaneSize(), 1)
+        requirements_min = max(self.splitter.GetMinimumPaneSize(), 1)
+        left_min = max(requirements_min, agent_min)
+        right_min = agent_min
+        max_left = max(total - right_min, left_min)
+        return max(left_min, min(int(desired), max_left))
+
+    # ------------------------------------------------------------------
     # visibility and localisation helpers
     def _apply_doc_tree_visibility(self: "MainFrame", *, persist: bool) -> None:
         """Update hierarchy pane visibility based on the menu state."""
@@ -84,8 +136,13 @@ class MainFrameSectionsMixin:
         if not self.hierarchy_menu_item:
             return
         shown = self.hierarchy_menu_item.IsChecked()
-        minimum = max(self._doc_tree_min_pane, 1)
-        target = max(self._doc_tree_last_sash, minimum)
+        editor_visible = self._is_editor_visible()
+        agent_visible = self._is_agent_chat_visible()
+        target = self._clamp_doc_tree_sash(
+            self._doc_tree_last_sash,
+            agent_visible=agent_visible,
+            editor_visible=editor_visible,
+        )
         if shown:
             self.doc_tree_container.Show()
             if not self.doc_splitter.IsSplit():
@@ -110,6 +167,10 @@ class MainFrameSectionsMixin:
             if persist:
                 self.config.set_doc_tree_shown(False)
                 self.config.set_doc_tree_sash(self._doc_tree_last_sash)
+        if agent_visible and self.agent_splitter.IsSplit():
+            agent_target = self._clamp_agent_sash(self._agent_last_sash)
+            self.agent_splitter.SetSashPosition(agent_target)
+            self._agent_last_sash = self.agent_splitter.GetSashPosition()
         self.doc_splitter.UpdateSize()
         self.Layout()
 
@@ -131,8 +192,18 @@ class MainFrameSectionsMixin:
         if not self.agent_chat_menu_item:
             return
         shown = self.agent_chat_menu_item.IsChecked()
-        minimum = max(self.agent_splitter.GetMinimumPaneSize(), 1)
-        target = max(self._agent_last_sash, minimum)
+        editor_visible = self._is_editor_visible()
+        doc_target = self._clamp_doc_tree_sash(
+            self._doc_tree_last_sash,
+            agent_visible=shown,
+            editor_visible=editor_visible,
+        )
+        if self.doc_splitter.IsSplit():
+            self.doc_splitter.SetSashPosition(doc_target)
+            self._doc_tree_last_sash = self.doc_splitter.GetSashPosition()
+        else:
+            self._doc_tree_last_sash = doc_target
+        target = self._clamp_agent_sash(self._agent_last_sash)
         if shown:
             self._show_agent_section()
             if not self.agent_splitter.IsSplit():
@@ -150,8 +221,8 @@ class MainFrameSectionsMixin:
                 self.config.set_agent_chat_sash(self._agent_last_sash)
             self.agent_panel.focus_input()
         else:
+            self._agent_last_sash = target
             if self.agent_splitter.IsSplit():
-                self._agent_last_sash = self.agent_splitter.GetSashPosition()
                 self.agent_splitter.Unsplit(self.agent_container)
             self._hide_agent_section()
             refresh_splitter_highlight(self.agent_splitter)
@@ -159,7 +230,9 @@ class MainFrameSectionsMixin:
                 self.config.set_agent_chat_shown(False)
                 self.config.set_agent_chat_sash(self._agent_last_sash)
                 self.config.set_agent_history_sash(self.agent_panel.history_sash)
-        self.agent_splitter.UpdateSize()
+        self.doc_splitter.UpdateSize()
+        if shown and self.agent_splitter.IsSplit():
+            self.agent_splitter.UpdateSize()
         self.Layout()
 
     def _is_agent_chat_visible(self: "MainFrame") -> bool:
@@ -304,6 +377,21 @@ class MainFrameSectionsMixin:
             self._hide_editor_panel()
             if persist:
                 self.config.set_editor_shown(False)
+        agent_visible = self._is_agent_chat_visible()
+        doc_target = self._clamp_doc_tree_sash(
+            self._doc_tree_last_sash,
+            agent_visible=agent_visible,
+            editor_visible=visible,
+        )
+        if self.doc_splitter.IsSplit():
+            self.doc_splitter.SetSashPosition(doc_target)
+            self._doc_tree_last_sash = self.doc_splitter.GetSashPosition()
+        else:
+            self._doc_tree_last_sash = doc_target
+        if agent_visible and self.agent_splitter.IsSplit():
+            agent_target = self._clamp_agent_sash(self._agent_last_sash)
+            self.agent_splitter.SetSashPosition(agent_target)
+            self._agent_last_sash = self.agent_splitter.GetSashPosition()
         self.splitter.UpdateSize()
         self.Layout()
 
@@ -332,24 +420,29 @@ class MainFrameSectionsMixin:
             self.navigation.log_menu_item,
             editor_splitter=self.splitter,
         )
-        self._doc_tree_last_sash = self.config.get_doc_tree_sash(
-            self.doc_splitter.GetSashPosition()
+        agent_visible = self.config.get_agent_chat_shown()
+        editor_visible = self.config.get_editor_shown()
+        doc_visible = self.config.get_doc_tree_shown()
+        self._doc_tree_last_sash = self._clamp_doc_tree_sash(
+            self.config.get_doc_tree_sash(self.doc_splitter.GetSashPosition()),
+            agent_visible=agent_visible,
+            editor_visible=editor_visible,
         )
-        self._agent_last_sash = self.config.get_agent_chat_sash(
-            self._default_agent_chat_sash()
+        self._agent_last_sash = self._clamp_agent_sash(
+            self.config.get_agent_chat_sash(self._default_agent_chat_sash())
         )
         history_sash = self.config.get_agent_history_sash(
             self.agent_panel.default_history_sash()
         )
         self.agent_panel.apply_history_sash(history_sash)
         if self.hierarchy_menu_item:
-            self.hierarchy_menu_item.Check(self.config.get_doc_tree_shown())
+            self.hierarchy_menu_item.Check(doc_visible)
             self._apply_doc_tree_visibility(persist=False)
         if self.editor_menu_item:
-            self.editor_menu_item.Check(self.config.get_editor_shown())
+            self.editor_menu_item.Check(editor_visible)
         self._apply_editor_visibility(persist=False)
         if self.agent_chat_menu_item:
-            self.agent_chat_menu_item.Check(self.config.get_agent_chat_shown())
+            self.agent_chat_menu_item.Check(agent_visible)
             self._apply_agent_chat_visibility(persist=False)
 
     def _save_layout(self: "MainFrame") -> None:

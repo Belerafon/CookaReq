@@ -190,3 +190,82 @@ def test_agent_history_persists_between_sessions(configured_frame, wx_app):
     assert restored_splitter.GetSashPosition() == desired
     restored.Destroy()
     wx_app.Yield()
+
+
+def test_restore_limited_hierarchy_width(wx_app, tmp_path):
+    """Huge stored hierarchy width shrinks so the agent pane stays visible."""
+
+    config = ConfigManager(path=tmp_path / "clamp.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    config.set_doc_tree_shown(True)
+    config.set_doc_tree_sash(5000)
+    config.set_agent_chat_shown(True)
+    config.set_agent_chat_sash(5)
+
+    frame = MainFrame(None, config=config, model=RequirementModel())
+    frame.Show()
+    wx_app.Yield()
+
+    try:
+        assert frame.agent_chat_menu_item.IsChecked()
+        doc_total = frame.doc_splitter.GetClientSize().width
+        doc_min = max(frame.doc_splitter.GetMinimumPaneSize(), frame._doc_tree_min_pane, 1)
+        list_min = max(frame.splitter.GetMinimumPaneSize(), 1)
+        requirements_min = list_min * 2 if frame._is_editor_visible() else list_min
+        agent_min = max(frame.agent_splitter.GetMinimumPaneSize(), 1)
+        right_required = max(requirements_min, agent_min) + agent_min
+        doc_max = max(doc_total - right_required, doc_min)
+        doc_sash = frame.doc_splitter.GetSashPosition()
+        assert doc_min <= doc_sash <= doc_max
+
+        agent_total = frame.agent_splitter.GetClientSize().width
+        agent_sash = frame.agent_splitter.GetSashPosition()
+        requirements_left_min = max(frame.splitter.GetMinimumPaneSize(), agent_min)
+        assert agent_sash >= requirements_left_min
+        assert agent_total - agent_sash >= agent_min
+    finally:
+        frame.Destroy()
+        wx_app.Yield()
+
+
+def test_enabling_agent_shrinks_wide_hierarchy(wx_app, tmp_path):
+    """Turning on the agent pane reduces an oversized hierarchy region."""
+
+    config = ConfigManager(path=tmp_path / "toggle_clamp.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    config.set_doc_tree_shown(True)
+    config.set_agent_chat_shown(False)
+
+    frame = MainFrame(None, config=config, model=RequirementModel())
+    frame.Show()
+    wx_app.Yield()
+
+    try:
+        doc_total = frame.doc_splitter.GetClientSize().width
+        doc_min = max(frame.doc_splitter.GetMinimumPaneSize(), frame._doc_tree_min_pane, 1)
+        list_min = max(frame.splitter.GetMinimumPaneSize(), 1)
+        requirements_min = list_min * 2 if frame._is_editor_visible() else list_min
+        doc_max_without_agent = max(doc_total - requirements_min, doc_min)
+
+        frame.doc_splitter.SetSashPosition(doc_max_without_agent)
+        frame._doc_tree_last_sash = frame.doc_splitter.GetSashPosition()
+        wx_app.Yield()
+
+        frame.agent_chat_menu_item.Check(True)
+        frame._apply_agent_chat_visibility(persist=False)
+        wx_app.Yield()
+
+        agent_min = max(frame.agent_splitter.GetMinimumPaneSize(), 1)
+        right_required = max(requirements_min, agent_min) + agent_min
+        doc_max = max(doc_total - right_required, doc_min)
+        doc_sash = frame.doc_splitter.GetSashPosition()
+        assert doc_min <= doc_sash <= doc_max
+
+        agent_total = frame.agent_splitter.GetClientSize().width
+        agent_sash = frame.agent_splitter.GetSashPosition()
+        requirements_left_min = max(frame.splitter.GetMinimumPaneSize(), agent_min)
+        assert agent_sash >= requirements_left_min
+        assert agent_total - agent_sash >= agent_min
+    finally:
+        frame.Destroy()
+        wx_app.Yield()

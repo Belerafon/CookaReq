@@ -212,6 +212,7 @@ class AgentChatPanel(wx.Panel):
         context_window_resolver: Callable[[], int | None] | None = None,
         confirm_preference: RequirementConfirmPreference | str | None = None,
         persist_confirm_preference: Callable[[str], None] | None = None,
+        tool_result_handler: Callable[[Sequence[Mapping[str, Any]]], None] | None = None,
     ) -> None:
         """Create panel bound to ``agent_supplier``."""
 
@@ -282,6 +283,9 @@ class AgentChatPanel(wx.Panel):
         ] = ()
         self._suppress_confirm_choice_events = False
         self._load_history()
+        self._tool_result_handler: Callable[[Sequence[Mapping[str, Any]]], None] | None = (
+            tool_result_handler
+        )
 
         self._build_ui()
         self._render_transcript()
@@ -332,6 +336,13 @@ class AgentChatPanel(wx.Panel):
         """Persist chat history inside *directory* when provided."""
 
         self.set_history_path(history_path_for_documents(directory))
+
+    def set_tool_result_handler(
+        self, handler: Callable[[Sequence[Mapping[str, Any]]], None] | None
+    ) -> None:
+        """Register callback invoked when agent returns tool results."""
+
+        self._tool_result_handler = handler
 
     @property
     def history_path(self) -> Path:
@@ -1496,6 +1507,7 @@ class AgentChatPanel(wx.Panel):
                 )
             handle.pending_entry = None
             self._render_transcript()
+            self._notify_tool_results(tool_results)
         finally:
             self._set_wait_state(False, final_tokens)
             if elapsed:
@@ -2049,6 +2061,27 @@ class AgentChatPanel(wx.Panel):
         }
 
         return _history_json_safe(diagnostic_payload)
+
+    def _notify_tool_results(
+        self, tool_results: Sequence[Any] | None
+    ) -> None:
+        """Invoke external handler with sanitized tool payloads."""
+
+        if not tool_results:
+            return
+        handler = getattr(self, "_tool_result_handler", None)
+        if handler is None:
+            return
+        prepared: list[Mapping[str, Any]] = []
+        for payload in tool_results:
+            if isinstance(payload, Mapping):
+                prepared.append(dict(payload))
+        if not prepared:
+            return
+        try:
+            handler(tuple(prepared))
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to handle agent tool results")
 
     def _compose_transcript_text(self) -> str:
         conversation = self._get_active_conversation()

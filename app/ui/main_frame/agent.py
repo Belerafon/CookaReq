@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+import logging
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable
 
 import wx
 
 from ...agent import LocalAgent
 from ...confirm import ConfirmDecision, RequirementUpdatePrompt
+from ...core.document_store import parse_rid
+from ...core.model import Requirement, requirement_from_dict
 from ...settings import AppSettings
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .frame import MainFrame
+
+
+logger = logging.getLogger("cookareq.ui.main_frame.agent")
 
 
 class MainFrameAgentMixin:
@@ -103,6 +110,137 @@ class MainFrameAgentMixin:
             lines.append("Selected requirements: (none)")
 
         return [{"role": "system", "content": "\n".join(lines)}]
+
+    def _on_agent_tool_results(
+        self: "MainFrame", tool_results: Sequence[Mapping[str, Any]]
+    ) -> None:
+        """Apply requirement updates returned by the agent."""
+
+        if not tool_results:
+            return
+        current_prefix = getattr(self, "current_doc_prefix", None)
+        if not current_prefix:
+            return
+        if not hasattr(self, "model") or not hasattr(self, "panel"):
+            return
+
+        updated: list[Requirement] = []
+        removed_ids: list[int] = []
+        for payload in tool_results:
+            if not isinstance(payload, Mapping):
+                continue
+            if not payload.get("ok", False):
+                continue
+            tool_name_raw = (
+                payload.get("tool_name")
+                or payload.get("name")
+                or payload.get("tool")
+            )
+            tool_name = str(tool_name_raw) if tool_name_raw else ""
+            result_payload = payload.get("result")
+            if tool_name in {
+                "update_requirement_field",
+                "set_requirement_labels",
+                "set_requirement_attachments",
+                "set_requirement_links",
+                "link_requirements",
+                "create_requirement",
+            }:
+                requirement = self._convert_tool_result_requirement(result_payload)
+                if requirement is None:
+                    continue
+                if requirement.doc_prefix == current_prefix:
+                    updated.append(requirement)
+            elif tool_name == "delete_requirement":
+                rid = self._extract_result_rid(result_payload)
+                if not rid:
+                    continue
+                try:
+                    prefix, req_id = parse_rid(rid)
+                except ValueError:
+                    logger.warning("Agent returned invalid requirement id %r", rid)
+                    continue
+                if prefix == current_prefix:
+                    removed_ids.append(req_id)
+
+        changes_applied = False
+        selected_updated: Requirement | None = None
+        for requirement in updated:
+            try:
+                self.model.update(requirement)
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("Failed to update requirement %s", requirement.rid)
+                continue
+            changes_applied = True
+            if getattr(self, "_selected_requirement_id", None) == requirement.id:
+                selected_updated = requirement
+
+        removed_selection = False
+        for req_id in removed_ids:
+            try:
+                self.model.delete(req_id)
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("Failed to remove requirement id %s", req_id)
+                continue
+            changes_applied = True
+            if getattr(self, "_selected_requirement_id", None) == req_id:
+                removed_selection = True
+
+        if not changes_applied:
+            return
+
+        try:
+            self.panel.recalc_derived_map(self.model.get_all())
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Failed to refresh requirement list after agent update")
+            return
+
+        selected_id = getattr(self, "_selected_requirement_id", None)
+        if removed_selection:
+            self._selected_requirement_id = None
+            try:
+                self._clear_editor_panel()
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("Failed to clear editor after agent removal")
+        elif selected_updated is not None:
+            try:
+                self.editor.load(selected_updated)
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("Failed to refresh editor after agent update")
+        if selected_id is not None and not removed_selection:
+            try:
+                self.panel.focus_requirement(selected_id)
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("Failed to restore selection after agent update")
+
+    @staticmethod
+    def _extract_result_rid(result_payload: Any) -> str | None:
+        if isinstance(result_payload, Mapping):
+            rid_raw = result_payload.get("rid")
+            return str(rid_raw) if isinstance(rid_raw, str) and rid_raw.strip() else None
+        return None
+
+    @staticmethod
+    def _convert_tool_result_requirement(result_payload: Any) -> Requirement | None:
+        if not isinstance(result_payload, Mapping):
+            return None
+        rid_raw = result_payload.get("rid")
+        if not isinstance(rid_raw, str) or not rid_raw.strip():
+            return None
+        rid = rid_raw.strip()
+        try:
+            prefix, _ = parse_rid(rid)
+        except ValueError:
+            logger.warning("Agent returned invalid requirement id %r", rid)
+            return None
+        try:
+            requirement = requirement_from_dict(dict(result_payload), doc_prefix=prefix, rid=rid)
+        except Exception:
+            logger.exception("Failed to parse requirement payload from agent tool")
+            return None
+        requirement.doc_prefix = prefix
+        requirement.rid = rid
+        return requirement
 
     def on_run_command(self: "MainFrame", _event: wx.Event) -> None:
         """Ensure agent chat panel is visible and focused."""

@@ -6,6 +6,8 @@ import pytest
 
 from app.config import ConfigManager, DEFAULT_LIST_COLUMNS
 from app.llm.constants import (
+    DEFAULT_LLM_BASE_URL,
+    DEFAULT_LLM_MODEL,
     DEFAULT_MAX_CONTEXT_TOKENS,
     MIN_MAX_CONTEXT_TOKENS,
 )
@@ -288,6 +290,8 @@ def test_app_settings_default_uses_sample_requirements():
 
     assert settings.mcp.base_path == default_requirements_path()
     assert settings.mcp.log_dir is None
+    assert settings.llm.base_url == DEFAULT_LLM_BASE_URL
+    assert settings.llm.model == DEFAULT_LLM_MODEL
 
 
 def test_get_llm_settings_normalises_context_zero(tmp_path, wx_app):

@@ -55,6 +55,7 @@ def test_agent_context_includes_selected_requirements(tmp_path, wx_app):
         assert "(id=" not in content
         assert "prefix=" not in content
         assert " — " in content
+        assert "Selected requirement RID summary:" in content
     finally:
         frame.Destroy()
         wx_app.Yield()

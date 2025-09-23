@@ -151,6 +151,21 @@ GUI tests use `pytest-xvfb`, so no display server is needed. Skip them with `pyt
 pytest -m smoke -q
 ```
 
+### Real LLM integration tests
+
+The default configuration (`pytest` runs with `--suite core`) skips checks that hit the live OpenRouter API. To exercise the integration end-to-end:
+
+```bash
+source .env  # loads OPEN_ROUTER
+COOKAREQ_RUN_REAL_LLM_TESTS=1 pytest --suite real-llm tests/integration/test_llm_openrouter_integration.py::test_openrouter_check_llm -q
+```
+
+The opt-in flag prevents accidental network calls in CI. Without both the environment variable and an API key the test is skipped automatically.
+
+#### Recommended OpenRouter model
+
+CookaReq ships with OpenRouter preconfigured (`https://openrouter.ai/api/v1`) and targets the free `meta-llama/llama-3.3-70b-instruct:free` tier by default. This model was evaluated against the GUI "edit the selected requirement" workflow and reliably produces `update_requirement_field` tool calls, unlike other free options that either stalled on clarifying questions or lacked tool-call support. If the provider changes availability you can override the model in *Settings → LLM*, but keep the defaults when possible so that the real LLM smoke test aligns with production expectations.
+
 ### Linting
 
 `ruff` is configured via `pyproject.toml`. Run it before committing:

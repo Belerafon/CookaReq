@@ -10,6 +10,7 @@ This file collects instructions and a short overview of the "CookaReq" applicati
 - GUI tests already run under `pytest-xvfb`. If you disable it for troubleshooting, wrap manual runs with `xvfb-run -a`.
 - Use the system Python 3.12.3 for builds and tests. The root `.python-version` file is set to `system`, so `pyenv` switches automatically; run commands through `python3`. The `python` alias is not available. All required packages (including `wxPython`) are already preinstalled in the system installation; verified that `python3 -c "import wx; print(wx.version())"` finishes without errors.
 - The OpenRouter key is stored in the `.env` file at the repository root under the `OPEN_ROUTER` variable. Tests and the application read the key from the environment when it is defined.
+- The default LLM configuration points to `https://openrouter.ai/api/v1` with the `meta-llama/llama-3.3-70b-instruct:free` model. This free tier was benchmarked to produce consistent MCP tool calls for the "edit the selected requirement" scenario; prefer it unless a task explicitly calls for another backend.
 - By default the tests use a mocked LLM and do not call the external API. To run real integration checks, export the credentials (for example `source .env` to load `OPEN_ROUTER`), set `COOKAREQ_RUN_REAL_LLM_TESTS=1` and explicitly switch to the live suite so that marker filtering does not deselect the test:
   ```bash
   source .env

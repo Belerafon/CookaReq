@@ -10,7 +10,12 @@ from typing import Literal
 import tomllib
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from .llm.constants import DEFAULT_MAX_CONTEXT_TOKENS, MIN_MAX_CONTEXT_TOKENS
+from .llm.constants import (
+    DEFAULT_LLM_BASE_URL,
+    DEFAULT_LLM_MODEL,
+    DEFAULT_MAX_CONTEXT_TOKENS,
+    MIN_MAX_CONTEXT_TOKENS,
+)
 
 
 DEFAULT_LIST_COLUMNS: list[str] = [
@@ -29,8 +34,8 @@ class LLMSettings(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
-    base_url: str = Field("", alias="api_base")
-    model: str = ""
+    base_url: str = Field(DEFAULT_LLM_BASE_URL, alias="api_base")
+    model: str = DEFAULT_LLM_MODEL
     api_key: str | None = None
     max_retries: int = 3
     max_context_tokens: int = Field(

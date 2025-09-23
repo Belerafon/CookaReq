@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.llm.constants import DEFAULT_LLM_BASE_URL, DEFAULT_LLM_MODEL
 from app.settings import AppSettings, load_app_settings
 
 
@@ -131,8 +132,8 @@ def settings_with_llm(tmp_path: Path, *, api_key: str = "dummy") -> AppSettings:
     """Persist LLM settings with *api_key* to a file and load them."""
     data = {
         "llm": {
-            "base_url": "https://openrouter.ai/api/v1",
-            "model": "qwen/qwen3-4b:free",
+            "base_url": DEFAULT_LLM_BASE_URL,
+            "model": DEFAULT_LLM_MODEL,
             "api_key": api_key,
             "max_retries": 3,
             "timeout_minutes": 60,
@@ -162,8 +163,8 @@ def settings_with_mcp(
 
     settings = {
         "llm": {
-            "base_url": "https://openrouter.ai/api/v1",
-            "model": "qwen/qwen3-4b:free",
+            "base_url": DEFAULT_LLM_BASE_URL,
+            "model": DEFAULT_LLM_MODEL,
             "api_key": api_key,
             "max_retries": 3,
             "timeout_minutes": 60,

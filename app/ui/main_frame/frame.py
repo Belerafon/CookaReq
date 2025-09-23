@@ -233,6 +233,8 @@ class MainFrame(
                 token_model_resolver=lambda: self.llm_settings.model,
                 context_provider=self._agent_context_messages,
                 context_window_resolver=lambda: self.llm_settings.max_context_tokens,
+                confirm_preference=self.config.get_agent_confirm_mode(),
+                persist_confirm_preference=self.config.set_agent_confirm_mode,
             ),
         )
         self._hide_agent_section()
@@ -320,6 +322,8 @@ class MainFrame(
                 token_model_resolver=lambda: self.llm_settings.model,
                 context_provider=self._agent_context_messages,
                 context_window_resolver=lambda: self.llm_settings.max_context_tokens,
+                confirm_preference=self.config.get_agent_confirm_mode(),
+                persist_confirm_preference=self.config.set_agent_confirm_mode,
             )
             history_sash = self.config.get_agent_history_sash(
                 self.agent_panel.default_history_sash()

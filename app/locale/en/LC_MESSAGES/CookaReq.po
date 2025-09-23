@@ -568,8 +568,8 @@ msgstr "{index}. {op} ({details})"
 msgid "Confirm requirement update"
 msgstr "Confirm requirement update"
 
-msgid "Always for this session (all requirements)"
-msgstr "Always for this session (all requirements)"
+msgid "Always until restart (all requirements)"
+msgstr "Always until restart (all requirements)"
 
 msgid "Verifies"
 msgstr "Verifies"
@@ -1511,3 +1511,15 @@ msgstr "not recorded"
 
 msgid "this chat"
 msgstr "this chat"
+
+msgid "Ask every time"
+msgstr "Ask every time"
+
+msgid "Skip for this chat"
+msgstr "Skip for this chat"
+
+msgid "Never ask"
+msgstr "Never ask"
+
+msgid "Requirement confirmations"
+msgstr "Requirement confirmations"

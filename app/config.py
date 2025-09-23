@@ -132,6 +132,7 @@ ConfigFieldName = Literal[
     "agent_chat_sash",
     "agent_chat_shown",
     "agent_history_sash",
+    "agent_confirm_mode",
     "win_w",
     "win_h",
     "win_x",
@@ -288,6 +289,11 @@ CONFIG_FIELD_SPECS: dict[ConfigFieldName, FieldSpec[Any]] = {
         key="agent_history_sash",
         value_type=int,
         default=320,
+    ),
+    "agent_confirm_mode": FieldSpec(
+        key="agent_confirm_mode",
+        value_type=str,
+        default="prompt",
     ),
     "editor_shown": FieldSpec(
         key="editor_shown",
@@ -723,10 +729,26 @@ class ConfigManager:
 
         return self.get_value("agent_history_sash", default=default)
 
+    def get_agent_confirm_mode(self) -> str:
+        """Return persisted confirmation preference for agent operations."""
+
+        value = str(self.get_value("agent_confirm_mode", default="prompt"))
+        if value not in {"prompt", "never"}:
+            return "prompt"
+        return value
+
     def set_agent_history_sash(self, pos: int) -> None:
         """Persist width of the chat history list."""
 
         self.set_value("agent_history_sash", pos)
+        self.flush()
+
+    def set_agent_confirm_mode(self, mode: str) -> None:
+        """Persist confirmation preference for agent operations."""
+
+        if mode not in {"prompt", "never"}:
+            mode = "prompt"
+        self.set_value("agent_confirm_mode", mode)
         self.flush()
 
     # ------------------------------------------------------------------

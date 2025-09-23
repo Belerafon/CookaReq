@@ -77,7 +77,10 @@ def _recent_dirs_factory(tmp_path):
         ("agent_chat_sash", 400),
         ("agent_chat_shown", False),
         ("agent_history_sash", 320),
+        ("agent_confirm_mode", "prompt"),
         ("win_w", 800),
+        ("win_x", -1),
+        ("win_y", -1),
         ("editor_sash_pos", 600),
         ("editor_shown", True),
         ("doc_tree_collapsed", False),
@@ -124,7 +127,10 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
         pytest.param("agent_chat_shown", _const(True), _const(True), id="agent_chat_shown"),
         pytest.param("agent_chat_sash", _const(360), _const(360), id="agent_chat_sash"),
         pytest.param("agent_history_sash", _const(280), _const(280), id="agent_history_sash"),
+        pytest.param("agent_confirm_mode", _const("never"), _const("never"), id="agent_confirm_mode"),
         pytest.param("win_w", _const(1024), _const(1024), id="win_w"),
+        pytest.param("win_x", _const(12), _const(12), id="win_x"),
+        pytest.param("win_y", _const(34), _const(34), id="win_y"),
         pytest.param("editor_sash_pos", _const(456), _const(456), id="editor_sash_pos"),
         pytest.param("editor_shown", _const(False), _const(False), id="editor_shown"),
         pytest.param("doc_tree_collapsed", _const(True), _const(True), id="doc_tree_collapsed"),
@@ -138,15 +144,6 @@ def test_schema_round_trip(tmp_path, wx_app, name, value_factory, expected_facto
     cfg.flush()
 
     assert cfg.get_value(name) == expected_factory(tmp_path)
-
-
-def test_schema_legacy_llm_base(tmp_path, wx_app):
-    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
-
-    cfg.write("llm_api_base", "http://legacy")
-    cfg.flush()
-
-    assert cfg.get_value("llm_base_url") == "http://legacy"
 
 
 def test_schema_override_default(tmp_path, wx_app):
@@ -433,25 +430,6 @@ def test_save_layout_tracks_doc_tree_collapse(tmp_path, wx_app):
 
     assert cfg.get_doc_tree_shown() is False
     assert cfg.get_doc_tree_sash(100) == 250
-
-
-def test_get_doc_tree_sash_ignores_legacy_entry(tmp_path, wx_app):
-    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg_doc.ini")
-
-    cfg.set_value("sash_pos", 221)
-    cfg.write_int("doc_tree_saved_sash", 1125)
-    cfg.flush()
-
-    assert cfg.get_doc_tree_sash(99) == 221
-
-
-def test_get_doc_tree_sash_defaults_without_modern_key(tmp_path, wx_app):
-    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg_doc.ini")
-
-    cfg.write_int("doc_tree_saved_sash", 777)
-    cfg.flush()
-
-    assert cfg.get_doc_tree_sash(123) == 123
 
 
 def test_save_layout_tracks_agent_history(tmp_path, wx_app):

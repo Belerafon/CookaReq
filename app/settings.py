@@ -5,14 +5,23 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Literal
 
 import tomllib
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from .llm.constants import (
-    DEFAULT_MAX_CONTEXT_TOKENS,
-    MIN_MAX_CONTEXT_TOKENS,
-)
+from .llm.constants import DEFAULT_MAX_CONTEXT_TOKENS, MIN_MAX_CONTEXT_TOKENS
+
+
+DEFAULT_LIST_COLUMNS: list[str] = [
+    "labels",
+    "id",
+    "derived_from",
+    "status",
+    "priority",
+    "type",
+    "owner",
+]
 
 
 class LLMSettings(BaseModel):
@@ -81,6 +90,8 @@ def default_requirements_path() -> str:
 class MCPSettings(BaseModel):
     """Settings for configuring the MCP server and client."""
 
+    model_config = ConfigDict(validate_assignment=True)
+
     auto_start: bool = True
     host: str = "127.0.0.1"
     port: int = 59362
@@ -103,7 +114,9 @@ class MCPSettings(BaseModel):
 class UISettings(BaseModel):
     """Settings related to the graphical user interface."""
 
-    columns: list[str] = Field(default_factory=list)
+    model_config = ConfigDict(validate_assignment=True)
+
+    columns: list[str] = Field(default_factory=lambda: list(DEFAULT_LIST_COLUMNS))
     recent_dirs: list[str] = Field(default_factory=list)
     auto_open_last: bool = False
     remember_sort: bool = False
@@ -111,10 +124,36 @@ class UISettings(BaseModel):
     sort_column: int = -1
     sort_ascending: bool = True
     log_level: int = Field(default=logging.INFO)
+    log_shown: bool = False
+    log_sash: int = 300
+    agent_chat_shown: bool = False
+    agent_chat_sash: int = 400
+    agent_history_sash: int = 320
+    agent_confirm_mode: Literal["prompt", "never"] = "prompt"
+    editor_shown: bool = True
+    editor_sash_pos: int = 600
+    doc_tree_collapsed: bool = False
+    doc_tree_sash: int = 300
+    window_width: int = 800
+    window_height: int = 600
+    window_x: int = -1
+    window_y: int = -1
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def _normalise_language(
+        cls, value: str | None,
+    ) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        return text or None
 
 
 class AppSettings(BaseModel):
     """Aggregate settings for the application."""
+
+    model_config = ConfigDict(validate_assignment=True)
 
     llm: LLMSettings = Field(default_factory=LLMSettings)
     mcp: MCPSettings = Field(default_factory=MCPSettings)

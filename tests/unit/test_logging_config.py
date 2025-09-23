@@ -7,6 +7,7 @@ import pytest
 
 import app.log as log_module
 from app.log import (
+    ConsoleFormatter,
     JsonlHandler,
     configure_logging,
     get_log_directory,
@@ -80,11 +81,68 @@ def test_configure_logging_sets_console_level(
         and not isinstance(h, logging.FileHandler)
     )
     assert stream_handler.level == logging.DEBUG
+    assert isinstance(stream_handler.formatter, ConsoleFormatter)
     configure_logging(level=logging.WARNING)
     assert logger.level == logging.DEBUG
     assert stream_handler.level == logging.DEBUG
 
 
+def test_console_formatter_appends_payload_when_message_is_event(
+    reset_logger: None, log_dir_env: Path
+) -> None:
+    configure_logging(level=logging.DEBUG)
+    stream_handler = next(
+        h
+        for h in logger.handlers
+        if isinstance(h, logging.StreamHandler)
+        and not isinstance(h, logging.FileHandler)
+    )
+    formatter = stream_handler.formatter
+    assert isinstance(formatter, ConsoleFormatter)
+
+    record = logging.LogRecord(
+        name="cookareq",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=0,
+        msg="LLM_REQUEST",
+        args=(),
+        exc_info=None,
+    )
+    record.json = {
+        "event": "LLM_REQUEST",
+        "payload": {"rid": "HLR1"},
+        "size_bytes": 10,
+    }
+    assert formatter.format(record).endswith('{"rid": "HLR1"}')
+
+
+def test_console_formatter_skips_when_message_contains_payload(
+    reset_logger: None, log_dir_env: Path
+) -> None:
+    configure_logging(level=logging.DEBUG)
+    stream_handler = next(
+        h
+        for h in logger.handlers
+        if isinstance(h, logging.StreamHandler)
+        and not isinstance(h, logging.FileHandler)
+    )
+    formatter = stream_handler.formatter
+    assert isinstance(formatter, ConsoleFormatter)
+
+    payload = {"event": "LLM_REQUEST", "payload": {"rid": "HLR1"}}
+    record = logging.LogRecord(
+        name="cookareq",
+        level=logging.DEBUG,
+        pathname=__file__,
+        lineno=0,
+        msg="LLM_REQUEST {" + '"rid": "HLR1"' + "}",
+        args=(),
+        exc_info=None,
+    )
+    record.json = payload
+    formatted = formatter.format(record)
+    assert formatted.count('"rid": "HLR1"') == 1
 def test_log_directory_and_files_created(
     reset_logger: None, log_dir_env: Path
 ) -> None:

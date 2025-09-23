@@ -51,8 +51,10 @@ def test_agent_context_includes_selected_requirements(tmp_path, wx_app):
         content = snapshot["content"]
         assert "Active requirements list" in content
         assert "Selected requirements (2)" in content
-        assert "(id=" in content
         assert "Selected requirements" in content
+        assert "(id=" not in content
+        assert "prefix=" not in content
+        assert " — " in content
     finally:
         frame.Destroy()
         wx_app.Yield()

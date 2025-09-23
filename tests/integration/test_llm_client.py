@@ -520,7 +520,7 @@ def test_respond_preserves_context_for_update(tmp_path: Path, monkeypatch) -> No
                 "[Workspace context]\n"
                 "Active requirements list: SYS — System Requirements\n"
                 "Selected requirements (1):\n"
-                "- SYS-1 (id=1, prefix=SYS) — Power control"
+                "- SYS-1 — Power control"
             ),
         },
         {
@@ -547,6 +547,7 @@ def test_respond_preserves_context_for_update(tmp_path: Path, monkeypatch) -> No
         "Selected requirements (1)" in msg.get("content", "")
         for msg in system_messages[1:]
     )
+    assert all("(id=" not in msg.get("content", "") for msg in system_messages)
 
 
 def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> None:
@@ -595,8 +596,8 @@ def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> No
                 "[Workspace context]\n"
                 "Active requirements list: SYS — System Requirements\n"
                 "Selected requirements (2):\n"
-                "- SYS-2 (id=2, prefix=SYS) — Secondary\n"
-                "- SYS-3 (id=3, prefix=SYS) — Legacy"
+                "- SYS-2 — Secondary\n"
+                "- SYS-3 — Legacy"
             ),
         },
         {"role": "user", "content": "удали эти требования"},
@@ -616,6 +617,7 @@ def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> No
         "Selected requirements (2)" in msg.get("content", "")
         for msg in system_messages[1:]
     )
+    assert all("prefix=" not in msg.get("content", "") for msg in system_messages)
 def test_check_llm_async_uses_thread(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
     captured: dict[str, object] = {}

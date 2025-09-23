@@ -84,28 +84,16 @@ class MainFrameAgentMixin:
             for req_id in selected_ids:
                 requirement = model.get_by_id(req_id)
                 if requirement is None:
-                    lines.append(f"- id={req_id}")
+                    lines.append("- (missing requirement)")
                     continue
                 rid = getattr(requirement, "rid", "") or ""
-                rid = rid.strip()
-                req_prefix = (
-                    getattr(requirement, "doc_prefix", None)
-                    or prefix
-                    or ""
-                )
-                if not rid:
-                    rid = f"{req_prefix}{requirement.id}" if req_prefix else str(
-                        requirement.id
-                    )
+                rid = rid.strip() or "<missing RID>"
                 title = getattr(requirement, "title", "") or ""
                 title = title.strip()
-                header = f"- {rid} (id={requirement.id}"
-                if req_prefix:
-                    header += f", prefix={req_prefix}"
-                header += ")"
                 if title:
-                    header += f" — {title}"
-                lines.append(header)
+                    lines.append(f"- {rid} — {title}")
+                else:
+                    lines.append(f"- {rid}")
         else:
             lines.append("Selected requirements: (none)")
 

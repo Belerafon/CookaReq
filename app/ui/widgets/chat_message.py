@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import json
 from typing import Any, Callable
 
@@ -99,6 +100,8 @@ class MessageBubble(wx.Panel):
         display_text = normalize_for_display(text)
         self._text_value = display_text
         self._wrap_width = 0
+        self._bubble_max_width_ratio = 0.85
+        self._bubble_margin = self.FromDIP(48)
         self._content_padding = self.FromDIP(12)
         self._copy_menu_id = wx.Window.NewControlId()
         self.Bind(wx.EVT_MENU, self._on_copy, id=self._copy_menu_id)
@@ -142,6 +145,13 @@ class MessageBubble(wx.Panel):
         self._bubble_corner_radius: float = max(float(self.FromDIP(8)), 2.0)
         bubble_sizer = wx.BoxSizer(wx.VERTICAL)
         bubble.SetSizer(bubble_sizer)
+        self._bubble = bubble
+        self._min_bubble_width = (
+            self.FromDIP(160)
+            if allow_selection or render_markdown
+            else self.FromDIP(120)
+        )
+        self._cached_width_constraints: tuple[int, int] | None = None
 
         header_text = role_label if not timestamp else f"{role_label} • {timestamp}"
         header_align_flag = wx.ALIGN_RIGHT if align == "right" else 0
@@ -266,9 +276,18 @@ class MessageBubble(wx.Panel):
         for target in footer_targets:
             self._attach_context_menu_handlers(target)
 
-        outer.Add(bubble, 0, wx.EXPAND)
+        alignment_row = wx.BoxSizer(wx.HORIZONTAL)
+        if align == "right":
+            alignment_row.AddStretchSpacer()
+            alignment_row.Add(bubble, 0, wx.ALIGN_RIGHT)
+        else:
+            alignment_row.Add(bubble, 0, wx.ALIGN_LEFT)
+            alignment_row.AddStretchSpacer()
+        outer.Add(alignment_row, 1, wx.EXPAND)
 
         self.SetSizer(outer)
+        self.Bind(wx.EVT_SIZE, self._on_panel_resize)
+        wx.CallAfter(self._update_width_constraints)
 
     def _on_bubble_erase_background(self, event: wx.EraseEvent) -> None:
         event.Skip(False)
@@ -321,6 +340,7 @@ class MessageBubble(wx.Panel):
         elif isinstance(self._text, wx.TextCtrl):
             self._text.SetMinSize(wx.Size(width, -1))
             self._text.Layout()
+        self._cached_width_constraints = None
 
     def _create_copy_button(self, parent: wx.Window) -> wx.Window:
         icon_size = self.FromDIP(16)
@@ -388,6 +408,81 @@ class MessageBubble(wx.Panel):
             except Exception:  # pragma: no cover - defensive
                 return ""
         return ""
+
+    def _on_panel_resize(self, event: wx.SizeEvent) -> None:
+        event.Skip()
+        self._update_width_constraints()
+
+    def _update_width_constraints(self) -> None:
+        parent = self.GetParent()
+        if parent is None:
+            return
+        parent_width = parent.GetClientSize().width
+        if parent_width <= 0:
+            return
+
+        max_width = int(parent_width * self._bubble_max_width_ratio)
+        max_width = min(max_width, parent_width - self._bubble_margin)
+        max_width = max(max_width, self._min_bubble_width)
+        max_width = min(max_width, parent_width)
+        if max_width <= 0:
+            return
+
+        content_width = self._estimate_content_width()
+        padded_content = content_width + 2 * self._content_padding
+        char_count = len(self._text_value)
+        growth_threshold = 360
+        ratio = math.sqrt(char_count / growth_threshold) if growth_threshold else 1.0
+        ratio = max(0.0, min(ratio, 1.0))
+        target_from_chars = self._min_bubble_width + int((max_width - self._min_bubble_width) * ratio)
+        target_width = max(self._min_bubble_width, padded_content, target_from_chars)
+        target_width = min(target_width, max_width)
+
+        cached = self._cached_width_constraints
+        if cached is not None and cached == (target_width, max_width):
+            return
+        self._cached_width_constraints = (target_width, max_width)
+
+        self._bubble.SetMinSize(wx.Size(target_width, -1))
+        self._bubble.SetMaxSize(wx.Size(max_width, -1))
+        self._bubble.SetInitialSize(wx.Size(target_width, -1))
+        bubble_sizer = self._bubble.GetSizer()
+        if bubble_sizer is not None:
+            bubble_sizer.Layout()
+        container_sizer = self.GetSizer()
+        if container_sizer is not None:
+            container_sizer.Layout()
+        self.Layout()
+
+    def _estimate_content_width(self) -> int:
+        if not self._text_value:
+            return 0
+
+        font: wx.Font | None = None
+        if isinstance(self._text, wx.Window):
+            candidate = self._text.GetFont()
+            if candidate.IsOk():
+                font = candidate
+        if font is None or not font.IsOk():
+            font = self.GetFont()
+        if font is None or not font.IsOk():
+            font = wx.SystemSettings.GetFont(wx.SYS_DEFAULT_GUI_FONT)
+
+        text = self._text_value
+        lines = text.splitlines() or [text]
+
+        bitmap = wx.Bitmap(1, 1)
+        dc = wx.MemoryDC()
+        dc.SelectObject(bitmap)
+        dc.SetFont(font)
+
+        max_width = 0
+        for line in lines:
+            width, _ = dc.GetTextExtent(line or " ")
+            if width > max_width:
+                max_width = width
+        dc.SelectObject(wx.NullBitmap)
+        return max_width
 
 
 class TranscriptMessagePanel(wx.Panel):

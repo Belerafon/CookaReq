@@ -547,6 +547,10 @@ def test_respond_preserves_context_for_update(tmp_path: Path, monkeypatch) -> No
         "Selected requirements (1)" in msg.get("content", "")
         for msg in system_messages[1:]
     )
+    assert any(
+        "Selected requirement RID summary:" in msg.get("content", "")
+        for msg in system_messages[1:]
+    )
     assert all("(id=" not in msg.get("content", "") for msg in system_messages)
 
 
@@ -615,6 +619,10 @@ def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> No
     assert len(system_messages) >= 2
     assert any(
         "Selected requirements (2)" in msg.get("content", "")
+        for msg in system_messages[1:]
+    )
+    assert any(
+        "Selected requirement RID summary:" in msg.get("content", "")
         for msg in system_messages[1:]
     )
     assert all("prefix=" not in msg.get("content", "") for msg in system_messages)

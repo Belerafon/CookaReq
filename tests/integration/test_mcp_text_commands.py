@@ -239,6 +239,7 @@ def test_run_command_fetches_requirement_with_prefixed_rid(
     system_prompt = captured_messages[0][0]["content"]
     assert "<prefix><number>" in system_prompt
     assert "SYS11 — Содержимое первого требования." in system_prompt
+    assert "Selected requirement RID summary:" in system_prompt
 
 
 def test_mcp_endpoint_direct_call(tmp_path: Path, mcp_server) -> None:

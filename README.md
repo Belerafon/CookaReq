@@ -151,6 +151,17 @@ GUI tests use `pytest-xvfb`, so no display server is needed. Skip them with `pyt
 pytest -m smoke -q
 ```
 
+### Real LLM integration tests
+
+The default configuration (`pytest` runs with `--suite core`) skips checks that hit the live OpenRouter API. To exercise the integration end-to-end:
+
+```bash
+source .env  # loads OPEN_ROUTER
+COOKAREQ_RUN_REAL_LLM_TESTS=1 pytest --suite real-llm tests/integration/test_llm_openrouter_integration.py::test_openrouter_check_llm -q
+```
+
+The opt-in flag prevents accidental network calls in CI. Without both the environment variable and an API key the test is skipped automatically.
+
 ### Linting
 
 `ruff` is configured via `pyproject.toml`. Run it before committing:

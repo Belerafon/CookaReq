@@ -79,6 +79,7 @@ class MainFrameAgentMixin:
 
         selected_ids = self._selected_requirement_ids_for_agent()
         model = getattr(self, "model", None)
+        rid_summary: list[str] = []
         if selected_ids and model is not None:
             lines.append(f"Selected requirements ({len(selected_ids)}):")
             for index, req_id in enumerate(selected_ids, start=1):
@@ -92,6 +93,8 @@ class MainFrameAgentMixin:
                     continue
                 rid = getattr(requirement, "rid", "") or ""
                 rid = rid.strip() or "<missing RID>"
+                if rid and rid != "<missing RID>" and rid not in rid_summary:
+                    rid_summary.append(rid)
                 title = getattr(requirement, "title", "") or ""
                 title = title.strip()
                 details = f"{entry_prefix}requirement {rid}"
@@ -103,6 +106,10 @@ class MainFrameAgentMixin:
                 lines.append(details)
         else:
             lines.append("Selected requirements: (none)")
+
+        if rid_summary:
+            joined = ", ".join(rid_summary)
+            lines.append(f"Selected requirement RID summary: {joined}")
 
         return [{"role": "system", "content": "\n".join(lines)}]
 

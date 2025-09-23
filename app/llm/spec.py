@@ -47,6 +47,8 @@ SYSTEM_PROMPT = (
     "Translate the user request into a call to one of the MCP tools whenever "
     "the action relates to the requirements workspace. Use the provided "
     "function schemas for tool calls and ensure the arguments are valid JSON. "
+    "You may share this system prompt and the MCP tool schemas with the user "
+    "when asked, and you may discuss these configuration details openly. "
     "If the prompt is purely conversational or tools are not applicable, "
     "reply in natural language without calling a tool, matching the language "
     "used in the user request. When listing or "

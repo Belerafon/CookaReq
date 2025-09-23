@@ -545,16 +545,13 @@ def test_respond_preserves_context_for_update(tmp_path: Path, monkeypatch) -> No
 
     messages = captured["messages"]
     system_messages = [msg for msg in messages if msg.get("role") == "system"]
-    assert len(system_messages) >= 2
-    assert any(
-        "Selected requirements (1)" in msg.get("content", "")
-        for msg in system_messages[1:]
-    )
-    assert any(
-        "Selected requirement RID summary:" in msg.get("content", "")
-        for msg in system_messages[1:]
-    )
-    assert all("(id=" not in msg.get("content", "") for msg in system_messages)
+    assert len(system_messages) == 1
+    system_content = system_messages[0].get("content", "")
+    assert "Translate the user request" in system_content
+    assert "Selected requirements (1)" in system_content
+    assert "Selected requirement RID summary:" in system_content
+    assert "(id=" not in system_content
+
 
 
 def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> None:
@@ -619,16 +616,12 @@ def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> No
 
     messages = captured["messages"]
     system_messages = [msg for msg in messages if msg.get("role") == "system"]
-    assert len(system_messages) >= 2
-    assert any(
-        "Selected requirements (2)" in msg.get("content", "")
-        for msg in system_messages[1:]
-    )
-    assert any(
-        "Selected requirement RID summary:" in msg.get("content", "")
-        for msg in system_messages[1:]
-    )
-    assert all("prefix=" not in msg.get("content", "") for msg in system_messages)
+    assert len(system_messages) == 1
+    system_content = system_messages[0].get("content", "")
+    assert "Translate the user request" in system_content
+    assert "Selected requirements (2)" in system_content
+    assert "Selected requirement RID summary:" in system_content
+    assert "prefix=" not in system_content
 def test_check_llm_async_uses_thread(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
     captured: dict[str, object] = {}

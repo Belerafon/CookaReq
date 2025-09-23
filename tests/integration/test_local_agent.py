@@ -499,7 +499,10 @@ def test_run_command_includes_context_messages():
 
     llm = RecordingLLM()
     agent = LocalAgent(llm=llm, mcp=PassiveMCP())
-    context_message = {"role": "system", "content": "Selected requirements (1): - SYS-1"}
+    context_message = {
+        "role": "system",
+        "content": "Selected requirements (1): - SYS-1 — Demo",
+    }
 
     agent.run_command("выполни", context=context_message)
     assert llm.conversations[0][-2] == context_message
@@ -508,13 +511,18 @@ def test_run_command_includes_context_messages():
     async def exercise() -> None:
         await agent.run_command_async(
             "повтори",
-            context=[{"role": "system", "content": "Selected requirements: - SYS-2"}],
+            context=[
+                {
+                    "role": "system",
+                    "content": "Selected requirements: - SYS-2 — Secondary",
+                }
+            ],
         )
 
     asyncio.run(exercise())
     assert llm.conversations[1][-2] == {
         "role": "system",
-        "content": "Selected requirements: - SYS-2",
+        "content": "Selected requirements: - SYS-2 — Secondary",
     }
     assert llm.conversations[1][-1] == {"role": "user", "content": "повтори"}
 

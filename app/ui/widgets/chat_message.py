@@ -58,7 +58,7 @@ def _soften_user_highlight(
 
     if not background.IsOk():
         background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
-    weight = 0.55 if not _is_dark_colour(background) else 0.3
+    weight = 0.7 if not _is_dark_colour(background) else 0.45
     return _blend_colour(highlight, background, weight)
 
 
@@ -116,7 +116,9 @@ class MessageBubble(wx.Panel):
         agent_bg = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
         agent_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT)
 
-        if align == "right":
+        is_user_message = align == "right"
+
+        if is_user_message:
             bubble_bg = _soften_user_highlight(
                 user_highlight,
                 background=parent_background,
@@ -163,6 +165,22 @@ class MessageBubble(wx.Panel):
         )
 
         base_font = self.GetFont()
+        message_font: wx.Font | None = None
+        if base_font.IsOk():
+            if is_user_message:
+                try:
+                    user_font = wx.Font(base_font)
+                except Exception:
+                    message_font = base_font
+                else:
+                    try:
+                        user_font.MakeLarger()
+                    except Exception:
+                        message_font = base_font
+                    else:
+                        message_font = user_font if user_font.IsOk() else base_font
+            else:
+                message_font = base_font
 
         if allow_selection:
             if render_markdown:
@@ -175,8 +193,8 @@ class MessageBubble(wx.Panel):
                     foreground_colour=bubble_fg,
                 )
                 markdown.SetMinSize(wx.Size(self.FromDIP(160), -1))
-                if base_font.IsOk():
-                    markdown.SetFont(base_font)
+                if message_font is not None and message_font.IsOk():
+                    markdown.SetFont(message_font)
                 self._text = markdown
 
                 self._selection_checker = markdown.HasSelection
@@ -193,8 +211,8 @@ class MessageBubble(wx.Panel):
                 text_ctrl.SetBackgroundColour(bubble_bg)
                 text_ctrl.SetForegroundColour(bubble_fg)
                 text_ctrl.SetMinSize(wx.Size(self.FromDIP(160), -1))
-                if base_font.IsOk():
-                    text_ctrl.SetFont(base_font)
+                if message_font is not None and message_font.IsOk():
+                    text_ctrl.SetFont(message_font)
                 self._text = text_ctrl
 
                 def has_selection(tc: wx.TextCtrl = text_ctrl) -> bool:
@@ -208,8 +226,8 @@ class MessageBubble(wx.Panel):
             self._text = wx.StaticText(bubble, label=display_text, style=text_align_flag)
             self._text.SetForegroundColour(bubble_fg)
             self._text.SetBackgroundColour(bubble_bg)
-            if base_font.IsOk():
-                self._text.SetFont(base_font)
+            if message_font is not None and message_font.IsOk():
+                self._text.SetFont(message_font)
             self._text.Wrap(self.FromDIP(320))
         bubble_sizer.Add(
             self._text,

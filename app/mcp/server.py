@@ -290,10 +290,10 @@ def set_requirement_links(
 
 
 @register_tool()
-def delete_requirement(rid: str, *, rev: int) -> dict | None:
-    """Delete a requirement if revision matches."""
+def delete_requirement(rid: str) -> dict | None:
+    """Delete a requirement."""
     directory = app.state.base_path
-    return tools_write.delete_requirement(directory, rid, rev=rev)
+    return tools_write.delete_requirement(directory, rid)
 
 
 @register_tool()
@@ -302,7 +302,6 @@ def link_requirements(
     source_rid: str,
     derived_rid: str,
     link_type: str,
-    rev: int,
 ) -> dict:
     """Link one requirement to another."""
     directory = app.state.base_path
@@ -311,7 +310,6 @@ def link_requirements(
         source_rid=source_rid,
         derived_rid=derived_rid,
         link_type=link_type,
-        rev=rev,
     )
 
 

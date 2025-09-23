@@ -198,22 +198,22 @@ def set_requirement_links(
     return log_tool("set_requirement_links", params, _result_payload(req))
 
 
-def delete_requirement(directory: str | Path, rid: str, *, rev: int) -> dict:
-    """Delete requirement *rid* if revision matches."""
-    params = {"directory": str(directory), "rid": rid, "rev": rev}
+def delete_requirement(directory: str | Path, rid: str) -> dict:
+    """Delete requirement *rid* from the document store."""
+    params = {"directory": str(directory), "rid": rid}
     try:
-        doc_store.delete_requirement(directory, rid, expected_revision=rev)
+        doc_store.delete_requirement(directory, rid)
     except ValueError as exc:
         return log_tool(
             "delete_requirement",
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
         )
-    except doc_store.RevisionMismatchError as exc:
+    except doc_store.ValidationError as exc:
         return log_tool(
             "delete_requirement",
             params,
-            mcp_error(ErrorCode.CONFLICT, str(exc)),
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
         )
     except doc_store.RequirementNotFoundError as exc:
         return log_tool(
@@ -234,7 +234,6 @@ def link_requirements(
     source_rid: str,
     derived_rid: str,
     link_type: str,
-    rev: int,
 ) -> dict:
     """Link *derived_rid* to *source_rid* when hierarchy permits."""
     params = {
@@ -242,7 +241,6 @@ def link_requirements(
         "source_rid": source_rid,
         "derived_rid": derived_rid,
         "link_type": link_type,
-        "rev": rev,
     }
     try:
         req = doc_store.link_requirements(
@@ -250,19 +248,12 @@ def link_requirements(
             source_rid=source_rid,
             derived_rid=derived_rid,
             link_type=link_type,
-            expected_revision=rev,
         )
     except doc_store.ValidationError as exc:
         return log_tool(
             "link_requirements",
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
-        )
-    except doc_store.RevisionMismatchError as exc:
-        return log_tool(
-            "link_requirements",
-            params,
-            mcp_error(ErrorCode.CONFLICT, str(exc)),
         )
     except doc_store.RequirementNotFoundError as exc:
         return log_tool(

@@ -550,7 +550,7 @@ def test_custom_confirm_message(monkeypatch):
                         LLMToolCall(
                             id="call-0",
                             name="delete_requirement",
-                            arguments={"rid": "SYS-1", "rev": 3},
+                            arguments={"rid": "SYS-1"},
                         ),
                     ),
                 )

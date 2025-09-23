@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from ..model import Link, Requirement, requirement_fingerprint, requirement_from_dict, requirement_to_dict
-from . import Document, RevisionMismatchError, ValidationError
+from . import Document, ValidationError
 from .documents import is_ancestor, load_documents
 from .items import (
     _ensure_documents,
@@ -233,7 +233,6 @@ def link_requirements(
     source_rid: str,
     derived_rid: str,
     link_type: str,
-    expected_revision: int,
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
     """Link ``derived_rid`` to ``source_rid`` when hierarchy permits."""
@@ -271,8 +270,6 @@ def link_requirements(
         raise ValidationError("revision must be an integer") from exc
     if current <= 0:
         raise ValidationError("revision must be positive")
-    if current != expected_revision:
-        raise RevisionMismatchError(expected_revision, current)
 
     existing_raw = data.get("links")
     existing_links: dict[str, Link] = {}

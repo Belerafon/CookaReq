@@ -18,7 +18,6 @@ from app.core.document_store import (
     DocumentNotFoundError,
     RequirementIDCollisionError,
     RequirementNotFoundError,
-    RevisionMismatchError,
     ValidationError,
     create_requirement,
     delete_document,
@@ -452,7 +451,6 @@ def cmd_item_move(args: argparse.Namespace) -> None:
             args.rid,
             new_prefix=args.new_prefix,
             payload=payload,
-            expected_revision=current.revision,
         )
     except DocumentNotFoundError:
         sys.stdout.write(
@@ -463,9 +461,6 @@ def cmd_item_move(args: argparse.Namespace) -> None:
         sys.stdout.write(_("requirement not found: {rid}\n").format(rid=args.rid))
         return
     except RequirementIDCollisionError as exc:
-        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
-    except RevisionMismatchError as exc:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
         return
     except ValidationError as exc:

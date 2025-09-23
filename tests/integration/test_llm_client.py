@@ -566,14 +566,14 @@ def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> No
                                     SimpleNamespace(
                                         function=SimpleNamespace(
                                             name="delete_requirement",
-                                            arguments=json.dumps({"rid": "SYS-2", "rev": 1}),
+                                            arguments=json.dumps({"rid": "SYS-2"}),
                                         ),
                                         id="call-0",
                                     ),
                                     SimpleNamespace(
                                         function=SimpleNamespace(
                                             name="delete_requirement",
-                                            arguments=json.dumps({"rid": "SYS-3", "rev": 1}),
+                                            arguments=json.dumps({"rid": "SYS-3"}),
                                         ),
                                         id="call-1",
                                     ),

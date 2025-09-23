@@ -162,7 +162,7 @@ def test_call_tool_delete_requires_confirmation(monkeypatch) -> None:
 
     monkeypatch.setattr(MCPClient, "_request_sync", fail_request)
 
-    res = client.call_tool("delete_requirement", {"rid": "SYS1", "rev": 1})
+    res = client.call_tool("delete_requirement", {"rid": "SYS1"})
     assert res["ok"] is False
     assert res["error"]["code"] == "CANCELLED"
     assert called["msg"] is not None

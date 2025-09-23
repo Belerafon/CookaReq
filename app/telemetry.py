@@ -50,6 +50,7 @@ def log_event(
     payload: Mapping[str, Any] | None = None,
     *,
     start_time: float | None = None,
+    level: int = logging.INFO,
 ) -> None:
     """Log an event to the application logger.
 
@@ -63,6 +64,8 @@ def log_event(
     start_time:
         Optional monotonic start time; if provided the elapsed time in
         milliseconds is included in the log entry.
+    level:
+        Logging level used for the emitted record. Defaults to ``logging.INFO``.
     """
 
     data: dict[str, Any] = {"event": event}
@@ -78,7 +81,7 @@ def log_event(
         data["size_bytes"] = 0
     if start_time is not None:
         data["duration_ms"] = int((time.monotonic() - start_time) * 1000)
-    logger.info(event, extra={"json": data})
+    logger.log(level, event, extra={"json": data})
 
 
 def log_debug_payload(

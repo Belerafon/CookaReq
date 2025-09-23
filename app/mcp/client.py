@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import json
 import time
 from collections.abc import Callable, Mapping
@@ -36,7 +37,6 @@ class MCPNotReadyError(ConnectionError):
 class MCPClient:
     """Simple HTTP client for the MCP server."""
 
-    _READY_CACHE_TTL = 5.0
     _REQUEST_TIMEOUT = httpx.Timeout(5.0)
     _UPDATE_TOOLS = {
         "update_requirement_field",
@@ -518,12 +518,10 @@ class MCPClient:
     def ensure_ready(self, *, force: bool = False) -> None:
         """Raise :class:`MCPNotReadyError` if the MCP server is unavailable."""
 
-        now = time.monotonic()
         if (
             not force
             and self._last_ready_ok
             and self._last_ready_check is not None
-            and now - self._last_ready_check < self._READY_CACHE_TTL
         ):
             return
 
@@ -535,7 +533,7 @@ class MCPClient:
         headers = self._headers()
 
         start = time.monotonic()
-        log_event("HEALTH_CHECK", {"params": params})
+        log_event("HEALTH_CHECK", {"params": params}, level=logging.DEBUG)
         log_debug_payload(
             "MCP_HEALTH_REQUEST",
             {
@@ -589,7 +587,12 @@ class MCPClient:
                 self._update_ready_state(False, error)
                 raise MCPNotReadyError(error) from exc
             if isinstance(data, Mapping) and data.get("status") == "ok":
-                log_event("HEALTH_RESULT", {"ok": True}, start_time=start)
+                log_event(
+                    "HEALTH_RESULT",
+                    {"ok": True},
+                    start_time=start,
+                    level=logging.DEBUG,
+                )
                 self._update_ready_state(True, None)
                 return
             error = self._health_error(
@@ -618,12 +621,10 @@ class MCPClient:
     async def ensure_ready_async(self, *, force: bool = False) -> None:
         """Asynchronous counterpart to :meth:`ensure_ready`."""
 
-        now = time.monotonic()
         if (
             not force
             and self._last_ready_ok
             and self._last_ready_check is not None
-            and now - self._last_ready_check < self._READY_CACHE_TTL
         ):
             return
 
@@ -635,7 +636,7 @@ class MCPClient:
         headers = self._headers()
 
         start = time.monotonic()
-        log_event("HEALTH_CHECK", {"params": params})
+        log_event("HEALTH_CHECK", {"params": params}, level=logging.DEBUG)
         log_debug_payload(
             "MCP_HEALTH_REQUEST",
             {
@@ -689,7 +690,12 @@ class MCPClient:
                 self._update_ready_state(False, error)
                 raise MCPNotReadyError(error) from exc
             if isinstance(data, Mapping) and data.get("status") == "ok":
-                log_event("HEALTH_RESULT", {"ok": True}, start_time=start)
+                log_event(
+                    "HEALTH_RESULT",
+                    {"ok": True},
+                    start_time=start,
+                    level=logging.DEBUG,
+                )
                 self._update_ready_state(True, None)
                 return
             error = self._health_error(

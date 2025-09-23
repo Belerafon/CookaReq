@@ -10,6 +10,7 @@ import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -19,7 +20,12 @@ import wx
 import wx.dataview as dv
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from ..confirm import confirm
+from ..confirm import (
+    ConfirmDecision,
+    RequirementUpdatePrompt,
+    confirm,
+    reset_requirement_update_preference,
+)
 from ..i18n import _
 from ..llm.spec import SYSTEM_PROMPT, TOOLS
 from ..llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
@@ -109,6 +115,14 @@ def _looks_like_tool_payload(payload: Mapping[str, Any]) -> bool:
     return any(key in payload for key in tool_keys)
 
 
+class RequirementConfirmPreference(Enum):
+    """Supported confirmation policies for agent-driven operations."""
+
+    PROMPT = "prompt"
+    CHAT_ONLY = "chat_only"
+    NEVER = "never"
+
+
 class AgentCommandExecutor(Protocol):
     """Simple protocol for running agent commands asynchronously."""
 
@@ -188,7 +202,7 @@ class AgentChatPanel(wx.Panel):
         self,
         parent: wx.Window,
         *,
-        agent_supplier: Callable[[], LocalAgent],
+        agent_supplier: Callable[..., LocalAgent],
         history_path: Path | str | None = None,
         command_executor: AgentCommandExecutor | None = None,
         token_model_resolver: Callable[[], str | None] | None = None,
@@ -196,6 +210,8 @@ class AgentChatPanel(wx.Panel):
             [], Mapping[str, Any] | Sequence[Mapping[str, Any]] | None
         ] | None = None,
         context_window_resolver: Callable[[], int | None] | None = None,
+        confirm_preference: RequirementConfirmPreference | str | None = None,
+        persist_confirm_preference: Callable[[str], None] | None = None,
     ) -> None:
         """Create panel bound to ``agent_supplier``."""
 
@@ -250,6 +266,21 @@ class AgentChatPanel(wx.Panel):
         self._run_counter = 0
         self._active_run_handle: _AgentRunHandle | None = None
         self._context_provider = context_provider
+        self._persist_confirm_preference_callback = persist_confirm_preference
+        persistent_preference = self._normalize_confirm_preference(confirm_preference)
+        if persistent_preference is RequirementConfirmPreference.CHAT_ONLY:
+            persistent_preference = RequirementConfirmPreference.PROMPT
+        self._persistent_confirm_preference = persistent_preference
+        self._confirm_preference = persistent_preference
+        self._auto_confirm_overrides: dict[str, Any] | None = None
+        self._confirm_choice: wx.Choice | None = None
+        self._confirm_choice_index: dict[
+            RequirementConfirmPreference, int
+        ] = {}
+        self._confirm_choice_entries: tuple[
+            tuple[RequirementConfirmPreference, str], ...
+        ] = ()
+        self._suppress_confirm_choice_events = False
         self._load_history()
 
         self._build_ui()
@@ -323,6 +354,123 @@ class AgentChatPanel(wx.Panel):
             return None
         text = model.strip()
         return text or None
+
+    # ------------------------------------------------------------------
+    def _normalize_confirm_preference(
+        self,
+        value: RequirementConfirmPreference | str | None,
+    ) -> RequirementConfirmPreference:
+        """Convert *value* into a recognised confirmation preference."""
+
+        if isinstance(value, RequirementConfirmPreference):
+            return value
+        if isinstance(value, str):
+            text = value.strip().lower()
+            if text == RequirementConfirmPreference.NEVER.value:
+                return RequirementConfirmPreference.NEVER
+            if text == RequirementConfirmPreference.CHAT_ONLY.value:
+                return RequirementConfirmPreference.CHAT_ONLY
+        return RequirementConfirmPreference.PROMPT
+
+    def _persist_confirm_preference(
+        self, preference: RequirementConfirmPreference
+    ) -> None:
+        callback = self._persist_confirm_preference_callback
+        if callback is None:
+            return
+        try:
+            callback(preference.value)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to persist agent confirmation preference to config"
+            )
+
+    def _update_confirm_choice_ui(
+        self, preference: RequirementConfirmPreference
+    ) -> None:
+        choice = self._confirm_choice
+        if choice is None:
+            return
+        index = self._confirm_choice_index.get(preference)
+        if index is None or choice.GetSelection() == index:
+            return
+        self._suppress_confirm_choice_events = True
+        try:
+            choice.SetSelection(index)
+        finally:
+            self._suppress_confirm_choice_events = False
+
+    def _set_confirm_preference(
+        self,
+        preference: RequirementConfirmPreference,
+        *,
+        persist: bool,
+        update_ui: bool = True,
+    ) -> None:
+        if preference is RequirementConfirmPreference.CHAT_ONLY:
+            self._confirm_preference = preference
+        else:
+            self._persistent_confirm_preference = preference
+            self._confirm_preference = preference
+            if persist:
+                self._persist_confirm_preference(preference)
+        if update_ui:
+            self._update_confirm_choice_ui(self._confirm_preference)
+        if preference is RequirementConfirmPreference.PROMPT:
+            reset_requirement_update_preference()
+
+    def _confirm_override_kwargs(self) -> dict[str, Any]:
+        if self._confirm_preference is RequirementConfirmPreference.PROMPT:
+            return {}
+        overrides = self._auto_confirm_overrides
+        if overrides is None:
+            
+            def _auto_confirm(_message: str) -> bool:
+                return True
+
+            def _auto_confirm_update(
+                _prompt: RequirementUpdatePrompt,
+            ) -> ConfirmDecision:
+                return ConfirmDecision.YES
+
+            overrides = {
+                "confirm_override": _auto_confirm,
+                "confirm_requirement_update_override": _auto_confirm_update,
+            }
+            self._auto_confirm_overrides = overrides
+        return overrides
+
+    def _on_confirm_choice(self, event: wx.CommandEvent) -> None:
+        if self._suppress_confirm_choice_events:
+            event.Skip()
+            return
+        selection = event.GetSelection()
+        entries = self._confirm_choice_entries
+        if not isinstance(selection, int) or not (0 <= selection < len(entries)):
+            event.Skip()
+            return
+        preference = entries[selection][0]
+        persist = preference is not RequirementConfirmPreference.CHAT_ONLY
+        self._set_confirm_preference(
+            preference, persist=persist, update_ui=False
+        )
+        event.Skip()
+
+    def _on_active_conversation_changed(
+        self, previous_id: str | None, new_id: str | None
+    ) -> None:
+        if previous_id == new_id:
+            return
+        if self._confirm_preference is RequirementConfirmPreference.CHAT_ONLY:
+            self._set_confirm_preference(
+                self._persistent_confirm_preference, persist=False
+            )
+
+    @property
+    def confirmation_preference(self) -> str:
+        """Return current confirmation policy as a string key."""
+
+        return self._confirm_preference.value
 
     # ------------------------------------------------------------------
     def focus_input(self) -> None:
@@ -478,10 +626,42 @@ class AgentChatPanel(wx.Panel):
         self.activity.SetToolTip(STATUS_HELP_TEXT)
         self.status_label.SetToolTip(STATUS_HELP_TEXT)
 
+        confirm_entries: tuple[
+            tuple[RequirementConfirmPreference, str], ...
+        ] = (
+            (RequirementConfirmPreference.PROMPT, _("Ask every time")),
+            (
+                RequirementConfirmPreference.CHAT_ONLY,
+                _("Skip for this chat"),
+            ),
+            (RequirementConfirmPreference.NEVER, _("Never ask")),
+        )
+        self._confirm_choice_entries = confirm_entries
+        confirm_choice = wx.Choice(
+            bottom_panel,
+            choices=[label for _pref, label in confirm_entries],
+        )
+        self._confirm_choice = confirm_choice
+        self._confirm_choice_index = {
+            pref: idx for idx, (pref, _label) in enumerate(confirm_entries)
+        }
+        confirm_choice.Bind(wx.EVT_CHOICE, self._on_confirm_choice)
+        confirm_label = wx.StaticText(
+            bottom_panel, label=_("Requirement confirmations")
+        )
+        confirm_box = wx.BoxSizer(wx.HORIZONTAL)
+        confirm_box.Add(
+            confirm_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, dip(self, 4)
+        )
+        confirm_box.Add(confirm_choice, 0, wx.ALIGN_CENTER_VERTICAL)
+
         controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
         controls_sizer.Add(status_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
         controls_sizer.AddStretchSpacer()
+        controls_sizer.Add(confirm_box, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         controls_sizer.Add(button_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        self._update_confirm_choice_ui(self._confirm_preference)
 
         bottom_sizer.Add(input_label, 0)
         bottom_sizer.AddSpacer(spacing)
@@ -743,7 +923,8 @@ class AgentChatPanel(wx.Panel):
 
         def worker() -> Any:
             try:
-                agent = self._agent_supplier()
+                overrides = self._confirm_override_kwargs()
+                agent = self._agent_supplier(**overrides)
                 return agent.run_command(
                     normalized_prompt,
                     history=history_messages,
@@ -850,6 +1031,7 @@ class AgentChatPanel(wx.Panel):
             self._active_conversation_id is not None
             and self._active_conversation_id in ids_to_remove
         )
+        previous_id = self._active_conversation_id
         remaining = [
             conv for conv in self.conversations if conv.conversation_id not in ids_to_remove
         ]
@@ -864,6 +1046,7 @@ class AgentChatPanel(wx.Panel):
                 ].conversation_id
         else:
             self._active_conversation_id = None
+        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
         self._save_history()
         self._refresh_history_list()
         self._render_transcript()
@@ -2220,8 +2403,10 @@ class AgentChatPanel(wx.Panel):
             self.transcript_panel.ScrollChildIntoView(window)
 
     def _load_history(self) -> None:
+        previous_id = self._active_conversation_id
         self.conversations = []
         self._active_conversation_id = None
+        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
         try:
             raw = json.loads(self._history_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
@@ -2251,9 +2436,12 @@ class AgentChatPanel(wx.Panel):
         if isinstance(active_id, str) and any(
             conv.conversation_id == active_id for conv in self.conversations
         ):
-            self._active_conversation_id = active_id
+            new_id = active_id
         else:
-            self._active_conversation_id = self.conversations[-1].conversation_id
+            new_id = self.conversations[-1].conversation_id
+        previous_id = self._active_conversation_id
+        self._active_conversation_id = new_id
+        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
 
     def _save_history(self) -> None:
         self._history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2293,9 +2481,11 @@ class AgentChatPanel(wx.Panel):
             return None
 
     def _create_conversation(self, *, persist: bool) -> ChatConversation:
+        previous_id = self._active_conversation_id
         conversation = ChatConversation.new()
         self.conversations.append(conversation)
         self._active_conversation_id = conversation.conversation_id
+        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
         self._refresh_history_list()
         self._render_transcript()
         if persist:
@@ -2392,7 +2582,9 @@ class AgentChatPanel(wx.Panel):
         if not (0 <= index < len(self.conversations)):
             return
         conversation = self.conversations[index]
+        previous_id = self._active_conversation_id
         self._active_conversation_id = conversation.conversation_id
+        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
         if persist:
             self._save_history()
         if refresh_history:

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import wx
 
 from ...agent import LocalAgent
+from ...confirm import ConfirmDecision, RequirementUpdatePrompt
 from ...settings import AppSettings
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
@@ -16,13 +17,26 @@ if TYPE_CHECKING:  # pragma: no cover - import for type checking only
 class MainFrameAgentMixin:
     """Provide agent chat integration and shortcuts."""
 
-    def _create_agent(self: "MainFrame") -> LocalAgent:
+    def _create_agent(
+        self: "MainFrame",
+        *,
+        confirm_override: Callable[[str], bool] | None = None,
+        confirm_requirement_update_override: Callable[
+            [RequirementUpdatePrompt], ConfirmDecision
+        ]
+        | None = None,
+    ) -> LocalAgent:
         """Construct ``LocalAgent`` using current settings."""
 
         from . import confirm
 
         settings = AppSettings(llm=self.llm_settings, mcp=self.mcp_settings)
-        return LocalAgent(settings=settings, confirm=confirm)
+        confirm_callback = confirm_override or confirm
+        return LocalAgent(
+            settings=settings,
+            confirm=confirm_callback,
+            confirm_requirement_update=confirm_requirement_update_override,
+        )
 
     def _selected_requirement_ids_for_agent(self: "MainFrame") -> list[int]:
         ids: list[int] = []

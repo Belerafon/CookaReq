@@ -4,6 +4,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 
 from app.llm.tokenizer import TokenCountResult
+from app.ui.agent_chat_panel import RequirementConfirmPreference
 
 import pytest
 
@@ -39,6 +40,8 @@ def create_panel(
     executor=None,
     context_provider=None,
     context_window=4096,
+    confirm_preference=None,
+    persist_confirm_preference=None,
 ):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
@@ -51,6 +54,8 @@ def create_panel(
         command_executor=executor or SynchronousAgentCommandExecutor(),
         context_provider=context_provider,
         context_window_resolver=lambda: context_window,
+        confirm_preference=confirm_preference,
+        persist_confirm_preference=persist_confirm_preference,
     )
     return wx, frame, panel
 
@@ -212,6 +217,81 @@ def test_agent_chat_panel_handles_error(tmp_path, wx_app):
     assert entry.token_info.tokens >= 1
 
     destroy_panel(frame, panel)
+
+
+def test_confirmation_preference_resets_on_chat_switch(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None):
+            return {"ok": True, "result": text, "error": None}
+
+    persisted: list[str] = []
+
+    wx, frame, panel = create_panel(
+        tmp_path,
+        wx_app,
+        DummyAgent(),
+        confirm_preference="prompt",
+        persist_confirm_preference=persisted.append,
+    )
+
+    try:
+        panel._ensure_active_conversation()
+        choice = panel._confirm_choice
+        assert choice is not None
+        index_map = panel._confirm_choice_index
+        chat_only_index = index_map[RequirementConfirmPreference.CHAT_ONLY]
+
+        choice.SetSelection(chat_only_index)
+        evt = wx.CommandEvent(wx.EVT_CHOICE.typeId, choice.GetId())
+        evt.SetEventObject(choice)
+        choice.GetEventHandler().ProcessEvent(evt)
+        flush_wx_events(wx)
+
+        assert (
+            panel.confirmation_preference
+            == RequirementConfirmPreference.CHAT_ONLY.value
+        )
+        assert persisted == []
+
+        panel._create_conversation(persist=False)
+        flush_wx_events(wx)
+        assert (
+            panel.confirmation_preference
+            == RequirementConfirmPreference.PROMPT.value
+        )
+
+        choice.SetSelection(chat_only_index)
+        evt = wx.CommandEvent(wx.EVT_CHOICE.typeId, choice.GetId())
+        evt.SetEventObject(choice)
+        choice.GetEventHandler().ProcessEvent(evt)
+        flush_wx_events(wx)
+
+        assert (
+            panel.confirmation_preference
+            == RequirementConfirmPreference.CHAT_ONLY.value
+        )
+
+        panel._activate_conversation_by_index(0)
+        flush_wx_events(wx)
+        assert (
+            panel.confirmation_preference
+            == RequirementConfirmPreference.PROMPT.value
+        )
+
+        never_index = index_map[RequirementConfirmPreference.NEVER]
+        choice.SetSelection(never_index)
+        evt = wx.CommandEvent(wx.EVT_CHOICE.typeId, choice.GetId())
+        evt.SetEventObject(choice)
+        choice.GetEventHandler().ProcessEvent(evt)
+        flush_wx_events(wx)
+
+        assert (
+            panel.confirmation_preference
+            == RequirementConfirmPreference.NEVER.value
+        )
+        assert persisted and persisted[-1] == RequirementConfirmPreference.NEVER.value
+    finally:
+        destroy_panel(frame, panel)
 
 
 def test_agent_chat_panel_applies_vertical_sash(tmp_path, wx_app):

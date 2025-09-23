@@ -338,7 +338,7 @@ def wx_confirm_requirement_update(
         always_btn = wx.Button(
             dialog,
             wx.ID_APPLY,
-            label=_("Always for this session (all requirements)"),
+            label=_("Always until restart (all requirements)"),
         )
         no_btn.SetDefault()
         no_btn.SetFocus()

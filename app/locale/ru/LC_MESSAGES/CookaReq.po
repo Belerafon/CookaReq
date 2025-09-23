@@ -576,8 +576,8 @@ msgstr "{index}. {op} ({details})"
 msgid "Confirm requirement update"
 msgstr "Подтвердите обновление требования"
 
-msgid "Always for this session (all requirements)"
-msgstr "Всегда для этой сессии для всех требований"
+msgid "Always until restart (all requirements)"
+msgstr "Всегда до перезапуска (для всех требований)"
 
 msgid "Verifies"
 msgstr "Проверяет"
@@ -1527,3 +1527,15 @@ msgstr "не записано"
 
 msgid "this chat"
 msgstr "этот чат"
+
+msgid "Ask every time"
+msgstr "Запрашивать каждый раз"
+
+msgid "Skip for this chat"
+msgstr "Не запрашивать для этого чата"
+
+msgid "Never ask"
+msgstr "Не запрашивать никогда"
+
+msgid "Requirement confirmations"
+msgstr "Подтверждения требований"

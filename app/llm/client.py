@@ -741,11 +741,25 @@ class LLMClient:
                     "history_token_budget": remaining,
                 },
             )
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            *trim_result.kept_messages,
-        ]
-        return messages
+        system_parts: list[str] = [SYSTEM_PROMPT]
+        ordered_messages: list[dict[str, Any]] = []
+        for message in trim_result.kept_messages:
+            role = message.get("role")
+            if role == "system":
+                content = message.get("content")
+                if isinstance(content, str) and content:
+                    system_parts.append(content)
+                continue
+            ordered_messages.append(message)
+
+        merged_system_message = {
+            "role": "system",
+            "content": "\n\n".join(
+                part for part in system_parts if isinstance(part, str) and part
+            ),
+        }
+
+        return [merged_system_message, *ordered_messages]
 
     def _sanitise_conversation(
         self,

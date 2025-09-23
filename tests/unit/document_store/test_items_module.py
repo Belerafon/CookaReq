@@ -96,7 +96,6 @@ def test_create_update_and_delete_requirement(
     deleted = delete_requirement(
         tmp_path,
         created.rid,
-        expected_revision=relabeled.revision,
         docs=docs,
     )
     assert deleted == created.rid
@@ -139,7 +138,6 @@ def test_move_requirement_updates_links(tmp_path: Path) -> None:
         tmp_path,
         parent.rid,
         new_prefix="HLR",
-        expected_revision=parent.revision,
         docs=docs,
     )
 

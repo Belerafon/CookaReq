@@ -33,15 +33,6 @@ class RequirementNotFoundError(RequirementError):
         super().__init__(f"requirement {rid} not found")
 
 
-class RevisionMismatchError(RequirementError):
-    """Raised when the caller provides an outdated revision."""
-
-    def __init__(self, expected: int, actual: int) -> None:
-        self.expected = expected
-        self.actual = actual
-        super().__init__(f"revision mismatch: expected {expected}, have {actual}")
-
-
 class RequirementIDCollisionError(RequirementError):
     """Raised when attempting to reuse an existing requirement identifier."""
 
@@ -157,7 +148,6 @@ __all__ = [
     "RequirementError",
     "DocumentNotFoundError",
     "RequirementNotFoundError",
-    "RevisionMismatchError",
     "RequirementIDCollisionError",
     "LabelDef",
     "DocumentLabels",

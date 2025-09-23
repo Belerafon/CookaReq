@@ -63,7 +63,6 @@ def test_validate_and_link(tmp_path: Path) -> None:
         source_rid="SYS1",
         derived_rid="HLR1",
         link_type="parent",
-        expected_revision=1,
         docs=docs,
     )
     assert len(linked.links) == 1
@@ -92,7 +91,6 @@ def test_validate_and_link(tmp_path: Path) -> None:
             source_rid="SYS1",
             derived_rid="HLR1",
             link_type="child",
-            expected_revision=1,
             docs=docs,
         )
 
@@ -113,7 +111,6 @@ def test_link_becomes_suspect_after_parent_change(tmp_path: Path) -> None:
         source_rid="SYS1",
         derived_rid="HLR2",
         link_type="parent",
-        expected_revision=1,
         docs=docs,
     )
     assert linked.links[0].suspect is False

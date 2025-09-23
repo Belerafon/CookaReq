@@ -31,7 +31,7 @@ def test_create_update_delete(tmp_path: Path) -> None:
     )
     assert res2["title"] == "N"
     assert res2["revision"] == 2
-    res3 = tools_write.delete_requirement(tmp_path, "SYS1", rev=res2["revision"])
+    res3 = tools_write.delete_requirement(tmp_path, "SYS1")
     assert res3 == {"rid": "SYS1"}
 
 
@@ -112,7 +112,6 @@ def test_link_requirements(tmp_path: Path) -> None:
         source_rid=parent["rid"],
         derived_rid=child["rid"],
         link_type="parent",
-        rev=1,
     )
     assert any(entry["rid"] == parent["rid"] for entry in linked["links"])
 
@@ -130,6 +129,5 @@ def test_link_requirements_rejects_invalid_type(tmp_path: Path) -> None:
         source_rid=parent["rid"],
         derived_rid=child["rid"],
         link_type="child",
-        rev=1,
     )
     assert res["error"]["code"] == "VALIDATION_ERROR"

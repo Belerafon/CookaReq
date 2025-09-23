@@ -20,7 +20,6 @@ from . import (
     RequirementIDCollisionError,
     RequirementNotFoundError,
     RequirementPage,
-    RevisionMismatchError,
     ValidationError,
 )
 from .documents import is_ancestor, load_documents, validate_labels
@@ -569,7 +568,6 @@ def move_requirement(
     *,
     new_prefix: str,
     payload: Mapping[str, Any] | None = None,
-    expected_revision: int | None = None,
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
     """Relocate requirement ``rid`` under ``new_prefix`` keeping referential integrity."""
@@ -588,8 +586,6 @@ def move_requirement(
         raise ValidationError("revision must be an integer") from exc
     if current_revision <= 0:
         raise ValidationError("revision must be positive")
-    if expected_revision is not None and current_revision != expected_revision:
-        raise RevisionMismatchError(expected_revision, current_revision)
 
     dst_doc = docs_map.get(new_prefix)
     if dst_doc is None:
@@ -674,7 +670,6 @@ def delete_requirement(
     root: str | Path,
     rid: str,
     *,
-    expected_revision: int,
     docs: Mapping[str, Document] | None = None,
 ) -> str:
     root_path = Path(root)
@@ -686,8 +681,6 @@ def delete_requirement(
         raise ValidationError("revision must be an integer") from exc
     if current <= 0:
         raise ValidationError("revision must be positive")
-    if current != expected_revision:
-        raise RevisionMismatchError(expected_revision, current)
     from .links import delete_item  # local import to avoid cycle
 
     deleted = delete_item(root_path, rid, docs_map)

@@ -237,6 +237,7 @@ class MainFrame(
                 persist_confirm_preference=self.config.set_agent_confirm_mode,
             ),
         )
+        self.agent_panel.set_tool_result_handler(self._on_agent_tool_results)
         self._hide_agent_section()
         history_sash = self.config.get_agent_history_sash(
             self.agent_panel.default_history_sash()
@@ -325,6 +326,7 @@ class MainFrame(
                 confirm_preference=self.config.get_agent_confirm_mode(),
                 persist_confirm_preference=self.config.set_agent_confirm_mode,
             )
+            self.agent_panel.set_tool_result_handler(self._on_agent_tool_results)
             history_sash = self.config.get_agent_history_sash(
                 self.agent_panel.default_history_sash()
             )

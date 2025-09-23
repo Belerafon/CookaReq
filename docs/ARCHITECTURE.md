@@ -14,7 +14,7 @@
 
 ### `app/`
 - `main.py` — точка входа GUI: создаёт `wx.App`, инициализирует `ConfigManager`, `RequirementModel` и окно `MainFrame` с меню, контроллерами и агентом.【F:app/main.py†L5-L55】
-- `config.py` — обёртка над `wx.Config`; класс `ConfigManager` хранит пользовательские настройки (колонки списка, последние каталоги, параметры LLM/MCP и т. д.).【F:app/config.py†L1-L121】
+- `config.py` — менеджер `ConfigManager`, который читает/пишет JSON с помощью Pydantic-модели `AppSettings` и дополнительно хранит произвольные ключи (ширины колонок, позиции сплиттеров) для wx-виджетов.【F:app/config.py†L1-L213】
 - `settings.py` — pydantic-модели `AppSettings`, `LLMSettings`, `MCPSettings`, `UISettings` и функции загрузки конфигов из JSON/TOML.【F:app/settings.py†L1-L89】【F:app/settings.py†L118-L149】
 - `confirm.py` — регистрация и реализация подтверждающих диалогов (`set_confirm`, `confirm`, `wx_confirm`, `auto_confirm`). `wx_confirm` и `wx_confirm_requirement_update` маршалят выполнение в главный поток wx через `_call_in_wx_main_thread`, поэтому их можно вызывать из фоновых исполнителей агента без крашей в `wxThread::IsMain`.【F:app/confirm.py†L1-L31】【F:app/confirm.py†L214-L323】
 - `i18n.py` — лёгкая обёртка над стандартным `gettext`: сначала пробует `gettext.translation`, а при отсутствии `.mo` компилирует `.po` через `polib` в памяти и выставляет `_`/`ngettext`/`pgettext` для GUI и CLI.【F:app/i18n.py†L1-L122】

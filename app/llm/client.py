@@ -251,18 +251,14 @@ class LLMClient:
     def _check_llm(self) -> dict[str, Any]:
         """Implementation shared by sync and async ``check_llm`` variants."""
 
-        payload = {
-            "base_url": self.settings.base_url,
-            "model": self.settings.model,
-            "api_key": self.settings.api_key,
-            "messages": [{"role": "user", "content": "ping"}],
-        }
+        request_args = self._build_request_args(
+            [{"role": "user", "content": "ping"}]
+        )
         start = time.monotonic()
-        log_debug_payload("LLM_REQUEST", {"direction": "outbound", **payload})
-        log_event("LLM_REQUEST", payload)
+        self._log_outbound_request(request_args)
         try:
             self._chat_completion(
-                messages=payload["messages"],
+                **request_args,
             )
         except Exception as exc:  # pragma: no cover - network errors
             log_event(
@@ -299,18 +295,14 @@ class LLMClient:
 
         messages = self._prepare_messages(conversation)
         use_stream = bool(cancellation) or self.settings.stream
-        payload = {
-            "base_url": self.settings.base_url,
-            "model": self.settings.model,
-            "api_key": self.settings.api_key,
-            "messages": messages,
-            "tools": TOOLS,
-            "temperature": 0,
-            "stream": use_stream,
-        }
+        request_args = self._build_request_args(
+            messages,
+            tools=TOOLS,
+            temperature=0,
+            stream=use_stream,
+        )
         start = time.monotonic()
-        log_debug_payload("LLM_REQUEST", {"direction": "outbound", **payload})
-        log_event("LLM_REQUEST", payload)
+        self._log_outbound_request(request_args)
 
         llm_message_text: str = ""
         normalized_tool_calls: list[dict[str, Any]] = []
@@ -318,10 +310,7 @@ class LLMClient:
 
         try:
             completion = self._chat_completion(
-                messages=messages,
-                tools=payload["tools"],
-                temperature=0,
-                stream=use_stream,
+                **request_args,
             )
             if use_stream:
                 message_text, raw_tool_calls_payload = self._consume_stream(
@@ -637,22 +626,33 @@ class LLMClient:
             entry["function"]["arguments"] += str(args_fragment)
 
     # ------------------------------------------------------------------
-    def _chat_completion(
+    def _build_request_args(
         self,
-        *,
         messages: Sequence[Mapping[str, Any]],
         **kwargs: Any,
-    ) -> Any:
-        """Call the chat completions endpoint with normalized arguments."""
+    ) -> dict[str, Any]:
+        """Return concrete arguments for the chat completion request."""
 
-        base_kwargs: dict[str, Any] = {
+        request_args: dict[str, Any] = {
             "model": self.settings.model,
             "messages": messages,
         }
         if kwargs:
-            base_kwargs.update(kwargs)
+            request_args.update({k: v for k, v in kwargs.items() if v is not None})
+        return request_args
+
+    @staticmethod
+    def _log_outbound_request(request_args: Mapping[str, Any]) -> None:
+        """Record telemetry for an outbound LLM request."""
+
+        log_debug_payload("LLM_REQUEST", request_args)
+        log_event("LLM_REQUEST", request_args)
+
+    def _chat_completion(self, **request_args: Any) -> Any:
+        """Call the chat completions endpoint with normalized arguments."""
+
         try:
-            return self._client.chat.completions.create(**base_kwargs)
+            return self._client.chat.completions.create(**request_args)
         except TypeError as exc:
             raise TypeError(
                 "LLM client rejected provided arguments; "

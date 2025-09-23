@@ -537,8 +537,10 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
         assert not collect_collapsible(panel.transcript_panel)
 
         transcript_text = panel.get_transcript_text()
-        assert "demo_tool" not in transcript_text
+        assert "demo_tool" in transcript_text
+        assert "Tool call" in transcript_text
         assert "tool_results" not in transcript_text
+        assert "Query: `inspect`" in transcript_text
 
         log_text = panel.get_transcript_log_text()
         assert "demo_tool" in log_text

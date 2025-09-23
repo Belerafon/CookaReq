@@ -81,19 +81,26 @@ class MainFrameAgentMixin:
         model = getattr(self, "model", None)
         if selected_ids and model is not None:
             lines.append(f"Selected requirements ({len(selected_ids)}):")
-            for req_id in selected_ids:
+            for index, req_id in enumerate(selected_ids, start=1):
                 requirement = model.get_by_id(req_id)
+                entry_prefix = f"- GUI selection #{index}: "
                 if requirement is None:
-                    lines.append("- (missing requirement)")
+                    lines.append(
+                        f"{entry_prefix}the interface still reports internal requirement id {req_id}, "
+                        "but the underlying record could not be loaded; the selection remains active."
+                    )
                     continue
                 rid = getattr(requirement, "rid", "") or ""
                 rid = rid.strip() or "<missing RID>"
                 title = getattr(requirement, "title", "") or ""
                 title = title.strip()
+                details = f"{entry_prefix}requirement {rid}"
                 if title:
-                    lines.append(f"- {rid} — {title}")
-                else:
-                    lines.append(f"- {rid}")
+                    details += f" — {title}"
+                details += " is currently highlighted in the graphical interface."
+                if not title:
+                    details += " No title is stored for this entry."
+                lines.append(details)
         else:
             lines.append("Selected requirements: (none)")
 

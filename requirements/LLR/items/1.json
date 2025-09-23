@@ -10,9 +10,9 @@
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна предоставлять графический редактор требований с формами для всех полей и возможностью сохранения.",
+  "statement": "The system must provide a graphical requirements editor with forms for every field and the ability to save changes.",
   "status": "approved",
-  "title": "Редактор требований",
+  "title": "Requirements Editor",
   "type": "requirement",
   "verification": "analysis"
 }

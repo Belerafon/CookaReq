@@ -10,9 +10,9 @@
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна обеспечивать фильтрацию и полнотекстовый поиск требований по меткам и полям.",
+  "statement": "The system must support filtering and full-text search of requirements by tags and fields.",
   "status": "approved",
-  "title": "Поиск требований",
+  "title": "Requirements Search",
   "type": "requirement",
   "verification": "analysis"
 }

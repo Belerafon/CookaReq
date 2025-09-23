@@ -10,9 +10,9 @@
   "priority": "low",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна предоставлять графический интерфейс с главным окном, списком требований и панелями редактора с русской локализацией.",
+  "statement": "The system must provide a graphical interface with a main window, a requirements list, and editor panels localized into Russian.",
   "status": "approved",
-  "title": "Графический интерфейс пользователя",
+  "title": "Graphical User Interface",
   "type": "requirement",
   "verification": "analysis"
 }

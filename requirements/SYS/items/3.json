@@ -7,9 +7,9 @@
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна предоставлять CLI для перечисления, добавления, правки и отображения требований, хранящихся в каталоге.",
+  "statement": "The system must provide a CLI for listing, adding, editing, and displaying the requirements stored in the directory.",
   "status": "approved",
-  "title": "Командный интерфейс",
+  "title": "Command-Line Interface",
   "type": "requirement",
   "verification": "test"
 }

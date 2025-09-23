@@ -10,9 +10,9 @@
   "priority": "low",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна отображать элементы интерфейса на русском языке с использованием словаря локализации.",
+  "statement": "The system must display interface elements in Russian by using a localization dictionary.",
   "status": "approved",
-  "title": "Локализация интерфейса",
+  "title": "Interface Localization",
   "type": "requirement",
   "verification": "inspection"
 }

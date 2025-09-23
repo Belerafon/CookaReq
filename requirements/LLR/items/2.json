@@ -10,9 +10,9 @@
   "priority": "low",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна включать скрипт сборки PyInstaller для создания одно-папочного дистрибутива.",
+  "statement": "The system must include a PyInstaller build script for creating a single-folder distribution.",
   "status": "approved",
-  "title": "Сборка через PyInstaller",
+  "title": "PyInstaller Build",
   "type": "requirement",
   "verification": "analysis"
 }

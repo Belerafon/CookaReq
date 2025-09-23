@@ -7,9 +7,9 @@
   "priority": "medium",
   "revision": 1,
   "source": "architecture",
-  "statement": "Система должна представлять каждое требование как dataclass с типизированными полями для статуса, приоритета и способа верификации.",
+  "statement": "The system must represent each requirement as a dataclass with typed fields for status, priority, and verification method.",
   "status": "approved",
-  "title": "Структурированная модель данных",
+  "title": "Structured Data Model",
   "type": "requirement",
   "verification": "analysis"
 }

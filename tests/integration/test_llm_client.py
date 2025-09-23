@@ -520,7 +520,7 @@ def test_respond_preserves_context_for_update(tmp_path: Path, monkeypatch) -> No
                 "[Workspace context]\n"
                 "Active requirements list: SYS — System Requirements\n"
                 "Selected requirements (1):\n"
-                "- SYS-1 — Power control"
+                "- GUI selection #1: requirement SYS-1 — Power control is currently highlighted in the graphical interface."
             ),
         },
         {
@@ -596,8 +596,8 @@ def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> No
                 "[Workspace context]\n"
                 "Active requirements list: SYS — System Requirements\n"
                 "Selected requirements (2):\n"
-                "- SYS-2 — Secondary\n"
-                "- SYS-3 — Legacy"
+                "- GUI selection #1: requirement SYS-2 — Secondary is currently highlighted in the graphical interface.\n"
+                "- GUI selection #2: requirement SYS-3 — Legacy is currently highlighted in the graphical interface."
             ),
         },
         {"role": "user", "content": "удали эти требования"},

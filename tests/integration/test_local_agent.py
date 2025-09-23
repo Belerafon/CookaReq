@@ -501,7 +501,10 @@ def test_run_command_includes_context_messages():
     agent = LocalAgent(llm=llm, mcp=PassiveMCP())
     context_message = {
         "role": "system",
-        "content": "Selected requirements (1): - SYS-1 — Demo",
+        "content": (
+            "Selected requirements (1):\n"
+            "- GUI selection #1: requirement SYS-1 — Demo is currently highlighted in the graphical interface."
+        ),
     }
 
     agent.run_command("выполни", context=context_message)
@@ -514,7 +517,10 @@ def test_run_command_includes_context_messages():
             context=[
                 {
                     "role": "system",
-                    "content": "Selected requirements: - SYS-2 — Secondary",
+                    "content": (
+                        "Selected requirements (1):\n"
+                        "- GUI selection #1: requirement SYS-2 — Secondary is currently highlighted in the graphical interface."
+                    ),
                 }
             ],
         )
@@ -522,7 +528,10 @@ def test_run_command_includes_context_messages():
     asyncio.run(exercise())
     assert llm.conversations[1][-2] == {
         "role": "system",
-        "content": "Selected requirements: - SYS-2 — Secondary",
+        "content": (
+            "Selected requirements (1):\n"
+            "- GUI selection #1: requirement SYS-2 — Secondary is currently highlighted in the graphical interface."
+        ),
     }
     assert llm.conversations[1][-1] == {"role": "user", "content": "повтори"}
 

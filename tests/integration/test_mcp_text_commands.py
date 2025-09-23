@@ -215,7 +215,7 @@ def test_run_command_fetches_requirement_with_prefixed_rid(
                 "[Workspace context]\n"
                 "Active requirements list: SYS: Сист. треб.\n"
                 "Selected requirements (1):\n"
-                "- SYS11 — Содержимое первого требования."
+                "- GUI selection #1: requirement SYS11 — Содержимое первого требования. is currently highlighted in the graphical interface."
             ),
         }
     ]

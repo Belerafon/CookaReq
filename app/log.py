@@ -27,6 +27,43 @@ logger = logging.getLogger("cookareq")
 _log_dir: Path | None = None
 
 
+class ConsoleFormatter(logging.Formatter):
+    """Console formatter that surfaces structured payloads when available."""
+
+    def __init__(self) -> None:
+        super().__init__("%(levelname)s: %(message)s")
+
+    def format(self, record: logging.LogRecord) -> str:
+        base = super().format(record)
+        payload = _extract_console_payload(record)
+        if payload is None:
+            return base
+        try:
+            payload_text = json.dumps(payload, ensure_ascii=False)
+        except TypeError:
+            payload_text = json.dumps(  # pragma: no cover - defensive fallback
+                str(payload), ensure_ascii=False
+            )
+        return f"{base} {payload_text}"
+
+
+def _extract_console_payload(record: logging.LogRecord) -> Any | None:
+    """Return payload that should be appended to console output."""
+
+    extra_json = getattr(record, "json", None)
+    if not isinstance(extra_json, dict):
+        return None
+    event_name = extra_json.get("event")
+    raw_message = record.msg
+    if not (isinstance(raw_message, str) and isinstance(event_name, str)):
+        return None
+    if raw_message.strip() != event_name.strip():
+        return None
+    if "payload" in extra_json:
+        return extra_json["payload"]
+    return None
+
+
 def _rotate_if_already_full(
     handler: RotatingFileHandler, existing_size: int
 ) -> None:
@@ -150,7 +187,7 @@ def configure_logging(level: int = logging.INFO, *, log_dir: str | Path | None =
 
     stream_handler = logging.StreamHandler()
     stream_handler.setLevel(level)
-    stream_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    stream_handler.setFormatter(ConsoleFormatter())
     logger.addHandler(stream_handler)
 
     text_path = resolved_dir / _TEXT_LOG_NAME
@@ -215,6 +252,7 @@ def open_log_directory() -> bool:
 
 
 __all__ = [
+    "ConsoleFormatter",
     "JsonlHandler",
     "configure_logging",
     "get_log_directory",

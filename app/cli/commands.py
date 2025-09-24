@@ -24,7 +24,6 @@ from app.core.document_store import (
     delete_item,
     get_requirement,
     is_ancestor,
-    iter_links,
     load_document,
     load_documents,
     load_item,
@@ -45,6 +44,14 @@ from app.core.model import (
     requirement_fingerprint,
     requirement_from_dict,
     requirement_to_dict,
+)
+from app.core.trace_matrix import (
+    TraceDirection,
+    TraceMatrix,
+    TraceMatrixAxisConfig,
+    TraceMatrixConfig,
+    TraceMatrixLinkView,
+    build_trace_matrix,
 )
 from app.i18n import _
 
@@ -138,6 +145,204 @@ def _default_for(field_def: Any) -> Any:
 
 def _split_csv(value: str) -> list[str]:
     return [token.strip() for token in value.split(",") if token.strip()]
+
+
+def _flatten_arg_list(values: Any) -> list[str]:
+    if values in (None, ""):
+        return []
+    if not isinstance(values, (list, tuple)):
+        values = [values]
+    tokens: list[str] = []
+    for value in values:
+        if value in (None, ""):
+            continue
+        if isinstance(value, str):
+            tokens.extend(_split_csv(value))
+        else:
+            tokens.append(str(value))
+    return tokens
+
+
+def _build_axis_config(args: argparse.Namespace, axis: str) -> TraceMatrixAxisConfig:
+    doc_attr = "rows" if axis == "row" else "columns"
+    documents = tuple(_flatten_arg_list(getattr(args, doc_attr, [])))
+    include_descendants = bool(
+        getattr(args, f"{axis}_include_descendants", False)
+    )
+    statuses = tuple(_flatten_arg_list(getattr(args, f"{axis}_status", [])))
+    requirement_types = tuple(
+        _flatten_arg_list(getattr(args, f"{axis}_type", []))
+    )
+    labels_all = tuple(_flatten_arg_list(getattr(args, f"{axis}_label", [])))
+    labels_any = tuple(
+        _flatten_arg_list(getattr(args, f"{axis}_any_label", []))
+    )
+    query = str(getattr(args, f"{axis}_query", "") or "")
+    query_fields = tuple(_flatten_arg_list(getattr(args, f"{axis}_fields", [])))
+    return TraceMatrixAxisConfig(
+        documents=documents,
+        include_descendants=include_descendants,
+        statuses=statuses,
+        requirement_types=requirement_types,
+        labels_all=labels_all,
+        labels_any=labels_any,
+        query=query,
+        query_fields=query_fields,
+    )
+
+
+def _sorted_cell_links(matrix: TraceMatrix) -> list[TraceMatrixLinkView]:
+    row_order = {entry.rid: index for index, entry in enumerate(matrix.rows)}
+    column_order = {entry.rid: index for index, entry in enumerate(matrix.columns)}
+    links: list[TraceMatrixLinkView] = []
+    for _, cell in sorted(
+        matrix.cells.items(),
+        key=lambda pair_cell: (
+            row_order.get(pair_cell[0][0], 10**9),
+            column_order.get(pair_cell[0][1], 10**9),
+        ),
+    ):
+        links.extend(cell.links)
+    return links
+
+
+def _write_trace_pairs(out: TextIO, matrix: TraceMatrix) -> None:
+    for link in _sorted_cell_links(matrix):
+        suffix = " !suspect" if link.suspect else ""
+        out.write(f"{link.source_rid} {link.target_rid}{suffix}\n")
+
+
+def _write_trace_matrix_csv(out: TextIO, matrix: TraceMatrix) -> None:
+    writer = csv.writer(out)
+    header = ["RID", "Title", "Document", "Status"]
+    for column in matrix.columns:
+        header.append(f"{column.rid} ({column.document.title})")
+    writer.writerow(header)
+    for row in matrix.rows:
+        base = [
+            row.rid,
+            row.requirement.title,
+            row.document.title,
+            row.requirement.status.value,
+        ]
+        cells: list[str] = []
+        for column in matrix.columns:
+            cell = matrix.cells.get((row.rid, column.rid))
+            if not cell or not cell.links:
+                cells.append("")
+            else:
+                cells.append("suspect" if cell.suspect else "linked")
+        writer.writerow(base + cells)
+
+
+def _write_trace_matrix_html(out: TextIO, matrix: TraceMatrix) -> None:
+    out.write("<!DOCTYPE html>\n<html><head><meta charset='utf-8'>\n")
+    out.write(
+        "<style>"
+        "table{border-collapse:collapse;}"
+        "th,td{border:1px solid #ccc;padding:4px;text-align:left;}"
+        "th{background:#f2f2f2;}"
+        ".suspect{background:#fff3cd;} .linked{background:#d1f2d9;}"
+        ".summary{margin-top:1em;} .summary dt{font-weight:bold;}"
+        "</style>\n"
+    )
+    out.write("</head><body>\n<table>\n<thead><tr>")
+    headers = ["RID", "Title", "Document", "Status"]
+    for column in matrix.columns:
+        headers.append(f"{column.rid} ({column.document.title})")
+    for header in headers:
+        out.write(f"<th>{html.escape(header)}</th>")
+    out.write("</tr></thead>\n<tbody>\n")
+    for row in matrix.rows:
+        out.write("<tr>")
+        out.write(f"<td>{html.escape(row.rid)}</td>")
+        out.write(f"<td>{html.escape(row.requirement.title)}</td>")
+        out.write(f"<td>{html.escape(row.document.title)}</td>")
+        out.write(f"<td>{html.escape(row.requirement.status.value)}</td>")
+        for column in matrix.columns:
+            cell = matrix.cells.get((row.rid, column.rid))
+            if not cell or not cell.links:
+                out.write("<td></td>")
+                continue
+            cls = "suspect" if cell.suspect else "linked"
+            label = "suspect" if cell.suspect else "linked"
+            out.write(f"<td class='{cls}'>{html.escape(label)}</td>")
+        out.write("</tr>\n")
+    out.write("</tbody>\n</table>\n")
+    summary = matrix.summary
+    out.write("<dl class='summary'>\n")
+    out.write(
+        f"<dt>Total rows</dt><dd>{summary.total_rows}</dd>\n"
+        f"<dt>Total columns</dt><dd>{summary.total_columns}</dd>\n"
+        f"<dt>Linked pairs</dt><dd>{summary.linked_pairs} / {summary.total_pairs}</dd>\n"
+        f"<dt>Links</dt><dd>{summary.link_count}</dd>\n"
+        f"<dt>Row coverage</dt><dd>{summary.row_coverage:.2%}</dd>\n"
+        f"<dt>Column coverage</dt><dd>{summary.column_coverage:.2%}</dd>\n"
+        f"<dt>Pair coverage</dt><dd>{summary.pair_coverage:.2%}</dd>\n"
+    )
+    if summary.orphan_rows:
+        orphan_rows = ", ".join(summary.orphan_rows)
+        out.write(f"<dt>Rows without links</dt><dd>{html.escape(orphan_rows)}</dd>\n")
+    if summary.orphan_columns:
+        orphan_columns = ", ".join(summary.orphan_columns)
+        out.write(
+            f"<dt>Columns without links</dt><dd>{html.escape(orphan_columns)}</dd>\n"
+        )
+    out.write("</dl>\n</body></html>\n")
+
+
+def _write_trace_matrix_json(out: TextIO, matrix: TraceMatrix) -> None:
+    payload: dict[str, Any] = {
+        "direction": matrix.direction.value,
+        "rows": [
+            {
+                "rid": entry.rid,
+                "title": entry.requirement.title,
+                "status": entry.requirement.status.value,
+                "type": entry.requirement.type.value,
+                "labels": list(entry.requirement.labels),
+                "document": {
+                    "prefix": entry.document.prefix,
+                    "title": entry.document.title,
+                },
+            }
+            for entry in matrix.rows
+        ],
+        "columns": [
+            {
+                "rid": entry.rid,
+                "title": entry.requirement.title,
+                "status": entry.requirement.status.value,
+                "type": entry.requirement.type.value,
+                "labels": list(entry.requirement.labels),
+                "document": {
+                    "prefix": entry.document.prefix,
+                    "title": entry.document.title,
+                },
+            }
+            for entry in matrix.columns
+        ],
+        "cells": [
+            {
+                "row": row_rid,
+                "column": column_rid,
+                "links": [
+                    {
+                        "source": link.source_rid,
+                        "target": link.target_rid,
+                        "suspect": link.suspect,
+                        "fingerprint": link.fingerprint,
+                    }
+                    for link in cell.links
+                ],
+            }
+            for (row_rid, column_rid), cell in matrix.cells.items()
+            if cell.links
+        ],
+        "summary": asdict(matrix.summary),
+    }
+    json.dump(payload, out, ensure_ascii=False, indent=2, sort_keys=True)
+    out.write("\n")
 
 
 def _resolve_text_field(
@@ -659,40 +864,51 @@ def add_link_arguments(p: argparse.ArgumentParser) -> None:
     )
 
 
-def cmd_trace(args: argparse.Namespace) -> None:
-    """Export links in the chosen format."""
+def _open_trace_output(path: str | None) -> tuple[TextIO, bool]:
+    if not path:
+        return sys.stdout, False
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    return out_path.open("w", encoding="utf-8", newline=""), True
 
-    links = iter_links(args.directory)
-    out: TextIO
-    close_out = False
-    if args.output:
-        out_path = Path(args.output)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out = out_path.open("w", encoding="utf-8", newline="")
-        close_out = True
-    else:
-        out = sys.stdout
+
+def cmd_trace(args: argparse.Namespace) -> None:
+    """Export traceability matrix in the requested format."""
+
+    row_axis = _build_axis_config(args, "row")
+    column_axis = _build_axis_config(args, "column")
+
+    if not row_axis.documents:
+        raise SystemExit(_("at least one --rows value is required"))
+    if not column_axis.documents:
+        raise SystemExit(_("at least one --columns value is required"))
+
+    direction_raw = getattr(args, "direction", TraceDirection.CHILD_TO_PARENT.value)
     try:
-        if args.format == "csv":
-            writer = csv.writer(out)
-            writer.writerow(["child", "parent"])
-            for child, parent in links:
-                writer.writerow([child, parent])
-        elif args.format == "html":
-            out.write("<!DOCTYPE html>\n<html><head><meta charset='utf-8'>\n")
-            out.write("<style>table{border-collapse:collapse;}"\
-                      "th,td{border:1px solid #ccc;padding:4px;text-align:left;}"\
-                      "</style></head><body>\n<table>\n")
-            out.write("<thead><tr><th>child</th><th>parent</th></tr></thead>\n")
-            out.write("<tbody>\n")
-            for child, parent in links:
-                c = html.escape(child)
-                p = html.escape(parent)
-                out.write(f"<tr><td>{c}</td><td>{p}</td></tr>\n")
-            out.write("</tbody>\n</table>\n</body></html>\n")
-        else:
-            for child, parent in links:
-                out.write(f"{child} {parent}\n")
+        direction = TraceDirection(direction_raw)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    config = TraceMatrixConfig(rows=row_axis, columns=column_axis, direction=direction)
+
+    try:
+        matrix = build_trace_matrix(args.directory, config)
+    except (DocumentNotFoundError, FileNotFoundError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
+
+    fmt = getattr(args, "format", "pairs")
+    out, close_out = _open_trace_output(getattr(args, "output", None))
+    try:
+        if fmt == "pairs":
+            _write_trace_pairs(out, matrix)
+        elif fmt == "matrix-csv":
+            _write_trace_matrix_csv(out, matrix)
+        elif fmt == "matrix-html":
+            _write_trace_matrix_html(out, matrix)
+        elif fmt == "matrix-json":
+            _write_trace_matrix_json(out, matrix)
+        else:  # pragma: no cover - defensive
+            raise SystemExit(f"unknown format: {fmt}")
     finally:
         if close_out:
             out.close()
@@ -703,16 +919,106 @@ def add_trace_arguments(p: argparse.ArgumentParser) -> None:
 
     p.add_argument("directory", help=_("requirements root"))
     p.add_argument(
+        "-r",
+        "--rows",
+        action="append",
+        default=[],
+        help=_("row document prefixes (comma separated)"),
+    )
+    p.add_argument(
+        "-c",
+        "--columns",
+        "--cols",
+        dest="columns",
+        action="append",
+        default=[],
+        help=_("column document prefixes (comma separated)"),
+    )
+    p.add_argument(
+        "--row-include-descendants",
+        action="store_true",
+        help=_("include descendant documents for rows"),
+    )
+    p.add_argument(
+        "--column-include-descendants",
+        action="store_true",
+        help=_("include descendant documents for columns"),
+    )
+    p.add_argument(
+        "--row-status",
+        action="append",
+        default=[],
+        help=_("filter rows by status"),
+    )
+    p.add_argument(
+        "--column-status",
+        action="append",
+        default=[],
+        help=_("filter columns by status"),
+    )
+    p.add_argument(
+        "--row-type",
+        action="append",
+        default=[],
+        help=_("filter rows by requirement type"),
+    )
+    p.add_argument(
+        "--column-type",
+        action="append",
+        default=[],
+        help=_("filter columns by requirement type"),
+    )
+    p.add_argument(
+        "--row-label",
+        action="append",
+        default=[],
+        help=_("require all labels on rows"),
+    )
+    p.add_argument(
+        "--column-label",
+        action="append",
+        default=[],
+        help=_("require all labels on columns"),
+    )
+    p.add_argument(
+        "--row-any-label",
+        action="append",
+        default=[],
+        help=_("keep rows with any of the labels"),
+    )
+    p.add_argument(
+        "--column-any-label",
+        action="append",
+        default=[],
+        help=_("keep columns with any of the labels"),
+    )
+    p.add_argument("--row-query", help=_("text query for rows"))
+    p.add_argument("--column-query", help=_("text query for columns"))
+    p.add_argument(
+        "--row-fields",
+        action="append",
+        default=[],
+        help=_("limit row search fields (comma separated)"),
+    )
+    p.add_argument(
+        "--column-fields",
+        action="append",
+        default=[],
+        help=_("limit column search fields (comma separated)"),
+    )
+    p.add_argument(
         "--format",
-        choices=["plain", "csv", "html"],
-        default="plain",
+        choices=["pairs", "matrix-csv", "matrix-html", "matrix-json"],
+        default="pairs",
         help=_("output format"),
     )
     p.add_argument(
-        "-o",
-        "--output",
-        help=_("write result to file"),
+        "--direction",
+        choices=[choice.value for choice in TraceDirection],
+        default=TraceDirection.CHILD_TO_PARENT.value,
+        help=_("interpretation of links"),
     )
+    p.add_argument("-o", "--output", help=_("write result to file"))
 
 
 def cmd_check(args: argparse.Namespace) -> None:

@@ -476,15 +476,51 @@ class MainFrameDocumentsMixin:
         if not (self.current_dir and self.docs_controller):
             wx.MessageBox(_("Select requirements folder first"), _("No Data"))
             return
-        links = list(self.docs_controller.iter_links())
-        if not links:
-            wx.MessageBox(_("No links found"), _("No Data"))
-            return
         try:
-            from ..trace_matrix import TraceMatrixFrame
+            from ..trace_matrix import TraceMatrixConfigDialog, TraceMatrixFrame
         except Exception as exc:  # pragma: no cover - missing wx
             wx.MessageBox(str(exc), _("Error"))
             return
-        frame = TraceMatrixFrame(self, links)
+        controller = self.docs_controller
+        try:
+            documents = controller.load_documents()
+        except Exception as exc:  # pragma: no cover - defensive guard
+            wx.MessageBox(str(exc), _("Error"))
+            return
+        if not documents:
+            wx.MessageBox(_("No documents found"), _("No Data"))
+            return
+
+        default_row = self.current_doc_prefix or next(iter(documents), "")
+        default_column: str | None = None
+        if default_row and default_row in documents:
+            default_column = documents[default_row].parent
+
+        dialog = TraceMatrixConfigDialog(
+            self,
+            documents,
+            default_rows=default_row,
+            default_columns=default_column,
+        )
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            config = dialog.get_config()
+        finally:
+            dialog.Destroy()
+
+        try:
+            matrix = controller.build_trace_matrix(config)
+        except Exception as exc:  # pragma: no cover - report via UI
+            wx.MessageBox(str(exc), _("Error"))
+            return
+        if not matrix.rows or not matrix.columns:
+            wx.MessageBox(
+                _("Selected documents do not contain requirements"),
+                _("No Data"),
+            )
+            return
+
+        frame = TraceMatrixFrame(self, controller, config, matrix)
         self.register_auxiliary_frame(frame)
         frame.Show()

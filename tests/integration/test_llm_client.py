@@ -149,21 +149,21 @@ def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
     ]
 
 
-def test_parse_command_reports_invalid_tool_arguments(
+def test_parse_command_recovers_concatenated_tool_arguments(
     tmp_path: Path, monkeypatch
 ) -> None:
     settings = settings_with_llm(tmp_path)
 
-    events: list[tuple[str, dict[str, object] | None]] = []
-    debug_payloads: list[dict[str, object] | None] = []
+    recovered_events: list[tuple[str, dict[str, object] | None]] = []
+    recovered_debug: list[dict[str, object] | None] = []
 
     def fake_log_event(event: str, payload=None, **kwargs):  # noqa: ANN001
-        if event == "LLM_TOOL_ARGUMENTS_INVALID":
-            events.append((event, payload))
+        if event == "LLM_TOOL_ARGUMENTS_RECOVERED":
+            recovered_events.append((event, payload))
 
     def fake_log_debug(event: str, payload=None):  # noqa: ANN001
-        if event == "LLM_TOOL_ARGUMENTS_INVALID":
-            debug_payloads.append(payload)
+        if event == "LLM_TOOL_ARGUMENTS_RECOVERED":
+            recovered_debug.append(payload)
 
     class FakeOpenAI:
         def __init__(self, *a, **k):  # pragma: no cover - simple container
@@ -195,6 +195,87 @@ def test_parse_command_reports_invalid_tool_arguments(
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = LLMClient(settings.llm)
 
+    response = client.parse_command("обнови статус SYS-1")
+    assert response.tool_calls, "expected recovered tool call"
+    call = response.tool_calls[0]
+    assert call.name == "update_requirement_field"
+    assert call.arguments == {
+        "rid": "SYS-1",
+        "field": "status",
+        "value": "approved",
+    }
+
+    assert recovered_events, "expected telemetry for recovered tool arguments"
+    event_name, payload = recovered_events[0]
+    assert event_name == "LLM_TOOL_ARGUMENTS_RECOVERED"
+    assert payload is not None
+    assert payload["call_id"] == "tool_call_0"
+    assert payload["tool_name"] == "update_requirement_field"
+    assert payload["classification"] == "concatenated_json"
+    assert payload["fragments"] == 2
+    assert payload["recovered_fragment_index"] == 1
+    assert payload["empty_fragments"] == 1
+    assert payload["preview"].startswith("{}{")
+    assert payload["length"] == len(
+        '{}{"rid": "SYS-1", "field": "status", "value": "approved"}'
+    )
+    assert payload["recovered_keys"] == ["field", "rid", "value"]
+    assert recovered_debug, "expected debug payload for recovered arguments"
+    debug_payload = recovered_debug[0]
+    assert debug_payload is not None
+    assert debug_payload["recovered_arguments"] == {
+        "rid": "SYS-1",
+        "field": "status",
+        "value": "approved",
+    }
+
+
+def test_parse_command_reports_invalid_tool_arguments(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = settings_with_llm(tmp_path)
+
+    events: list[tuple[str, dict[str, object] | None]] = []
+    debug_payloads: list[dict[str, object] | None] = []
+
+    def fake_log_event(event: str, payload=None, **kwargs):  # noqa: ANN001
+        if event == "LLM_TOOL_ARGUMENTS_INVALID":
+            events.append((event, payload))
+
+    def fake_log_debug(event: str, payload=None):  # noqa: ANN001
+        if event == "LLM_TOOL_ARGUMENTS_INVALID":
+            debug_payloads.append(payload)
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                tool_calls=[
+                                    SimpleNamespace(
+                                        function=SimpleNamespace(
+                                            name="update_requirement_field",
+                                            arguments='{"rid": "SYS-1", "field": "status", "value": "approved"',
+                                        )
+                                    )
+                                ],
+                                content=None,
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("app.llm.client.log_event", fake_log_event)
+    monkeypatch.setattr("app.llm.client.log_debug_payload", fake_log_debug)
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+
     with pytest.raises(ToolValidationError):
         client.parse_command("обнови статус SYS-1")
 
@@ -204,10 +285,9 @@ def test_parse_command_reports_invalid_tool_arguments(
     assert payload is not None
     assert payload["call_id"] == "tool_call_0"
     assert payload["tool_name"] == "update_requirement_field"
-    assert payload["classification"] == "concatenated_json"
-    assert payload["preview"].startswith("{}{")
+    assert payload["preview"].startswith('{"rid": "SYS-1"')
     assert payload["length"] == len(
-        '{}{"rid": "SYS-1", "field": "status", "value": "approved"}'
+        '{"rid": "SYS-1", "field": "status", "value": "approved"'
     )
     assert debug_payloads, "expected debug payload for invalid arguments"
 

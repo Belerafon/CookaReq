@@ -102,6 +102,29 @@ def test_create_update_and_delete_requirement(
     assert not item_path(tmp_path / "SYS", _document, 1).exists()
 
 
+def test_update_accepts_mixed_case_rid(tmp_path: Path, _document: Document) -> None:
+    docs = load_documents(tmp_path)
+
+    created = create_requirement(
+        tmp_path,
+        prefix="SYS",
+        data=_base_payload(),
+        docs=docs,
+    )
+
+    updated = update_requirement_field(
+        tmp_path,
+        created.rid.lower(),
+        field="status",
+        value="approved",
+        docs=docs,
+    )
+
+    assert updated.rid == created.rid
+    assert updated.status.value == "approved"
+    assert updated.revision == created.revision + 1
+
+
 def test_update_requirement_field_rejects_unknown_status(
     tmp_path: Path, _document: Document
 ) -> None:

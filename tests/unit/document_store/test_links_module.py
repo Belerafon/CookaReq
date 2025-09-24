@@ -95,6 +95,29 @@ def test_validate_and_link(tmp_path: Path) -> None:
         )
 
 
+def test_link_accepts_mixed_case_rids(tmp_path: Path) -> None:
+    sys_doc = Document(prefix="SYS", title="System")
+    hlr_doc = Document(prefix="HLR", title="High", parent="SYS")
+    save_document(tmp_path / "SYS", sys_doc)
+    save_document(tmp_path / "HLR", hlr_doc)
+
+    save_item(tmp_path / "SYS", sys_doc, requirement_to_dict(_requirement(1)))
+    save_item(tmp_path / "HLR", hlr_doc, requirement_to_dict(_requirement(2)))
+
+    docs = load_documents(tmp_path)
+
+    linked = link_requirements(
+        tmp_path,
+        source_rid="sys1",
+        derived_rid="hlr2",
+        link_type="parent",
+        docs=docs,
+    )
+
+    assert linked.links and linked.links[0].rid == "SYS1"
+    assert linked.rid == "HLR2"
+
+
 def test_link_becomes_suspect_after_parent_change(tmp_path: Path) -> None:
     sys_doc = Document(prefix="SYS", title="System")
     hlr_doc = Document(prefix="HLR", title="High", parent="SYS")

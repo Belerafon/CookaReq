@@ -9,10 +9,10 @@ import textwrap
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Callable
 
 from concurrent.futures import Future, ThreadPoolExecutor
 
@@ -20,23 +20,45 @@ import wx
 import wx.dataview as dv
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from ..confirm import (
+from ...confirm import (
     ConfirmDecision,
     RequirementUpdatePrompt,
     confirm,
     reset_requirement_update_preference,
 )
-from ..i18n import _
-from ..llm.spec import SYSTEM_PROMPT, TOOLS
-from ..llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
-from ..util.json import make_json_safe
-from ..util.cancellation import CancellationEvent, OperationCancelledError
-from ..util.time import utc_now_iso
-from .chat_entry import ChatConversation, ChatEntry
-from .helpers import dip, format_error_message, inherit_background
-from .text import normalize_for_display
-from .splitter_utils import refresh_splitter_highlight, style_splitter
-from .widgets.chat_message import TranscriptMessagePanel
+from ...i18n import _
+from ...llm.spec import SYSTEM_PROMPT, TOOLS
+from ...llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
+from ...util.cancellation import CancellationEvent, OperationCancelledError
+from ...util.time import utc_now_iso
+from ..chat_entry import ChatConversation, ChatEntry
+from ..helpers import dip, format_error_message, inherit_background
+from ..text import normalize_for_display
+from ..splitter_utils import refresh_splitter_highlight, style_splitter
+from ..widgets.chat_message import TranscriptMessagePanel
+from .execution import (
+    AgentCommandExecutor,
+    ThreadedAgentCommandExecutor,
+    _AgentRunHandle,
+)
+from .history_utils import (
+    clone_streamed_tool_results,
+    history_json_safe,
+    looks_like_tool_payload,
+    stringify_payload,
+)
+from .paths import (
+    _default_history_path,
+    _normalize_history_path,
+    history_path_for_documents,
+)
+from .tool_summaries import (
+    format_value_snippet,
+    render_tool_summaries_markdown,
+    render_tool_summaries_plain,
+    summarize_tool_results,
+    shorten_text,
+)
 
 
 logger = logging.getLogger("cookareq.ui.agent_chat_panel")
@@ -47,25 +69,6 @@ try:  # pragma: no cover - import only used for typing
 except Exception:  # pragma: no cover - fallback when wx stubs are used
     LocalAgent = object  # type: ignore[assignment]
 
-def _default_history_path() -> Path:
-    """Return default location for persisted chat history."""
-
-    return Path.home() / ".cookareq" / "agent_chats.json"
-
-
-def _normalize_history_path(path: Path | str) -> Path:
-    """Expand user references and coerce *path* into :class:`Path`."""
-
-    return Path(path).expanduser()
-
-
-def history_path_for_documents(base_directory: Path | str | None) -> Path:
-    """Return history file path colocated with a requirements directory."""
-
-    if base_directory is None:
-        return _default_history_path()
-    base_path = _normalize_history_path(base_directory)
-    return base_path / ".cookareq" / "agent_chats.json"
 TOKEN_UNAVAILABLE_LABEL = "n/a"
 
 
@@ -75,107 +78,12 @@ STATUS_HELP_TEXT = _(
     "• The status text describes whether the agent is still working or has finished.\n"
     "• The spinning indicator on the left stays active while the agent is still working."
 )
-
-
-def _history_json_safe(value: Any) -> Any:
-    """Convert values for history storage using permissive coercions."""
-
-    return make_json_safe(
-        value,
-        stringify_keys=True,
-        sort_sets=False,
-        coerce_sequences=True,
-        default=str,
-    )
-
-
-def _stringify_payload(payload: Any) -> str:
-    """Return textual representation suitable for transcript storage."""
-
-    if payload is None:
-        return ""
-    if isinstance(payload, str):
-        return payload
-    try:
-        return json.dumps(payload, ensure_ascii=False, indent=2)
-    except (TypeError, ValueError):  # pragma: no cover - defensive
-        return str(payload)
-
-
-def _looks_like_tool_payload(payload: Mapping[str, Any]) -> bool:
-    """Heuristically determine whether *payload* originates from an MCP tool."""
-
-    tool_keys = {
-        "tool_arguments",
-        "tool_name",
-        "tool",
-        "tool_call_id",
-        "call_id",
-    }
-    return any(key in payload for key in tool_keys)
-
-
 class RequirementConfirmPreference(Enum):
     """Supported confirmation policies for agent-driven operations."""
 
     PROMPT = "prompt"
     CHAT_ONLY = "chat_only"
     NEVER = "never"
-
-
-class AgentCommandExecutor(Protocol):
-    """Simple protocol for running agent commands asynchronously."""
-
-    def submit(self, func: Callable[[], Any]) -> Future[Any]:  # pragma: no cover - protocol
-        """Schedule ``func`` for execution and return a future with its result."""
-
-
-class ThreadedAgentCommandExecutor:
-    """Agent executor backed by a shared :class:`ThreadPoolExecutor`."""
-
-    def __init__(self, pool: ThreadPoolExecutor | None = None) -> None:
-        if pool is None:
-            pool = ThreadPoolExecutor(
-                max_workers=1,
-                thread_name_prefix="AgentChatCommand",
-            )
-        self._pool = pool
-
-    @property
-    def pool(self) -> ThreadPoolExecutor:
-        """Expose the underlying thread pool."""
-
-        return self._pool
-
-    def submit(self, func: Callable[[], Any]) -> Future[Any]:
-        return self._pool.submit(func)
-
-
-@dataclass(slots=True)
-class _AgentRunHandle:
-    """Track metadata for an in-flight agent invocation."""
-
-    run_id: int
-    prompt: str
-    prompt_tokens: TokenCountResult
-    cancel_event: CancellationEvent
-    prompt_at: str
-    future: Future[Any] | None = None
-    conversation_id: str | None = None
-    pending_entry: ChatEntry | None = None
-    context_messages: tuple[dict[str, Any], ...] | None = None
-    history_snapshot: tuple[dict[str, Any], ...] | None = None
-    streamed_tool_results: list[dict[str, Any]] = field(default_factory=list)
-
-    @property
-    def is_cancelled(self) -> bool:
-        return self.cancel_event.is_set()
-
-    def cancel(self) -> None:
-        self.cancel_event.set()
-        future = self.future
-        if future is not None:
-            future.cancel()
 
 
 @dataclass(frozen=True)
@@ -196,629 +104,6 @@ class _ContextTokenBreakdown:
         )
 
 
-@dataclass(frozen=True)
-class _ToolCallSummary:
-    """Human-friendly description of an MCP tool exchange."""
-
-    index: int
-    tool_name: str
-    status: str
-    bullet_lines: tuple[str, ...]
-
-
-def _summarize_tool_results(
-    tool_results: Sequence[Any] | None,
-) -> tuple[_ToolCallSummary, ...]:
-    summaries: list[_ToolCallSummary] = []
-    if not tool_results:
-        return tuple(summaries)
-    for index, payload in enumerate(tool_results, start=1):
-        if not isinstance(payload, Mapping):
-            continue
-        summary = _summarize_tool_payload(index, payload)
-        if summary is not None:
-            summaries.append(summary)
-    return tuple(summaries)
-
-
-def _summarize_tool_payload(
-    index: int, payload: Mapping[str, Any]
-) -> _ToolCallSummary | None:
-    tool_name = _extract_tool_name(payload)
-    status = _format_tool_status(payload)
-    bullet_lines = _summarize_tool_details(payload)
-    return _ToolCallSummary(
-        index=index,
-        tool_name=tool_name,
-        status=status,
-        bullet_lines=tuple(bullet_lines),
-    )
-
-
-def _render_tool_summaries_markdown(
-    summaries: Sequence[_ToolCallSummary],
-) -> str:
-    if not summaries:
-        return ""
-    base = _("Tool call {index}: {tool} — {status}")
-    blocks: list[str] = []
-    for summary in summaries:
-        heading = base.format(
-            index=summary.index,
-            tool=f"**{summary.tool_name}**",
-            status=summary.status,
-        )
-        heading = normalize_for_display(heading)
-        lines = ["> 🔧 " + heading]
-        for bullet in summary.bullet_lines:
-            if bullet:
-                lines.append("> • " + normalize_for_display(bullet))
-        blocks.append("\n".join(lines))
-    return "\n\n".join(blocks)
-
-
-def _render_tool_summaries_plain(
-    summaries: Sequence[_ToolCallSummary],
-) -> str:
-    if not summaries:
-        return ""
-    base = _("Tool call {index}: {tool} — {status}")
-    blocks: list[str] = []
-    for summary in summaries:
-        heading = base.format(
-            index=summary.index,
-            tool=summary.tool_name,
-            status=summary.status,
-        )
-        heading = normalize_for_display(heading)
-        lines = [heading]
-        for bullet in summary.bullet_lines:
-            if bullet:
-                lines.append("    • " + normalize_for_display(bullet))
-        blocks.append("\n".join(lines))
-    return "\n\n".join(blocks)
-
-
-def _extract_tool_name(payload: Mapping[str, Any]) -> str:
-    for key in ("tool_name", "tool", "name"):
-        value = payload.get(key)
-        if isinstance(value, str):
-            text = value.strip()
-            if text:
-                return normalize_for_display(text)
-    return normalize_for_display(_("Unnamed tool"))
-
-
-def _format_tool_status(payload: Mapping[str, Any]) -> str:
-    ok_value = payload.get("ok")
-    if ok_value is True:
-        return normalize_for_display(_("completed successfully"))
-    if ok_value is False:
-        message = _extract_error_message(payload.get("error"))
-        if message:
-            return normalize_for_display(
-                _("failed: {message}").format(message=message)
-            )
-        return normalize_for_display(_("failed"))
-    return normalize_for_display(_("returned data"))
-
-
-def _extract_error_message(error: Any) -> str:
-    if not error:
-        return ""
-    if isinstance(error, Mapping):
-        for key in ("message", "detail", "error"):
-            value = error.get(key)
-            if isinstance(value, str):
-                text = value.strip()
-                if text:
-                    return _shorten_text(normalize_for_display(text))
-        code = error.get("code")
-        if isinstance(code, str) and code.strip():
-            return _shorten_text(
-                normalize_for_display(
-                    _("code {code}").format(code=code.strip())
-                )
-            )
-        try:
-            return _shorten_text(
-                normalize_for_display(
-                    json.dumps(error, ensure_ascii=False, default=str)
-                )
-            )
-        except Exception:  # pragma: no cover - defensive
-            return _shorten_text(normalize_for_display(str(error)))
-    if isinstance(error, Sequence) and not isinstance(
-        error, (str, bytes, bytearray)
-    ):
-        items = [normalize_for_display(str(item)) for item in error[:5]]
-        if len(error) > 5:
-            items.append("…")
-        return _shorten_text(", ".join(items))
-    return _shorten_text(normalize_for_display(str(error)))
-
-
-def _summarize_tool_details(payload: Mapping[str, Any]) -> list[str]:
-    tool_name = _extract_tool_name(payload)
-    arguments = payload.get("tool_arguments")
-    result = payload.get("result")
-    lines, consumed_args, consumed_result = _summarize_specific_tool(
-        tool_name, arguments, result
-    )
-    lines.extend(_summarize_generic_arguments(arguments, consumed_args))
-    if payload.get("ok") is False:
-        lines.extend(_summarize_error_details(payload.get("error")))
-        return [line for line in lines if line]
-    if consumed_result is not None:
-        lines.extend(_summarize_generic_result(result, consumed_result))
-    return [line for line in lines if line]
-
-
-def _summarize_error_details(error: Any) -> list[str]:
-    if not error:
-        return []
-    if isinstance(error, Mapping):
-        lines: list[str] = []
-        code = error.get("code")
-        if isinstance(code, str) and code.strip():
-            lines.append(
-                _("Error code: {code}").format(
-                    code=normalize_for_display(code.strip())
-                )
-            )
-        message = error.get("message")
-        if isinstance(message, str) and message.strip():
-            lines.append(
-                _("Error message: {message}").format(
-                    message=_shorten_text(normalize_for_display(message.strip()))
-                )
-            )
-        details = error.get("details")
-        if details:
-            lines.append(
-                _("Error details: {details}").format(
-                    details=_format_value_snippet(details)
-                )
-            )
-        return lines
-    return [_("Error: {message}").format(message=_format_value_snippet(error))]
-
-
-def _summarize_specific_tool(
-    tool_name: str, arguments: Any, result: Any
-) -> tuple[list[str], set[str], set[str] | None]:
-    lines: list[str] = []
-    consumed_args: set[str] = set()
-    consumed_result: set[str] | None = set()
-
-    rid = _extract_rid(arguments, result)
-    if tool_name == "update_requirement_field":
-        if rid:
-            lines.append(_("Requirement: {rid}").format(rid=_format_value_snippet(rid)))
-            consumed_args.add("rid")
-        if isinstance(arguments, Mapping):
-            field = arguments.get("field")
-            if field is not None:
-                lines.append(
-                    _("Field: {field}").format(
-                        field=_format_value_snippet(field)
-                    )
-                )
-                consumed_args.add("field")
-            if "value" in arguments:
-                lines.append(
-                    _("New value: {value}").format(
-                        value=_format_value_snippet(arguments.get("value"))
-                    )
-                )
-                consumed_args.add("value")
-        if isinstance(result, Mapping):
-            revision = result.get("revision")
-            if revision is not None:
-                lines.append(
-                    _("Revision: {revision}").format(
-                        revision=_format_value_snippet(revision)
-                    )
-                )
-        return lines, consumed_args, None
-
-    if tool_name == "set_requirement_labels":
-        if rid:
-            lines.append(_("Requirement: {rid}").format(rid=_format_value_snippet(rid)))
-            consumed_args.add("rid")
-        labels_value = None
-        if isinstance(arguments, Mapping):
-            labels_value = arguments.get("labels")
-            consumed_args.add("labels")
-        if labels_value is None:
-            lines.append(_("Labels cleared"))
-        else:
-            lines.append(
-                _("Labels: {labels}").format(
-                    labels=_format_value_snippet(labels_value)
-                )
-            )
-        return lines, consumed_args, None
-
-    if tool_name == "set_requirement_attachments":
-        if rid:
-            lines.append(_("Requirement: {rid}").format(rid=_format_value_snippet(rid)))
-            consumed_args.add("rid")
-        attachments = None
-        if isinstance(arguments, Mapping):
-            attachments = arguments.get("attachments")
-            consumed_args.add("attachments")
-        count = (
-            len(attachments)
-            if isinstance(attachments, Sequence)
-            and not isinstance(attachments, (str, bytes, bytearray))
-            else 0
-        )
-        lines.append(
-            _("Attachments provided: {count}").format(
-                count=normalize_for_display(str(count))
-            )
-        )
-        if isinstance(result, Mapping):
-            new_attachments = result.get("attachments")
-            if isinstance(new_attachments, Sequence) and not isinstance(
-                new_attachments, (str, bytes, bytearray)
-            ):
-                lines.append(
-                    _("Current attachment count: {count}").format(
-                        count=normalize_for_display(str(len(new_attachments)))
-                    )
-                )
-        return lines, consumed_args, None
-
-    if tool_name == "set_requirement_links":
-        if rid:
-            lines.append(_("Requirement: {rid}").format(rid=_format_value_snippet(rid)))
-            consumed_args.add("rid")
-        links_value = None
-        if isinstance(arguments, Mapping):
-            links_value = arguments.get("links")
-            consumed_args.add("links")
-        if isinstance(links_value, Sequence) and not isinstance(
-            links_value, (str, bytes, bytearray)
-        ):
-            lines.append(
-                _("Outgoing links provided: {count}").format(
-                    count=normalize_for_display(str(len(links_value)))
-                )
-            )
-        elif links_value is None:
-            lines.append(_("Outgoing links cleared"))
-        if isinstance(result, Mapping):
-            new_links = result.get("links")
-            if isinstance(new_links, Sequence) and not isinstance(
-                new_links, (str, bytes, bytearray)
-            ):
-                lines.append(
-                    _("Current outgoing links: {count}").format(
-                        count=normalize_for_display(str(len(new_links)))
-                    )
-                )
-        return lines, consumed_args, None
-
-    if tool_name == "delete_requirement":
-        if rid:
-            lines.append(_("Deleted requirement: {rid}").format(rid=_format_value_snippet(rid)))
-        return lines, consumed_args, None
-
-    if tool_name == "create_requirement":
-        if isinstance(arguments, Mapping):
-            prefix = arguments.get("prefix")
-            if prefix is not None:
-                lines.append(
-                    _("Document: {prefix}").format(
-                        prefix=_format_value_snippet(prefix)
-                    )
-                )
-                consumed_args.add("prefix")
-        if isinstance(result, Mapping):
-            rid_result = result.get("rid")
-            if rid_result:
-                lines.append(
-                    _("Created requirement: {rid}").format(
-                        rid=_format_value_snippet(rid_result)
-                    )
-                )
-            title = result.get("title")
-            if title:
-                lines.append(
-                    _("Title: {title}").format(title=_format_value_snippet(title))
-                )
-        return lines, consumed_args, None
-
-    if tool_name == "link_requirements":
-        if isinstance(arguments, Mapping):
-            source_rid = arguments.get("source_rid")
-            derived_rid = arguments.get("derived_rid")
-            link_type = arguments.get("link_type")
-            if source_rid:
-                lines.append(
-                    _("Source requirement: {rid}").format(
-                        rid=_format_value_snippet(source_rid)
-                    )
-                )
-                consumed_args.add("source_rid")
-            if derived_rid:
-                lines.append(
-                    _("Derived requirement: {rid}").format(
-                        rid=_format_value_snippet(derived_rid)
-                    )
-                )
-                consumed_args.add("derived_rid")
-            if link_type:
-                lines.append(
-                    _("Link type: {link_type}").format(
-                        link_type=_format_value_snippet(link_type)
-                    )
-                )
-                consumed_args.add("link_type")
-        if isinstance(result, Mapping):
-            new_links = result.get("links")
-            if isinstance(new_links, Sequence) and not isinstance(
-                new_links, (str, bytes, bytearray)
-            ):
-                lines.append(
-                    _("Current outgoing links: {count}").format(
-                        count=normalize_for_display(str(len(new_links)))
-                    )
-                )
-        return lines, consumed_args, None
-
-    if tool_name == "list_requirements":
-        if isinstance(arguments, Mapping):
-            for key in ("status", "labels"):
-                value = arguments.get(key)
-                if value:
-                    lines.append(
-                        _("{label}: {value}").format(
-                            label=_prettify_key(key),
-                            value=_format_value_snippet(value),
-                        )
-                    )
-                    consumed_args.add(key)
-            page = arguments.get("page") if isinstance(arguments, Mapping) else None
-            per_page = arguments.get("per_page") if isinstance(arguments, Mapping) else None
-            if page is not None:
-                lines.append(
-                    _("Page: {page}").format(page=_format_value_snippet(page))
-                )
-                consumed_args.add("page")
-            if per_page is not None:
-                lines.append(
-                    _("Per page: {per_page}").format(
-                        per_page=_format_value_snippet(per_page)
-                    )
-                )
-                consumed_args.add("per_page")
-        if isinstance(result, Mapping):
-            total = result.get("total")
-            if total is not None:
-                lines.append(
-                    _("Total items: {total}").format(
-                        total=_format_value_snippet(total)
-                    )
-                )
-            items = result.get("items")
-            if isinstance(items, Sequence) and not isinstance(
-                items, (str, bytes, bytearray)
-            ):
-                lines.append(
-                    _("Returned items: {count}").format(
-                        count=_format_value_snippet(len(items))
-                    )
-                )
-        return lines, consumed_args, None
-
-    if tool_name == "search_requirements":
-        if isinstance(arguments, Mapping):
-            for key in ("query", "status", "labels"):
-                value = arguments.get(key)
-                if value:
-                    lines.append(
-                        _("{label}: {value}").format(
-                            label=_prettify_key(key),
-                            value=_format_value_snippet(value),
-                        )
-                    )
-                    consumed_args.add(key)
-            page = arguments.get("page") if isinstance(arguments, Mapping) else None
-            per_page = arguments.get("per_page") if isinstance(arguments, Mapping) else None
-            if page is not None:
-                lines.append(
-                    _("Page: {page}").format(page=_format_value_snippet(page))
-                )
-                consumed_args.add("page")
-            if per_page is not None:
-                lines.append(
-                    _("Per page: {per_page}").format(
-                        per_page=_format_value_snippet(per_page)
-                    )
-                )
-                consumed_args.add("per_page")
-        if isinstance(result, Mapping):
-            total = result.get("total")
-            if total is not None:
-                lines.append(
-                    _("Total items: {total}").format(
-                        total=_format_value_snippet(total)
-                    )
-                )
-            items = result.get("items")
-            if isinstance(items, Sequence) and not isinstance(
-                items, (str, bytes, bytearray)
-            ):
-                lines.append(
-                    _("Returned items: {count}").format(
-                        count=_format_value_snippet(len(items))
-                    )
-                )
-        return lines, consumed_args, None
-
-    if tool_name == "get_requirement":
-        if rid:
-            lines.append(_("Requirement: {rid}").format(rid=_format_value_snippet(rid)))
-        if isinstance(result, Mapping):
-            title = result.get("title")
-            if title:
-                lines.append(
-                    _("Title: {title}").format(title=_format_value_snippet(title))
-                )
-        return lines, consumed_args, None
-
-    return lines, consumed_args, set()
-
-
-def _summarize_generic_arguments(
-    arguments: Any, consumed: set[str]
-) -> list[str]:
-    if not isinstance(arguments, Mapping):
-        if arguments is None:
-            return []
-        return [
-            _("Arguments: {value}").format(
-                value=_format_value_snippet(arguments)
-            )
-        ]
-    skip = set(consumed)
-    skip.add("directory")
-    lines: list[str] = []
-    for key in arguments:
-        if len(lines) >= 5:
-            break
-        if key in skip:
-            continue
-        value = arguments.get(key)
-        lines.append(
-            _("{label}: {value}").format(
-                label=_prettify_key(key), value=_format_value_snippet(value)
-            )
-        )
-    return lines
-
-
-def _summarize_generic_result(
-    result: Any, consumed: set[str]
-) -> list[str]:
-    if result is None:
-        return []
-    if not isinstance(result, Mapping):
-        return [
-            _("Result: {value}").format(value=_format_value_snippet(result))
-        ]
-    skip = set(consumed)
-    lines: list[str] = []
-    if "rid" in result and "rid" not in skip:
-        lines.append(
-            _("RID: {rid}").format(rid=_format_value_snippet(result.get("rid")))
-        )
-        skip.add("rid")
-    if "title" in result and "title" not in skip:
-        lines.append(
-            _("Title: {title}").format(title=_format_value_snippet(result.get("title")))
-        )
-        skip.add("title")
-    if "total" in result and "total" not in skip:
-        lines.append(
-            _("Total items: {total}").format(
-                total=_format_value_snippet(result.get("total"))
-            )
-        )
-        skip.add("total")
-    if "items" in result and "items" not in skip:
-        items = result.get("items")
-        if isinstance(items, Sequence) and not isinstance(items, (str, bytes, bytearray)):
-            lines.append(
-                _("Returned items: {count}").format(
-                    count=_format_value_snippet(len(items))
-                )
-            )
-        skip.add("items")
-    for key in result:
-        if len(lines) >= 5:
-            break
-        if key in skip or key in {"links", "labels", "attachments"}:
-            continue
-        value = result.get(key)
-        lines.append(
-            _("{label}: {value}").format(
-                label=_prettify_key(key), value=_format_value_snippet(value)
-            )
-        )
-    return lines
-
-
-def _prettify_key(key: Any) -> str:
-    text = normalize_for_display(str(key))
-    return text.replace("_", " ").capitalize()
-
-
-def _extract_rid(arguments: Any, result: Any) -> str | None:
-    for source in (arguments, result):
-        if isinstance(source, Mapping):
-            rid = source.get("rid")
-            if isinstance(rid, str):
-                text = rid.strip()
-                if text:
-                    return normalize_for_display(text)
-    return None
-
-
-def _format_value_snippet(value: Any) -> str:
-    if value is None:
-        return _("(none)")
-    if isinstance(value, str):
-        text = normalize_for_display(value.strip())
-        if not text:
-            return _("(empty)")
-        text = _shorten_text(text)
-        if "\n" not in text and "`" not in text:
-            return f"`{text}`"
-        return text
-    if isinstance(value, (int, float)):
-        return normalize_for_display(str(value))
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        items: list[str] = []
-        for item in value:
-            items.append(_shorten_text(normalize_for_display(str(item)), limit=40))
-            if len(items) >= 5:
-                break
-        if len(value) > 5:
-            items.append("…")
-        joined = ", ".join(item for item in items if item)
-        if not joined:
-            return _("(empty)")
-        if "\n" not in joined and "`" not in joined:
-            return f"`{joined}`"
-        return joined
-    if isinstance(value, Mapping):
-        keys: list[str] = []
-        for key in value.keys():
-            keys.append(normalize_for_display(str(key)))
-            if len(keys) >= 5:
-                break
-        if len(value) > 5:
-            keys.append("…")
-        keys_text = ", ".join(keys) if keys else _("(none)")
-        return _("keys: {keys}").format(keys=keys_text)
-    try:
-        text = json.dumps(value, ensure_ascii=False, default=str)
-    except Exception:  # pragma: no cover - defensive
-        text = normalize_for_display(str(value))
-    text = _shorten_text(text)
-    if "\n" not in text and "`" not in text:
-        return f"`{text}`"
-    return text
-
-
-def _shorten_text(text: str, *, limit: int = 120) -> str:
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1] + "…"
 
 class AgentChatPanel(wx.Panel):
     """Interactive chat panel driving the :class:`LocalAgent`."""
@@ -1572,7 +857,9 @@ class AgentChatPanel(wx.Panel):
                     except Exception:  # pragma: no cover - defensive
                         return
                     handle.streamed_tool_results.append(prepared)
-                    snapshot = tuple(dict(item) for item in handle.streamed_tool_results)
+                    snapshot = clone_streamed_tool_results(
+                        handle.streamed_tool_results
+                    )
                     wx.CallAfter(
                         self._handle_streamed_tool_results,
                         handle,
@@ -2111,9 +1398,9 @@ class AgentChatPanel(wx.Panel):
         try:
             conversation_text, display_text, raw_result, tool_results = self._process_result(result)
             if not tool_results and handle.streamed_tool_results:
-                tool_results = [
-                    dict(payload) for payload in handle.streamed_tool_results
-                ]
+                tool_results = list(
+                    clone_streamed_tool_results(handle.streamed_tool_results)
+                )
             response_tokens = count_text_tokens(
                 conversation_text,
                 model=self._token_model(),
@@ -2177,24 +1464,24 @@ class AgentChatPanel(wx.Panel):
         tool_results: list[Any] | None = None
 
         if isinstance(result, Mapping):
-            raw_payload = _history_json_safe(result)
+            raw_payload = history_json_safe(result)
             if not result.get("ok", False):
                 display_text = format_error_message(result.get("error"))
                 conversation_parts.append(display_text)
             else:
                 payload = result.get("result")
-                display_text = _stringify_payload(payload)
+                display_text = stringify_payload(payload)
                 if display_text:
                     conversation_parts.append(display_text)
 
             extras = result.get("tool_results")
             if extras:
-                safe_extras = _history_json_safe(extras)
+                safe_extras = history_json_safe(extras)
                 if isinstance(safe_extras, list):
                     tool_results = safe_extras
                 else:
                     tool_results = [safe_extras]
-                extras_text = _stringify_payload(safe_extras)
+                extras_text = stringify_payload(safe_extras)
                 if extras_text:
                     conversation_parts.append(extras_text)
         else:
@@ -2480,8 +1767,8 @@ class AgentChatPanel(wx.Panel):
                         if can_regenerate
                         else None
                     )
-                    tool_summary_md = _render_tool_summaries_markdown(
-                        _summarize_tool_results(entry.tool_results)
+                    tool_summary_md = render_tool_summaries_markdown(
+                        summarize_tool_results(entry.tool_results)
                     )
                     response_text = entry.display_response or entry.response
                     if tool_summary_md:
@@ -2600,7 +1887,7 @@ class AgentChatPanel(wx.Panel):
 
     @staticmethod
     def _sanitize_log_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
-        safe_mapping_raw = _history_json_safe(value)
+        safe_mapping_raw = history_json_safe(value)
         mapping: dict[str, Any] = {}
         if isinstance(safe_mapping_raw, Mapping):
             for key, val in safe_mapping_raw.items():
@@ -2619,7 +1906,7 @@ class AgentChatPanel(wx.Panel):
                 elif isinstance(content_value, str):
                     mapping["content"] = normalize_for_display(content_value)
                 else:
-                    mapping["content"] = _history_json_safe(content_value)
+                    mapping["content"] = history_json_safe(content_value)
             else:
                 mapping["content"] = ""
         return mapping
@@ -2662,7 +1949,7 @@ class AgentChatPanel(wx.Panel):
             {"role": "user", "content": prompt_text},
         ]
 
-        raw_result_safe = _history_json_safe(raw_result) if raw_result is not None else None
+        raw_result_safe = history_json_safe(raw_result) if raw_result is not None else None
         raw_result_mapping = (
             raw_result_safe if isinstance(raw_result_safe, Mapping) else None
         )
@@ -2676,7 +1963,7 @@ class AgentChatPanel(wx.Panel):
                 llm_message = normalize_for_display(result_value)
             error_value = raw_result_mapping.get("error")
             if error_value:
-                error_payload = _history_json_safe(error_value)
+                error_payload = history_json_safe(error_value)
                 if isinstance(error_payload, Mapping):
                     details_payload = error_payload.get("details")
                     if isinstance(details_payload, Mapping):
@@ -2689,7 +1976,7 @@ class AgentChatPanel(wx.Panel):
                             llm_message = normalize_for_display(raw_llm_message)
                         raw_tool_calls = details_payload.get("llm_tool_calls")
                         if raw_tool_calls:
-                            safe_calls = _history_json_safe(raw_tool_calls)
+                            safe_calls = history_json_safe(raw_tool_calls)
                             if isinstance(safe_calls, list):
                                 planned_tool_calls = safe_calls or None
                             elif safe_calls is not None:
@@ -2698,8 +1985,8 @@ class AgentChatPanel(wx.Panel):
         tool_payloads: list[Any] = []
         if tool_results:
             for payload in tool_results:
-                tool_payloads.append(_history_json_safe(payload))
-        elif raw_result_mapping and _looks_like_tool_payload(raw_result_mapping):
+                tool_payloads.append(history_json_safe(payload))
+        elif raw_result_mapping and looks_like_tool_payload(raw_result_mapping):
             tool_payloads.append(raw_result_mapping)
 
         diagnostic_payload = {
@@ -2720,7 +2007,7 @@ class AgentChatPanel(wx.Panel):
             "error_payload": error_payload,
         }
 
-        return _history_json_safe(diagnostic_payload)
+        return history_json_safe(diagnostic_payload)
 
     def _handle_streamed_tool_results(
         self,
@@ -2739,7 +2026,9 @@ class AgentChatPanel(wx.Panel):
         if not tool_results:
             entry.tool_results = None
         else:
-            entry.tool_results = [dict(payload) for payload in tool_results]
+            entry.tool_results = list(
+                clone_streamed_tool_results(tool_results)
+            )
         self._render_transcript()
 
     def _notify_tool_results(
@@ -2752,10 +2041,10 @@ class AgentChatPanel(wx.Panel):
         handler = getattr(self, "_tool_result_handler", None)
         if handler is None:
             return
-        prepared: list[Mapping[str, Any]] = []
-        for payload in tool_results:
-            if isinstance(payload, Mapping):
-                prepared.append(dict(payload))
+        prepared = [
+            payload
+            for payload in clone_streamed_tool_results(tool_results)
+        ]
         if not prepared:
             return
         try:
@@ -2774,8 +2063,8 @@ class AgentChatPanel(wx.Panel):
         for idx, entry in enumerate(conversation.entries, start=1):
             prompt_text = normalize_for_display(entry.prompt)
             response_source = entry.display_response or entry.response
-            tool_summary_plain = _render_tool_summaries_plain(
-                _summarize_tool_results(entry.tool_results)
+            tool_summary_plain = render_tool_summaries_plain(
+                summarize_tool_results(entry.tool_results)
             )
             if tool_summary_plain:
                 base_response = (response_source or "").strip()
@@ -2961,7 +2250,7 @@ class AgentChatPanel(wx.Panel):
                     prepared.append(dict(message))
             if not prepared:
                 return format_json_block(None)
-            safe_value = _history_json_safe(prepared)
+            safe_value = history_json_safe(prepared)
             return format_json_block(safe_value)
 
         def gather_history_messages(limit: int) -> list[dict[str, Any]]:

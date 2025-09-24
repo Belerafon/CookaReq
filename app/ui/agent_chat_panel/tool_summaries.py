@@ -53,25 +53,31 @@ def summarize_tool_payload(
     )
 
 
+def render_tool_summary_markdown(summary: ToolCallSummary) -> str:
+    base = _("Tool call {index}: {tool} — {status}")
+    heading = base.format(
+        index=summary.index,
+        tool=f"**{summary.tool_name}**",
+        status=summary.status,
+    )
+    heading = normalize_for_display(heading)
+    lines = ["> 🔧 " + heading]
+    for bullet in summary.bullet_lines:
+        if bullet:
+            lines.append("> • " + normalize_for_display(bullet))
+    return "\n".join(lines)
+
+
 def render_tool_summaries_markdown(
     summaries: Sequence[ToolCallSummary],
 ) -> str:
     if not summaries:
         return ""
-    base = _("Tool call {index}: {tool} — {status}")
     blocks: list[str] = []
     for summary in summaries:
-        heading = base.format(
-            index=summary.index,
-            tool=f"**{summary.tool_name}**",
-            status=summary.status,
-        )
-        heading = normalize_for_display(heading)
-        lines = ["> 🔧 " + heading]
-        for bullet in summary.bullet_lines:
-            if bullet:
-                lines.append("> • " + normalize_for_display(bullet))
-        blocks.append("\n".join(lines))
+        block = render_tool_summary_markdown(summary)
+        if block:
+            blocks.append(block)
     return "\n\n".join(blocks)
 
 
@@ -629,6 +635,7 @@ __all__ = [
     "ToolCallSummary",
     "summarize_tool_results",
     "summarize_tool_payload",
+    "render_tool_summary_markdown",
     "render_tool_summaries_markdown",
     "render_tool_summaries_plain",
     "extract_error_message",

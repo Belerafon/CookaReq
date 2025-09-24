@@ -9,6 +9,7 @@ import wx
 
 from ...i18n import _
 from ...log import get_log_directory, logger, open_log_directory
+from ..helpers import create_copy_button
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .frame import MainFrame
@@ -68,6 +69,7 @@ class MainFrameLoggingMixin:
     log_level_label: wx.StaticText
     log_level_choice: wx.Choice
     open_logs_button: wx.Button
+    copy_logs_button: wx.Window
     log_console: wx.TextCtrl
     log_handler: WxLogHandler
     _log_level_values: list[int]
@@ -92,6 +94,13 @@ class MainFrameLoggingMixin:
         )
         self.open_logs_button.Bind(wx.EVT_BUTTON, self.on_open_logs)
         header.Add(self.open_logs_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        self.copy_logs_button = create_copy_button(
+            self.log_panel,
+            tooltip=_("Copy log output to clipboard"),
+            fallback_label=_("Copy logs"),
+            handler=self.on_copy_logs,
+        )
+        header.Add(self.copy_logs_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         log_sizer.Add(header, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
         self.log_console = wx.TextCtrl(
             self.log_panel,
@@ -200,7 +209,38 @@ class MainFrameLoggingMixin:
         self.log_label.SetLabel(_("Log Console"))
         self.log_level_label.SetLabel(_("Log Level"))
         self.open_logs_button.SetLabel(_("Open Log Folder"))
+        copy_label = _("Copy logs")
+        copy_tooltip = _("Copy log output to clipboard")
+        if getattr(self, "copy_logs_button", None):
+            self.copy_logs_button.SetToolTip(copy_tooltip)
+            if not isinstance(self.copy_logs_button, wx.BitmapButton):
+                self.copy_logs_button.SetLabel(copy_label)
         self._populate_log_level_choice(self.log_handler.level)
+
+    # ------------------------------------------------------------------
+    # clipboard interaction
+    def on_copy_logs(self, event: wx.CommandEvent | None) -> None:
+        """Copy current log console text to the clipboard."""
+
+        console = getattr(self, "log_console", None)
+        if console is None or console.IsBeingDeleted():
+            return
+        text = console.GetValue()
+        if not text:
+            return
+
+        clipboard = wx.TheClipboard
+        opened = False
+        try:
+            opened = clipboard.Open()
+            if not opened:
+                return
+            clipboard.SetData(wx.TextDataObject(text))
+        finally:
+            if opened:
+                clipboard.Close()
+        if event is not None:
+            event.Skip(False)
 
     # ------------------------------------------------------------------
     # file system interaction

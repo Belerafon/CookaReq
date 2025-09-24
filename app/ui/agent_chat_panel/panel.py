@@ -1395,6 +1395,8 @@ class AgentChatPanel(wx.Panel):
             else 0.0
         )
         final_tokens: TokenCountResult | None = None
+        tool_results: list[Any] | None = None
+        should_render = False
         try:
             conversation_text, display_text, raw_result, tool_results = self._process_result(result)
             if not tool_results and handle.streamed_tool_results:
@@ -1442,8 +1444,7 @@ class AgentChatPanel(wx.Panel):
                 )
             handle.pending_entry = None
             handle.streamed_tool_results.clear()
-            self._render_transcript()
-            self._notify_tool_results(tool_results)
+            should_render = True
         finally:
             self._set_wait_state(False, final_tokens)
             if elapsed:
@@ -1452,6 +1453,10 @@ class AgentChatPanel(wx.Panel):
                     time=f"{minutes:02d}:{seconds:02d}",
                 )
                 self.status_label.SetLabel(label)
+
+        if should_render:
+            self._render_transcript()
+            self._notify_tool_results(tool_results)
 
     def _process_result(
         self, result: Any

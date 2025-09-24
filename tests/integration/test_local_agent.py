@@ -10,7 +10,6 @@ import httpx
 import openai
 import pytest
 
-from app.agent import local_agent as la
 from app.agent.local_agent import LocalAgent
 from app.llm.client import LLMClient, LLMResponse, LLMToolCall
 from app.mcp.client import MCPNotReadyError
@@ -498,7 +497,7 @@ def test_run_command_reports_loop_details_when_max_steps_exceeded():
 
     llm = LoopingLLM()
     mcp = RecordingMCP()
-    agent = LocalAgent(llm=llm, mcp=mcp)
+    agent = LocalAgent(llm=llm, mcp=mcp, max_thought_steps=5)
 
     result = agent.run_command("покажи SYS-8")
 
@@ -519,7 +518,57 @@ def test_run_command_reports_loop_details_when_max_steps_exceeded():
     last_result = tool_results[-1]
     assert last_result["tool_name"] == "get_requirement"
     assert last_result["tool_arguments"]["rid"] == "SYS-8"
-    assert len(mcp.calls) == la.LocalAgent._MAX_THOUGHT_STEPS
+    assert agent.max_thought_steps == 5
+    assert len(mcp.calls) == agent.max_thought_steps
+
+
+def test_run_command_handles_long_sequences_without_step_limit():
+    class LongSequenceLLM(LLMAsyncBridge):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            self.calls += 1
+            if self.calls <= 10:
+                return LLMResponse(
+                    "",
+                    (
+                        LLMToolCall(
+                            id=f"call-{self.calls}",
+                            name="get_requirement",
+                            arguments={"rid": f"SYS-{self.calls:04d}"},
+                        ),
+                    ),
+                )
+            return LLMResponse("готово", ())
+
+    class CountingMCP(MCPAsyncBridge):
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, Mapping[str, Any]]] = []
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def call_tool(self, name, arguments):
+            self.calls.append((name, dict(arguments)))
+            return {"ok": True, "error": None, "result": {"rid": arguments["rid"]}}
+
+    llm = LongSequenceLLM()
+    mcp = CountingMCP()
+    agent = LocalAgent(llm=llm, mcp=mcp)
+
+    result = agent.run_command("запроси серию требований")
+
+    assert agent.max_thought_steps is None
+    assert result["ok"] is True
+    assert result["result"] == "готово"
+    assert len(mcp.calls) == 10
+    assert [call[1]["rid"] for call in mcp.calls] == [
+        f"SYS-{index:04d}" for index in range(1, 11)
+    ]
 
 
 def test_run_command_returns_message_without_mcp_call():

@@ -114,7 +114,10 @@ def requirement_from_dict(
         try:
             return enum_cls(value)
         except ValueError as exc:
-            raise ValueError(f"invalid {field}: {value}") from exc
+            allowed = ", ".join(member.value for member in enum_cls)
+            raise ValueError(
+                f"invalid {field}: {value!r}; expected one of: {allowed}"
+            ) from exc
 
     def _text_value(field: str, default: str = "") -> str:
         value = data.get(field, default)

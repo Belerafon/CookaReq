@@ -10,17 +10,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..core.model import Priority, RequirementType, Status, Verification
+
 __all__ = ["SYSTEM_PROMPT", "TOOLS"]
 
 
-_STATUS_VALUES = [
-    "draft",
-    "in_review",
-    "approved",
-    "baselined",
-    "retired",
-]
+_STATUS_VALUES = [status.value for status in Status]
 _STATUS_VALUES_WITH_NULL = _STATUS_VALUES + [None]
+
+_TYPE_VALUES = [req_type.value for req_type in RequirementType]
+_PRIORITY_VALUES = [priority.value for priority in Priority]
+_VERIFICATION_VALUES = [method.value for method in Verification]
 
 _EDITABLE_FIELDS = [
     "title",
@@ -56,7 +56,9 @@ SYSTEM_PROMPT = (
     "`list_requirements` accepts optional `page`, `per_page`, `status` and "
     "`labels`; `search_requirements` accepts `query`, `labels`, `status`, "
     "`page` and `per_page`. Status values: draft, in_review, approved, "
-    "baselined, retired. Labels must be arrays of strings. "
+    "baselined, retired — always use these lowercase codes even when the "
+    "user provides alternative wording or another language. Labels must be "
+    "arrays of strings. "
     "When editing a requirement use the specialised tools described below: "
     "`update_requirement_field` changes exactly one field at a time. Allowed "
     "field names: "
@@ -262,6 +264,64 @@ TOOLS: list[dict[str, Any]] = [
                 },
                 "required": ["rid", "field", "value"],
                 "additionalProperties": False,
+                "allOf": [
+                    {
+                        "if": {
+                            "properties": {"field": {"const": "status"}},
+                            "required": ["field"],
+                        },
+                        "then": {
+                            "properties": {
+                                "value": {
+                                    "type": "string",
+                                    "enum": _STATUS_VALUES,
+                                }
+                            }
+                        },
+                    },
+                    {
+                        "if": {
+                            "properties": {"field": {"const": "type"}},
+                            "required": ["field"],
+                        },
+                        "then": {
+                            "properties": {
+                                "value": {
+                                    "type": "string",
+                                    "enum": _TYPE_VALUES,
+                                }
+                            }
+                        },
+                    },
+                    {
+                        "if": {
+                            "properties": {"field": {"const": "priority"}},
+                            "required": ["field"],
+                        },
+                        "then": {
+                            "properties": {
+                                "value": {
+                                    "type": "string",
+                                    "enum": _PRIORITY_VALUES,
+                                }
+                            }
+                        },
+                    },
+                    {
+                        "if": {
+                            "properties": {"field": {"const": "verification"}},
+                            "required": ["field"],
+                        },
+                        "then": {
+                            "properties": {
+                                "value": {
+                                    "type": "string",
+                                    "enum": _VERIFICATION_VALUES,
+                                }
+                            }
+                        },
+                    },
+                ],
             },
         },
     },

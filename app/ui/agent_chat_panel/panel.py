@@ -32,7 +32,12 @@ from ...llm.tokenizer import TokenCountResult, combine_token_counts, count_text_
 from ...util.cancellation import CancellationEvent, OperationCancelledError
 from ...util.time import utc_now_iso
 from ..chat_entry import ChatConversation, ChatEntry
-from ..helpers import dip, format_error_message, inherit_background
+from ..helpers import (
+    create_copy_button,
+    dip,
+    format_error_message,
+    inherit_background,
+)
 from ..text import normalize_for_display
 from ..splitter_utils import refresh_splitter_highlight, style_splitter
 from ..widgets.chat_message import TranscriptMessagePanel
@@ -467,7 +472,7 @@ class AgentChatPanel(wx.Panel):
         )
         transcript_header.Add(self._conversation_label, 0, wx.ALIGN_CENTER_VERTICAL)
         transcript_header.AddStretchSpacer()
-        self._copy_conversation_btn = self._create_copy_button(
+        self._copy_conversation_btn = create_copy_button(
             transcript_panel,
             tooltip=_("Copy conversation"),
             fallback_label=_("Copy conversation"),
@@ -476,7 +481,7 @@ class AgentChatPanel(wx.Panel):
         self._copy_conversation_btn.Enable(False)
         transcript_header.Add(self._copy_conversation_btn, 0, wx.ALIGN_CENTER_VERTICAL)
         transcript_header.AddSpacer(dip(self, 4))
-        self._copy_transcript_log_btn = self._create_copy_button(
+        self._copy_transcript_log_btn = create_copy_button(
             transcript_panel,
             tooltip=_("Copy technical log"),
             fallback_label=_("Copy technical log"),
@@ -607,33 +612,6 @@ class AgentChatPanel(wx.Panel):
         self._refresh_history_list()
         wx.CallAfter(self._adjust_vertical_splitter)
 
-    # ------------------------------------------------------------------
-    def _create_copy_button(
-        self,
-        parent: wx.Window,
-        *,
-        tooltip: str,
-        fallback_label: str,
-        handler: Callable[[wx.CommandEvent], None],
-    ) -> wx.Window:
-        """Create a bitmap copy button with textual fallback."""
-
-        size = wx.Size(dip(self, 16), dip(self, 16))
-        bitmap = wx.ArtProvider.GetBitmap(wx.ART_COPY, wx.ART_BUTTON, size)
-        if bitmap.IsOk():
-            button = wx.BitmapButton(
-                parent,
-                bitmap=bitmap,
-                style=wx.BU_EXACTFIT | wx.BORDER_NONE,
-            )
-        else:
-            button = wx.Button(parent, label=fallback_label, style=wx.BU_EXACTFIT)
-        inherit_background(button, parent)
-        button.SetToolTip(tooltip)
-        button.Bind(wx.EVT_BUTTON, handler)
-        return button
-
-    # ------------------------------------------------------------------
     @property
     def history_sash(self) -> int:
         """Return the current width of the history pane."""

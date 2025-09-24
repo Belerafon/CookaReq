@@ -60,6 +60,32 @@ def dip(window: wx.Window, value: int) -> int:
     return value
 
 
+def create_copy_button(
+    parent: wx.Window,
+    *,
+    tooltip: str,
+    fallback_label: str,
+    handler: Callable[[wx.CommandEvent], None],
+    size: int = 16,
+) -> wx.Window:
+    """Create a copy button reusing themed bitmaps when available."""
+
+    icon_size = wx.Size(dip(parent, size), dip(parent, size))
+    bitmap = wx.ArtProvider.GetBitmap(wx.ART_COPY, wx.ART_BUTTON, icon_size)
+    if bitmap.IsOk():
+        button: wx.Window = wx.BitmapButton(
+            parent,
+            bitmap=bitmap,
+            style=wx.BU_EXACTFIT | wx.BORDER_NONE,
+        )
+    else:
+        button = wx.Button(parent, label=fallback_label, style=wx.BU_EXACTFIT)
+    inherit_background(button, parent)
+    button.SetToolTip(tooltip)
+    button.Bind(wx.EVT_BUTTON, handler)
+    return button
+
+
 class HelpStaticBox(wx.StaticBoxSizer):
     """A ``wx.StaticBoxSizer`` with a built-in help button.
 

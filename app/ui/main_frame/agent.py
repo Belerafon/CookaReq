@@ -212,10 +212,14 @@ class MainFrameAgentMixin:
                 "link_requirements",
                 "create_requirement",
             }:
-                requirement = self._convert_tool_result_requirement(result_payload)
+                requirement = self._convert_tool_result_requirement(
+                    result_payload,
+                )
                 if requirement is None:
                     continue
-                if requirement.doc_prefix == current_prefix:
+                if self._normalise_requirement_for_document(
+                    requirement, current_prefix
+                ):
                     updated.append(requirement)
             elif tool_name == "delete_requirement":
                 rid = self._extract_result_rid(result_payload)
@@ -226,7 +230,7 @@ class MainFrameAgentMixin:
                 except ValueError:
                     logger.warning("Agent returned invalid requirement id %r", rid)
                     continue
-                if prefix == current_prefix:
+                if self._prefix_matches_document(prefix, current_prefix):
                     removed_ids.append(req_id)
 
         changes_applied = False
@@ -287,7 +291,46 @@ class MainFrameAgentMixin:
         return None
 
     @staticmethod
-    def _convert_tool_result_requirement(result_payload: Any) -> Requirement | None:
+    def _prefix_matches_document(prefix: str, current_prefix: str) -> bool:
+        if not prefix or not current_prefix:
+            return False
+        if prefix == current_prefix:
+            return True
+        try:
+            return prefix.casefold() == current_prefix.casefold()
+        except AttributeError:  # pragma: no cover - extremely defensive
+            return str(prefix).casefold() == str(current_prefix).casefold()
+
+    @staticmethod
+    def _normalise_requirement_for_document(
+        requirement: Requirement, current_prefix: str
+    ) -> bool:
+        if not current_prefix:
+            return False
+        raw_prefix = getattr(requirement, "doc_prefix", "") or ""
+        prefix = str(raw_prefix)
+        if not prefix:
+            return False
+        if prefix == current_prefix:
+            return True
+        try:
+            same = prefix.casefold() == current_prefix.casefold()
+        except AttributeError:  # pragma: no cover - extremely defensive
+            same = str(prefix).casefold() == str(current_prefix).casefold()
+        if not same:
+            return False
+        requirement.doc_prefix = current_prefix
+        try:
+            req_id = int(getattr(requirement, "id"))
+        except (TypeError, ValueError):  # pragma: no cover - unexpected payload
+            return True
+        requirement.rid = f"{current_prefix}{req_id}"
+        return True
+
+    @staticmethod
+    def _convert_tool_result_requirement(
+        result_payload: Any,
+    ) -> Requirement | None:
         if not isinstance(result_payload, Mapping):
             logger.warning(
                 "Agent tool result has unexpected structure: %s",
@@ -308,7 +351,11 @@ class MainFrameAgentMixin:
             logger.warning("Agent returned invalid requirement id %r", rid)
             return None
         try:
-            requirement = requirement_from_dict(dict(result_payload), doc_prefix=prefix, rid=rid)
+            requirement = requirement_from_dict(
+                dict(result_payload),
+                doc_prefix=prefix,
+                rid=rid,
+            )
         except Exception:
             logger.exception("Failed to parse requirement payload from agent tool")
             return None

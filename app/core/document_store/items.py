@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import fields
 from pathlib import Path
@@ -24,6 +25,9 @@ from . import (
 )
 from .layout import canonical_item_name
 from .documents import is_ancestor, load_documents, validate_labels
+
+logger = logging.getLogger("cookareq.document_store.items")
+
 
 RID_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*?)(\d+)$")
 KNOWN_REQUIREMENT_FIELDS = {f.name for f in fields(Requirement)}
@@ -206,7 +210,20 @@ def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
     directory_path = Path(directory)
     item_id = int(payload["id"])
     path = item_path(directory_path, doc, item_id)
+    existed_before = path.exists()
     path.parent.mkdir(parents=True, exist_ok=True)
+    rid = rid_for(doc, item_id)
+    try:
+        payload_dump = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    except TypeError:
+        payload_dump = repr(payload)
+    logger.info(
+        "Saving requirement %s to %s (existed_before=%s) payload=%s",
+        rid,
+        path,
+        existed_before,
+        payload_dump,
+    )
     with path.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2, sort_keys=True)
     return path

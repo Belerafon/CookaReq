@@ -1434,7 +1434,12 @@ class AgentChatPanel(wx.Panel):
 
         if should_render:
             self._render_transcript()
-            self._notify_tool_results(tool_results)
+            prepared_final: tuple[Mapping[str, Any], ...] = (
+                tuple(tool_results)
+                if tool_results
+                else ()
+            )
+            self._notify_streamed_tool_results(handle, prepared_final)
 
     def _process_result(
         self, result: Any
@@ -1688,6 +1693,7 @@ class AgentChatPanel(wx.Panel):
             return
         handle.pending_entry = None
         handle.streamed_tool_results.clear()
+        handle.notified_tool_results = 0
         self._save_history()
         self._refresh_history_list()
         self._render_transcript()
@@ -2050,11 +2056,13 @@ class AgentChatPanel(wx.Panel):
             return
         if not tool_results:
             entry.tool_results = None
+            prepared: tuple[Mapping[str, Any], ...] = ()
         else:
-            entry.tool_results = list(
-                clone_streamed_tool_results(tool_results)
-            )
+            cloned = list(clone_streamed_tool_results(tool_results))
+            entry.tool_results = cloned
+            prepared = tuple(cloned)
         self._render_transcript()
+        self._notify_streamed_tool_results(handle, prepared)
 
     def _notify_tool_results(
         self, tool_results: Sequence[Any] | None
@@ -2076,6 +2084,25 @@ class AgentChatPanel(wx.Panel):
             handler(tuple(prepared))
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to handle agent tool results")
+
+    def _notify_streamed_tool_results(
+        self,
+        handle: _AgentRunHandle,
+        tool_results: Sequence[Mapping[str, Any]] | Sequence[Any] | None,
+    ) -> None:
+        """Forward only new tool payloads collected for *handle*."""
+
+        if not tool_results:
+            return
+        payloads = tuple(tool_results)
+        if not payloads:
+            return
+        already_notified = getattr(handle, "notified_tool_results", 0)
+        total = len(payloads)
+        if total <= already_notified:
+            return
+        handle.notified_tool_results = total
+        self._notify_tool_results(payloads[already_notified:])
 
     def _compose_transcript_text(self) -> str:
         conversation = self._get_active_conversation()

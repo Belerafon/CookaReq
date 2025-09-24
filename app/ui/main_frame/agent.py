@@ -80,26 +80,96 @@ class MainFrameAgentMixin:
         selected_ids = self._selected_requirement_ids_for_agent()
         model = getattr(self, "model", None)
         rid_summary: list[str] = []
+        selection_lines: list[str] = []
         unresolved_ids: list[str] = []
+        invalid_rids: dict[str, str] = {}
+
         if selected_ids and model is not None:
+            seen_rids: set[str] = set()
+            selection_index = 0
             for req_id in selected_ids:
                 requirement = model.get_by_id(req_id)
                 if requirement is None:
                     unresolved_ids.append(str(req_id))
                     continue
-                rid = getattr(requirement, "rid", "") or ""
-                rid = rid.strip()
+
+                rid_raw = getattr(requirement, "rid", "") or ""
+                rid = rid_raw.strip()
                 if not rid:
+                    unresolved_ids.append(str(req_id))
                     continue
-                if rid not in rid_summary:
-                    rid_summary.append(rid)
+
+                invalid_reason: str | None = None
+                try:
+                    canonical_prefix, canonical_id = parse_rid(rid)
+                except ValueError:
+                    invalid_reason = (
+                        "expected format <PREFIX><NUMBER> with a prefix that starts "
+                        "with a letter and contains only ASCII letters, digits, or "
+                        "underscores"
+                    )
+                    if rid not in invalid_rids:
+                        invalid_rids[rid] = invalid_reason
+                    display_rid = rid
+                else:
+                    display_rid = f"{canonical_prefix}{canonical_id}"
+                    if display_rid not in seen_rids:
+                        rid_summary.append(display_rid)
+                        seen_rids.add(display_rid)
+
+                title_raw = getattr(requirement, "title", "") or ""
+                title = title_raw.strip()
+                selection_index += 1
+                if title:
+                    selection_text = (
+                        "- GUI selection #{idx}: requirement {rid} — {title} "
+                        "is currently highlighted in the graphical interface."
+                    ).format(idx=selection_index, rid=display_rid, title=title)
+                else:
+                    selection_text = (
+                        "- GUI selection #{idx}: requirement {rid} is currently "
+                        "highlighted in the graphical interface."
+                    ).format(idx=selection_index, rid=display_rid)
+
+                if invalid_reason is not None:
+                    selection_text += (
+                        " WARNING: requirement identifier '{rid}' does not match "
+                        "the required <PREFIX><NUMBER> format; adjust the "
+                        "document directory name or requirement data so MCP "
+                        "tools can reference it."
+                    ).format(rid=display_rid)
+
+                selection_lines.append(selection_text)
         elif selected_ids:
             unresolved_ids.extend(str(req_id) for req_id in selected_ids)
 
-        if rid_summary:
-            lines.append(f"Selected requirement RIDs: {', '.join(rid_summary)}")
+        lines.append(f"Selected requirements ({len(selection_lines)}):")
+        if selection_lines:
+            lines.extend(selection_lines)
         else:
-            lines.append("Selected requirement RIDs: (none)")
+            lines.append("- (none)")
+
+        if rid_summary:
+            lines.append(
+                "Selected requirement RID summary: " + ", ".join(rid_summary)
+            )
+        else:
+            lines.append("Selected requirement RID summary: (none)")
+
+        if invalid_rids:
+            formatted_invalids = "; ".join(
+                f"{rid} — {reason}" for rid, reason in invalid_rids.items()
+            )
+            lines.append(
+                "Invalid requirement identifiers detected: " + formatted_invalids
+            )
+            lines.append(
+                "Requirement prefixes must start with a letter and may "
+                "contain only ASCII letters, digits, or underscores. Adjust "
+                "the directory structure or JSON files so each RID follows "
+                "the <PREFIX><NUMBER> convention."
+            )
+
         if unresolved_ids:
             lines.append(
                 "Unresolved GUI selection ids: " + ", ".join(unresolved_ids)

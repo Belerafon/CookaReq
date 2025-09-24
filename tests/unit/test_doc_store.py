@@ -133,6 +133,7 @@ def test_parse_rid_and_next_id(tmp_path: Path):
     save_document(doc_dir, doc)
 
     assert parse_rid("HLR1") == ("HLR", 1)
+    assert parse_rid("sys5") == ("sys", 5)
     assert next_item_id(doc_dir, doc) == 1
 
     save_item(doc_dir, doc, {"id": 1, "title": "T", "statement": "X"})

@@ -254,7 +254,11 @@ def test_run_command_aborts_when_mcp_unavailable():
 
     llm = ToolCallingLLM()
     mcp = UnavailableMCP()
-    agent = LocalAgent(llm=llm, mcp=mcp)
+    agent = LocalAgent(
+        llm=llm,
+        mcp=mcp,
+        max_consecutive_tool_errors=1,
+    )
 
     result = agent.run_command("list")
     expected_error = {"code": "INTERNAL", "message": "server offline"}
@@ -265,7 +269,13 @@ def test_run_command_aborts_when_mcp_unavailable():
     assert result["call_id"] == "call-0"
     assert result.get("tool_arguments") == {}
     assert "tool_results" not in result
+    assert result["agent_stop_reason"] == {
+        "type": "consecutive_tool_errors",
+        "count": 1,
+        "max_consecutive_tool_errors": 1,
+    }
     assert mcp.ensure_calls == 1
+    assert agent.max_consecutive_tool_errors == 1
 
     async def exercise() -> None:
         async_result = await agent.run_command_async("list async")
@@ -276,6 +286,11 @@ def test_run_command_aborts_when_mcp_unavailable():
         assert async_result["call_id"] == "call-0"
         assert async_result.get("tool_arguments") == {}
         assert "tool_results" not in async_result
+        assert async_result["agent_stop_reason"] == {
+            "type": "consecutive_tool_errors",
+            "count": 1,
+            "max_consecutive_tool_errors": 1,
+        }
 
     asyncio.run(exercise())
     assert mcp.ensure_calls == 2
@@ -380,7 +395,11 @@ def test_run_command_returns_tool_error_result():
                 },
             }
 
-    agent = LocalAgent(llm=ToolLLM(), mcp=ErrorMCP())
+    agent = LocalAgent(
+        llm=ToolLLM(),
+        mcp=ErrorMCP(),
+        max_consecutive_tool_errors=1,
+    )
     result = agent.run_command("list")
     expected_error = {"code": ErrorCode.INTERNAL, "message": "boom"}
     assert result["ok"] is False
@@ -390,6 +409,163 @@ def test_run_command_returns_tool_error_result():
     assert result["call_id"] == "call-0"
     assert result.get("tool_arguments") == {}
     assert "tool_results" not in result
+    assert result["agent_stop_reason"] == {
+        "type": "consecutive_tool_errors",
+        "count": 1,
+        "max_consecutive_tool_errors": 1,
+    }
+    assert agent.max_consecutive_tool_errors == 1
+
+
+def test_run_command_recovers_after_tool_error():
+    class RecoveringLLM(LLMAsyncBridge):
+        def __init__(self) -> None:
+            self.calls = 0
+            self.conversations: list[list[dict[str, Any]]] = []
+
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            cloned = [dict(message) for message in conversation]
+            self.conversations.append(cloned)
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    "",
+                    (
+                        LLMToolCall(
+                            id="call-0",
+                            name="adjust_requirement",
+                            arguments={"value": "bad"},
+                        ),
+                    ),
+                )
+            if self.calls == 2:
+                tool_reply = json.loads(conversation[-1]["content"])
+                assert tool_reply["ok"] is False
+                assert tool_reply["error"]["message"] == "invalid value"
+                return LLMResponse(
+                    "",
+                    (
+                        LLMToolCall(
+                            id="call-1",
+                            name="adjust_requirement",
+                            arguments={"value": "good"},
+                        ),
+                    ),
+                )
+            return LLMResponse("Готово", ())
+
+    class FlakyMCP(MCPAsyncBridge):
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, Mapping[str, Any]]] = []
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def call_tool(self, name, arguments):
+            self.calls.append((name, dict(arguments)))
+            if len(self.calls) == 1:
+                return {
+                    "ok": False,
+                    "error": {
+                        "code": ErrorCode.VALIDATION_ERROR,
+                        "message": "invalid value",
+                    },
+                }
+            return {
+                "ok": True,
+                "error": None,
+                "result": {"value": arguments["value"]},
+            }
+
+    llm = RecoveringLLM()
+    mcp = FlakyMCP()
+    agent = LocalAgent(llm=llm, mcp=mcp)
+
+    result = agent.run_command("adjust please")
+
+    assert result["ok"] is True
+    assert result["result"] == "Готово"
+    assert "agent_stop_reason" not in result
+    assert result.get("tool_results")
+    assert result["tool_results"][0]["tool_name"] == "adjust_requirement"
+    assert result["tool_results"][0]["result"] == {"value": "good"}
+    assert result["tool_results"][0]["ok"] is True
+    assert agent.max_consecutive_tool_errors == 5
+
+    assert llm.calls == 3
+    assert [call[0] for call in mcp.calls] == [
+        "adjust_requirement",
+        "adjust_requirement",
+    ]
+    assert len(llm.conversations) >= 3
+    error_message = json.loads(llm.conversations[1][-1]["content"])
+    assert error_message["ok"] is False
+    assert error_message["error"]["message"] == "invalid value"
+
+
+def test_run_command_stops_after_configured_tool_error_limit():
+    class LoopingToolLLM(LLMAsyncBridge):
+        def __init__(self) -> None:
+            self.calls = 0
+            self.conversations: list[list[dict[str, Any]]] = []
+
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            self.conversations.append([dict(message) for message in conversation])
+            self.calls += 1
+            return LLMResponse(
+                "",
+                (
+                    LLMToolCall(
+                        id=f"call-{self.calls}",
+                        name="always_fails",
+                        arguments={"step": self.calls},
+                    ),
+                ),
+            )
+
+    class AlwaysFailingMCP(MCPAsyncBridge):
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, Mapping[str, Any]]] = []
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def call_tool(self, name, arguments):
+            self.calls.append((name, dict(arguments)))
+            return {
+                "ok": False,
+                "error": {
+                    "code": ErrorCode.INTERNAL,
+                    "message": f"failure {len(self.calls)}",
+                },
+            }
+
+    llm = LoopingToolLLM()
+    mcp = AlwaysFailingMCP()
+    agent = LocalAgent(llm=llm, mcp=mcp, max_consecutive_tool_errors=3)
+
+    result = agent.run_command("loop")
+
+    assert result["ok"] is False
+    assert result["error"]["message"] == "failure 3"
+    assert result["tool_name"] == "always_fails"
+    assert result["agent_stop_reason"] == {
+        "type": "consecutive_tool_errors",
+        "count": 3,
+        "max_consecutive_tool_errors": 3,
+    }
+    assert agent.max_consecutive_tool_errors == 3
+    assert llm.calls == 3
+    assert len(mcp.calls) == 3
+    assert result["tool_call_id"] == "call-3"
+    assert result["call_id"] == "call-3"
+    assert json.loads(llm.conversations[-1][-1]["content"])["error"]["message"] == "failure 2"
 
 
 def test_run_command_streams_tool_results_to_callback():

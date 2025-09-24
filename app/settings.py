@@ -115,6 +115,7 @@ class AgentSettings(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
     max_thought_steps: int | None = None
+    max_consecutive_tool_errors: int | None = 5
 
     @field_validator("max_thought_steps", mode="before")
     @classmethod
@@ -136,6 +137,33 @@ class AgentSettings(BaseModel):
         else:
             if isinstance(value, bool):
                 raise TypeError("Boolean is not a valid max_thought_steps value")
+            numeric = int(value)
+        if numeric <= 0:
+            return None
+        return numeric
+
+    @field_validator("max_consecutive_tool_errors", mode="before")
+    @classmethod
+    def _normalise_max_consecutive_tool_errors(
+        cls, value: int | str | None
+    ) -> int | None:
+        """Coerce *value* into a positive limit or ``None`` to disable the cap."""
+
+        if value is None:
+            return None
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return None
+            try:
+                numeric = int(raw)
+            except ValueError:  # pragma: no cover - delegated to Pydantic
+                return value
+        else:
+            if isinstance(value, bool):
+                raise TypeError(
+                    "Boolean is not a valid max_consecutive_tool_errors value"
+                )
             numeric = int(value)
         if numeric <= 0:
             return None

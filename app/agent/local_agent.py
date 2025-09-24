@@ -74,6 +74,7 @@ class LocalAgent:
         confirm_requirement_update: Callable[[RequirementUpdatePrompt], ConfirmDecision]
         | None = None,
         max_thought_steps: int | None = None,
+        max_consecutive_tool_errors: int | None = None,
     ) -> None:
         """Initialize agent with optional settings or prebuilt clients."""
         if settings is not None:
@@ -91,6 +92,10 @@ class LocalAgent:
                 )
             if max_thought_steps is None:
                 max_thought_steps = settings.agent.max_thought_steps
+            if max_consecutive_tool_errors is None:
+                max_consecutive_tool_errors = (
+                    settings.agent.max_consecutive_tool_errors
+                )
         if llm is None or mcp is None:
             raise TypeError("settings or clients must be provided")
         if not isinstance(llm, SupportsAgentLLM):
@@ -108,6 +113,9 @@ class LocalAgent:
         self._llm_requests: list[list[dict[str, Any]]] = []
         self._max_thought_steps: int | None = self._normalise_max_thought_steps(
             max_thought_steps
+        )
+        self._max_consecutive_tool_errors: int | None = (
+            self._normalise_max_consecutive_tool_errors(max_consecutive_tool_errors)
         )
 
     # ------------------------------------------------------------------
@@ -166,6 +174,9 @@ class LocalAgent:
                 payload["tool_results"] = len(result["tool_results"])
             except TypeError:
                 payload["tool_results"] = result["tool_results"]
+        stop_reason = result.get("agent_stop_reason")
+        if isinstance(stop_reason, Mapping):
+            payload["agent_stop_reason"] = dict(stop_reason)
         return payload
 
     def _record_request_messages(self, response: LLMResponse) -> None:
@@ -237,6 +248,32 @@ class LocalAgent:
         """Return currently configured step cap (``None`` means unlimited)."""
 
         return self._max_thought_steps
+
+    @staticmethod
+    def _normalise_max_consecutive_tool_errors(value: int | None) -> int | None:
+        """Return sanitised cap for consecutive tool failures."""
+
+        if value is None:
+            return None
+        if isinstance(value, bool):  # pragma: no cover - defensive guard
+            raise TypeError(
+                "max_consecutive_tool_errors must be an integer or None"
+            )
+        try:
+            numeric = int(value)
+        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+            raise TypeError(
+                "max_consecutive_tool_errors must be an integer or None"
+            ) from exc
+        if numeric <= 0:
+            return None
+        return numeric
+
+    @property
+    def max_consecutive_tool_errors(self) -> int | None:
+        """Return cap for consecutive tool failures (``None`` disables limit)."""
+
+        return self._max_consecutive_tool_errors
 
     @staticmethod
     def _run_sync(coro: Awaitable[Any]) -> Any:
@@ -403,6 +440,7 @@ class LocalAgent:
         accumulated_results: list[Mapping[str, Any]] = []
         last_response: LLMResponse | None = None
         step = 0
+        consecutive_tool_errors = 0
         while True:
             if self._max_thought_steps is not None and step >= self._max_thought_steps:
                 break
@@ -420,7 +458,7 @@ class LocalAgent:
                 return self._success_result(response, accumulated_results)
             (
                 tool_messages,
-                early_result,
+                tool_error,
                 batch_results,
             ) = await self._execute_tool_calls_core(
                 response.tool_calls,
@@ -429,8 +467,37 @@ class LocalAgent:
             )
             conversation.extend(tool_messages)
             accumulated_results.extend(batch_results)
-            if early_result is not None:
-                return early_result
+            if tool_error is not None:
+                consecutive_tool_errors += 1
+                if (
+                    self._max_consecutive_tool_errors is not None
+                    and consecutive_tool_errors
+                    >= self._max_consecutive_tool_errors
+                ):
+                    abort_payload: dict[str, Any] = {
+                        "reason": "tool-error-limit",
+                        "consecutive_errors": consecutive_tool_errors,
+                    }
+                    if self._max_consecutive_tool_errors is not None:
+                        abort_payload["max_consecutive_tool_errors"] = (
+                            self._max_consecutive_tool_errors
+                        )
+                    if isinstance(tool_error, Mapping):
+                        abort_payload["tool_name"] = tool_error.get("tool_name")
+                        abort_payload["tool_call_id"] = tool_error.get(
+                            "tool_call_id"
+                        )
+                        error_payload = tool_error.get("error")
+                        if isinstance(error_payload, Mapping):
+                            abort_payload["error_type"] = error_payload.get("type")
+                    log_event("AGENT_ABORTED", abort_payload)
+                    return self._prepare_consecutive_tool_error_result(
+                        tool_error,
+                        consecutive_tool_errors,
+                    )
+                self._raise_if_cancelled(cancellation)
+                continue
+            consecutive_tool_errors = 0
             self._raise_if_cancelled(cancellation)
         assert self._max_thought_steps is not None  # loop exits only when limit is set
         abort_payload: dict[str, Any] = {
@@ -576,6 +643,34 @@ class LocalAgent:
                 "AGENT_TOOL_STREAM_ERROR",
                 {"error": {"type": type(exc).__name__, "message": str(exc)}},
             )
+
+    def _prepare_consecutive_tool_error_result(
+        self,
+        payload: Mapping[str, Any] | None,
+        consecutive_errors: int,
+    ) -> dict[str, Any]:
+        """Return final result payload when tool failures exceed the cap."""
+
+        prepared: dict[str, Any] = {}
+        if isinstance(payload, Mapping):
+            prepared.update(payload)
+        else:  # pragma: no cover - defensive guard
+            prepared["error"] = {
+                "type": "ConsecutiveToolError",
+                "message": "Tool call failed repeatedly",
+                "details": payload,
+            }
+        prepared["ok"] = False
+        stop_reason: dict[str, Any] = {
+            "type": "consecutive_tool_errors",
+            "count": consecutive_errors,
+        }
+        if self._max_consecutive_tool_errors is not None:
+            stop_reason["max_consecutive_tool_errors"] = (
+                self._max_consecutive_tool_errors
+            )
+        prepared["agent_stop_reason"] = stop_reason
+        return prepared
 
     @staticmethod
     def _success_result(

@@ -23,7 +23,7 @@ def test_agent_context_accepts_lowercase_prefix() -> None:
     content = frame._agent_context_messages()[0]["content"]
 
     assert "Invalid requirement identifiers detected" not in content
-    assert "Selected requirement RID summary: sys1" in content
+    assert "Selected requirement RIDs: sys1" in content
 
 
 def test_agent_context_reports_invalid_rids() -> None:

@@ -682,8 +682,7 @@ def test_respond_preserves_context_for_update(tmp_path: Path, monkeypatch) -> No
             "content": (
                 "[Workspace context]\n"
                 "Active requirements list: SYS — System Requirements\n"
-                "Selected requirements (1):\n"
-                "- GUI selection #1: requirement SYS-1 — Power control is currently highlighted in the graphical interface."
+                "Selected requirement RIDs: SYS-1"
             ),
         },
         {
@@ -708,8 +707,9 @@ def test_respond_preserves_context_for_update(tmp_path: Path, monkeypatch) -> No
     assert len(system_messages) == 1
     system_content = system_messages[0].get("content", "")
     assert "Translate the user request" in system_content
-    assert "Selected requirements (1)" in system_content
-    assert "Selected requirement RID summary:" in system_content
+    assert "Selected requirement RIDs:" in system_content
+    assert "SYS-1" in system_content
+    assert "GUI selection #" not in system_content
     assert "(id=" not in system_content
 
 
@@ -759,9 +759,7 @@ def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> No
             "content": (
                 "[Workspace context]\n"
                 "Active requirements list: SYS — System Requirements\n"
-                "Selected requirements (2):\n"
-                "- GUI selection #1: requirement SYS-2 — Secondary is currently highlighted in the graphical interface.\n"
-                "- GUI selection #2: requirement SYS-3 — Legacy is currently highlighted in the graphical interface."
+                "Selected requirement RIDs: SYS-2, SYS-3"
             ),
         },
         {"role": "user", "content": "удали эти требования"},
@@ -779,8 +777,10 @@ def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> No
     assert len(system_messages) == 1
     system_content = system_messages[0].get("content", "")
     assert "Translate the user request" in system_content
-    assert "Selected requirements (2)" in system_content
-    assert "Selected requirement RID summary:" in system_content
+    assert "Selected requirement RIDs:" in system_content
+    assert "SYS-2" in system_content
+    assert "SYS-3" in system_content
+    assert "GUI selection #" not in system_content
     assert "prefix=" not in system_content
 def test_check_llm_async_uses_thread(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)

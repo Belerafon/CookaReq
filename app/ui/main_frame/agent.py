@@ -80,36 +80,30 @@ class MainFrameAgentMixin:
         selected_ids = self._selected_requirement_ids_for_agent()
         model = getattr(self, "model", None)
         rid_summary: list[str] = []
+        unresolved_ids: list[str] = []
         if selected_ids and model is not None:
-            lines.append(f"Selected requirements ({len(selected_ids)}):")
-            for index, req_id in enumerate(selected_ids, start=1):
+            for req_id in selected_ids:
                 requirement = model.get_by_id(req_id)
-                entry_prefix = f"- GUI selection #{index}: "
                 if requirement is None:
-                    lines.append(
-                        f"{entry_prefix}the interface still reports internal requirement id {req_id}, "
-                        "but the underlying record could not be loaded; the selection remains active."
-                    )
+                    unresolved_ids.append(str(req_id))
                     continue
                 rid = getattr(requirement, "rid", "") or ""
-                rid = rid.strip() or "<missing RID>"
-                if rid and rid != "<missing RID>" and rid not in rid_summary:
+                rid = rid.strip()
+                if not rid:
+                    continue
+                if rid not in rid_summary:
                     rid_summary.append(rid)
-                title = getattr(requirement, "title", "") or ""
-                title = title.strip()
-                details = f"{entry_prefix}requirement {rid}"
-                if title:
-                    details += f" — {title}"
-                details += " is currently highlighted in the graphical interface."
-                if not title:
-                    details += " No title is stored for this entry."
-                lines.append(details)
-        else:
-            lines.append("Selected requirements: (none)")
+        elif selected_ids:
+            unresolved_ids.extend(str(req_id) for req_id in selected_ids)
 
         if rid_summary:
-            joined = ", ".join(rid_summary)
-            lines.append(f"Selected requirement RID summary: {joined}")
+            lines.append(f"Selected requirement RIDs: {', '.join(rid_summary)}")
+        else:
+            lines.append("Selected requirement RIDs: (none)")
+        if unresolved_ids:
+            lines.append(
+                "Unresolved GUI selection ids: " + ", ".join(unresolved_ids)
+            )
 
         return [{"role": "system", "content": "\n".join(lines)}]
 

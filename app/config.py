@@ -8,17 +8,12 @@ import os
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any, ClassVar, Literal, Protocol
 
 import wx
 
-from .settings import (
-    AppSettings,
-    LLMSettings,
-    MCPSettings,
-    UISettings,
-    DEFAULT_LIST_COLUMNS as SETTINGS_DEFAULT_LIST_COLUMNS,
-)
+from .settings import AppSettings, LLMSettings, MCPSettings, UISettings
 
 
 logger = logging.getLogger(__name__)
@@ -222,21 +217,9 @@ class ConfigManager:
         self._raw[name] = deepcopy(value)
 
     # ------------------------------------------------------------------
-    # basic key/value API compatible with wx.Config
-    def read(self, key: str, default: str = "") -> str:
-        binding = self._binding_for(key)
-        if binding is not None:
-            value = self.get_value(key, default=default)
-            return "" if value is None else str(value)
-        return str(self._raw.get(key, default))
-
-    def read_int(self, key: str, default: int = 0) -> int:
-        binding = self._binding_for(key)
-        if binding is not None:
-            try:
-                return int(self.get_value(key, default=default))
-            except (TypeError, ValueError):
-                return int(default)
+    # columns
+    def get_column_width(self, index: int, default: int = -1) -> int:
+        key = f"col_width_{index}"
         value = self._raw.get(key, _MISSING)
         if value is _MISSING:
             return int(default)
@@ -245,43 +228,22 @@ class ConfigManager:
         except (TypeError, ValueError):
             return int(default)
 
-    def read_bool(self, key: str, default: bool = False) -> bool:
-        binding = self._binding_for(key)
-        if binding is not None:
-            value = self.get_value(key, default=default)
-            return bool(value)
-        value = self._raw.get(key, _MISSING)
-        if value is _MISSING:
-            return bool(default)
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.lower() in {"1", "true", "yes", "on"}
-        return bool(value)
+    def set_column_width(self, index: int, width: int) -> None:
+        self._raw[f"col_width_{index}"] = int(width)
 
-    def write(self, key: str, value: str) -> None:
-        binding = self._binding_for(key)
-        if binding is not None:
-            self.set_value(key, value)
+    def get_column_order(self) -> list[str]:
+        raw = self._raw.get("col_order")
+        if isinstance(raw, str):
+            candidates = raw.split(",")
+        elif isinstance(raw, Sequence):
+            candidates = list(raw)
         else:
-            self._raw[key] = str(value)
+            return []
+        return [str(entry) for entry in candidates if str(entry)]
 
-    def write_int(self, key: str, value: int) -> None:
-        binding = self._binding_for(key)
-        if binding is not None:
-            self.set_value(key, int(value))
-        else:
-            self._raw[key] = int(value)
+    def set_column_order(self, fields: Sequence[str]) -> None:
+        self._raw["col_order"] = [str(field) for field in fields]
 
-    def write_bool(self, key: str, value: bool) -> None:
-        binding = self._binding_for(key)
-        if binding is not None:
-            self.set_value(key, bool(value))
-        else:
-            self._raw[key] = bool(value)
-
-    # ------------------------------------------------------------------
-    # columns
     def get_columns(self) -> list[str]:
         return list(self.get_value("list_columns"))
 
@@ -593,7 +555,3 @@ class ConfigManager:
         panel.save_column_widths(self)
         panel.save_column_order(self)
         self.flush()
-
-
-DEFAULT_LIST_COLUMNS = list(SETTINGS_DEFAULT_LIST_COLUMNS)
-"""Re-exported for compatibility with legacy tests."""

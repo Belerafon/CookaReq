@@ -27,15 +27,15 @@ def _enum_label(e):
 
 
 @pytest.mark.parametrize(
-    "enum_cls,mapping",
+    ("enum_cls", "category"),
     [
-        (model.RequirementType, locale.TYPE),
-        (model.Status, locale.STATUS),
-        (model.Priority, locale.PRIORITY),
-        (model.Verification, locale.VERIFICATION),
+        (model.RequirementType, "type"),
+        (model.Status, "status"),
+        (model.Priority, "priority"),
+        (model.Verification, "verification"),
     ],
 )
-def test_localizations_match_enums(enum_cls, mapping):
+def test_localizations_match_enums(enum_cls, category):
     install("CookaReq", "app/locale", ["en"])
     expected = {e.value: _(_enum_label(e)) for e in enum_cls}
-    assert mapping == expected
+    assert locale.EN_LABELS[category] == expected

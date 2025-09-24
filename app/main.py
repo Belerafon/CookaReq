@@ -50,10 +50,7 @@ def main() -> None:
     language = config.get_language()
     app.locale = init_locale(language)
     model = RequirementModel()
-    try:
-        frame = MainFrame(parent=None, config=config, model=model)
-    except TypeError:  # compatibility with potential stubs
-        frame = MainFrame(parent=None)
+    frame = MainFrame(parent=None, config=config, model=model)
     frame.Show()
     app.MainLoop()
 

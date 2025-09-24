@@ -408,7 +408,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Restore column widths from config with sane bounds."""
         count = self.list.GetColumnCount()
         for i in range(count):
-            width = config.read_int(f"col_width_{i}", -1)
+            width = config.get_column_width(i, default=-1)
             if width <= 0:
                 field = self._field_order[i] if i < len(self._field_order) else ""
                 width = self._default_column_width(field)
@@ -421,7 +421,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         for i in range(count):
             width = self.list.GetColumnWidth(i)
             width = max(self.MIN_COL_WIDTH, min(width, self.MAX_COL_WIDTH))
-            config.write_int(f"col_width_{i}", width)
+            config.set_column_width(i, width)
 
     def _default_column_width(self, field: str) -> int:
         """Return sensible default width for a given column field."""
@@ -437,10 +437,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def load_column_order(self, config: ConfigManager) -> None:
         """Restore column ordering from config."""
-        value = config.read("col_order", "")
-        if not value:
+        names = config.get_column_order()
+        if not names:
             return
-        names = [n for n in value.split(",") if n]
         order = [self._field_order.index(n) for n in names if n in self._field_order]
         count = self.list.GetColumnCount()
         for idx in range(count):
@@ -456,7 +455,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         except Exception:
             return
         names = [self._field_order[idx] for idx in order if idx < len(self._field_order)]
-        config.write("col_order", ",".join(names))
+        config.set_column_order(names)
 
     def reorder_columns(self, from_col: int, to_col: int) -> None:
         """Move column from ``from_col`` index to ``to_col`` index."""

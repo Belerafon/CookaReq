@@ -1,5 +1,4 @@
 """Document store public API and shared structures."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,6 +6,9 @@ from typing import TYPE_CHECKING, Any, List, Mapping
 
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from ..model import Requirement
+
+from collections.abc import Sequence
+from pathlib import Path
 
 
 class ValidationError(Exception):
@@ -119,7 +121,6 @@ from .items import (  # noqa: E402
     delete_requirement,
     get_requirement,
     item_path,
-    locate_item_path,
     list_item_ids,
     list_requirements,
     load_item,
@@ -166,7 +167,6 @@ __all__ = [
     "delete_requirement",
     "get_requirement",
     "item_path",
-    "locate_item_path",
     "list_item_ids",
     "list_requirements",
     "load_item",

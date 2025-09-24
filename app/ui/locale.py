@@ -5,12 +5,6 @@ from __future__ import annotations
 from ..i18n import _
 from .enums import LABELS as EN_LABELS
 
-# Backwards compatible aliases for enum label mappings
-TYPE = EN_LABELS.get("type", {})
-STATUS = EN_LABELS.get("status", {})
-PRIORITY = EN_LABELS.get("priority", {})
-VERIFICATION = EN_LABELS.get("verification", {})
-
 # Human-readable labels for requirement fields
 FIELD_LABELS = {
     "id": _("Requirement ID (number)"),

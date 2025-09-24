@@ -42,6 +42,7 @@ class LLMResponse:
 
     content: str
     tool_calls: tuple[LLMToolCall, ...] = ()
+    request_messages: tuple[dict[str, Any], ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,6 +295,17 @@ class LLMClient:
         """Implementation shared by sync and async response helpers."""
 
         messages = self._prepare_messages(conversation)
+        try:
+            request_snapshot: tuple[dict[str, Any], ...] | None = tuple(
+                json.loads(json.dumps(messages, ensure_ascii=False))
+            )
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            request_snapshot = tuple(
+                {key: value for key, value in message.items()}
+                if isinstance(message, Mapping)
+                else {"value": message}
+                for message in messages
+            )
         use_stream = bool(cancellation) or self.settings.stream
         request_args = self._build_request_args(
             messages,
@@ -345,6 +357,7 @@ class LLMClient:
             response = LLMResponse(
                 content=message_text,
                 tool_calls=tool_calls,
+                request_messages=request_snapshot,
             )
             if not response.tool_calls and not response.content:
                 raise ToolValidationError(
@@ -423,6 +436,7 @@ class LLMClient:
             return LLMResponse(
                 content=response.content.strip(),
                 tool_calls=response.tool_calls,
+                request_messages=request_snapshot,
             )
 
     def _consume_stream(

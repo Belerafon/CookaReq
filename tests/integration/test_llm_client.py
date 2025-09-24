@@ -248,6 +248,23 @@ def test_parse_command_without_tool_call(tmp_path: Path, monkeypatch) -> None:
     assert response.content == "Привет"
 
 
+def test_respond_includes_request_snapshot(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    monkeypatch.setattr("openai.OpenAI", make_openai_mock({"hello": "Готово"}))
+    client = LLMClient(settings.llm)
+
+    conversation = [
+        {"role": "system", "content": "extra system"},
+        {"role": "user", "content": "hello"},
+    ]
+
+    response = client.respond(conversation)
+    assert response.request_messages is not None
+    assert response.request_messages[0]["role"] == "system"
+    assert response.request_messages[-1]["role"] == "user"
+    assert response.request_messages[-1]["content"] == "hello"
+
+
 def test_parse_command_reports_tool_validation_details(
     tmp_path: Path, monkeypatch
 ) -> None:

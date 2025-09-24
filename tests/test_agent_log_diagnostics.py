@@ -30,6 +30,9 @@ def test_build_entry_diagnostic_includes_tool_results():
     request_messages = diagnostic["llm_request_messages"]
     assert request_messages[0]["role"] == "system"
     assert request_messages[-1]["role"] == "user"
+    sequence = diagnostic["llm_request_messages_sequence"]
+    assert len(sequence) == 1
+    assert sequence[0]["messages"] == request_messages
     assert diagnostic["tool_exchanges"][0]["tool_name"] == "demo_tool"
 
 
@@ -111,3 +114,77 @@ def test_build_entry_diagnostic_includes_llm_details():
     assert isinstance(planned, list)
     assert planned
     assert planned[0]["function"]["name"] == "create_requirement"
+
+
+def test_build_entry_diagnostic_prefers_logged_request_messages():
+    diagnostic = AgentChatPanel._build_entry_diagnostic(
+        prompt="generate",
+        prompt_at="2025-01-03T00:00:00Z",
+        response_at="2025-01-03T00:00:05Z",
+        display_response="done",
+        stored_response="done",
+        raw_result={
+            "ok": True,
+            "result": "done",
+            "diagnostic": {
+                "llm_requests": [
+                    {
+                        "step": 1,
+                        "messages": [
+                            {"role": "system", "content": "merged system"},
+                            {"role": "user", "content": "generate"},
+                        ],
+                    }
+                ]
+            },
+        },
+        tool_results=None,
+        history_snapshot=[{"role": "system", "content": "legacy"}],
+        context_snapshot=None,
+    )
+
+    request_messages = diagnostic["llm_request_messages"]
+    assert request_messages[0]["content"] == "merged system"
+    assert [msg["role"] for msg in request_messages].count("system") == 1
+    sequence = diagnostic["llm_request_messages_sequence"]
+    assert len(sequence) == 1
+    assert sequence[0]["messages"] == request_messages
+    assert diagnostic["llm_requests"] == sequence
+
+
+def test_build_entry_diagnostic_preserves_request_sequence_metadata():
+    diagnostic = AgentChatPanel._build_entry_diagnostic(
+        prompt="iterate",
+        prompt_at="2025-01-04T00:00:00Z",
+        response_at="2025-01-04T00:00:05Z",
+        display_response="done",
+        stored_response="done",
+        raw_result={
+            "ok": True,
+            "result": "done",
+            "diagnostic": {
+                "llm_requests": [
+                    {"step": "1", "messages": [{"role": "user", "content": "first"}]},
+                    {
+                        "step": 2,
+                        "messages": [
+                            {"role": "assistant", "content": "final"}
+                        ],
+                        "extra": {"note": "metadata"},
+                    },
+                ],
+            },
+        },
+        tool_results=None,
+        history_snapshot=None,
+        context_snapshot=None,
+    )
+
+    sequence = diagnostic["llm_request_messages_sequence"]
+    assert len(sequence) == 2
+    assert sequence[0]["step"] == 1
+    assert sequence[0]["messages"][0]["content"] == "first"
+    assert sequence[1]["messages"][0]["content"] == "final"
+    assert "extra" not in sequence[1]
+    assert diagnostic["llm_request_messages"][0]["content"] == "final"
+    assert diagnostic["llm_requests"] == sequence

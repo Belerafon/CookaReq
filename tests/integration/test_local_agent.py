@@ -506,6 +506,112 @@ def test_run_command_returns_message_without_mcp_call():
     assert llm.conversations[1][-1] == {"role": "user", "content": "ещё"}
 
 
+def test_run_command_attaches_llm_request_messages():
+    class RecordingLLM(LLMAsyncBridge):
+        def __init__(self) -> None:
+            self.conversations: list[list[dict[str, Any]]] = []
+
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            cloned = [dict(message) for message in conversation]
+            self.conversations.append(cloned)
+            return LLMResponse(
+                "Ответ",
+                (),
+                request_messages=tuple(dict(message) for message in conversation),
+            )
+
+    llm = RecordingLLM()
+    agent = LocalAgent(llm=llm, mcp=DummyMCP())
+
+    result = agent.run_command("hello")
+
+    diagnostic = result.get("diagnostic")
+    assert diagnostic
+    requests = diagnostic["llm_requests"]
+    assert isinstance(requests, list) and len(requests) == 1
+    first_entry = requests[0]
+    assert first_entry["step"] == 1
+    messages = first_entry["messages"]
+    assert messages[-1]["content"] == "hello"
+    assert messages[0]["role"] == "user"
+
+
+def test_run_command_records_full_llm_request_sequence():
+    class MultiStepLLM(LLMAsyncBridge):
+        def __init__(self) -> None:
+            self.conversations: list[list[dict[str, Any]]] = []
+            self.calls = 0
+
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            cloned = [dict(message) for message in conversation]
+            self.conversations.append(cloned)
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    "",
+                    (
+                        LLMToolCall(
+                            id="call-1",
+                            name="demo_tool",
+                            arguments={"echo": "value"},
+                        ),
+                    ),
+                    request_messages=tuple(dict(message) for message in conversation),
+                )
+            return LLMResponse(
+                "Готово",
+                (),
+                request_messages=tuple(dict(message) for message in conversation),
+            )
+
+    class EchoMCP(MCPAsyncBridge):
+        def __init__(self) -> None:
+            self.tool_calls: list[tuple[str, Mapping[str, Any]]] = []
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def call_tool(self, name, arguments):
+            self.tool_calls.append((name, dict(arguments)))
+            return {
+                "ok": True,
+                "error": None,
+                "result": {"echo": arguments},
+            }
+
+    llm = MultiStepLLM()
+    mcp = EchoMCP()
+    agent = LocalAgent(llm=llm, mcp=mcp)
+
+    result = agent.run_command("начать")
+
+    assert result["ok"] is True
+    diagnostic = result.get("diagnostic")
+    assert diagnostic
+    requests = diagnostic["llm_requests"]
+    assert isinstance(requests, list)
+    assert len(requests) == 2
+
+    first_request = requests[0]
+    assert first_request["step"] == 1
+    assert [msg["role"] for msg in first_request["messages"]] == ["user"]
+
+    second_request = requests[1]
+    assert second_request["step"] == 2
+    second_roles = [msg["role"] for msg in second_request["messages"]]
+    assert second_roles[-2:] == ["assistant", "tool"]
+    assert second_request["messages"][0]["content"] == "начать"
+
+    assert len(mcp.tool_calls) == 1
+    assert mcp.tool_calls[0][0] == "demo_tool"
+
+
 def test_run_command_passes_history_to_llm():
     class RecordingLLM(LLMAsyncBridge):
         def __init__(self) -> None:

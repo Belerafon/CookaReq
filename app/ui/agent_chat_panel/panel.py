@@ -1924,6 +1924,28 @@ class AgentChatPanel(wx.Panel):
         return sanitized
 
     @classmethod
+    def _sanitize_llm_requests(
+        cls, requests: Sequence[Any] | None
+    ) -> list[dict[str, Any]]:
+        sanitized: list[dict[str, Any]] = []
+        if not requests:
+            return sanitized
+        for index, entry in enumerate(requests, start=1):
+            if not isinstance(entry, Mapping):
+                continue
+            messages_raw = entry.get("messages")
+            messages = cls._sanitize_log_messages(
+                messages_raw if isinstance(messages_raw, Sequence) else None
+            )
+            step_raw = entry.get("step")
+            try:
+                step_value = int(step_raw) if step_raw is not None else index
+            except (TypeError, ValueError):
+                step_value = index
+            sanitized.append({"step": step_value, "messages": messages})
+        return sanitized
+
+    @classmethod
     def _build_entry_diagnostic(
         cls,
         *,
@@ -1942,17 +1964,35 @@ class AgentChatPanel(wx.Panel):
         stored_text = normalize_for_display(stored_response)
         history_messages = cls._sanitize_log_messages(history_snapshot)
         context_messages = cls._sanitize_log_messages(context_snapshot)
-        llm_request_messages: list[dict[str, Any]] = [
-            {"role": "system", "content": normalize_for_display(SYSTEM_PROMPT)},
-            *history_messages,
-            *context_messages,
-            {"role": "user", "content": prompt_text},
-        ]
 
         raw_result_safe = history_json_safe(raw_result) if raw_result is not None else None
         raw_result_mapping = (
             raw_result_safe if isinstance(raw_result_safe, Mapping) else None
         )
+
+        if isinstance(raw_result_mapping, Mapping):
+            diagnostic_raw = raw_result_mapping.get("diagnostic")
+        else:
+            diagnostic_raw = None
+
+        llm_request_sequence: list[dict[str, Any]] = []
+        if isinstance(diagnostic_raw, Mapping):
+            requests_raw = diagnostic_raw.get("llm_requests")
+            if isinstance(requests_raw, Sequence):
+                llm_request_sequence = cls._sanitize_llm_requests(requests_raw)
+
+        if llm_request_sequence:
+            llm_request_messages = llm_request_sequence[-1]["messages"]
+        else:
+            llm_request_messages = [
+                {"role": "system", "content": normalize_for_display(SYSTEM_PROMPT)},
+                *history_messages,
+                *context_messages,
+                {"role": "user", "content": prompt_text},
+            ]
+            llm_request_sequence = [
+                {"step": 1, "messages": list(llm_request_messages)}
+            ]
 
         llm_message: str | None = None
         error_payload: Any | None = None
@@ -2005,6 +2045,8 @@ class AgentChatPanel(wx.Panel):
             else None,
             "raw_result": raw_result_safe,
             "error_payload": error_payload,
+            "llm_request_messages_sequence": llm_request_sequence,
+            "llm_requests": llm_request_sequence,
         }
 
         return history_json_safe(diagnostic_payload)
@@ -2308,6 +2350,10 @@ class AgentChatPanel(wx.Panel):
             llm_request_messages = diagnostic.get("llm_request_messages")
             lines.append(_("Agent → LLM request:"))
             lines.append(indent_block(format_json_block(llm_request_messages)))
+            request_sequence = diagnostic.get("llm_request_messages_sequence")
+            if isinstance(request_sequence, Sequence) and len(request_sequence) > 1:
+                lines.append(_("Agent → LLM request sequence:"))
+                lines.append(indent_block(format_json_block(request_sequence)))
             if TOOLS:
                 lines.append(
                     _(

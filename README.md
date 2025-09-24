@@ -1,42 +1,51 @@
 # CookaReq
 
-CookaReq (Cook a requirement) is a wxPython desktop application for curating structured requirement sets stored as plain JSON files. The repository also ships a command-line interface and a Model Context Protocol (MCP) service so that the same data can be automated from scripts or LLM-powered agents.
+CookaReq (Cook a requirement) is a wxPython desktop workspace for curating structured requirement sets stored as JSON files.  The repository ships the graphical client, a scriptable command-line interface, a Model Context Protocol (MCP) service, and a lightweight local agent that bridges LLM prompts with requirement operations.
 
 ## Highlights
 
-- Manage requirements grouped into hierarchical documents with revision tracking and label presets.
-- Rich search, filtering and navigation UI with derivation graphs and trace matrix exports.
-- Persistent workspace state (window layout, column selections, recently used repositories).
-- Command dialog that connects the built-in LocalAgent with MCP tools and an LLM backend.
-- FastAPI-based MCP server exposing CRUD and linking operations for external agents.
-- Scriptable CLI that mirrors the GUI operations for CI pipelines and bulk maintenance.
-- Localisation via `.po` catalogues and configurable colour palettes for label presets.
+- Manage hierarchical requirement documents with revision tracking, preset label palettes, attachments, and move/copy helpers.
+- Rich navigation UI: filterable document tree, configurable list view, Markdown preview, detachable editor and per-requirement history.
+- Built-in agent console that streams thoughts, tool calls, and confirmations while reusing the same MCP tools exposed to external clients.
+- Structured logging and telemetry (`~/.cookareq/logs` by default) with redaction of sensitive fields and rotating JSON/Text logs for diagnostics.
+- FastAPI MCP server launched in-process with token-protected endpoints, trace matrix exports, and configurable log directories.
+- Scriptable CLI that mirrors the GUI operations, including create/edit/move/delete flows, trace matrix export, and environment checks.
+- Localisation through `.po` catalogues and runtime language switching in the GUI and CLI.
 
-## Project layout
+## Repository layout
 
 ```
-app/            wxPython UI, CLI commands, domain models and integrations
-app/agent/      LocalAgent orchestrating LLM + MCP interactions
-app/core/       Requirement models, repositories and search utilities
-app/mcp/        FastAPI server, client and tool adapters for MCP
-app/cli/        Command-line entrypoint and subcommands
-requirements/   Example document tree used by tests and demos
-docs/           Architecture overview and design notes
-tests/          Unit, integration, GUI and smoke suites
-build.py        PyInstaller build script for packaging the GUI
+app/
+  agent/         LocalAgent orchestration and chat logic
+  cli/           Command-line entrypoint and subcommands
+  config.py      Persisted UI/LLM/MCP settings shared by GUI and CLI
+  core/          Requirement models, repositories, traceability utilities
+  i18n.py        Shared translation loader
+  llm/           HTTP client, schema validation, and token helpers
+  log.py         Structured logging, rotation, and log directory helpers
+  mcp/           FastAPI server, MCP client, and tool adapters
+  settings.py    Pydantic settings models and normalisation helpers
+  telemetry.py   Sanitised telemetry emitters used across the stack
+  ui/            wxPython widgets, panels, and controllers
+  util/          Cross-cutting helpers (JSON utilities, cancellation, time)
+requirements/    Sample requirement repository used by tests and demos
+docs/            Architecture notes and work-in-progress design material
+tests/           Unit, integration, GUI, smoke, and slow suites organised by markers
+tools/           Utility scripts (e.g. wx runner for headless experiments)
+build.py         PyInstaller build script producing distributables
 ```
 
 ## Getting started
 
 ### Prerequisites
 
-- Python 3.12 (the project targets the system interpreter, virtual environments are recommended).
-- Platform packages required by `wxPython`. On Debian/Ubuntu the preinstalled system image already satisfies them.
-- Optionally PyInstaller for packaging (install on demand with `python3 -m pip install pyinstaller`).
+- Python 3.12 (the project targets the system interpreter; use virtual environments for isolation).
+- Platform packages required by `wxPython` (the Debian/Ubuntu base image already contains them).
+- Optional: PyInstaller for packaging (`python3 -m pip install pyinstaller`).
 
 ### Installation
 
-Create and activate a virtual environment, then install the package in editable mode:
+Create and activate a virtual environment, then install CookaReq in editable mode with the development extras:
 
 ```bash
 git clone <repository-url>
@@ -47,62 +56,69 @@ python3 -m pip install -U pip
 python3 -m pip install -e ".[dev]"
 ```
 
-The `[dev]` extra pulls in `pytest`, `pytest-xvfb`, `ruff` and `polib` for development workflows.
+The `[dev]` extra installs `pytest`, `pytest-xvfb`, `ruff`, and `polib`. Runtime dependencies (wxPython, FastAPI, MCP client, OpenAI SDK, Pydantic, Markdown, etc.) are declared in `pyproject.toml`.
 
-### Launching the GUI
+## Running the GUI client
 
-Run the desktop client from the repository root:
+Launch the desktop application from the repository root:
 
 ```bash
 python3 -m app.main
 ```
 
-Choose a requirements directory when prompted. The sample dataset under `requirements/` contains two documents (`SYS`, `HLR`) that demonstrate the expected layout. Window geometry, recent folders, column order and filter selections are persisted via the JSON settings managed by `ConfigManager`.
+On first start choose a requirements directory. The bundled dataset under `requirements/` contains three documents (`SYS`, `HLR`, `LLR`) that demonstrate parent/child derivations, cross-links, and label presets. Window geometry, splitter positions, recent folders, log visibility, and agent chat layout are persisted via `ConfigManager` under `~/.config/CookaReq/config.json` (override with `XDG_CONFIG_HOME`).
 
-Key interface areas:
+Key workspace areas:
 
-1. Document tree with parent/child relationships.
-2. Requirement list with configurable columns, search field and advanced filters.
-3. Editor panel for creating or modifying the selected item.
+1. **Document tree** with collapse state, quick filters, and drag-and-drop moves between prefixes.
+2. **Requirement list** with configurable columns, saved sorts, Markdown preview, and suspect link indicators.
+3. **Editor & history** that exposes attachments, links, revision bumps, and detachable editing windows.
+4. **Agent console** that streams LLM messages, tool calls, and confirmation prompts while logging telemetry events.
 
-Additional dialogs provide label management, derivation graph visualisation, trace matrix export and the LocalAgent command console.
+Additional dialogs provide filter presets, label management, derivation graph visualisation, trace matrix export, settings, and a log viewer backed by the structured log files.
 
-### Command-line quick start
+### Configuration and logs
 
-The CLI mirrors GUI operations and is handy for automation:
+- UI/MCP/LLM options are validated through `app.settings.AppSettings`. GUI changes persist immediately; the CLI can load overrides via `--settings path/to/settings.json|toml`.
+- Set `OPEN_ROUTER` (for example by `source .env`) to provide the OpenRouter API key used by the default LLM client. Other providers can be configured through the Settings dialog or JSON/TOML files.
+- Logs live in `~/.cookareq/logs` unless the `COOKAREQ_LOG_DIR` environment variable overrides the path. The MCP server writes its own rotated `server.log`/`server.jsonl` under `<log_dir>/mcp`.
+
+## Command-line interface
+
+All GUI operations are available through `python3 -m app.cli`. The top-level commands are `doc`, `item`, `link`, `trace`, and `check`. Examples:
 
 ```bash
+# list documents and inspect repository structure
 python3 -m app.cli doc list requirements
-python3 -m app.cli item add requirements SYS --title "New requirement" --statement "…" --labels safety,ui
+
+# add a requirement using inline arguments
+python3 -m app.cli item add requirements SYS \
+    --title "New requirement" \
+    --statement "Describe behaviour" \
+    --labels safety,ui
+
+# move a requirement between documents
+python3 -m app.cli item move requirements SYS-0003 --new-prefix LLR
+
+# link requirements and export a traceability matrix
 python3 -m app.cli link requirements SYS-0001 HLR-0002
 python3 -m app.cli trace requirements --format html -o trace.html
-python3 -m app.cli check --llm   # or --mcp
+
+# verify LLM and MCP connectivity (uses mocked services by default)
+python3 -m app.cli check --llm --mcp
 ```
 
-Every command validates input before writing any files. The CLI loads application settings (including LLM/MCP credentials) using the same schema as the GUI.
+Every command validates inputs before mutating files and reuses the same schema as the GUI, including label validation, revision requirements, and MCP authentication checks.
 
-## Local agent & MCP integration
+## Local agent and MCP integration
 
-`app/agent/local_agent.py` combines the LLM client and MCP HTTP tools so that agents can reason over the requirement repository. The GUI exposes it through the **Command** dialog, and the CLI exposes health checks via `python3 -m app.cli check`.
+`app.agent.local_agent.LocalAgent` wraps the `LLMClient` and `MCPClient` to execute tool calls in response to LLM prompts. The GUI exposes it via the **Command** dialog/agent panel, while the CLI offers health checks through `python3 -m app.cli check`.
 
-### Configuring API access
-
-- Set the `OPEN_ROUTER` environment variable (it can be placed into a `.env` file) with an API key recognised by the `openai` client.
-- Adjust the LLM and MCP parameters from the **Settings** dialog or by editing the settings JSON/TOML file consumed by `app.settings.AppSettings`.
-- Token limits and retry policies are validated and normalised during loading.
-
-### MCP endpoints
-
-The background FastAPI application in `app/mcp/server.py` runs in a dedicated thread so the GUI stays responsive. It exposes:
-
-- `GET /health` for readiness checks.
-- `POST /mcp` to access MCP tools including `list_requirements`, `get_requirement`, `search_requirements`, `create_requirement`, `update_requirement_field`, `set_requirement_labels`, `set_requirement_attachments`, `set_requirement_links`, `delete_requirement` and `link_requirements`.
-
-Tools operate on the directory configured in the settings dialog (`base_path`) and enforce optional bearer-token authentication. Request and response metadata are logged both as human-readable text and structured JSON.
+- The default LLM configuration targets `https://openrouter.ai/api/v1` with the `meta-llama/llama-3.3-70b-instruct:free` model to ensure deterministic tool call support. Adjust these fields in *Settings → LLM* or in JSON/TOML overrides when necessary.
+- MCP runs in-process on `127.0.0.1:59362` by default. Enable token checks, change ports, or adjust the base requirements directory from *Settings → MCP*.
+- Structured MCP request/response logs (including headers and sanitized payloads) are written to `<log_dir>/mcp/server.log` and `<log_dir>/mcp/server.jsonl` for auditing.
 
 ## Requirements repository format
-
-The repository holds requirement documents in nested directories:
 
 ```
 requirements/
@@ -110,80 +126,60 @@ requirements/
     document.json
     items/
       1.json
+      2.json
   HLR/
+    document.json
+    items/
+      1.json
+  LLR/
     document.json
     items/
       1.json
 ```
 
-CookaReq always reads and writes requirement payloads under `items/<id>.json`. Any padded or prefixed files left in the directory must be cleaned up manually before working with the store.
-
-### Document metadata
-
-Each `document.json` contains the human-readable title, an optional parent prefix, label presets (with an `allowFreeform` flag) and arbitrary metadata fields. The directory name is treated as the canonical prefix.
-
-### Requirement items
-
-Each file `items/<id>.json` stores a single requirement with:
-
-- Numeric `id` unique within the document (the GUI renders the RID as `<PREFIX>-<ID>`, zero-padded).
-- Descriptive fields such as `title`, `statement`, `type`, `status`, ownership, verification and priority metadata.
-- `labels`, `links` and `attachments` with the same schema used in the GUI editor.
-- A manual `revision` number that must be incremented by the author; CookaReq persists it as provided.
-
-Search, filtering and derivation logic operate on these JSON structures across the entire hierarchy.
-
-## Localization
-
-Translations live in plain-text `.po` files inside `app/locale/`. The helper `app/i18n.py` wraps :mod:`gettext`: it first asks `gettext.translation` for a catalogue and transparently falls back to parsing the `.po` with `polib` when only text sources are present. The CLI and GUI share the same installer, so switching languages works consistently without generating `.mo` binaries.
+Each `document.json` provides the canonical prefix, title, parent prefix, label presets (with `allowFreeform` flags), and arbitrary metadata. Requirement payloads live under `items/<id>.json` and include `title`, `statement`, ownership, verification, revision, attachments, labels, and outgoing links. The GUI/CLI operate strictly on this schema; remove stray files before editing repositories manually.
 
 ## Development workflow
 
 ### Running tests
 
-Execute the full suite with:
+Use the default fast suite (`--suite core`) to cover unit, smoke, and headless integration checks:
 
 ```bash
 pytest -q
 ```
 
-GUI tests use `pytest-xvfb`, so no display server is needed. Skip them with `pytest -q -m "not gui"` or focus on them via `pytest -q -m gui`. For a quicker check run the smoke group:
+GUI suites rely on `pytest-xvfb` and can be executed explicitly:
 
 ```bash
-pytest -m smoke -q
+pytest -q tests/gui/test_gui.py tests/gui/test_list_panel_gui.py
 ```
+
+Marker selections are available for quick focus areas, e.g. `pytest -m smoke -q`, `pytest -m gui_full -q`, or `pytest --suite service -q`.
 
 ### Real LLM integration tests
 
-The default configuration (`pytest` runs with `--suite core`) skips checks that hit the live OpenRouter API. To exercise the integration end-to-end:
+Network-bound tests are opt-in to avoid accidental API calls. Provide credentials and flip the suite before running:
 
 ```bash
-source .env  # loads OPEN_ROUTER
-COOKAREQ_RUN_REAL_LLM_TESTS=1 pytest --suite real-llm tests/integration/test_llm_openrouter_integration.py::test_openrouter_check_llm -q
+source .env  # exports OPEN_ROUTER
+COOKAREQ_RUN_REAL_LLM_TESTS=1 \
+pytest --suite real-llm tests/integration/test_llm_openrouter_integration.py::test_openrouter_check_llm -q
 ```
 
-The opt-in flag prevents accidental network calls in CI. Without both the environment variable and an API key the test is skipped automatically.
+Without both the environment variable and a valid key the test is skipped automatically.
 
-#### Recommended OpenRouter model
+### Linting and formatting
 
-CookaReq ships with OpenRouter preconfigured (`https://openrouter.ai/api/v1`) and targets the free `meta-llama/llama-3.3-70b-instruct:free` tier by default. This model was evaluated against the GUI "edit the selected requirement" workflow and reliably produces `update_requirement_field` tool calls, unlike other free options that either stalled on clarifying questions or lacked tool-call support. If the provider changes availability you can override the model in *Settings → LLM*, but keep the defaults when possible so that the real LLM smoke test aligns with production expectations.
-
-### Linting
-
-`ruff` is configured via `pyproject.toml`. Run it before committing:
+`ruff` enforces code style and import hygiene:
 
 ```bash
 ruff check app tests
 ```
 
-### Sample data and docs
-
-- The `requirements/` directory doubles as demo content for the GUI and as fixtures for the automated tests.
-- Architectural notes and pointers to key modules are collected in `docs/ARCHITECTURE.md`.
-
 ## Building distributables
 
-Install PyInstaller and invoke the build script:
+Install PyInstaller if needed and run the build script:
 
 ```bash
 python3 -m pip install pyinstaller
@@ -191,7 +187,7 @@ python3 build.py            # one-folder distribution in dist/CookaReq
 python3 build.py --onefile  # optional single-file executable
 ```
 
-The script bundles the wxPython runtime, JSON schema resources and the application icon.
+The build bundles the wxPython runtime, JSON schema resources, translations, and application icons.
 
 ## License
 

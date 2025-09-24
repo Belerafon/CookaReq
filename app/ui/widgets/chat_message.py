@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
-import json
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any, Callable
 
 import wx
@@ -32,6 +34,10 @@ def _is_window_usable(window: wx.Window | None) -> bool:
 
 
 from ...i18n import _
+from ..agent_chat_panel.tool_summaries import (
+    ToolCallSummary,
+    render_tool_summary_markdown,
+)
 from ..text import normalize_for_display
 
 
@@ -98,6 +104,49 @@ def _agent_tint(base: wx.Colour) -> wx.Colour:
     return _blend_colour(base, accent, 0.3)
 
 
+@dataclass(frozen=True)
+class MessageBubblePalette:
+    """Colour palette applied to message bubbles."""
+
+    background: wx.Colour
+    foreground: wx.Colour
+    meta: wx.Colour
+
+
+_TOOL_ACCENT_COLOURS: tuple[wx.Colour, ...] = (
+    wx.Colour(196, 221, 255),
+    wx.Colour(202, 242, 255),
+    wx.Colour(210, 245, 221),
+    wx.Colour(255, 232, 206),
+    wx.Colour(244, 224, 255),
+    wx.Colour(255, 226, 235),
+)
+
+
+def _tool_bubble_palette(
+    parent_background: wx.Colour, tool_name: str
+) -> MessageBubblePalette:
+    base = (
+        parent_background
+        if parent_background.IsOk()
+        else wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
+    )
+    normalized = tool_name.strip().lower() or "tool"
+    digest = hashlib.sha1(normalized.encode("utf-8")).digest()
+    accent = _TOOL_ACCENT_COLOURS[digest[0] % len(_TOOL_ACCENT_COLOURS)]
+    weight = 0.55 if not _is_dark_colour(base) else 0.35
+    background = _blend_colour(base, accent, weight)
+    foreground = _pick_best_contrast(
+        background,
+        wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT),
+        wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT),
+        wx.Colour(20, 20, 20),
+        wx.Colour(70, 70, 70),
+    )
+    meta = _blend_colour(foreground, background, 0.4)
+    return MessageBubblePalette(background, foreground, meta)
+
+
 FooterFactory = Callable[[wx.Window], wx.Sizer | wx.Window | None]
 
 
@@ -115,6 +164,7 @@ class MessageBubble(wx.Panel):
         allow_selection: bool = False,
         render_markdown: bool = False,
         footer_factory: FooterFactory | None = None,
+        palette: MessageBubblePalette | None = None,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
@@ -139,25 +189,19 @@ class MessageBubble(wx.Panel):
             self._copy_selection_menu_id = wx.Window.NewControlId()
             self.Bind(wx.EVT_MENU, self._on_copy_selection, id=self._copy_selection_menu_id)
 
-        parent_background = self.GetBackgroundColour()
-        user_highlight = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
-        user_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHTTEXT)
-        agent_bg = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
-        agent_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT)
+        palette = (
+            palette
+            if palette is not None
+            else self._build_default_palette(
+                align=align,
+                parent_background=self.GetBackgroundColour(),
+            )
+        )
+        bubble_bg = palette.background
+        bubble_fg = palette.foreground
+        meta_colour = palette.meta
 
         is_user_message = align == "right"
-
-        if is_user_message:
-            bubble_bg = _soften_user_highlight(
-                user_highlight,
-                background=parent_background,
-            )
-            bubble_fg = _pick_best_contrast(bubble_bg, user_text, agent_text)
-            meta_colour = _blend_colour(bubble_fg, bubble_bg, 0.35)
-        else:
-            bubble_bg = _agent_tint(agent_bg)
-            bubble_fg = agent_text
-            meta_colour = _blend_colour(agent_text, bubble_bg, 0.45)
 
         outer = wx.BoxSizer(wx.VERTICAL)
 
@@ -314,6 +358,31 @@ class MessageBubble(wx.Panel):
         self.SetSizer(outer)
         self.Bind(wx.EVT_SIZE, self._on_panel_resize)
         self._schedule_width_update()
+
+    def _build_default_palette(
+        self, *, align: str, parent_background: wx.Colour
+    ) -> MessageBubblePalette:
+        user_highlight = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
+        user_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHTTEXT)
+        agent_bg = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
+        agent_text = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT)
+
+        background = parent_background
+        if not background.IsOk():
+            background = agent_bg
+
+        if align == "right":
+            bubble_bg = _soften_user_highlight(
+                user_highlight,
+                background=background,
+            )
+            bubble_fg = _pick_best_contrast(bubble_bg, user_text, agent_text)
+            meta_colour = _blend_colour(bubble_fg, bubble_bg, 0.35)
+        else:
+            bubble_bg = _agent_tint(agent_bg)
+            bubble_fg = agent_text
+            meta_colour = _blend_colour(agent_text, bubble_bg, 0.45)
+        return MessageBubblePalette(bubble_bg, bubble_fg, meta_colour)
 
     def Destroy(self) -> bool:  # type: ignore[override]
         self._destroyed = True
@@ -589,6 +658,7 @@ class TranscriptMessagePanel(wx.Panel):
         response_timestamp: str = "",
         on_regenerate: Callable[[], None] | None = None,
         regenerate_enabled: bool = True,
+        tool_summaries: Sequence[ToolCallSummary] | None = None,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
@@ -625,6 +695,25 @@ class TranscriptMessagePanel(wx.Panel):
             ),
         )
         outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, padding)
+
+        summaries = list(tool_summaries or [])
+        if summaries:
+            parent_background = self.GetBackgroundColour()
+            for summary in summaries:
+                markdown = render_tool_summary_markdown(summary).strip()
+                if not markdown:
+                    continue
+                bubble = MessageBubble(
+                    self,
+                    role_label=summary.tool_name,
+                    timestamp="",
+                    text=markdown,
+                    align="left",
+                    allow_selection=True,
+                    render_markdown=True,
+                    palette=_tool_bubble_palette(parent_background, summary.tool_name),
+                )
+                outer.Add(bubble, 0, wx.EXPAND | wx.ALL, padding)
 
         self.SetSizer(outer)
 

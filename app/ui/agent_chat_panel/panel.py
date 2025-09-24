@@ -1750,9 +1750,8 @@ class AgentChatPanel(wx.Panel):
                         if can_regenerate
                         else None
                     )
-                    tool_summary_md = render_tool_summaries_markdown(
-                        summarize_tool_results(entry.tool_results)
-                    )
+                    tool_summaries = summarize_tool_results(entry.tool_results)
+                    tool_summary_md = render_tool_summaries_markdown(tool_summaries)
                     response_text = entry.display_response or entry.response
                     if tool_summary_md:
                         base_response = (response_text or "").strip()
@@ -1768,6 +1767,7 @@ class AgentChatPanel(wx.Panel):
                         response_timestamp=self._format_entry_timestamp(entry.response_at),
                         on_regenerate=on_regenerate,
                         regenerate_enabled=not self._is_running,
+                        tool_summaries=tool_summaries,
                     )
                     panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_transcript_pane_toggled)
                     self._transcript_sizer.Add(panel, 0, wx.EXPAND)

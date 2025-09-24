@@ -45,30 +45,6 @@ class RequirementIDCollisionError(RequirementError):
         super().__init__(f"requirement {self.rid} already exists")
 
 
-class LegacyItemLayoutError(RequirementError):
-    """Raised when requirement files keep legacy padded or prefixed names."""
-
-    def __init__(
-        self, doc_prefix: str, req_id: int, *, paths: Sequence[Path] | None = None
-    ) -> None:
-        self.doc_prefix = doc_prefix
-        self.req_id = req_id
-        self.paths = tuple(Path(p) for p in paths or ())
-        expected = f"{doc_prefix}/items/{req_id}.json"
-        if self.paths:
-            details = ", ".join(sorted(str(path) for path in self.paths))
-            message = (
-                "requirement {rid} uses unsupported legacy filenames: {files}. "
-                "Remove them or rename the file to {expected}."
-            ).format(rid=f"{doc_prefix}{req_id}", files=details, expected=expected)
-        else:
-            message = (
-                "requirement {rid} uses unsupported legacy filenames. "
-                "Ensure only {expected} exists."
-            ).format(rid=f"{doc_prefix}{req_id}", expected=expected)
-        super().__init__(message)
-
-
 @dataclass
 class LabelDef:
     """Definition of a label available to document items."""
@@ -174,7 +150,6 @@ __all__ = [
     "DocumentNotFoundError",
     "RequirementNotFoundError",
     "RequirementIDCollisionError",
-    "LegacyItemLayoutError",
     "LabelDef",
     "DocumentLabels",
     "Document",

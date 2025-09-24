@@ -16,7 +16,6 @@ from app.confirm import confirm
 from app.core.document_store import (
     Document,
     DocumentNotFoundError,
-    LegacyItemLayoutError,
     RequirementIDCollisionError,
     RequirementNotFoundError,
     ValidationError,
@@ -381,9 +380,6 @@ def cmd_item_add(args: argparse.Namespace) -> None:
     except ValidationError as exc:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
         return
-    except LegacyItemLayoutError as exc:
-        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
     sys.stdout.write(f"{req.rid}\n")
 
 
@@ -393,11 +389,7 @@ def cmd_item_edit(args: argparse.Namespace) -> None:
     prefix, item_id = parse_rid(args.rid)
     item_dir = Path(args.directory) / prefix
     doc = load_document(item_dir)
-    try:
-        data, _mtime = load_item(item_dir, doc, item_id)
-    except LegacyItemLayoutError as exc:
-        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
+    data, _mtime = load_item(item_dir, doc, item_id)
 
     template: Mapping[str, Any] = {}
     data_path = getattr(args, "data", None)
@@ -425,11 +417,7 @@ def cmd_item_edit(args: argparse.Namespace) -> None:
     payload["id"] = int(data["id"])
 
     req = requirement_from_dict(payload, doc_prefix=doc.prefix, rid=args.rid)
-    try:
-        save_item(item_dir, doc, requirement_to_dict(req))
-    except LegacyItemLayoutError as exc:
-        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
+    save_item(item_dir, doc, requirement_to_dict(req))
     sys.stdout.write(f"{req.rid}\n")
 
 
@@ -440,9 +428,6 @@ def cmd_item_move(args: argparse.Namespace) -> None:
         current = get_requirement(args.directory, args.rid)
     except RequirementNotFoundError:
         sys.stdout.write(_("requirement not found: {rid}\n").format(rid=args.rid))
-        return
-    except LegacyItemLayoutError as exc:
-        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
         return
 
     template: Mapping[str, Any] = {}
@@ -481,9 +466,6 @@ def cmd_item_move(args: argparse.Namespace) -> None:
     except ValidationError as exc:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
         return
-    except LegacyItemLayoutError as exc:
-        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
 
     sys.stdout.write(f"{moved.rid}\n")
 
@@ -493,11 +475,7 @@ def cmd_item_delete(args: argparse.Namespace) -> None:
 
     docs = load_documents(args.directory)
     if getattr(args, "dry_run", False):
-        try:
-            exists, refs = plan_delete_item(args.directory, args.rid, docs)
-        except LegacyItemLayoutError as exc:
-            sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-            return
+        exists, refs = plan_delete_item(args.directory, args.rid, docs)
         if not exists:
             sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
             return
@@ -509,11 +487,7 @@ def cmd_item_delete(args: argparse.Namespace) -> None:
     if not confirm(msg):
         sys.stdout.write(_("aborted\n"))
         return
-    try:
-        removed = delete_item(args.directory, args.rid, docs)
-    except LegacyItemLayoutError as exc:
-        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
+    removed = delete_item(args.directory, args.rid, docs)
     if removed:
         sys.stdout.write(f"{args.rid}\n")
     else:
@@ -632,9 +606,6 @@ def cmd_link(args: argparse.Namespace) -> None:
     except FileNotFoundError:
         sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
         return
-    except LegacyItemLayoutError as exc:
-        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
     parent_payloads: dict[str, dict] = {}
     for rid in args.parents:
         if rid == args.rid:
@@ -658,9 +629,6 @@ def cmd_link(args: argparse.Namespace) -> None:
         except FileNotFoundError:
             sys.stdout.write(_("linked item not found: {rid}\n").format(rid=rid))
             return
-        except LegacyItemLayoutError as exc:
-            sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-            return
         parent_payloads[rid] = parent_data
 
     req = requirement_from_dict(data, doc_prefix=doc.prefix, rid=args.rid)
@@ -674,11 +642,7 @@ def cmd_link(args: argparse.Namespace) -> None:
             suspect=False,
         )
     req.links = [existing_links[rid] for rid in sorted(existing_links)]
-    try:
-        save_item(item_dir, doc, requirement_to_dict(req))
-    except LegacyItemLayoutError as exc:
-        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
+    save_item(item_dir, doc, requirement_to_dict(req))
     sys.stdout.write(f"{args.rid}\n")
 
 

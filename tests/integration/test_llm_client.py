@@ -149,10 +149,21 @@ def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
     ]
 
 
-def test_parse_command_recovers_fragmented_tool_arguments(
+def test_parse_command_reports_invalid_tool_arguments(
     tmp_path: Path, monkeypatch
 ) -> None:
     settings = settings_with_llm(tmp_path)
+
+    events: list[tuple[str, dict[str, object] | None]] = []
+    debug_payloads: list[dict[str, object] | None] = []
+
+    def fake_log_event(event: str, payload=None, **kwargs):  # noqa: ANN001
+        if event == "LLM_TOOL_ARGUMENTS_INVALID":
+            events.append((event, payload))
+
+    def fake_log_debug(event: str, payload=None):  # noqa: ANN001
+        if event == "LLM_TOOL_ARGUMENTS_INVALID":
+            debug_payloads.append(payload)
 
     class FakeOpenAI:
         def __init__(self, *a, **k):  # pragma: no cover - simple container
@@ -179,18 +190,26 @@ def test_parse_command_recovers_fragmented_tool_arguments(
                 completions=SimpleNamespace(create=create)
             )
 
+    monkeypatch.setattr("app.llm.client.log_event", fake_log_event)
+    monkeypatch.setattr("app.llm.client.log_debug_payload", fake_log_debug)
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = LLMClient(settings.llm)
-    response = client.parse_command("обнови статус SYS-1")
-    assert isinstance(response, LLMResponse)
-    assert len(response.tool_calls) == 1
-    call = response.tool_calls[0]
-    assert call.name == "update_requirement_field"
-    assert call.arguments == {
-        "rid": "SYS-1",
-        "field": "status",
-        "value": "approved",
-    }
+
+    with pytest.raises(ToolValidationError):
+        client.parse_command("обнови статус SYS-1")
+
+    assert events, "expected telemetry for invalid tool arguments"
+    event_name, payload = events[0]
+    assert event_name == "LLM_TOOL_ARGUMENTS_INVALID"
+    assert payload is not None
+    assert payload["call_id"] == "tool_call_0"
+    assert payload["tool_name"] == "update_requirement_field"
+    assert payload["classification"] == "concatenated_json"
+    assert payload["preview"].startswith("{}{")
+    assert payload["length"] == len(
+        '{}{"rid": "SYS-1", "field": "status", "value": "approved"}'
+    )
+    assert debug_payloads, "expected debug payload for invalid arguments"
 
 
 def test_parse_command_omits_token_limits(tmp_path: Path, monkeypatch) -> None:

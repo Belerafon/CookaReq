@@ -393,6 +393,73 @@ def test_run_command_returns_tool_error_result():
     assert "tool_results" not in result
 
 
+def test_run_command_streams_tool_results_to_callback():
+    class SequencedLLM(LLMAsyncBridge):
+        def __init__(self) -> None:
+            self.step = 0
+
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            if self.step == 0:
+                self.step += 1
+                return LLMResponse(
+                    "",
+                    (
+                        LLMToolCall(
+                            id="call-0",
+                            name="list_requirements",
+                            arguments={"query": "recent"},
+                        ),
+                        LLMToolCall(
+                            id="call-1",
+                            name="get_requirement",
+                            arguments={"rid": "SYS-0001"},
+                        ),
+                    ),
+                )
+            return LLMResponse("All done", ())
+
+    class StreamingMCP(MCPAsyncBridge):
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, Mapping[str, Any]]] = []
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def call_tool(self, name, arguments):
+            self.calls.append((name, dict(arguments)))
+            return {"ok": True, "error": None, "result": {"status": name}}
+
+    llm = SequencedLLM()
+    mcp = StreamingMCP()
+    agent = LocalAgent(llm=llm, mcp=mcp)
+
+    collected: list[Mapping[str, Any]] = []
+
+    def capture(payload: Mapping[str, Any]) -> None:
+        collected.append(dict(payload))
+
+    result = agent.run_command("stream tools", on_tool_result=capture)
+
+    assert result["ok"] is True
+    assert result["result"] == "All done"
+    assert len(collected) == 2
+    assert [payload["tool_name"] for payload in collected] == [
+        "list_requirements",
+        "get_requirement",
+    ]
+    assert [call[0] for call in mcp.calls] == ["list_requirements", "get_requirement"]
+    assert result.get("tool_results")
+    assert [
+        payload["tool_name"] for payload in result["tool_results"]
+    ] == ["list_requirements", "get_requirement"]
+    for streamed, final in zip(collected, result["tool_results"]):
+        assert streamed == final
+        assert streamed is not final
+
+
 def test_run_command_returns_message_without_mcp_call():
     class MessageLLM(LLMAsyncBridge):
         def __init__(self) -> None:

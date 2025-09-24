@@ -25,7 +25,7 @@ from . import (
 from .layout import canonical_item_name
 from .documents import is_ancestor, load_documents, validate_labels
 
-RID_RE = re.compile(r"^([A-Z][A-Z0-9_]*?)(\d+)$")
+RID_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*?)(\d+)$")
 KNOWN_REQUIREMENT_FIELDS = {f.name for f in fields(Requirement)}
 
 EDITABLE_SINGLE_FIELDS = {

@@ -373,12 +373,14 @@ class LocalAgent:
         on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         accumulated_results: list[Mapping[str, Any]] = []
+        last_response: LLMResponse | None = None
         for step in range(self._MAX_THOUGHT_STEPS):
             self._raise_if_cancelled(cancellation)
             response = await self._llm.respond_async(
                 conversation,
                 cancellation=cancellation,
             )
+            last_response = response
             self._record_request_messages(response)
             conversation.append(self._assistant_message(response))
             self._log_step(step + 1, response)
@@ -398,13 +400,53 @@ class LocalAgent:
             if early_result is not None:
                 return early_result
             self._raise_if_cancelled(cancellation)
-        log_event(
-            "AGENT_ABORTED",
-            {"reason": "max-steps", "max_steps": self._MAX_THOUGHT_STEPS},
+        abort_payload: dict[str, Any] = {
+            "reason": "max-steps",
+            "max_steps": self._MAX_THOUGHT_STEPS,
+        }
+        if last_response is not None:
+            if last_response.content:
+                abort_payload["last_message_preview"] = self._preview(
+                    last_response.content
+                )
+            if last_response.tool_calls:
+                abort_payload["last_tool_calls"] = self._summarize_tool_calls(
+                    last_response.tool_calls
+                )
+        log_event("AGENT_ABORTED", abort_payload)
+
+        message = (
+            "LLM did not finish interaction within allowed steps "
+            f"({self._MAX_THOUGHT_STEPS})"
         )
-        raise ToolValidationError(
-            "LLM did not finish interaction within allowed steps",
-        )
+        if last_response is not None:
+            if last_response.tool_calls:
+                call_descriptions: list[str] = []
+                for call in last_response.tool_calls:
+                    call_descriptions.append(
+                        f"{call.name} with arguments "
+                        f"{self._format_tool_arguments(call.arguments)}"
+                    )
+                joined = "; ".join(call_descriptions)
+                message += f". Last response requested: {joined}"
+            elif last_response.content:
+                message += f". Last message: {last_response.content.strip()}"
+        error = ToolValidationError(message)
+        if last_response is not None:
+            if last_response.content:
+                error.llm_message = last_response.content
+            if last_response.tool_calls:
+                error.llm_tool_calls = [
+                    {
+                        "id": call.id,
+                        "name": call.name,
+                        "arguments": self._normalise_tool_arguments(call),
+                    }
+                    for call in last_response.tool_calls
+                ]
+        if accumulated_results:
+            error.tool_results = [dict(result) for result in accumulated_results]
+        raise error
 
     async def _execute_tool_calls_core(
         self,

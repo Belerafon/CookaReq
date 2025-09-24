@@ -183,4 +183,13 @@ def exception_to_mcp_error(exc: BaseException) -> dict[str, Any]:
             else:
                 serialized_calls.append(call)
         details["llm_tool_calls"] = serialized_calls
+    tool_results = getattr(exc, "tool_results", None)
+    if tool_results:
+        serialized_results: list[Any] = []
+        for result in tool_results:
+            if isinstance(result, Mapping):
+                serialized_results.append(dict(result))
+            else:
+                serialized_results.append(result)
+        details["tool_results"] = serialized_results
     return mcp_error(code, message, details)

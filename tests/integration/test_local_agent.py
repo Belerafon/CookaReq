@@ -460,6 +460,68 @@ def test_run_command_streams_tool_results_to_callback():
         assert streamed is not final
 
 
+def test_run_command_reports_loop_details_when_max_steps_exceeded():
+    class LoopingLLM(LLMAsyncBridge):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            self.calls += 1
+            return LLMResponse(
+                "",
+                (
+                    LLMToolCall(
+                        id=f"call-{self.calls}",
+                        name="get_requirement",
+                        arguments={"rid": "SYS-8"},
+                    ),
+                ),
+            )
+
+    class RecordingMCP(MCPAsyncBridge):
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, Mapping[str, Any]]] = []
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def call_tool(self, name, arguments):
+            self.calls.append((name, dict(arguments)))
+            return {
+                "ok": True,
+                "error": None,
+                "result": {"rid": "SYS-8", "title": "Loop"},
+            }
+
+    llm = LoopingLLM()
+    mcp = RecordingMCP()
+    agent = LocalAgent(llm=llm, mcp=mcp)
+
+    result = agent.run_command("покажи SYS-8")
+
+    assert result["ok"] is False
+    error = result["error"]
+    assert error["code"] == ErrorCode.VALIDATION_ERROR
+    assert "get_requirement" in error["message"]
+    assert "SYS-8" in error["message"]
+    details = error.get("details") or {}
+    assert details.get("type") == "ToolValidationError"
+    tool_calls = details.get("llm_tool_calls")
+    assert isinstance(tool_calls, list) and tool_calls
+    last_call = tool_calls[-1]
+    assert last_call["name"] == "get_requirement"
+    assert last_call["arguments"]["rid"] == "SYS-8"
+    tool_results = details.get("tool_results")
+    assert isinstance(tool_results, list) and tool_results
+    last_result = tool_results[-1]
+    assert last_result["tool_name"] == "get_requirement"
+    assert last_result["tool_arguments"]["rid"] == "SYS-8"
+    assert len(mcp.calls) == la.LocalAgent._MAX_THOUGHT_STEPS
+
+
 def test_run_command_returns_message_without_mcp_call():
     class MessageLLM(LLMAsyncBridge):
         def __init__(self) -> None:

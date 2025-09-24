@@ -102,6 +102,7 @@ class LocalAgent:
             )
         self._llm: SupportsAgentLLM = llm
         self._mcp: SupportsAgentMCP = mcp
+        self._llm_requests: list[list[dict[str, Any]]] = []
 
     # ------------------------------------------------------------------
     @classmethod
@@ -160,6 +161,36 @@ class LocalAgent:
             except TypeError:
                 payload["tool_results"] = result["tool_results"]
         return payload
+
+    def _record_request_messages(self, response: LLMResponse) -> None:
+        """Append request snapshot from *response* to diagnostic log."""
+
+        snapshot = getattr(response, "request_messages", None)
+        if not snapshot:
+            return
+        messages: list[dict[str, Any]] = []
+        for message in snapshot:
+            if isinstance(message, Mapping):
+                messages.append(dict(message))
+        if messages:
+            self._llm_requests.append(messages)
+
+    def _prepare_result_with_diagnostic(
+        self, result: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Attach captured LLM request messages to ``result`` when available."""
+
+        prepared = dict(result)
+        if self._llm_requests:
+            requests_payload = [
+                {
+                    "step": index + 1,
+                    "messages": [dict(message) for message in messages],
+                }
+                for index, messages in enumerate(self._llm_requests)
+            ]
+            prepared["diagnostic"] = {"llm_requests": requests_payload}
+        return prepared
 
     @staticmethod
     def _extract_mcp_error(exc: Exception) -> dict[str, Any]:
@@ -281,6 +312,7 @@ class LocalAgent:
             "AGENT_START",
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},
         )
+        self._llm_requests = []
         try:
             result = self._run_sync(
                 self._run_loop_core(
@@ -295,9 +327,9 @@ class LocalAgent:
         except Exception as exc:
             err = exception_to_mcp_error(exc)["error"]
             log_event("ERROR", {"error": err})
-            return {"ok": False, "error": err}
+            return self._prepare_result_with_diagnostic({"ok": False, "error": err})
         log_event("AGENT_RESULT", self._summarize_result(result))
-        return result
+        return self._prepare_result_with_diagnostic(result)
 
     async def run_command_async(
         self,
@@ -315,6 +347,7 @@ class LocalAgent:
             "AGENT_START",
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},
         )
+        self._llm_requests = []
         try:
             result = await self._run_loop_core(
                 conversation,
@@ -327,9 +360,9 @@ class LocalAgent:
         except Exception as exc:
             err = exception_to_mcp_error(exc)["error"]
             log_event("ERROR", {"error": err})
-            return {"ok": False, "error": err}
+            return self._prepare_result_with_diagnostic({"ok": False, "error": err})
         log_event("AGENT_RESULT", self._summarize_result(result))
-        return result
+        return self._prepare_result_with_diagnostic(result)
 
     # ------------------------------------------------------------------
     async def _run_loop_core(
@@ -346,6 +379,7 @@ class LocalAgent:
                 conversation,
                 cancellation=cancellation,
             )
+            self._record_request_messages(response)
             conversation.append(self._assistant_message(response))
             self._log_step(step + 1, response)
             if not response.tool_calls:

@@ -105,29 +105,40 @@ class MainFrameDocumentsMixin:
             return str(path)
 
     def _sync_mcp_base_path(self: "MainFrame", path: Path) -> None:
-        """Persist MCP base path and restart server when needed."""
+        """Persist MCP base path and keep the running server in sync."""
 
         new_base_path = self._normalise_directory_path(path)
         if self.mcp_settings.base_path == new_base_path:
             return
+
+        was_running = False
+        try:
+            was_running = bool(self.mcp.is_running())
+        except Exception:  # pragma: no cover - controller must not crash UI
+            logger.exception("Failed to query MCP server status before restart")
+
         auto_start = self.mcp_settings.auto_start
         self.mcp_settings = self.mcp_settings.model_copy(
             update={"base_path": new_base_path}
         )
         self.config.set_mcp_settings(self.mcp_settings)
-        if auto_start:
-            try:
-                self.mcp.stop()
-            except Exception:  # pragma: no cover - controller must not crash UI
-                logger.exception(
-                    "Failed to stop MCP server before applying new base path"
-                )
-            try:
-                self.mcp.start(self.mcp_settings)
-            except Exception:  # pragma: no cover - controller must not crash UI
-                logger.exception(
-                    "Failed to start MCP server after applying new base path"
-                )
+
+        if not (auto_start or was_running):
+            return
+
+        try:
+            self.mcp.stop()
+        except Exception:  # pragma: no cover - controller must not crash UI
+            logger.exception(
+                "Failed to stop MCP server before applying new base path"
+            )
+
+        try:
+            self.mcp.start(self.mcp_settings)
+        except Exception:  # pragma: no cover - controller must not crash UI
+            logger.exception(
+                "Failed to start MCP server after applying new base path"
+            )
 
     def _load_directory(self: "MainFrame", path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""

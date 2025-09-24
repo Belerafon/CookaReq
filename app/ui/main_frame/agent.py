@@ -21,6 +21,18 @@ if TYPE_CHECKING:  # pragma: no cover - import for type checking only
 logger = logging.getLogger("cookareq.ui.main_frame.agent")
 
 
+def _short_repr(value: Any, *, limit: int = 200) -> str:
+    """Return shortened ``repr`` for logging purposes."""
+
+    try:
+        text = repr(value)
+    except Exception:  # pragma: no cover - extremely defensive
+        return f"<unrepresentable {type(value).__name__}>"
+    if len(text) > limit:
+        return text[: limit - 1] + "\u2026"
+    return text
+
+
 class MainFrameAgentMixin:
     """Provide agent chat integration and shortcuts."""
 
@@ -168,8 +180,16 @@ class MainFrameAgentMixin:
         removed_ids: list[int] = []
         for payload in tool_results:
             if not isinstance(payload, Mapping):
+                logger.warning(
+                    "Ignoring agent tool payload because it is not a mapping: %s",
+                    _short_repr(payload),
+                )
                 continue
             if not payload.get("ok", False):
+                logger.warning(
+                    "Agent tool payload reported failure and was ignored: %s",
+                    _short_repr(payload),
+                )
                 continue
             tool_name_raw = (
                 payload.get("tool_name")
@@ -177,6 +197,12 @@ class MainFrameAgentMixin:
                 or payload.get("tool")
             )
             tool_name = str(tool_name_raw) if tool_name_raw else ""
+            if not tool_name:
+                logger.warning(
+                    "Agent tool payload missing tool name: %s",
+                    _short_repr(payload),
+                )
+                continue
             result_payload = payload.get("result")
             if tool_name in {
                 "update_requirement_field",
@@ -263,9 +289,17 @@ class MainFrameAgentMixin:
     @staticmethod
     def _convert_tool_result_requirement(result_payload: Any) -> Requirement | None:
         if not isinstance(result_payload, Mapping):
+            logger.warning(
+                "Agent tool result has unexpected structure: %s",
+                _short_repr(result_payload),
+            )
             return None
         rid_raw = result_payload.get("rid")
         if not isinstance(rid_raw, str) or not rid_raw.strip():
+            logger.warning(
+                "Agent tool result missing requirement id: %s",
+                _short_repr(result_payload),
+            )
             return None
         rid = rid_raw.strip()
         try:

@@ -246,19 +246,25 @@ def link_requirements(
             source_doc,
             source_dir,
             source_data,
+            source_canonical_rid,
         ) = _resolve_requirement(root_path, source_rid, docs_map)
     except ValueError as exc:  # pragma: no cover - defensive
         raise ValidationError(str(exc)) from exc
 
     try:
-        derived_prefix, _derived_id, derived_doc, derived_dir, data = _resolve_requirement(
-            root_path, derived_rid, docs_map
-        )
+        (
+            derived_prefix,
+            _derived_id,
+            derived_doc,
+            derived_dir,
+            data,
+            derived_canonical_rid,
+        ) = _resolve_requirement(root_path, derived_rid, docs_map)
     except ValueError as exc:  # pragma: no cover - defensive
         raise ValidationError(str(exc)) from exc
 
     if not is_ancestor(derived_prefix, source_prefix, docs_map):
-        raise ValidationError(f"invalid link target: {source_rid}")
+        raise ValidationError(f"invalid link target: {source_canonical_rid}")
 
     try:
         current = int(data.get("revision", 1))
@@ -280,11 +286,11 @@ def link_requirements(
             existing_links[link.rid] = link
 
     new_link = Link(
-        rid=source_rid,
+        rid=source_canonical_rid,
         fingerprint=requirement_fingerprint(source_data),
         suspect=False,
     )
-    existing_links[source_rid] = new_link
+    existing_links[source_canonical_rid] = new_link
 
     updated = dict(data)
     updated_links = [link.to_dict() for link in existing_links.values()]
@@ -299,7 +305,11 @@ def link_requirements(
         raise ValidationError("revision must be positive")
     updated["revision"] = revision
 
-    req = requirement_from_dict(updated, doc_prefix=derived_prefix, rid=derived_rid)
+    req = requirement_from_dict(
+        updated,
+        doc_prefix=derived_prefix,
+        rid=derived_canonical_rid,
+    )
     _update_link_suspicions(root_path, docs_map, req)
     save_item(derived_dir, derived_doc, requirement_to_dict(req))
     return req

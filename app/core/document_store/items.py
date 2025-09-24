@@ -343,17 +343,25 @@ def _paginate_requirements(
 
 def _resolve_requirement(
     root: Path, rid: str, docs: Mapping[str, Document]
-) -> tuple[str, int, Document, Path, dict]:
+) -> tuple[str, int, Document, Path, dict, str]:
     prefix, item_id = parse_rid(rid)
     doc = docs.get(prefix)
     if doc is None:
+        lowered = prefix.casefold()
+        for candidate_prefix, candidate_doc in docs.items():
+            if candidate_prefix.casefold() == lowered:
+                doc = candidate_doc
+                prefix = candidate_doc.prefix
+                break
+    if doc is None:
         raise RequirementNotFoundError(rid)
-    directory = root / prefix
+    directory = root / doc.prefix
     try:
         data, _ = load_item(directory, doc, item_id)
     except FileNotFoundError as exc:  # pragma: no cover - defensive
         raise RequirementNotFoundError(rid) from exc
-    return prefix, item_id, doc, directory, data
+    canonical_rid = rid_for(doc, item_id)
+    return doc.prefix, item_id, doc, directory, data, canonical_rid
 
 
 def list_requirements(
@@ -403,8 +411,10 @@ def get_requirement(
 ) -> Requirement:
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
-    prefix, item_id, doc, _directory, data = _resolve_requirement(root_path, rid, docs_map)
-    req = requirement_from_dict(data, doc_prefix=prefix, rid=rid)
+    prefix, item_id, doc, _directory, data, canonical_rid = _resolve_requirement(
+        root_path, rid, docs_map
+    )
+    req = requirement_from_dict(data, doc_prefix=prefix, rid=canonical_rid)
     _update_link_suspicions(root_path, docs_map, req)
     return req
 
@@ -464,7 +474,9 @@ def _update_requirement(
 ) -> Requirement:
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
-    prefix, item_id, doc, directory, data = _resolve_requirement(root_path, rid, docs_map)
+    prefix, item_id, doc, directory, data, canonical_rid = _resolve_requirement(
+        root_path, rid, docs_map
+    )
     payload = dict(data)
     mutate(payload, prefix, doc)
     payload["id"] = item_id
@@ -475,7 +487,7 @@ def _update_requirement(
         raise ValidationError(err)
     payload["labels"] = labels
     try:
-        req = requirement_from_dict(payload, doc_prefix=prefix, rid=rid)
+        req = requirement_from_dict(payload, doc_prefix=prefix, rid=canonical_rid)
     except (TypeError, ValueError) as exc:
         raise ValidationError(str(exc)) from exc
     _update_link_suspicions(root_path, docs_map, req)
@@ -581,9 +593,15 @@ def move_requirement(
 
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
-    prefix, item_id, src_doc, src_directory, data = _resolve_requirement(
-        root_path, rid, docs_map
-    )
+    (
+        prefix,
+        item_id,
+        src_doc,
+        src_directory,
+        data,
+        canonical_rid,
+    ) = _resolve_requirement(root_path, rid, docs_map)
+    rid = canonical_rid
     if new_prefix == prefix:
         raise ValidationError("requirement already belongs to the specified document")
 
@@ -678,7 +696,14 @@ def delete_requirement(
 ) -> str:
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
-    _prefix, _item_id, _doc, _directory, data = _resolve_requirement(root_path, rid, docs_map)
+    (
+        _prefix,
+        _item_id,
+        _doc,
+        _directory,
+        data,
+        canonical_rid,
+    ) = _resolve_requirement(root_path, rid, docs_map)
     try:
         current = int(data.get("revision", 1))
     except (TypeError, ValueError) as exc:
@@ -687,7 +712,7 @@ def delete_requirement(
         raise ValidationError("revision must be positive")
     from .links import delete_item  # local import to avoid cycle
 
-    deleted = delete_item(root_path, rid, docs_map)
+    deleted = delete_item(root_path, canonical_rid, docs_map)
     if not deleted:  # pragma: no cover - defensive
-        raise RequirementNotFoundError(rid)
-    return rid
+        raise RequirementNotFoundError(canonical_rid)
+    return canonical_rid

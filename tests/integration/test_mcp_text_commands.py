@@ -214,8 +214,7 @@ def test_run_command_fetches_requirement_with_prefixed_rid(
             "content": (
                 "[Workspace context]\n"
                 "Active requirements list: SYS: Сист. треб.\n"
-                "Selected requirements (1):\n"
-                "- GUI selection #1: requirement SYS11 — Содержимое первого требования. is currently highlighted in the graphical interface."
+                "Selected requirement RIDs: SYS11"
             ),
         }
     ]
@@ -239,7 +238,7 @@ def test_run_command_fetches_requirement_with_prefixed_rid(
     system_prompt = captured_messages[0][0]["content"]
     assert "<prefix><number>" in system_prompt
     assert "SYS11 — Содержимое первого требования." in system_prompt
-    assert "Selected requirement RID summary:" in system_prompt
+    assert "Selected requirement RIDs:" in system_prompt
 
 
 def test_mcp_endpoint_direct_call(tmp_path: Path, mcp_server) -> None:

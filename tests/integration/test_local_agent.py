@@ -962,8 +962,7 @@ def test_run_command_includes_context_messages():
     context_message = {
         "role": "system",
         "content": (
-            "Selected requirements (1):\n"
-            "- GUI selection #1: requirement SYS-1 — Demo is currently highlighted in the graphical interface."
+            "Selected requirement RIDs: SYS-1"
         ),
     }
 
@@ -978,8 +977,7 @@ def test_run_command_includes_context_messages():
                 {
                     "role": "system",
                     "content": (
-                        "Selected requirements (1):\n"
-                        "- GUI selection #1: requirement SYS-2 — Secondary is currently highlighted in the graphical interface."
+                        "Selected requirement RIDs: SYS-2"
                     ),
                 }
             ],
@@ -989,8 +987,7 @@ def test_run_command_includes_context_messages():
     assert llm.conversations[1][-2] == {
         "role": "system",
         "content": (
-            "Selected requirements (1):\n"
-            "- GUI selection #1: requirement SYS-2 — Secondary is currently highlighted in the graphical interface."
+            "Selected requirement RIDs: SYS-2"
         ),
     }
     assert llm.conversations[1][-1] == {"role": "user", "content": "повтори"}

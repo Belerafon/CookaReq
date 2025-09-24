@@ -40,9 +40,7 @@ def test_openrouter_handles_context_prompt(tmp_path):
             "content": (
                 "[Workspace context]\n"
                 "Active requirements list: SYS — System Requirements\n"
-                "Selected requirements (1):\n"
-                "- GUI selection #1: requirement SYS-1 — Demo is currently highlighted in the graphical interface.\n"
-                "Selected requirement RID summary: SYS-1"
+                "Selected requirement RIDs: SYS-1"
             ),
         },
         {

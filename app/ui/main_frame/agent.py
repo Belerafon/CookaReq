@@ -80,13 +80,12 @@ class MainFrameAgentMixin:
         selected_ids = self._selected_requirement_ids_for_agent()
         model = getattr(self, "model", None)
         rid_summary: list[str] = []
-        selection_lines: list[str] = []
         unresolved_ids: list[str] = []
         invalid_rids: dict[str, str] = {}
 
+        resolved_any = False
         if selected_ids and model is not None:
             seen_rids: set[str] = set()
-            selection_index = 0
             for req_id in selected_ids:
                 requirement = model.get_by_id(req_id)
                 if requirement is None:
@@ -99,62 +98,37 @@ class MainFrameAgentMixin:
                     unresolved_ids.append(str(req_id))
                     continue
 
-                invalid_reason: str | None = None
+                resolved_any = True
                 try:
                     canonical_prefix, canonical_id = parse_rid(rid)
                 except ValueError:
-                    invalid_reason = (
-                        "expected format <PREFIX><NUMBER> with a prefix that starts "
-                        "with a letter and contains only ASCII letters, digits, or "
-                        "underscores"
-                    )
                     if rid not in invalid_rids:
-                        invalid_rids[rid] = invalid_reason
+                        invalid_rids[rid] = (
+                            "expected format <PREFIX><NUMBER> with a prefix that starts "
+                            "with a letter and contains only ASCII letters, digits, or "
+                            "underscores"
+                        )
                     display_rid = rid
                 else:
                     display_rid = f"{canonical_prefix}{canonical_id}"
-                    if display_rid not in seen_rids:
-                        rid_summary.append(display_rid)
-                        seen_rids.add(display_rid)
 
-                title_raw = getattr(requirement, "title", "") or ""
-                title = title_raw.strip()
-                selection_index += 1
-                if title:
-                    selection_text = (
-                        "- GUI selection #{idx}: requirement {rid} — {title} "
-                        "is currently highlighted in the graphical interface."
-                    ).format(idx=selection_index, rid=display_rid, title=title)
-                else:
-                    selection_text = (
-                        "- GUI selection #{idx}: requirement {rid} is currently "
-                        "highlighted in the graphical interface."
-                    ).format(idx=selection_index, rid=display_rid)
-
-                if invalid_reason is not None:
-                    selection_text += (
-                        " WARNING: requirement identifier '{rid}' does not match "
-                        "the required <PREFIX><NUMBER> format; adjust the "
-                        "document directory name or requirement data so MCP "
-                        "tools can reference it."
-                    ).format(rid=display_rid)
-
-                selection_lines.append(selection_text)
+                if display_rid not in seen_rids:
+                    seen_rids.add(display_rid)
+                    rid_summary.append(display_rid)
         elif selected_ids:
             unresolved_ids.extend(str(req_id) for req_id in selected_ids)
 
-        lines.append(f"Selected requirements ({len(selection_lines)}):")
-        if selection_lines:
-            lines.extend(selection_lines)
-        else:
-            lines.append("- (none)")
-
         if rid_summary:
             lines.append(
-                "Selected requirement RID summary: " + ", ".join(rid_summary)
+                "Selected requirement RIDs: " + ", ".join(rid_summary)
             )
+        elif selected_ids:
+            if resolved_any:
+                lines.append("Selected requirement RIDs: (no unique identifiers)")
+            else:
+                lines.append("Selected requirement RIDs: (no valid identifiers)")
         else:
-            lines.append("Selected requirement RID summary: (none)")
+            lines.append("Selected requirement RIDs: (none)")
 
         if invalid_rids:
             formatted_invalids = "; ".join(

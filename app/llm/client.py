@@ -914,17 +914,113 @@ class LLMClient:
                     raise ToolValidationError(
                         "LLM returned invalid JSON for tool arguments",
                     ) from exc
-            try:
-                arguments = json.loads(arguments_text or "{}")
-            except json.JSONDecodeError as exc:
-                raise ToolValidationError(
-                    "LLM returned invalid JSON for tool arguments",
-                ) from exc
+            call_id_str = str(call_id)
+            arguments = self._decode_tool_arguments(
+                arguments_text or "{}",
+                call_id=call_id_str,
+                tool_name=str(name),
+            )
             validated_arguments = validate_tool_call(name, arguments)
             parsed.append(
-                LLMToolCall(id=str(call_id), name=name, arguments=validated_arguments)
+                LLMToolCall(id=call_id_str, name=name, arguments=validated_arguments)
             )
         return tuple(parsed)
+
+    def _decode_tool_arguments(
+        self,
+        arguments_text: str,
+        *,
+        call_id: str,
+        tool_name: str,
+    ) -> Any:
+        """Return parsed tool arguments, attempting recovery on invalid JSON."""
+
+        try:
+            parsed = json.loads(arguments_text)
+        except json.JSONDecodeError as exc:
+            parsed = self._recover_tool_arguments(
+                arguments_text,
+                call_id=call_id,
+                tool_name=tool_name,
+                error=exc,
+            )
+        return parsed
+
+    def _recover_tool_arguments(
+        self,
+        arguments_text: str,
+        *,
+        call_id: str,
+        tool_name: str,
+        error: json.JSONDecodeError,
+    ) -> Mapping[str, Any]:
+        """Attempt to extract a valid JSON object from malformed tool arguments."""
+
+        text = arguments_text.strip()
+        if not text:
+            raise ToolValidationError(
+                "LLM returned invalid JSON for tool arguments",
+            ) from error
+        decoder = json.JSONDecoder()
+        fragments: list[Any] = []
+        index = 0
+        length = len(text)
+        while index < length:
+            while index < length and text[index].isspace():
+                index += 1
+            if index >= length:
+                break
+            try:
+                value, end = decoder.raw_decode(text, index)
+            except json.JSONDecodeError:
+                break
+            fragments.append(value)
+            index = end
+        if not fragments:
+            raise ToolValidationError(
+                "LLM returned invalid JSON for tool arguments",
+            ) from error
+        selected_index = -1
+        selected_fragment: Mapping[str, Any] | None = None
+        for idx in range(len(fragments) - 1, -1, -1):
+            candidate = fragments[idx]
+            if isinstance(candidate, Mapping) and candidate:
+                selected_index = idx
+                selected_fragment = candidate
+                break
+        if selected_fragment is None:
+            for idx in range(len(fragments) - 1, -1, -1):
+                candidate = fragments[idx]
+                if isinstance(candidate, Mapping):
+                    selected_index = idx
+                    selected_fragment = candidate
+                    break
+        if selected_fragment is None:
+            raise ToolValidationError(
+                "LLM returned invalid JSON for tool arguments",
+            ) from error
+        log_event(
+            "LLM_TOOL_ARGUMENTS_RECOVERED",
+            {
+                "call_id": call_id,
+                "tool_name": tool_name,
+                "fragments": len(fragments),
+                "selected_fragment": selected_index,
+                "error": {"type": type(error).__name__, "message": str(error)},
+            },
+        )
+        log_debug_payload(
+            "LLM_TOOL_ARGUMENTS_RECOVERED",
+            {
+                "call_id": call_id,
+                "tool_name": tool_name,
+                "arguments_text": arguments_text,
+                "fragments": fragments,
+                "selected_fragment": selected_index,
+                "error": {"type": type(error).__name__, "message": str(error)},
+            },
+        )
+        return selected_fragment
 
     def _trim_history(
         self,

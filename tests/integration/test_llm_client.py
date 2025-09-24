@@ -149,6 +149,50 @@ def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
     ]
 
 
+def test_parse_command_recovers_fragmented_tool_arguments(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = settings_with_llm(tmp_path)
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                tool_calls=[
+                                    SimpleNamespace(
+                                        function=SimpleNamespace(
+                                            name="update_requirement_field",
+                                            arguments='{}{"rid": "SYS-1", "field": "status", "value": "approved"}',
+                                        )
+                                    )
+                                ],
+                                content=None,
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    response = client.parse_command("обнови статус SYS-1")
+    assert isinstance(response, LLMResponse)
+    assert len(response.tool_calls) == 1
+    call = response.tool_calls[0]
+    assert call.name == "update_requirement_field"
+    assert call.arguments == {
+        "rid": "SYS-1",
+        "field": "status",
+        "value": "approved",
+    }
+
+
 def test_parse_command_omits_token_limits(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
     captured: dict[str, object] = {}

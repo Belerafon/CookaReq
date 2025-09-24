@@ -432,7 +432,12 @@ def create_requirement(
     payload["id"] = item_id
     if "revision" not in payload:
         payload["revision"] = 1
-    req = requirement_from_dict(payload, doc_prefix=prefix, rid=rid_for(doc, item_id))
+    try:
+        req = requirement_from_dict(
+            payload, doc_prefix=prefix, rid=rid_for(doc, item_id)
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(str(exc)) from exc
     _update_link_suspicions(root_path, docs_map, req)
     save_item(directory, doc, requirement_to_dict(req))
     return req
@@ -469,7 +474,10 @@ def _update_requirement(
     if err:
         raise ValidationError(err)
     payload["labels"] = labels
-    req = requirement_from_dict(payload, doc_prefix=prefix, rid=rid)
+    try:
+        req = requirement_from_dict(payload, doc_prefix=prefix, rid=rid)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(str(exc)) from exc
     _update_link_suspicions(root_path, docs_map, req)
     save_item(directory, doc, requirement_to_dict(req))
     return req

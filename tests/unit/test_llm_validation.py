@@ -71,3 +71,23 @@ def test_validate_tool_call_rejects_invalid_search_status():
         validate_tool_call("search_requirements", {"status": "unknown"})
 
     assert "Invalid arguments for search_requirements" in str(exc.value)
+
+
+def test_validate_tool_call_accepts_status_update():
+    arguments = {"rid": "SYS1", "field": "status", "value": "approved"}
+
+    result = validate_tool_call("update_requirement_field", arguments)
+
+    assert result == arguments
+
+
+def test_validate_tool_call_rejects_unknown_status_update():
+    with pytest.raises(ToolValidationError) as exc:
+        validate_tool_call(
+            "update_requirement_field",
+            {"rid": "SYS1", "field": "status", "value": "На утверждении"},
+        )
+
+    message = str(exc.value)
+    assert "Invalid arguments for update_requirement_field" in message
+    assert "value" in message

@@ -676,6 +676,40 @@ def test_agent_message_copy_selection(monkeypatch, wx_app):
     frame.Destroy()
 
 
+def test_message_bubble_destroy_ignores_pending_width_update(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.widgets.chat_message import MessageBubble
+
+    scheduled: list[tuple[Any, tuple[Any, ...], dict[str, Any]]] = []
+
+    def fake_call_after(func, *args, **kwargs):  # noqa: ANN001 - wx public API uses *args/**kwargs
+        scheduled.append((func, args, kwargs))
+
+    monkeypatch.setattr(wx, "CallAfter", fake_call_after)
+
+    frame = wx.Frame(None)
+    bubble = MessageBubble(
+        frame,
+        role_label="Agent",
+        timestamp="",
+        text="resize after destroy",
+        align="left",
+        allow_selection=False,
+        render_markdown=False,
+    )
+
+    assert scheduled, "MessageBubble should request a deferred layout update"
+
+    bubble.Destroy()
+
+    # Execute the deferred callbacks after the bubble has been torn down. The
+    # handlers must return quietly without resurrecting the widget or throwing.
+    for func, args, kwargs in list(scheduled):
+        func(*args, **kwargs)
+
+    frame.Destroy()
+
+
 def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
     from app.i18n import _
     from app.ui.agent_chat_panel import ThreadedAgentCommandExecutor

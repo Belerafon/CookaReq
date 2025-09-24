@@ -61,7 +61,7 @@ class SupportsAgentMCP(Protocol):
 class LocalAgent:
     """High-level agent aggregating LLM and MCP clients."""
 
-    _MAX_THOUGHT_STEPS = 8
+    DEFAULT_MAX_THOUGHT_STEPS: int | None = None
     _MESSAGE_PREVIEW_LIMIT = 400
 
     def __init__(
@@ -73,6 +73,7 @@ class LocalAgent:
         confirm: Callable[[str], bool] | None = None,
         confirm_requirement_update: Callable[[RequirementUpdatePrompt], ConfirmDecision]
         | None = None,
+        max_thought_steps: int | None = None,
     ) -> None:
         """Initialize agent with optional settings or prebuilt clients."""
         if settings is not None:
@@ -88,6 +89,8 @@ class LocalAgent:
                     confirm=confirm,
                     confirm_requirement_update=confirm_requirement_update,
                 )
+            if max_thought_steps is None:
+                max_thought_steps = settings.agent.max_thought_steps
         if llm is None or mcp is None:
             raise TypeError("settings or clients must be provided")
         if not isinstance(llm, SupportsAgentLLM):
@@ -103,6 +106,9 @@ class LocalAgent:
         self._llm: SupportsAgentLLM = llm
         self._mcp: SupportsAgentMCP = mcp
         self._llm_requests: list[list[dict[str, Any]]] = []
+        self._max_thought_steps: int | None = self._normalise_max_thought_steps(
+            max_thought_steps
+        )
 
     # ------------------------------------------------------------------
     @classmethod
@@ -209,6 +215,28 @@ class LocalAgent:
         """Abort execution when *cancellation* has been triggered."""
 
         raise_if_cancelled(cancellation)
+
+    @staticmethod
+    def _normalise_max_thought_steps(value: int | None) -> int | None:
+        """Return sanitized upper bound for agent iterations."""
+
+        if value is None:
+            return LocalAgent.DEFAULT_MAX_THOUGHT_STEPS
+        if isinstance(value, bool):  # pragma: no cover - defensive guard
+            raise TypeError("max_thought_steps must be an integer or None")
+        try:
+            numeric = int(value)
+        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+            raise TypeError("max_thought_steps must be an integer or None") from exc
+        if numeric <= 0:
+            return LocalAgent.DEFAULT_MAX_THOUGHT_STEPS
+        return numeric
+
+    @property
+    def max_thought_steps(self) -> int | None:
+        """Return currently configured step cap (``None`` means unlimited)."""
+
+        return self._max_thought_steps
 
     @staticmethod
     def _run_sync(coro: Awaitable[Any]) -> Any:
@@ -373,15 +401,21 @@ class LocalAgent:
         on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         accumulated_results: list[Mapping[str, Any]] = []
-        for step in range(self._MAX_THOUGHT_STEPS):
+        last_response: LLMResponse | None = None
+        step = 0
+        while True:
+            if self._max_thought_steps is not None and step >= self._max_thought_steps:
+                break
             self._raise_if_cancelled(cancellation)
             response = await self._llm.respond_async(
                 conversation,
                 cancellation=cancellation,
             )
+            last_response = response
             self._record_request_messages(response)
             conversation.append(self._assistant_message(response))
-            self._log_step(step + 1, response)
+            step += 1
+            self._log_step(step, response)
             if not response.tool_calls:
                 return self._success_result(response, accumulated_results)
             (
@@ -398,13 +432,54 @@ class LocalAgent:
             if early_result is not None:
                 return early_result
             self._raise_if_cancelled(cancellation)
-        log_event(
-            "AGENT_ABORTED",
-            {"reason": "max-steps", "max_steps": self._MAX_THOUGHT_STEPS},
+        assert self._max_thought_steps is not None  # loop exits only when limit is set
+        abort_payload: dict[str, Any] = {
+            "reason": "max-steps",
+            "max_steps": self._max_thought_steps,
+        }
+        if last_response is not None:
+            if last_response.content:
+                abort_payload["last_message_preview"] = self._preview(
+                    last_response.content
+                )
+            if last_response.tool_calls:
+                abort_payload["last_tool_calls"] = self._summarize_tool_calls(
+                    last_response.tool_calls
+                )
+        log_event("AGENT_ABORTED", abort_payload)
+
+        message = (
+            "LLM did not finish interaction within allowed steps "
+            f"({self._max_thought_steps})"
         )
-        raise ToolValidationError(
-            "LLM did not finish interaction within allowed steps",
-        )
+        if last_response is not None:
+            if last_response.tool_calls:
+                call_descriptions: list[str] = []
+                for call in last_response.tool_calls:
+                    call_descriptions.append(
+                        f"{call.name} with arguments "
+                        f"{self._format_tool_arguments(call.arguments)}"
+                    )
+                joined = "; ".join(call_descriptions)
+                message += f". Last response requested: {joined}"
+            elif last_response.content:
+                message += f". Last message: {last_response.content.strip()}"
+        error = ToolValidationError(message)
+        if last_response is not None:
+            if last_response.content:
+                error.llm_message = last_response.content
+            if last_response.tool_calls:
+                error.llm_tool_calls = [
+                    {
+                        "id": call.id,
+                        "name": call.name,
+                        "arguments": self._normalise_tool_arguments(call),
+                    }
+                    for call in last_response.tool_calls
+                ]
+        if accumulated_results:
+            error.tool_results = [dict(result) for result in accumulated_results]
+        raise error
 
     async def _execute_tool_calls_core(
         self,

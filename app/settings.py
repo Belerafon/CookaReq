@@ -109,6 +109,39 @@ class MCPSettings(BaseModel):
 DEFAULT_LIST_COLUMNS = list(BASE_DEFAULT_LIST_COLUMNS)
 
 
+class AgentSettings(BaseModel):
+    """Settings controlling LocalAgent behaviour."""
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    max_thought_steps: int | None = None
+
+    @field_validator("max_thought_steps", mode="before")
+    @classmethod
+    def _normalise_max_thought_steps(
+        cls, value: int | str | None
+    ) -> int | None:
+        """Coerce *value* into a positive limit or ``None`` for unlimited loops."""
+
+        if value is None:
+            return None
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return None
+            try:
+                numeric = int(raw)
+            except ValueError:  # pragma: no cover - delegated to Pydantic
+                return value
+        else:
+            if isinstance(value, bool):
+                raise TypeError("Boolean is not a valid max_thought_steps value")
+            numeric = int(value)
+        if numeric <= 0:
+            return None
+        return numeric
+
+
 class UISettings(BaseModel):
     """Settings related to the graphical user interface."""
 
@@ -156,6 +189,7 @@ class AppSettings(BaseModel):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     mcp: MCPSettings = Field(default_factory=MCPSettings)
     ui: UISettings = Field(default_factory=UISettings)
+    agent: AgentSettings = Field(default_factory=AgentSettings)
 
     def to_dict(self) -> dict:
         """Return settings as a plain dictionary."""

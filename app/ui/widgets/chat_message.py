@@ -279,9 +279,9 @@ class MessageBubble(wx.Panel):
         alignment_row = wx.BoxSizer(wx.HORIZONTAL)
         if align == "right":
             alignment_row.AddStretchSpacer()
-            alignment_row.Add(bubble, 0, wx.ALIGN_RIGHT)
+            alignment_row.Add(bubble, 0)
         else:
-            alignment_row.Add(bubble, 0, wx.ALIGN_LEFT)
+            alignment_row.Add(bubble, 0)
             alignment_row.AddStretchSpacer()
         outer.Add(alignment_row, 1, wx.EXPAND)
 

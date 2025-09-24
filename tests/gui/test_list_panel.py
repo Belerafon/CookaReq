@@ -6,6 +6,7 @@ import types
 
 import pytest
 
+from app import columns
 from app.core.document_store import Document, item_path, save_document, save_item
 from app.core.model import (
     Priority,
@@ -379,16 +380,15 @@ def test_reorder_columns(stubbed_list_panel_env):
 def test_load_column_widths_assigns_defaults(stubbed_list_panel_env):
     env = stubbed_list_panel_env
     panel = env.create_panel()
-    list_panel_cls = env.list_panel_cls
     panel.set_columns(["labels", "id", "status", "priority"])
 
     config = types.SimpleNamespace(read_int=lambda key, default: -1)
     panel.load_column_widths(config)
 
     assert panel.list._col_widths == {
-        0: list_panel_cls.DEFAULT_COLUMN_WIDTHS["labels"],
-        1: list_panel_cls.DEFAULT_COLUMN_WIDTHS["title"],
-        2: list_panel_cls.DEFAULT_COLUMN_WIDTHS["id"],
-        3: list_panel_cls.DEFAULT_COLUMN_WIDTHS["status"],
-        4: list_panel_cls.DEFAULT_COLUMN_WIDTHS["priority"],
+        0: columns.default_column_width("labels"),
+        1: columns.default_column_width("title"),
+        2: columns.default_column_width("id"),
+        3: columns.default_column_width("status"),
+        4: columns.default_column_width("priority"),
     }

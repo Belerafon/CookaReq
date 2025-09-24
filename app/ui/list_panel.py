@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
+from .. import columns
 from ..core.document_store import LabelDef, label_color, load_item, parse_rid, stable_color
 from ..core.model import Requirement
 from ..i18n import _
@@ -33,21 +34,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     MIN_COL_WIDTH = 50
     MAX_COL_WIDTH = 1000
-    DEFAULT_COLUMN_WIDTH = 160
-    DEFAULT_COLUMN_WIDTHS: dict[str, int] = {
-        "title": 340,
-        "labels": 200,
-        "id": 90,
-        "status": 140,
-        "priority": 130,
-        "type": 150,
-        "owner": 180,
-        "doc_prefix": 140,
-        "rid": 150,
-        "derived_count": 120,
-        "derived_from": 260,
-        "modified_at": 180,
-    }
 
     def __init__(
         self,
@@ -426,14 +412,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _default_column_width(self, field: str) -> int:
         """Return sensible default width for a given column field."""
 
-        width = self.DEFAULT_COLUMN_WIDTHS.get(field)
-        if width is not None:
-            return width
-        if field.endswith("_at"):
-            return 180
-        if field in {"revision", "id", "doc_prefix", "derived_count"}:
-            return 90
-        return self.DEFAULT_COLUMN_WIDTH
+        return columns.default_column_width(field)
 
     def load_column_order(self, config: ConfigManager) -> None:
         """Restore column ordering from config."""

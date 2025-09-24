@@ -10,23 +10,13 @@ from typing import Literal
 import tomllib
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from .columns import DEFAULT_LIST_COLUMNS as BASE_DEFAULT_LIST_COLUMNS
 from .llm.constants import (
     DEFAULT_LLM_BASE_URL,
     DEFAULT_LLM_MODEL,
     DEFAULT_MAX_CONTEXT_TOKENS,
     MIN_MAX_CONTEXT_TOKENS,
 )
-
-
-DEFAULT_LIST_COLUMNS: list[str] = [
-    "labels",
-    "id",
-    "derived_from",
-    "status",
-    "priority",
-    "type",
-    "owner",
-]
 
 
 class LLMSettings(BaseModel):
@@ -114,6 +104,9 @@ class MCPSettings(BaseModel):
             return None
         text = str(value).strip()
         return text or None
+
+
+DEFAULT_LIST_COLUMNS = list(BASE_DEFAULT_LIST_COLUMNS)
 
 
 class UISettings(BaseModel):

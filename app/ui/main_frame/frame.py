@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import fields
 from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import wx
 
+from ...columns import available_columns
 from ...config import ConfigManager
-from ...core.model import Requirement
 from ...i18n import _
 from ...mcp.controller import MCPController
 from ..requirement_model import RequirementModel
@@ -59,11 +58,7 @@ class MainFrame(
         self._base_title = "CookaReq"
         self.config = config if config is not None else ConfigManager()
         self.model = model if model is not None else RequirementModel()
-        self.available_fields = [
-            f.name for f in fields(Requirement) if f.name not in {"title", "labels"}
-        ]
-        self.available_fields.append("labels")
-        self.available_fields.append("derived_count")
+        self.available_fields = available_columns()
         self.selected_fields = self.config.get_columns()
         self.auto_open_last = self.config.get_auto_open_last()
         self.remember_sort = self.config.get_remember_sort()

@@ -13,6 +13,7 @@ from typing import Any, ClassVar, Literal, Protocol
 
 import wx
 
+from .columns import sanitize_columns
 from .settings import AppSettings, LLMSettings, MCPSettings, UISettings
 
 
@@ -245,10 +246,10 @@ class ConfigManager:
         self._raw["col_order"] = [str(field) for field in fields]
 
     def get_columns(self) -> list[str]:
-        return list(self.get_value("list_columns"))
+        return sanitize_columns(self.get_value("list_columns"))
 
     def set_columns(self, fields: list[str]) -> None:
-        self.set_value("list_columns", list(fields))
+        self.set_value("list_columns", sanitize_columns(fields))
         self.flush()
 
     # ------------------------------------------------------------------

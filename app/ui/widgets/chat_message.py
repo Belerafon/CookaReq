@@ -8,6 +8,29 @@ from typing import Any, Callable
 
 import wx
 
+
+def _is_window_usable(window: wx.Window | None) -> bool:
+    """Return True when the wx window can be safely accessed."""
+
+    if window is None:
+        return False
+    try:
+        # ``bool(window)`` delegates to ``IsOk`` without raising on GTK.
+        if not window:
+            return False
+    except RuntimeError:
+        return False
+
+    is_being_deleted = getattr(window, "IsBeingDeleted", None)
+    if callable(is_being_deleted):
+        try:
+            if is_being_deleted():
+                return False
+        except RuntimeError:
+            return False
+    return True
+
+
 from ...i18n import _
 from ..text import normalize_for_display
 
@@ -96,6 +119,9 @@ class MessageBubble(wx.Panel):
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
         self.SetDoubleBuffered(True)
+        self._destroyed = False
+        self._pending_width_update = False
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
 
         display_text = normalize_for_display(text)
         self._text_value = display_text
@@ -287,7 +313,16 @@ class MessageBubble(wx.Panel):
 
         self.SetSizer(outer)
         self.Bind(wx.EVT_SIZE, self._on_panel_resize)
-        wx.CallAfter(self._update_width_constraints)
+        self._schedule_width_update()
+
+    def Destroy(self) -> bool:  # type: ignore[override]
+        self._destroyed = True
+        return super().Destroy()
+
+    def _on_destroy(self, event: wx.WindowDestroyEvent) -> None:
+        if event.GetEventObject() is self:
+            self._destroyed = True
+        event.Skip()
 
     def _on_bubble_erase_background(self, event: wx.EraseEvent) -> None:
         event.Skip(False)
@@ -411,13 +446,46 @@ class MessageBubble(wx.Panel):
 
     def _on_panel_resize(self, event: wx.SizeEvent) -> None:
         event.Skip()
-        self._update_width_constraints()
+        self._schedule_width_update()
+
+    def _schedule_width_update(self) -> None:
+        if self._destroyed or self._pending_width_update:
+            return
+
+        self._pending_width_update = True
+
+        def run() -> None:
+            # ``CallAfter`` executes once the main loop becomes idle; the
+            # MessageBubble can already be destroyed by then.
+            self._pending_width_update = False
+            if self._destroyed:
+                return
+            try:
+                self._update_width_constraints()
+            except RuntimeError:
+                # ``wx`` raises ``RuntimeError`` when invoking methods on a
+                # window whose native counterpart has already been torn down.
+                # The flag above prevents re-entry, so we can silently ignore
+                # the callback.
+                pass
+
+        wx.CallAfter(run)
 
     def _update_width_constraints(self) -> None:
-        parent = self.GetParent()
-        if parent is None:
+        if self._destroyed:
             return
-        parent_width = parent.GetClientSize().width
+
+        try:
+            parent = self.GetParent()
+        except RuntimeError:
+            return
+        if not _is_window_usable(parent):
+            return
+
+        try:
+            parent_width = parent.GetClientSize().width
+        except RuntimeError:
+            return
         if parent_width <= 0:
             return
 
@@ -441,18 +509,41 @@ class MessageBubble(wx.Panel):
         cached = self._cached_width_constraints
         if cached is not None and cached == (target_width, max_width):
             return
+
+        bubble = getattr(self, "_bubble", None)
+        if not _is_window_usable(bubble):
+            return
+
         self._cached_width_constraints = (target_width, max_width)
 
-        self._bubble.SetMinSize(wx.Size(target_width, -1))
-        self._bubble.SetMaxSize(wx.Size(max_width, -1))
-        self._bubble.SetInitialSize(wx.Size(target_width, -1))
-        bubble_sizer = self._bubble.GetSizer()
+        try:
+            bubble.SetMinSize(wx.Size(target_width, -1))
+            bubble.SetMaxSize(wx.Size(max_width, -1))
+            bubble.SetInitialSize(wx.Size(target_width, -1))
+        except RuntimeError:
+            self._cached_width_constraints = None
+            return
+
+        try:
+            bubble_sizer = bubble.GetSizer()
+        except RuntimeError:
+            return
         if bubble_sizer is not None:
             bubble_sizer.Layout()
-        container_sizer = self.GetSizer()
+
+        try:
+            container_sizer = self.GetSizer()
+        except RuntimeError:
+            container_sizer = None
         if container_sizer is not None:
-            container_sizer.Layout()
-        self.Layout()
+            try:
+                container_sizer.Layout()
+            except RuntimeError:
+                pass
+        try:
+            self.Layout()
+        except RuntimeError:
+            pass
 
     def _estimate_content_width(self) -> int:
         if not self._text_value:

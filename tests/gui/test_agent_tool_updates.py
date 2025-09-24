@@ -66,7 +66,7 @@ def test_agent_tool_updates_reflect_in_ui(tmp_path, wx_app):
         payload["revision"] = original.revision + 1
 
         class UpdateAgent:
-            def run_command(self, text, *, history=None, context=None, cancellation=None):
+            def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
                 return {
                     "ok": True,
                     "error": None,

@@ -272,6 +272,7 @@ class LocalAgent:
         history: Sequence[Mapping[str, Any]] | None = None,
         context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
         cancellation: CancellationEvent | None = None,
+        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Drive an agent loop that may invoke MCP tools before replying."""
 
@@ -282,7 +283,11 @@ class LocalAgent:
         )
         try:
             result = self._run_sync(
-                self._run_loop_core(conversation, cancellation=cancellation)
+                self._run_loop_core(
+                    conversation,
+                    cancellation=cancellation,
+                    on_tool_result=on_tool_result,
+                )
             )
         except OperationCancelledError:
             log_event("AGENT_CANCELLED", {"reason": "user-request"})
@@ -301,6 +306,7 @@ class LocalAgent:
         history: Sequence[Mapping[str, Any]] | None = None,
         context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
         cancellation: CancellationEvent | None = None,
+        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Asynchronous variant of :meth:`run_command`."""
 
@@ -311,7 +317,9 @@ class LocalAgent:
         )
         try:
             result = await self._run_loop_core(
-                conversation, cancellation=cancellation
+                conversation,
+                cancellation=cancellation,
+                on_tool_result=on_tool_result,
             )
         except OperationCancelledError:
             log_event("AGENT_CANCELLED", {"reason": "user-request"})
@@ -329,6 +337,7 @@ class LocalAgent:
         conversation: list[Mapping[str, Any]],
         *,
         cancellation: CancellationEvent | None = None,
+        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         accumulated_results: list[Mapping[str, Any]] = []
         for step in range(self._MAX_THOUGHT_STEPS):
@@ -348,6 +357,7 @@ class LocalAgent:
             ) = await self._execute_tool_calls_core(
                 response.tool_calls,
                 cancellation=cancellation,
+                on_tool_result=on_tool_result,
             )
             conversation.extend(tool_messages)
             accumulated_results.extend(batch_results)
@@ -367,6 +377,7 @@ class LocalAgent:
         tool_calls: Sequence[LLMToolCall],
         *,
         cancellation: CancellationEvent | None = None,
+        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any] | None, list[Mapping[str, Any]]]:
         messages: list[dict[str, Any]] = []
         successful: list[Mapping[str, Any]] = []
@@ -400,6 +411,7 @@ class LocalAgent:
                     {"ok": False, "error": error},
                     include_arguments=True,
                 )
+                self._emit_tool_result(on_tool_result, payload)
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
             if not isinstance(result, Mapping):
@@ -414,6 +426,7 @@ class LocalAgent:
                     },
                     include_arguments=True,
                 )
+                self._emit_tool_result(on_tool_result, payload)
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
             result_dict = self._prepare_tool_payload(
@@ -429,12 +442,31 @@ class LocalAgent:
             if not log_payload["ok"] and result_dict.get("error"):
                 log_payload["error"] = result_dict["error"]
             log_event("AGENT_TOOL_RESULT", log_payload)
+            self._emit_tool_result(on_tool_result, result_dict)
             messages.append(self._tool_message(call, result_dict))
             if not result_dict.get("ok", False):
                 return messages, result_dict, successful
             successful.append(result_dict)
             self._raise_if_cancelled(cancellation)
         return messages, None, successful
+
+    @staticmethod
+    def _emit_tool_result(
+        callback: Callable[[Mapping[str, Any]], None] | None,
+        payload: Mapping[str, Any],
+    ) -> None:
+        """Deliver intermediate MCP *payload* to the provided *callback*."""
+
+        if callback is None:
+            return
+        try:
+            prepared = dict(payload) if isinstance(payload, Mapping) else {"value": payload}
+            callback(prepared)
+        except Exception as exc:  # pragma: no cover - defensive
+            log_event(
+                "AGENT_TOOL_STREAM_ERROR",
+                {"error": {"type": type(exc).__name__, "message": str(exc)}},
+            )
 
     @staticmethod
     def _success_result(

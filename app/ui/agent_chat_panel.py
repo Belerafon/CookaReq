@@ -9,7 +9,7 @@ import textwrap
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -165,6 +165,7 @@ class _AgentRunHandle:
     pending_entry: ChatEntry | None = None
     context_messages: tuple[dict[str, Any], ...] | None = None
     history_snapshot: tuple[dict[str, Any], ...] | None = None
+    streamed_tool_results: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def is_cancelled(self) -> bool:
@@ -1560,11 +1561,30 @@ class AgentChatPanel(wx.Panel):
             try:
                 overrides = self._confirm_override_kwargs()
                 agent = self._agent_supplier(**overrides)
+
+                def on_tool_result(payload: Mapping[str, Any]) -> None:
+                    if handle.is_cancelled:
+                        return
+                    if not isinstance(payload, Mapping):
+                        return
+                    try:
+                        prepared = dict(payload)
+                    except Exception:  # pragma: no cover - defensive
+                        return
+                    handle.streamed_tool_results.append(prepared)
+                    snapshot = tuple(dict(item) for item in handle.streamed_tool_results)
+                    wx.CallAfter(
+                        self._handle_streamed_tool_results,
+                        handle,
+                        snapshot,
+                    )
+
                 return agent.run_command(
                     normalized_prompt,
                     history=history_messages,
                     context=context_messages,
                     cancellation=handle.cancel_event,
+                    on_tool_result=on_tool_result,
                 )
             except OperationCancelledError:
                 raise
@@ -2090,6 +2110,10 @@ class AgentChatPanel(wx.Panel):
         final_tokens: TokenCountResult | None = None
         try:
             conversation_text, display_text, raw_result, tool_results = self._process_result(result)
+            if not tool_results and handle.streamed_tool_results:
+                tool_results = [
+                    dict(payload) for payload in handle.streamed_tool_results
+                ]
             response_tokens = count_text_tokens(
                 conversation_text,
                 model=self._token_model(),
@@ -2130,6 +2154,7 @@ class AgentChatPanel(wx.Panel):
                     history_snapshot=handle.history_snapshot,
                 )
             handle.pending_entry = None
+            handle.streamed_tool_results.clear()
             self._render_transcript()
             self._notify_tool_results(tool_results)
         finally:
@@ -2392,6 +2417,7 @@ class AgentChatPanel(wx.Panel):
         if removal is None:
             return
         handle.pending_entry = None
+        handle.streamed_tool_results.clear()
         self._save_history()
         self._refresh_history_list()
         self._render_transcript()
@@ -2695,6 +2721,26 @@ class AgentChatPanel(wx.Panel):
         }
 
         return _history_json_safe(diagnostic_payload)
+
+    def _handle_streamed_tool_results(
+        self,
+        handle: _AgentRunHandle,
+        tool_results: Sequence[Mapping[str, Any]] | None,
+    ) -> None:
+        """Update transcript with in-flight tool results for *handle*."""
+
+        if handle.is_cancelled:
+            return
+        if handle is not self._active_run_handle:
+            return
+        entry = handle.pending_entry
+        if entry is None:
+            return
+        if not tool_results:
+            entry.tool_results = None
+        else:
+            entry.tool_results = [dict(payload) for payload in tool_results]
+        self._render_transcript()
 
     def _notify_tool_results(
         self, tool_results: Sequence[Any] | None

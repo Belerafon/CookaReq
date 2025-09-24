@@ -23,6 +23,7 @@ from ...core.document_store import (
     delete_item,
 )
 from ...core.model import Requirement, requirement_from_dict, requirement_to_dict
+from ...core.trace_matrix import TraceMatrix, TraceMatrixConfig, build_trace_matrix
 
 
 @dataclass
@@ -70,6 +71,13 @@ class DocumentsController:
         """Return labels and free-form flag for document ``prefix``."""
 
         return collect_label_defs(prefix, self.documents)
+
+    def build_trace_matrix(self, config: TraceMatrixConfig) -> TraceMatrix:
+        """Construct traceability matrix for ``config`` using cached documents."""
+
+        if not self.documents:
+            self.load_documents()
+        return build_trace_matrix(self.root, config, docs=self.documents)
 
     # helpers ---------------------------------------------------------
     @staticmethod

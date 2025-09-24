@@ -252,7 +252,12 @@ def _ensure_documents(root: Path, docs: Mapping[str, Document] | None) -> Mappin
     return docs if docs is not None else load_documents(root)
 
 
-def _iter_requirements(root: Path, docs: Mapping[str, Document]) -> list[Requirement]:
+def _iter_requirements(
+    root: Path,
+    docs: Mapping[str, Document],
+    *,
+    all_docs: Mapping[str, Document] | None = None,
+) -> list[Requirement]:
     requirements: list[Requirement] = []
     cache: dict[str, str | None] = {}
     for prefix, doc in docs.items():
@@ -268,9 +273,45 @@ def _iter_requirements(root: Path, docs: Mapping[str, Document]) -> list[Require
                     rid=rid,
                 )
             )
+    doc_map = all_docs or docs
     for req in requirements:
-        _update_link_suspicions(root, docs, req, cache)
+        _update_link_suspicions(root, doc_map, req, cache)
     return requirements
+
+
+def load_requirements(
+    root: str | Path,
+    *,
+    prefixes: Sequence[str] | None = None,
+    docs: Mapping[str, Document] | None = None,
+) -> list[Requirement]:
+    """Return requirements for the selected document prefixes.
+
+    ``prefixes`` preserves the provided order and filters out duplicates. When
+    omitted, requirements from *all* documents are returned. The function
+    ensures that link metadata is refreshed (``Link.suspect`` reflects the
+    current fingerprint state) in the same way as ``search_requirements`` and
+    other high level helpers.
+    """
+
+    root_path = Path(root)
+    if docs is None and not root_path.is_dir():
+        raise FileNotFoundError(root_path)
+    docs_map = _ensure_documents(root_path, docs)
+    if prefixes is None:
+        selected_order = sorted(docs_map)
+    else:
+        seen: set[str] = set()
+        selected_order: list[str] = []
+        for prefix in prefixes:
+            if prefix not in docs_map:
+                raise DocumentNotFoundError(prefix)
+            if prefix in seen:
+                continue
+            seen.add(prefix)
+            selected_order.append(prefix)
+    selected_docs = {prefix: docs_map[prefix] for prefix in selected_order}
+    return _iter_requirements(root_path, selected_docs, all_docs=docs_map)
 
 
 def _normalize_labels(raw: Any) -> list[str]:

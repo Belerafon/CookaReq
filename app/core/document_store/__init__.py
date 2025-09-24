@@ -1,5 +1,4 @@
 """Document store public API and shared structures."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,6 +6,9 @@ from typing import TYPE_CHECKING, Any, List, Mapping
 
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from ..model import Requirement
+
+from collections.abc import Sequence
+from pathlib import Path
 
 
 class ValidationError(Exception):
@@ -41,6 +43,30 @@ class RequirementIDCollisionError(RequirementError):
         self.req_id = req_id
         self.rid = rid or f"{doc_prefix}{req_id}"
         super().__init__(f"requirement {self.rid} already exists")
+
+
+class LegacyItemLayoutError(RequirementError):
+    """Raised when requirement files keep legacy padded or prefixed names."""
+
+    def __init__(
+        self, doc_prefix: str, req_id: int, *, paths: Sequence[Path] | None = None
+    ) -> None:
+        self.doc_prefix = doc_prefix
+        self.req_id = req_id
+        self.paths = tuple(Path(p) for p in paths or ())
+        expected = f"{doc_prefix}/items/{req_id}.json"
+        if self.paths:
+            details = ", ".join(sorted(str(path) for path in self.paths))
+            message = (
+                "requirement {rid} uses unsupported legacy filenames: {files}. "
+                "Remove them or rename the file to {expected}."
+            ).format(rid=f"{doc_prefix}{req_id}", files=details, expected=expected)
+        else:
+            message = (
+                "requirement {rid} uses unsupported legacy filenames. "
+                "Ensure only {expected} exists."
+            ).format(rid=f"{doc_prefix}{req_id}", expected=expected)
+        super().__init__(message)
 
 
 @dataclass
@@ -119,7 +145,6 @@ from .items import (  # noqa: E402
     delete_requirement,
     get_requirement,
     item_path,
-    locate_item_path,
     list_item_ids,
     list_requirements,
     load_item,
@@ -149,6 +174,7 @@ __all__ = [
     "DocumentNotFoundError",
     "RequirementNotFoundError",
     "RequirementIDCollisionError",
+    "LegacyItemLayoutError",
     "LabelDef",
     "DocumentLabels",
     "Document",
@@ -166,7 +192,6 @@ __all__ = [
     "delete_requirement",
     "get_requirement",
     "item_path",
-    "locate_item_path",
     "list_item_ids",
     "list_requirements",
     "load_item",

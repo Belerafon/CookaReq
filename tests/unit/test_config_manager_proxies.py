@@ -7,20 +7,18 @@ from app.config import ConfigManager
 pytestmark = pytest.mark.unit
 
 
-def test_config_manager_proxy_methods(tmp_path, wx_app):
+def test_config_manager_column_helpers(tmp_path, wx_app):
     cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
 
-    assert cfg.read_int("number", 5) == 5
-    cfg.write_int("number", 42)
+    assert cfg.get_column_width(2, default=120) == 120
+    cfg.set_column_width(2, 240)
     cfg.flush()
-    assert cfg.read_int("number", 0) == 42
+    assert cfg.get_column_width(2, default=0) == 240
 
-    assert cfg.read("text", "") == ""
-    cfg.write("text", "hello")
+    assert cfg.get_column_order() == []
+    cfg.set_column_order(["id", "owner"])
     cfg.flush()
-    assert cfg.read("text", "") == "hello"
+    assert cfg.get_column_order() == ["id", "owner"]
 
-    assert cfg.read_bool("flag", False) is False
-    cfg.write_bool("flag", True)
-    cfg.flush()
-    assert cfg.read_bool("flag", False) is True
+    cfg._raw["col_order"] = "priority,status,,"
+    assert cfg.get_column_order() == ["priority", "status"]

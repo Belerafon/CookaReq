@@ -57,7 +57,7 @@ Run the desktop client from the repository root:
 python3 -m app.main
 ```
 
-Choose a requirements directory when prompted. The sample dataset under `requirements/` contains two documents (`SYS`, `HLR`) that demonstrate the expected layout. Window geometry, recent folders, column order and filter selections are persisted via `wx.Config`.
+Choose a requirements directory when prompted. The sample dataset under `requirements/` contains two documents (`SYS`, `HLR`) that demonstrate the expected layout. Window geometry, recent folders, column order and filter selections are persisted via the JSON settings managed by `ConfigManager`.
 
 Key interface areas:
 
@@ -115,6 +115,8 @@ requirements/
     items/
       1.json
 ```
+
+CookaReq always reads and writes requirement payloads under `items/<id>.json`. Any padded or prefixed files left in the directory must be cleaned up manually before working with the store.
 
 ### Document metadata
 

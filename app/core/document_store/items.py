@@ -4,7 +4,7 @@ import json
 import re
 from dataclasses import fields
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from ..model import (
     Link,
@@ -17,10 +17,17 @@ from ..search import filter_by_labels, filter_by_status, search
 from . import (
     Document,
     DocumentNotFoundError,
+    LegacyItemLayoutError,
     RequirementIDCollisionError,
     RequirementNotFoundError,
     RequirementPage,
     ValidationError,
+)
+from .layout import (
+    canonical_item_name,
+    classify_item_path,
+    detect_legacy_layout,
+    legacy_item_variants,
 )
 from .documents import is_ancestor, load_documents, validate_labels
 
@@ -164,33 +171,6 @@ def rid_for(doc: Document, item_id: int) -> str:
     return f"{doc.prefix}{item_id}"
 
 
-def _item_filename(item_id: int) -> str:
-    return f"{item_id}.json"
-
-
-def _iter_matching_item_paths(
-    items_dir: Path, doc: Document, item_id: int
-) -> Iterable[Path]:
-    """Yield paths representing ``item_id`` in ``doc`` regardless of padding."""
-
-    if not items_dir.is_dir():
-        return
-    for candidate in items_dir.glob("*.json"):
-        stem = candidate.stem
-        if stem.startswith(doc.prefix):
-            suffix = stem[len(doc.prefix) :]
-        else:
-            suffix = stem
-        if not suffix or not suffix.isdigit():
-            continue
-        try:
-            candidate_id = int(suffix)
-        except ValueError:  # pragma: no cover - defensive; should not happen after isdigit
-            continue
-        if candidate_id == item_id:
-            yield candidate
-
-
 def _canonical_rid(docs: Mapping[str, Document], rid: str) -> str | None:
     try:
         prefix, item_id = parse_rid(rid)
@@ -216,21 +196,18 @@ def item_path(directory: str | Path, doc: Document, item_id: int) -> Path:
     """Return filesystem path for ``item_id`` inside ``doc`` using new naming."""
 
     directory_path = Path(directory)
-    return directory_path / "items" / _item_filename(item_id)
+    return directory_path / "items" / canonical_item_name(item_id)
 
 
-def locate_item_path(directory: str | Path, doc: Document, item_id: int) -> Path:
-    """Return actual filesystem path for ``item_id`` supporting legacy layouts."""
+def canonical_item_path(directory: str | Path, doc: Document, item_id: int) -> Path:
+    """Return canonical path for ``item_id`` ensuring no legacy variants remain."""
 
     directory_path = Path(directory)
-    new_path = item_path(directory_path, doc, item_id)
-    if new_path.exists():
-        return new_path
     items_dir = directory_path / "items"
-    matches = sorted(_iter_matching_item_paths(items_dir, doc, item_id))
-    if matches:
-        return matches[0]
-    return new_path
+    variants = legacy_item_variants(items_dir, doc.prefix, item_id)
+    if variants:
+        raise LegacyItemLayoutError(doc.prefix, item_id, paths=variants)
+    return items_dir / canonical_item_name(item_id)
 
 
 def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
@@ -245,21 +222,19 @@ def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
     _prepare_links_for_storage(root, docs, payload)
     directory_path = Path(directory)
     item_id = int(payload["id"])
-    path = item_path(directory_path, doc, item_id)
+    path = canonical_item_path(directory_path, doc, item_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2, sort_keys=True)
-    items_dir = directory_path / "items"
-    for legacy_path in _iter_matching_item_paths(items_dir, doc, item_id):
-        if legacy_path != path and legacy_path.exists():
-            legacy_path.unlink()
     return path
 
 
 def load_item(directory: str | Path, doc: Document, item_id: int) -> tuple[dict, float]:
     """Load requirement ``item_id`` from ``doc`` and return data with mtime."""
 
-    path = locate_item_path(directory, doc, item_id)
+    path = canonical_item_path(directory, doc, item_id)
+    if not path.exists():
+        raise FileNotFoundError(path)
     data = _read_json(path)
     mtime = path.stat().st_mtime
     return data, mtime
@@ -272,14 +247,18 @@ def list_item_ids(directory: str | Path, doc: Document) -> set[int]:
     ids: set[int] = set()
     if not items_dir.is_dir():
         return ids
+    legacy = detect_legacy_layout(items_dir, doc.prefix)
+    if legacy:
+        first_id = sorted(legacy)[0]
+        raise LegacyItemLayoutError(doc.prefix, first_id, paths=legacy[first_id])
     for fp in items_dir.glob("*.json"):
-        stem = fp.stem
-        if stem.startswith(doc.prefix):
-            stem = stem[len(doc.prefix) :]
-        try:
-            ids.add(int(stem))
-        except ValueError:
+        classified = classify_item_path(fp, doc.prefix)
+        if not classified:
             continue
+        item_id, is_canonical = classified
+        if not is_canonical:
+            continue
+        ids.add(item_id)
     return ids
 
 
@@ -594,7 +573,7 @@ def move_requirement(
     dst_dir = root_path / new_prefix
     new_id = next_item_id(dst_dir, dst_doc)
     new_rid = rid_for(dst_doc, new_id)
-    dst_path = locate_item_path(dst_dir, dst_doc, new_id)
+    dst_path = canonical_item_path(dst_dir, dst_doc, new_id)
     if dst_path.exists():
         raise RequirementIDCollisionError(new_prefix, new_id, rid=new_rid)
 
@@ -654,14 +633,11 @@ def move_requirement(
     for directory, doc, item_payload in referencing_updates:
         save_item(directory, doc, item_payload)
 
-    src_path = locate_item_path(src_directory, src_doc, item_id)
+    src_path = canonical_item_path(src_directory, src_doc, item_id)
     try:
         src_path.unlink()
     except FileNotFoundError:  # pragma: no cover - defensive
         pass
-    legacy_path = item_path(src_directory, src_doc, item_id)
-    if legacy_path != src_path and legacy_path.exists():
-        legacy_path.unlink()
 
     return req
 

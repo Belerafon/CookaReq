@@ -232,7 +232,7 @@ class MessageBubble(wx.Panel):
                 self._selection_checker = has_selection
                 self._selection_getter = text_ctrl.GetStringSelection
         else:
-            text_align_flag = wx.ALIGN_RIGHT if align == "right" else 0
+            text_align_flag = wx.ALIGN_LEFT
             self._text = wx.StaticText(bubble, label=display_text, style=text_align_flag)
             self._text.SetForegroundColour(bubble_fg)
             self._text.SetBackgroundColour(bubble_bg)

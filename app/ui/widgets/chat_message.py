@@ -676,6 +676,29 @@ class TranscriptMessagePanel(wx.Panel):
         )
         outer.Add(user_bubble, 0, wx.EXPAND | wx.ALL, padding)
 
+        summaries = list(tool_summaries or [])
+        tool_bubbles: list[MessageBubble] = []
+        if summaries:
+            parent_background = self.GetBackgroundColour()
+            for summary in summaries:
+                markdown = render_tool_summary_markdown(summary).strip()
+                if not markdown:
+                    continue
+                bubble = MessageBubble(
+                    self,
+                    role_label=summary.tool_name,
+                    timestamp="",
+                    text=markdown,
+                    align="left",
+                    allow_selection=True,
+                    render_markdown=True,
+                    palette=_tool_bubble_palette(parent_background, summary.tool_name),
+                )
+                tool_bubbles.append(bubble)
+
+        for bubble in tool_bubbles:
+            outer.Add(bubble, 0, wx.EXPAND | wx.ALL, padding)
+
         agent_bubble = MessageBubble(
             self,
             role_label=_("Agent"),
@@ -695,25 +718,6 @@ class TranscriptMessagePanel(wx.Panel):
             ),
         )
         outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, padding)
-
-        summaries = list(tool_summaries or [])
-        if summaries:
-            parent_background = self.GetBackgroundColour()
-            for summary in summaries:
-                markdown = render_tool_summary_markdown(summary).strip()
-                if not markdown:
-                    continue
-                bubble = MessageBubble(
-                    self,
-                    role_label=summary.tool_name,
-                    timestamp="",
-                    text=markdown,
-                    align="left",
-                    allow_selection=True,
-                    render_markdown=True,
-                    palette=_tool_bubble_palette(parent_background, summary.tool_name),
-                )
-                outer.Add(bubble, 0, wx.EXPAND | wx.ALL, padding)
 
         self.SetSizer(outer)
 

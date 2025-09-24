@@ -6,6 +6,7 @@ from typing import Any
 
 from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel import RequirementConfirmPreference
+from app.ui.widgets.chat_message import MessageBubble, TranscriptMessagePanel
 
 import pytest
 
@@ -554,6 +555,81 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
         assert "LLM tool specification" in log_text
         assert "Agent → LLM request" in log_text
         assert "LLM → Agent message" in log_text
+    finally:
+        destroy_panel(frame, panel)
+
+
+def test_agent_chat_panel_orders_tool_bubbles_before_agent_reply(tmp_path, wx_app):
+    class ToolAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+        ):
+            return {
+                "ok": True,
+                "error": None,
+                "result": "done",
+                "tool_results": [
+                    {
+                        "tool_name": "demo_tool",
+                        "ok": True,
+                        "tool_arguments": {"query": text},
+                        "result": {"status": "ok"},
+                    }
+                ],
+            }
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, ToolAgent())
+
+    panel.input.SetValue("inspect")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    try:
+        entry_panels = [
+            child
+            for child in panel.transcript_panel.GetChildren()
+            if isinstance(child, TranscriptMessagePanel)
+        ]
+        assert entry_panels, "expected transcript entry"
+        entry = entry_panels[0]
+
+        def bubble_headers(message_panel):
+            headers: list[str] = []
+            for child in message_panel.GetChildren():
+                if not isinstance(child, MessageBubble):
+                    continue
+                bubble_panel = None
+                for candidate in child.GetChildren():
+                    if isinstance(candidate, wx.Panel):
+                        bubble_panel = candidate
+                        break
+                if bubble_panel is None:
+                    continue
+                header_label = None
+                for candidate in bubble_panel.GetChildren():
+                    if isinstance(candidate, wx.StaticText):
+                        header_label = candidate.GetLabel()
+                        break
+                if header_label is not None:
+                    headers.append(header_label)
+            return headers
+
+        headers = bubble_headers(entry)
+        assert headers, "expected at least one bubble"
+
+        agent_indexes = [idx for idx, label in enumerate(headers) if "Agent" in label]
+        assert agent_indexes, "agent bubble missing"
+        agent_index = agent_indexes[-1]
+        tool_indexes = [idx for idx, label in enumerate(headers) if "demo_tool" in label]
+        assert tool_indexes, "tool bubble missing"
+        assert tool_indexes[0] < agent_index
+        assert agent_index == len(headers) - 1
     finally:
         destroy_panel(frame, panel)
 

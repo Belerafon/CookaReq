@@ -212,7 +212,9 @@ class MainFrameAgentMixin:
                 "link_requirements",
                 "create_requirement",
             }:
-                requirement = self._convert_tool_result_requirement(result_payload)
+                requirement = self._convert_tool_result_requirement(
+                    result_payload,
+                )
                 if requirement is None:
                     continue
                 if requirement.doc_prefix == current_prefix:
@@ -287,7 +289,9 @@ class MainFrameAgentMixin:
         return None
 
     @staticmethod
-    def _convert_tool_result_requirement(result_payload: Any) -> Requirement | None:
+    def _convert_tool_result_requirement(
+        result_payload: Any,
+    ) -> Requirement | None:
         if not isinstance(result_payload, Mapping):
             logger.warning(
                 "Agent tool result has unexpected structure: %s",
@@ -308,7 +312,11 @@ class MainFrameAgentMixin:
             logger.warning("Agent returned invalid requirement id %r", rid)
             return None
         try:
-            requirement = requirement_from_dict(dict(result_payload), doc_prefix=prefix, rid=rid)
+            requirement = requirement_from_dict(
+                dict(result_payload),
+                doc_prefix=prefix,
+                rid=rid,
+            )
         except Exception:
             logger.exception("Failed to parse requirement payload from agent tool")
             return None

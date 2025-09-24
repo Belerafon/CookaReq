@@ -55,6 +55,7 @@ class _AgentRunHandle:
     context_messages: tuple[dict[str, Any], ...] | None = None
     history_snapshot: tuple[dict[str, Any], ...] | None = None
     streamed_tool_results: list[dict[str, Any]] = field(default_factory=list)
+    notified_tool_results: int = 0
 
     @property
     def is_cancelled(self) -> bool:

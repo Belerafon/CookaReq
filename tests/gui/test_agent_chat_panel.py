@@ -910,6 +910,100 @@ def test_agent_chat_panel_streams_tool_results(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_notifies_tool_results_incrementally(tmp_path, wx_app):
+    class StreamingAgent:
+        def __init__(self) -> None:
+            self.streamed = threading.Event()
+            self.release = threading.Event()
+
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+        ):
+            payloads = [
+                {
+                    "ok": True,
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "call-stream-0",
+                    "call_id": "call-stream-0",
+                    "tool_arguments": {
+                        "rid": "SYS-0001",
+                        "field": "title",
+                        "value": "Updated",
+                    },
+                    "result": {"rid": "SYS-0001", "title": "Updated"},
+                },
+                {
+                    "ok": True,
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "call-stream-1",
+                    "call_id": "call-stream-1",
+                    "tool_arguments": {
+                        "rid": "SYS-0002",
+                        "field": "title",
+                        "value": "Refined",
+                    },
+                    "result": {"rid": "SYS-0002", "title": "Refined"},
+                },
+            ]
+            if callable(on_tool_result):
+                for payload in payloads:
+                    on_tool_result(payload)
+            self.streamed.set()
+            self.release.wait(0.5)
+            return {
+                "ok": True,
+                "error": None,
+                "result": "done",
+                "tool_results": payloads,
+            }
+
+    agent = StreamingAgent()
+    wx, frame, panel = create_panel(
+        tmp_path,
+        wx_app,
+        agent,
+        use_default_executor=True,
+    )
+
+    handler_calls: list[tuple[dict[str, Any], ...]] = []
+    panel.set_tool_result_handler(
+        lambda payloads: handler_calls.append(tuple(payloads))
+    )
+
+    try:
+        panel.input.SetValue("stream")
+        panel._on_send(None)
+
+        assert agent.streamed.wait(1.0)
+        flush_wx_events(wx, count=8)
+
+        assert panel._is_running
+        assert len(handler_calls) == 2
+        first_call, second_call = handler_calls
+        assert len(first_call) == 1
+        assert first_call[0]["tool_call_id"] == "call-stream-0"
+        assert len(second_call) == 1
+        assert second_call[0]["tool_call_id"] == "call-stream-1"
+
+        agent.release.set()
+        deadline = time.time() + 2.0
+        while panel._is_running and time.time() < deadline:
+            wx_app.Yield()
+            time.sleep(0.05)
+        flush_wx_events(wx, count=4)
+
+        assert len(handler_calls) == 2
+    finally:
+        agent.release.set()
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_activity_indicator_layout(tmp_path, wx_app):
     class IdleAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):  # pragma: no cover - defensive

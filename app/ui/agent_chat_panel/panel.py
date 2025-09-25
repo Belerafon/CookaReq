@@ -2152,6 +2152,98 @@ class AgentChatPanel(wx.Panel):
         def indent_block(value: str, *, prefix: str = "    ") -> str:
             return textwrap.indent(value, prefix)
 
+        def describe_message_origin(role: str | None) -> str:
+            normalized = (role or "").strip().lower()
+            if normalized == "system":
+                return _("Agent system prompt")
+            if normalized == "developer":
+                return _("Agent developer message")
+            if normalized == "user":
+                return _("User message (forwarded to LLM)")
+            if normalized == "assistant":
+                return _("LLM response (replayed as context)")
+            if normalized == "tool":
+                return _("Tool result (forwarded to LLM)")
+            if normalized == "function":
+                return _("Function result (forwarded to LLM)")
+            return _("Recorded message role: {role}").format(
+                role=normalize_for_display(role or _("unknown"))
+            )
+
+        def format_llm_request_sequence(
+            request_sequence: Sequence[Mapping[str, Any]] | None,
+        ) -> list[str]:
+            if not request_sequence:
+                return [_("Agent → LLM request: (no request payload recorded)")]
+
+            formatted: list[str] = []
+            for request in request_sequence:
+                if not isinstance(request, Mapping):
+                    continue
+                step = request.get("step")
+                try:
+                    step_value = int(step) if step is not None else None
+                except (TypeError, ValueError):
+                    step_value = None
+                if step_value is None:
+                    formatted.append(_("Agent → LLM request:"))
+                else:
+                    formatted.append(
+                        _("Agent → LLM request (step {index}):").format(
+                            index=step_value
+                        )
+                    )
+
+                messages = request.get("messages")
+                if not isinstance(messages, Sequence) or not messages:
+                    formatted.append(indent_block(_("No messages captured.")))
+                    continue
+
+                for idx, message in enumerate(messages, start=1):
+                    if not isinstance(message, Mapping):
+                        continue
+                    role_value = message.get("role") if "role" in message else None
+                    origin_label = describe_message_origin(
+                        str(role_value) if role_value is not None else None
+                    )
+                    formatted.append(
+                        indent_block(
+                            _("Message {index} ({origin}):").format(
+                                index=idx,
+                                origin=origin_label,
+                            )
+                        )
+                    )
+                    formatted.append(
+                        indent_block(
+                            format_json_block(message),
+                            prefix="        ",
+                        )
+                    )
+            return formatted
+
+        def format_planned_tool_calls(
+            planned_calls: Sequence[Any] | None,
+        ) -> list[str]:
+            if not planned_calls:
+                return []
+
+            formatted: list[str] = []
+            formatted.append(_("LLM → Agent planned tool calls:"))
+            for index, call in enumerate(planned_calls, start=1):
+                formatted.append(
+                    indent_block(
+                        _("Call {index}:").format(index=index)
+                    )
+                )
+                formatted.append(
+                    indent_block(
+                        format_json_block(call),
+                        prefix="        ",
+                    )
+                )
+            return formatted
+
         def format_tool_exchange(index: int, payload: Any) -> list[str]:
             lines: list[str] = []
             if not isinstance(payload, Mapping):
@@ -2347,13 +2439,14 @@ class AgentChatPanel(wx.Panel):
             )
             history_messages = gather_history_messages(index - 1)
             diagnostic = ensure_diagnostic(entry, history_messages)
-            llm_request_messages = diagnostic.get("llm_request_messages")
-            lines.append(_("Agent → LLM request:"))
-            lines.append(indent_block(format_json_block(llm_request_messages)))
             request_sequence = diagnostic.get("llm_request_messages_sequence")
-            if isinstance(request_sequence, Sequence) and len(request_sequence) > 1:
-                lines.append(_("Agent → LLM request sequence:"))
-                lines.append(indent_block(format_json_block(request_sequence)))
+            lines.extend(
+                format_llm_request_sequence(
+                    request_sequence
+                    if isinstance(request_sequence, Sequence)
+                    else None
+                )
+            )
             if TOOLS:
                 lines.append(
                     _(
@@ -2374,9 +2467,10 @@ class AgentChatPanel(wx.Panel):
                 lines.append(indent_block(_("(none)")))
 
             planned_calls = diagnostic.get("llm_tool_calls")
-            if planned_calls:
-                lines.append(_("LLM planned tool calls:"))
-                lines.append(indent_block(format_json_block(planned_calls)))
+            if isinstance(planned_calls, Sequence):
+                lines.extend(format_planned_tool_calls(planned_calls))
+            elif planned_calls:
+                lines.extend(format_planned_tool_calls([planned_calls]))
 
             tool_payloads = diagnostic.get("tool_exchanges") or []
             if tool_payloads:

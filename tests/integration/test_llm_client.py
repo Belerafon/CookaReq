@@ -11,6 +11,7 @@ import pytest
 import httpx
 
 from app.llm.client import LLMResponse, LLMToolCall, LLMClient, NO_API_KEY
+from app.llm.harmony import convert_tools_for_harmony
 from app.llm.validation import ToolValidationError
 from app.llm.spec import SYSTEM_PROMPT, TOOLS
 from app.log import logger
@@ -1020,7 +1021,7 @@ def test_harmony_prompt_includes_tools(tmp_path: Path, monkeypatch) -> None:
     assert "# Instructions" in prompt
     assert "namespace functions" in prompt
     assert prompt.strip().endswith("<|start|>assistant")
-    assert captured["tools"] == TOOLS
+    assert captured["tools"] == convert_tools_for_harmony(TOOLS)
     assert response.content == "готово"
     assert response.tool_calls == ()
 

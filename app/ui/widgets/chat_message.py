@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -659,6 +659,7 @@ class TranscriptMessagePanel(wx.Panel):
         on_regenerate: Callable[[], None] | None = None,
         regenerate_enabled: bool = True,
         tool_summaries: Sequence[ToolCallSummary] | None = None,
+        context_messages: Sequence[Mapping[str, Any]] | None = None,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
@@ -666,6 +667,10 @@ class TranscriptMessagePanel(wx.Panel):
 
         outer = wx.BoxSizer(wx.VERTICAL)
         padding = self.FromDIP(4)
+
+        context_panel = self._create_context_panel(context_messages)
+        if context_panel is not None:
+            outer.Add(context_panel, 0, wx.EXPAND | wx.ALL, padding)
 
         user_bubble = MessageBubble(
             self,
@@ -720,6 +725,99 @@ class TranscriptMessagePanel(wx.Panel):
         outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, padding)
 
         self.SetSizer(outer)
+
+    def _create_context_panel(
+        self,
+        context_messages: Sequence[Mapping[str, Any]] | None,
+    ) -> wx.CollapsiblePane | None:
+        if not context_messages:
+            return None
+
+        context_text = self._format_context_messages(context_messages).strip()
+        if not context_text:
+            return None
+
+        pane = wx.CollapsiblePane(
+            self,
+            label=_("Context"),
+            style=wx.CP_DEFAULT_STYLE | wx.CP_NO_TLW_RESIZE,
+        )
+        pane.Collapse(True)
+
+        pane_background = self.GetBackgroundColour()
+        if not pane_background.IsOk():
+            pane_background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
+        pane.SetBackgroundColour(pane_background)
+        inner = pane.GetPane()
+        inner.SetBackgroundColour(pane_background)
+
+        content_sizer = wx.BoxSizer(wx.VERTICAL)
+        text_ctrl = wx.TextCtrl(
+            inner,
+            value=normalize_for_display(context_text),
+            style=(
+                wx.TE_MULTILINE
+                | wx.TE_READONLY
+                | wx.TE_BESTWRAP
+                | wx.BORDER_NONE
+            ),
+        )
+        text_ctrl.SetBackgroundColour(pane_background)
+        text_ctrl.SetForegroundColour(
+            _pick_best_contrast(
+                pane_background,
+                wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT),
+                wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT),
+            )
+        )
+        text_ctrl.SetMinSize((-1, self.FromDIP(120)))
+        content_sizer.Add(text_ctrl, 1, wx.EXPAND | wx.TOP, self.FromDIP(4))
+        inner.SetSizer(content_sizer)
+        return pane
+
+    @staticmethod
+    def _format_context_messages(
+        context_messages: Sequence[Mapping[str, Any]] | None,
+    ) -> str:
+        if not context_messages:
+            return ""
+
+        blocks: list[str] = []
+        for message in context_messages:
+            if not isinstance(message, Mapping):
+                continue
+            role_raw = message.get("role")
+            role = str(role_raw).strip() if isinstance(role_raw, str) else ""
+            content_value = message.get("content")
+            fragments: list[str] = []
+            if isinstance(content_value, str):
+                fragments.append(content_value)
+            elif isinstance(content_value, Sequence):
+                for fragment in content_value:
+                    if isinstance(fragment, Mapping):
+                        fragment_text = fragment.get("text")
+                        if isinstance(fragment_text, str):
+                            fragments.append(fragment_text)
+                        continue
+                    if isinstance(fragment, str):
+                        fragments.append(fragment)
+                    else:
+                        fragments.append(str(fragment))
+            elif content_value is not None:
+                fragments.append(str(content_value))
+
+            text = "\n".join(part for part in fragments if part)
+            if not text and not role:
+                continue
+
+            parts: list[str] = []
+            if role:
+                parts.append(f"{role}:")
+            if text:
+                parts.append(text)
+            blocks.append("\n".join(parts).strip())
+
+        return "\n\n".join(block for block in blocks if block)
 
     def _create_regenerate_footer(
         self,

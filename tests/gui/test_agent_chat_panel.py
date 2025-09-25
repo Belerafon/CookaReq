@@ -602,6 +602,71 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+            return {"ok": True, "result": text, "error": None}
+
+    context_payload = [
+        {
+            "role": "system",
+            "content": (
+                "[Workspace context]\n"
+                "Active requirements list: sys: Сист. треб.\n"
+                "Selected requirement RIDs: sys48, sys49, sys50"
+            ),
+        }
+    ]
+
+    wx, frame, panel = create_panel(
+        tmp_path,
+        wx_app,
+        DummyAgent(),
+        context_provider=lambda: context_payload,
+    )
+
+    panel.input.SetValue("inspect")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    try:
+        def collect_collapsible(window):
+            panes: list[wx.CollapsiblePane] = []
+            for child in window.GetChildren():
+                if isinstance(child, wx.CollapsiblePane):
+                    panes.append(child)
+                panes.extend(collect_collapsible(child))
+            return panes
+
+        panes = collect_collapsible(panel.transcript_panel)
+        assert panes, "expected collapsible context pane"
+
+        context_pane = panes[0]
+        assert context_pane.GetLabel() == "Контекст" or context_pane.GetLabel() == "Context"
+        assert context_pane.IsCollapsed()
+
+        context_pane.Collapse(False)
+        flush_wx_events(wx)
+
+        def collect_text_controls(window):
+            controls: list[wx.TextCtrl] = []
+            for child in window.GetChildren():
+                if isinstance(child, wx.TextCtrl):
+                    controls.append(child)
+                controls.extend(collect_text_controls(child))
+            return controls
+
+        text_controls = collect_text_controls(context_pane.GetPane())
+        assert text_controls, "expected context text control"
+
+        value = text_controls[0].GetValue()
+        assert "[Workspace context]" in value
+        assert "Active requirements list: sys: Сист. треб." in value
+        assert "Selected requirement RIDs: sys48, sys49, sys50" in value
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_orders_tool_bubbles_before_agent_reply(tmp_path, wx_app):
     class ToolAgent:
         def run_command(

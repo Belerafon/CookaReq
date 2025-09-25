@@ -1470,8 +1470,8 @@ msgstr "Today {time}"
 msgid "Tokens: {count}"
 msgstr "Tokens: {count}"
 
-msgid "  Tool call {index}: {name} — Status: {status}"
-msgstr "  Tool call {index}: {name} — Status: {status}"
+msgid "  Agent: tool call {index}: {name} — Status: {status}"
+msgstr "  Agent: tool call {index}: {name} — Status: {status}"
 
 msgid "    LLM tool call ID: {value}"
 msgstr "    LLM tool call ID: {value}"
@@ -1487,6 +1487,9 @@ msgstr "    MCP → Agent error payload:"
 
 msgid "    Additional fields:"
 msgstr "    Additional fields:"
+
+msgid "Requirement: {rid}"
+msgstr "Requirement: {rid}"
 
 msgid "Unknown"
 msgstr "Unknown"

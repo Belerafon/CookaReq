@@ -542,7 +542,7 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
 
         transcript_text = panel.get_transcript_text()
         assert "demo_tool" in transcript_text
-        assert "Tool call" in transcript_text
+        assert "Agent: tool call" in transcript_text
         assert "tool_results" not in transcript_text
         assert "Query: `inspect`" in transcript_text
 
@@ -908,7 +908,7 @@ def test_agent_chat_panel_streams_tool_results(tmp_path, wx_app):
         flush_wx_events(wx, count=6)
 
         transcript = panel.get_transcript_text()
-        assert "Tool call" in transcript
+        assert "Agent: tool call" in transcript
         assert "update_requirement_field" in transcript
         assert _("in progress…") in transcript
         assert panel._is_running

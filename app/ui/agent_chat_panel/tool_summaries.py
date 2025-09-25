@@ -54,7 +54,7 @@ def summarize_tool_payload(
 
 
 def render_tool_summary_markdown(summary: ToolCallSummary) -> str:
-    base = _("Tool call {index}: {tool} — {status}")
+    base = _("Agent: tool call {index}: {tool} — {status}")
     heading = base.format(
         index=summary.index,
         tool=f"**{summary.tool_name}**",
@@ -86,7 +86,7 @@ def render_tool_summaries_plain(
 ) -> str:
     if not summaries:
         return ""
-    base = _("Tool call {index}: {tool} — {status}")
+    base = _("Agent: tool call {index}: {tool} — {status}")
     blocks: list[str] = []
     for summary in summaries:
         heading = base.format(
@@ -178,7 +178,12 @@ def summarize_tool_details(payload: Mapping[str, Any]) -> list[str]:
     lines, consumed_args, consumed_result = summarize_specific_tool(
         tool_name, arguments, result
     )
-    lines.extend(summarize_generic_arguments(arguments, consumed_args))
+    extra_lines, displayed_argument_keys = summarize_generic_arguments(
+        arguments, consumed_args
+    )
+    lines.extend(extra_lines)
+    if consumed_result is not None and "rid" in displayed_argument_keys:
+        consumed_result.add("rid")
     if payload.get("ok") is False:
         lines.extend(summarize_error_details(payload.get("error")))
         return [line for line in lines if line]
@@ -492,30 +497,45 @@ def summarize_specific_tool(
 
 def summarize_generic_arguments(
     arguments: Any, consumed: set[str]
-) -> list[str]:
+) -> tuple[list[str], set[str]]:
     if not isinstance(arguments, Mapping):
         if arguments is None:
-            return []
-        return [
-            _("Arguments: {value}").format(
-                value=format_value_snippet(arguments)
-            )
-        ]
+            return [], set()
+        return (
+            [
+                _("Arguments: {value}").format(
+                    value=format_value_snippet(arguments)
+                )
+            ],
+            set(),
+        )
     skip = set(consumed)
     skip.add("directory")
     lines: list[str] = []
+    displayed: set[str] = set()
     for key in arguments:
         if len(lines) >= 5:
             break
         if key in skip:
             continue
         value = arguments.get(key)
+        if isinstance(key, str) and key.lower() == "rid":
+            lines.append(
+                _("Requirement: {rid}").format(
+                    rid=format_value_snippet(value)
+                )
+            )
+            displayed.add("rid")
+            skip.add(key)
+            continue
         lines.append(
             _("{label}: {value}").format(
                 label=prettify_key(key), value=format_value_snippet(value)
             )
         )
-    return lines
+        if isinstance(key, str):
+            displayed.add(key)
+    return lines, displayed
 
 
 def summarize_generic_result(
@@ -531,7 +551,9 @@ def summarize_generic_result(
     lines: list[str] = []
     if "rid" in result and "rid" not in skip:
         lines.append(
-            _("RID: {rid}").format(rid=format_value_snippet(result.get("rid")))
+            _("Requirement: {rid}").format(
+                rid=format_value_snippet(result.get("rid"))
+            )
         )
         skip.add("rid")
     if "title" in result and "title" not in skip:

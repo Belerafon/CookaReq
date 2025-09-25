@@ -334,28 +334,59 @@ class LLMClient:
         try:
             self._client.responses.create(**request_args)
         except Exception as exc:  # pragma: no cover - network errors
+            error_payload: dict[str, Any] = {
+                "type": type(exc).__name__,
+                "message": str(exc),
+            }
+            hint = self._describe_harmony_check_error(exc)
+            if hint:
+                error_payload["hint"] = hint
             log_event(
                 "LLM_RESPONSE",
-                {"error": {"type": type(exc).__name__, "message": str(exc)}},
+                {"error": error_payload},
                 start_time=start,
             )
             log_debug_payload(
                 "LLM_RESPONSE",
                 {
                     "direction": "inbound",
-                    "error": {"type": type(exc).__name__, "message": str(exc)},
+                    "error": error_payload,
                 },
             )
-            return {
-                "ok": False,
-                "error": {"type": type(exc).__name__, "message": str(exc)},
-            }
+            return {"ok": False, "error": error_payload}
         log_event("LLM_RESPONSE", {"ok": True}, start_time=start)
         log_debug_payload(
             "LLM_RESPONSE",
             {"direction": "inbound", "ok": True},
         )
         return {"ok": True}
+
+    def _describe_harmony_check_error(self, exc: Exception) -> str | None:
+        """Return a diagnostic hint for Harmony health-check failures."""
+
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        if status_code is None:
+            status_code = getattr(exc, "status_code", None)
+        if status_code is None:
+            parts = []
+            if getattr(exc, "args", None):
+                parts.extend(str(arg) for arg in exc.args)
+            message_text = " ".join(parts) or str(exc)
+            lowered = message_text.lower()
+            if "404" in message_text and (
+                "not found" in lowered or "not_found" in lowered
+            ):
+                status_code = 404
+        if status_code == 404:
+            return (
+                "Harmony требует поддержку OpenAI Responses API. "
+                f"Провайдер по адресу {self.settings.base_url!r} вернул 404 Not Found "
+                "на попытку вызвать /responses. Обновите прокси/endpoint до версии, "
+                "совместимой с Responses API, или используйте формат \"OpenAI "
+                "(legacy)\" для несовместимых серверов."
+            )
+        return None
 
     # ------------------------------------------------------------------
     def _respond(

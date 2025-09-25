@@ -5,6 +5,7 @@ from app.core.document_store import (
     Document,
     DocumentLabels,
     LabelDef,
+    RequirementNotFoundError,
     ValidationError,
 )
 from app.core.document_store.documents import load_documents, save_document
@@ -102,7 +103,9 @@ def test_create_update_and_delete_requirement(
     assert not item_path(tmp_path / "SYS", _document, 1).exists()
 
 
-def test_update_accepts_mixed_case_rid(tmp_path: Path, _document: Document) -> None:
+def test_update_rejects_mismatched_case_rid(
+    tmp_path: Path, _document: Document
+) -> None:
     docs = load_documents(tmp_path)
 
     created = create_requirement(
@@ -112,17 +115,16 @@ def test_update_accepts_mixed_case_rid(tmp_path: Path, _document: Document) -> N
         docs=docs,
     )
 
-    updated = update_requirement_field(
-        tmp_path,
-        created.rid.lower(),
-        field="status",
-        value="approved",
-        docs=docs,
-    )
+    with pytest.raises(RequirementNotFoundError) as exc:
+        update_requirement_field(
+            tmp_path,
+            created.rid.lower(),
+            field="status",
+            value="approved",
+            docs=docs,
+        )
 
-    assert updated.rid == created.rid
-    assert updated.status.value == "approved"
-    assert updated.revision == created.revision + 1
+    assert created.rid.lower() in str(exc.value)
 
 
 def test_update_requirement_field_rejects_unknown_status(

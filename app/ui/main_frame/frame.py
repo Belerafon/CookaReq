@@ -111,6 +111,7 @@ class MainFrame(
         self._selected_requirement_id: int | None = None
         self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_window_destroy)
         if self.auto_open_last and self.recent_dirs:
             path = Path(self.recent_dirs[0])
             if path.exists():
@@ -232,7 +233,7 @@ class MainFrame(
                 persist_confirm_preference=self.config.set_agent_confirm_mode,
             ),
         )
-        self.agent_panel.set_tool_result_handler(self._on_agent_tool_results)
+        self._init_mcp_tool_listener()
         self._hide_agent_section()
         history_sash = self.config.get_agent_history_sash(
             self.agent_panel.default_history_sash()
@@ -321,7 +322,7 @@ class MainFrame(
                 confirm_preference=self.config.get_agent_confirm_mode(),
                 persist_confirm_preference=self.config.set_agent_confirm_mode,
             )
-            self.agent_panel.set_tool_result_handler(self._on_agent_tool_results)
+            self._init_mcp_tool_listener()
             history_sash = self.config.get_agent_history_sash(
                 self.agent_panel.default_history_sash()
             )

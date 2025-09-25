@@ -1,7 +1,12 @@
 import pytest
 from pathlib import Path
 
-from app.core.document_store import Document, ValidationError, get_requirement
+from app.core.document_store import (
+    Document,
+    RequirementNotFoundError,
+    ValidationError,
+    get_requirement,
+)
 from app.core.document_store.documents import load_documents, save_document
 from app.core.document_store.items import load_item, save_item
 from app.core.document_store.links import (
@@ -95,7 +100,7 @@ def test_validate_and_link(tmp_path: Path) -> None:
         )
 
 
-def test_link_accepts_mixed_case_rids(tmp_path: Path) -> None:
+def test_link_rejects_mismatched_case_rids(tmp_path: Path) -> None:
     sys_doc = Document(prefix="SYS", title="System")
     hlr_doc = Document(prefix="HLR", title="High", parent="SYS")
     save_document(tmp_path / "SYS", sys_doc)
@@ -106,16 +111,17 @@ def test_link_accepts_mixed_case_rids(tmp_path: Path) -> None:
 
     docs = load_documents(tmp_path)
 
-    linked = link_requirements(
-        tmp_path,
-        source_rid="sys1",
-        derived_rid="hlr2",
-        link_type="parent",
-        docs=docs,
-    )
+    with pytest.raises(RequirementNotFoundError) as exc:
+        link_requirements(
+            tmp_path,
+            source_rid="sys1",
+            derived_rid="hlr2",
+            link_type="parent",
+            docs=docs,
+        )
 
-    assert linked.links and linked.links[0].rid == "SYS1"
-    assert linked.rid == "HLR2"
+    message = str(exc.value)
+    assert "sys1" in message
 
 
 def test_link_becomes_suspect_after_parent_change(tmp_path: Path) -> None:

@@ -35,6 +35,21 @@ def test_create_update_delete(tmp_path: Path) -> None:
     assert res3 == {"rid": "SYS1"}
 
 
+def test_update_rejects_prefix_case_mismatch(tmp_path: Path) -> None:
+    save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc"))
+    created = tools_write.create_requirement(tmp_path, prefix="SYS", data=_base_req())
+
+    result = tools_write.update_requirement_field(
+        tmp_path,
+        created["rid"].lower(),
+        field="title",
+        value="Renamed",
+    )
+
+    assert result["error"]["code"] == "NOT_FOUND"
+    assert created["rid"].lower() in result["error"]["message"]
+
+
 def test_create_rejects_unknown_label(tmp_path: Path) -> None:
     save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc"))
     res = tools_write.create_requirement(

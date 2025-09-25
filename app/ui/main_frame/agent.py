@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 import wx
@@ -13,6 +14,7 @@ from ...confirm import ConfirmDecision, RequirementUpdatePrompt
 from ...core.document_store import parse_rid
 from ...core.model import Requirement, requirement_from_dict
 from ...settings import AppSettings
+from ...mcp.events import ToolResultEvent, add_tool_result_listener
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .frame import MainFrame
@@ -36,6 +38,9 @@ def _short_repr(value: Any, *, limit: int = 200) -> str:
 class MainFrameAgentMixin:
     """Provide agent chat integration and shortcuts."""
 
+    _mcp_tool_listener_remove: Callable[[], None] | None = None
+    _mcp_tool_listener_callback: Callable[[ToolResultEvent], None] | None = None
+
     def _create_agent(
         self: "MainFrame",
         *,
@@ -56,6 +61,72 @@ class MainFrameAgentMixin:
             confirm=confirm_callback,
             confirm_requirement_update=confirm_requirement_update_override,
         )
+
+    def _init_mcp_tool_listener(self: "MainFrame") -> None:
+        """Subscribe to MCP tool result notifications."""
+
+        if getattr(self, "_mcp_tool_listener_remove", None):
+            return
+
+        def _deliver(event: ToolResultEvent) -> None:
+            if not isinstance(event, ToolResultEvent):
+                return
+            if not event.payloads:
+                return
+            wx.CallAfter(self._handle_mcp_tool_event, event)
+
+        self._mcp_tool_listener_callback = _deliver
+        self._mcp_tool_listener_remove = add_tool_result_listener(_deliver)
+
+    def _teardown_mcp_tool_listener(self: "MainFrame") -> None:
+        """Detach from MCP tool result notifications."""
+
+        remover = getattr(self, "_mcp_tool_listener_remove", None)
+        if remover is not None:
+            try:
+                remover()
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception("Failed to remove MCP tool listener")
+            self._mcp_tool_listener_remove = None
+        self._mcp_tool_listener_callback = None
+
+    @staticmethod
+    def _paths_match(current: Path | None, expected: Path | None) -> bool:
+        if expected is None:
+            return True
+        if current is None:
+            return False
+        try:
+            return current.resolve() == expected.resolve()
+        except OSError:
+            try:
+                return Path(current) == Path(expected)
+            except Exception:
+                return False
+
+    def _handle_mcp_tool_event(
+        self: "MainFrame", event: ToolResultEvent
+    ) -> None:
+        """Apply requirement changes described by *event*."""
+
+        if not event.payloads:
+            return
+        if getattr(self, "_shutdown_in_progress", False):
+            return
+        if not hasattr(self, "model") or not hasattr(self, "panel"):
+            return
+        current_dir = getattr(self, "current_dir", None)
+        if not self._paths_match(current_dir, event.base_path):
+            return
+        try:
+            self._on_agent_tool_results(event.payloads)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to apply MCP tool result event")
+
+    def _on_window_destroy(self: "MainFrame", event: wx.WindowDestroyEvent) -> None:
+        if event.GetEventObject() is self:
+            self._teardown_mcp_tool_listener()
+        event.Skip()
 
     def _selected_requirement_ids_for_agent(self: "MainFrame") -> list[int]:
         ids: list[int] = []
@@ -120,10 +191,22 @@ class MainFrameAgentMixin:
                             "with a letter and contains only ASCII letters, digits, or "
                             "underscores"
                         )
-                    display_rid = rid
-                else:
-                    display_rid = f"{canonical_prefix}{canonical_id}"
+                    continue
 
+                expected_prefix = getattr(requirement, "doc_prefix", None)
+                if (
+                    isinstance(expected_prefix, str)
+                    and expected_prefix
+                    and canonical_prefix != expected_prefix
+                ):
+                    if rid not in invalid_rids:
+                        invalid_rids[rid] = (
+                            "prefix must match the document prefix exactly "
+                            f"(expected {expected_prefix})"
+                        )
+                    continue
+
+                display_rid = f"{canonical_prefix}{canonical_id}"
                 if display_rid not in seen_rids:
                     seen_rids.add(display_rid)
                     rid_summary.append(display_rid)
@@ -222,11 +305,11 @@ class MainFrameAgentMixin:
                 if not rid:
                     continue
                 try:
-                    prefix, req_id = parse_rid(rid)
+                    prefix_raw, req_id = parse_rid(rid)
                 except ValueError:
                     logger.warning("Agent returned invalid requirement id %r", rid)
                     continue
-                if prefix == current_prefix:
+                if prefix_raw == current_prefix:
                     removed_ids.append(req_id)
 
         changes_applied = False
@@ -286,8 +369,7 @@ class MainFrameAgentMixin:
             return str(rid_raw) if isinstance(rid_raw, str) and rid_raw.strip() else None
         return None
 
-    @staticmethod
-    def _convert_tool_result_requirement(result_payload: Any) -> Requirement | None:
+    def _convert_tool_result_requirement(self: "MainFrame", result_payload: Any) -> Requirement | None:
         if not isinstance(result_payload, Mapping):
             logger.warning(
                 "Agent tool result has unexpected structure: %s",
@@ -303,17 +385,23 @@ class MainFrameAgentMixin:
             return None
         rid = rid_raw.strip()
         try:
-            prefix, _ = parse_rid(rid)
+            prefix_raw, req_id = parse_rid(rid)
         except ValueError:
             logger.warning("Agent returned invalid requirement id %r", rid)
             return None
+        prefix = prefix_raw
+        canonical_rid = f"{prefix}{req_id}"
         try:
-            requirement = requirement_from_dict(dict(result_payload), doc_prefix=prefix, rid=rid)
+            requirement = requirement_from_dict(
+                dict(result_payload),
+                doc_prefix=prefix,
+                rid=canonical_rid,
+            )
         except Exception:
             logger.exception("Failed to parse requirement payload from agent tool")
             return None
         requirement.doc_prefix = prefix
-        requirement.rid = rid
+        requirement.rid = canonical_rid
         return requirement
 
     def on_run_command(self: "MainFrame", _event: wx.Event) -> None:

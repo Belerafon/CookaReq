@@ -28,6 +28,9 @@ msgstr "Check tools"
 msgid "not checked"
 msgstr "not checked"
 
+msgid "Agent instructions"
+msgstr "Agent instructions"
+
 msgid "ok"
 msgstr "ok"
 

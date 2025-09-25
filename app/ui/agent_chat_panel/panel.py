@@ -576,7 +576,7 @@ class AgentChatPanel(wx.Panel):
         self.activity.SetToolTip(STATUS_HELP_TEXT)
         self.status_label.SetToolTip(STATUS_HELP_TEXT)
 
-        settings_btn = wx.Button(bottom_panel, label=_("Agent settings"))
+        settings_btn = wx.Button(bottom_panel, label=_("Agent instructions"))
         settings_btn.Bind(wx.EVT_BUTTON, self._on_project_settings)
         self._project_settings_button = settings_btn
 

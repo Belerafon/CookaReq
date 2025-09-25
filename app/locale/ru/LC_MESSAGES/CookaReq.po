@@ -29,6 +29,9 @@ msgstr "Проверить инструменты"
 msgid "not checked"
 msgstr "не проверено"
 
+msgid "Agent instructions"
+msgstr "Инструкции агента"
+
 msgid "ok"
 msgstr "OK"
 

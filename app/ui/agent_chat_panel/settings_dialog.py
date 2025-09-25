@@ -1,4 +1,4 @@
-"""Dialog for editing project-scoped agent settings."""
+"""Dialog for editing project-scoped agent instructions."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ class AgentProjectSettingsDialog(wx.Dialog):
     """Modal dialog exposing project-specific agent options."""
 
     def __init__(self, parent: wx.Window, *, settings: AgentProjectSettings) -> None:
-        super().__init__(parent, title=_("Agent settings"))
+        super().__init__(parent, title=_("Agent instructions"))
 
         inherit_background(self, parent)
         spacing = dip(self, 6)

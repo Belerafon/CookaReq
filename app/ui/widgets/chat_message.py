@@ -558,10 +558,22 @@ class MessageBubble(wx.Panel):
         if parent_width <= 0:
             return
 
-        max_width = int(parent_width * self._bubble_max_width_ratio)
-        max_width = min(max_width, parent_width - self._bubble_margin)
+        viewport_width = self._resolve_viewport_width(parent)
+        if viewport_width <= 0:
+            viewport_width = parent_width
+
+        border = self._resolve_parent_border(parent)
+        if border > 0 and viewport_width > 0:
+            viewport_width = max(0, viewport_width - 2 * border)
+
+        available_width = max(parent_width, viewport_width)
+        if available_width <= 0:
+            return
+
+        max_width = int(available_width * self._bubble_max_width_ratio)
+        max_width = min(max_width, available_width - self._bubble_margin)
         max_width = max(max_width, self._min_bubble_width)
-        max_width = min(max_width, parent_width)
+        max_width = min(max_width, available_width)
         if max_width <= 0:
             return
 
@@ -613,6 +625,43 @@ class MessageBubble(wx.Panel):
             self.Layout()
         except RuntimeError:
             pass
+
+    def _resolve_parent_border(self, parent: wx.Window) -> int:
+        try:
+            sizer = parent.GetSizer()
+        except RuntimeError:
+            return 0
+        if sizer is None:
+            return 0
+        try:
+            item = sizer.GetItem(self)
+        except Exception:
+            item = None
+        if item is None:
+            return 0
+        try:
+            border = int(item.GetBorder())
+        except Exception:
+            return 0
+        return max(border, 0)
+
+    def _resolve_viewport_width(self, parent: wx.Window) -> int:
+        ancestor = parent
+        while _is_window_usable(ancestor):
+            if isinstance(ancestor, wx.ScrolledWindow):
+                try:
+                    width = ancestor.GetClientSize().width
+                except RuntimeError:
+                    return 0
+                if width > 0:
+                    return width
+            try:
+                ancestor = ancestor.GetParent()
+            except RuntimeError:
+                return 0
+            if not _is_window_usable(ancestor):
+                return 0
+        return 0
 
     def _estimate_content_width(self) -> int:
         if not self._text_value:

@@ -97,6 +97,38 @@ def test_check_llm_omits_token_limits(tmp_path: Path, monkeypatch) -> None:
 
 
 
+
+
+
+def test_check_llm_harmony_reports_missing_responses(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = settings_with_llm(tmp_path, message_format="harmony")
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k) -> None:  # pragma: no cover - simple stub
+            def create(**kwargs):  # noqa: ANN001
+                request = httpx.Request("POST", "https://example.test/v1/responses")
+                response = httpx.Response(404, request=request)
+                raise httpx.HTTPStatusError(
+                    "Not Found", request=request, response=response
+                )
+
+            self.responses = SimpleNamespace(create=create)
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **kwargs: SimpleNamespace())
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    result = client.check_llm()
+    assert result["ok"] is False
+    error = result["error"]
+    assert error["type"] == "HTTPStatusError"
+    assert "Responses API" in error["hint"]
+    assert settings.llm.base_url in error["hint"]
+
+
 def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
     captured: dict[str, object] = {}

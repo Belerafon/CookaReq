@@ -555,13 +555,49 @@ class MessageBubble(wx.Panel):
             parent_width = parent.GetClientSize().width
         except RuntimeError:
             return
-        if parent_width <= 0:
+
+        border = self._resolve_parent_border(parent)
+        inner_parent_width = parent_width
+        if border > 0 and parent_width > 0:
+            inner_parent_width = max(parent_width - 2 * border, 0)
+
+        viewport_width = self._resolve_viewport_width(parent)
+        inner_viewport_width = 0
+        if viewport_width > 0:
+            inner_viewport_width = viewport_width
+            if border > 0:
+                inner_viewport_width = max(inner_viewport_width - 2 * border, 0)
+
+        available_width = inner_viewport_width or inner_parent_width
+        if available_width <= 0:
+            available_width = max(parent_width, inner_parent_width, inner_viewport_width)
+        if available_width <= 0:
             return
 
-        max_width = int(parent_width * self._bubble_max_width_ratio)
-        max_width = min(max_width, parent_width - self._bubble_margin)
-        max_width = max(max_width, self._min_bubble_width)
-        max_width = min(max_width, parent_width)
+        hard_cap_candidates = [available_width]
+        if inner_parent_width > 0:
+            hard_cap_candidates.append(inner_parent_width)
+        if parent_width > 0:
+            hard_cap_candidates.append(parent_width)
+        hard_cap = min(hard_cap_candidates) if hard_cap_candidates else 0
+        if hard_cap <= 0:
+            hard_cap = available_width
+
+        max_width = int(available_width * self._bubble_max_width_ratio)
+        max_width = min(max_width, available_width)
+        if hard_cap > 0:
+            max_width = min(max_width, hard_cap)
+            margin_cap = hard_cap - self._bubble_margin
+            if margin_cap > 0:
+                max_width = min(max_width, margin_cap)
+
+        min_width_cap = self._min_bubble_width
+        if hard_cap > 0:
+            min_width_cap = min(min_width_cap, hard_cap)
+        min_width_cap = max(min_width_cap, 0)
+
+        if max_width < min_width_cap:
+            max_width = min_width_cap
         if max_width <= 0:
             return
 
@@ -571,8 +607,8 @@ class MessageBubble(wx.Panel):
         growth_threshold = 360
         ratio = math.sqrt(char_count / growth_threshold) if growth_threshold else 1.0
         ratio = max(0.0, min(ratio, 1.0))
-        target_from_chars = self._min_bubble_width + int((max_width - self._min_bubble_width) * ratio)
-        target_width = max(self._min_bubble_width, padded_content, target_from_chars)
+        target_from_chars = min_width_cap + int((max_width - min_width_cap) * ratio)
+        target_width = max(min_width_cap, padded_content, target_from_chars)
         target_width = min(target_width, max_width)
 
         cached = self._cached_width_constraints
@@ -613,6 +649,43 @@ class MessageBubble(wx.Panel):
             self.Layout()
         except RuntimeError:
             pass
+
+    def _resolve_parent_border(self, parent: wx.Window) -> int:
+        try:
+            sizer = parent.GetSizer()
+        except RuntimeError:
+            return 0
+        if sizer is None:
+            return 0
+        try:
+            item = sizer.GetItem(self)
+        except Exception:
+            item = None
+        if item is None:
+            return 0
+        try:
+            border = int(item.GetBorder())
+        except Exception:
+            return 0
+        return max(border, 0)
+
+    def _resolve_viewport_width(self, parent: wx.Window) -> int:
+        ancestor = parent
+        while _is_window_usable(ancestor):
+            if isinstance(ancestor, wx.ScrolledWindow):
+                try:
+                    width = ancestor.GetClientSize().width
+                except RuntimeError:
+                    return 0
+                if width > 0:
+                    return width
+            try:
+                ancestor = ancestor.GetParent()
+            except RuntimeError:
+                return 0
+            if not _is_window_usable(ancestor):
+                return 0
+        return 0
 
     def _estimate_content_width(self) -> int:
         if not self._text_value:

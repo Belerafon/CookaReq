@@ -12,7 +12,7 @@ import httpx
 
 from app.llm.client import LLMResponse, LLMToolCall, LLMClient, NO_API_KEY
 from app.llm.validation import ToolValidationError
-from app.llm.spec import SYSTEM_PROMPT
+from app.llm.spec import SYSTEM_PROMPT, TOOLS
 from app.log import logger
 from app.mcp.server import JsonlHandler
 from app.settings import LLMSettings
@@ -147,6 +147,91 @@ def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
         {"role": "assistant", "content": "hi"},
         {"role": "system", "content": "drop me"},
     ]
+
+
+def test_qwen_message_format_wraps_segments(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path, message_format="qwen")
+    captured: dict[str, object] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple capture
+            def create(*, model, messages, **kwargs):  # noqa: ANN001
+                captured["messages"] = messages
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="ok",
+                                tool_calls=None,
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    response = client.parse_command("hello")
+    assert response.content == "ok"
+    messages = captured["messages"]
+    assert isinstance(messages, list)
+    system_message = messages[0]
+    assert system_message["role"] == "system"
+    assert system_message["content"] == [
+        {"type": "text", "text": SYSTEM_PROMPT}
+    ]
+    user_message = messages[-1]
+    assert user_message["role"] == "user"
+    assert user_message["content"] == [
+        {"type": "text", "text": "hello"}
+    ]
+
+
+def test_qwen_reasoning_tool_call_extraction(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path, message_format="qwen")
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple capture
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                reasoning = [
+                    {"type": "reasoning", "text": "thinking"},
+                    {
+                        "type": "tool_call",
+                        "id": "call-1",
+                        "function": {
+                            "name": "list_requirements",
+                            "arguments": {"per_page": 5},
+                        },
+                    },
+                ]
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="",
+                                tool_calls=None,
+                                reasoning_content=reasoning,
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    history = [{"role": "user", "content": "ping"}]
+    response = client.respond(history)
+    assert response.content == ""
+    assert len(response.tool_calls) == 1
+    call = response.tool_calls[0]
+    assert call.name == "list_requirements"
+    assert call.arguments == {"per_page": 5}
 
 
 def test_parse_command_recovers_concatenated_tool_arguments(
@@ -897,3 +982,76 @@ def test_respond_accepts_tool_history(tmp_path: Path, monkeypatch) -> None:
             "content": json.dumps({"ok": True, "result": []}),
         },
     ]
+
+
+def test_harmony_prompt_includes_tools(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path, message_format="harmony")
+    captured: dict[str, object] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k) -> None:  # pragma: no cover - simple capture
+            def create(*, model, input, temperature, tools, reasoning, **kwargs):  # noqa: ANN001
+                captured["model"] = model
+                captured["input"] = input
+                captured["tools"] = tools
+                captured["reasoning"] = reasoning
+                return SimpleNamespace(
+                    output=[
+                        SimpleNamespace(
+                            type="message",
+                            content=[
+                                SimpleNamespace(type="output_text", text="готово")
+                            ],
+                        )
+                    ]
+                )
+
+            self.responses = SimpleNamespace(create=create)
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **kwargs: SimpleNamespace())
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    response = client.parse_command("ping")
+    prompt = captured["input"]
+    assert isinstance(prompt, str)
+    assert prompt.strip().startswith("<|start|>system<|message|")
+    assert "# Instructions" in prompt
+    assert "namespace functions" in prompt
+    assert prompt.strip().endswith("<|start|>assistant")
+    assert captured["tools"] == TOOLS
+    assert response.content == "готово"
+    assert response.tool_calls == ()
+
+
+def test_harmony_function_call_parsing(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path, message_format="harmony")
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k) -> None:  # pragma: no cover - simple capture
+            def create(**kwargs):  # noqa: ANN001
+                return SimpleNamespace(
+                    output=[
+                        SimpleNamespace(
+                            type="function_call",
+                            name="list_requirements",
+                            arguments="{\"page\": 1}",
+                            id="call-1",
+                        )
+                    ]
+                )
+
+            self.responses = SimpleNamespace(create=create)
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **kwargs: SimpleNamespace())
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    response = client.parse_command("list requirements")
+    assert response.content == ""
+    assert len(response.tool_calls) == 1
+    call = response.tool_calls[0]
+    assert call.name == "list_requirements"
+    assert call.arguments == {"page": 1}

@@ -57,15 +57,27 @@ def make_openai_mock(responses: dict[str, object]):
         else:
             prepared[key] = [value]
 
+    def _content_to_text(content):
+        if isinstance(content, str):
+            return content
+        if isinstance(content, Mapping):
+            text_value = content.get("text")
+            if isinstance(text_value, str):
+                return text_value
+            return _content_to_text(content.get("content"))
+        if isinstance(content, list):
+            return "".join(_content_to_text(part) for part in content)
+        return str(content)
+
     class _Completions:
         def create(self, *, model, messages, tools=None, **kwargs):
             user_msg = next(
                 (
-                    msg["content"]
+                    _content_to_text(msg.get("content"))
                     for msg in reversed(messages)
                     if msg.get("role") == "user"
                 ),
-                messages[-1]["content"],
+                _content_to_text(messages[-1].get("content")),
             )
             queue = prepared.get(user_msg)
             if queue is None:
@@ -128,7 +140,12 @@ def make_openai_mock(responses: dict[str, object]):
     return FakeOpenAI
 
 
-def settings_with_llm(tmp_path: Path, *, api_key: str = "dummy") -> AppSettings:
+def settings_with_llm(
+    tmp_path: Path,
+    *,
+    api_key: str = "dummy",
+    message_format: str = "openai-chat",
+) -> AppSettings:
     """Persist LLM settings with *api_key* to a file and load them."""
     data = {
         "llm": {
@@ -138,6 +155,7 @@ def settings_with_llm(tmp_path: Path, *, api_key: str = "dummy") -> AppSettings:
             "max_retries": 3,
             "timeout_minutes": 60,
             "stream": False,
+            "message_format": message_format,
         },
     }
     path = tmp_path / "settings.json"

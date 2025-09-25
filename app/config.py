@@ -55,6 +55,7 @@ FIELD_BINDINGS: dict[str, FieldBinding] = {
     "mcp_token": FieldBinding("mcp", "token"),
     "llm_base_url": FieldBinding("llm", "base_url"),
     "llm_model": FieldBinding("llm", "model"),
+    "llm_format": FieldBinding("llm", "message_format"),
     "llm_api_key": FieldBinding("llm", "api_key"),
     "llm_max_retries": FieldBinding("llm", "max_retries"),
     "llm_max_context_tokens": FieldBinding("llm", "max_context_tokens"),

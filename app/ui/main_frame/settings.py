@@ -31,6 +31,11 @@ class MainFrameSettingsMixin:
             language=self.language,
             base_url=self.llm_settings.base_url,
             model=self.llm_settings.model,
+            message_format=getattr(
+                self.llm_settings.message_format,
+                "value",
+                self.llm_settings.message_format,
+            ),
             api_key=self.llm_settings.api_key or "",
             max_retries=self.llm_settings.max_retries,
             max_context_tokens=self.llm_settings.max_context_tokens,
@@ -51,6 +56,7 @@ class MainFrameSettingsMixin:
                 language,
                 base_url,
                 model,
+                message_format,
                 api_key,
                 max_retries,
                 max_context_tokens,
@@ -73,6 +79,7 @@ class MainFrameSettingsMixin:
             self.llm_settings = LLMSettings(
                 base_url=base_url,
                 model=model,
+                message_format=message_format,
                 api_key=api_key or None,
                 max_retries=max_retries,
                 max_context_tokens=max_context_tokens,

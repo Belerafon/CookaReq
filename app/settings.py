@@ -26,6 +26,7 @@ class LLMSettings(BaseModel):
 
     base_url: str = Field(DEFAULT_LLM_BASE_URL, alias="api_base")
     model: str = DEFAULT_LLM_MODEL
+    message_format: Literal["openai-chat", "harmony", "qwen"] = "openai-chat"
     api_key: str | None = None
     max_retries: int = 3
     max_context_tokens: int = Field(

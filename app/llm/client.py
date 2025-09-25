@@ -7,11 +7,13 @@ import json
 import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 import httpx
 
 from ..settings import LLMSettings
+from ..log import logger
 from .constants import (
     DEFAULT_MAX_CONTEXT_TOKENS,
     MIN_MAX_CONTEXT_TOKENS,
@@ -22,6 +24,7 @@ from .constants import (
 # реальных сетевых запросов.
 from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
+from .harmony import HARMONY_KNOWLEDGE_CUTOFF, HarmonyPrompt, render_harmony_prompt
 from .spec import SYSTEM_PROMPT, TOOLS
 from .tokenizer import count_text_tokens
 from .validation import ToolValidationError, validate_tool_call
@@ -77,11 +80,22 @@ NO_API_KEY = "sk-no-key"
 class LLMClient:
     """High-level client for LLM operations."""
 
+    _SUPPORTED_MESSAGE_FORMATS = frozenset({"openai-chat", "harmony", "qwen"})
+
     def __init__(self, settings: LLMSettings) -> None:
         """Initialize client with LLM configuration ``settings``."""
         import openai
 
         self.settings = settings
+        message_format = getattr(settings, "message_format", "openai-chat")
+        if message_format not in self._SUPPORTED_MESSAGE_FORMATS:
+            raise ValueError(
+                "Unsupported LLM message format: "
+                f"{message_format}."
+                " Configure one of: "
+                + ", ".join(sorted(self._SUPPORTED_MESSAGE_FORMATS))
+            )
+        self._message_format = message_format
         if not self.settings.base_url:
             raise ValueError("LLM base URL is not configured")
         api_key = self.settings.api_key or NO_API_KEY
@@ -263,6 +277,11 @@ class LLMClient:
     def _check_llm(self) -> dict[str, Any]:
         """Implementation shared by sync and async ``check_llm`` variants."""
 
+        if self._message_format == "harmony":
+            return self._check_llm_harmony()
+        return self._check_llm_chat()
+
+    def _check_llm_chat(self) -> dict[str, Any]:
         request_args = self._build_request_args(
             [{"role": "user", "content": "ping"}]
         )
@@ -296,8 +315,58 @@ class LLMClient:
         )
         return {"ok": True}
 
+    def _check_llm_harmony(self) -> dict[str, Any]:
+        prompt = self._build_harmony_prompt([{"role": "user", "content": "ping"}])
+        request_args = {
+            "model": self.settings.model,
+            "input": prompt.prompt,
+            "temperature": 0,
+            "tools": TOOLS,
+            "reasoning": {"effort": "high"},
+        }
+        start = time.monotonic()
+        self._log_outbound_request(request_args)
+        try:
+            self._client.responses.create(**request_args)
+        except Exception as exc:  # pragma: no cover - network errors
+            log_event(
+                "LLM_RESPONSE",
+                {"error": {"type": type(exc).__name__, "message": str(exc)}},
+                start_time=start,
+            )
+            log_debug_payload(
+                "LLM_RESPONSE",
+                {
+                    "direction": "inbound",
+                    "error": {"type": type(exc).__name__, "message": str(exc)},
+                },
+            )
+            return {
+                "ok": False,
+                "error": {"type": type(exc).__name__, "message": str(exc)},
+            }
+        log_event("LLM_RESPONSE", {"ok": True}, start_time=start)
+        log_debug_payload(
+            "LLM_RESPONSE",
+            {"direction": "inbound", "ok": True},
+        )
+        return {"ok": True}
+
     # ------------------------------------------------------------------
     def _respond(
+        self,
+        conversation: Sequence[Mapping[str, Any]],
+        *,
+        cancellation: CancellationEvent | None = None,
+    ) -> LLMResponse:
+        """Implementation shared by sync and async response helpers."""
+
+        if self._message_format == "harmony":
+            return self._respond_harmony(conversation, cancellation=cancellation)
+        return self._respond_chat(conversation, cancellation=cancellation)
+
+    # ------------------------------------------------------------------
+    def _respond_chat(
         self,
         conversation: Sequence[Mapping[str, Any]],
         *,
@@ -356,8 +425,21 @@ class LLMClient:
                             completion,
                         )
                     )
-                raw_tool_calls_payload = getattr(message, "tool_calls", None) or []
-                message_text = self._extract_message_content(
+                reasoning_payload = getattr(message, "reasoning_content", None)
+                message_map = self._extract_mapping(message)
+                if reasoning_payload is None and message_map is not None:
+                    reasoning_payload = (
+                        message_map.get("reasoning_content")
+                        or message_map.get("reasoning")
+                    )
+                raw_tool_calls_payload: list[Any] = list(
+                    getattr(message, "tool_calls", None) or []
+                )
+                if reasoning_payload:
+                    raw_tool_calls_payload.extend(
+                        self._extract_reasoning_tool_calls(reasoning_payload)
+                    )
+                message_text = self._extract_message_text(
                     getattr(message, "content", None)
                 ).strip()
             llm_message_text = message_text
@@ -450,6 +532,188 @@ class LLMClient:
                 request_messages=request_snapshot,
             )
 
+    def _respond_harmony(
+        self,
+        conversation: Sequence[Mapping[str, Any]],
+        *,
+        cancellation: CancellationEvent | None = None,
+    ) -> LLMResponse:
+        if cancellation and cancellation.is_set():
+            raise OperationCancelledError()
+        prompt = self._build_harmony_prompt(conversation)
+        request_snapshot: tuple[dict[str, Any], ...] | None = (prompt.snapshot(),)
+        stream_requested = bool(cancellation) or self.settings.stream
+        if stream_requested:
+            logger.info(
+                "Harmony format does not support streaming yet; performing a blocking request."
+            )
+        request_args = {
+            "model": self.settings.model,
+            "input": prompt.prompt,
+            "temperature": 0,
+            "tools": TOOLS,
+            "reasoning": {"effort": "high"},
+        }
+        start = time.monotonic()
+        self._log_outbound_request(request_args)
+
+        llm_message_text = ""
+        normalized_tool_calls: list[dict[str, Any]] = []
+        raw_tool_calls_payload: Any = []
+
+        try:
+            completion = self._client.responses.create(**request_args)
+            message_text, raw_tool_calls_payload = self._parse_harmony_output(
+                completion
+            )
+            llm_message_text = message_text
+            normalized_tool_calls = self._normalise_tool_calls(raw_tool_calls_payload)
+            tool_calls = self._parse_tool_calls(raw_tool_calls_payload)
+            response = LLMResponse(
+                content=message_text,
+                tool_calls=tool_calls,
+                request_messages=request_snapshot,
+            )
+            if not response.tool_calls and not response.content:
+                raise ToolValidationError(
+                    "LLM response did not include a tool call or message",
+                )
+        except OperationCancelledError:
+            log_event(
+                "LLM_RESPONSE",
+                {"cancelled": True},
+                start_time=start,
+            )
+            log_debug_payload(
+                "LLM_RESPONSE",
+                {"direction": "inbound", "cancelled": True},
+            )
+            raise
+        except ToolValidationError as exc:
+            log_payload: dict[str, Any] = {
+                "error": {
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                }
+            }
+            if llm_message_text:
+                log_payload["message"] = llm_message_text
+            if normalized_tool_calls:
+                log_payload["tool_calls"] = normalized_tool_calls
+            log_event(
+                "LLM_RESPONSE",
+                log_payload,
+                start_time=start,
+            )
+            log_debug_payload(
+                "LLM_RESPONSE",
+                {"direction": "inbound", **log_payload},
+            )
+            if not hasattr(exc, "llm_message"):
+                exc.llm_message = llm_message_text
+            if not hasattr(exc, "llm_tool_calls"):
+                exc.llm_tool_calls = tuple(normalized_tool_calls)
+            raise
+        except Exception as exc:  # pragma: no cover - network errors
+            log_event(
+                "LLM_RESPONSE",
+                {"error": {"type": type(exc).__name__, "message": str(exc)}},
+                start_time=start,
+            )
+            log_debug_payload(
+                "LLM_RESPONSE",
+                {
+                    "direction": "inbound",
+                    "error": {"type": type(exc).__name__, "message": str(exc)},
+                },
+            )
+            raise
+        else:
+            log_payload: dict[str, Any] = {"message": response.content}
+            if response.tool_calls:
+                log_payload["tool_calls"] = [
+                    {
+                        "id": call.id,
+                        "name": call.name,
+                        "arguments": call.arguments,
+                    }
+                    for call in response.tool_calls
+                ]
+            log_event(
+                "LLM_RESPONSE",
+                log_payload,
+                start_time=start,
+            )
+            log_debug_payload(
+                "LLM_RESPONSE",
+                {"direction": "inbound", **log_payload},
+            )
+            return LLMResponse(
+                content=response.content.strip(),
+                tool_calls=response.tool_calls,
+                request_messages=request_snapshot,
+            )
+
+    def _parse_harmony_output(
+        self, completion: Any
+    ) -> tuple[str, list[dict[str, Any]]]:
+        output = getattr(completion, "output", None)
+        if output is None:
+            completion_map = self._extract_mapping(completion)
+            if completion_map is not None:
+                output = completion_map.get("output")
+        if not output:
+            raise ToolValidationError(
+                self._format_invalid_completion_error(
+                    "LLM response did not include any output blocks",
+                    completion,
+                )
+            )
+        message_parts: list[str] = []
+        tool_calls: list[dict[str, Any]] = []
+        for item in output:
+            item_map = self._extract_mapping(item)
+            item_type = getattr(item, "type", None)
+            if item_type is None and item_map is not None:
+                item_type = item_map.get("type")
+            if item_type == "message":
+                content = getattr(item, "content", None)
+                if content is None and item_map is not None:
+                    content = item_map.get("content")
+                for segment in content or []:
+                    seg_map = self._extract_mapping(segment)
+                    seg_type = getattr(segment, "type", None)
+                    if seg_type is None and seg_map is not None:
+                        seg_type = seg_map.get("type")
+                    if seg_type in {"output_text", "text"}:
+                        text_value = getattr(segment, "text", None)
+                        if text_value is None and seg_map is not None:
+                            text_value = seg_map.get("text")
+                        if text_value:
+                            message_parts.append(str(text_value))
+            elif item_type == "function_call":
+                item_map = item_map or {}
+                name = getattr(item, "name", None) or item_map.get("name")
+                arguments = (
+                    getattr(item, "arguments", None) or item_map.get("arguments")
+                )
+                call_id = (
+                    item_map.get("id")
+                    or getattr(item, "id", None)
+                    or item_map.get("call_id")
+                    or getattr(item, "call_id", None)
+                )
+                tool_calls.append(
+                    {
+                        "id": call_id,
+                        "type": "function",
+                        "function": {"name": name, "arguments": arguments},
+                    }
+                )
+            elif item_type == "reasoning":
+                continue
+        return "".join(part for part in message_parts if part).strip(), tool_calls
+
     def _consume_stream(
         self,
         stream: Iterable[Any],
@@ -513,6 +777,23 @@ class LLMClient:
                             tool_calls_delta,
                             choice_index,
                         )
+                    reasoning_delta = getattr(delta, "reasoning_content", None)
+                    if reasoning_delta is None and delta_map is not None:
+                        reasoning_delta = (
+                            delta_map.get("reasoning_content")
+                            or delta_map.get("reasoning")
+                        )
+                    if reasoning_delta:
+                        reasoning_fragments = self._extract_reasoning_tool_calls(
+                            reasoning_delta
+                        )
+                        if reasoning_fragments:
+                            self._append_stream_tool_calls(
+                                tool_chunks,
+                                order,
+                                reasoning_fragments,
+                                choice_index,
+                            )
                     function_call = getattr(delta, "function_call", None)
                     if function_call is None and delta_map is not None:
                         function_call = delta_map.get("function_call")
@@ -526,7 +807,7 @@ class LLMClient:
                     content = getattr(delta, "content", None)
                     if content is None and delta_map is not None:
                         content = delta_map.get("content")
-                    text = self._extract_message_content(content)
+                    text = self._extract_message_text(content)
                     if text:
                         message_parts.append(text)
                 if cancel_event is not None and cancel_event.is_set():
@@ -700,9 +981,8 @@ class LLMClient:
         result = count_text_tokens(text, model=self.settings.model)
         return result.tokens or 0
 
-    @staticmethod
-    def _extract_message_content(content: Any) -> str:
-        """Return textual payload from OpenAI chat message *content*."""
+    def _extract_message_text(self, content: Any) -> str:
+        """Return user-visible payload from a chat message *content*."""
 
         if content is None:
             return ""
@@ -710,38 +990,188 @@ class LLMClient:
             return content
         if isinstance(content, Mapping):
             type_field = content.get("type")
-            if type_field == "text":
-                text_value = content.get("text")
-                if isinstance(text_value, str):
-                    return text_value
+            if self._should_skip_segment(type_field):
+                return ""
             text_value = content.get("text")
             if isinstance(text_value, str):
                 return text_value
-            return LLMClient._extract_message_content(content.get("content"))
+            return self._extract_message_text(content.get("content"))
         if isinstance(content, Sequence) and not isinstance(
             content, (str, bytes, bytearray)
         ):
-            parts = [
-                LLMClient._extract_message_content(part)
-                for part in content
-            ]
+            parts = [self._extract_message_text(part) for part in content]
             return "".join(part for part in parts if part)
         type_attr = getattr(content, "type", None)
-        if type_attr == "text":
-            text_attr = getattr(content, "text", None)
-            if isinstance(text_attr, str):
-                return text_attr
+        if self._should_skip_segment(type_attr):
+            return ""
         text_attr = getattr(content, "text", None)
         if isinstance(text_attr, str):
             return text_attr
-        return LLMClient._extract_message_content(
-            getattr(content, "content", None)
-        )
+        return self._extract_message_text(getattr(content, "content", None))
+
+    def _should_skip_segment(self, segment_type: Any) -> bool:
+        """Return ``True`` when *segment_type* is hidden for the current format."""
+
+        if not segment_type:
+            return False
+        if not isinstance(segment_type, str):
+            return False
+        if self._message_format != "qwen":
+            return False
+        lowered = segment_type.lower()
+        return lowered in {"reasoning", "thought", "thinking", "analysis"}
+
+    def _convert_messages_for_qwen(
+        self, messages: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Return *messages* rewritten for the Qwen chat protocol."""
+
+        converted: list[dict[str, Any]] = []
+        for message in messages:
+            entry = {key: value for key, value in message.items() if key != "content"}
+            entry["content"] = self._ensure_qwen_segments(message.get("content"))
+            converted.append(entry)
+        return converted
+
+    def _ensure_qwen_segments(self, content: Any) -> list[dict[str, Any]]:
+        """Coerce *content* into the Qwen ``[{type, text}]`` representation."""
+
+        if isinstance(content, list):
+            segments: list[dict[str, Any]] = []
+            for part in content:
+                mapping = self._extract_mapping(part)
+                if not mapping:
+                    text = self._extract_message_text(part)
+                    if text:
+                        segments.append({"type": "text", "text": text})
+                    continue
+                part_type = mapping.get("type") or "text"
+                text_value = mapping.get("text")
+                if isinstance(text_value, str):
+                    segments.append({"type": str(part_type), "text": text_value})
+                    continue
+                inner = mapping.get("content")
+                text = self._extract_message_text(inner)
+                if text:
+                    segments.append({"type": str(part_type), "text": text})
+            if segments:
+                return segments
+        text_payload = self._extract_message_text(content)
+        return [{"type": "text", "text": text_payload}]
+
+    def _extract_reasoning_entries(self, payload: Any) -> list[Mapping[str, Any]]:
+        """Return flattened reasoning segments from *payload*."""
+
+        if not payload:
+            return []
+        if isinstance(payload, Mapping):
+            items = [payload]
+        else:
+            items = list(payload)
+        segments: list[Mapping[str, Any]] = []
+        for item in items:
+            mapping = self._extract_mapping(item)
+            if not mapping:
+                continue
+            segments.append(mapping)
+            nested = mapping.get("reasoning_content") or mapping.get("items")
+            if nested:
+                segments.extend(self._extract_reasoning_entries(nested))
+        return segments
+
+    def _extract_reasoning_tool_calls(self, payload: Any) -> list[dict[str, Any]]:
+        """Return tool call payloads encoded inside Qwen reasoning blocks."""
+
+        entries = self._extract_reasoning_entries(payload)
+        fragments: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        for entry in entries:
+            entry_type = str(entry.get("type") or "").lower()
+            if entry_type not in {
+                "tool_call",
+                "tool_calls",
+                "function_call",
+                "tool_call_delta",
+            } and not any(key in entry for key in ("tool_calls", "function")):
+                continue
+            tool_items: list[Mapping[str, Any]]
+            raw_tool_calls = entry.get("tool_calls")
+            if raw_tool_calls:
+                if isinstance(raw_tool_calls, Mapping):
+                    tool_items = [raw_tool_calls]
+                else:
+                    tool_items = [self._extract_mapping(elem) or {} for elem in raw_tool_calls]
+            else:
+                tool_items = [entry]
+            for tool_entry in tool_items:
+                if not tool_entry:
+                    continue
+                call_id = (
+                    str(tool_entry.get("id"))
+                    if tool_entry.get("id") is not None
+                    else tool_entry.get("tool_call_id")
+                )
+                if not call_id:
+                    call_id = str(len(order))
+                if call_id not in fragments:
+                    fragments[call_id] = {
+                        "id": call_id,
+                        "type": "function",
+                        "function": {"name": None, "arguments": ""},
+                    }
+                    order.append(call_id)
+                fragment = fragments[call_id]
+                function = tool_entry.get("function") or tool_entry.get("call") or {}
+                if not isinstance(function, Mapping):
+                    function = {}
+                name = function.get("name") or tool_entry.get("name")
+                if name:
+                    fragment["function"]["name"] = str(name)
+                args_fragment: Any = (
+                    function.get("arguments")
+                    if function.get("arguments") is not None
+                    else tool_entry.get("arguments")
+                )
+                if args_fragment is None and "input" in tool_entry:
+                    args_fragment = tool_entry.get("input")
+                if args_fragment is None and "parameters" in tool_entry:
+                    args_fragment = tool_entry.get("parameters")
+                if args_fragment is None:
+                    continue
+                if isinstance(args_fragment, str):
+                    fragment["function"]["arguments"] += args_fragment
+                else:
+                    try:
+                        fragment["function"]["arguments"] += json.dumps(
+                            args_fragment, ensure_ascii=False
+                        )
+                    except (TypeError, ValueError):
+                        fragment["function"]["arguments"] += str(args_fragment)
+        return [fragments[key] for key in order if fragments[key]["function"]["name"]]
 
     def _prepare_messages(
         self,
         conversation: Sequence[Mapping[str, Any]],
     ) -> list[dict[str, Any]]:
+        system_parts, ordered_messages, trim_result = self._prepare_history_components(
+            conversation
+        )
+        merged_system_message = {
+            "role": "system",
+            "content": "\n\n".join(
+                part for part in system_parts if isinstance(part, str) and part
+            ),
+        }
+
+        prepared = [merged_system_message, *ordered_messages]
+        if self._message_format == "qwen":
+            return self._convert_messages_for_qwen(prepared)
+        return prepared
+
+    def _prepare_history_components(
+        self,
+        conversation: Sequence[Mapping[str, Any]],
+    ) -> tuple[list[str], list[dict[str, Any]], HistoryTrimResult]:
         sanitized_history = self._sanitise_conversation(conversation)
         limit = self._resolved_max_context_tokens()
         reserved = self._count_tokens(SYSTEM_PROMPT)
@@ -777,14 +1207,23 @@ class LLMClient:
                 continue
             ordered_messages.append(message)
 
-        merged_system_message = {
-            "role": "system",
-            "content": "\n\n".join(
-                part for part in system_parts if isinstance(part, str) and part
-            ),
-        }
+        return system_parts, ordered_messages, trim_result
 
-        return [merged_system_message, *ordered_messages]
+    def _build_harmony_prompt(
+        self,
+        conversation: Sequence[Mapping[str, Any]],
+    ) -> HarmonyPrompt:
+        system_parts, ordered_messages, _ = self._prepare_history_components(
+            conversation
+        )
+        return render_harmony_prompt(
+            instruction_blocks=system_parts,
+            history=ordered_messages,
+            tools=TOOLS,
+            reasoning_level="high",
+            current_date=date.today().isoformat(),
+            knowledge_cutoff=HARMONY_KNOWLEDGE_CUTOFF,
+        )
 
     def _sanitise_conversation(
         self,

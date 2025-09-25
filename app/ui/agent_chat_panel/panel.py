@@ -1874,6 +1874,7 @@ class AgentChatPanel(wx.Panel):
                         on_regenerate=on_regenerate,
                         regenerate_enabled=not self._is_running,
                         tool_summaries=tool_summaries,
+                        context_messages=entry.context_messages,
                     )
                     panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_transcript_pane_toggled)
                     self._transcript_sizer.Add(panel, 0, wx.EXPAND)

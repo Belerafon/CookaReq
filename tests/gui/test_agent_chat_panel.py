@@ -703,7 +703,7 @@ def test_agent_transcript_log_includes_planned_tool_calls(tmp_path, wx_app):
 
     try:
         log_text = panel.get_transcript_log_text()
-        assert "LLM planned tool calls:" in log_text
+        assert "LLM → Agent planned tool calls:" in log_text
         assert "create_requirement" in log_text
         assert "\"prefix\": \"SYS\"" in log_text
     finally:

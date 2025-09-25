@@ -59,7 +59,6 @@ from .paths import (
 )
 from .tool_summaries import (
     format_value_snippet,
-    render_tool_summaries_markdown,
     render_tool_summaries_plain,
     summarize_tool_results,
     shorten_text,
@@ -1751,14 +1750,7 @@ class AgentChatPanel(wx.Panel):
                         else None
                     )
                     tool_summaries = summarize_tool_results(entry.tool_results)
-                    tool_summary_md = render_tool_summaries_markdown(tool_summaries)
                     response_text = entry.display_response or entry.response
-                    if tool_summary_md:
-                        base_response = (response_text or "").strip()
-                        if base_response:
-                            response_text = f"{base_response}\n\n{tool_summary_md}"
-                        else:
-                            response_text = tool_summary_md
                     panel = TranscriptMessagePanel(
                         self.transcript_panel,
                         prompt=entry.prompt,

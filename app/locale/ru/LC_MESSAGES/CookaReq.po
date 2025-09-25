@@ -1486,8 +1486,8 @@ msgstr "Сегодня {time}"
 msgid "Tokens: {count}"
 msgstr "Токенов: {count}"
 
-msgid "  Tool call {index}: {name} — Status: {status}"
-msgstr "  Вызов инструмента {index}: {name} — Статус: {status}"
+msgid "  Agent: tool call {index}: {name} — Status: {status}"
+msgstr "  Агент: вызов инструмента {index}: {name} — Статус: {status}"
 
 msgid "    LLM tool call ID: {value}"
 msgstr "    Идентификатор вызова инструмента LLM: {value}"
@@ -1503,6 +1503,9 @@ msgstr "    MCP → Агент: ошибка"
 
 msgid "    Additional fields:"
 msgstr "    Дополнительные поля:"
+
+msgid "Requirement: {rid}"
+msgstr "Требование: {rid}"
 
 msgid "Unknown"
 msgstr "Неизвестно"

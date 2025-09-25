@@ -527,6 +527,8 @@ class LLMClient:
                 exc.llm_message = llm_message_text
             if not hasattr(exc, "llm_tool_calls"):
                 exc.llm_tool_calls = tuple(normalized_tool_calls)
+            if request_snapshot and not hasattr(exc, "llm_request_messages"):
+                exc.llm_request_messages = request_snapshot
             raise
         except Exception as exc:  # pragma: no cover - network errors
             log_event(
@@ -651,6 +653,8 @@ class LLMClient:
                 exc.llm_message = llm_message_text
             if not hasattr(exc, "llm_tool_calls"):
                 exc.llm_tool_calls = tuple(normalized_tool_calls)
+            if request_snapshot and not hasattr(exc, "llm_request_messages"):
+                exc.llm_request_messages = request_snapshot
             raise
         except Exception as exc:  # pragma: no cover - network errors
             log_event(

@@ -1551,6 +1551,8 @@ class AgentChatPanel(wx.Panel):
         if custom_prompt:
             messages.append({"role": "system", "content": custom_prompt})
         for entry in conversation.entries:
+            if getattr(entry, "regenerated", False):
+                continue
             if entry.prompt:
                 messages.append({"role": "user", "content": entry.prompt})
             if entry.response:
@@ -1732,16 +1734,6 @@ class AgentChatPanel(wx.Panel):
             conversation.updated_at = conversation.created_at
         return index, removed, previous_updated
 
-    @staticmethod
-    def _restore_conversation_entry(
-        conversation: ChatConversation,
-        index: int,
-        entry: ChatEntry,
-        previous_updated: str,
-    ) -> None:
-        conversation.entries.insert(index, entry)
-        conversation.updated_at = previous_updated
-
     def _discard_pending_entry(self, handle: _AgentRunHandle) -> None:
         entry = handle.pending_entry
         if entry is None:
@@ -1875,6 +1867,7 @@ class AgentChatPanel(wx.Panel):
                         regenerate_enabled=not self._is_running,
                         tool_summaries=tool_summaries,
                         context_messages=entry.context_messages,
+                        regenerated=getattr(entry, "regenerated", False),
                     )
                     panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_transcript_pane_toggled)
                     self._transcript_sizer.Add(panel, 0, wx.EXPAND)
@@ -1904,20 +1897,16 @@ class AgentChatPanel(wx.Panel):
         prompt = entry.prompt
         if not prompt.strip():
             return
-        removal = self._pop_conversation_entry(conversation, entry)
-        if removal is None:
-            return
-        index, removed_entry, previous_updated = removal
+        previous_state = entry.regenerated
+        entry.regenerated = True
+        self._save_history()
+        self._refresh_history_list()
+        self._render_transcript()
         try:
             self._submit_prompt(prompt)
         except Exception:  # pragma: no cover - defensive
             logger.exception("Failed to regenerate agent response")
-            self._restore_conversation_entry(
-                conversation,
-                index,
-                removed_entry,
-                previous_updated,
-            )
+            entry.regenerated = previous_state
             self._save_history()
             self._refresh_history_list()
             self._render_transcript()

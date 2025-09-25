@@ -845,6 +845,8 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
 
 
 def test_agent_chat_panel_streams_tool_results(tmp_path, wx_app):
+    from app.i18n import _
+
     class StreamingAgent:
         def __init__(self) -> None:
             self.streamed = threading.Event()
@@ -859,7 +861,18 @@ def test_agent_chat_panel_streams_tool_results(tmp_path, wx_app):
             cancellation=None,
             on_tool_result=None,
         ):
-            payload = {
+            running_payload = {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "call-stream-0",
+                "call_id": "call-stream-0",
+                "tool_arguments": {
+                    "rid": "SYS-0001",
+                    "field": "title",
+                    "value": "Updated",
+                },
+                "agent_status": "running",
+            }
+            completed_payload = {
                 "ok": True,
                 "tool_name": "update_requirement_field",
                 "tool_call_id": "call-stream-0",
@@ -870,11 +883,13 @@ def test_agent_chat_panel_streams_tool_results(tmp_path, wx_app):
                     "value": "Updated",
                 },
                 "result": {"rid": "SYS-0001", "title": "Updated"},
+                "agent_status": "completed",
             }
             if callable(on_tool_result):
-                on_tool_result(payload)
-            self.streamed.set()
-            self.release.wait(0.5)
+                on_tool_result(running_payload)
+                self.streamed.set()
+                self.release.wait(0.5)
+                on_tool_result(completed_payload)
             return {"ok": True, "error": None, "result": "done"}
 
     agent = StreamingAgent()
@@ -895,6 +910,7 @@ def test_agent_chat_panel_streams_tool_results(tmp_path, wx_app):
         transcript = panel.get_transcript_text()
         assert "Tool call" in transcript
         assert "update_requirement_field" in transcript
+        assert _("in progress…") in transcript
         assert panel._is_running
 
         agent.release.set()

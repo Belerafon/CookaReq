@@ -733,6 +733,7 @@ class TranscriptMessagePanel(wx.Panel):
         regenerate_enabled: bool = True,
         tool_summaries: Sequence[ToolCallSummary] | None = None,
         context_messages: Sequence[Mapping[str, Any]] | None = None,
+        regenerated: bool = False,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
@@ -740,6 +741,20 @@ class TranscriptMessagePanel(wx.Panel):
 
         outer = wx.BoxSizer(wx.VERTICAL)
         padding = self.FromDIP(4)
+
+        if regenerated:
+            notice = wx.StaticText(
+                self,
+                label=_("Previous attempt (kept after regeneration)"),
+            )
+            notice_font = notice.GetFont()
+            if notice_font.IsOk():
+                notice_font.MakeItalic()
+                notice.SetFont(notice_font)
+            notice.SetForegroundColour(
+                wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT)
+            )
+            outer.Add(notice, 0, wx.LEFT | wx.RIGHT | wx.TOP, padding)
 
         context_panel = self._create_context_panel(context_messages)
         if context_panel is not None:

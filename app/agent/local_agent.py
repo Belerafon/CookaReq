@@ -445,27 +445,43 @@ class LocalAgent:
             if self._max_thought_steps is not None and step >= self._max_thought_steps:
                 break
             self._raise_if_cancelled(cancellation)
-            response = await self._llm.respond_async(
-                conversation,
-                cancellation=cancellation,
-            )
-            last_response = response
-            self._record_request_messages(response)
-            conversation.append(self._assistant_message(response))
-            step += 1
-            self._log_step(step, response)
-            if not response.tool_calls:
-                return self._success_result(response, accumulated_results)
-            (
-                tool_messages,
-                tool_error,
-                batch_results,
-            ) = await self._execute_tool_calls_core(
-                response.tool_calls,
-                cancellation=cancellation,
-                on_tool_result=on_tool_result,
-            )
-            conversation.extend(tool_messages)
+            try:
+                response = await self._llm.respond_async(
+                    conversation,
+                    cancellation=cancellation,
+                )
+            except ToolValidationError as exc:
+                (
+                    response,
+                    tool_error,
+                ) = self._handle_tool_validation_error(
+                    exc,
+                    conversation,
+                    on_tool_result=on_tool_result,
+                )
+                self._record_request_messages(response)
+                last_response = response
+                step += 1
+                self._log_step(step, response)
+                batch_results: list[Mapping[str, Any]] = []
+            else:
+                last_response = response
+                self._record_request_messages(response)
+                conversation.append(self._assistant_message(response))
+                step += 1
+                self._log_step(step, response)
+                if not response.tool_calls:
+                    return self._success_result(response, accumulated_results)
+                (
+                    tool_messages,
+                    tool_error,
+                    batch_results,
+                ) = await self._execute_tool_calls_core(
+                    response.tool_calls,
+                    cancellation=cancellation,
+                    on_tool_result=on_tool_result,
+                )
+                conversation.extend(tool_messages)
             accumulated_results.extend(batch_results)
             if tool_error is not None:
                 consecutive_tool_errors += 1
@@ -639,6 +655,146 @@ class LocalAgent:
             successful.append(result_dict)
             self._raise_if_cancelled(cancellation)
         return messages, None, successful
+
+    def _handle_tool_validation_error(
+        self,
+        exc: ToolValidationError,
+        conversation: list[Mapping[str, Any]],
+        *,
+        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> tuple[LLMResponse, Mapping[str, Any] | None]:
+        message_text = getattr(exc, "llm_message", "") or ""
+        raw_calls = getattr(exc, "llm_tool_calls", None)
+        raw_request_messages = getattr(exc, "llm_request_messages", None)
+        normalized_calls: list[dict[str, Any]] = []
+        request_snapshot: tuple[dict[str, Any], ...] | None = None
+        if isinstance(raw_request_messages, Sequence) and not isinstance(
+            raw_request_messages, (str, bytes, bytearray)
+        ):
+            prepared_messages: list[dict[str, Any]] = []
+            for message in raw_request_messages:
+                if isinstance(message, Mapping):
+                    prepared_messages.append(dict(message))
+            if prepared_messages:
+                request_snapshot = tuple(prepared_messages)
+        if isinstance(raw_calls, Sequence):
+            for entry in raw_calls:
+                if isinstance(entry, Mapping):
+                    normalized_calls.append(dict(entry))
+
+        assistant_tool_calls: list[dict[str, Any]] = []
+        synthetic_calls: list[LLMToolCall] = []
+        tool_messages: list[dict[str, Any]] = []
+        first_error_payload: dict[str, Any] | None = None
+
+        for index, call in enumerate(normalized_calls):
+            function = call.get("function")
+            if not isinstance(function, Mapping):
+                continue
+            name = function.get("name")
+            if not name:
+                continue
+            raw_arguments = function.get("arguments")
+            if isinstance(raw_arguments, str):
+                arguments_text = raw_arguments or "{}"
+            else:
+                try:
+                    arguments_text = json.dumps(raw_arguments or {}, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    arguments_text = "{}"
+            call_id = call.get("id") or call.get("tool_call_id") or f"tool_call_{index}"
+            call_id_str = str(call_id)
+            assistant_tool_calls.append(
+                {
+                    "id": call_id_str,
+                    "type": "function",
+                    "function": {
+                        "name": str(name),
+                        "arguments": arguments_text,
+                    },
+                }
+            )
+            try:
+                parsed_arguments = json.loads(arguments_text)
+            except Exception:
+                parsed_arguments = arguments_text
+            if isinstance(parsed_arguments, Mapping):
+                arguments_for_response = dict(parsed_arguments)
+            else:
+                arguments_for_response = {}
+            synthetic_calls.append(
+                LLMToolCall(
+                    id=call_id_str,
+                    name=str(name),
+                    arguments=arguments_for_response,
+                )
+            )
+            error_payload: dict[str, Any] = {
+                "ok": False,
+                "error": {
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                },
+                "tool_name": str(name),
+                "tool_call_id": call_id_str,
+                "call_id": call_id_str,
+                "agent_status": "failed",
+            }
+            if isinstance(parsed_arguments, Mapping):
+                error_payload["tool_arguments"] = parsed_arguments
+            elif isinstance(parsed_arguments, str) and parsed_arguments:
+                error_payload["tool_arguments"] = parsed_arguments
+            self._emit_tool_result(on_tool_result, error_payload)
+            tool_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call_id_str,
+                    "name": str(name),
+                    "content": json.dumps(error_payload, ensure_ascii=False, default=str),
+                }
+            )
+            if first_error_payload is None:
+                first_error_payload = error_payload
+
+        assistant_message: dict[str, Any] = {
+            "role": "assistant",
+            "content": message_text,
+        }
+        if assistant_tool_calls:
+            assistant_message["tool_calls"] = assistant_tool_calls
+        conversation.append(assistant_message)
+
+        if tool_messages:
+            conversation.extend(tool_messages)
+        else:
+            fallback_payload: dict[str, Any] = {
+                "ok": False,
+                "error": {
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                },
+                "tool_name": "invalid_tool_call",
+                "tool_call_id": "tool_call_0",
+                "call_id": "tool_call_0",
+                "agent_status": "failed",
+            }
+            self._emit_tool_result(on_tool_result, fallback_payload)
+            conversation.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": fallback_payload["tool_call_id"],
+                    "name": fallback_payload["tool_name"],
+                    "content": json.dumps(fallback_payload, ensure_ascii=False, default=str),
+                }
+            )
+            first_error_payload = fallback_payload
+
+        synthetic_response = LLMResponse(
+            content=message_text,
+            tool_calls=tuple(synthetic_calls),
+            request_messages=request_snapshot,
+        )
+        return synthetic_response, first_error_payload
 
     @staticmethod
     def _emit_tool_result(

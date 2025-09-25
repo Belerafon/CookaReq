@@ -2,7 +2,7 @@ import json
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
@@ -156,6 +156,7 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     assert entry_payload["token_info"]["tokens"] == entry_payload["tokens"]
     assert "context_messages" in entry_payload
     assert entry_payload["context_messages"] is None
+    assert entry_payload.get("regenerated") is False
 
     history_entry = panel.history[0]
     assert history_entry.context_messages is None
@@ -175,9 +176,18 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
     class CountingAgent:
         def __init__(self) -> None:
             self.calls: int = 0
+            self.history_snapshots: list[Sequence[Mapping[str, Any]] | None] = []
 
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
             self.calls += 1
+            if history is None:
+                self.history_snapshots.append(None)
+            else:
+                try:
+                    cloned = [dict(message) for message in history]
+                except Exception:
+                    cloned = list(history)
+                self.history_snapshots.append(cloned)
             return f"answer {self.calls}"
 
     wx, frame, panel = create_panel(tmp_path, wx_app, CountingAgent())
@@ -191,6 +201,7 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
         assert len(panel.history) == 1
         first_entry = panel.history[0]
         assert first_entry.response.endswith("1")
+        assert not getattr(first_entry, "regenerated", False)
 
         def find_regenerate_button(window):
             for child in window.GetChildren():
@@ -213,12 +224,16 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
         flush_wx_events(wx, count=6)
 
         assert panel.history
-        assert len(panel.history) == 1
-        entry = panel.history[0]
-        assert entry.response.endswith("2")
+        assert len(panel.history) == 2
+        archived, regenerated_entry = panel.history
+        assert archived.response.endswith("1")
+        assert getattr(archived, "regenerated", False)
+        assert regenerated_entry.response.endswith("2")
+        assert not getattr(regenerated_entry, "regenerated", False)
         transcript = panel.get_transcript_text()
+        assert "answer 1" in transcript
         assert "answer 2" in transcript
-        assert "answer 1" not in transcript
+        assert agent.history_snapshots[1] in (None, [])
     finally:
         destroy_panel(frame, panel)
 

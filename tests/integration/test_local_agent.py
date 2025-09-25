@@ -12,6 +12,7 @@ import pytest
 
 from app.agent.local_agent import LocalAgent
 from app.llm.client import LLMClient, LLMResponse, LLMToolCall
+from app.llm.validation import ToolValidationError
 from app.mcp.client import MCPNotReadyError
 from app.mcp.utils import ErrorCode
 from app.settings import AppSettings
@@ -185,6 +186,15 @@ def test_run_command_reports_llm_tool_validation_details(
     assert first_call["function"]["name"] == "create_requirement"
     arguments = json.loads(first_call["function"]["arguments"])
     assert arguments["data"]["title"] == "Req-1"
+    diagnostic = result.get("diagnostic")
+    assert diagnostic
+    requests = diagnostic["llm_requests"]
+    assert isinstance(requests, list) and requests
+    first_request = requests[0]
+    assert first_request["step"] == 1
+    assert first_request["messages"][-1]["content"].startswith(
+        "Напиши текст первого требования"
+    )
     assert mcp.call_calls == 0
     assert mcp.ensure_calls == 0
 
@@ -561,11 +571,116 @@ def test_run_command_stops_after_configured_tool_error_limit():
         "max_consecutive_tool_errors": 3,
     }
     assert agent.max_consecutive_tool_errors == 3
+
+
+def test_run_command_recovers_after_tool_validation_error():
+    class ValidationAwareLLM(LLMAsyncBridge):
+        def __init__(self) -> None:
+            self.calls = 0
+            self.conversations: list[list[dict[str, Any]]] = []
+
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            cloned = [dict(message) for message in conversation]
+            self.conversations.append(cloned)
+            self.calls += 1
+            if self.calls == 1:
+                exc = ToolValidationError(
+                    "Invalid arguments for update_requirement_field: value: "
+                    "'in_last_review' is not one of ['draft', 'in_review', 'approved', "
+                    "'baselined', 'retired']"
+                )
+                exc.llm_message = ""
+                exc.llm_tool_calls = (
+                    {
+                        "id": "call-0",
+                        "type": "function",
+                        "function": {
+                            "name": "update_requirement_field",
+                            "arguments": json.dumps(
+                                {
+                                    "rid": "SYS1",
+                                    "field": "status",
+                                    "value": "in_last_review",
+                                },
+                                ensure_ascii=False,
+                            ),
+                        },
+                    },
+                )
+                raise exc
+            if self.calls == 2:
+                tool_reply = json.loads(conversation[-1]["content"])
+                assert tool_reply["ok"] is False
+                assert tool_reply["error"]["message"].startswith(
+                    "Invalid arguments for update_requirement_field"
+                )
+                assert tool_reply.get("tool_arguments", {}).get("value") == "in_last_review"
+                return LLMResponse(
+                    "",
+                    (
+                        LLMToolCall(
+                            id="call-1",
+                            name="update_requirement_field",
+                            arguments={
+                                "rid": "SYS1",
+                                "field": "status",
+                                "value": "in_review",
+                            },
+                        ),
+                    ),
+                )
+            return LLMResponse("Готово", ())
+
+    class TrackingMCP(MCPAsyncBridge):
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, Mapping[str, Any]]] = []
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def call_tool(self, name, arguments):
+            self.calls.append((name, dict(arguments)))
+            return {
+                "ok": True,
+                "error": None,
+                "result": {"value": arguments["value"]},
+            }
+
+    llm = ValidationAwareLLM()
+    mcp = TrackingMCP()
+    agent = LocalAgent(llm=llm, mcp=mcp)
+
+    result = agent.run_command("adjust please")
+
+    assert result["ok"] is True
+    assert result["result"] == "Готово"
+    assert result.get("tool_results")
+    assert result["tool_results"][0]["result"] == {"value": "in_review"}
     assert llm.calls == 3
-    assert len(mcp.calls) == 3
-    assert result["tool_call_id"] == "call-3"
-    assert result["call_id"] == "call-3"
-    assert json.loads(llm.conversations[-1][-1]["content"])["error"]["message"] == "failure 2"
+    assert len(mcp.calls) == 1
+    assert mcp.calls[0][0] == "update_requirement_field"
+    assert mcp.calls[0][1]["value"] == "in_review"
+    assert len(llm.conversations) >= 2
+    second_attempt = llm.conversations[1]
+    assert second_attempt[-1]["role"] == "tool"
+    payload = json.loads(second_attempt[-1]["content"])
+    assert payload["error"]["message"].startswith(
+        "Invalid arguments for update_requirement_field"
+    )
+    assert payload.get("tool_arguments", {}).get("value") == "in_last_review"
+    diagnostic = result.get("diagnostic")
+    assert diagnostic
+    requests = diagnostic["llm_requests"]
+    assert isinstance(requests, list)
+    assert len(requests) >= 1
+    first_request = requests[0]
+    assert first_request["step"] == 1
+    first_messages = first_request["messages"]
+    assert first_messages[-1]["role"] == "user"
+    assert first_messages[-1]["content"] == "adjust please"
 
 
 def test_run_command_streams_tool_results_to_callback():

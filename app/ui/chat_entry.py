@@ -25,6 +25,7 @@ class ChatEntry:
     response_at: str | None = None
     context_messages: tuple[dict[str, Any], ...] | None = None
     diagnostic: dict[str, Any] | None = None
+    regenerated: bool = False
 
     def __post_init__(self) -> None:  # pragma: no cover - trivial
         if self.display_response is None:
@@ -99,6 +100,9 @@ class ChatEntry:
         if isinstance(diagnostic_raw, Mapping):
             diagnostic = dict(diagnostic_raw)
 
+        regenerated_raw = payload.get("regenerated")
+        regenerated = bool(regenerated_raw) if isinstance(regenerated_raw, bool) else False
+
         return cls(
             prompt=prompt,
             response=response,
@@ -111,6 +115,7 @@ class ChatEntry:
             response_at=response_at,
             context_messages=context_messages,
             diagnostic=diagnostic,
+            regenerated=regenerated,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -132,6 +137,7 @@ class ChatEntry:
             if self.context_messages is not None
             else None,
             "diagnostic": dict(self.diagnostic) if self.diagnostic is not None else None,
+            "regenerated": self.regenerated,
         }
 
 

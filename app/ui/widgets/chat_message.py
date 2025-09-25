@@ -733,6 +733,7 @@ class TranscriptMessagePanel(wx.Panel):
         regenerate_enabled: bool = True,
         tool_summaries: Sequence[ToolCallSummary] | None = None,
         context_messages: Sequence[Mapping[str, Any]] | None = None,
+        reasoning_segments: Sequence[Mapping[str, Any]] | None = None,
         regenerated: bool = False,
     ) -> None:
         super().__init__(parent)
@@ -759,6 +760,10 @@ class TranscriptMessagePanel(wx.Panel):
         context_panel = self._create_context_panel(context_messages)
         if context_panel is not None:
             outer.Add(context_panel, 0, wx.EXPAND | wx.ALL, padding)
+
+        reasoning_panel = self._create_reasoning_panel(reasoning_segments)
+        if reasoning_panel is not None:
+            outer.Add(reasoning_panel, 0, wx.EXPAND | wx.ALL, padding)
 
         user_bubble = MessageBubble(
             self,
@@ -924,3 +929,79 @@ class TranscriptMessagePanel(wx.Panel):
         sizer.AddStretchSpacer()
         sizer.Add(button, 0, wx.ALIGN_CENTER_VERTICAL)
         return sizer
+
+    def _create_reasoning_panel(
+        self, reasoning_segments: Sequence[Mapping[str, Any]] | None
+    ) -> wx.CollapsiblePane | None:
+        if not reasoning_segments:
+            return None
+
+        reasoning_text = self._format_reasoning_segments(reasoning_segments).strip()
+        if not reasoning_text:
+            return None
+
+        pane = wx.CollapsiblePane(
+            self,
+            label=_("Model reasoning"),
+            style=wx.CP_DEFAULT_STYLE | wx.CP_NO_TLW_RESIZE,
+        )
+        pane.Collapse(True)
+
+        pane_background = self.GetBackgroundColour()
+        if not pane_background.IsOk():
+            pane_background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
+        pane.SetBackgroundColour(pane_background)
+        inner = pane.GetPane()
+        inner.SetBackgroundColour(pane_background)
+
+        content_sizer = wx.BoxSizer(wx.VERTICAL)
+        text_ctrl = wx.TextCtrl(
+            inner,
+            value=normalize_for_display(reasoning_text),
+            style=(
+                wx.TE_MULTILINE
+                | wx.TE_READONLY
+                | wx.TE_BESTWRAP
+                | wx.BORDER_NONE
+            ),
+        )
+        text_ctrl.SetBackgroundColour(pane_background)
+        text_ctrl.SetForegroundColour(
+            _pick_best_contrast(
+                pane_background,
+                wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT),
+                wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT),
+            )
+        )
+        text_ctrl.SetMinSize((-1, self.FromDIP(100)))
+        content_sizer.Add(text_ctrl, 1, wx.EXPAND | wx.TOP, self.FromDIP(4))
+        inner.SetSizer(content_sizer)
+        return pane
+
+    @staticmethod
+    def _format_reasoning_segments(
+        reasoning_segments: Sequence[Mapping[str, Any]] | None,
+    ) -> str:
+        if not reasoning_segments:
+            return ""
+
+        blocks: list[str] = []
+        for index, segment in enumerate(reasoning_segments, start=1):
+            if isinstance(segment, Mapping):
+                type_value = segment.get("type")
+                text_value = segment.get("text")
+            else:
+                type_value = getattr(segment, "type", None)
+                text_value = getattr(segment, "text", None)
+            if text_value is None:
+                continue
+            text = str(text_value).strip()
+            if not text:
+                continue
+            type_label = str(type_value).strip() if type_value is not None else ""
+            if type_label:
+                heading = type_label
+            else:
+                heading = _("Thought {index}").format(index=index)
+            blocks.append(f"{heading}\n{text}")
+        return "\n\n".join(blocks)

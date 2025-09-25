@@ -757,6 +757,46 @@ def test_agent_chat_panel_orders_tool_bubbles_before_agent_reply(tmp_path, wx_ap
         destroy_panel(frame, panel)
 
 
+def test_transcript_message_panel_shows_reasoning(wx_app):
+    wx = pytest.importorskip("wx")
+    from app.i18n import _
+
+    frame = wx.Frame(None)
+    try:
+        panel = TranscriptMessagePanel(
+            frame,
+            prompt="user",
+            response="assistant",
+            reasoning_segments=[
+                {"type": "analysis", "text": "first step"},
+                {"type": "", "text": "second step"},
+            ],
+        )
+        reasoning_label = _("Model reasoning")
+        panes = [
+            child
+            for child in panel.GetChildren()
+            if isinstance(child, wx.CollapsiblePane)
+            and child.GetLabel() == reasoning_label
+        ]
+        assert panes, "reasoning pane should be created"
+        reasoning_pane = panes[0]
+        reasoning_pane.Expand()
+        wx.GetApp().Yield()
+        text_controls = [
+            child
+            for child in reasoning_pane.GetPane().GetChildren()
+            if isinstance(child, wx.TextCtrl)
+        ]
+        assert text_controls, "reasoning pane should contain text control"
+        value = text_controls[0].GetValue()
+        assert "first step" in value
+        assert "second step" in value
+    finally:
+        panel.Destroy()
+        frame.Destroy()
+
+
 def test_agent_transcript_log_orders_sections_for_errors(tmp_path, wx_app):
     class ErrorAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):

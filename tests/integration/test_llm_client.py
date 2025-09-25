@@ -209,6 +209,7 @@ def test_qwen_message_format_wraps_segments(tmp_path: Path, monkeypatch) -> None
     client = LLMClient(settings.llm)
     response = client.parse_command("hello")
     assert response.content == "ok"
+    assert response.reasoning == ()
     messages = captured["messages"]
     assert isinstance(messages, list)
     system_message = messages[0]
@@ -265,6 +266,43 @@ def test_qwen_reasoning_tool_call_extraction(tmp_path: Path, monkeypatch) -> Non
     call = response.tool_calls[0]
     assert call.name == "list_requirements"
     assert call.arguments == {"per_page": 5}
+    assert response.reasoning
+    assert response.reasoning[0].text == "thinking"
+
+
+def test_parse_command_captures_reasoning_segments(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple capture
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content=[
+                                    {"type": "reasoning", "text": "step one"},
+                                    {"type": "reasoning", "text": "step two"},
+                                    {"type": "text", "text": "final answer"},
+                                ],
+                                tool_calls=None,
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    response = client.parse_command("hello")
+    assert response.content == "final answer"
+    assert [segment.text for segment in response.reasoning] == [
+        "step one",
+        "step two",
+    ]
 
 
 def test_parse_command_recovers_concatenated_tool_arguments(

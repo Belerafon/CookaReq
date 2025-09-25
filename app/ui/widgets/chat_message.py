@@ -555,25 +555,49 @@ class MessageBubble(wx.Panel):
             parent_width = parent.GetClientSize().width
         except RuntimeError:
             return
-        if parent_width <= 0:
-            return
-
-        viewport_width = self._resolve_viewport_width(parent)
-        if viewport_width <= 0:
-            viewport_width = parent_width
 
         border = self._resolve_parent_border(parent)
-        if border > 0 and viewport_width > 0:
-            viewport_width = max(0, viewport_width - 2 * border)
+        inner_parent_width = parent_width
+        if border > 0 and parent_width > 0:
+            inner_parent_width = max(parent_width - 2 * border, 0)
 
-        available_width = max(parent_width, viewport_width)
+        viewport_width = self._resolve_viewport_width(parent)
+        inner_viewport_width = 0
+        if viewport_width > 0:
+            inner_viewport_width = viewport_width
+            if border > 0:
+                inner_viewport_width = max(inner_viewport_width - 2 * border, 0)
+
+        available_width = inner_viewport_width or inner_parent_width
+        if available_width <= 0:
+            available_width = max(parent_width, inner_parent_width, inner_viewport_width)
         if available_width <= 0:
             return
 
+        hard_cap_candidates = [available_width]
+        if inner_parent_width > 0:
+            hard_cap_candidates.append(inner_parent_width)
+        if parent_width > 0:
+            hard_cap_candidates.append(parent_width)
+        hard_cap = min(hard_cap_candidates) if hard_cap_candidates else 0
+        if hard_cap <= 0:
+            hard_cap = available_width
+
         max_width = int(available_width * self._bubble_max_width_ratio)
-        max_width = min(max_width, available_width - self._bubble_margin)
-        max_width = max(max_width, self._min_bubble_width)
         max_width = min(max_width, available_width)
+        if hard_cap > 0:
+            max_width = min(max_width, hard_cap)
+            margin_cap = hard_cap - self._bubble_margin
+            if margin_cap > 0:
+                max_width = min(max_width, margin_cap)
+
+        min_width_cap = self._min_bubble_width
+        if hard_cap > 0:
+            min_width_cap = min(min_width_cap, hard_cap)
+        min_width_cap = max(min_width_cap, 0)
+
+        if max_width < min_width_cap:
+            max_width = min_width_cap
         if max_width <= 0:
             return
 
@@ -583,8 +607,8 @@ class MessageBubble(wx.Panel):
         growth_threshold = 360
         ratio = math.sqrt(char_count / growth_threshold) if growth_threshold else 1.0
         ratio = max(0.0, min(ratio, 1.0))
-        target_from_chars = self._min_bubble_width + int((max_width - self._min_bubble_width) * ratio)
-        target_width = max(self._min_bubble_width, padded_content, target_from_chars)
+        target_from_chars = min_width_cap + int((max_width - min_width_cap) * ratio)
+        target_width = max(min_width_cap, padded_content, target_from_chars)
         target_width = min(target_width, max_width)
 
         cached = self._cached_width_constraints

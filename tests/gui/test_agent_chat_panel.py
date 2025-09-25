@@ -860,6 +860,73 @@ def test_agent_message_copy_selection(monkeypatch, wx_app):
     frame.Destroy()
 
 
+def test_message_bubble_respects_scrolled_viewport_width(wx_app):
+    wx = pytest.importorskip("wx")
+    from wx.lib.scrolledpanel import ScrolledPanel
+
+    frame = wx.Frame(None, size=wx.Size(1024, 768))
+    scrolled = ScrolledPanel(frame, style=wx.TAB_TRAVERSAL)
+    scrolled_sizer = wx.BoxSizer(wx.VERTICAL)
+    scrolled.SetSizer(scrolled_sizer)
+
+    entry = TranscriptMessagePanel(
+        scrolled,
+        prompt="user prompt " * 40,
+        response="agent response " * 200,
+    )
+    padding = entry.FromDIP(4)
+    scrolled_sizer.Add(entry, 0, wx.EXPAND | wx.ALL, padding)
+
+    frame_sizer = wx.BoxSizer(wx.VERTICAL)
+    frame_sizer.Add(scrolled, 1, wx.EXPAND)
+    frame.SetSizer(frame_sizer)
+    frame.Layout()
+    scrolled.SetupScrolling(scroll_x=False, scroll_y=True)
+    frame.Show()
+    flush_wx_events(wx, count=10)
+
+    def _agent_bubble() -> tuple[MessageBubble, wx.Panel]:
+        bubbles = [
+            child
+            for child in entry.GetChildren()
+            if isinstance(child, MessageBubble)
+        ]
+        assert bubbles, "expected transcript bubbles"
+        bubble = bubbles[-1]
+        panels = [
+            child for child in bubble.GetChildren() if isinstance(child, wx.Panel)
+        ]
+        assert panels, "bubble should host an inner panel"
+        return bubble, panels[0]
+
+    try:
+        bubble, inner_panel = _agent_bubble()
+        viewport_width = scrolled.GetClientSize().width
+        assert viewport_width > 0
+        flush_wx_events(wx, count=2)
+
+        inner_width = inner_panel.GetSize().width
+        assert inner_width <= viewport_width
+        assert inner_width >= int(viewport_width * 0.65)
+
+        frame.SetClientSize(wx.Size(640, frame.GetClientSize().height))
+        frame.Layout()
+        scrolled.Layout()
+        scrolled.SetupScrolling(scroll_x=False, scroll_y=True)
+        flush_wx_events(wx, count=10)
+
+        _, resized_panel = _agent_bubble()
+        resized_width = resized_panel.GetSize().width
+        shrunk_viewport = scrolled.GetClientSize().width
+        assert shrunk_viewport < viewport_width
+        assert resized_width <= shrunk_viewport
+        assert resized_width >= int(shrunk_viewport * 0.65)
+
+        assert _agent_bubble()[0] is bubble
+    finally:
+        frame.Destroy()
+
+
 def test_message_bubble_destroy_ignores_pending_width_update(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.widgets.chat_message import MessageBubble

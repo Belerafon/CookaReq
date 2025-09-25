@@ -32,6 +32,42 @@ GENERAL_HELP: dict[str, str] = {
 
 
 LLM_HELP: dict[str, str] = {
+    "message_format": _(
+        "Выбор протокола упаковки диалога при общении с моделью.\n\n"
+        "• OpenAI chat — классическая JSON-схема {role, content}. Подходит для"
+        " большинства совместимых API, поддерживает стандартные tool_calls и"
+        " привычен для OpenAI Chat Completions и OpenRouter. Если провайдер"
+        " не заявляет расширенные форматы, оставляйте этот вариант.\n\n"
+        "• Harmony (GPT-OSS) — структурированный протокол с ролями system/"
+        " developer/user/assistant/tool и каналами analysis/commentary/final."
+        " Используется моделями семейства gpt-oss, позволяет отделять цепочку"
+        " рассуждений от пользовательского ответа и чётко сигнализировать о"
+        " вызовах инструментов. Требует провайдера, который принимает Harmony"
+        " токены (например, OpenAI Responses API или совместимый шлюз). В"
+        " потоковом режиме возвращает последовательность событий, каждое из"
+        " которых нужно декодировать через рендерер Harmony.\n\n"
+        "• Qwen (ChatML + reasoning) — формат для моделей Qwen-R/-MCP с"
+        " поддержкой reasoning_content. Диалог собирается в синтаксисе ChatML"
+        " (<|im_start|>role ...), а промежуточные рассуждения и вызовы"
+        " инструментов приходят прямо внутри reasoning-потока. CookaReq"
+        " резервирует этот режим: UI позволяет выбрать Qwen, но фактическая"
+        " поддержка reasoning-tool вызовов появится после интеграции рендерера"
+        " и парсера Qwen.\n\n"
+        "Практические рекомендации:\n"
+        "— Всегда сопоставляйте выбранный формат со списком возможностей"
+        " провайдера: несовместимый протокол приведёт к ошибкам или пустым"
+        " ответам.\n"
+        "— Harmony и Qwen требуют собственных парсеров потоковых ответов."
+        " Если включена опция stream, убедитесь, что клиент LLM поддерживает"
+        " декодирование событий этих форматов.\n"
+        "— При миграции на новые модели фиксируйте формат в конфигурации,"
+        " чтобы избежать случайного возврата к OpenAI chat.\n"
+        "— Экспериментируя с Harmony, проверьте, что системный промпт содержит"
+        " указание на Reasoning и валидные каналы, иначе модель может"
+        " деградировать или игнорировать tool_calls.\n"
+        "— После обновлений CookaReq перечитывайте архитектурные заметки —"
+        " там отражаются ограничения и статус поддержки каждого формата.",
+    ),
     "base_url": _(
         "Base URL of the LLM API. Example: https://api.openai.com/v1\n"
         "Required; defines where requests are sent.",
@@ -124,6 +160,17 @@ MAX_CONTEXT_TOKEN_SPIN_MAX = 2_147_483_647
 """Upper bound supported by :class:`wx.SpinCtrl` for context token input."""
 
 
+LLM_FORMAT_CHOICES: tuple[tuple[str, str], ...] = (
+    ("openai-chat", _("OpenAI chat (default)")),
+    ("harmony", _("Harmony (GPT-OSS)")),
+    ("qwen", _("Qwen (ChatML + reasoning)")),
+)
+"""Available message format options for LLM conversations."""
+
+UNAVAILABLE_LLM_FORMATS: frozenset[str] = frozenset()
+"""Formats shown in the UI but not yet selectable."""
+
+
 def available_translations() -> list[tuple[str, str]]:
     """Return list of (language_code, display_name) for available translations."""
     langs: list[tuple[str, str]] = []
@@ -149,6 +196,7 @@ class SettingsDialog(wx.Dialog):
         language: str,
         base_url: str,
         model: str,
+        message_format: str,
         api_key: str,
         max_retries: int,
         max_context_tokens: int,
@@ -227,6 +275,32 @@ class SettingsDialog(wx.Dialog):
         llm = wx.Panel(nb)
         self._base_url = wx.TextCtrl(llm, value=base_url)
         self._model = wx.TextCtrl(llm, value=model)
+        format_labels = [label for _, label in LLM_FORMAT_CHOICES]
+        self._format_choice = wx.Choice(llm, choices=format_labels)
+        try:
+            format_index = [value for value, _ in LLM_FORMAT_CHOICES].index(
+                message_format
+            )
+        except ValueError:
+            logger.warning(
+                "Unknown LLM format %s provided to settings dialog; falling back to default",
+                message_format,
+            )
+            format_index = 0
+        self._format_choice.SetSelection(format_index)
+        unavailable_selected = False
+        for idx, (value, _label) in enumerate(LLM_FORMAT_CHOICES):
+            if value in UNAVAILABLE_LLM_FORMATS:
+                enable_item = getattr(self._format_choice, "EnableItem", None)
+                if callable(enable_item):  # pragma: no cover - wx API variance
+                    enable_item(idx, False)
+                if idx == format_index:
+                    unavailable_selected = True
+        if unavailable_selected:
+            for idx, (value, _label) in enumerate(LLM_FORMAT_CHOICES):
+                if value not in UNAVAILABLE_LLM_FORMATS:
+                    self._format_choice.SetSelection(idx)
+                    break
         self._api_key = wx.TextCtrl(llm, value=api_key, style=wx.TE_PASSWORD)
         self._max_retries = wx.SpinCtrl(llm, min=0, max=10, initial=max_retries)
         clamped_context_tokens = max(
@@ -289,6 +363,21 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         llm_sizer.Add(model_sz, 0, wx.ALL | wx.EXPAND, 5)
+        format_sz = wx.BoxSizer(wx.HORIZONTAL)
+        format_sz.Add(
+            wx.StaticText(llm, label=_("Format")),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            5,
+        )
+        format_sz.Add(self._format_choice, 1, wx.ALIGN_CENTER_VERTICAL)
+        format_sz.Add(
+            make_help_button(llm, LLM_HELP["message_format"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        llm_sizer.Add(format_sz, 0, wx.ALL | wx.EXPAND, 5)
         key_sz = wx.BoxSizer(wx.HORIZONTAL)
         key_sz.Add(
             wx.StaticText(llm, label=_("API key")),
@@ -602,10 +691,20 @@ class SettingsDialog(wx.Dialog):
         )
         return row
 
+    def _selected_message_format(self) -> str:
+        index = self._format_choice.GetSelection()
+        if index == wx.NOT_FOUND:
+            return "openai-chat"
+        try:
+            return LLM_FORMAT_CHOICES[index][0]
+        except IndexError:  # pragma: no cover - defensive guard
+            return "openai-chat"
+
     def _current_llm_settings(self) -> LLMSettings:
         return LLMSettings(
             base_url=self._base_url.GetValue(),
             model=self._model.GetValue(),
+            message_format=self._selected_message_format(),
             api_key=self._api_key.GetValue() or None,
             max_retries=self._max_retries.GetValue(),
             max_context_tokens=self._max_context_tokens.GetValue(),
@@ -748,6 +847,7 @@ class SettingsDialog(wx.Dialog):
         str,
         str,
         str,
+        str,
         int,
         int,
         int,
@@ -768,6 +868,7 @@ class SettingsDialog(wx.Dialog):
             lang_code,
             self._base_url.GetValue(),
             self._model.GetValue(),
+            self._selected_message_format(),
             self._api_key.GetValue(),
             self._max_retries.GetValue(),
             self._max_context_tokens.GetValue(),

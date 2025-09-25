@@ -1102,7 +1102,7 @@ class AgentChatPanel(wx.Panel):
         if handle is None:
             return
         handle.cancel()
-        self._discard_pending_entry(handle)
+        self._finalize_cancelled_run(handle)
         self._active_run_handle = None
         self._set_wait_state(False)
         self.status_label.SetLabel(_("Generation cancelled"))
@@ -1756,6 +1756,53 @@ class AgentChatPanel(wx.Panel):
         handle.streamed_tool_results.clear()
         self._save_history()
         self._refresh_history_list()
+        self._render_transcript()
+
+    def _finalize_cancelled_run(self, handle: _AgentRunHandle) -> None:
+        """Preserve transcript state after cancelling an agent run."""
+
+        entry = handle.pending_entry
+        if entry is None:
+            self._render_transcript()
+            return
+        conversation = self._get_conversation_by_id(handle.conversation_id)
+        if conversation is None:
+            handle.pending_entry = None
+            handle.streamed_tool_results.clear()
+            self._render_transcript()
+            return
+
+        cancellation_message = _("Generation cancelled")
+        response_at = utc_now_iso()
+        prompt_at = getattr(handle, "prompt_at", None) or response_at
+        token_info = combine_token_counts([handle.prompt_tokens])
+        tool_results_payload = handle.prepare_tool_results_payload()
+        tool_results = list(tool_results_payload) if tool_results_payload else None
+        raw_result = {
+            "ok": False,
+            "error": {
+                "type": "OperationCancelledError",
+                "message": cancellation_message,
+                "details": {"reason": "user_cancelled"},
+            },
+        }
+
+        self._complete_pending_entry(
+            conversation,
+            entry,
+            prompt=handle.prompt,
+            response="",
+            display_response=cancellation_message,
+            raw_result=raw_result,
+            tool_results=tool_results,
+            token_info=token_info,
+            prompt_at=prompt_at,
+            response_at=response_at,
+            context_messages=handle.context_messages,
+            history_snapshot=handle.history_snapshot,
+        )
+        handle.pending_entry = None
+        handle.streamed_tool_results.clear()
         self._render_transcript()
 
     def _refresh_history_list(self) -> None:

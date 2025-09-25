@@ -543,10 +543,6 @@ class LLMClient:
         prompt = self._build_harmony_prompt(conversation)
         request_snapshot: tuple[dict[str, Any], ...] | None = (prompt.snapshot(),)
         stream_requested = bool(cancellation) or self.settings.stream
-        if stream_requested:
-            logger.info(
-                "Harmony format does not support streaming yet; performing a blocking request."
-            )
         request_args = {
             "model": self.settings.model,
             "input": prompt.prompt,
@@ -562,7 +558,13 @@ class LLMClient:
         raw_tool_calls_payload: Any = []
 
         try:
-            completion = self._client.responses.create(**request_args)
+            if stream_requested:
+                completion = self._request_harmony_stream(
+                    request_args,
+                    cancellation=cancellation,
+                )
+            else:
+                completion = self._client.responses.create(**request_args)
             message_text, raw_tool_calls_payload = self._parse_harmony_output(
                 completion
             )
@@ -653,6 +655,40 @@ class LLMClient:
                 tool_calls=response.tool_calls,
                 request_messages=request_snapshot,
             )
+
+    def _request_harmony_stream(
+        self,
+        request_args: Mapping[str, Any],
+        *,
+        cancellation: CancellationEvent | None,
+    ) -> Any:
+        """Execute a Harmony request in streaming mode and return the final payload."""
+
+        cancel_event = cancellation
+        closed_by_cancel = False
+
+        def ensure_not_cancelled(stream: Any) -> None:
+            nonlocal closed_by_cancel
+            if cancel_event is None:
+                return
+            if cancel_event.wait(timeout=0) or cancel_event.is_set():
+                if not closed_by_cancel:
+                    closed_by_cancel = True
+                    closer = getattr(stream, "close", None)
+                    if callable(closer):  # pragma: no cover - defensive
+                        try:
+                            closer()
+                        except Exception:
+                            pass
+                raise OperationCancelledError()
+
+        stream_manager = self._client.responses.stream(**request_args)
+        with stream_manager as stream:
+            ensure_not_cancelled(stream)
+            for _event in stream:  # pragma: no branch - no per-event handling
+                ensure_not_cancelled(stream)
+            ensure_not_cancelled(stream)
+            return stream.get_final_response()
 
     def _parse_harmony_output(
         self, completion: Any

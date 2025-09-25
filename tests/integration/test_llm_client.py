@@ -1055,3 +1055,86 @@ def test_harmony_function_call_parsing(tmp_path: Path, monkeypatch) -> None:
     call = response.tool_calls[0]
     assert call.name == "list_requirements"
     assert call.arguments == {"page": 1}
+
+
+def test_harmony_streaming(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path, message_format="harmony")
+    settings.llm.stream = True
+
+    captured: dict[str, object] = {}
+
+    class DummyStream:
+        def __init__(self, events: list[object], final_response: object) -> None:
+            self._events = iter(events)
+            self._final_response = final_response
+            self._closed = False
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            return next(self._events)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            self.close()
+
+        def close(self) -> None:
+            self._closed = True
+
+        def until_done(self):  # pragma: no cover - compatibility with OpenAI stream
+            try:
+                while True:
+                    next(self)
+            except StopIteration:
+                pass
+            return self
+
+        def get_final_response(self):
+            self.until_done()
+            return self._final_response
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k) -> None:  # pragma: no cover - simple capture
+            def stream(**kwargs):  # noqa: ANN001
+                captured.update(kwargs)
+                events: list[object] = [object(), object()]
+                final = SimpleNamespace(
+                    output=[
+                        SimpleNamespace(
+                            type="function_call",
+                            name="list_requirements",
+                            arguments="{\"page\": 2}",
+                            id="call-42",
+                        ),
+                        SimpleNamespace(
+                            type="message",
+                            content=[
+                                SimpleNamespace(type="output_text", text="готово")
+                            ],
+                        ),
+                    ]
+                )
+                return DummyStream(events, final)
+
+            def create(**kwargs):  # noqa: ANN001
+                raise AssertionError("Harmony streaming should not fall back to blocking create")
+
+            self.responses = SimpleNamespace(stream=stream, create=create)
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **kwargs: SimpleNamespace())
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    response = client.parse_command("streamed request")
+    assert captured["model"] == settings.llm.model
+    assert captured["input"]
+    assert response.content == "готово"
+    assert len(response.tool_calls) == 1
+    call = response.tool_calls[0]
+    assert call.id == "call-42"
+    assert call.name == "list_requirements"
+    assert call.arguments == {"page": 2}

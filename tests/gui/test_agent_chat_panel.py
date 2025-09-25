@@ -5,7 +5,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 
 from app.llm.tokenizer import TokenCountResult
-from app.ui.agent_chat_panel import RequirementConfirmPreference
+from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.widgets.chat_message import MessageBubble, TranscriptMessagePanel
 
 import pytest
@@ -61,6 +61,7 @@ def create_panel(
         confirm_preference=confirm_preference,
         persist_confirm_preference=persist_confirm_preference,
     )
+    panel.set_project_settings_path(tmp_path / "agent_settings.json")
     return wx, frame, panel
 
 
@@ -69,6 +70,48 @@ def destroy_panel(frame, panel):
     frame.Destroy()
 
 
+def test_agent_custom_system_prompt_appended(tmp_path, wx_app):
+    class CaptureAgent:
+        def __init__(self) -> None:
+            self.last_history: list[dict[str, str]] | None = None
+
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+        ):
+            self.last_history = list(history or [])
+            return {"ok": True, "result": {"echo": text}}
+
+    agent = CaptureAgent()
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent)
+
+    try:
+        custom_prompt = "Follow project conventions"
+        panel._apply_project_settings(
+            AgentProjectSettings(custom_system_prompt=custom_prompt)
+        )
+        panel.input.SetValue("Plan release")
+        panel._on_send(None)
+        flush_wx_events(wx)
+
+        history = agent.last_history
+        assert history is not None
+        assert history[0]["role"] == "system"
+        assert history[0]["content"] == custom_prompt
+
+        assert panel.history
+        entry = panel.history[0]
+        assert entry.diagnostic
+        assert entry.diagnostic.get("custom_system_prompt") == custom_prompt
+        assert entry.diagnostic["history_messages"][0]["role"] == "system"
+        assert entry.diagnostic["history_messages"][0]["content"] == custom_prompt
+    finally:
+        destroy_panel(frame, panel)
 def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):

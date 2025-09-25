@@ -56,7 +56,14 @@ from .paths import (
     _default_history_path,
     _normalize_history_path,
     history_path_for_documents,
+    settings_path_for_documents,
 )
+from .project_settings import (
+    AgentProjectSettings,
+    load_agent_project_settings,
+    save_agent_project_settings,
+)
+from .settings_dialog import AgentProjectSettingsDialog
 from .tool_summaries import (
     format_value_snippet,
     render_tool_summaries_plain,
@@ -137,6 +144,8 @@ class AgentChatPanel(wx.Panel):
             self._history_path = _default_history_path()
         else:
             self._history_path = _normalize_history_path(history_path)
+        self._settings_path = settings_path_for_documents(None)
+        self._project_settings = load_agent_project_settings(self._settings_path)
         self._token_model_resolver = (
             token_model_resolver if token_model_resolver is not None else lambda: None
         )
@@ -195,6 +204,7 @@ class AgentChatPanel(wx.Panel):
             tuple[RequirementConfirmPreference, str], ...
         ] = ()
         self._suppress_confirm_choice_events = False
+        self._project_settings_button: wx.Button | None = None
         self._load_history()
         self._build_ui()
         self._render_transcript()
@@ -245,12 +255,39 @@ class AgentChatPanel(wx.Panel):
         """Persist chat history inside *directory* when provided."""
 
         self.set_history_path(history_path_for_documents(directory))
+        self.set_project_settings_path(settings_path_for_documents(directory))
 
     @property
     def history_path(self) -> Path:
         """Return the path of the current chat history file."""
 
         return self._history_path
+
+    def set_project_settings_path(self, path: Path | str | None) -> None:
+        """Switch storage for project agent settings to *path*."""
+
+        new_path = (
+            settings_path_for_documents(None)
+            if path is None
+            else _normalize_history_path(path)
+        )
+        if new_path == self._settings_path:
+            return
+        self._save_project_settings()
+        self._settings_path = new_path
+        self._load_project_settings()
+
+    @property
+    def project_settings_path(self) -> Path:
+        """Return the current path with project-scoped agent settings."""
+
+        return self._settings_path
+
+    @property
+    def project_settings(self) -> AgentProjectSettings:
+        """Return the active project settings."""
+
+        return self._project_settings
 
     # ------------------------------------------------------------------
     def _token_model(self) -> str | None:
@@ -539,6 +576,10 @@ class AgentChatPanel(wx.Panel):
         self.activity.SetToolTip(STATUS_HELP_TEXT)
         self.status_label.SetToolTip(STATUS_HELP_TEXT)
 
+        settings_btn = wx.Button(bottom_panel, label=_("Agent settings"))
+        settings_btn.Bind(wx.EVT_BUTTON, self._on_project_settings)
+        self._project_settings_button = settings_btn
+
         confirm_entries: tuple[
             tuple[RequirementConfirmPreference, str], ...
         ] = (
@@ -571,6 +612,7 @@ class AgentChatPanel(wx.Panel):
         controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
         controls_sizer.Add(status_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
         controls_sizer.AddStretchSpacer()
+        controls_sizer.Add(settings_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         controls_sizer.Add(confirm_box, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         controls_sizer.Add(button_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -598,6 +640,7 @@ class AgentChatPanel(wx.Panel):
         refresh_splitter_highlight(self._vertical_splitter)
         self._refresh_history_list()
         wx.CallAfter(self._adjust_vertical_splitter)
+        wx.CallAfter(self._update_project_settings_ui)
 
     @property
     def history_sash(self) -> int:
@@ -1091,6 +1134,7 @@ class AgentChatPanel(wx.Panel):
         self.input.Enable(not active)
         if self._stop_btn is not None:
             self._stop_btn.Enable(active)
+        self._update_project_settings_ui()
         self._update_history_controls()
         if active:
             self._current_tokens = (
@@ -1269,7 +1313,13 @@ class AgentChatPanel(wx.Panel):
         """Calculate token usage for the system prompt and conversation."""
 
         model = self._token_model()
-        system_tokens = count_text_tokens(SYSTEM_PROMPT, model=model)
+        system_parts = [SYSTEM_PROMPT]
+        custom_prompt = self._custom_system_prompt()
+        if custom_prompt:
+            system_parts.append(custom_prompt)
+        system_tokens = combine_token_counts(
+            [count_text_tokens(part, model=model) for part in system_parts if part]
+        )
 
         history_counts: list[TokenCountResult] = []
         conversation = self._get_active_conversation()
@@ -1497,6 +1547,9 @@ class AgentChatPanel(wx.Panel):
         if conversation is None:
             return []
         messages: list[dict[str, str]] = []
+        custom_prompt = self._custom_system_prompt()
+        if custom_prompt:
+            messages.append({"role": "system", "content": custom_prompt})
         for entry in conversation.entries:
             if entry.prompt:
                 messages.append({"role": "user", "content": entry.prompt})
@@ -1604,6 +1657,7 @@ class AgentChatPanel(wx.Panel):
                 tool_results=tool_results,
                 history_snapshot=history_snapshot,
                 context_snapshot=context_clone,
+                custom_system_prompt=self._custom_system_prompt(),
             ),
         )
         conversation.append_entry(entry)
@@ -1651,6 +1705,7 @@ class AgentChatPanel(wx.Panel):
             tool_results=tool_results,
             history_snapshot=history_snapshot,
             context_snapshot=context_clone,
+            custom_system_prompt=self._custom_system_prompt(),
         )
         conversation.updated_at = response_at
         conversation.ensure_title()
@@ -1945,6 +2000,7 @@ class AgentChatPanel(wx.Panel):
         tool_results: Sequence[Any] | None,
         history_snapshot: Sequence[Mapping[str, Any]] | None,
         context_snapshot: Sequence[Mapping[str, Any]] | None,
+        custom_system_prompt: str | None = None,
     ) -> dict[str, Any]:
         prompt_text = normalize_for_display(prompt)
         display_text = normalize_for_display(display_response)
@@ -2034,6 +2090,9 @@ class AgentChatPanel(wx.Panel):
             "error_payload": error_payload,
             "llm_request_messages_sequence": llm_request_sequence,
             "llm_requests": llm_request_sequence,
+            "custom_system_prompt": normalize_for_display(custom_system_prompt)
+            if custom_system_prompt
+            else None,
         }
 
         return history_json_safe(diagnostic_payload)
@@ -2570,6 +2629,69 @@ class AgentChatPanel(wx.Panel):
         }
         with self._history_path.open("w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False, indent=2)
+
+    def _load_project_settings(self) -> None:
+        self._project_settings = load_agent_project_settings(self._settings_path)
+        self._update_project_settings_ui()
+
+    def _save_project_settings(self) -> None:
+        try:
+            save_agent_project_settings(self._settings_path, self._project_settings)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to persist agent project settings to %s", self._settings_path
+            )
+
+    def _custom_system_prompt(self) -> str:
+        settings = getattr(self, "_project_settings", None)
+        if isinstance(settings, AgentProjectSettings):
+            return settings.custom_system_prompt.strip()
+        return ""
+
+    def _update_project_settings_ui(self) -> None:
+        button = getattr(self, "_project_settings_button", None)
+        if button is None:
+            return
+        prompt = self._custom_system_prompt()
+        if prompt:
+            tooltip = _(
+                "Custom instructions appended to the system prompt:\n{instructions}"
+            ).format(instructions=normalize_for_display(prompt))
+        else:
+            tooltip = _(
+                "Define project-specific instructions appended to the system prompt."
+            )
+        button.SetToolTip(tooltip)
+        button.Enable(not self._is_running)
+
+    def _apply_project_settings(
+        self,
+        settings: AgentProjectSettings,
+        *,
+        persist: bool = True,
+    ) -> None:
+        normalized = settings.normalized()
+        if normalized == self._project_settings:
+            self._update_project_settings_ui()
+            return
+        self._project_settings = normalized
+        if persist:
+            self._save_project_settings()
+        self._update_project_settings_ui()
+        self._update_conversation_header()
+
+    def _on_project_settings(self, _event: wx.Event) -> None:
+        dialog = AgentProjectSettingsDialog(self, settings=self._project_settings)
+        try:
+            result = dialog.ShowModal()
+            if result != wx.ID_OK:
+                return
+            prompt = dialog.get_custom_system_prompt()
+            self._apply_project_settings(
+                AgentProjectSettings(custom_system_prompt=prompt)
+            )
+        finally:
+            dialog.Destroy()
 
     def _active_index(self) -> int | None:
         if self._active_conversation_id is None:

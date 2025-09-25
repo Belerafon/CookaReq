@@ -11,6 +11,8 @@ from typing import Any
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 from ..confirm import (
     ConfirmDecision,
     RequirementChange,
@@ -20,6 +22,7 @@ from ..confirm import (
 from ..i18n import _
 from ..settings import MCPSettings
 from ..telemetry import log_debug_payload, log_event
+from .events import notify_tool_success
 from .utils import ErrorCode, mcp_error
 
 
@@ -43,6 +46,15 @@ class MCPClient:
         "set_requirement_labels",
         "set_requirement_attachments",
         "set_requirement_links",
+    }
+    _BROADCAST_TOOLS = {
+        "create_requirement",
+        "update_requirement_field",
+        "set_requirement_labels",
+        "set_requirement_attachments",
+        "set_requirement_links",
+        "delete_requirement",
+        "link_requirements",
     }
 
     def __init__(
@@ -104,6 +116,28 @@ class MCPClient:
             result_payload["decision"] = decision_value
         log_event("CONFIRM_RESULT", result_payload)
         return confirmed
+
+    def _broadcast_tool_result(
+        self,
+        name: str,
+        arguments: Mapping[str, Any],
+        result: Mapping[str, Any] | None,
+    ) -> None:
+        """Notify listeners about successful requirement-changing tools."""
+
+        if name not in self._BROADCAST_TOOLS:
+            return
+        if result is None or not isinstance(result, Mapping):
+            return
+        try:
+            notify_tool_success(
+                name,
+                base_path=self.settings.base_path,
+                arguments=arguments,
+                result=result,
+            )
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to broadcast MCP tool result")
 
     @staticmethod
     def _build_requirement_update_prompt(
@@ -424,6 +458,7 @@ class MCPClient:
                 log_event("TOOL_RESULT", {"result": data}, start_time=start)
                 log_event("DONE")
                 self._update_ready_state(True, None)
+                self._broadcast_tool_result(name, arguments, data)
                 return {"ok": True, "error": None, "result": data}
             err = data.get("error")
             if not err:
@@ -502,6 +537,7 @@ class MCPClient:
             log_event("TOOL_RESULT", {"result": data}, start_time=start)
             log_event("DONE")
             self._update_ready_state(True, None)
+            self._broadcast_tool_result(name, arguments, data)
             return {"ok": True, "error": None, "result": data}
         err = data.get("error")
         if not err:

@@ -347,13 +347,6 @@ def _resolve_requirement(
     prefix, item_id = parse_rid(rid)
     doc = docs.get(prefix)
     if doc is None:
-        lowered = prefix.casefold()
-        for candidate_prefix, candidate_doc in docs.items():
-            if candidate_prefix.casefold() == lowered:
-                doc = candidate_doc
-                prefix = candidate_doc.prefix
-                break
-    if doc is None:
         raise RequirementNotFoundError(rid)
     directory = root / doc.prefix
     try:

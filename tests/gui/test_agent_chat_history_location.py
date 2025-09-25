@@ -41,7 +41,9 @@ def test_agent_chat_history_saved_next_to_documents(tmp_path, wx_app):
 
         panel = frame.agent_panel
         expected_history = repository / ".cookareq" / "agent_chats.json"
+        expected_settings = repository / ".cookareq" / "agent_settings.json"
         assert panel.history_path == expected_history
+        assert panel.project_settings_path == expected_settings
 
         panel._append_history("ping", "pong", "pong", None, None, None)
         wx_app.Yield()

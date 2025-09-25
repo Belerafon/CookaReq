@@ -114,6 +114,15 @@ def extract_tool_name(payload: Mapping[str, Any]) -> str:
 
 
 def format_tool_status(payload: Mapping[str, Any]) -> str:
+    agent_status = payload.get("agent_status")
+    if isinstance(agent_status, str):
+        normalized = agent_status.strip().lower()
+        if normalized == "running":
+            return normalize_for_display(_("in progress…"))
+        if normalized == "completed" and payload.get("ok") not in (True, False):
+            return normalize_for_display(_("completed"))
+        if normalized == "failed" and payload.get("ok") not in (True, False):
+            return normalize_for_display(_("failed"))
     ok_value = payload.get("ok")
     if ok_value is True:
         return normalize_for_display(_("completed successfully"))

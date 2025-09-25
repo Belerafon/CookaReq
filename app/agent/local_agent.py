@@ -560,6 +560,14 @@ class LocalAgent:
         for call in tool_calls:
             self._raise_if_cancelled(cancellation)
             try:
+                self._emit_tool_result(
+                    on_tool_result,
+                    self._prepare_tool_payload(
+                        call,
+                        {"agent_status": "running"},
+                        include_arguments=True,
+                    ),
+                )
                 log_event(
                     "AGENT_TOOL_CALL",
                     {
@@ -587,6 +595,7 @@ class LocalAgent:
                     {"ok": False, "error": error},
                     include_arguments=True,
                 )
+                payload.setdefault("agent_status", "failed")
                 self._emit_tool_result(on_tool_result, payload)
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
@@ -602,6 +611,7 @@ class LocalAgent:
                     },
                     include_arguments=True,
                 )
+                payload.setdefault("agent_status", "failed")
                 self._emit_tool_result(on_tool_result, payload)
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
@@ -610,6 +620,10 @@ class LocalAgent:
                 result,
                 include_arguments=True,
             )
+            if result_dict.get("ok") is False:
+                result_dict.setdefault("agent_status", "failed")
+            else:
+                result_dict.setdefault("agent_status", "completed")
             log_payload: dict[str, Any] = {
                 "call_id": call.id,
                 "tool_name": call.name,

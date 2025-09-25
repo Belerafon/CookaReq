@@ -620,8 +620,24 @@ def test_run_command_streams_tool_results_to_callback():
 
     assert result["ok"] is True
     assert result["result"] == "All done"
-    assert len(collected) == 2
-    assert [payload["tool_name"] for payload in collected] == [
+    assert len(collected) == 4
+    running_updates = [
+        payload for payload in collected if payload.get("agent_status") == "running"
+    ]
+    assert [payload["tool_name"] for payload in running_updates] == [
+        "list_requirements",
+        "get_requirement",
+    ]
+    completed_updates = [
+        payload
+        for payload in collected
+        if payload.get("agent_status") and payload.get("agent_status") != "running"
+    ]
+    assert [payload.get("agent_status") for payload in completed_updates] == [
+        "completed",
+        "completed",
+    ]
+    assert [payload["tool_name"] for payload in completed_updates] == [
         "list_requirements",
         "get_requirement",
     ]
@@ -630,7 +646,10 @@ def test_run_command_streams_tool_results_to_callback():
     assert [
         payload["tool_name"] for payload in result["tool_results"]
     ] == ["list_requirements", "get_requirement"]
-    for streamed, final in zip(collected, result["tool_results"]):
+    assert [
+        payload.get("agent_status") for payload in result["tool_results"]
+    ] == ["completed", "completed"]
+    for streamed, final in zip(completed_updates, result["tool_results"]):
         assert streamed == final
         assert streamed is not final
 

@@ -824,6 +824,31 @@ class AgentChatPanel(wx.Panel):
                 overrides = self._confirm_override_kwargs()
                 agent = self._agent_supplier(**overrides)
 
+                def _extract_tool_call_id(
+                    payload: Mapping[str, Any]
+                ) -> str | None:
+                    for key in ("call_id", "tool_call_id"):
+                        value = payload.get(key)
+                        if isinstance(value, str) and value:
+                            return value
+                    return None
+
+                def _merge_streamed_tool_result(
+                    payload: dict[str, Any]
+                ) -> None:
+                    call_id = _extract_tool_call_id(payload)
+                    if not call_id:
+                        handle.streamed_tool_results.append(payload)
+                        return
+                    for index, existing in enumerate(handle.streamed_tool_results):
+                        existing_id = _extract_tool_call_id(existing)
+                        if existing_id == call_id:
+                            merged = dict(existing)
+                            merged.update(payload)
+                            handle.streamed_tool_results[index] = merged
+                            return
+                    handle.streamed_tool_results.append(payload)
+
                 def on_tool_result(payload: Mapping[str, Any]) -> None:
                     if handle.is_cancelled:
                         return
@@ -833,7 +858,7 @@ class AgentChatPanel(wx.Panel):
                         prepared = dict(payload)
                     except Exception:  # pragma: no cover - defensive
                         return
-                    handle.streamed_tool_results.append(prepared)
+                    _merge_streamed_tool_result(prepared)
                     snapshot = clone_streamed_tool_results(
                         handle.streamed_tool_results
                     )

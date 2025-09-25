@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from datetime import date
 import json
@@ -13,6 +14,55 @@ HARMONY_KNOWLEDGE_CUTOFF = "2024-06"
 
 HARMONY_NAMESPACE = "functions"
 """Namespace used when exposing MCP tools to Harmony models."""
+
+
+def convert_tools_for_harmony(
+    tools: Sequence[Mapping[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Convert Chat Completions tool definitions for the Responses API.
+
+    The OpenAI Python client expects function tools passed to ``responses.create``
+    to follow the new schema without the nested ``{"function": {...}}`` block
+    that Chat Completions used. When Harmony is enabled we still keep the
+    original structure for prompt rendering, but outbound API calls must use
+    the flattened representation. This helper preserves non-function tools and
+    performs a deep copy so the caller can safely mutate the result.
+    """
+
+    if not tools:
+        return []
+
+    converted: list[dict[str, Any]] = []
+    for entry in tools:
+        if not isinstance(entry, Mapping):
+            continue
+        tool_type = entry.get("type")
+        if tool_type != "function":
+            converted.append(copy.deepcopy(dict(entry)))
+            continue
+        function = entry.get("function")
+        if isinstance(function, Mapping):
+            name = function.get("name")
+            if not name:
+                continue
+            flattened: dict[str, Any] = {"type": "function", "name": str(name)}
+            description = function.get("description")
+            if description:
+                flattened["description"] = str(description)
+            parameters = function.get("parameters")
+            if isinstance(parameters, Mapping):
+                flattened["parameters"] = copy.deepcopy(dict(parameters))
+            strict = function.get("strict")
+            if strict is not None:
+                flattened["strict"] = bool(strict)
+            converted.append(flattened)
+            continue
+        # Already flattened or malformed; keep best-effort copy.
+        converted.append(
+            copy.deepcopy({k: v for k, v in entry.items() if k != "function"})
+        )
+
+    return converted
 
 
 @dataclass(frozen=True, slots=True)

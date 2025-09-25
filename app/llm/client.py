@@ -24,7 +24,12 @@ from .constants import (
 # реальных сетевых запросов.
 from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
-from .harmony import HARMONY_KNOWLEDGE_CUTOFF, HarmonyPrompt, render_harmony_prompt
+from .harmony import (
+    HARMONY_KNOWLEDGE_CUTOFF,
+    HarmonyPrompt,
+    convert_tools_for_harmony,
+    render_harmony_prompt,
+)
 from .spec import SYSTEM_PROMPT, TOOLS
 from .tokenizer import count_text_tokens
 from .validation import ToolValidationError, validate_tool_call
@@ -321,7 +326,7 @@ class LLMClient:
             "model": self.settings.model,
             "input": prompt.prompt,
             "temperature": 0,
-            "tools": TOOLS,
+            "tools": convert_tools_for_harmony(TOOLS),
             "reasoning": {"effort": "high"},
         }
         start = time.monotonic()
@@ -547,7 +552,7 @@ class LLMClient:
             "model": self.settings.model,
             "input": prompt.prompt,
             "temperature": 0,
-            "tools": TOOLS,
+            "tools": convert_tools_for_harmony(TOOLS),
             "reasoning": {"effort": "high"},
         }
         start = time.monotonic()

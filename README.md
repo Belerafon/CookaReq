@@ -114,7 +114,7 @@ Every command validates inputs before mutating files and reuses the same schema 
 
 `app.agent.local_agent.LocalAgent` wraps the `LLMClient` and `MCPClient` to execute tool calls in response to LLM prompts. The GUI exposes it via the **Command** dialog/agent panel, while the CLI offers health checks through `python3 -m app.cli check`.
 
-- The default LLM configuration targets `https://openrouter.ai/api/v1` with the `meta-llama/llama-3.3-70b-instruct:free` model to ensure deterministic tool call support. Adjust these fields in *Settings → LLM* or in JSON/TOML overrides when necessary.
+- The default LLM configuration targets `https://openrouter.ai/api/v1` with the `meta-llama/llama-3.3-70b-instruct:free` model to ensure deterministic tool call support. Adjust these fields in *Settings → LLM* or in JSON/TOML overrides when necessary. Real reasoning-capable checks use the free `x-ai/grok-4-fast:free` variant by default; override it via the `OPENROUTER_REASONING_MODEL` environment variable when another model is preferred.
 - MCP runs in-process on `127.0.0.1:59362` by default. Enable token checks, change ports, or adjust the base requirements directory from *Settings → MCP*.
 - Structured MCP request/response logs (including headers and sanitized payloads) are written to `<log_dir>/mcp/server.log` and `<log_dir>/mcp/server.jsonl` for auditing.
 

@@ -1,0 +1,21 @@
+{
+  "acceptance": null,
+  "approved_at": null,
+  "assumptions": "",
+  "attachments": [],
+  "conditions": "",
+  "id": 10,
+  "labels": [],
+  "modified_at": "",
+  "notes": "",
+  "owner": "",
+  "priority": "high",
+  "rationale": "",
+  "revision": 1,
+  "source": "",
+  "statement": "Демо-документация должна описывать системный контекст с акторами, внешними зависимостями и ограничениями обмена данными, отражая различия между GUI и CLI.",
+  "status": "draft",
+  "title": "Системный контекст",
+  "type": "requirement",
+  "verification": "analysis"
+}

@@ -1,0 +1,21 @@
+{
+  "acceptance": null,
+  "approved_at": null,
+  "assumptions": "",
+  "attachments": [],
+  "conditions": "",
+  "id": 3,
+  "labels": [],
+  "modified_at": "",
+  "notes": "",
+  "owner": "",
+  "priority": "high",
+  "rationale": "",
+  "revision": 1,
+  "source": "",
+  "statement": "Артефакты демо должны раскрывать модели требований, сервисы document_store, правила ревизий и зависимости от файловой системы, подчёркивая точки расширения для новых типов документов.",
+  "status": "draft",
+  "title": "Описание ядра и хранилища",
+  "type": "requirement",
+  "verification": "analysis"
+}

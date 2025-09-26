@@ -1,0 +1,21 @@
+{
+  "acceptance": null,
+  "approved_at": null,
+  "assumptions": "",
+  "attachments": [],
+  "conditions": "",
+  "id": 14,
+  "labels": [],
+  "modified_at": "",
+  "notes": "",
+  "owner": "",
+  "priority": "medium",
+  "rationale": "",
+  "revision": 1,
+  "source": "",
+  "statement": "Демо должно фиксировать параметры конфигурации агента и MCP, включая лимиты ошибок инструментов, форматы сообщений LLM и файлы .cookareq, создаваемые в каталоге проекта.",
+  "status": "draft",
+  "title": "Настройки агента",
+  "type": "requirement",
+  "verification": "analysis"
+}

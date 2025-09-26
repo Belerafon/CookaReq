@@ -1,0 +1,21 @@
+{
+  "acceptance": null,
+  "approved_at": null,
+  "assumptions": "",
+  "attachments": [],
+  "conditions": "",
+  "id": 17,
+  "labels": [],
+  "modified_at": "",
+  "notes": "",
+  "owner": "",
+  "priority": "low",
+  "rationale": "",
+  "revision": 1,
+  "source": "",
+  "statement": "Демо-набор должен содержать пример использования trace matrix с настройками осей, показывающий связи между слоями и сценариями.",
+  "status": "draft",
+  "title": "Пример трассировки",
+  "type": "requirement",
+  "verification": "analysis"
+}

@@ -1,0 +1,21 @@
+{
+  "acceptance": null,
+  "approved_at": null,
+  "assumptions": "",
+  "attachments": [],
+  "conditions": "",
+  "id": 16,
+  "labels": [],
+  "modified_at": "",
+  "notes": "",
+  "owner": "",
+  "priority": "low",
+  "rationale": "",
+  "revision": 1,
+  "source": "",
+  "statement": "Материалы демо должны указывать, где логируются операции с данными и конфигурацией, какие проверки выполняются автоматически и какие улучшения мониторинга требуются.",
+  "status": "draft",
+  "title": "Наблюдаемость данных",
+  "type": "requirement",
+  "verification": "analysis"
+}

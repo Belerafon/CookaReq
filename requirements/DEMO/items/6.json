@@ -1,0 +1,21 @@
+{
+  "acceptance": null,
+  "approved_at": null,
+  "assumptions": "",
+  "attachments": [],
+  "conditions": "",
+  "id": 6,
+  "labels": [],
+  "modified_at": "",
+  "notes": "",
+  "owner": "",
+  "priority": "medium",
+  "rationale": "",
+  "revision": 1,
+  "source": "",
+  "statement": "Демо должно содержать раздел о CLI, показывающий, как команды переиспользуют ядро, какие подкоманды доступны и какие настройки требуются для запуска без GUI.",
+  "status": "draft",
+  "title": "CLI в демо",
+  "type": "requirement",
+  "verification": "analysis"
+}

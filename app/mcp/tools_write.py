@@ -84,7 +84,7 @@ def update_requirement_field(
 def set_requirement_labels(
     directory: str | Path,
     rid: str,
-    labels: Sequence[str] | None,
+    labels: Sequence[str],
 ) -> dict:
     """Replace the label list of a requirement."""
 
@@ -93,6 +93,12 @@ def set_requirement_labels(
         "rid": rid,
         "labels": labels,
     }
+    if isinstance(labels, (str, bytes)):
+        return log_tool(
+            "set_requirement_labels",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, "labels must be an array of strings"),
+        )
     try:
         req = doc_store.set_requirement_labels(
             directory,
@@ -123,7 +129,7 @@ def set_requirement_labels(
 def set_requirement_attachments(
     directory: str | Path,
     rid: str,
-    attachments: Sequence[Mapping[str, Any]] | None,
+    attachments: Sequence[Mapping[str, Any]],
 ) -> dict:
     """Replace attachments of a requirement."""
 
@@ -132,6 +138,12 @@ def set_requirement_attachments(
         "rid": rid,
         "attachments": attachments,
     }
+    if isinstance(attachments, (str, bytes)):
+        return log_tool(
+            "set_requirement_attachments",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, "attachments must be an array"),
+        )
     try:
         req = doc_store.set_requirement_attachments(
             directory,
@@ -162,7 +174,7 @@ def set_requirement_attachments(
 def set_requirement_links(
     directory: str | Path,
     rid: str,
-    links: Sequence[Mapping[str, Any]] | Sequence[str] | None,
+    links: Sequence[Mapping[str, Any] | str],
 ) -> dict:
     """Replace the outgoing links of a requirement."""
 
@@ -171,6 +183,12 @@ def set_requirement_links(
         "rid": rid,
         "links": links,
     }
+    if isinstance(links, (str, bytes)):
+        return log_tool(
+            "set_requirement_links",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, "links must be an array"),
+        )
     try:
         req = doc_store.set_requirement_links(
             directory,

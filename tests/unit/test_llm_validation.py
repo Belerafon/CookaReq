@@ -107,3 +107,15 @@ def test_update_requirement_field_rejects_wrapped_value():
     message = str(exc.value)
     assert "Invalid arguments for update_requirement_field" in message
     assert "value" in message
+
+
+def test_update_requirement_field_rejects_null_value():
+    with pytest.raises(ToolValidationError) as exc:
+        validate_tool_call(
+            "update_requirement_field",
+            {"rid": "SYS1", "field": "notes", "value": None},
+        )
+
+    message = str(exc.value)
+    assert "Invalid arguments for update_requirement_field" in message
+    assert "value" in message

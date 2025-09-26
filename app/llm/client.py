@@ -51,6 +51,15 @@ class LLMResponse:
     content: str
     tool_calls: tuple[LLMToolCall, ...] = ()
     request_messages: tuple[dict[str, Any], ...] | None = None
+    reasoning: tuple["LLMReasoningSegment", ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class LLMReasoningSegment:
+    """Captured reasoning segment produced by the LLM."""
+
+    type: str
+    text: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +95,19 @@ class LLMClient:
     """High-level client for LLM operations."""
 
     _SUPPORTED_MESSAGE_FORMATS = frozenset({"openai-chat", "harmony", "qwen"})
+    _REASONING_TYPE_ALIASES = frozenset(
+        {
+            "analysis",
+            "chain_of_thought",
+            "internal_thought",
+            "reason",
+            "reasoning",
+            "reflection",
+            "thought",
+            "thinking",
+        }
+    )
+    _REASONING_KEYWORDS = ("reason", "think", "analysis", "reflect")
 
     def __init__(self, settings: LLMSettings) -> None:
         """Initialize client with LLM configuration ``settings``."""
@@ -435,15 +457,26 @@ class LLMClient:
         llm_message_text: str = ""
         normalized_tool_calls: list[dict[str, Any]] = []
         raw_tool_calls_payload: Any = []
+        reasoning_accumulator: list[dict[str, str]] = []
+        reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
 
         try:
             completion = self._chat_completion(
                 **request_args,
             )
             if use_stream:
-                message_text, raw_tool_calls_payload = self._consume_stream(
+                (
+                    message_text,
+                    raw_tool_calls_payload,
+                    stream_reasoning,
+                ) = self._consume_stream(
                     completion, cancellation=cancellation
                 )
+                if stream_reasoning:
+                    reasoning_accumulator.extend(
+                        dict(seg)
+                        for seg in stream_reasoning
+                    )
             else:
                 choices = getattr(completion, "choices", None)
                 if not choices:
@@ -475,9 +508,32 @@ class LLMClient:
                     raw_tool_calls_payload.extend(
                         self._extract_reasoning_tool_calls(reasoning_payload)
                     )
+                    self._append_reasoning_fragments(
+                        reasoning_accumulator,
+                        self._collect_reasoning_fragments(reasoning_payload),
+                    )
+                reasoning_details = None
+                if message_map is not None:
+                    reasoning_details = message_map.get("reasoning_details")
+                if reasoning_details:
+                    self._append_reasoning_fragments(
+                        reasoning_accumulator,
+                        self._collect_reasoning_fragments(reasoning_details),
+                    )
+                content_payload = getattr(message, "content", None)
+                if isinstance(content_payload, (Mapping, Sequence)) and not isinstance(
+                    content_payload, (str, bytes, bytearray)
+                ):
+                    self._append_reasoning_fragments(
+                        reasoning_accumulator,
+                        self._collect_reasoning_fragments(content_payload),
+                    )
                 message_text = self._extract_message_text(
-                    getattr(message, "content", None)
+                    content_payload
                 ).strip()
+            reasoning_segments = self._finalize_reasoning_segments(
+                reasoning_accumulator
+            )
             llm_message_text = message_text
             normalized_tool_calls = self._normalise_tool_calls(
                 raw_tool_calls_payload
@@ -487,6 +543,7 @@ class LLMClient:
                 content=message_text,
                 tool_calls=tool_calls,
                 request_messages=request_snapshot,
+                reasoning=reasoning_segments,
             )
             if not response.tool_calls and not response.content:
                 raise ToolValidationError(
@@ -514,6 +571,11 @@ class LLMClient:
                 log_payload["message"] = llm_message_text
             if normalized_tool_calls:
                 log_payload["tool_calls"] = normalized_tool_calls
+            if reasoning_segments:
+                log_payload["reasoning"] = [
+                    {"type": segment.type, "preview": segment.text[:160]}
+                    for segment in reasoning_segments
+                ]
             log_event(
                 "LLM_RESPONSE",
                 log_payload,
@@ -568,6 +630,7 @@ class LLMClient:
                 content=response.content.strip(),
                 tool_calls=response.tool_calls,
                 request_messages=request_snapshot,
+                reasoning=response.reasoning,
             )
 
     def _respond_harmony(
@@ -630,6 +693,10 @@ class LLMClient:
             )
             raise
         except ToolValidationError as exc:
+            if not reasoning_segments and reasoning_accumulator:
+                reasoning_segments = self._finalize_reasoning_segments(
+                    reasoning_accumulator
+                )
             log_payload: dict[str, Any] = {
                 "error": {
                     "type": type(exc).__name__,
@@ -640,6 +707,11 @@ class LLMClient:
                 log_payload["message"] = llm_message_text
             if normalized_tool_calls:
                 log_payload["tool_calls"] = normalized_tool_calls
+            if reasoning_segments:
+                log_payload["reasoning"] = [
+                    {"type": segment.type, "preview": segment.text[:160]}
+                    for segment in reasoning_segments
+                ]
             log_event(
                 "LLM_RESPONSE",
                 log_payload,
@@ -655,6 +727,11 @@ class LLMClient:
                 exc.llm_tool_calls = tuple(normalized_tool_calls)
             if request_snapshot and not hasattr(exc, "llm_request_messages"):
                 exc.llm_request_messages = request_snapshot
+            if reasoning_segments and not hasattr(exc, "llm_reasoning"):
+                exc.llm_reasoning = [
+                    {"type": segment.type, "text": segment.text}
+                    for segment in reasoning_segments
+                ]
             raise
         except Exception as exc:  # pragma: no cover - network errors
             log_event(
@@ -795,8 +872,8 @@ class LLMClient:
         stream: Iterable[Any],
         *,
         cancellation: CancellationEvent | None,
-    ) -> tuple[str, list[dict[str, Any]]]:
-        """Read streaming response and return message text with raw tool calls."""
+    ) -> tuple[str, list[dict[str, Any]], list[dict[str, str]]]:
+        """Read streaming response and return message, tool calls and reasoning."""
 
         message_parts: list[str] = []
         tool_chunks: dict[tuple[int, int], dict[str, Any]] = {}
@@ -804,6 +881,7 @@ class LLMClient:
         closer = getattr(stream, "close", None)
         cancel_event = cancellation
         closed_by_cancel = False
+        reasoning_segments: list[dict[str, str]] = []
 
         def ensure_not_cancelled() -> None:
             nonlocal closed_by_cancel
@@ -870,6 +948,28 @@ class LLMClient:
                                 reasoning_fragments,
                                 choice_index,
                             )
+                        text_fragments = self._collect_reasoning_fragments(
+                            reasoning_delta
+                        )
+                        if text_fragments:
+                            self._append_reasoning_fragments(
+                                reasoning_segments,
+                                text_fragments,
+                            )
+                    reasoning_details_delta = None
+                    if delta_map is not None:
+                        reasoning_details_delta = delta_map.get(
+                            "reasoning_details"
+                        )
+                    if reasoning_details_delta:
+                        details_fragments = self._collect_reasoning_fragments(
+                            reasoning_details_delta
+                        )
+                        if details_fragments:
+                            self._append_reasoning_fragments(
+                                reasoning_segments,
+                                details_fragments,
+                            )
                     function_call = getattr(delta, "function_call", None)
                     if function_call is None and delta_map is not None:
                         function_call = delta_map.get("function_call")
@@ -920,7 +1020,11 @@ class LLMClient:
             if call_id:
                 entry["id"] = call_id
             raw_calls.append(entry)
-        return "".join(message_parts).strip(), raw_calls
+        return (
+            "".join(message_parts).strip(),
+            raw_calls,
+            [dict(segment) for segment in reasoning_segments],
+        )
 
     def _append_stream_tool_calls(
         self,
@@ -1088,14 +1192,7 @@ class LLMClient:
     def _should_skip_segment(self, segment_type: Any) -> bool:
         """Return ``True`` when *segment_type* is hidden for the current format."""
 
-        if not segment_type:
-            return False
-        if not isinstance(segment_type, str):
-            return False
-        if self._message_format != "qwen":
-            return False
-        lowered = segment_type.lower()
-        return lowered in {"reasoning", "thought", "thinking", "analysis"}
+        return self._is_reasoning_type(segment_type)
 
     def _convert_messages_for_qwen(
         self, messages: list[dict[str, Any]]
@@ -1224,6 +1321,111 @@ class LLMClient:
                     except (TypeError, ValueError):
                         fragment["function"]["arguments"] += str(args_fragment)
         return [fragments[key] for key in order if fragments[key]["function"]["name"]]
+
+    def _is_reasoning_type(self, value: Any) -> bool:
+        if not isinstance(value, str):
+            return False
+        lowered = value.strip().lower()
+        if not lowered:
+            return False
+        if lowered in self._REASONING_TYPE_ALIASES:
+            return True
+        return any(keyword in lowered for keyword in self._REASONING_KEYWORDS)
+
+    def _collect_reasoning_fragments(self, payload: Any) -> list[tuple[str, str]]:
+        """Return ``(type, text)`` tuples extracted from reasoning payload."""
+
+        fragments: list[tuple[str, str]] = []
+        if not payload:
+            return fragments
+
+        def add_fragment(raw_type: Any, text: Any) -> None:
+            if text is None:
+                return
+            text_str = str(text).strip()
+            if not text_str:
+                return
+            type_str = str(raw_type).strip() if isinstance(raw_type, str) else ""
+            if type_str and not self._is_reasoning_type(type_str):
+                return
+            if type_str and "encrypted" in type_str.lower():
+                return
+            fragments.append((type_str or "reasoning", text_str))
+
+        if isinstance(payload, (bytes, bytearray)):
+            try:
+                payload = payload.decode("utf-8")
+            except Exception:  # pragma: no cover - defensive fallback
+                payload = payload.decode("utf-8", "ignore")
+
+        if isinstance(payload, str):
+            add_fragment("reasoning", payload)
+            return fragments
+
+        if isinstance(payload, Mapping):
+            entry_type = payload.get("type")
+            text_value = payload.get("text")
+            if text_value is None:
+                text_value = payload.get("summary")
+            if text_value is None and isinstance(payload.get("content"), str):
+                text_value = payload.get("content")
+            add_fragment(entry_type or "reasoning", text_value)
+
+            content_value = payload.get("content")
+            if content_value is not None and (
+                not isinstance(entry_type, str)
+                or self._is_reasoning_type(entry_type)
+            ):
+                fragments.extend(self._collect_reasoning_fragments(content_value))
+
+            for key in (
+                "reasoning_content",
+                "reasoning",
+                "items",
+                "entries",
+                "details",
+                "reasoning_details",
+            ):
+                nested = payload.get(key)
+                if nested:
+                    fragments.extend(self._collect_reasoning_fragments(nested))
+            return fragments
+
+        if isinstance(payload, Sequence) and not isinstance(payload, (str, bytes, bytearray)):
+            for item in payload:
+                fragments.extend(self._collect_reasoning_fragments(item))
+        return fragments
+
+    @staticmethod
+    def _append_reasoning_fragments(
+        aggregated: list[dict[str, str]], fragments: Sequence[tuple[str, str]]
+    ) -> None:
+        """Merge reasoning fragments into ``aggregated`` preserving order."""
+
+        for raw_type, raw_text in fragments:
+            if not raw_text:
+                continue
+            text = str(raw_text)
+            if not text:
+                continue
+            seg_type = str(raw_type or "reasoning")
+            if aggregated and aggregated[-1]["type"] == seg_type:
+                aggregated[-1]["text"] += text
+            else:
+                aggregated.append({"type": seg_type, "text": text})
+
+    @staticmethod
+    def _finalize_reasoning_segments(
+        segments: Sequence[Mapping[str, str]]
+    ) -> tuple[LLMReasoningSegment, ...]:
+        finalized: list[LLMReasoningSegment] = []
+        for segment in segments:
+            seg_type = str(segment.get("type") or "reasoning")
+            text = str(segment.get("text") or "").strip()
+            if not text:
+                continue
+            finalized.append(LLMReasoningSegment(type=seg_type, text=text))
+        return tuple(finalized)
 
     def _prepare_messages(
         self,

@@ -252,77 +252,10 @@ TOOLS: list[dict[str, Any]] = [
                 "properties": {
                     "rid": {"type": "string"},
                     "field": {"type": "string", "enum": _EDITABLE_FIELDS},
-                    "value": {
-                        "oneOf": [
-                            {"type": "string"},
-                            {"type": "number"},
-                            {"type": "boolean"},
-                            {"type": "object"},
-                            {"type": "array"},
-                            {"type": "null"},
-                        ]
-                    },
+                    "value": {},
                 },
                 "required": ["rid", "field", "value"],
                 "additionalProperties": False,
-                "allOf": [
-                    {
-                        "if": {
-                            "properties": {"field": {"const": "status"}},
-                            "required": ["field"],
-                        },
-                        "then": {
-                            "properties": {
-                                "value": {
-                                    "type": "string",
-                                    "enum": _STATUS_VALUES,
-                                }
-                            }
-                        },
-                    },
-                    {
-                        "if": {
-                            "properties": {"field": {"const": "type"}},
-                            "required": ["field"],
-                        },
-                        "then": {
-                            "properties": {
-                                "value": {
-                                    "type": "string",
-                                    "enum": _TYPE_VALUES,
-                                }
-                            }
-                        },
-                    },
-                    {
-                        "if": {
-                            "properties": {"field": {"const": "priority"}},
-                            "required": ["field"],
-                        },
-                        "then": {
-                            "properties": {
-                                "value": {
-                                    "type": "string",
-                                    "enum": _PRIORITY_VALUES,
-                                }
-                            }
-                        },
-                    },
-                    {
-                        "if": {
-                            "properties": {"field": {"const": "verification"}},
-                            "required": ["field"],
-                        },
-                        "then": {
-                            "properties": {
-                                "value": {
-                                    "type": "string",
-                                    "enum": _VERIFICATION_VALUES,
-                                }
-                            }
-                        },
-                    },
-                ],
             },
         },
     },

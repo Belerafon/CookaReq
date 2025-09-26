@@ -8,6 +8,7 @@ from typing import Any
 from jsonschema import ValidationError
 from jsonschema.validators import validator_for
 
+from ..core.model import Priority, RequirementType, Status, Verification
 from .spec import TOOLS
 
 __all__ = ["KNOWN_TOOLS", "ToolValidationError", "validate_tool_call"]
@@ -36,6 +37,11 @@ def _build_validators() -> dict[str, Any]:
 _VALIDATORS = _build_validators()
 KNOWN_TOOLS = frozenset(_VALIDATORS.keys())
 
+_STATUS_VALUES = frozenset(status.value for status in Status)
+_TYPE_VALUES = frozenset(req_type.value for req_type in RequirementType)
+_PRIORITY_VALUES = frozenset(priority.value for priority in Priority)
+_VERIFICATION_VALUES = frozenset(method.value for method in Verification)
+
 
 def validate_tool_call(name: str, arguments: Mapping[str, Any] | None) -> dict[str, Any]:
     """Ensure *name* refers to a known tool and *arguments* match its schema."""
@@ -59,7 +65,37 @@ def validate_tool_call(name: str, arguments: Mapping[str, Any] | None) -> dict[s
         raise ToolValidationError(
             f"Invalid arguments for {name}: {detail}"
         ) from exc
+    _enforce_additional_constraints(name, data)
     return data
+
+
+def _enforce_additional_constraints(name: str, data: dict[str, Any]) -> None:
+    """Apply manual post-validation checks for *name* using *data*."""
+
+    if name != "update_requirement_field":
+        return
+    field = data.get("field")
+    if field == "status":
+        _ensure_enum_value(name, "value", data.get("value"), _STATUS_VALUES)
+    elif field == "type":
+        _ensure_enum_value(name, "value", data.get("value"), _TYPE_VALUES)
+    elif field == "priority":
+        _ensure_enum_value(name, "value", data.get("value"), _PRIORITY_VALUES)
+    elif field == "verification":
+        _ensure_enum_value(name, "value", data.get("value"), _VERIFICATION_VALUES)
+
+
+def _ensure_enum_value(
+    tool: str, field: str, value: Any, allowed: frozenset[str]
+) -> None:
+    """Ensure *value* is contained in *allowed* for ``field`` of ``tool``."""
+
+    if not isinstance(value, str) or value not in allowed:
+        expected = ", ".join(sorted(allowed))
+        raise ToolValidationError(
+            "Invalid arguments for "
+            f"{tool}: {field}: {value!r} is not one of [{expected}]"
+        )
 
 
 def _format_validation_error(error: ValidationError) -> str:

@@ -13,7 +13,7 @@ from ..confirm import (
     confirm as default_confirm,
     confirm_requirement_update as default_update_confirm,
 )
-from ..llm.client import LLMClient, LLMResponse, LLMToolCall
+from ..llm.client import LLMClient, LLMReasoningSegment, LLMResponse, LLMToolCall
 from ..llm.validation import ToolValidationError
 from ..mcp.client import MCPClient
 from ..mcp.utils import exception_to_mcp_error
@@ -148,14 +148,20 @@ class LocalAgent:
     def _log_step(self, step: int, response: LLMResponse) -> None:
         """Record intermediate agent step for diagnostics."""
 
-        log_event(
-            "AGENT_STEP",
-            {
-                "step": step,
-                "message_preview": self._preview(response.content),
-                "tool_calls": self._summarize_tool_calls(response.tool_calls),
-            },
-        )
+        payload = {
+            "step": step,
+            "message_preview": self._preview(response.content),
+            "tool_calls": self._summarize_tool_calls(response.tool_calls),
+        }
+        if response.reasoning:
+            payload["reasoning"] = [
+                {
+                    "type": segment.type,
+                    "preview": self._preview(segment.text, limit=200),
+                }
+                for segment in response.reasoning
+            ]
+        log_event("AGENT_STEP", payload)
 
     @staticmethod
     def _summarize_result(result: Mapping[str, Any]) -> dict[str, Any]:
@@ -666,8 +672,10 @@ class LocalAgent:
         message_text = getattr(exc, "llm_message", "") or ""
         raw_calls = getattr(exc, "llm_tool_calls", None)
         raw_request_messages = getattr(exc, "llm_request_messages", None)
+        raw_reasoning = getattr(exc, "llm_reasoning", None)
         normalized_calls: list[dict[str, Any]] = []
         request_snapshot: tuple[dict[str, Any], ...] | None = None
+        reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
         if isinstance(raw_request_messages, Sequence) and not isinstance(
             raw_request_messages, (str, bytes, bytearray)
         ):
@@ -681,6 +689,29 @@ class LocalAgent:
             for entry in raw_calls:
                 if isinstance(entry, Mapping):
                     normalized_calls.append(dict(entry))
+        if isinstance(raw_reasoning, Sequence) and not isinstance(
+            raw_reasoning, (str, bytes, bytearray)
+        ):
+            prepared_segments: list[LLMReasoningSegment] = []
+            for item in raw_reasoning:
+                if isinstance(item, LLMReasoningSegment):
+                    prepared_segments.append(item)
+                    continue
+                if not isinstance(item, Mapping):
+                    continue
+                text_value = item.get("text")
+                if text_value is None:
+                    continue
+                text_str = str(text_value).strip()
+                if not text_str:
+                    continue
+                type_value = item.get("type")
+                type_str = str(type_value) if type_value is not None else "reasoning"
+                prepared_segments.append(
+                    LLMReasoningSegment(type=type_str, text=text_str)
+                )
+            if prepared_segments:
+                reasoning_segments = tuple(prepared_segments)
 
         assistant_tool_calls: list[dict[str, Any]] = []
         synthetic_calls: list[LLMToolCall] = []
@@ -793,6 +824,7 @@ class LocalAgent:
             content=message_text,
             tool_calls=tuple(synthetic_calls),
             request_messages=request_snapshot,
+            reasoning=reasoning_segments,
         )
         return synthetic_response, first_error_payload
 
@@ -851,6 +883,11 @@ class LocalAgent:
             "error": None,
             "result": response.content.strip(),
         }
+        if response.reasoning:
+            payload["reasoning"] = [
+                {"type": segment.type, "text": segment.text}
+                for segment in response.reasoning
+            ]
         if tool_results:
             payload["tool_results"] = [dict(result) for result in tool_results]
         return payload

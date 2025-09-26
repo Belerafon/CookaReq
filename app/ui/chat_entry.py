@@ -24,6 +24,7 @@ class ChatEntry:
     prompt_at: str | None = None
     response_at: str | None = None
     context_messages: tuple[dict[str, Any], ...] | None = None
+    reasoning: tuple[dict[str, Any], ...] | None = None
     diagnostic: dict[str, Any] | None = None
     regenerated: bool = False
 
@@ -43,6 +44,32 @@ class ChatEntry:
                 if isinstance(message, Mapping):
                     normalized.append(dict(message))
             self.context_messages = tuple(normalized) if normalized else None
+        reasoning_raw = self.reasoning
+        if reasoning_raw:
+            if isinstance(reasoning_raw, Sequence) and not isinstance(
+                reasoning_raw, (str, bytes, bytearray)
+            ):
+                iterable: Sequence[Any] = reasoning_raw
+            else:
+                iterable = (reasoning_raw,)
+            normalised_segments: list[dict[str, Any]] = []
+            for item in iterable:
+                if isinstance(item, Mapping):
+                    type_value = item.get("type")
+                    text_value = item.get("text")
+                else:
+                    type_value = getattr(item, "type", None)
+                    text_value = getattr(item, "text", None)
+                if text_value is None:
+                    continue
+                text_str = str(text_value).strip()
+                if not text_str:
+                    continue
+                type_str = str(type_value) if type_value is not None else ""
+                normalised_segments.append({"type": type_str, "text": text_str})
+            self.reasoning = tuple(normalised_segments) if normalised_segments else None
+        else:
+            self.reasoning = None
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ChatEntry":
@@ -95,6 +122,27 @@ class ChatEntry:
             if prepared:
                 context_messages = tuple(prepared)
 
+        reasoning_raw = payload.get("reasoning")
+        reasoning: tuple[dict[str, Any], ...] | None = None
+        if isinstance(reasoning_raw, Sequence) and not isinstance(
+            reasoning_raw, (str, bytes, bytearray)
+        ):
+            prepared_reasoning: list[dict[str, Any]] = []
+            for item in reasoning_raw:
+                if not isinstance(item, Mapping):
+                    continue
+                text_value = item.get("text")
+                if text_value is None:
+                    continue
+                text_str = str(text_value).strip()
+                if not text_str:
+                    continue
+                type_value = item.get("type")
+                type_str = str(type_value) if type_value is not None else ""
+                prepared_reasoning.append({"type": type_str, "text": text_str})
+            if prepared_reasoning:
+                reasoning = tuple(prepared_reasoning)
+
         diagnostic_raw = payload.get("diagnostic")
         diagnostic: dict[str, Any] | None = None
         if isinstance(diagnostic_raw, Mapping):
@@ -114,6 +162,7 @@ class ChatEntry:
             prompt_at=prompt_at,
             response_at=response_at,
             context_messages=context_messages,
+            reasoning=reasoning,
             diagnostic=diagnostic,
             regenerated=regenerated,
         )
@@ -135,6 +184,9 @@ class ChatEntry:
             "response_at": self.response_at,
             "context_messages": [dict(message) for message in self.context_messages]
             if self.context_messages is not None
+            else None,
+            "reasoning": [dict(segment) for segment in self.reasoning]
+            if self.reasoning is not None
             else None,
             "diagnostic": dict(self.diagnostic) if self.diagnostic is not None else None,
             "regenerated": self.regenerated,

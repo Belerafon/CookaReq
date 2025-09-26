@@ -1438,7 +1438,13 @@ class AgentChatPanel(wx.Panel):
         tool_results: list[Any] | None = None
         should_render = False
         try:
-            conversation_text, display_text, raw_result, tool_results = self._process_result(result)
+            (
+                conversation_text,
+                display_text,
+                raw_result,
+                tool_results,
+                reasoning_segments,
+            ) = self._process_result(result)
             if not tool_results and handle.streamed_tool_results:
                 tool_results = list(
                     clone_streamed_tool_results(handle.streamed_tool_results)
@@ -1468,6 +1474,7 @@ class AgentChatPanel(wx.Panel):
                     response_at=response_at,
                     context_messages=handle.context_messages,
                     history_snapshot=handle.history_snapshot,
+                    reasoning_segments=reasoning_segments,
                 )
             else:
                 self._append_history(
@@ -1481,6 +1488,7 @@ class AgentChatPanel(wx.Panel):
                     response_at=response_at,
                     context_messages=handle.context_messages,
                     history_snapshot=handle.history_snapshot,
+                    reasoning_segments=reasoning_segments,
                 )
             handle.pending_entry = None
             handle.streamed_tool_results.clear()
@@ -1499,13 +1507,20 @@ class AgentChatPanel(wx.Panel):
 
     def _process_result(
         self, result: Any
-    ) -> tuple[str, str, Any | None, list[Any] | None]:
+    ) -> tuple[
+        str,
+        str,
+        Any | None,
+        list[Any] | None,
+        tuple[dict[str, str], ...],
+    ]:
         """Normalise agent result for storage and display."""
 
         display_text = ""
         conversation_parts: list[str] = []
         raw_payload: Any | None = None
         tool_results: list[Any] | None = None
+        reasoning_segments: tuple[dict[str, str], ...] = ()
 
         if isinstance(result, Mapping):
             raw_payload = history_json_safe(result)
@@ -1528,6 +1543,9 @@ class AgentChatPanel(wx.Panel):
                 extras_text = stringify_payload(safe_extras)
                 if extras_text:
                     conversation_parts.append(extras_text)
+            reasoning_segments = self._normalise_reasoning_segments(
+                result.get("reasoning")
+            )
         else:
             display_text = str(result)
             conversation_parts.append(display_text)
@@ -1539,7 +1557,43 @@ class AgentChatPanel(wx.Panel):
         else:
             display_text = conversation_text
 
-        return conversation_text, display_text, raw_payload, tool_results
+        return (
+            conversation_text,
+            display_text,
+            raw_payload,
+            tool_results,
+            reasoning_segments,
+        )
+
+    def _normalise_reasoning_segments(
+        self, raw_segments: Any
+    ) -> tuple[dict[str, str], ...]:
+        if not raw_segments:
+            return ()
+        if isinstance(raw_segments, Mapping):
+            candidates: Sequence[Any] = [raw_segments]
+        elif isinstance(raw_segments, Sequence) and not isinstance(
+            raw_segments, (str, bytes, bytearray)
+        ):
+            candidates = raw_segments
+        else:
+            candidates = [raw_segments]
+        segments: list[dict[str, str]] = []
+        for item in candidates:
+            if isinstance(item, Mapping):
+                type_value = item.get("type")
+                text_value = item.get("text")
+            else:
+                type_value = getattr(item, "type", None)
+                text_value = getattr(item, "text", None)
+            if text_value is None:
+                continue
+            text = str(text_value).strip()
+            if not text:
+                continue
+            type_str = str(type_value) if type_value is not None else ""
+            segments.append({"type": type_str, "text": text})
+        return tuple(segments)
 
     # ------------------------------------------------------------------
     def _conversation_messages(self) -> list[dict[str, str]]:
@@ -1624,6 +1678,7 @@ class AgentChatPanel(wx.Panel):
         response_at: str | None = None,
         context_messages: tuple[dict[str, Any], ...] | None = None,
         history_snapshot: tuple[dict[str, Any], ...] | None = None,
+        reasoning_segments: tuple[dict[str, str], ...] | None = None,
     ) -> None:
         conversation = self._ensure_active_conversation()
         prompt_text = normalize_for_display(prompt)
@@ -1635,9 +1690,12 @@ class AgentChatPanel(wx.Panel):
                     count_text_tokens(prompt_text, model=self._token_model()),
                     count_text_tokens(response_text, model=self._token_model()),
                 ]
-            )
+        )
         tokens = token_info.tokens or 0
         context_clone = self._clone_context_messages(context_messages)
+        reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
+        if not reasoning_clone:
+            reasoning_clone = None
         entry = ChatEntry(
             prompt=prompt_text,
             response=response_text,
@@ -1649,6 +1707,7 @@ class AgentChatPanel(wx.Panel):
             prompt_at=prompt_at,
             response_at=response_at,
             context_messages=context_clone,
+            reasoning=reasoning_clone,
             diagnostic=self._build_entry_diagnostic(
                 prompt=prompt_text,
                 prompt_at=prompt_at,
@@ -1681,6 +1740,7 @@ class AgentChatPanel(wx.Panel):
         response_at: str,
         context_messages: tuple[dict[str, Any], ...] | None,
         history_snapshot: tuple[dict[str, Any], ...] | None = None,
+        reasoning_segments: tuple[dict[str, str], ...] | None = None,
     ) -> None:
         prompt_text = normalize_for_display(prompt)
         response_text = normalize_for_display(response)
@@ -1697,6 +1757,8 @@ class AgentChatPanel(wx.Panel):
         entry.response_at = response_at
         context_clone = self._clone_context_messages(context_messages)
         entry.context_messages = context_clone
+        reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
+        entry.reasoning = reasoning_clone or None
         entry.diagnostic = self._build_entry_diagnostic(
             prompt=prompt_text,
             prompt_at=prompt_at,
@@ -1867,6 +1929,7 @@ class AgentChatPanel(wx.Panel):
                         regenerate_enabled=not self._is_running,
                         tool_summaries=tool_summaries,
                         context_messages=entry.context_messages,
+                        reasoning_segments=entry.reasoning,
                         regenerated=getattr(entry, "regenerated", False),
                     )
                     panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_transcript_pane_toggled)

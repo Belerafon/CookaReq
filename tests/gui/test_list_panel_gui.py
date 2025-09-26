@@ -70,10 +70,8 @@ def test_reset_button_visibility_gui(wx_app):
 
     panel = list_panel.ListPanel(frame, model=RequirementModel())
     panel.set_search_query("T")
-    wx_app.Yield()
     assert panel.reset_btn.IsShown()
     panel.reset_filters()
-    wx_app.Yield()
     assert not panel.reset_btn.IsShown()
     frame.Destroy()
 
@@ -206,10 +204,8 @@ def test_list_panel_refresh_selects_new_row(wx_app):
         _req(2, "B"),
         _req(3, "C"),
     ])
-    wx_app.Yield()
 
     panel.refresh(select_id=3)
-    wx_app.Yield()
 
     selected = panel.list.GetFirstSelected()
     assert selected != wx.NOT_FOUND
@@ -259,7 +255,6 @@ def test_list_panel_context_menu_via_event(monkeypatch, wx_app):
     frame.GetSizer().Add(panel, 1, wx.EXPAND)
     frame.Layout()
     frame.Show()
-    wx_app.Yield()
 
     called: dict[str, tuple[int, int | None]] = {}
 

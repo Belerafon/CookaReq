@@ -164,7 +164,8 @@ def test_detached_editor_cancel_closes_window_without_saving(wx_app, tmp_path):
             wx.Yield()
 
             assert closed == [frame]
-            assert frame.IsShown() is False
+            with pytest.raises(RuntimeError):
+                frame.IsShown()
         finally:
             try:
                 frame.Destroy()

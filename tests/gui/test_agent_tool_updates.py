@@ -103,7 +103,8 @@ def test_agent_tool_updates_reflect_in_ui(tmp_path, wx_app):
         frame.agent_panel._cleanup_executor()
         frame.agent_panel._command_executor = SynchronousExecutor()
         frame.agent_panel._executor_pool = None
-        frame.agent_panel._agent_supplier = lambda: UpdateAgent()
+        frame.agent_panel._agent_supplier = lambda **_overrides: UpdateAgent()
+        frame.agent_panel._initialize_controller()
 
         frame._selected_requirement_id = original.id
         frame.editor.load(original)
@@ -230,7 +231,8 @@ def test_agent_streaming_tool_updates_refresh_list_during_run(tmp_path, wx_app):
                 }
 
         agent = StreamingAgent()
-        frame.agent_panel._agent_supplier = lambda: agent
+        frame.agent_panel._agent_supplier = lambda **_overrides: agent
+        frame.agent_panel._initialize_controller()
 
         frame._selected_requirement_id = original.id
         frame.editor.load(original)

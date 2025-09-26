@@ -63,6 +63,7 @@ class LocalAgent:
     """High-level agent aggregating LLM and MCP clients."""
 
     DEFAULT_MAX_THOUGHT_STEPS: int | None = None
+    DEFAULT_MAX_CONSECUTIVE_TOOL_ERRORS: int | None = 5
     _MESSAGE_PREVIEW_LIMIT = 400
 
     def __init__(
@@ -261,7 +262,7 @@ class LocalAgent:
         """Return sanitised cap for consecutive tool failures."""
 
         if value is None:
-            return None
+            return LocalAgent.DEFAULT_MAX_CONSECUTIVE_TOOL_ERRORS
         if isinstance(value, bool):  # pragma: no cover - defensive guard
             raise TypeError(
                 "max_consecutive_tool_errors must be an integer or None"

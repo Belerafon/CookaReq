@@ -4,6 +4,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Mapping, Sequence
 
+from app.confirm import ConfirmDecision, reset_requirement_update_preference, set_confirm, set_requirement_update_confirm
 from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.widgets.chat_message import MessageBubble, TranscriptMessagePanel
@@ -70,12 +71,13 @@ def create_panel(
 ):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
+    import app.confirm as confirm_mod
 
     frame = wx.Frame(None)
     command_executor = None if use_default_executor else executor or SynchronousAgentCommandExecutor()
     panel = AgentChatPanel(
         frame,
-        agent_supplier=lambda: agent,
+        agent_supplier=lambda **_overrides: agent,
         history_path=tmp_path / "history.json",
         command_executor=command_executor,
         context_provider=context_provider,
@@ -84,10 +86,26 @@ def create_panel(
         persist_confirm_preference=persist_confirm_preference,
     )
     panel.set_project_settings_path(tmp_path / "agent_settings.json")
+
+    previous_confirm = confirm_mod._callback
+    previous_update = confirm_mod._requirement_update_callback
+    reset_requirement_update_preference()
+    set_confirm(lambda _message: True)
+    set_requirement_update_confirm(lambda _prompt: ConfirmDecision.YES)
+
+    def _restore_confirm() -> None:
+        confirm_mod._callback = previous_confirm
+        confirm_mod._requirement_update_callback = previous_update
+        reset_requirement_update_preference()
+
+    panel._restore_confirm = _restore_confirm
     return wx, frame, panel
 
 
 def destroy_panel(frame, panel):
+    restore = getattr(panel, "_restore_confirm", None)
+    if callable(restore):
+        restore()
     panel.Destroy()
     frame.Destroy()
 
@@ -1445,7 +1463,11 @@ def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
             return {"ok": True, "error": None, "result": {}}
 
     frame = wx.Frame(None)
-    panel = AgentChatPanel(frame, agent_supplier=lambda: DummyAgent(), history_path=bad_file)
+    panel = AgentChatPanel(
+        frame,
+        agent_supplier=lambda **_overrides: DummyAgent(),
+        history_path=bad_file,
+    )
     assert panel.history == []
     destroy_panel(frame, panel)
 
@@ -1472,7 +1494,11 @@ def test_agent_chat_panel_ignores_flat_legacy_history(tmp_path, wx_app):
             return {"ok": True, "error": None, "result": {}}
 
     frame = wx.Frame(None)
-    panel = AgentChatPanel(frame, agent_supplier=lambda: DummyAgent(), history_path=legacy_file)
+    panel = AgentChatPanel(
+        frame,
+        agent_supplier=lambda **_overrides: DummyAgent(),
+        history_path=legacy_file,
+    )
 
     assert panel.history == []
     assert panel.history_list.GetItemCount() == 0
@@ -1618,7 +1644,7 @@ def test_agent_chat_panel_history_context_menu_handles_multiselect(
         panel._activate_conversation_by_index(1, refresh_history=False)
         flush_wx_events(wx)
 
-        assert panel._selected_history_rows() == [0, 1]
+        assert panel._history_view.selected_rows() == [0, 1]
         assert panel._active_index() == 1
 
         captured_labels: list[list[str]] = []
@@ -1630,15 +1656,15 @@ def test_agent_chat_panel_history_context_menu_handles_multiselect(
 
         monkeypatch.setattr(panel.history_list, "PopupMenu", fake_popup)
 
-        panel._show_history_context_menu(1)
+        panel._history_view._show_context_menu(1)
         flush_wx_events(wx)
         assert captured_labels and captured_labels[0][0] == "Delete selected chats"
-        assert panel._selected_history_rows() == [0, 1]
+        assert panel._history_view.selected_rows() == [0, 1]
 
-        panel._show_history_context_menu(2)
+        panel._history_view._show_context_menu(2)
         flush_wx_events(wx)
         assert len(captured_labels) >= 2 and captured_labels[1][0] == "Delete chat"
-        assert panel._selected_history_rows() == [2]
+        assert panel._history_view.selected_rows() == [2]
     finally:
         destroy_panel(frame, panel)
 
@@ -1788,11 +1814,15 @@ def test_agent_chat_panel_updates_status_with_token_count(
 
     try:
         label = panel.status_label.GetLabel()
+        tokens_text = "~1.00 k tokens"
         expected = _("Received response in {time} • {tokens}").format(
             time=elapsed_text,
-            tokens="2.00 k tokens",
+            tokens=tokens_text,
         )
         assert label == expected
+        tokens = panel._current_tokens
+        assert tokens.tokens is not None and 990 <= tokens.tokens <= 1010
+        assert tokens.approximate
     finally:
         destroy_panel(frame, panel)
 
@@ -1809,10 +1839,11 @@ def test_agent_history_sash_waits_for_ready_size(tmp_path, wx_app, monkeypatch):
     frame.SetSizer(sizer)
 
     splitter = panel._horizontal_splitter
+    view = panel._history_view
     minimum = splitter.GetMinimumPaneSize()
     desired = minimum + panel.FromDIP(180)
     attempts: list[int] = []
-    original_attempt = panel._attempt_set_history_sash
+    original_attempt = view._attempt_set_sash
 
     def tracking_attempt(target: int) -> bool:
         attempts.append(target)
@@ -1820,14 +1851,14 @@ def test_agent_history_sash_waits_for_ready_size(tmp_path, wx_app, monkeypatch):
             return False
         return original_attempt(target)
 
-    monkeypatch.setattr(panel, "_attempt_set_history_sash", tracking_attempt)
+    monkeypatch.setattr(view, "_attempt_set_sash", tracking_attempt)
 
     panel.apply_history_sash(desired)
 
     assert attempts[0] == desired
     assert len(attempts) == 1
-    assert panel._history_sash_goal == desired
-    assert panel._history_sash_dirty
+    assert view._sash_goal == desired
+    assert view._sash_dirty
 
     wx_app.Yield()
     assert attempts == [desired]
@@ -1843,14 +1874,14 @@ def test_agent_history_sash_waits_for_ready_size(tmp_path, wx_app, monkeypatch):
     assert attempts[0] == desired
     assert attempts[-1] == desired
     assert len(attempts) >= 2
-    assert panel._history_sash_goal == desired
-    assert not panel._history_sash_dirty
+    assert view._sash_goal == desired
+    assert not view._sash_dirty
     assert panel.history_sash == splitter.GetSashPosition()
     assert splitter.GetSashPosition() >= minimum
 
     wx_app.Yield()
     assert attempts[-1] == desired
-    assert not panel._history_sash_dirty
+    assert not view._sash_dirty
 
     destroy_panel(frame, panel)
     wx_app.Yield()

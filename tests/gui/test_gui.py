@@ -66,6 +66,7 @@ def test_log_level_persistence(wx_app, tmp_path):
     config_path = tmp_path / "cfg.ini"
     config = ConfigManager(path=config_path)
     config.set_log_level(logging.ERROR)
+    config.set_mcp_settings(MCPSettings(auto_start=False))
 
     frame = MainFrame(None, config=config, model=RequirementModel())
     try:

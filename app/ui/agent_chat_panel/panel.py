@@ -7,12 +7,11 @@ import json
 import logging
 import textwrap
 import time
-from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Callable
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 import wx
 import wx.dataview as dv
@@ -22,7 +21,7 @@ from ...confirm import confirm
 from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT, TOOLS
 from ...llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
-from ...util.cancellation import CancellationEvent, OperationCancelledError
+from ...util.cancellation import OperationCancelledError
 from ...util.time import utc_now_iso
 from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import (
@@ -33,17 +32,13 @@ from ..helpers import (
 )
 from ..text import normalize_for_display
 from ..splitter_utils import refresh_splitter_highlight, style_splitter
-from ..widgets.chat_message import TranscriptMessagePanel
 from .confirm_preferences import (
     ConfirmPreferencesMixin,
     RequirementConfirmPreference,
 )
-from .execution import (
-    AgentCommandExecutor,
-    ThreadedAgentCommandExecutor,
-    _AgentRunHandle,
-)
-from .history_storage import HistoryPersistenceMixin
+from .controller import AgentRunCallbacks, AgentRunController
+from .execution import AgentCommandExecutor, ThreadedAgentCommandExecutor, _AgentRunHandle
+from .history_store import HistoryStore
 from .history_utils import (
     clone_streamed_tool_results,
     history_json_safe,
@@ -62,6 +57,7 @@ from .project_settings import (
     save_agent_project_settings,
 )
 from .settings_dialog import AgentProjectSettingsDialog
+from .history_view import HistoryView
 from .time_formatting import format_entry_timestamp, format_last_activity
 from .token_usage import ContextTokenBreakdown
 from .tool_summaries import (
@@ -70,6 +66,7 @@ from .tool_summaries import (
     summarize_tool_results,
     shorten_text,
 )
+from .transcript_view import TranscriptCallbacks, TranscriptView
 
 
 logger = logging.getLogger("cookareq.ui.agent_chat_panel")
@@ -91,7 +88,7 @@ STATUS_HELP_TEXT = _(
 )
 
 
-class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel):
+class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     """Interactive chat panel driving the :class:`LocalAgent`."""
 
     def __init__(
@@ -115,10 +112,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         inherit_background(self, parent)
         self._agent_supplier = agent_supplier
-        if history_path is None:
-            self._history_path = _default_history_path()
-        else:
-            self._history_path = _normalize_history_path(history_path)
+        self._history_store = HistoryStore(history_path)
         self._settings_path = settings_path_for_documents(None)
         self._project_settings = load_agent_project_settings(self._settings_path)
         self._token_model_resolver = (
@@ -154,15 +148,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         self._stop_btn: wx.Button | None = None
         self._bottom_panel: wx.Panel | None = None
         self._copy_conversation_btn: wx.Window | None = None
-        self._suppress_history_selection = False
+        self._history_view: HistoryView | None = None
+        self._transcript_view: TranscriptView | None = None
         self._history_last_sash = 0
-        self._history_sash_goal: int | None = None
-        self._history_sash_dirty = False
-        self._history_sash_internal_adjust = 0
         self._vertical_sash_goal: int | None = None
         self._vertical_last_sash = 0
-        self._run_counter = 0
-        self._active_run_handle: _AgentRunHandle | None = None
+        self._controller: AgentRunController | None = None
         self._context_provider = context_provider
         self._persist_confirm_preference_callback = persist_confirm_preference
         persistent_preference = self._normalize_confirm_preference(confirm_preference)
@@ -180,8 +171,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         ] = ()
         self._suppress_confirm_choice_events = False
         self._project_settings_button: wx.Button | None = None
-        self._load_history()
+        self._load_history_from_store()
         self._build_ui()
+        self._initialize_controller()
         self._render_transcript()
 
     # ------------------------------------------------------------------
@@ -197,10 +189,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
 
     # ------------------------------------------------------------------
     def _cleanup_executor(self) -> None:
-        handle = getattr(self, "_active_run_handle", None)
-        if handle is not None:
-            handle.cancel()
-            self._active_run_handle = None
+        controller = getattr(self, "_controller", None)
+        if controller is not None:
+            controller.stop()
         pool = self._executor_pool
         if pool is None:
             return
@@ -216,13 +207,15 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
     def set_history_path(self, path: Path | str | None) -> None:
         """Switch to *path* reloading conversations from disk."""
 
-        new_path = _default_history_path() if path is None else _normalize_history_path(path)
-        if new_path == self._history_path:
+        changed = self._history_store.set_path(
+            path,
+            persist_existing=bool(self.conversations),
+            conversations=self.conversations,
+            active_id=self._active_conversation_id,
+        )
+        if not changed:
             return
-        if getattr(self, "conversations", []):
-            self._save_history()
-        self._history_path = new_path
-        self._load_history()
+        self._load_history_from_store()
         self._refresh_history_list()
         self._render_transcript()
 
@@ -236,7 +229,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
     def history_path(self) -> Path:
         """Return the path of the current chat history file."""
 
-        return self._history_path
+        return self._history_store.path
 
     def set_project_settings_path(self, path: Path | str | None) -> None:
         """Switch storage for project agent settings to *path*."""
@@ -263,6 +256,22 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         """Return the active project settings."""
 
         return self._project_settings
+
+    # ------------------------------------------------------------------
+    def _load_history_from_store(self) -> None:
+        previous_id = getattr(self, "_active_conversation_id", None)
+        conversations, active_id = self._history_store.load()
+        self.conversations = list(conversations)
+        self._active_conversation_id = active_id
+        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
+
+    def _save_history_to_store(self) -> None:
+        try:
+            self._history_store.save(self.conversations, self._active_conversation_id)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to persist agent chat history to %s", self._history_store.path
+            )
 
     # ------------------------------------------------------------------
     def _token_model(self) -> str | None:
@@ -334,13 +343,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
             width=dip(self, 140),
         )
         activity_col.SetMinWidth(dip(self, 120))
-        self.history_list.Bind(
-            dv.EVT_DATAVIEW_SELECTION_CHANGED, self._on_select_history
+        self._history_view = HistoryView(
+            self.history_list,
+            get_conversations=lambda: self.conversations,
+            format_row=self._format_conversation_row,
+            get_active_index=self._active_index,
+            activate_conversation=self._on_history_row_activated,
+            handle_delete_request=self._delete_history_rows,
+            is_running=lambda: self._is_running,
+            splitter=self._horizontal_splitter,
         )
-        self.history_list.Bind(
-            dv.EVT_DATAVIEW_ITEM_CONTEXT_MENU, self._on_history_item_context_menu
-        )
-        self.history_list.Bind(wx.EVT_CONTEXT_MENU, self._on_history_context_menu)
         inherit_background(history_panel, self)
         history_sizer.Add(history_header, 0, wx.EXPAND)
         history_sizer.AddSpacer(spacing)
@@ -383,6 +395,18 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         self.transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
         self._transcript_sizer = wx.BoxSizer(wx.VERTICAL)
         self.transcript_panel.SetSizer(self._transcript_sizer)
+        self._transcript_view = TranscriptView(
+            self,
+            self.transcript_panel,
+            self._transcript_sizer,
+            callbacks=TranscriptCallbacks(
+                get_conversation=self._get_active_conversation,
+                is_running=lambda: self._is_running,
+                on_regenerate=self._handle_regenerate_request,
+                update_copy_buttons=self._update_transcript_copy_buttons,
+                update_header=self._update_conversation_header,
+            ),
+        )
         transcript_sizer.Add(transcript_header, 0, wx.EXPAND)
         transcript_sizer.AddSpacer(spacing)
         transcript_sizer.Add(self.transcript_panel, 1, wx.EXPAND)
@@ -501,36 +525,58 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         wx.CallAfter(self._adjust_vertical_splitter)
         wx.CallAfter(self._update_project_settings_ui)
 
+    def _initialize_controller(self) -> None:
+        callbacks = AgentRunCallbacks(
+            ensure_active_conversation=self._ensure_active_conversation,
+            get_conversation_by_id=self._get_conversation_by_id,
+            conversation_messages=self._conversation_messages,
+            prepare_context_messages=self._prepare_context_messages,
+            add_pending_entry=lambda conv, prompt, prompt_at, context: self._add_pending_entry(
+                conv,
+                prompt,
+                prompt_at=prompt_at,
+                context_messages=context,
+            ),
+            is_running=lambda: self._is_running,
+            persist_history=self._save_history_to_store,
+            refresh_history=self._refresh_history_list,
+            render_transcript=self._render_transcript,
+            set_wait_state=self._set_wait_state,
+            confirm_override_kwargs=self._confirm_override_kwargs,
+            finalize_prompt=self._finalize_prompt,
+            handle_streamed_tool_results=self._handle_streamed_tool_results,
+        )
+        self._controller = AgentRunController(
+            agent_supplier=self._agent_supplier,
+            command_executor=self._command_executor,
+            token_model_resolver=self._token_model,
+            context_provider=self._context_provider,
+            callbacks=callbacks,
+        )
+
     @property
     def history_sash(self) -> int:
         """Return the current width of the history pane."""
 
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter and splitter.IsSplit():
-            pos = splitter.GetSashPosition()
-            if pos > 0:
-                self._history_last_sash = pos
-        return max(self._history_last_sash, 0)
+        if self._history_view is None:
+            return max(self._history_last_sash, 0)
+        value = self._history_view.history_sash()
+        self._history_last_sash = value
+        return value
 
     def default_history_sash(self) -> int:
         """Return reasonable default sash width for the history pane."""
 
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter and splitter.IsSplit():
-            pos = splitter.GetSashPosition()
-            if pos > 0:
-                return pos
-            return splitter.GetMinimumPaneSize()
-        return max(self._history_last_sash, 0)
+        if self._history_view is None:
+            return max(self._history_last_sash, 0)
+        return self._history_view.default_history_sash()
 
     def apply_history_sash(self, value: int) -> None:
         """Apply a stored history sash if the splitter is available."""
 
-        target = max(int(value), 0)
-        self._history_sash_goal = target
-        self._history_last_sash = max(target, 0)
-        self._history_sash_dirty = True
-        self._apply_history_sash_if_ready()
+        if self._history_view is None:
+            return
+        self._history_view.apply_history_sash(value)
 
     @property
     def vertical_sash(self) -> int:
@@ -556,93 +602,19 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
     def _on_history_splitter_size(self, event: wx.SizeEvent) -> None:
         """Attempt pending sash application when the splitter is resized."""
 
-        event.Skip()
-        target = self._history_sash_goal
-        if target is None:
-            return
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter is None or not splitter.IsSplit():
-            return
-        current = splitter.GetSashPosition()
-        if not self._history_sash_dirty and abs(current - target) <= 1:
-            return
-        self._history_sash_dirty = True
-        self._apply_history_sash_if_ready()
+        if self._history_view is not None:
+            self._history_view.on_splitter_size(event)
+        else:
+            event.Skip()
 
     def _on_history_sash_changed(self, event: wx.SplitterEvent) -> None:
         """Store user-driven sash updates as the new desired position."""
 
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter is None or event.GetEventObject() is not splitter:
+        if self._history_view is not None:
+            self._history_view.on_sash_changed(event)
+            self._history_last_sash = self._history_view.history_sash()
+        else:
             event.Skip()
-            return
-        if getattr(self, "_history_sash_internal_adjust", 0) > 0:
-            event.Skip()
-            return
-        pos = splitter.GetSashPosition()
-        self._history_last_sash = max(pos, 0)
-        self._history_sash_goal = pos
-        self._history_sash_dirty = False
-        event.Skip()
-
-    def _apply_history_sash_if_ready(self) -> None:
-        """Try applying the stored history sash when splitter metrics are ready."""
-
-        target = self._history_sash_goal
-        if target is None:
-            self._history_sash_dirty = False
-            return
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter is None or not splitter.IsSplit():
-            return
-        size = splitter.GetClientSize()
-        if size.width <= 0:
-            return
-        minimum = splitter.GetMinimumPaneSize()
-        desired = max(target, minimum)
-        if not self._attempt_set_history_sash(desired):
-            self._history_sash_dirty = True
-            return
-        self._history_sash_dirty = False
-        wx.CallAfter(self._verify_history_sash_after_apply)
-
-    def _attempt_set_history_sash(self, target: int) -> bool:
-        """Apply ``target`` if splitter dimensions are ready, return success flag."""
-
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter is None or not splitter.IsSplit():
-            return False
-        self._history_sash_internal_adjust += 1
-        splitter.SetSashPosition(target)
-        actual = splitter.GetSashPosition()
-        wx.CallAfter(self._release_history_sash_adjust)
-        self._history_last_sash = max(actual, 0)
-        success = abs(actual - target) <= 1
-        return success
-
-    def _release_history_sash_adjust(self) -> None:
-        """Lower the internal adjustment guard after splitter callbacks run."""
-
-        count = getattr(self, "_history_sash_internal_adjust", 0)
-        if count > 0:
-            self._history_sash_internal_adjust = count - 1
-
-    def _verify_history_sash_after_apply(self) -> None:
-        """Reapply the desired history sash if subsequent layout changed it."""
-
-        target = self._history_sash_goal
-        if target is None:
-            return
-        splitter = getattr(self, "_horizontal_splitter", None)
-        if splitter is None or not splitter.IsSplit():
-            return
-        current = splitter.GetSashPosition()
-        self._history_last_sash = max(current, 0)
-        expected = max(target, splitter.GetMinimumPaneSize())
-        if abs(current - expected) <= 1:
-            return
-        self._history_sash_dirty = True
-        self._apply_history_sash_if_ready()
 
     def _on_send(self, _event: wx.Event) -> None:
         """Send prompt to agent."""
@@ -660,138 +632,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
     def _submit_prompt(self, prompt: str, *, prompt_at: str | None = None) -> None:
         """Submit ``prompt`` to the agent pipeline."""
 
-        if self._is_running:
+        controller = self._controller
+        if controller is None:
             return
-
-        normalized_prompt = prompt.strip()
-        if not normalized_prompt:
-            return
-
-        effective_prompt_at = prompt_at or utc_now_iso()
-        self._run_counter += 1
-        cancel_event = CancellationEvent()
-        prompt_tokens = count_text_tokens(normalized_prompt, model=self._token_model())
-        handle = _AgentRunHandle(
-            run_id=self._run_counter,
-            prompt=normalized_prompt,
-            prompt_tokens=prompt_tokens,
-            cancel_event=cancel_event,
-            prompt_at=effective_prompt_at,
-        )
-        self._active_run_handle = handle
-        conversation = self._ensure_active_conversation()
-        history_messages = self._conversation_messages()
-        context_messages: tuple[dict[str, Any], ...] | None = None
-        if self._context_provider is not None:
-            try:
-                provided_context = self._context_provider()
-            except Exception:  # pragma: no cover - defensive logging
-                logger.exception("Failed to collect agent context")
-                provided_context = None
-            context_messages = self._prepare_context_messages(provided_context)
-            if not context_messages:
-                context_messages = None
-        handle.context_messages = context_messages
-        if history_messages:
-            handle.history_snapshot = tuple(dict(message) for message in history_messages)
-        else:
-            handle.history_snapshot = None
-        pending_entry = self._add_pending_entry(
-            conversation,
-            normalized_prompt,
-            prompt_at=effective_prompt_at,
-            context_messages=context_messages,
-        )
-        handle.conversation_id = conversation.conversation_id
-        handle.pending_entry = pending_entry
-        self._save_history()
-        self._refresh_history_list()
-        self._render_transcript()
-        self._set_wait_state(True, prompt_tokens)
-
-        def worker() -> Any:
-            try:
-                overrides = self._confirm_override_kwargs()
-                agent = self._agent_supplier(**overrides)
-
-                def _extract_tool_call_id(
-                    payload: Mapping[str, Any]
-                ) -> str | None:
-                    for key in ("call_id", "tool_call_id"):
-                        value = payload.get(key)
-                        if isinstance(value, str) and value:
-                            return value
-                    return None
-
-                def _merge_streamed_tool_result(
-                    payload: dict[str, Any]
-                ) -> None:
-                    call_id = _extract_tool_call_id(payload)
-                    if not call_id:
-                        handle.streamed_tool_results.append(payload)
-                        return
-                    for index, existing in enumerate(handle.streamed_tool_results):
-                        existing_id = _extract_tool_call_id(existing)
-                        if existing_id == call_id:
-                            merged = dict(existing)
-                            merged.update(payload)
-                            handle.streamed_tool_results[index] = merged
-                            return
-                    handle.streamed_tool_results.append(payload)
-
-                def on_tool_result(payload: Mapping[str, Any]) -> None:
-                    if handle.is_cancelled:
-                        return
-                    if not isinstance(payload, Mapping):
-                        return
-                    try:
-                        prepared = dict(payload)
-                    except Exception:  # pragma: no cover - defensive
-                        return
-                    _merge_streamed_tool_result(prepared)
-                    snapshot = clone_streamed_tool_results(
-                        handle.streamed_tool_results
-                    )
-                    wx.CallAfter(
-                        self._handle_streamed_tool_results,
-                        handle,
-                        snapshot,
-                    )
-
-                return agent.run_command(
-                    normalized_prompt,
-                    history=history_messages,
-                    context=context_messages,
-                    cancellation=handle.cancel_event,
-                    on_tool_result=on_tool_result,
-                )
-            except OperationCancelledError:
-                raise
-            except Exception as exc:  # pragma: no cover - defensive
-                return {
-                    "ok": False,
-                    "error": {"type": type(exc).__name__, "message": str(exc)},
-                }
-
-        future = self._command_executor.submit(worker)
-        handle.future = future
-
-        def on_complete(task: Future[Any]) -> None:
-            if handle.is_cancelled:
-                return
-            try:
-                result = task.result()
-            except OperationCancelledError:
-                return
-            except Exception as exc:  # pragma: no cover - defensive
-                logger.exception("Agent command failed", exc_info=exc)
-                result = {
-                    "ok": False,
-                    "error": {"type": type(exc).__name__, "message": str(exc)},
-                }
-            wx.CallAfter(self._finalize_prompt, normalized_prompt, result, handle)
-
-        future.add_done_callback(on_complete)
+        controller.submit_prompt(prompt, prompt_at=prompt_at)
 
     def _on_clear_input(self, _event: wx.Event) -> None:
         """Clear input field and reset selection."""
@@ -802,12 +646,21 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
     def _on_clear_history(self, _event: wx.Event | None = None) -> None:
         """Delete selected conversations from history."""
 
-        self._delete_selected_conversations(require_confirmation=True)
+        self._delete_selected_conversations(require_confirmation=True, rows=None)
 
-    def _delete_selected_conversations(self, *, require_confirmation: bool) -> None:
+    def _delete_history_rows(self, rows: Sequence[int]) -> None:
+        self._delete_selected_conversations(require_confirmation=True, rows=rows)
+
+    def _delete_selected_conversations(
+        self, *, require_confirmation: bool, rows: Sequence[int] | None
+    ) -> None:
         if self._is_running:
             return
-        rows = self._selected_history_rows()
+        if rows is None:
+            if self._history_view is None:
+                return
+            rows = self._history_view.selected_rows()
+        rows = sorted({row for row in rows if 0 <= row < len(self.conversations)})
         if not rows:
             return
         conversations = [self.conversations[row] for row in rows]
@@ -816,24 +669,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
             if not confirm(message):
                 return
         self._remove_conversations(conversations)
-
-    def _selected_history_rows(self) -> list[int]:
-        selections = self.history_list.GetSelections()
-        rows: list[int] = []
-        for item in selections:
-            if not item.IsOk():
-                continue
-            row = self.history_list.ItemToRow(item)
-            if row != wx.NOT_FOUND:
-                rows.append(row)
-        if not rows:
-            item = self.history_list.GetSelection()
-            if item and item.IsOk():
-                row = self.history_list.ItemToRow(item)
-                if row != wx.NOT_FOUND:
-                    rows.append(row)
-        rows.sort()
-        return rows
 
     def _format_delete_confirmation_message(
         self, conversations: Sequence[ChatConversation]
@@ -881,88 +716,23 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         else:
             self._active_conversation_id = None
         self._on_active_conversation_changed(previous_id, self._active_conversation_id)
-        self._save_history()
+        self._save_history_to_store()
         self._refresh_history_list()
         self._render_transcript()
         if removed_active:
             self.input.SetValue("")
         self.input.SetFocus()
 
-    def _on_history_item_context_menu(self, event: dv.DataViewEvent) -> None:
-        if event.GetEventObject() is not self.history_list:
-            event.Skip()
-            return
-        item = event.GetItem()
-        row = None
-        if item and item.IsOk():
-            row = self.history_list.ItemToRow(item)
-        self._show_history_context_menu(row)
-
-    def _on_history_context_menu(self, event: wx.ContextMenuEvent) -> None:
-        if event.GetEventObject() is not self.history_list:
-            event.Skip()
-            return
-        pos = event.GetPosition()
-        row = None
-        if pos != wx.DefaultPosition:
-            client = self.history_list.ScreenToClient(pos)
-            item, _column = self.history_list.HitTest(client)
-            if item and item.IsOk():
-                row = self.history_list.ItemToRow(item)
-        self._show_history_context_menu(row)
-
-    def _show_history_context_menu(self, row: int | None) -> None:
-        if self._is_running:
-            return
-        if row is not None and not (0 <= row < self.history_list.GetItemCount()):
-            row = None
-        if row is not None:
-            selected_rows = set(self._selected_history_rows())
-            if row not in selected_rows:
-                try:
-                    item = self.history_list.RowToItem(row)
-                except (AttributeError, RuntimeError):
-                    item = None
-                if item and item.IsOk():
-                    self.history_list.UnselectAll()
-                    self.history_list.Select(item)
-        selected_rows = self._selected_history_rows()
-        if not selected_rows:
-            return
-        menu = wx.Menu()
-        label = _("Delete chat") if len(selected_rows) == 1 else _(
-            "Delete selected chats"
-        )
-        delete_item = menu.Append(wx.ID_ANY, label)
-        menu.Bind(wx.EVT_MENU, self._on_clear_history, delete_item)
-        try:
-            self.history_list.PopupMenu(menu)
-        finally:
-            menu.Destroy()
-
-    def _on_select_history(self, event: dv.DataViewEvent) -> None:
-        """Load prompt from history selection."""
-
-        if self._suppress_history_selection:
-            event.Skip()
-            return
-
-        index = self._extract_history_index(event)
-        if index is not None:
-            self._activate_conversation_by_index(
-                index, persist=True, refresh_history=False
-            )
-        event.Skip()
-
     def _on_stop(self, _event: wx.Event) -> None:
         """Cancel the in-flight agent request, if any."""
 
-        handle = self._active_run_handle
+        controller = self._controller
+        if controller is None:
+            return
+        handle = controller.stop()
         if handle is None:
             return
-        handle.cancel()
         self._finalize_cancelled_run(handle)
-        self._active_run_handle = None
         self._set_wait_state(False)
         self.status_label.SetLabel(_("Generation cancelled"))
         self.input.SetValue(handle.prompt)
@@ -1157,7 +927,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
     def _active_context_messages(self) -> tuple[Mapping[str, Any], ...]:
         """Return contextual messages relevant to the current prompt."""
 
-        handle = getattr(self, "_active_run_handle", None)
+        handle = self._active_handle()
         if handle is not None and handle.context_messages:
             return handle.context_messages
 
@@ -1183,8 +953,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         history_counts: list[TokenCountResult] = []
         conversation = self._get_active_conversation()
         pending_entry = None
-        if self._active_run_handle is not None:
-            pending_entry = getattr(self._active_run_handle, "pending_entry", None)
+        handle = self._active_handle()
+        if handle is not None:
+            pending_entry = handle.pending_entry
         if conversation is not None:
             for entry in conversation.entries:
                 if pending_entry is not None and entry is pending_entry:
@@ -1205,8 +976,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         ]
         context_tokens = combine_token_counts(context_counts)
 
-        if self._active_run_handle is not None:
-            prompt_tokens = self._active_run_handle.prompt_tokens
+        if handle is not None:
+            prompt_tokens = handle.prompt_tokens
         else:
             prompt_tokens = TokenCountResult.exact(0, model=model)
 
@@ -1286,8 +1057,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
 
         if handle.is_cancelled:
             return
-        if self._active_run_handle is handle:
-            self._active_run_handle = None
+        controller = self._controller
+        if controller is not None:
+            controller.reset_active_handle(handle)
         elapsed = (
             time.monotonic() - self._start_time
             if self._start_time is not None
@@ -1587,7 +1359,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
             ),
         )
         conversation.append_entry(entry)
-        self._save_history()
+        self._save_history_to_store()
         self._refresh_history_list()
 
     def _complete_pending_entry(
@@ -1638,7 +1410,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         )
         conversation.updated_at = response_at
         conversation.ensure_title()
-        self._save_history()
+        self._save_history_to_store()
         self._refresh_history_list()
 
     def _pop_conversation_entry(
@@ -1673,7 +1445,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
             return
         handle.pending_entry = None
         handle.streamed_tool_results.clear()
-        self._save_history()
+        self._save_history_to_store()
         self._refresh_history_list()
         self._render_transcript()
 
@@ -1725,103 +1497,15 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         self._render_transcript()
 
     def _refresh_history_list(self) -> None:
-        self.history_list.Freeze()
-        self._suppress_history_selection = True
-        try:
-            self.history_list.DeleteAllItems()
-            active_index = self._active_index()
-            for conversation in self.conversations:
-                row = self._format_conversation_row(conversation)
-                self.history_list.AppendItem(list(row))
-            if active_index is not None and 0 <= active_index < self.history_list.GetItemCount():
-                self.history_list.SelectRow(active_index)
-                self._ensure_history_visible(active_index)
-            else:
-                self.history_list.UnselectAll()
-        finally:
-            self._suppress_history_selection = False
-            self.history_list.Thaw()
+        if self._history_view is None:
+            return
+        self._history_view.refresh()
         self._update_history_controls()
 
     def _render_transcript(self) -> None:
-        last_panel: wx.Window | None = None
-        has_entries = False
-        self.transcript_panel.Freeze()
-        try:
-            self._transcript_sizer.Clear(delete_windows=True)
-            conversation = self._get_active_conversation()
-            if conversation is None:
-                placeholder = wx.StaticText(
-                    self.transcript_panel,
-                    label=_("Start chatting with the agent to see responses here."),
-                )
-                self._transcript_sizer.Add(
-                    placeholder,
-                    0,
-                    wx.ALL,
-                    dip(self, 8),
-                )
-            elif not conversation.entries:
-                placeholder = wx.StaticText(
-                    self.transcript_panel,
-                    label=_("This chat does not have any messages yet. Send one to get started."),
-                )
-                self._transcript_sizer.Add(
-                    placeholder,
-                    0,
-                    wx.ALL,
-                    dip(self, 8),
-                )
-            else:
-                has_entries = True
-                last_entry = conversation.entries[-1]
-                for entry in conversation.entries:
-                    can_regenerate = entry is last_entry and entry.response_at is not None
-                    on_regenerate = (
-                        (lambda e=entry, cid=conversation.conversation_id: self._on_regenerate_entry(cid, e))
-                        if can_regenerate
-                        else None
-                    )
-                    tool_summaries = summarize_tool_results(entry.tool_results)
-                    response_text = entry.display_response or entry.response
-                    valid_hint_keys = {"user", "agent"}
-                    for summary in tool_summaries:
-                        valid_hint_keys.add(
-                            TranscriptMessagePanel.tool_layout_hint_key(summary)
-                        )
-                    hints = entry.layout_hints if isinstance(entry.layout_hints, dict) else {}
-                    entry.layout_hints = {
-                        key: value for key, value in hints.items() if key in valid_hint_keys
-                    }
-                    panel = TranscriptMessagePanel(
-                        self.transcript_panel,
-                        prompt=entry.prompt,
-                        response=response_text,
-                        prompt_timestamp=format_entry_timestamp(entry.prompt_at),
-                        response_timestamp=format_entry_timestamp(entry.response_at),
-                        on_regenerate=on_regenerate,
-                        regenerate_enabled=not self._is_running,
-                        tool_summaries=tool_summaries,
-                        context_messages=entry.context_messages,
-                        reasoning_segments=entry.reasoning,
-                        regenerated=getattr(entry, "regenerated", False),
-                        layout_hints=entry.layout_hints,
-                        on_layout_hint=lambda key, width, entry=entry: entry.layout_hints.__setitem__(
-                            key, int(width)
-                        ),
-                    )
-                    panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_transcript_pane_toggled)
-                    self._transcript_sizer.Add(panel, 0, wx.EXPAND)
-                    last_panel = panel
-        finally:
-            self.transcript_panel.Layout()
-            self.transcript_panel.FitInside()
-            self.transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
-            self.transcript_panel.Thaw()
-            if last_panel is not None:
-                self._scroll_transcript_to_bottom(last_panel)
-        self._update_transcript_copy_buttons(has_entries)
-        self._update_conversation_header()
+        if self._transcript_view is None:
+            return
+        self._transcript_view.render()
 
     def _on_regenerate_entry(
         self,
@@ -1840,7 +1524,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
             return
         previous_state = entry.regenerated
         entry.regenerated = True
-        self._save_history()
+        self._save_history_to_store()
         self._refresh_history_list()
         self._render_transcript()
         try:
@@ -1848,47 +1532,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         except Exception:  # pragma: no cover - defensive
             logger.exception("Failed to regenerate agent response")
             entry.regenerated = previous_state
-            self._save_history()
+            self._save_history_to_store()
             self._refresh_history_list()
             self._render_transcript()
 
-    @staticmethod
-    def _is_window_alive(window: wx.Window | None) -> bool:
-        if window is None:
-            return False
-        try:
-            return bool(window) and not window.IsBeingDeleted()
-        except RuntimeError:
-            return False
-
-    def _scroll_transcript_to_bottom(self, target: wx.Window | None) -> None:
-        self._apply_transcript_scroll(target)
-        wx.CallAfter(self._apply_transcript_scroll, target)
-
-    def _apply_transcript_scroll(self, target: wx.Window | None) -> None:
-        panel = getattr(self, "transcript_panel", None)
-        if not self._is_window_alive(panel):
-            return
-        assert isinstance(panel, ScrolledPanel)
-        window: wx.Window | None = target if self._is_window_alive(target) else None
-        if window is not None and window.GetParent() is not panel:
-            window = None
-        if window is not None:
-            try:
-                panel.ScrollChildIntoView(window)
-            except RuntimeError:
-                window = None
-        bottom_pos = max(0, panel.GetScrollRange(wx.VERTICAL))
-        view_x, view_y = panel.GetViewStart()
-        if bottom_pos != view_y:
-            panel.Scroll(view_x, bottom_pos)
-
     def _ensure_history_visible(self, index: int) -> None:
-        if not (0 <= index < self.history_list.GetItemCount()):
+        if self._history_view is None:
             return
-        item = self.history_list.RowToItem(index)
-        if item.IsOk():
-            self.history_list.EnsureVisible(item)
+        self._history_view.ensure_visible(index)
 
     def get_transcript_text(self) -> str:
         """Return plain-text transcript of the active conversation.
@@ -2084,7 +1735,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
 
         if handle.is_cancelled:
             return
-        if handle is not self._active_run_handle:
+        if handle is not self._active_handle():
             return
         entry = handle.pending_entry
         if entry is None:
@@ -2573,17 +2224,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
             finally:
                 wx.TheClipboard.Close()
 
-    def _on_transcript_pane_toggled(self, event: wx.CollapsiblePaneEvent) -> None:
-        """Recalculate layout when tool details are expanded or collapsed."""
-
-        event.Skip()
-        window = event.GetEventObject()
-        self.transcript_panel.Layout()
-        self.transcript_panel.FitInside()
-        self.transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
-        if isinstance(window, wx.Window):
-            self.transcript_panel.ScrollChildIntoView(window)
-
     def _load_project_settings(self) -> None:
         self._project_settings = load_agent_project_settings(self._settings_path)
         self._update_project_settings_ui()
@@ -2683,7 +2323,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         self._refresh_history_list()
         self._render_transcript()
         if persist:
-            self._save_history()
+            self._save_history_to_store()
         return conversation
 
     def _ensure_active_conversation(self) -> ChatConversation:
@@ -2720,18 +2360,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
             normalized = normalized[:77] + "…"
         return normalize_for_display(normalized)
 
-    def _extract_history_index(self, event: dv.DataViewEvent | None) -> int | None:
-        item = None
-        if event is not None:
-            item = event.GetItem()
-        if item is None or not item.IsOk():
-            item = self.history_list.GetSelection()
-        if item is None or not item.IsOk():
-            return None
-        row = self.history_list.ItemToRow(item)
-        if 0 <= row < len(self.conversations):
-            return row
-        return None
+    def _on_history_row_activated(self, index: int) -> None:
+        self._activate_conversation_by_index(
+            index, persist=True, refresh_history=False
+        )
 
     def _activate_conversation_by_index(
         self,
@@ -2747,7 +2379,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         self._active_conversation_id = conversation.conversation_id
         self._on_active_conversation_changed(previous_id, self._active_conversation_id)
         if persist:
-            self._save_history()
+            self._save_history_to_store()
         if refresh_history:
             self._refresh_history_list()
         else:
@@ -2768,6 +2400,20 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
         self._create_conversation(persist=True)
         self.input.SetValue("")
         self.input.SetFocus()
+
+    def _handle_regenerate_request(
+        self, conversation_id: str, entry: ChatEntry
+    ) -> None:
+        controller = self._controller
+        if controller is None:
+            return
+        controller.regenerate_entry(conversation_id, entry)
+
+    def _active_handle(self) -> _AgentRunHandle | None:
+        controller = self._controller
+        if controller is None:
+            return None
+        return controller.active_handle
 
     @property
     def history(self) -> list[ChatEntry]:

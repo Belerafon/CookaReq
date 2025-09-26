@@ -71,3 +71,89 @@ def test_get_requirement_field_filter(tmp_path):
     result = get_requirement(tmp_path, "SYS1", fields=["owner", "labels"])
 
     assert result == {"rid": "SYS1", "owner": "QA", "labels": ["telemetry"]}
+
+
+def test_get_requirement_accepts_rid_list(tmp_path):
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+    save_item(
+        tmp_path / "SYS",
+        doc,
+        {
+            "id": 1,
+            "title": "Telemetry",
+            "statement": "Collect data",
+            "type": "requirement",
+            "status": "approved",
+            "owner": "QA",
+            "priority": "high",
+            "source": "Spec",
+            "verification": "analysis",
+            "labels": ["telemetry"],
+            "links": [],
+            "notes": "",
+        },
+    )
+    save_item(
+        tmp_path / "SYS",
+        doc,
+        {
+            "id": 2,
+            "title": "Communications",
+            "statement": "Maintain uplink",
+            "type": "requirement",
+            "status": "draft",
+            "owner": "OPS",
+            "priority": "medium",
+            "source": "Spec",
+            "verification": "analysis",
+            "labels": ["comms"],
+            "links": [],
+            "notes": "",
+        },
+    )
+
+    result = get_requirement(tmp_path, ["SYS1", "SYS2"], fields=["title"])
+
+    assert result == {
+        "items": [
+            {"rid": "SYS1", "title": "Telemetry"},
+            {"rid": "SYS2", "title": "Communications"},
+        ]
+    }
+
+
+def test_get_requirement_list_reports_missing_entries(tmp_path):
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+    save_item(
+        tmp_path / "SYS",
+        doc,
+        {
+            "id": 1,
+            "title": "Telemetry",
+            "statement": "Collect data",
+            "type": "requirement",
+            "status": "approved",
+            "owner": "QA",
+            "priority": "high",
+            "source": "Spec",
+            "verification": "analysis",
+            "labels": ["telemetry"],
+            "links": [],
+            "notes": "",
+        },
+    )
+
+    result = get_requirement(tmp_path, ["SYS1", "SYS2"], fields=["title"])
+
+    assert result["items"] == [{"rid": "SYS1", "title": "Telemetry"}]
+    assert result["missing"] == ["SYS2"]
+
+
+def test_get_requirement_list_rejects_empty_sequence(tmp_path):
+    result = get_requirement(tmp_path, [], fields=None)
+
+    assert "error" in result
+    assert result["error"]["code"] == "VALIDATION_ERROR"
+    assert "rid list must contain at least one identifier" in result["error"]["message"]

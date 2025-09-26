@@ -220,8 +220,10 @@ def list_requirements(
 
 
 @register_tool()
-def get_requirement(rid: str, fields: list[str] | None = None) -> dict:
-    """Return a single requirement by identifier."""
+def get_requirement(
+    rid: str | Sequence[str], fields: list[str] | None = None
+) -> dict:
+    """Return one or more requirements by identifier."""
     directory = app.state.base_path
     return tools_read.get_requirement(directory, rid, fields=fields)
 

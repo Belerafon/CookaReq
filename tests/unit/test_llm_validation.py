@@ -53,6 +53,14 @@ def test_validate_tool_call_accepts_string_fields():
     assert result == arguments
 
 
+def test_validate_tool_call_accepts_rid_list():
+    arguments = {"rid": ["SYS1", "SYS2"], "fields": ["title"]}
+
+    result = validate_tool_call("get_requirement", arguments)
+
+    assert result == arguments
+
+
 @pytest.mark.parametrize(
     "arguments,expected_message",
     [

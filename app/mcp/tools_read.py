@@ -16,6 +16,41 @@ _AVAILABLE_FIELDS = frozenset(
 )
 
 
+def _normalize_rid_argument(
+    rid: str | Sequence[str],
+) -> tuple[list[str], str | list[str]]:
+    """Return a deduplicated list of RIDs and a log-friendly representation."""
+
+    if isinstance(rid, _SEQUENCE_STRING_TYPES):
+        rid_value = str(rid).strip()
+        if not rid_value:
+            raise ValueError("rid must be a non-empty string")
+        return [rid_value], rid_value
+
+    if not isinstance(rid, Sequence):
+        raise ValueError("rid must be a string or a sequence of strings")
+
+    normalized: list[str] = []
+    logged: list[str] = []
+    seen: set[str] = set()
+    for entry in rid:
+        if not isinstance(entry, _SEQUENCE_STRING_TYPES):
+            raise ValueError("rid entries must be strings")
+        rid_value = str(entry).strip()
+        if not rid_value:
+            raise ValueError("rid entries must be non-empty strings")
+        logged.append(rid_value)
+        if rid_value in seen:
+            continue
+        normalized.append(rid_value)
+        seen.add(rid_value)
+
+    if not normalized:
+        raise ValueError("rid list must contain at least one identifier")
+
+    return normalized, logged
+
+
 def _prepare_field_selection(
     fields: Sequence[str] | None,
 ) -> tuple[list[str] | None, list[str] | None]:
@@ -122,41 +157,85 @@ def list_requirements(
 
 
 def get_requirement(
-    directory: str | Path, rid: str, fields: Sequence[str] | None = None
+    directory: str | Path,
+    rid: str | Sequence[str],
+    fields: Sequence[str] | None = None,
 ) -> dict:
     normalized_fields, logged_fields = _prepare_field_selection(fields)
     params: dict[str, Any] = {
         "directory": str(directory),
-        "rid": rid,
         "fields": logged_fields,
     }
     try:
-        req = doc_store.get_requirement(directory, rid)
+        requested_rids, logged_rid = _normalize_rid_argument(rid)
     except ValueError as exc:
+        params["rid"] = rid
         return log_tool(
             "get_requirement",
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
         )
-    except doc_store.RequirementNotFoundError as exc:
+
+    params["rid"] = logged_rid
+
+    if isinstance(rid, _SEQUENCE_STRING_TYPES):
+        rid_value = requested_rids[0]
+        try:
+            req = doc_store.get_requirement(directory, rid_value)
+        except ValueError as exc:
+            return log_tool(
+                "get_requirement",
+                params,
+                mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+            )
+        except doc_store.RequirementNotFoundError as exc:
+            return log_tool(
+                "get_requirement",
+                params,
+                mcp_error(ErrorCode.NOT_FOUND, str(exc)),
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            return log_tool(
+                "get_requirement",
+                params,
+                mcp_error(ErrorCode.INTERNAL, str(exc)),
+            )
+        result: dict[str, Any] = requirement_to_dict(req)
+        result["rid"] = req.rid
         return log_tool(
             "get_requirement",
             params,
-            mcp_error(ErrorCode.NOT_FOUND, str(exc)),
+            _apply_field_selection(result, normalized_fields),
         )
-    except Exception as exc:  # pragma: no cover - defensive
-        return log_tool(
-            "get_requirement",
-            params,
-            mcp_error(ErrorCode.INTERNAL, str(exc)),
-        )
-    result: dict[str, Any] = requirement_to_dict(req)
-    result["rid"] = req.rid
-    return log_tool(
-        "get_requirement",
-        params,
-        _apply_field_selection(result, normalized_fields),
-    )
+
+    items: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for rid_value in requested_rids:
+        try:
+            req = doc_store.get_requirement(directory, rid_value)
+        except ValueError as exc:
+            return log_tool(
+                "get_requirement",
+                params,
+                mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+            )
+        except doc_store.RequirementNotFoundError:
+            missing.append(rid_value)
+            continue
+        except Exception as exc:  # pragma: no cover - defensive
+            return log_tool(
+                "get_requirement",
+                params,
+                mcp_error(ErrorCode.INTERNAL, str(exc)),
+            )
+        data = requirement_to_dict(req)
+        data["rid"] = req.rid
+        items.append(_apply_field_selection(data, normalized_fields))
+
+    payload: dict[str, Any] = {"items": items}
+    if missing:
+        payload["missing"] = missing
+    return log_tool("get_requirement", params, payload)
 
 
 def search_requirements(

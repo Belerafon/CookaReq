@@ -652,6 +652,9 @@ msgstr "Готово"
 msgid "Waiting for agent… {time} • {tokens}"
 msgstr "Ожидание ответа… {time} • {tokens}"
 
+msgid "Received response in {time}"
+msgstr "Ответ получен за {time}"
+
 msgid "Received response in {time} • {tokens}"
 msgstr "Ответ получен за {time} • {tokens}"
 

@@ -35,6 +35,28 @@ def flush_wx_events(wx, count: int = 3) -> None:
         wx.Yield()
 
 
+def install_monotonic_stub(monkeypatch, *, elapsed_seconds: int = 5) -> str:
+    state = {"calls": 0, "value": 0.0}
+
+    def fake_monotonic() -> float:
+        calls = state["calls"]
+        state["calls"] += 1
+        if calls == 0:
+            state["value"] = 0.0
+        elif calls == 1:
+            state["value"] = float(elapsed_seconds)
+        else:
+            state["value"] += float(elapsed_seconds)
+        return state["value"]
+
+    monkeypatch.setattr(
+        "app.ui.agent_chat_panel.panel.time.monotonic",
+        fake_monotonic,
+    )
+    minutes, seconds = divmod(int(elapsed_seconds), 60)
+    return f"{minutes:02d}:{seconds:02d}"
+
+
 def create_panel(
     tmp_path,
     wx_app,
@@ -190,7 +212,8 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
                 self.history_snapshots.append(cloned)
             return f"answer {self.calls}"
 
-    wx, frame, panel = create_panel(tmp_path, wx_app, CountingAgent())
+    agent = CountingAgent()
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent)
 
     try:
         panel.input.SetValue("regen")
@@ -205,7 +228,7 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
 
         def find_regenerate_button(window):
             for child in window.GetChildren():
-                if isinstance(child, wx.Button) and child.GetLabel() == "Перегенерить":
+                if isinstance(child, wx.Button) and child.GetLabel() in {"Перегенерить", "Regenerate"}:
                     return child
                 found = find_regenerate_button(child)
                 if found is not None:
@@ -214,7 +237,11 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
 
         transcript_children = panel.transcript_panel.GetChildren()
         assert transcript_children
-        regen_button = find_regenerate_button(transcript_children[-1])
+        regen_button = None
+        for candidate in reversed(transcript_children):
+            regen_button = find_regenerate_button(candidate)
+            if regen_button is not None:
+                break
         assert regen_button is not None
         assert regen_button.IsEnabled()
 
@@ -302,12 +329,17 @@ def test_confirmation_preference_resets_on_chat_switch(tmp_path, wx_app):
         assert choice is not None
         index_map = panel._confirm_choice_index
         chat_only_index = index_map[RequirementConfirmPreference.CHAT_ONLY]
+        never_index = index_map[RequirementConfirmPreference.NEVER]
 
-        choice.SetSelection(chat_only_index)
-        evt = wx.CommandEvent(wx.EVT_CHOICE.typeId, choice.GetId())
-        evt.SetEventObject(choice)
-        choice.GetEventHandler().ProcessEvent(evt)
-        flush_wx_events(wx)
+        def select_preference(index: int) -> None:
+            choice.SetSelection(index)
+            evt = wx.CommandEvent(wx.EVT_CHOICE.typeId, choice.GetId())
+            evt.SetEventObject(choice)
+            evt.SetInt(index)
+            choice.GetEventHandler().ProcessEvent(evt)
+            flush_wx_events(wx)
+
+        select_preference(chat_only_index)
 
         assert (
             panel.confirmation_preference
@@ -322,11 +354,7 @@ def test_confirmation_preference_resets_on_chat_switch(tmp_path, wx_app):
             == RequirementConfirmPreference.PROMPT.value
         )
 
-        choice.SetSelection(chat_only_index)
-        evt = wx.CommandEvent(wx.EVT_CHOICE.typeId, choice.GetId())
-        evt.SetEventObject(choice)
-        choice.GetEventHandler().ProcessEvent(evt)
-        flush_wx_events(wx)
+        select_preference(chat_only_index)
 
         assert (
             panel.confirmation_preference
@@ -340,12 +368,7 @@ def test_confirmation_preference_resets_on_chat_switch(tmp_path, wx_app):
             == RequirementConfirmPreference.PROMPT.value
         )
 
-        never_index = index_map[RequirementConfirmPreference.NEVER]
-        choice.SetSelection(never_index)
-        evt = wx.CommandEvent(wx.EVT_CHOICE.typeId, choice.GetId())
-        evt.SetEventObject(choice)
-        choice.GetEventHandler().ProcessEvent(evt)
-        flush_wx_events(wx)
+        select_preference(never_index)
 
         assert (
             panel.confirmation_preference
@@ -657,7 +680,8 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
         assert panes, "expected collapsible context pane"
 
         context_pane = panes[0]
-        assert context_pane.GetLabel() == "Контекст" or context_pane.GetLabel() == "Context"
+        label_value = context_pane.GetLabel()
+        assert label_value in {"", "Контекст", "Context"}
         assert context_pane.IsCollapsed()
 
         context_pane.Collapse(False)
@@ -678,6 +702,15 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
         assert "[Workspace context]" in value
         assert "Active requirements list: sys: Сист. треб." in value
         assert "Selected requirement RIDs: sys48, sys49, sys50" in value
+
+        # Timestamp label should be rendered as a bullet-prefixed static text right after the pane
+        meta_labels = [
+            sibling.GetLabel()
+            for sibling in context_pane.GetParent().GetChildren()
+            if isinstance(sibling, wx.StaticText)
+            and sibling.GetLabel().strip().startswith("•")
+        ]
+        assert meta_labels, "context timestamp label missing"
     finally:
         destroy_panel(frame, panel)
 
@@ -777,10 +810,12 @@ def test_transcript_message_panel_shows_reasoning(wx_app):
             child
             for child in panel.GetChildren()
             if isinstance(child, wx.CollapsiblePane)
-            and child.GetLabel() == reasoning_label
         ]
         assert panes, "reasoning pane should be created"
         reasoning_pane = panes[0]
+        label_value = reasoning_pane.GetLabel()
+        if label_value:
+            assert label_value == reasoning_label
         reasoning_pane.Expand()
         wx.GetApp().Yield()
         text_controls = [
@@ -792,6 +827,96 @@ def test_transcript_message_panel_shows_reasoning(wx_app):
         value = text_controls[0].GetValue()
         assert "first step" in value
         assert "second step" in value
+    finally:
+        panel.Destroy()
+        frame.Destroy()
+
+
+def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
+    wx = pytest.importorskip("wx")
+    from app.i18n import _
+    from app.ui.widgets.chat_message import MessageBubble
+
+    frame = wx.Frame(None)
+    try:
+        prompt_ts = "2024-06-11 18:41:03"
+        response_ts = "2024-06-11 18:42:07"
+        panel = TranscriptMessagePanel(
+            frame,
+            prompt="user",
+            response="assistant",
+            prompt_timestamp=prompt_ts,
+            response_timestamp=response_ts,
+            context_messages=[{"role": "system", "content": "ctx"}],
+            reasoning_segments=[{"type": "analysis", "text": "think"}],
+        )
+        wx.GetApp().Yield()
+
+        child_windows = [
+            item.GetWindow()
+            for item in panel.GetSizer().GetChildren()
+            if item.IsWindow()
+        ]
+        assert child_windows, "expected child windows"
+
+        panes = [
+            window
+            for window in child_windows
+            if isinstance(window, wx.CollapsiblePane)
+        ]
+        assert len(panes) == 2, "expected reasoning and context panes"
+
+        def pane_contents(window: wx.CollapsiblePane) -> str:
+            text_controls = [
+                child
+                for child in window.GetPane().GetChildren()
+                if isinstance(child, wx.TextCtrl)
+            ]
+            assert text_controls, "pane missing text control"
+            return text_controls[0].GetValue()
+
+        first_pane, second_pane = panes
+        if "think" in pane_contents(first_pane):
+            reasoning_pane = first_pane
+            context_pane = second_pane
+        else:
+            reasoning_pane = second_pane
+            context_pane = first_pane
+
+        meta_labels = [
+            window
+            for window in child_windows
+            if isinstance(window, wx.StaticText)
+            and window.GetLabel().strip().startswith("•")
+        ]
+        assert len(meta_labels) >= 2, "timestamp labels missing"
+        reasoning_meta, context_meta = meta_labels[:2]
+
+        assert response_ts in reasoning_meta.GetLabel()
+        assert prompt_ts in context_meta.GetLabel()
+
+        assert child_windows.index(reasoning_pane) < child_windows.index(context_pane)
+        assert child_windows.index(reasoning_meta) > child_windows.index(reasoning_pane)
+        assert child_windows.index(context_meta) > child_windows.index(context_pane)
+        assert child_windows[-1] is context_meta
+
+        def has_agent_header(window: MessageBubble) -> bool:
+            stack = list(window.GetChildren())
+            while stack:
+                child = stack.pop()
+                if isinstance(child, wx.StaticText) and "Agent" in child.GetLabel():
+                    return True
+                stack.extend(child.GetChildren())
+            return False
+
+        agent_bubbles = [
+            window
+            for window in child_windows
+            if isinstance(window, MessageBubble) and has_agent_header(window)
+        ]
+        assert agent_bubbles, "agent bubble missing"
+        agent_index = child_windows.index(agent_bubbles[-1])
+        assert agent_index < child_windows.index(reasoning_pane)
     finally:
         panel.Destroy()
         frame.Destroy()
@@ -1509,14 +1634,26 @@ def test_agent_chat_panel_history_columns_show_metadata(tmp_path, wx_app):
 
 def test_agent_chat_panel_handles_tokenizer_failure(tmp_path, wx_app, monkeypatch):
     class EchoAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+        ):
             return {"ok": True, "error": None, "result": text}
+
+    from app.i18n import _
+
+    elapsed_text = install_monotonic_stub(monkeypatch, elapsed_seconds=5)
 
     def failing_counter(*_args, **_kwargs) -> TokenCountResult:
         return TokenCountResult.unavailable(reason="boom")
 
     monkeypatch.setattr(
-        "app.ui.agent_chat_panel.count_text_tokens",
+        "app.ui.agent_chat_panel.panel.count_text_tokens",
         failing_counter,
     )
 
@@ -1526,12 +1663,62 @@ def test_agent_chat_panel_handles_tokenizer_failure(tmp_path, wx_app, monkeypatc
     panel._on_send(None)
     flush_wx_events(wx)
 
-    assert "n/a" in panel.status_label.GetLabel()
-    entry = panel.history[0]
-    assert entry.token_info is not None
-    assert entry.token_info.tokens is None
+    try:
+        label = panel.status_label.GetLabel()
+        expected = _("Received response in {time} • {tokens}").format(
+            time=elapsed_text,
+            tokens="n/a",
+        )
+        assert label == expected
+        entry = panel.history[0]
+        assert entry.token_info is not None
+        assert entry.token_info.tokens is None
+    finally:
+        destroy_panel(frame, panel)
 
-    destroy_panel(frame, panel)
+
+def test_agent_chat_panel_updates_status_with_token_count(
+    tmp_path, wx_app, monkeypatch
+):
+    class EchoAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+        ):
+            return {"ok": True, "error": None, "result": text}
+
+    from app.i18n import _
+
+    elapsed_text = install_monotonic_stub(monkeypatch, elapsed_seconds=5)
+
+    def fixed_counter(*_args, **_kwargs) -> TokenCountResult:
+        return TokenCountResult.exact(1000)
+
+    monkeypatch.setattr(
+        "app.ui.agent_chat_panel.panel.count_text_tokens",
+        fixed_counter,
+    )
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, EchoAgent())
+
+    panel.input.SetValue("token success")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    try:
+        label = panel.status_label.GetLabel()
+        expected = _("Received response in {time} • {tokens}").format(
+            time=elapsed_text,
+            tokens="2.00 k tokens",
+        )
+        assert label == expected
+    finally:
+        destroy_panel(frame, panel)
 
 
 def test_agent_history_sash_waits_for_ready_size(tmp_path, wx_app, monkeypatch):

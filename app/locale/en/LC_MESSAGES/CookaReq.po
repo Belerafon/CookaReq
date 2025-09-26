@@ -644,6 +644,9 @@ msgstr "Ready"
 msgid "Waiting for agent… {time} • {tokens}"
 msgstr "Waiting for agent… {time} • {tokens}"
 
+msgid "Received response in {time}"
+msgstr "Received response in {time}"
+
 msgid "Received response in {time} • {tokens}"
 msgstr "Received response in {time} • {tokens}"
 

@@ -1356,9 +1356,15 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
             self._set_wait_state(False, final_tokens)
             if elapsed:
                 minutes, seconds = divmod(int(elapsed), 60)
-                label = _("Received response in {time}").format(
-                    time=f"{minutes:02d}:{seconds:02d}",
-                )
+                time_text = f"{minutes:02d}:{seconds:02d}"
+                token_label = self._format_tokens_for_status(self._current_tokens)
+                if token_label:
+                    label = _("Received response in {time} • {tokens}").format(
+                        time=time_text,
+                        tokens=token_label,
+                    )
+                else:
+                    label = _("Received response in {time}").format(time=time_text)
                 self.status_label.SetLabel(label)
 
         if should_render:
@@ -2122,16 +2128,43 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
                 return _("not recorded")
             return normalize_for_display(value)
 
+        def _normalise_json_value(value: Any) -> Any:
+            if isinstance(value, str):
+                stripped = value.strip()
+                if stripped.startswith("{") or stripped.startswith("["):
+                    try:
+                        decoded = json.loads(stripped)
+                    except (TypeError, ValueError):
+                        return value
+                    return _normalise_json_value(decoded)
+                return value
+            if isinstance(value, Mapping):
+                return {
+                    str(key): _normalise_json_value(val)
+                    for key, val in value.items()
+                }
+            if isinstance(value, Sequence) and not isinstance(
+                value, (str, bytes, bytearray)
+            ):
+                return [_normalise_json_value(item) for item in value]
+            return value
+
         def format_json_block(value: Any) -> str:
             if value is None:
                 return _("(none)")
-            if isinstance(value, str):
-                text = value
+            normalised = _normalise_json_value(value)
+            if isinstance(normalised, str):
+                text = normalised
             else:
                 try:
-                    text = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+                    text = json.dumps(
+                        normalised,
+                        ensure_ascii=False,
+                        indent=2,
+                        sort_keys=True,
+                    )
                 except (TypeError, ValueError):
-                    text = str(value)
+                    text = str(normalised)
             return normalize_for_display(text)
 
         def indent_block(value: str, *, prefix: str = "    ") -> str:

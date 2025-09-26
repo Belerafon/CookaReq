@@ -131,6 +131,10 @@ class ConfirmPreferencesMixin:
         selection = event.GetSelection()
         entries = getattr(self, "_confirm_choice_entries", ())
         if not isinstance(selection, int) or not (0 <= selection < len(entries)):
+            choice = event.GetEventObject()
+            if hasattr(choice, "GetSelection"):
+                selection = choice.GetSelection()
+        if not isinstance(selection, int) or not (0 <= selection < len(entries)):
             event.Skip()
             return
         preference = entries[selection][0]

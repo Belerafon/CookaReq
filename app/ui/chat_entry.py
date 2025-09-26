@@ -27,6 +27,7 @@ class ChatEntry:
     reasoning: tuple[dict[str, Any], ...] | None = None
     diagnostic: dict[str, Any] | None = None
     regenerated: bool = False
+    layout_hints: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self) -> None:  # pragma: no cover - trivial
         if self.display_response is None:
@@ -36,6 +37,20 @@ class ChatEntry:
                 self.tokens,
                 reason="legacy_tokens",
             )
+        hints = self.layout_hints
+        if not isinstance(hints, dict):
+            self.layout_hints = {}
+        else:
+            sanitized: dict[str, int] = {}
+            for key, value in hints.items():
+                try:
+                    width = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if width <= 0:
+                    continue
+                sanitized[str(key)] = width
+            self.layout_hints = sanitized
         if self.context_messages is not None and not isinstance(
             self.context_messages, tuple
         ):

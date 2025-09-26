@@ -252,7 +252,14 @@ TOOLS: list[dict[str, Any]] = [
                 "properties": {
                     "rid": {"type": "string"},
                     "field": {"type": "string", "enum": _EDITABLE_FIELDS},
-                    "value": {},
+                    "value": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "New field value. Provide plain text for updates; use"
+                            " ISO 8601 timestamps for date fields. Pass null to"
+                            " clear optional values."
+                        ),
+                    },
                 },
                 "required": ["rid", "field", "value"],
                 "additionalProperties": False,

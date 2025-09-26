@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.cli import commands
+from app.confirm import auto_confirm, set_confirm
 from app.core.document_store import (
     Document,
     DocumentLabels,
@@ -13,6 +14,15 @@ from app.core.document_store import (
     save_document,
 )
 from app.core.model import Priority, RequirementType, Status, Verification
+
+
+@pytest.fixture(autouse=True)
+def _auto_confirm_cli():
+    """Ensure CLI commands proceed without interactive confirmation by default."""
+
+    set_confirm(auto_confirm)
+    yield
+    set_confirm(auto_confirm)
 
 
 @pytest.mark.unit

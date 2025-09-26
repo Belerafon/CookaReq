@@ -14,6 +14,7 @@ from ..confirm import (
     confirm as default_confirm,
     confirm_requirement_update as default_update_confirm,
 )
+from ..core.document_store import parse_rid
 from ..llm.client import LLMClient, LLMReasoningSegment, LLMResponse, LLMToolCall
 from ..llm.validation import ToolValidationError
 from ..mcp.client import MCPClient
@@ -339,12 +340,103 @@ class LocalAgent:
         text: str,
         history: Sequence[Mapping[str, Any]] | None,
         *,
-        context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
+        context: Sequence[Mapping[str, Any]] | None = None,
     ) -> list[Mapping[str, Any]]:
         conversation: list[Mapping[str, Any]] = list(history or [])
-        conversation.extend(self._normalise_context(context))
+        if context:
+            conversation.extend(context)
         conversation.append({"role": "user", "content": text})
         return conversation
+
+    def _prepare_context_messages(
+        self, context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None
+    ) -> list[Mapping[str, Any]]:
+        return self._run_sync(self._prepare_context_messages_async(context))
+
+    async def _prepare_context_messages_async(
+        self, context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None
+    ) -> list[Mapping[str, Any]]:
+        messages = self._normalise_context(context)
+        if not messages:
+            return []
+        await self._enrich_workspace_context_async(messages)
+        return messages
+
+    async def _enrich_workspace_context_async(
+        self, messages: Sequence[Mapping[str, Any]]
+    ) -> None:
+        for message in messages:
+            role = message.get("role") if isinstance(message, Mapping) else None
+            if role != "system":
+                continue
+            content = message.get("content")
+            if not isinstance(content, str):
+                continue
+            stripped = content.lstrip()
+            if not stripped.startswith("[Workspace context]"):
+                continue
+            selected_rids = self._extract_selected_rids_from_context(content)
+            if not selected_rids:
+                continue
+            existing_lines = content.splitlines()
+            already_present = {
+                line.split(" — ", 1)[0].strip()
+                for line in existing_lines
+                if " — " in line
+            }
+            additions: list[str] = []
+            for rid in selected_rids:
+                if rid in already_present:
+                    continue
+                summary = await self._fetch_requirement_summary_async(rid)
+                if not summary:
+                    continue
+                additions.append(f"{rid} — {summary.strip()}")
+            if additions:
+                message["content"] = "\n".join([*existing_lines, *additions])
+
+    @staticmethod
+    def _extract_selected_rids_from_context(content: str) -> list[str]:
+        selected: list[str] = []
+        for line in content.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith("Selected requirement RIDs:"):
+                continue
+            _, _, remainder = stripped.partition(":")
+            values = remainder.strip()
+            if not values or values.startswith("("):
+                return []
+            for token in values.split(","):
+                candidate = token.strip()
+                if not candidate:
+                    continue
+                try:
+                    prefix, numeric = parse_rid(candidate)
+                except ValueError:
+                    continue
+                selected.append(f"{prefix}{numeric}")
+            break
+        return selected
+
+    async def _fetch_requirement_summary_async(self, rid: str) -> str | None:
+        try:
+            response = await self._mcp.call_tool_async(
+                "get_requirement", {"rid": rid}
+            )
+        except Exception:
+            return None
+        if not isinstance(response, Mapping):
+            return None
+        if response.get("ok") is not True:
+            return None
+        result = response.get("result")
+        if not isinstance(result, Mapping):
+            return None
+        statement = str(result.get("statement") or "").strip()
+        if statement:
+            return statement
+        title = str(result.get("title") or "").strip()
+        return title or None
 
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
@@ -380,7 +472,12 @@ class LocalAgent:
     ) -> dict[str, Any]:
         """Drive an agent loop that may invoke MCP tools before replying."""
 
-        conversation = self._prepare_conversation(text, history, context=context)
+        context_messages = self._prepare_context_messages(context)
+        conversation = self._prepare_conversation(
+            text,
+            history,
+            context=context_messages,
+        )
         log_event(
             "AGENT_START",
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},
@@ -415,7 +512,12 @@ class LocalAgent:
     ) -> dict[str, Any]:
         """Asynchronous variant of :meth:`run_command`."""
 
-        conversation = self._prepare_conversation(text, history, context=context)
+        context_messages = await self._prepare_context_messages_async(context)
+        conversation = self._prepare_conversation(
+            text,
+            history,
+            context=context_messages,
+        )
         log_event(
             "AGENT_START",
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},
@@ -592,6 +694,8 @@ class LocalAgent:
             if prepared_segments:
                 reasoning_segments = tuple(prepared_segments)
 
+        error_template = exception_to_mcp_error(exc)["error"]
+
         assistant_tool_calls = [
             prepared.assistant_fragment for prepared in prepared_calls
         ]
@@ -604,10 +708,7 @@ class LocalAgent:
                 prepared.call,
                 {
                     "ok": False,
-                    "error": {
-                        "type": type(exc).__name__,
-                        "message": str(exc),
-                    },
+                    "error": dict(error_template),
                 },
                 include_arguments=False,
             )
@@ -637,10 +738,7 @@ class LocalAgent:
         else:
             fallback_payload: dict[str, Any] = {
                 "ok": False,
-                "error": {
-                    "type": type(exc).__name__,
-                    "message": str(exc),
-                },
+                "error": dict(error_template),
                 "tool_name": "invalid_tool_call",
                 "tool_call_id": "tool_call_0",
                 "call_id": "tool_call_0",
@@ -982,12 +1080,11 @@ class AgentLoopRunner:
         )
         self._register_response(response)
         self._advance_step(response)
-        error_payload = exception_to_mcp_error(exc)["error"]
         return _AgentLoopStep(
             response=response,
             tool_error=tool_error,
             batch_results=[],
-            final_result={"ok": False, "error": error_payload},
+            final_result=None,
         )
 
     def _register_response(self, response: LLMResponse) -> None:

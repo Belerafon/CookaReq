@@ -10,6 +10,7 @@ import httpx
 import openai
 import pytest
 
+import app.agent.local_agent as la
 from app.agent.local_agent import LocalAgent
 from app.llm.client import LLMClient, LLMResponse, LLMToolCall
 from app.llm.validation import ToolValidationError
@@ -631,6 +632,9 @@ def test_run_command_recovers_after_tool_validation_error():
                     "'baselined', 'retired']"
                 )
                 exc.llm_message = ""
+                exc.llm_request_messages = tuple(
+                    dict(message) for message in conversation
+                )
                 exc.llm_tool_calls = (
                     {
                         "id": "call-0",

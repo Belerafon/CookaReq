@@ -9,8 +9,6 @@ import textwrap
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
@@ -20,12 +18,7 @@ import wx
 import wx.dataview as dv
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from ...confirm import (
-    ConfirmDecision,
-    RequirementUpdatePrompt,
-    confirm,
-    reset_requirement_update_preference,
-)
+from ...confirm import confirm
 from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT, TOOLS
 from ...llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
@@ -41,11 +34,16 @@ from ..helpers import (
 from ..text import normalize_for_display
 from ..splitter_utils import refresh_splitter_highlight, style_splitter
 from ..widgets.chat_message import TranscriptMessagePanel
+from .confirm_preferences import (
+    ConfirmPreferencesMixin,
+    RequirementConfirmPreference,
+)
 from .execution import (
     AgentCommandExecutor,
     ThreadedAgentCommandExecutor,
     _AgentRunHandle,
 )
+from .history_storage import HistoryPersistenceMixin
 from .history_utils import (
     clone_streamed_tool_results,
     history_json_safe,
@@ -64,6 +62,8 @@ from .project_settings import (
     save_agent_project_settings,
 )
 from .settings_dialog import AgentProjectSettingsDialog
+from .time_formatting import format_entry_timestamp, format_last_activity
+from .token_usage import ContextTokenBreakdown
 from .tool_summaries import (
     format_value_snippet,
     render_tool_summaries_plain,
@@ -89,34 +89,9 @@ STATUS_HELP_TEXT = _(
     "• The status text describes whether the agent is still working or has finished.\n"
     "• The spinning indicator on the left stays active while the agent is still working."
 )
-class RequirementConfirmPreference(Enum):
-    """Supported confirmation policies for agent-driven operations."""
-
-    PROMPT = "prompt"
-    CHAT_ONLY = "chat_only"
-    NEVER = "never"
 
 
-@dataclass(frozen=True)
-class _ContextTokenBreakdown:
-    """Aggregated token usage for the prompt context."""
-
-    system: TokenCountResult
-    history: TokenCountResult
-    context: TokenCountResult
-    prompt: TokenCountResult
-
-    @property
-    def total(self) -> TokenCountResult:
-        """Return combined token usage across all components."""
-
-        return combine_token_counts(
-            [self.system, self.history, self.context, self.prompt]
-        )
-
-
-
-class AgentChatPanel(wx.Panel):
+class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel):
     """Interactive chat panel driving the :class:`LocalAgent`."""
 
     def __init__(
@@ -306,122 +281,6 @@ class AgentChatPanel(wx.Panel):
         return text or None
 
     # ------------------------------------------------------------------
-    def _normalize_confirm_preference(
-        self,
-        value: RequirementConfirmPreference | str | None,
-    ) -> RequirementConfirmPreference:
-        """Convert *value* into a recognised confirmation preference."""
-
-        if isinstance(value, RequirementConfirmPreference):
-            return value
-        if isinstance(value, str):
-            text = value.strip().lower()
-            if text == RequirementConfirmPreference.NEVER.value:
-                return RequirementConfirmPreference.NEVER
-            if text == RequirementConfirmPreference.CHAT_ONLY.value:
-                return RequirementConfirmPreference.CHAT_ONLY
-        return RequirementConfirmPreference.PROMPT
-
-    def _persist_confirm_preference(
-        self, preference: RequirementConfirmPreference
-    ) -> None:
-        callback = self._persist_confirm_preference_callback
-        if callback is None:
-            return
-        try:
-            callback(preference.value)
-        except Exception:  # pragma: no cover - defensive logging
-            logger.exception(
-                "Failed to persist agent confirmation preference to config"
-            )
-
-    def _update_confirm_choice_ui(
-        self, preference: RequirementConfirmPreference
-    ) -> None:
-        choice = self._confirm_choice
-        if choice is None:
-            return
-        index = self._confirm_choice_index.get(preference)
-        if index is None or choice.GetSelection() == index:
-            return
-        self._suppress_confirm_choice_events = True
-        try:
-            choice.SetSelection(index)
-        finally:
-            self._suppress_confirm_choice_events = False
-
-    def _set_confirm_preference(
-        self,
-        preference: RequirementConfirmPreference,
-        *,
-        persist: bool,
-        update_ui: bool = True,
-    ) -> None:
-        if preference is RequirementConfirmPreference.CHAT_ONLY:
-            self._confirm_preference = preference
-        else:
-            self._persistent_confirm_preference = preference
-            self._confirm_preference = preference
-            if persist:
-                self._persist_confirm_preference(preference)
-        if update_ui:
-            self._update_confirm_choice_ui(self._confirm_preference)
-        if preference is RequirementConfirmPreference.PROMPT:
-            reset_requirement_update_preference()
-
-    def _confirm_override_kwargs(self) -> dict[str, Any]:
-        if self._confirm_preference is RequirementConfirmPreference.PROMPT:
-            return {}
-        overrides = self._auto_confirm_overrides
-        if overrides is None:
-            
-            def _auto_confirm(_message: str) -> bool:
-                return True
-
-            def _auto_confirm_update(
-                _prompt: RequirementUpdatePrompt,
-            ) -> ConfirmDecision:
-                return ConfirmDecision.YES
-
-            overrides = {
-                "confirm_override": _auto_confirm,
-                "confirm_requirement_update_override": _auto_confirm_update,
-            }
-            self._auto_confirm_overrides = overrides
-        return overrides
-
-    def _on_confirm_choice(self, event: wx.CommandEvent) -> None:
-        if self._suppress_confirm_choice_events:
-            event.Skip()
-            return
-        selection = event.GetSelection()
-        entries = self._confirm_choice_entries
-        if not isinstance(selection, int) or not (0 <= selection < len(entries)):
-            event.Skip()
-            return
-        preference = entries[selection][0]
-        persist = preference is not RequirementConfirmPreference.CHAT_ONLY
-        self._set_confirm_preference(
-            preference, persist=persist, update_ui=False
-        )
-        event.Skip()
-
-    def _on_active_conversation_changed(
-        self, previous_id: str | None, new_id: str | None
-    ) -> None:
-        if previous_id == new_id:
-            return
-        if self._confirm_preference is RequirementConfirmPreference.CHAT_ONLY:
-            self._set_confirm_preference(
-                self._persistent_confirm_preference, persist=False
-            )
-
-    @property
-    def confirmation_preference(self) -> str:
-        """Return current confirmation policy as a string key."""
-
-        return self._confirm_preference.value
-
     # ------------------------------------------------------------------
     def focus_input(self) -> None:
         """Give keyboard focus to the input control."""
@@ -1309,7 +1168,7 @@ class AgentChatPanel(wx.Panel):
                     return entry.context_messages
         return ()
 
-    def _compute_context_token_breakdown(self) -> _ContextTokenBreakdown:
+    def _compute_context_token_breakdown(self) -> ContextTokenBreakdown:
         """Calculate token usage for the system prompt and conversation."""
 
         model = self._token_model()
@@ -1351,7 +1210,7 @@ class AgentChatPanel(wx.Panel):
         else:
             prompt_tokens = TokenCountResult.exact(0, model=model)
 
-        return _ContextTokenBreakdown(
+        return ContextTokenBreakdown(
             system=system_tokens,
             history=history_tokens,
             context=context_tokens,
@@ -1923,8 +1782,8 @@ class AgentChatPanel(wx.Panel):
                         self.transcript_panel,
                         prompt=entry.prompt,
                         response=response_text,
-                        prompt_timestamp=self._format_entry_timestamp(entry.prompt_at),
-                        response_timestamp=self._format_entry_timestamp(entry.response_at),
+                        prompt_timestamp=format_entry_timestamp(entry.prompt_at),
+                        response_timestamp=format_entry_timestamp(entry.response_at),
                         on_regenerate=on_regenerate,
                         regenerate_enabled=not self._is_running,
                         tool_summaries=tool_summaries,
@@ -2679,57 +2538,6 @@ class AgentChatPanel(wx.Panel):
         if isinstance(window, wx.Window):
             self.transcript_panel.ScrollChildIntoView(window)
 
-    def _load_history(self) -> None:
-        previous_id = self._active_conversation_id
-        self.conversations = []
-        self._active_conversation_id = None
-        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
-        try:
-            raw = json.loads(self._history_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            return
-        except Exception:
-            return
-
-        if not isinstance(raw, Mapping):
-            return
-
-        conversations_raw = raw.get("conversations")
-        if not isinstance(conversations_raw, Sequence):
-            return
-
-        conversations: list[ChatConversation] = []
-        for item in conversations_raw:
-            if isinstance(item, Mapping):
-                try:
-                    conversations.append(ChatConversation.from_dict(item))
-                except Exception:  # pragma: no cover - defensive
-                    continue
-        if not conversations:
-            return
-
-        self.conversations = conversations
-        active_id = raw.get("active_id")
-        if isinstance(active_id, str) and any(
-            conv.conversation_id == active_id for conv in self.conversations
-        ):
-            new_id = active_id
-        else:
-            new_id = self.conversations[-1].conversation_id
-        previous_id = self._active_conversation_id
-        self._active_conversation_id = new_id
-        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
-
-    def _save_history(self) -> None:
-        self._history_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "version": 2,
-            "active_id": self._active_conversation_id,
-            "conversations": [conv.to_dict() for conv in self.conversations],
-        }
-        with self._history_path.open("w", encoding="utf-8") as fh:
-            json.dump(payload, fh, ensure_ascii=False, indent=2)
-
     def _load_project_settings(self) -> None:
         self._project_settings = load_agent_project_settings(self._settings_path)
         self._update_project_settings_ui()
@@ -2846,42 +2654,9 @@ class AgentChatPanel(wx.Panel):
             title = _("New chat")
         if len(title) > 60:
             title = title[:57] + "…"
-        last_activity = self._format_last_activity(conversation.updated_at)
+        last_activity = format_last_activity(conversation.updated_at)
         title = normalize_for_display(title)
         return title, last_activity
-
-    def _format_last_activity(self, timestamp: str | None) -> str:
-        if not timestamp:
-            return _("No activity yet")
-        try:
-            moment = datetime.datetime.fromisoformat(timestamp)
-        except ValueError:
-            return timestamp
-        if moment.tzinfo is None:
-            moment = moment.replace(tzinfo=datetime.timezone.utc)
-        local_moment = moment.astimezone()
-        now = datetime.datetime.now(local_moment.tzinfo)
-        today = now.date()
-        date_value = local_moment.date()
-        if date_value == today:
-            return _("Today {time}").format(time=local_moment.strftime("%H:%M"))
-        if date_value == today - datetime.timedelta(days=1):
-            return _("Yesterday {time}").format(time=local_moment.strftime("%H:%M"))
-        if date_value.year == today.year:
-            return local_moment.strftime("%d %b %H:%M")
-        return local_moment.strftime("%Y-%m-%d %H:%M")
-
-    def _format_entry_timestamp(self, timestamp: str | None) -> str:
-        if not timestamp:
-            return ""
-        try:
-            moment = datetime.datetime.fromisoformat(timestamp)
-        except ValueError:
-            return timestamp
-        if moment.tzinfo is None:
-            moment = moment.replace(tzinfo=datetime.timezone.utc)
-        local_moment = moment.astimezone()
-        return local_moment.strftime("%Y-%m-%d %H:%M")
 
 
     def _conversation_preview(self, conversation: ChatConversation) -> str:

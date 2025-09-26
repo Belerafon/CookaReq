@@ -758,12 +758,7 @@ class TranscriptMessagePanel(wx.Panel):
             outer.Add(notice, 0, wx.LEFT | wx.RIGHT | wx.TOP, padding)
 
         context_panel = self._create_context_panel(context_messages)
-        if context_panel is not None:
-            outer.Add(context_panel, 0, wx.EXPAND | wx.ALL, padding)
-
         reasoning_panel = self._create_reasoning_panel(reasoning_segments)
-        if reasoning_panel is not None:
-            outer.Add(reasoning_panel, 0, wx.EXPAND | wx.ALL, padding)
 
         user_bubble = MessageBubble(
             self,
@@ -816,6 +811,12 @@ class TranscriptMessagePanel(wx.Panel):
             ),
         )
         outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, padding)
+
+        if reasoning_panel is not None:
+            outer.Add(reasoning_panel, 0, wx.EXPAND | wx.ALL, padding)
+
+        if context_panel is not None:
+            outer.Add(context_panel, 0, wx.EXPAND | wx.ALL, padding)
 
         self.SetSizer(outer)
 

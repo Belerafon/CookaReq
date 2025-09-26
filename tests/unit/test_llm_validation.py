@@ -14,6 +14,7 @@ def test_validate_tool_call_accepts_list_filters():
             "per_page": 25,
             "status": "approved",
             "labels": ["ui", "ux"],
+            "fields": ["title", "status"],
         }
     )
 
@@ -24,6 +25,7 @@ def test_validate_tool_call_accepts_list_filters():
         "per_page": 25,
         "status": "approved",
         "labels": ["ui", "ux"],
+        "fields": ["title", "status"],
     }
     assert isinstance(result, dict)
 
@@ -35,9 +37,18 @@ def test_validate_tool_call_accepts_search_filters_with_nulls():
         "status": None,
         "page": 3,
         "per_page": 10,
+        "fields": None,
     }
 
     result = validate_tool_call("search_requirements", arguments)
+
+    assert result == arguments
+
+
+def test_validate_tool_call_accepts_string_fields():
+    arguments = {"rid": "SYS1", "fields": "title"}
+
+    result = validate_tool_call("get_requirement", arguments)
 
     assert result == arguments
 

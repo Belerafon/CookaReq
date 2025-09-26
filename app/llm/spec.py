@@ -122,8 +122,15 @@ TOOLS: list[dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "rid": {
-                        "type": "string",
-                        "description": "Requirement identifier to load (for example, SYS12).",
+                        "oneOf": [
+                            {"type": "string"},
+                            {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 1,
+                            },
+                        ],
+                        "description": "Requirement identifier or list of identifiers to load (for example, SYS12 or [\"SYS1\", \"SYS2\"]).",
                     },
                     "fields": {
                         "type": ["array", "string", "null"],

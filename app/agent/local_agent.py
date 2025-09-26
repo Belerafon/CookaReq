@@ -981,11 +981,12 @@ class AgentLoopRunner:
         )
         self._register_response(response)
         self._advance_step(response)
+        error_payload = exception_to_mcp_error(exc)["error"]
         return _AgentLoopStep(
             response=response,
             tool_error=tool_error,
             batch_results=[],
-            final_result=None,
+            final_result={"ok": False, "error": error_payload},
         )
 
     def _register_response(self, response: LLMResponse) -> None:

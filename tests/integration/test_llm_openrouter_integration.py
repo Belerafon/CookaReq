@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 from pathlib import Path
+
+import os
 
 import pytest
 
@@ -52,13 +56,25 @@ def test_openrouter_handles_context_prompt(tmp_path):
     assert isinstance(response.content, str)
 
 
+DEFAULT_FREE_REASONING_MODEL = "x-ai/grok-4-fast:free"
+
+
+def _select_reasoning_model() -> str:
+    """Return the OpenRouter model used for reasoning checks."""
+
+    model = os.getenv("OPENROUTER_REASONING_MODEL")
+    if model and model.strip():
+        return model.strip()
+    return DEFAULT_FREE_REASONING_MODEL
+
+
 def test_openrouter_reasoning_segments(tmp_path):
     require_real_llm_tests_flag()
     key = _load_openrouter_key()
     if not key:
         pytest.skip("OPEN_ROUTER key not available")
     settings = settings_with_llm(tmp_path, api_key=key)
-    settings.llm.model = "openai/gpt-5-codex"
+    settings.llm.model = _select_reasoning_model()
     client = LLMClient(settings.llm)
     conversation = [
         {"role": "system", "content": "You are a concise assistant."},

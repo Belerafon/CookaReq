@@ -1,0 +1,21 @@
+{
+  "acceptance": null,
+  "approved_at": null,
+  "assumptions": "",
+  "attachments": [],
+  "conditions": "",
+  "id": 12,
+  "labels": [],
+  "modified_at": "",
+  "notes": "",
+  "owner": "",
+  "priority": "medium",
+  "rationale": "",
+  "revision": 1,
+  "source": "",
+  "statement": "Демо-описание должно перечислять ключевые модели требований и их инварианты, связывая их с UI и MCP-инструментами.",
+  "status": "draft",
+  "title": "Доменные модели",
+  "type": "requirement",
+  "verification": "analysis"
+}

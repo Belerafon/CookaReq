@@ -1,0 +1,21 @@
+{
+  "acceptance": null,
+  "approved_at": null,
+  "assumptions": "",
+  "attachments": [],
+  "conditions": "",
+  "id": 8,
+  "labels": [],
+  "modified_at": "",
+  "notes": "",
+  "owner": "",
+  "priority": "high",
+  "rationale": "",
+  "revision": 1,
+  "source": "",
+  "statement": "Демонстрационный пакет обязан включать минимум три сквозных сценария (открытие проекта, правка требования, построение отчёта) с последовательностью взаимодействий между слоями.",
+  "status": "draft",
+  "title": "Сквозные сценарии",
+  "type": "requirement",
+  "verification": "analysis"
+}

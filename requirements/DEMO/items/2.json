@@ -1,0 +1,21 @@
+{
+  "acceptance": null,
+  "approved_at": null,
+  "assumptions": "",
+  "attachments": [],
+  "conditions": "",
+  "id": 2,
+  "labels": [],
+  "modified_at": "",
+  "notes": "",
+  "owner": "",
+  "priority": "high",
+  "rationale": "",
+  "revision": 1,
+  "source": "",
+  "statement": "Демонстрационный пакет должен описывать ответственность GUI-слоя, ключевые панели и контроллеры, включая их API и взаимодействие с агентом и document_store.",
+  "status": "draft",
+  "title": "Ответственность GUI",
+  "type": "requirement",
+  "verification": "analysis"
+}

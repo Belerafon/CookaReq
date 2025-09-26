@@ -1,0 +1,21 @@
+{
+  "acceptance": null,
+  "approved_at": null,
+  "assumptions": "",
+  "attachments": [],
+  "conditions": "",
+  "id": 15,
+  "labels": [],
+  "modified_at": "",
+  "notes": "",
+  "owner": "",
+  "priority": "low",
+  "rationale": "",
+  "revision": 1,
+  "source": "",
+  "statement": "Демонстрация должна описывать процессы резервного копирования, восстановления и миграции схем требований, включая известные проблемы ручного слияния.",
+  "status": "draft",
+  "title": "Управление данными",
+  "type": "requirement",
+  "verification": "analysis"
+}

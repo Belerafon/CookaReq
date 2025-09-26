@@ -1,0 +1,21 @@
+{
+  "acceptance": null,
+  "approved_at": null,
+  "assumptions": "",
+  "attachments": [],
+  "conditions": "",
+  "id": 7,
+  "labels": [],
+  "modified_at": "",
+  "notes": "",
+  "owner": "",
+  "priority": "medium",
+  "rationale": "",
+  "revision": 1,
+  "source": "",
+  "statement": "Демо-материалы должны перечислять вспомогательные модули (настройки, локализация, логирование) и описывать правила их использования и потенциальные точки рефакторинга.",
+  "status": "draft",
+  "title": "Общие сервисы",
+  "type": "requirement",
+  "verification": "analysis"
+}

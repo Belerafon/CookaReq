@@ -11,3 +11,6 @@ DEFAULT_MAX_CONTEXT_TOKENS = 131072
 
 MIN_MAX_CONTEXT_TOKENS = 2000
 """Lower bound for the prompt context size accepted from configuration."""
+
+DEFAULT_LLM_TEMPERATURE = 0.7
+"""Model sampling temperature used when the user enables overrides."""

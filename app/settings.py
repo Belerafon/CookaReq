@@ -14,6 +14,7 @@ from .columns import DEFAULT_LIST_COLUMNS as BASE_DEFAULT_LIST_COLUMNS
 from .llm.constants import (
     DEFAULT_LLM_BASE_URL,
     DEFAULT_LLM_MODEL,
+    DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_CONTEXT_TOKENS,
     MIN_MAX_CONTEXT_TOKENS,
 )
@@ -35,6 +36,12 @@ class LLMSettings(BaseModel):
     )
     timeout_minutes: int = 60
     stream: bool = False
+    use_custom_temperature: bool = False
+    temperature: float = Field(
+        DEFAULT_LLM_TEMPERATURE,
+        ge=0.0,
+        le=2.0,
+    )
 
     @staticmethod
     def _normalize_token_limit(
@@ -71,6 +78,31 @@ class LLMSettings(BaseModel):
             default=DEFAULT_MAX_CONTEXT_TOKENS,
             minimum=MIN_MAX_CONTEXT_TOKENS,
         )
+
+    @field_validator("temperature", mode="before")
+    @classmethod
+    def _normalize_temperature(cls, value: float | str | None) -> float:
+        """Coerce *value* to the supported temperature range."""
+
+        if value is None:
+            return DEFAULT_LLM_TEMPERATURE
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return DEFAULT_LLM_TEMPERATURE
+            try:
+                parsed = float(raw)
+            except ValueError:  # pragma: no cover - delegated to Pydantic
+                return value
+        else:
+            if isinstance(value, bool):
+                raise TypeError("Boolean is not a valid temperature value")
+            parsed = float(value)
+        if parsed < 0.0:
+            return 0.0
+        if parsed > 2.0:
+            return 2.0
+        return parsed
 
 
 def default_requirements_path() -> str:

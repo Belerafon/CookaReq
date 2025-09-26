@@ -9,7 +9,11 @@ import wx
 from ..i18n import _
 from ..log import logger
 from ..llm.client import LLMClient
-from ..llm.constants import DEFAULT_MAX_CONTEXT_TOKENS, MIN_MAX_CONTEXT_TOKENS
+from ..llm.constants import (
+    DEFAULT_LLM_TEMPERATURE,
+    DEFAULT_MAX_CONTEXT_TOKENS,
+    MIN_MAX_CONTEXT_TOKENS,
+)
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
 from ..settings import LLMSettings, MCPSettings
@@ -97,6 +101,15 @@ LLM_HELP: dict[str, str] = {
         "HTTP request timeout in minutes. Example: 1\n"
         "Optional; defaults to 60 minutes.",
     ),
+    "temperature": _(
+        "Включите галочку, чтобы CookaReq отправлял в модель фиксированную"
+        " температуру sampling.\n"
+        "При выключенном переключателе параметр temperature не указывается"
+        " в запросах, и провайдер использует собственный дефолт.\n\n"
+        "Диапазон значений — от 0 до 2. Низкие температуры делают ответы"
+        " более детерминированными, высокие добавляют вариативность."
+        " Значение по умолчанию: {default}."
+    ).format(default=DEFAULT_LLM_TEMPERATURE),
     "stream": _(
         "Stream partial responses from the LLM as they arrive.\n"
         "Disable to wait for the full reply before showing it.",
@@ -201,6 +214,8 @@ class SettingsDialog(wx.Dialog):
         max_retries: int,
         max_context_tokens: int,
         timeout_minutes: int,
+        use_custom_temperature: bool,
+        temperature: float,
         stream: bool,
         auto_start: bool,
         host: str,
@@ -320,6 +335,20 @@ class SettingsDialog(wx.Dialog):
             initial=clamped_context_tokens,
         )
         self._timeout = wx.SpinCtrl(llm, min=1, max=9999, initial=timeout_minutes)
+        self._custom_temperature = wx.CheckBox(
+            llm,
+            label=_("Override temperature"),
+        )
+        self._custom_temperature.SetValue(use_custom_temperature)
+        self._temperature = wx.SpinCtrlDouble(
+            llm,
+            min=0.0,
+            max=2.0,
+            inc=0.1,
+            initial=max(0.0, min(2.0, temperature)),
+        )
+        self._temperature.SetDigits(2)
+        self._temperature.Enable(use_custom_temperature)
         self._stream = wx.CheckBox(llm, label=_("Stream"))
         self._stream.SetValue(stream)
 
@@ -330,6 +359,9 @@ class SettingsDialog(wx.Dialog):
 
         self._check_llm.Bind(wx.EVT_BUTTON, self._on_check_llm)
         self._check_tools.Bind(wx.EVT_BUTTON, self._on_check_tools)
+        self._custom_temperature.Bind(
+            wx.EVT_CHECKBOX, self._on_toggle_custom_temperature
+        )
 
         llm_sizer = wx.BoxSizer(wx.VERTICAL)
         base_sz = wx.BoxSizer(wx.HORIZONTAL)
@@ -438,6 +470,21 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         llm_sizer.Add(timeout_sz, 0, wx.ALL | wx.EXPAND, 5)
+        temperature_sz = wx.BoxSizer(wx.HORIZONTAL)
+        temperature_sz.Add(self._custom_temperature, 0, wx.ALIGN_CENTER_VERTICAL)
+        temperature_sz.Add(
+            self._temperature,
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        temperature_sz.Add(
+            make_help_button(llm, LLM_HELP["temperature"], dialog_parent=self),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        llm_sizer.Add(temperature_sz, 0, wx.ALL | wx.EXPAND, 5)
         stream_sz = wx.BoxSizer(wx.HORIZONTAL)
         stream_sz.Add(self._stream, 0, wx.ALIGN_CENTER_VERTICAL)
         stream_sz.Add(
@@ -666,6 +713,13 @@ class SettingsDialog(wx.Dialog):
     ) -> None:  # pragma: no cover - GUI event
         self._token.Enable(self._require_token.GetValue())
 
+    def _on_toggle_custom_temperature(
+        self,
+        _event: wx.Event,
+    ) -> None:  # pragma: no cover - GUI event
+        enabled = self._custom_temperature.GetValue()
+        self._temperature.Enable(enabled)
+
     def _update_mcp_controls(self) -> None:
         running = self._mcp.is_running()
         self._start.Enable(not running)
@@ -709,6 +763,8 @@ class SettingsDialog(wx.Dialog):
             max_retries=self._max_retries.GetValue(),
             max_context_tokens=self._max_context_tokens.GetValue(),
             timeout_minutes=self._timeout.GetValue(),
+            use_custom_temperature=self._custom_temperature.GetValue(),
+            temperature=self._temperature.GetValue(),
             stream=self._stream.GetValue(),
         )
 
@@ -852,6 +908,8 @@ class SettingsDialog(wx.Dialog):
         int,
         int,
         bool,
+        float,
+        bool,
         bool,
         str,
         int,
@@ -873,6 +931,8 @@ class SettingsDialog(wx.Dialog):
             self._max_retries.GetValue(),
             self._max_context_tokens.GetValue(),
             self._timeout.GetValue(),
+            self._custom_temperature.GetValue(),
+            self._temperature.GetValue(),
             self._stream.GetValue(),
             self._auto_start.GetValue(),
             self._host.GetValue(),

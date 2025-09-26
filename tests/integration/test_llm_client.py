@@ -1108,11 +1108,15 @@ def test_harmony_prompt_includes_tools(tmp_path: Path, monkeypatch) -> None:
 
     class FakeOpenAI:
         def __init__(self, *a, **k) -> None:  # pragma: no cover - simple capture
-            def create(*, model, input, temperature, tools, reasoning, **kwargs):  # noqa: ANN001
+            def create(
+                *, model, input, tools, reasoning, temperature=None, **kwargs
+            ):  # noqa: ANN001
                 captured["model"] = model
                 captured["input"] = input
+                captured["temperature"] = temperature
                 captured["tools"] = tools
                 captured["reasoning"] = reasoning
+                captured["kwargs"] = kwargs
                 return SimpleNamespace(
                     output=[
                         SimpleNamespace(
@@ -1139,6 +1143,8 @@ def test_harmony_prompt_includes_tools(tmp_path: Path, monkeypatch) -> None:
     assert "namespace functions" in prompt
     assert prompt.strip().endswith("<|start|>assistant")
     assert captured["tools"] == convert_tools_for_harmony(TOOLS)
+    assert captured["temperature"] is None
+    assert "temperature" not in captured["kwargs"]
     assert response.content == "готово"
     assert response.tool_calls == ()
 

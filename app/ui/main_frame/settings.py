@@ -40,6 +40,8 @@ class MainFrameSettingsMixin:
             max_retries=self.llm_settings.max_retries,
             max_context_tokens=self.llm_settings.max_context_tokens,
             timeout_minutes=self.llm_settings.timeout_minutes,
+            use_custom_temperature=self.llm_settings.use_custom_temperature,
+            temperature=self.llm_settings.temperature,
             stream=self.llm_settings.stream,
             auto_start=self.mcp_settings.auto_start,
             host=self.mcp_settings.host,
@@ -61,6 +63,8 @@ class MainFrameSettingsMixin:
                 max_retries,
                 max_context_tokens,
                 timeout_minutes,
+                use_custom_temperature,
+                temperature,
                 stream,
                 auto_start,
                 host,
@@ -84,6 +88,8 @@ class MainFrameSettingsMixin:
                 max_retries=max_retries,
                 max_context_tokens=max_context_tokens,
                 timeout_minutes=timeout_minutes,
+                use_custom_temperature=use_custom_temperature,
+                temperature=temperature,
                 stream=stream,
             )
             self.mcp_settings = MCPSettings(

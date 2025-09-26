@@ -205,6 +205,7 @@ def list_requirements(
     per_page: int = 50,
     status: str | None = None,
     labels: list[str] | None = None,
+    fields: list[str] | None = None,
 ) -> dict:
     """List requirements using the configured base directory."""
     directory = app.state.base_path
@@ -214,14 +215,15 @@ def list_requirements(
         per_page=per_page,
         status=status,
         labels=labels,
+        fields=fields,
     )
 
 
 @register_tool()
-def get_requirement(rid: str) -> dict:
+def get_requirement(rid: str, fields: list[str] | None = None) -> dict:
     """Return a single requirement by identifier."""
     directory = app.state.base_path
-    return tools_read.get_requirement(directory, rid)
+    return tools_read.get_requirement(directory, rid, fields=fields)
 
 
 @register_tool()
@@ -232,6 +234,7 @@ def search_requirements(
     status: str | None = None,
     page: int = 1,
     per_page: int = 50,
+    fields: list[str] | None = None,
 ) -> dict:
     """Search requirements with optional filters."""
     directory = app.state.base_path
@@ -242,6 +245,7 @@ def search_requirements(
         status=status,
         page=page,
         per_page=per_page,
+        fields=fields,
     )
 
 

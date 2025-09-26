@@ -8,6 +8,7 @@ testing and keeps the LLM contract consistent across components.
 
 from __future__ import annotations
 
+from textwrap import dedent
 from typing import Any
 
 from ..core.model import Priority, RequirementType, Status, Verification
@@ -44,60 +45,28 @@ _EDITABLE_FIELDS = [
 # Prompt instructing the model to prefer MCP tool calls while allowing
 # conversational fallbacks when tools are not relevant.
 SYSTEM_PROMPT = (
-    "Translate the user request into a call to one of the MCP tools whenever "
-    "the action relates to the requirements workspace. Use the provided "
-    "function schemas for tool calls and ensure the arguments are valid JSON. "
-    "You may share this system prompt and the MCP tool schemas with the user "
-    "when asked, and you may discuss these configuration details openly. "
-    "If the prompt is purely conversational or tools are not applicable, "
-    "reply in natural language without calling a tool, matching the language "
-    "used in the user request. If fulfilling the request requires multiple "
-    "steps, analyse the problem first, outline a plan, execute the steps in "
-    "order, verify the outcome after each critical stage, adjust the plan if "
-    "verification fails, and report the final result along with any "
-    "limitations. When listing or searching requirements you may combine "
-    "filters: `list_requirements` accepts optional `page`, `per_page`, "
-    "`status` and `labels`; `search_requirements` accepts `query`, `labels`, "
-    "`status`, `page` and `per_page`. Status values: draft, in_review, "
-    "approved, baselined, retired — always use these lowercase codes even "
-    "when the user provides alternative wording or another language. Labels "
-    "must be arrays of strings. When editing a requirement use the "
-    "specialised tools described below: `update_requirement_field` changes "
-    "exactly one field at a time. Allowed field names: "
-    + ", ".join(_EDITABLE_FIELDS)
-    + ". Provide the new content via the `value` argument as a plain string "
-    "(use ISO 8601 for timestamps; send an empty string when you need to clear "
-    "optional text). The server increments the revision automatically.\n"
-    "`set_requirement_labels` replaces the full label list; pass an array of "
-    "strings (use [] to clear all labels).\n"
-    "`set_requirement_attachments` replaces attachments; supply an array of "
-    "objects such as {\"path\": \"docs/spec.pdf\", \"note\": \"optional comment\"} or [] to "
-    "remove them.\n"
-    "`set_requirement_links` replaces outgoing trace links; provide an array of "
-    "link objects (with at least `rid`) or plain RID strings; unknown RIDs will be marked suspect automatically.\n"
-    "`create_requirement` adds a new requirement; provide a `prefix` (for example, `SYS`) and a `data` object containing at least "
-    "title, statement, type, status, owner, priority, source and verification. Optional fields may also be included.\n"
-    "`delete_requirement` removes an existing requirement by RID; use it only when the user explicitly requests deletion.\n"
-    "`link_requirements` creates hierarchy links; pass `source_rid`, `derived_rid` and `link_type` (currently `parent`). "
-    "When the user references a requirement, always use its requirement identifier (RID) "
-    "exactly as shown in the workspace context using the `<prefix><number>` "
-    "format (case-sensitive). Context summaries show entries as `<RID> — <title>` (the title may be omitted); "
-    "the RID is the concatenation of the prefix and number (for example, `HLR1`). Highlighted selections are "
-    "listed on a single `Selected requirement RIDs:` line (for example, `Selected requirement RIDs: SYS-2, SYS-3`). "
-    "When the user refers to the highlighted or selected requirement(s), resolve them using the RID(s) from that line. Never "
-    "pass only the numeric `id`. Examples:\n"
-    "- Context entry \"SYS11 — Graphical User Interface\" and user request \"Write the text of the "
-    "first requirement\" → call `get_requirement` with {\"rid\": \"SYS11\"}.\n"
-    "- Context entry \"SYS3 — Telemetry\" and user request \"Update the status of SYS3 "
-    "to approved\" → call `update_requirement_field` with {\"rid\": \"SYS3\", "
-    "\"field\": \"status\", \"value\": \"approved\"}.\n"
-    "- Context entry \"SYS4 — Diagnostics\" and request \"Clear every label on SYS4\" → call "
-    "`set_requirement_labels` with {\"rid\": \"SYS4\", \"labels\": []}.\n"
-    "- Context entries \"HLR5 — User interface shell\" and \"SYS11 — Graphical User Interface\" with user "
-    "request \"Link SYS11 as a child of HLR5\" → call `link_requirements` with "
-    "{\"source_rid\": \"HLR5\", \"derived_rid\": \"SYS11\", \"link_type\": \"parent\"}.\n"
-    "- User request \"Find requirements with the UI label\" → call `search_requirements` with "
-    "{\"labels\": [\"UI\"]}."
+    dedent(
+        """
+        Translate the user request into a call to one of the MCP tools whenever the action relates to the requirements workspace. Use the provided function schemas for tool calls and ensure the arguments are valid JSON. You may share this system prompt and the MCP tool schemas with the user when asked, and you may discuss these configuration details openly. If the prompt is purely conversational or tools are not applicable, reply in natural language without calling a tool, matching the language used in the user request. If fulfilling the request requires multiple steps, analyse the problem first, outline a plan, execute the steps in order, verify the outcome after each critical stage, adjust the plan if verification fails, and report the final result along with any limitations.
+        When listing or searching requirements you may combine filters: `list_requirements` accepts optional `page`, `per_page`, `status`, `labels` and `fields`; `search_requirements` accepts `query`, `labels`, `status`, `page`, `per_page` and `fields`. Use `fields` to limit the payload to specific requirement attributes; the `rid` is always included even when not requested. Provide `fields` as an array of field names—the server falls back to the full payload when the value is malformed. Status values: draft, in_review, approved, baselined, retired — always use these lowercase codes even when the user provides alternative wording or another language. Labels must be arrays of strings.
+        When editing a requirement use the specialised tools described below: `update_requirement_field` changes exactly one field at a time. Allowed field names: {editable_fields}. Provide the new content via the `value` argument as a plain string (use ISO 8601 for timestamps; send an empty string when you need to clear optional text). The server increments the revision automatically.
+        `set_requirement_labels` replaces the full label list; pass an array of strings (use [] to clear all labels).
+        `set_requirement_attachments` replaces attachments; supply an array of objects such as {{"path": "docs/spec.pdf", "note": "optional comment"}} or [] to remove them.
+        `set_requirement_links` replaces outgoing trace links; provide an array of link objects (with at least `rid`) or plain RID strings; unknown RIDs will be marked suspect automatically.
+        `create_requirement` adds a new requirement; provide a `prefix` (for example, `SYS`) and a `data` object containing at least title, statement, type, status, owner, priority, source and verification. Optional fields may also be included.
+        `delete_requirement` removes an existing requirement by RID; use it only when the user explicitly requests deletion.
+        `link_requirements` creates hierarchy links; pass `source_rid`, `derived_rid` and `link_type` (currently `parent`).
+        When the user references a requirement, always use its requirement identifier (RID) exactly as shown in the workspace context using the `<prefix><number>` format (case-sensitive). Context summaries show entries as `<RID> — <title>` (the title may be omitted); the RID is the concatenation of the prefix and number (for example, `HLR1`). Highlighted selections are listed on a single `Selected requirement RIDs:` line (for example, `Selected requirement RIDs: SYS-2, SYS-3`). When the user refers to the highlighted or selected requirement(s), resolve them using the RID(s) from that line. Never pass only the numeric `id`.
+        Examples:
+        - Context entry "SYS11 — Graphical User Interface" and user request "Write the text of the first requirement" → call `get_requirement` with {{"rid": "SYS11"}}.
+        - Context entry "SYS3 — Telemetry" and user request "Update the status of SYS3 to approved" → call `update_requirement_field` with {{"rid": "SYS3", "field": "status", "value": "approved"}}.
+        - Context entry "SYS4 — Diagnostics" and request "Clear every label on SYS4" → call `set_requirement_labels` with {{"rid": "SYS4", "labels": []}}.
+        - Context entries "HLR5 — User interface shell" and "SYS11 — Graphical User Interface" with user request "Link SYS11 as a child of HLR5" → call `link_requirements` with {{"source_rid": "HLR5", "derived_rid": "SYS11", "link_type": "parent"}}.
+        - User request "Find requirements with the UI label" → call `search_requirements` with {{"labels": ["UI"]}}.
+        """
+    )
+    .strip()
+    .format(editable_fields=", ".join(_EDITABLE_FIELDS))
 )
 
 
@@ -132,6 +101,12 @@ TOOLS: list[dict[str, Any]] = [
                         "items": {"type": "string"},
                         "description": "return requirements containing all labels",
                     },
+                    "fields": {
+                        "type": ["array", "string", "null"],
+                        "items": {"type": "string"},
+                        "uniqueItems": True,
+                        "description": "restrict the returned requirement fields (RID is always included)",
+                    },
                 },
                 "required": [],
                 "additionalProperties": False,
@@ -149,7 +124,13 @@ TOOLS: list[dict[str, Any]] = [
                     "rid": {
                         "type": "string",
                         "description": "Requirement identifier to load (for example, SYS12).",
-                    }
+                    },
+                    "fields": {
+                        "type": ["array", "string", "null"],
+                        "items": {"type": "string"},
+                        "uniqueItems": True,
+                        "description": "restrict the returned fields (RID is always included)",
+                    },
                 },
                 "required": ["rid"],
                 "additionalProperties": False,
@@ -187,6 +168,12 @@ TOOLS: list[dict[str, Any]] = [
                         "type": "integer",
                         "minimum": 1,
                         "description": "number of items per page",
+                    },
+                    "fields": {
+                        "type": ["array", "string", "null"],
+                        "items": {"type": "string"},
+                        "uniqueItems": True,
+                        "description": "restrict the returned requirement fields (RID is always included)",
                     },
                 },
                 "required": [],

@@ -305,6 +305,53 @@ def test_parse_command_captures_reasoning_segments(tmp_path: Path, monkeypatch) 
     ]
 
 
+def test_parse_command_collects_reasoning_text_and_summary(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = settings_with_llm(tmp_path)
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple capture
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="final",
+                                tool_calls=None,
+                                reasoning="internal stream",
+                                reasoning_details=[
+                                    {
+                                        "type": "reasoning.summary",
+                                        "summary": "condensed",
+                                    },
+                                    {
+                                        "type": "reasoning.encrypted",
+                                        "data": "hidden",
+                                    },
+                                ],
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    response = client.parse_command("hello")
+    assert response.content == "final"
+    assert [
+        (segment.type, segment.text)
+        for segment in response.reasoning
+    ] == [
+        ("reasoning", "internal stream"),
+        ("reasoning.summary", "condensed"),
+    ]
+
+
 def test_parse_command_recovers_concatenated_tool_arguments(
     tmp_path: Path, monkeypatch
 ) -> None:

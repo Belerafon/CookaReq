@@ -512,11 +512,22 @@ class LLMClient:
                         reasoning_accumulator,
                         self._collect_reasoning_fragments(reasoning_payload),
                     )
+                reasoning_details = None
+                if message_map is not None:
+                    reasoning_details = message_map.get("reasoning_details")
+                if reasoning_details:
+                    self._append_reasoning_fragments(
+                        reasoning_accumulator,
+                        self._collect_reasoning_fragments(reasoning_details),
+                    )
                 content_payload = getattr(message, "content", None)
-                self._append_reasoning_fragments(
-                    reasoning_accumulator,
-                    self._collect_reasoning_fragments(content_payload),
-                )
+                if isinstance(content_payload, (Mapping, Sequence)) and not isinstance(
+                    content_payload, (str, bytes, bytearray)
+                ):
+                    self._append_reasoning_fragments(
+                        reasoning_accumulator,
+                        self._collect_reasoning_fragments(content_payload),
+                    )
                 message_text = self._extract_message_text(
                     content_payload
                 ).strip()
@@ -619,6 +630,7 @@ class LLMClient:
                 content=response.content.strip(),
                 tool_calls=response.tool_calls,
                 request_messages=request_snapshot,
+                reasoning=response.reasoning,
             )
 
     def _respond_harmony(
@@ -943,6 +955,20 @@ class LLMClient:
                             self._append_reasoning_fragments(
                                 reasoning_segments,
                                 text_fragments,
+                            )
+                    reasoning_details_delta = None
+                    if delta_map is not None:
+                        reasoning_details_delta = delta_map.get(
+                            "reasoning_details"
+                        )
+                    if reasoning_details_delta:
+                        details_fragments = self._collect_reasoning_fragments(
+                            reasoning_details_delta
+                        )
+                        if details_fragments:
+                            self._append_reasoning_fragments(
+                                reasoning_segments,
+                                details_fragments,
                             )
                     function_call = getattr(delta, "function_call", None)
                     if function_call is None and delta_map is not None:
@@ -1312,17 +1338,62 @@ class LLMClient:
         fragments: list[tuple[str, str]] = []
         if not payload:
             return fragments
-        for entry in self._extract_reasoning_entries(payload):
-            entry_type = entry.get("type")
-            if not self._is_reasoning_type(entry_type):
-                continue
-            text_value = entry.get("text")
-            if not isinstance(text_value, str):
-                text_value = self._extract_message_text(entry.get("content"))
-            if not text_value:
-                continue
-            entry_type_str = str(entry_type).strip() if isinstance(entry_type, str) else "reasoning"
-            fragments.append((entry_type_str or "reasoning", str(text_value)))
+
+        def add_fragment(raw_type: Any, text: Any) -> None:
+            if text is None:
+                return
+            text_str = str(text).strip()
+            if not text_str:
+                return
+            type_str = str(raw_type).strip() if isinstance(raw_type, str) else ""
+            if type_str and not self._is_reasoning_type(type_str):
+                return
+            if type_str and "encrypted" in type_str.lower():
+                return
+            fragments.append((type_str or "reasoning", text_str))
+
+        if isinstance(payload, (bytes, bytearray)):
+            try:
+                payload = payload.decode("utf-8")
+            except Exception:  # pragma: no cover - defensive fallback
+                payload = payload.decode("utf-8", "ignore")
+
+        if isinstance(payload, str):
+            add_fragment("reasoning", payload)
+            return fragments
+
+        if isinstance(payload, Mapping):
+            entry_type = payload.get("type")
+            text_value = payload.get("text")
+            if text_value is None:
+                text_value = payload.get("summary")
+            if text_value is None and isinstance(payload.get("content"), str):
+                text_value = payload.get("content")
+            add_fragment(entry_type or "reasoning", text_value)
+
+            content_value = payload.get("content")
+            if content_value is not None and (
+                not isinstance(entry_type, str)
+                or self._is_reasoning_type(entry_type)
+            ):
+                fragments.extend(self._collect_reasoning_fragments(content_value))
+
+            for key in (
+                "reasoning_content",
+                "reasoning",
+                "items",
+                "entries",
+                "details",
+                "reasoning_details",
+            ):
+                nested = payload.get(key)
+                if nested:
+                    fragments.extend(self._collect_reasoning_fragments(nested))
+            return fragments
+
+        if isinstance(payload, Sequence) and not isinstance(payload, (str, bytes, bytearray)):
+            for item in payload:
+                fragments.extend(self._collect_reasoning_fragments(item))
         return fragments
 
     @staticmethod

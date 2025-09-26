@@ -922,6 +922,82 @@ def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
         frame.Destroy()
 
 
+def test_transcript_message_panel_reuses_layout_hints(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    first_panel = None
+    second_panel = None
+    try:
+        recorded_hints: dict[str, int] = {}
+
+        def store_hint(key: str, width: int) -> None:
+            recorded_hints[key] = int(width)
+
+        first_panel = TranscriptMessagePanel(
+            frame,
+            prompt="hello",
+            response="this is a fairly long answer " * 8,
+            on_layout_hint=store_hint,
+        )
+        if frame.GetSizer() is None:
+            frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
+        sizer = frame.GetSizer()
+        sizer.Add(first_panel, 1, wx.EXPAND)
+        wx.GetApp().Yield()
+
+        agent_hint = recorded_hints.get("agent")
+        assert agent_hint is not None and agent_hint > 0, "agent width hint should be recorded"
+
+        sizer.Detach(first_panel)
+        first_panel.Destroy()
+        first_panel = None
+        recorded_hints.clear()
+
+        second_panel = TranscriptMessagePanel(
+            frame,
+            prompt="hello",
+            response="short",
+            layout_hints={"agent": agent_hint},
+        )
+        sizer.Add(second_panel, 1, wx.EXPAND)
+        wx.GetApp().Yield()
+
+        def has_agent_header(window: MessageBubble) -> bool:
+            stack = list(window.GetChildren())
+            while stack:
+                child = stack.pop()
+                if isinstance(child, wx.StaticText) and "Agent" in child.GetLabel():
+                    return True
+                stack.extend(child.GetChildren())
+            return False
+
+        child_windows = [
+            item.GetWindow()
+            for item in second_panel.GetSizer().GetChildren()
+            if item.IsWindow()
+        ]
+
+        agent_bubbles = [
+            window
+            for window in child_windows
+            if isinstance(window, MessageBubble) and has_agent_header(window)
+        ]
+        assert agent_bubbles, "expected agent bubble"
+        bubble = agent_bubbles[0]
+        bubble_width = bubble.GetSize().width
+        if bubble_width <= 0:
+            bubble_width = bubble.GetBestSize().width
+        tolerance = second_panel.FromDIP(8)
+        assert bubble_width >= agent_hint - tolerance
+    finally:
+        if second_panel is not None:
+            second_panel.Destroy()
+        if first_panel is not None:
+            first_panel.Destroy()
+        frame.Destroy()
+
+
 def test_agent_transcript_log_orders_sections_for_errors(tmp_path, wx_app):
     class ErrorAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):

@@ -165,6 +165,8 @@ class MessageBubble(wx.Panel):
         render_markdown: bool = False,
         footer_factory: FooterFactory | None = None,
         palette: MessageBubblePalette | None = None,
+        width_hint: int | None = None,
+        on_width_change: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
@@ -172,6 +174,15 @@ class MessageBubble(wx.Panel):
         self._destroyed = False
         self._pending_width_update = False
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
+
+        self._on_width_change = on_width_change
+        try:
+            hint_value = int(width_hint) if width_hint is not None else None
+        except (TypeError, ValueError):
+            hint_value = None
+        if hint_value is not None and hint_value <= 0:
+            hint_value = None
+        self._initial_width_hint = hint_value
 
         display_text = normalize_for_display(text)
         self._text_value = display_text
@@ -357,6 +368,19 @@ class MessageBubble(wx.Panel):
 
         self.SetSizer(outer)
         self.Bind(wx.EVT_SIZE, self._on_panel_resize)
+
+        if self._initial_width_hint is not None:
+            initial_width = self._initial_width_hint
+            size = wx.Size(initial_width, -1)
+            try:
+                bubble.SetMinSize(size)
+                bubble.SetMaxSize(size)
+                bubble.SetInitialSize(size)
+            except RuntimeError:
+                pass
+            else:
+                self._cached_width_constraints = (initial_width, initial_width)
+
         self._schedule_width_update()
 
     def _build_default_palette(
@@ -601,6 +625,17 @@ class MessageBubble(wx.Panel):
         if max_width <= 0:
             return
 
+        hint_floor = self._initial_width_hint
+        if hint_floor is not None and hint_floor > 0:
+            capped_hint = hint_floor
+            if hard_cap > 0:
+                capped_hint = min(capped_hint, hard_cap)
+            if max_width < capped_hint:
+                max_width = capped_hint
+            target_floor = capped_hint
+        else:
+            target_floor = 0
+
         content_width = self._estimate_content_width()
         padded_content = content_width + 2 * self._content_padding
         char_count = len(self._text_value)
@@ -610,6 +645,8 @@ class MessageBubble(wx.Panel):
         target_from_chars = min_width_cap + int((max_width - min_width_cap) * ratio)
         target_width = max(min_width_cap, padded_content, target_from_chars)
         target_width = min(target_width, max_width)
+        if target_floor:
+            target_width = max(target_width, target_floor)
 
         cached = self._cached_width_constraints
         if cached is not None and cached == (target_width, max_width):
@@ -649,6 +686,14 @@ class MessageBubble(wx.Panel):
             self.Layout()
         except RuntimeError:
             pass
+
+        self._initial_width_hint = target_width
+
+        if self._on_width_change is not None and target_width > 0:
+            try:
+                self._on_width_change(target_width)
+            except Exception:
+                pass
 
     def _resolve_parent_border(self, parent: wx.Window) -> int:
         try:
@@ -735,6 +780,8 @@ class TranscriptMessagePanel(wx.Panel):
         context_messages: Sequence[Mapping[str, Any]] | None = None,
         reasoning_segments: Sequence[Mapping[str, Any]] | None = None,
         regenerated: bool = False,
+        layout_hints: Mapping[str, int] | None = None,
+        on_layout_hint: Callable[[str, int], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
@@ -742,6 +789,26 @@ class TranscriptMessagePanel(wx.Panel):
 
         outer = wx.BoxSizer(wx.VERTICAL)
         padding = self.FromDIP(4)
+
+        def _emit_layout_hint(key: str, width: int) -> None:
+            if on_layout_hint is None or width <= 0:
+                return
+            try:
+                on_layout_hint(key, int(width))
+            except Exception:
+                pass
+
+        def _resolve_hint(key: str) -> int | None:
+            if not layout_hints:
+                return None
+            value = layout_hints.get(key)
+            if value is None:
+                return None
+            try:
+                width = int(value)
+            except (TypeError, ValueError):
+                return None
+            return width if width > 0 else None
 
         if regenerated:
             notice = wx.StaticText(
@@ -763,6 +830,8 @@ class TranscriptMessagePanel(wx.Panel):
             timestamp=prompt_timestamp,
             text=prompt,
             align="right",
+            width_hint=_resolve_hint("user"),
+            on_width_change=lambda width: _emit_layout_hint("user", width),
         )
         outer.Add(user_bubble, 0, wx.EXPAND | wx.ALL, padding)
 
@@ -774,6 +843,7 @@ class TranscriptMessagePanel(wx.Panel):
                 markdown = render_tool_summary_markdown(summary).strip()
                 if not markdown:
                     continue
+                hint_key = self.tool_layout_hint_key(summary)
                 bubble = MessageBubble(
                     self,
                     role_label=summary.tool_name,
@@ -783,6 +853,8 @@ class TranscriptMessagePanel(wx.Panel):
                     allow_selection=True,
                     render_markdown=True,
                     palette=_tool_bubble_palette(parent_background, summary.tool_name),
+                    width_hint=_resolve_hint(hint_key),
+                    on_width_change=lambda width, key=hint_key: _emit_layout_hint(key, width),
                 )
                 tool_bubbles.append(bubble)
 
@@ -806,6 +878,8 @@ class TranscriptMessagePanel(wx.Panel):
                 if on_regenerate is not None
                 else None
             ),
+            width_hint=_resolve_hint("agent"),
+            on_width_change=lambda width: _emit_layout_hint("agent", width),
         )
         outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, padding)
 
@@ -834,6 +908,18 @@ class TranscriptMessagePanel(wx.Panel):
                 )
 
         self.SetSizer(outer)
+
+    @staticmethod
+    def tool_layout_hint_key(summary: ToolCallSummary) -> str:
+        try:
+            index = int(summary.index)
+        except (TypeError, ValueError):
+            index = 0
+        name = normalize_for_display(summary.tool_name).strip()
+        index_label = str(index) if index > 0 else "0"
+        if name:
+            return f"tool:{index_label}:{name}"
+        return f"tool:{index_label}"
 
     def _create_timestamp_meta(self, timestamp: str) -> wx.StaticText | None:
         timestamp_value = timestamp.strip()

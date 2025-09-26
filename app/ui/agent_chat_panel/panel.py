@@ -1784,6 +1784,15 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
                     )
                     tool_summaries = summarize_tool_results(entry.tool_results)
                     response_text = entry.display_response or entry.response
+                    valid_hint_keys = {"user", "agent"}
+                    for summary in tool_summaries:
+                        valid_hint_keys.add(
+                            TranscriptMessagePanel.tool_layout_hint_key(summary)
+                        )
+                    hints = entry.layout_hints if isinstance(entry.layout_hints, dict) else {}
+                    entry.layout_hints = {
+                        key: value for key, value in hints.items() if key in valid_hint_keys
+                    }
                     panel = TranscriptMessagePanel(
                         self.transcript_panel,
                         prompt=entry.prompt,
@@ -1796,6 +1805,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, HistoryPersistenceMixin, wx.Panel)
                         context_messages=entry.context_messages,
                         reasoning_segments=entry.reasoning,
                         regenerated=getattr(entry, "regenerated", False),
+                        layout_hints=entry.layout_hints,
+                        on_layout_hint=lambda key, width, entry=entry: entry.layout_hints.__setitem__(
+                            key, int(width)
+                        ),
                     )
                     panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_transcript_pane_toggled)
                     self._transcript_sizer.Add(panel, 0, wx.EXPAND)

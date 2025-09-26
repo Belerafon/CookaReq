@@ -16,6 +16,7 @@ from app.llm.validation import ToolValidationError
 from app.mcp.client import MCPNotReadyError
 from app.mcp.utils import ErrorCode
 from app.settings import AppSettings
+from app.util.cancellation import CancellationEvent, OperationCancelledError
 
 from tests.llm_utils import make_openai_mock, settings_with_llm
 
@@ -571,6 +572,43 @@ def test_run_command_stops_after_configured_tool_error_limit():
         "max_consecutive_tool_errors": 3,
     }
     assert agent.max_consecutive_tool_errors == 3
+
+
+def test_run_command_respects_cancellation_after_tool_batch():
+    cancellation = CancellationEvent()
+
+    class ToolLLM(LLMAsyncBridge):
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            return LLMResponse(
+                "",
+                (
+                    LLMToolCall(
+                        id="call-0",
+                        name="list_requirements",
+                        arguments={},
+                    ),
+                ),
+            )
+
+    class CancellingMCP(MCPAsyncBridge):
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, Mapping[str, Any]]] = []
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def call_tool(self, name, arguments):
+            self.calls.append((name, dict(arguments)))
+            cancellation.set()
+            return {"ok": True, "error": None, "result": {"status": "ok"}}
+
+    agent = LocalAgent(llm=ToolLLM(), mcp=CancellingMCP())
+
+    with pytest.raises(OperationCancelledError):
+        agent.run_command("cancel later", cancellation=cancellation)
 
 
 def test_run_command_recovers_after_tool_validation_error():

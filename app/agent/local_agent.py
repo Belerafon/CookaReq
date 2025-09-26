@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass
 from collections.abc import Sequence
 from typing import Any, Awaitable, Callable, Mapping, Protocol, runtime_checkable
 
@@ -443,132 +444,13 @@ class LocalAgent:
         cancellation: CancellationEvent | None = None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
-        accumulated_results: list[Mapping[str, Any]] = []
-        last_response: LLMResponse | None = None
-        step = 0
-        consecutive_tool_errors = 0
-        while True:
-            if self._max_thought_steps is not None and step >= self._max_thought_steps:
-                break
-            self._raise_if_cancelled(cancellation)
-            try:
-                response = await self._llm.respond_async(
-                    conversation,
-                    cancellation=cancellation,
-                )
-            except ToolValidationError as exc:
-                (
-                    response,
-                    tool_error,
-                ) = self._handle_tool_validation_error(
-                    exc,
-                    conversation,
-                    on_tool_result=on_tool_result,
-                )
-                self._record_request_messages(response)
-                last_response = response
-                step += 1
-                self._log_step(step, response)
-                batch_results: list[Mapping[str, Any]] = []
-            else:
-                last_response = response
-                self._record_request_messages(response)
-                conversation.append(self._assistant_message(response))
-                step += 1
-                self._log_step(step, response)
-                if not response.tool_calls:
-                    return self._success_result(response, accumulated_results)
-                (
-                    tool_messages,
-                    tool_error,
-                    batch_results,
-                ) = await self._execute_tool_calls_core(
-                    response.tool_calls,
-                    cancellation=cancellation,
-                    on_tool_result=on_tool_result,
-                )
-                conversation.extend(tool_messages)
-            accumulated_results.extend(batch_results)
-            if tool_error is not None:
-                consecutive_tool_errors += 1
-                if (
-                    self._max_consecutive_tool_errors is not None
-                    and consecutive_tool_errors
-                    >= self._max_consecutive_tool_errors
-                ):
-                    abort_payload: dict[str, Any] = {
-                        "reason": "tool-error-limit",
-                        "consecutive_errors": consecutive_tool_errors,
-                    }
-                    if self._max_consecutive_tool_errors is not None:
-                        abort_payload["max_consecutive_tool_errors"] = (
-                            self._max_consecutive_tool_errors
-                        )
-                    if isinstance(tool_error, Mapping):
-                        abort_payload["tool_name"] = tool_error.get("tool_name")
-                        abort_payload["tool_call_id"] = tool_error.get(
-                            "tool_call_id"
-                        )
-                        error_payload = tool_error.get("error")
-                        if isinstance(error_payload, Mapping):
-                            abort_payload["error_type"] = error_payload.get("type")
-                    log_event("AGENT_ABORTED", abort_payload)
-                    return self._prepare_consecutive_tool_error_result(
-                        tool_error,
-                        consecutive_tool_errors,
-                    )
-                self._raise_if_cancelled(cancellation)
-                continue
-            consecutive_tool_errors = 0
-            self._raise_if_cancelled(cancellation)
-        assert self._max_thought_steps is not None  # loop exits only when limit is set
-        abort_payload: dict[str, Any] = {
-            "reason": "max-steps",
-            "max_steps": self._max_thought_steps,
-        }
-        if last_response is not None:
-            if last_response.content:
-                abort_payload["last_message_preview"] = self._preview(
-                    last_response.content
-                )
-            if last_response.tool_calls:
-                abort_payload["last_tool_calls"] = self._summarize_tool_calls(
-                    last_response.tool_calls
-                )
-        log_event("AGENT_ABORTED", abort_payload)
-
-        message = (
-            "LLM did not finish interaction within allowed steps "
-            f"({self._max_thought_steps})"
+        runner = AgentLoopRunner(
+            agent=self,
+            conversation=conversation,
+            cancellation=cancellation,
+            on_tool_result=on_tool_result,
         )
-        if last_response is not None:
-            if last_response.tool_calls:
-                call_descriptions: list[str] = []
-                for call in last_response.tool_calls:
-                    call_descriptions.append(
-                        f"{call.name} with arguments "
-                        f"{self._format_tool_arguments(call.arguments)}"
-                    )
-                joined = "; ".join(call_descriptions)
-                message += f". Last response requested: {joined}"
-            elif last_response.content:
-                message += f". Last message: {last_response.content.strip()}"
-        error = ToolValidationError(message)
-        if last_response is not None:
-            if last_response.content:
-                error.llm_message = last_response.content
-            if last_response.tool_calls:
-                error.llm_tool_calls = [
-                    {
-                        "id": call.id,
-                        "name": call.name,
-                        "arguments": self._normalise_tool_arguments(call),
-                    }
-                    for call in last_response.tool_calls
-                ]
-        if accumulated_results:
-            error.tool_results = [dict(result) for result in accumulated_results]
-        raise error
+        return await runner.run()
 
     async def _execute_tool_calls_core(
         self,
@@ -673,7 +555,7 @@ class LocalAgent:
         raw_calls = getattr(exc, "llm_tool_calls", None)
         raw_request_messages = getattr(exc, "llm_request_messages", None)
         raw_reasoning = getattr(exc, "llm_reasoning", None)
-        normalized_calls: list[dict[str, Any]] = []
+        prepared_calls = self._prepare_invalid_tool_calls(raw_calls)
         request_snapshot: tuple[dict[str, Any], ...] | None = None
         reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
         if isinstance(raw_request_messages, Sequence) and not isinstance(
@@ -685,10 +567,6 @@ class LocalAgent:
                     prepared_messages.append(dict(message))
             if prepared_messages:
                 request_snapshot = tuple(prepared_messages)
-        if isinstance(raw_calls, Sequence):
-            for entry in raw_calls:
-                if isinstance(entry, Mapping):
-                    normalized_calls.append(dict(entry))
         if isinstance(raw_reasoning, Sequence) and not isinstance(
             raw_reasoning, (str, bytes, bytearray)
         ):
@@ -713,77 +591,35 @@ class LocalAgent:
             if prepared_segments:
                 reasoning_segments = tuple(prepared_segments)
 
-        assistant_tool_calls: list[dict[str, Any]] = []
-        synthetic_calls: list[LLMToolCall] = []
+        assistant_tool_calls = [
+            prepared.assistant_fragment for prepared in prepared_calls
+        ]
+        synthetic_calls = [prepared.call for prepared in prepared_calls]
         tool_messages: list[dict[str, Any]] = []
         first_error_payload: dict[str, Any] | None = None
 
-        for index, call in enumerate(normalized_calls):
-            function = call.get("function")
-            if not isinstance(function, Mapping):
-                continue
-            name = function.get("name")
-            if not name:
-                continue
-            raw_arguments = function.get("arguments")
-            if isinstance(raw_arguments, str):
-                arguments_text = raw_arguments or "{}"
-            else:
-                try:
-                    arguments_text = json.dumps(raw_arguments or {}, ensure_ascii=False)
-                except (TypeError, ValueError):
-                    arguments_text = "{}"
-            call_id = call.get("id") or call.get("tool_call_id") or f"tool_call_{index}"
-            call_id_str = str(call_id)
-            assistant_tool_calls.append(
+        for prepared in prepared_calls:
+            error_payload = self._prepare_tool_payload(
+                prepared.call,
                 {
-                    "id": call_id_str,
-                    "type": "function",
-                    "function": {
-                        "name": str(name),
-                        "arguments": arguments_text,
+                    "ok": False,
+                    "error": {
+                        "type": type(exc).__name__,
+                        "message": str(exc),
                     },
-                }
-            )
-            try:
-                parsed_arguments = json.loads(arguments_text)
-            except Exception:
-                parsed_arguments = arguments_text
-            if isinstance(parsed_arguments, Mapping):
-                arguments_for_response = dict(parsed_arguments)
-            else:
-                arguments_for_response = {}
-            synthetic_calls.append(
-                LLMToolCall(
-                    id=call_id_str,
-                    name=str(name),
-                    arguments=arguments_for_response,
-                )
-            )
-            error_payload: dict[str, Any] = {
-                "ok": False,
-                "error": {
-                    "type": type(exc).__name__,
-                    "message": str(exc),
                 },
-                "tool_name": str(name),
-                "tool_call_id": call_id_str,
-                "call_id": call_id_str,
-                "agent_status": "failed",
-            }
-            if isinstance(parsed_arguments, Mapping):
-                error_payload["tool_arguments"] = parsed_arguments
-            elif isinstance(parsed_arguments, str) and parsed_arguments:
-                error_payload["tool_arguments"] = parsed_arguments
-            self._emit_tool_result(on_tool_result, error_payload)
-            tool_messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call_id_str,
-                    "name": str(name),
-                    "content": json.dumps(error_payload, ensure_ascii=False, default=str),
-                }
+                include_arguments=False,
             )
+            arguments = prepared.arguments_for_payload
+            if isinstance(arguments, Mapping):
+                error_payload["tool_arguments"] = dict(arguments)
+            elif isinstance(arguments, str) and arguments:
+                error_payload["tool_arguments"] = arguments
+            elif arguments is not None:
+                error_payload["tool_arguments"] = arguments
+            error_payload.setdefault("agent_status", "failed")
+            self._emit_tool_result(on_tool_result, error_payload)
+            tool_messages.append(self._tool_message(prepared.call, error_payload))
             if first_error_payload is None:
                 first_error_payload = error_payload
 
@@ -827,6 +663,85 @@ class LocalAgent:
             reasoning=reasoning_segments,
         )
         return synthetic_response, first_error_payload
+
+    def _prepare_invalid_tool_calls(
+        self, raw_calls: Sequence[Any] | None
+    ) -> list["_ValidationToolCallPayload"]:
+        if not isinstance(raw_calls, Sequence) or isinstance(
+            raw_calls, (str, bytes, bytearray)
+        ):
+            return []
+        prepared: list[_ValidationToolCallPayload] = []
+        for index, entry in enumerate(raw_calls):
+            if not isinstance(entry, Mapping):
+                continue
+            function = entry.get("function")
+            if not isinstance(function, Mapping):
+                continue
+            name = function.get("name")
+            if not name:
+                continue
+            arguments_text, arguments_for_payload = self._normalise_tool_arguments_from_error(
+                function.get("arguments")
+            )
+            call_id = entry.get("id") or entry.get("tool_call_id") or f"tool_call_{index}"
+            call_id_str = str(call_id)
+            assistant_fragment = {
+                "id": call_id_str,
+                "type": "function",
+                "function": {
+                    "name": str(name),
+                    "arguments": arguments_text,
+                },
+            }
+            if isinstance(arguments_for_payload, Mapping):
+                call_arguments: Mapping[str, Any] = dict(arguments_for_payload)
+            else:
+                call_arguments = {}
+            prepared.append(
+                _ValidationToolCallPayload(
+                    call=LLMToolCall(
+                        id=call_id_str,
+                        name=str(name),
+                        arguments=call_arguments,
+                    ),
+                    assistant_fragment=assistant_fragment,
+                    arguments_for_payload=(
+                        dict(arguments_for_payload)
+                        if isinstance(arguments_for_payload, Mapping)
+                        else arguments_for_payload
+                    ),
+                )
+            )
+        return prepared
+
+    def _normalise_tool_arguments_from_error(self, raw: Any) -> tuple[str, Any | None]:
+        if isinstance(raw, str):
+            text = raw.strip() or "{}"
+            parsed = self._safe_json_loads(text)
+            if isinstance(parsed, Mapping):
+                return text, dict(parsed)
+            return text, parsed
+        if isinstance(raw, Mapping):
+            prepared = dict(raw)
+            return self._format_tool_arguments(prepared), prepared
+        if raw is None:
+            return "{}", None
+        try:
+            text = json.dumps(raw, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            return "{}", None
+        parsed = self._safe_json_loads(text)
+        if isinstance(parsed, Mapping):
+            return text, dict(parsed)
+        return text, parsed
+
+    @staticmethod
+    def _safe_json_loads(text: str) -> Any:
+        try:
+            return json.loads(text)
+        except Exception:
+            return text
 
     @staticmethod
     def _emit_tool_result(
@@ -953,3 +868,226 @@ class LocalAgent:
     @staticmethod
     def _serialise_tool_payload(payload: Mapping[str, Any]) -> str:
         return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+@dataclass(slots=True)
+class _ValidationToolCallPayload:
+    """Prepared representation of invalid tool calls returned by the LLM."""
+
+    call: LLMToolCall
+    assistant_fragment: dict[str, Any]
+    arguments_for_payload: Any | None
+
+
+@dataclass(slots=True)
+class _AgentLoopStep:
+    """Container describing the outcome of a single agent iteration."""
+
+    response: LLMResponse
+    tool_error: Mapping[str, Any] | None
+    batch_results: list[Mapping[str, Any]]
+    final_result: dict[str, Any] | None
+
+
+class AgentLoopRunner:
+    """Stateful helper executing :class:`LocalAgent` iterations."""
+
+    def __init__(
+        self,
+        *,
+        agent: "LocalAgent",
+        conversation: list[Mapping[str, Any]],
+        cancellation: CancellationEvent | None,
+        on_tool_result: Callable[[Mapping[str, Any]], None] | None,
+    ) -> None:
+        self._agent = agent
+        self._conversation = conversation
+        self._cancellation = cancellation
+        self._on_tool_result = on_tool_result
+        self._accumulated_results: list[Mapping[str, Any]] = []
+        self._last_response: LLMResponse | None = None
+        self._step = 0
+        self._consecutive_tool_errors = 0
+
+    async def run(self) -> dict[str, Any]:
+        """Execute the main loop until completion or enforced abort."""
+
+        while not self.should_abort():
+            self._agent._raise_if_cancelled(self._cancellation)
+            step_outcome = await self.step_llm()
+            final = self._finalise_step(step_outcome)
+            if final is not None:
+                return final
+        return self._abort_due_to_step_limit()
+
+    async def step_llm(self) -> _AgentLoopStep:
+        """Perform a single LLM interaction."""
+
+        try:
+            response = await self._agent._llm.respond_async(
+                self._conversation,
+                cancellation=self._cancellation,
+            )
+        except ToolValidationError as exc:
+            return self._handle_validation_error(exc)
+        return await self.handle_tool_batch(response)
+
+    async def handle_tool_batch(self, response: LLMResponse) -> _AgentLoopStep:
+        """Execute MCP tools requested by *response* when present."""
+
+        self._register_response(response)
+        self._conversation.append(self._agent._assistant_message(response))
+        self._advance_step(response)
+        if not response.tool_calls:
+            return _AgentLoopStep(
+                response=response,
+                tool_error=None,
+                batch_results=[],
+                final_result=self._agent._success_result(
+                    response,
+                    self._accumulated_results,
+                ),
+            )
+        (
+            tool_messages,
+            tool_error,
+            batch_results,
+        ) = await self._agent._execute_tool_calls_core(
+            response.tool_calls,
+            cancellation=self._cancellation,
+            on_tool_result=self._on_tool_result,
+        )
+        self._conversation.extend(tool_messages)
+        return _AgentLoopStep(
+            response=response,
+            tool_error=tool_error,
+            batch_results=batch_results,
+            final_result=None,
+        )
+
+    def should_abort(self) -> bool:
+        """Return ``True`` when the configured step cap has been reached."""
+
+        return (
+            self._agent._max_thought_steps is not None
+            and self._step >= self._agent._max_thought_steps
+        )
+
+    def _handle_validation_error(self, exc: ToolValidationError) -> _AgentLoopStep:
+        response, tool_error = self._agent._handle_tool_validation_error(
+            exc,
+            self._conversation,
+            on_tool_result=self._on_tool_result,
+        )
+        self._register_response(response)
+        self._advance_step(response)
+        return _AgentLoopStep(
+            response=response,
+            tool_error=tool_error,
+            batch_results=[],
+            final_result=None,
+        )
+
+    def _register_response(self, response: LLMResponse) -> None:
+        self._last_response = response
+        self._agent._record_request_messages(response)
+
+    def _advance_step(self, response: LLMResponse) -> None:
+        self._step += 1
+        self._agent._log_step(self._step, response)
+
+    def _finalise_step(self, outcome: _AgentLoopStep) -> dict[str, Any] | None:
+        self._accumulated_results.extend(outcome.batch_results)
+        if outcome.final_result is not None:
+            return outcome.final_result
+        if outcome.tool_error is None:
+            self._consecutive_tool_errors = 0
+            self._agent._raise_if_cancelled(self._cancellation)
+            return None
+        self._consecutive_tool_errors += 1
+        if self._should_stop_due_to_tool_errors():
+            return self._abort_due_to_consecutive_tool_errors(outcome.tool_error)
+        self._agent._raise_if_cancelled(self._cancellation)
+        return None
+
+    def _should_stop_due_to_tool_errors(self) -> bool:
+        limit = self._agent._max_consecutive_tool_errors
+        return limit is not None and self._consecutive_tool_errors >= limit
+
+    def _abort_due_to_consecutive_tool_errors(
+        self, payload: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        abort_payload: dict[str, Any] = {
+            "reason": "tool-error-limit",
+            "consecutive_errors": self._consecutive_tool_errors,
+        }
+        limit = self._agent._max_consecutive_tool_errors
+        if limit is not None:
+            abort_payload["max_consecutive_tool_errors"] = limit
+        if isinstance(payload, Mapping):
+            abort_payload["tool_name"] = payload.get("tool_name")
+            abort_payload["tool_call_id"] = payload.get("tool_call_id")
+            error_payload = payload.get("error")
+            if isinstance(error_payload, Mapping):
+                abort_payload["error_type"] = error_payload.get("type")
+        log_event("AGENT_ABORTED", abort_payload)
+        return self._agent._prepare_consecutive_tool_error_result(
+            payload,
+            self._consecutive_tool_errors,
+        )
+
+    def _abort_due_to_step_limit(self) -> dict[str, Any]:
+        assert (
+            self._agent._max_thought_steps is not None
+        ), "step limit abort triggered without a configured limit"
+        abort_payload: dict[str, Any] = {
+            "reason": "max-steps",
+            "max_steps": self._agent._max_thought_steps,
+        }
+        if self._last_response is not None:
+            if self._last_response.content:
+                abort_payload["last_message_preview"] = self._agent._preview(
+                    self._last_response.content
+                )
+            if self._last_response.tool_calls:
+                abort_payload["last_tool_calls"] = self._agent._summarize_tool_calls(
+                    self._last_response.tool_calls
+                )
+        log_event("AGENT_ABORTED", abort_payload)
+
+        message = (
+            "LLM did not finish interaction within allowed steps "
+            f"({self._agent._max_thought_steps})"
+        )
+        if self._last_response is not None:
+            if self._last_response.tool_calls:
+                call_descriptions: list[str] = []
+                for call in self._last_response.tool_calls:
+                    call_descriptions.append(
+                        f"{call.name} with arguments "
+                        f"{self._agent._format_tool_arguments(call.arguments)}"
+                    )
+                joined = "; ".join(call_descriptions)
+                message += f". Last response requested: {joined}"
+            elif self._last_response.content:
+                message += (
+                    f". Last message: {self._last_response.content.strip()}"
+                )
+        error = ToolValidationError(message)
+        if self._last_response is not None:
+            if self._last_response.content:
+                error.llm_message = self._last_response.content
+            if self._last_response.tool_calls:
+                error.llm_tool_calls = [
+                    {
+                        "id": call.id,
+                        "name": call.name,
+                        "arguments": self._agent._normalise_tool_arguments(call),
+                    }
+                    for call in self._last_response.tool_calls
+                ]
+        if self._accumulated_results:
+            error.tool_results = [
+                dict(result) for result in self._accumulated_results
+            ]
+        raise error

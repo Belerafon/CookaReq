@@ -17,7 +17,9 @@ from app.core.document_store.items import (
     move_requirement,
     parse_rid,
     rid_for,
+    set_requirement_attachments,
     set_requirement_labels,
+    set_requirement_links,
     update_requirement_field,
 )
 from app.core.model import requirement_fingerprint
@@ -61,6 +63,13 @@ def test_create_update_and_delete_requirement(
             data={**_base_payload(), "labels": "oops"},
             docs=docs,
         )
+    with pytest.raises(ValidationError):
+        create_requirement(
+            tmp_path,
+            prefix="SYS",
+            data={**_base_payload(), "labels": None},
+            docs=docs,
+        )
 
     created = create_requirement(
         tmp_path,
@@ -93,6 +102,14 @@ def test_create_update_and_delete_requirement(
     fetched = get_requirement(tmp_path, created.rid, docs=docs)
     assert fetched.statement == "Updated"
     assert fetched.labels == []
+
+    with pytest.raises(ValidationError):
+        set_requirement_labels(
+            tmp_path,
+            created.rid,
+            labels=None,  # type: ignore[arg-type]
+            docs=docs,
+        )
 
     deleted = delete_requirement(
         tmp_path,
@@ -151,6 +168,34 @@ def test_update_requirement_field_rejects_unknown_status(
     message = str(exc.value)
     assert "invalid status" in message
     assert "draft" in message
+
+
+def test_set_attachments_and_links_reject_none(
+    tmp_path: Path, _document: Document
+) -> None:
+    docs = load_documents(tmp_path)
+    created = create_requirement(
+        tmp_path,
+        prefix="SYS",
+        data=_base_payload(),
+        docs=docs,
+    )
+
+    with pytest.raises(ValidationError):
+        set_requirement_attachments(
+            tmp_path,
+            created.rid,
+            attachments=None,  # type: ignore[arg-type]
+            docs=docs,
+        )
+
+    with pytest.raises(ValidationError):
+        set_requirement_links(
+            tmp_path,
+            created.rid,
+            links=None,  # type: ignore[arg-type]
+            docs=docs,
+        )
 
 
 def test_move_requirement_updates_links(tmp_path: Path) -> None:

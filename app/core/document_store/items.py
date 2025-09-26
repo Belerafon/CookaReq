@@ -91,8 +91,10 @@ def _load_fingerprint_for_rid(
 def _prepare_links_for_storage(
     root: Path, docs: Mapping[str, Document], data: dict[str, Any]
 ) -> None:
-    raw_links = data.get("links")
-    if raw_links in (None, ""):
+    if "links" not in data:
+        return
+    raw_links = data["links"]
+    if raw_links == []:
         data.pop("links", None)
         return
     if not isinstance(raw_links, list):
@@ -316,7 +318,7 @@ def load_requirements(
 
 def _normalize_labels(raw: Any) -> list[str]:
     if raw is None:
-        return []
+        raise ValidationError("labels must be a list of strings")
     if isinstance(raw, (str, bytes)):
         raise ValidationError("labels must be a list of strings")
     if not isinstance(raw, Sequence):
@@ -425,7 +427,7 @@ def create_requirement(
     if doc is None:
         raise DocumentNotFoundError(prefix)
     payload = dict(data)
-    labels = _normalize_labels(payload.get("labels"))
+    labels = _normalize_labels(payload.get("labels", []))
     err = validate_labels(prefix, labels, docs_map)
     if err:
         raise ValidationError(err)
@@ -474,7 +476,7 @@ def _update_requirement(
     mutate(payload, prefix, doc)
     payload["id"] = item_id
     payload["revision"] = _next_revision(payload.get("revision"))
-    labels = _normalize_labels(payload.get("labels"))
+    labels = _normalize_labels(payload.get("labels", []))
     err = validate_labels(prefix, labels, docs_map)
     if err:
         raise ValidationError(err)
@@ -518,18 +520,15 @@ def update_requirement_field(
 def set_requirement_labels(
     root: str | Path,
     rid: str,
-    labels: Sequence[str] | None,
+    labels: Sequence[str],
     *,
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
 
     def mutate(payload: dict[str, Any], _prefix: str, _doc: Document) -> None:
-        if labels is None:
-            payload["labels"] = []
-        elif isinstance(labels, Sequence) and not isinstance(labels, (str, bytes)):
-            payload["labels"] = list(labels)
-        else:
-            payload["labels"] = labels
+        if not isinstance(labels, Sequence) or isinstance(labels, (str, bytes)):
+            raise ValidationError("labels must be a list of strings")
+        payload["labels"] = _normalize_labels(list(labels))
 
     return _update_requirement(root, rid, docs, mutate)
 
@@ -537,20 +536,15 @@ def set_requirement_labels(
 def set_requirement_attachments(
     root: str | Path,
     rid: str,
-    attachments: Sequence[Mapping[str, Any]] | None,
+    attachments: Sequence[Mapping[str, Any]],
     *,
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
 
     def mutate(payload: dict[str, Any], _prefix: str, _doc: Document) -> None:
-        if attachments is None:
-            payload["attachments"] = []
-        elif isinstance(attachments, Sequence) and not isinstance(
-            attachments, (str, bytes)
-        ):
-            payload["attachments"] = list(attachments)
-        else:
-            payload["attachments"] = attachments
+        if not isinstance(attachments, Sequence) or isinstance(attachments, (str, bytes)):
+            raise ValidationError("attachments must be a list")
+        payload["attachments"] = list(attachments)
 
     return _update_requirement(root, rid, docs, mutate)
 
@@ -558,18 +552,19 @@ def set_requirement_attachments(
 def set_requirement_links(
     root: str | Path,
     rid: str,
-    links: Sequence[Mapping[str, Any]] | Sequence[str] | None,
+    links: Sequence[Mapping[str, Any] | str],
     *,
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
 
     def mutate(payload: dict[str, Any], _prefix: str, _doc: Document) -> None:
-        if links is None:
+        if not isinstance(links, Sequence) or isinstance(links, (str, bytes)):
+            raise ValidationError("links must be a list")
+        payload_links = list(links)
+        if not payload_links:
             payload.pop("links", None)
-        elif isinstance(links, Sequence) and not isinstance(links, (str, bytes)):
-            payload["links"] = list(links)
         else:
-            payload["links"] = links
+            payload["links"] = payload_links
 
     return _update_requirement(root, rid, docs, mutate)
 
@@ -623,7 +618,7 @@ def move_requirement(
     if "revision" not in updated_payload or updated_payload["revision"] in (None, ""):
         updated_payload["revision"] = current_revision
 
-    labels = _normalize_labels(updated_payload.get("labels"))
+    labels = _normalize_labels(updated_payload.get("labels", []))
     err = validate_labels(new_prefix, labels, docs_map)
     if err:
         raise ValidationError(err)

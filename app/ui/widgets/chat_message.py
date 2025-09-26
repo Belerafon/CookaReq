@@ -886,26 +886,10 @@ class TranscriptMessagePanel(wx.Panel):
         reasoning_panel = self._create_reasoning_panel(reasoning_segments)
         if reasoning_panel is not None:
             outer.Add(reasoning_panel, 0, wx.EXPAND | wx.ALL, padding)
-            reasoning_meta = self._create_timestamp_meta(response_timestamp)
-            if reasoning_meta is not None:
-                outer.Add(
-                    reasoning_meta,
-                    0,
-                    wx.ALIGN_RIGHT | wx.RIGHT | wx.LEFT | wx.TOP,
-                    padding,
-                )
 
         context_panel = self._create_context_panel(context_messages)
         if context_panel is not None:
             outer.Add(context_panel, 0, wx.EXPAND | wx.ALL, padding)
-            context_meta = self._create_timestamp_meta(prompt_timestamp)
-            if context_meta is not None:
-                outer.Add(
-                    context_meta,
-                    0,
-                    wx.ALIGN_RIGHT | wx.RIGHT | wx.LEFT | wx.TOP,
-                    padding,
-                )
 
         self.SetSizer(outer)
 
@@ -920,22 +904,6 @@ class TranscriptMessagePanel(wx.Panel):
         if name:
             return f"tool:{index_label}:{name}"
         return f"tool:{index_label}"
-
-    def _create_timestamp_meta(self, timestamp: str) -> wx.StaticText | None:
-        timestamp_value = timestamp.strip()
-        if not timestamp_value:
-            return None
-        label = f"• {timestamp_value}"
-        meta = wx.StaticText(self, label=label, style=wx.ALIGN_RIGHT)
-        background = self.GetBackgroundColour()
-        if background.IsOk():
-            meta.SetBackgroundColour(background)
-        meta.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
-        font = meta.GetFont()
-        if font.IsOk():
-            font.MakeSmaller()
-            meta.SetFont(font)
-        return meta
 
     def _create_context_panel(
         self,

@@ -61,6 +61,8 @@ FIELD_BINDINGS: dict[str, FieldBinding] = {
     "llm_max_context_tokens": FieldBinding("llm", "max_context_tokens"),
     "llm_timeout_minutes": FieldBinding("llm", "timeout_minutes"),
     "llm_stream": FieldBinding("llm", "stream"),
+    "llm_use_custom_temperature": FieldBinding("llm", "use_custom_temperature"),
+    "llm_temperature": FieldBinding("llm", "temperature"),
     "sort_column": FieldBinding("ui", "sort_column"),
     "sort_ascending": FieldBinding("ui", "sort_ascending"),
     "log_level": FieldBinding("ui", "log_level"),

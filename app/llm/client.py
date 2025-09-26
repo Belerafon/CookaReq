@@ -313,7 +313,8 @@ class LLMClient:
 
     def _check_llm_chat(self) -> dict[str, Any]:
         request_args = self._build_request_args(
-            [{"role": "user", "content": "ping"}]
+            [{"role": "user", "content": "ping"}],
+            temperature=self._resolved_temperature(),
         )
         start = time.monotonic()
         self._log_outbound_request(request_args)
@@ -350,10 +351,12 @@ class LLMClient:
         request_args = {
             "model": self.settings.model,
             "input": prompt.prompt,
-            "temperature": 0,
             "tools": convert_tools_for_harmony(TOOLS),
             "reasoning": {"effort": "high"},
         }
+        temperature = self._resolved_temperature()
+        if temperature is not None:
+            request_args["temperature"] = temperature
         start = time.monotonic()
         self._log_outbound_request(request_args)
         try:
@@ -451,7 +454,7 @@ class LLMClient:
         request_args = self._build_request_args(
             messages,
             tools=TOOLS,
-            temperature=0,
+            temperature=self._resolved_temperature(),
             stream=use_stream,
         )
         start = time.monotonic()
@@ -654,10 +657,12 @@ class LLMClient:
         request_args = {
             "model": self.settings.model,
             "input": prompt.prompt,
-            "temperature": 0,
             "tools": convert_tools_for_harmony(TOOLS),
             "reasoning": {"effort": "high"},
         }
+        temperature = self._resolved_temperature()
+        if temperature is not None:
+            request_args["temperature"] = temperature
         start = time.monotonic()
         self._log_outbound_request(request_args)
 
@@ -1140,6 +1145,19 @@ class LLMClient:
 
         log_debug_payload("LLM_REQUEST", request_args)
         log_event("LLM_REQUEST", request_args)
+
+    def _resolved_temperature(self) -> float | None:
+        """Return the user-configured temperature or ``None`` when unset."""
+
+        if getattr(self.settings, "use_custom_temperature", False):
+            value = getattr(self.settings, "temperature", None)
+            if value is None:
+                return None
+            try:
+                return float(value)
+            except (TypeError, ValueError):  # pragma: no cover - defensive
+                return None
+        return None
 
     def _chat_completion(self, **request_args: Any) -> Any:
         """Call the chat completions endpoint with normalized arguments."""

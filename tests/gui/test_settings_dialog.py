@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.llm.constants import DEFAULT_MAX_CONTEXT_TOKENS
+from app.llm.constants import DEFAULT_LLM_TEMPERATURE, DEFAULT_MAX_CONTEXT_TOKENS
 
 pytestmark = [pytest.mark.gui, pytest.mark.integration, pytest.mark.gui_smoke]
 
@@ -33,6 +33,8 @@ def test_settings_dialog_returns_language(wx_app):
         max_retries=2,
         max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS,
         timeout_minutes=30,
+        use_custom_temperature=True,
+        temperature=1.0,
         stream=True,
         auto_start=True,
         host="127.0.0.1",
@@ -54,6 +56,8 @@ def test_settings_dialog_returns_language(wx_app):
         2,
         DEFAULT_MAX_CONTEXT_TOKENS,
         30,
+        True,
+        1.0,
         True,
         True,
         "127.0.0.1",
@@ -105,6 +109,8 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         max_retries=3,
         max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS,
         timeout_minutes=60,
+        use_custom_temperature=False,
+        temperature=DEFAULT_LLM_TEMPERATURE,
         stream=False,
         auto_start=True,
         host="localhost",
@@ -361,6 +367,8 @@ def test_settings_help_buttons(monkeypatch, wx_app):
         max_retries=3,
         max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS,
         timeout_minutes=10,
+        use_custom_temperature=False,
+        temperature=DEFAULT_LLM_TEMPERATURE,
         stream=False,
         auto_start=True,
         host="localhost",

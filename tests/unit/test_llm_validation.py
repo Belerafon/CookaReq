@@ -91,3 +91,31 @@ def test_validate_tool_call_rejects_unknown_status_update():
     message = str(exc.value)
     assert "Invalid arguments for update_requirement_field" in message
     assert "value" in message
+
+
+def test_update_requirement_field_rejects_wrapped_value():
+    with pytest.raises(ToolValidationError) as exc:
+        validate_tool_call(
+            "update_requirement_field",
+            {
+                "rid": "SYS1",
+                "field": "title",
+                "value": {"type": "string", "value": "Demo Layer Map"},
+            },
+        )
+
+    message = str(exc.value)
+    assert "Invalid arguments for update_requirement_field" in message
+    assert "value" in message
+
+
+def test_update_requirement_field_rejects_null_value():
+    with pytest.raises(ToolValidationError) as exc:
+        validate_tool_call(
+            "update_requirement_field",
+            {"rid": "SYS1", "field": "notes", "value": None},
+        )
+
+    message = str(exc.value)
+    assert "Invalid arguments for update_requirement_field" in message
+    assert "value" in message

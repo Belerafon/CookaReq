@@ -114,6 +114,15 @@ def test_set_labels_accepts_inherited_label(tmp_path: Path) -> None:
     assert res["labels"] == ["ui"]
 
 
+def test_set_attachments_rejects_string_payload(tmp_path: Path) -> None:
+    save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc"))
+    created = tools_write.create_requirement(tmp_path, prefix="SYS", data=_base_req())
+
+    res = tools_write.set_requirement_attachments(tmp_path, created["rid"], "oops")
+
+    assert res["error"]["code"] == "VALIDATION_ERROR"
+
+
 def test_link_requirements(tmp_path: Path) -> None:
     save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc"))
     save_document(
@@ -145,4 +154,13 @@ def test_link_requirements_rejects_invalid_type(tmp_path: Path) -> None:
         derived_rid=child["rid"],
         link_type="child",
     )
+    assert res["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_set_links_rejects_string_payload(tmp_path: Path) -> None:
+    save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc"))
+    created = tools_write.create_requirement(tmp_path, prefix="SYS", data=_base_req())
+
+    res = tools_write.set_requirement_links(tmp_path, created["rid"], "oops")
+
     assert res["error"]["code"] == "VALIDATION_ERROR"

@@ -298,6 +298,9 @@ class LLMClient:
         data = getattr(obj, "_data", None)
         if isinstance(data, Mapping):
             return data
+        namespace = getattr(obj, "__dict__", None)
+        if isinstance(namespace, Mapping):
+            return namespace
         return None
 
     # ------------------------------------------------------------------
@@ -496,6 +499,8 @@ class LLMClient:
                     )
                 reasoning_payload = getattr(message, "reasoning_content", None)
                 message_map = self._extract_mapping(message)
+                if reasoning_payload is None:
+                    reasoning_payload = getattr(message, "reasoning", None)
                 if reasoning_payload is None and message_map is not None:
                     reasoning_payload = (
                         message_map.get("reasoning_content")
@@ -515,6 +520,8 @@ class LLMClient:
                 reasoning_details = None
                 if message_map is not None:
                     reasoning_details = message_map.get("reasoning_details")
+                if reasoning_details is None:
+                    reasoning_details = getattr(message, "reasoning_details", None)
                 if reasoning_details:
                     self._append_reasoning_fragments(
                         reasoning_accumulator,
@@ -1409,10 +1416,12 @@ class LLMClient:
             if not text:
                 continue
             seg_type = str(raw_type or "reasoning")
-            if aggregated and aggregated[-1]["type"] == seg_type:
-                aggregated[-1]["text"] += text
-            else:
-                aggregated.append({"type": seg_type, "text": text})
+            aggregated.append({"type": seg_type, "text": text})
+
+    @staticmethod
+    def _is_context_snapshot(content: str) -> bool:
+        stripped = content.lstrip()
+        return stripped.startswith("[Workspace context]")
 
     @staticmethod
     def _finalize_reasoning_segments(
@@ -1481,7 +1490,10 @@ class LLMClient:
             if role == "system":
                 content = message.get("content")
                 if isinstance(content, str) and content:
-                    system_parts.append(content)
+                    if self._is_context_snapshot(content):
+                        system_parts.append(content)
+                        continue
+                    ordered_messages.append(message)
                 continue
             ordered_messages.append(message)
 

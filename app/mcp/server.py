@@ -12,7 +12,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -265,7 +265,7 @@ def update_requirement_field(rid: str, *, field: str, value: Any) -> dict:
 
 
 @register_tool()
-def set_requirement_labels(rid: str, labels: list[str] | None) -> dict:
+def set_requirement_labels(rid: str, labels: Sequence[str]) -> dict:
     """Replace labels of a requirement."""
     directory = app.state.base_path
     return tools_write.set_requirement_labels(directory, rid, labels)
@@ -273,7 +273,7 @@ def set_requirement_labels(rid: str, labels: list[str] | None) -> dict:
 
 @register_tool()
 def set_requirement_attachments(
-    rid: str, attachments: list[Mapping[str, Any]] | None
+    rid: str, attachments: Sequence[Mapping[str, Any]]
 ) -> dict:
     """Replace attachments of a requirement."""
     directory = app.state.base_path
@@ -282,7 +282,7 @@ def set_requirement_attachments(
 
 @register_tool()
 def set_requirement_links(
-    rid: str, links: list[Mapping[str, Any]] | list[str] | None
+    rid: str, links: Sequence[Mapping[str, Any] | str]
 ) -> dict:
     """Replace outgoing links of a requirement."""
     directory = app.state.base_path

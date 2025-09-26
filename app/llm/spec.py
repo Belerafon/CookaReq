@@ -63,8 +63,9 @@ SYSTEM_PROMPT = (
     "`update_requirement_field` changes exactly one field at a time. Allowed "
     "field names: "
     + ", ".join(_EDITABLE_FIELDS)
-    + ". Provide the new content via the `value` argument (use plain strings for "
-    "text, ISO 8601 for timestamps). The server increments the revision automatically.\n"
+    + ". Provide the new content via the `value` argument as a plain string "
+    "(use ISO 8601 for timestamps; send an empty string when you need to clear "
+    "optional text). The server increments the revision automatically.\n"
     "`set_requirement_labels` replaces the full label list; pass an array of "
     "strings (use [] to clear all labels).\n"
     "`set_requirement_attachments` replaces attachments; supply an array of "
@@ -142,7 +143,12 @@ TOOLS: list[dict[str, Any]] = [
             "description": "Retrieve a requirement by identifier",
             "parameters": {
                 "type": "object",
-                "properties": {"rid": {"type": "string"}},
+                "properties": {
+                    "rid": {
+                        "type": "string",
+                        "description": "Requirement identifier to load (for example, SYS12).",
+                    }
+                },
                 "required": ["rid"],
                 "additionalProperties": False,
             },
@@ -156,10 +162,14 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": ["string", "null"]},
+                    "query": {
+                        "type": ["string", "null"],
+                        "description": "Full-text search string; use null to search all requirements without text filtering.",
+                    },
                     "labels": {
                         "type": ["array", "null"],
                         "items": {"type": "string"},
+                        "description": "Filter results to requirements containing every listed label; use null to skip label filtering.",
                     },
                     "status": {
                         "type": ["string", "null"],
@@ -190,27 +200,46 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "prefix": {"type": "string"},
+                    "prefix": {
+                        "type": "string",
+                        "description": "Document prefix that determines the RID sequence (for example, SYS).",
+                    },
                     "data": {
                         "type": "object",
+                        "description": "Complete requirement payload; must include all mandatory lifecycle fields.",
                         "properties": {
-                            "title": {"type": "string"},
-                            "statement": {"type": "string"},
+                            "title": {
+                                "type": "string",
+                                "description": "Short title shown in lists and summaries.",
+                            },
+                            "statement": {
+                                "type": "string",
+                                "description": "Authoritative requirement statement or user story text.",
+                            },
                             "type": {
                                 "enum": [
                                     "requirement",
                                     "constraint",
                                     "interface",
                                 ],
+                                "description": "Requirement classification code.",
                             },
                             "status": {
                                 "enum": _STATUS_VALUES,
+                                "description": "Lifecycle status code; use the lowercase identifiers from the workspace.",
                             },
-                            "owner": {"type": "string"},
+                            "owner": {
+                                "type": "string",
+                                "description": "Primary owner responsible for the requirement.",
+                            },
                             "priority": {
                                 "enum": ["low", "medium", "high"],
+                                "description": "Initial priority ranking.",
                             },
-                            "source": {"type": "string"},
+                            "source": {
+                                "type": "string",
+                                "description": "Origin or stakeholder providing the requirement.",
+                            },
                             "verification": {
                                 "enum": [
                                     "inspection",
@@ -218,10 +247,90 @@ TOOLS: list[dict[str, Any]] = [
                                     "demonstration",
                                     "test",
                                 ],
+                                "description": "Verification method planned for acceptance.",
+                            },
+                            "acceptance": {
+                                "type": ["string", "null"],
+                                "description": "Optional acceptance criteria; null means not defined yet.",
+                            },
+                            "conditions": {
+                                "type": "string",
+                                "description": "Operational or environmental conditions tied to the requirement.",
+                            },
+                            "rationale": {
+                                "type": "string",
+                                "description": "Design rationale explaining why the requirement exists.",
+                            },
+                            "assumptions": {
+                                "type": "string",
+                                "description": "Assumptions that must hold true for the requirement.",
+                            },
+                            "modified_at": {
+                                "type": "string",
+                                "description": "Last modification timestamp in ISO 8601 or YYYY-MM-DD HH:MM:SS format.",
+                            },
+                            "approved_at": {
+                                "type": ["string", "null"],
+                                "description": "Timestamp of approval; use null when the requirement is not approved.",
+                            },
+                            "notes": {
+                                "type": "string",
+                                "description": "Additional notes or commentary.",
                             },
                             "labels": {
                                 "type": "array",
                                 "items": {"type": "string"},
+                                "description": "Initial set of labels; use an empty array when no tags apply.",
+                            },
+                            "attachments": {
+                                "type": "array",
+                                "description": "Optional attachments copied into the requirement upon creation.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "path": {
+                                            "type": "string",
+                                            "description": "Path to the attachment relative to the project root.",
+                                        },
+                                        "note": {
+                                            "type": "string",
+                                            "description": "Optional note shown alongside the attachment.",
+                                        },
+                                    },
+                                    "required": ["path"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                            "links": {
+                                "type": "array",
+                                "description": "Optional outgoing trace links established at creation time.",
+                                "items": {
+                                    "oneOf": [
+                                        {
+                                            "type": "string",
+                                            "description": "RID string of the linked requirement (shortcut form).",
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "rid": {
+                                                    "type": "string",
+                                                    "description": "Target requirement identifier for the trace link.",
+                                                },
+                                                "fingerprint": {
+                                                    "type": ["string", "null"],
+                                                    "description": "Optional fingerprint hash used for stale link detection.",
+                                                },
+                                                "suspect": {
+                                                    "type": "boolean",
+                                                    "description": "Flag indicating whether the link is marked suspect.",
+                                                },
+                                            },
+                                            "required": ["rid"],
+                                            "additionalProperties": False,
+                                        },
+                                    ]
+                                },
                             },
                         },
                         "required": [
@@ -234,7 +343,7 @@ TOOLS: list[dict[str, Any]] = [
                             "source",
                             "verification",
                         ],
-                        "additionalProperties": True,
+                        "additionalProperties": False,
                     },
                 },
                 "required": ["prefix", "data"],
@@ -250,9 +359,22 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "rid": {"type": "string"},
-                    "field": {"type": "string", "enum": _EDITABLE_FIELDS},
-                    "value": {},
+                    "rid": {
+                        "type": "string",
+                        "description": "Requirement identifier to mutate (for example, SYS12).",
+                    },
+                    "field": {
+                        "type": "string",
+                        "enum": _EDITABLE_FIELDS,
+                        "description": "Name of the editable field to update; only one field is changed per call.",
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": (
+                            "New field value as plain text. Use ISO 8601 timestamps for date fields and an empty string"
+                            " when a text field should be cleared."
+                        ),
+                    },
                 },
                 "required": ["rid", "field", "value"],
                 "additionalProperties": False,
@@ -267,10 +389,14 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "rid": {"type": "string"},
+                    "rid": {
+                        "type": "string",
+                        "description": "Requirement identifier whose labels must be replaced.",
+                    },
                     "labels": {
-                        "type": ["array", "null"],
+                        "type": "array",
                         "items": {"type": "string"},
+                        "description": "Complete label list to apply; use an empty array to remove every label.",
                     },
                 },
                 "required": ["rid", "labels"],
@@ -286,18 +412,28 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "rid": {"type": "string"},
+                    "rid": {
+                        "type": "string",
+                        "description": "Requirement identifier whose attachments will be replaced.",
+                    },
                     "attachments": {
-                        "type": ["array", "null"],
+                        "type": "array",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "path": {"type": "string"},
-                                "note": {"type": "string"},
+                                "path": {
+                                    "type": "string",
+                                    "description": "Relative path to the attachment file.",
+                                },
+                                "note": {
+                                    "type": "string",
+                                    "description": "Optional note displayed together with the attachment.",
+                                },
                             },
                             "required": ["path"],
-                            "additionalProperties": True,
+                            "additionalProperties": False,
                         },
+                        "description": "Attachments to store; use an empty array when no files should remain linked.",
                     },
                 },
                 "required": ["rid", "attachments"],
@@ -313,24 +449,40 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "rid": {"type": "string"},
+                    "rid": {
+                        "type": "string",
+                        "description": "Requirement identifier whose outgoing links will be replaced.",
+                    },
                     "links": {
-                        "type": ["array", "null"],
+                        "type": "array",
                         "items": {
                             "oneOf": [
-                                {"type": "string"},
+                                {
+                                    "type": "string",
+                                    "description": "RID string of the linked requirement (shortcut form).",
+                                },
                                 {
                                     "type": "object",
                                     "properties": {
-                                        "rid": {"type": "string"},
-                                        "fingerprint": {"type": ["string", "null"]},
-                                        "suspect": {"type": "boolean"},
+                                        "rid": {
+                                            "type": "string",
+                                            "description": "Target requirement identifier for the link.",
+                                        },
+                                        "fingerprint": {
+                                            "type": ["string", "null"],
+                                            "description": "Optional fingerprint used to detect stale relationships.",
+                                        },
+                                        "suspect": {
+                                            "type": "boolean",
+                                            "description": "Whether the link is currently marked suspect.",
+                                        },
                                     },
                                     "required": ["rid"],
-                                    "additionalProperties": True,
+                                    "additionalProperties": False,
                                 },
                             ]
                         },
+                        "description": "Links to persist; use an empty array when no outgoing relations should remain.",
                     },
                 },
                 "required": ["rid", "links"],
@@ -346,7 +498,10 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "rid": {"type": "string"},
+                    "rid": {
+                        "type": "string",
+                        "description": "Requirement identifier that should be removed.",
+                    },
                 },
                 "required": ["rid"],
                 "additionalProperties": False,
@@ -361,11 +516,18 @@ TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "source_rid": {"type": "string"},
-                    "derived_rid": {"type": "string"},
+                    "source_rid": {
+                        "type": "string",
+                        "description": "Identifier of the upstream requirement (for example, the parent).",
+                    },
+                    "derived_rid": {
+                        "type": "string",
+                        "description": "Identifier of the downstream requirement that depends on the source.",
+                    },
                     "link_type": {
                         "type": "string",
                         "enum": ["parent"],
+                        "description": "Relationship type to create; currently only parent-child links are supported.",
                     },
                 },
                 "required": [

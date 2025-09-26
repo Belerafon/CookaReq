@@ -75,6 +75,33 @@ def load_secret_from_env(
     return None
 
 
+def load_dotenv_variables(
+    *,
+    search_from: Path | str | None = None,
+    env_file_name: str = ".env",
+) -> dict[str, SecretEnvValue]:
+    """Populate ``os.environ`` with values from the nearest ``.env`` file.
+
+    The helper mirrors :func:`load_secret_from_env`, but instead of extracting
+    a single variable it parses the full dotenv file and updates
+    :mod:`os.environ` for every key that does not already have a value.  The
+    function returns a dictionary of the variables that were injected so tests
+    can introspect what was loaded when necessary.
+    """
+
+    search_root = _normalise_search_root(search_from)
+    loaded: dict[str, SecretEnvValue] = {}
+    for env_path in _iter_env_paths(search_root, env_file_name):
+        for name, value in _parse_env_file(env_path).items():
+            if name in os.environ:
+                continue
+            os.environ[name] = value
+            loaded[name] = SecretEnvValue(name, value)
+        if loaded:
+            break
+    return loaded
+
+
 def _normalise_search_root(search_from: Path | str | None) -> Path:
     if search_from is None:
         return Path.cwd()
@@ -90,11 +117,16 @@ def _iter_env_paths(root: Path, env_file_name: str) -> Iterable[Path]:
 
 
 def _extract_from_env_file(env_path: Path, variable_name: str) -> Optional[str]:
+    return _parse_env_file(env_path).get(variable_name)
+
+
+def _parse_env_file(env_path: Path) -> dict[str, str]:
     try:
         content = env_path.read_text(encoding="utf-8")
     except OSError:
-        return None
+        return {}
 
+    parsed: dict[str, str] = {}
     for raw_line in content.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -104,16 +136,18 @@ def _extract_from_env_file(env_path: Path, variable_name: str) -> Optional[str]:
         if "=" not in line:
             continue
         name, raw_value = line.split("=", 1)
-        if name.strip() != variable_name:
+        name = name.strip()
+        if not name:
             continue
         raw_value = raw_value.strip()
         if not raw_value:
-            return None
+            continue
         is_double_quoted = raw_value.startswith("\"") and raw_value.endswith("\"")
         is_single_quoted = raw_value.startswith("'") and raw_value.endswith("'")
         if is_double_quoted or is_single_quoted:
             value = raw_value[1:-1]
         else:
             value = raw_value.split("#", 1)[0].rstrip()
-        return value
-    return None
+        if value:
+            parsed[name] = value
+    return parsed

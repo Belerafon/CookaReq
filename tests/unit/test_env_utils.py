@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
-from tests.env_utils import SecretEnvValue, load_secret_from_env
+from tests.env_utils import (
+    SecretEnvValue,
+    load_dotenv_variables,
+    load_secret_from_env,
+)
 
 
 def test_loads_from_environment_overrides_dotenv(monkeypatch, tmp_path):
@@ -59,3 +65,40 @@ def test_secret_repr_masks_value(monkeypatch, tmp_path):
     assert secret is not None
     assert "top-secret" not in str(secret)
     assert secret.get_secret_value() == "top-secret"
+
+
+def test_load_dotenv_variables_injects_missing_values(monkeypatch, tmp_path):
+    monkeypatch.delenv("FROM_ENV", raising=False)
+    env_path = tmp_path / ".env"
+    env_path.write_text("FROM_ENV=from-dotenv\n", encoding="utf-8")
+
+    loaded = load_dotenv_variables(search_from=tmp_path)
+
+    assert "FROM_ENV" in os.environ
+    assert os.environ["FROM_ENV"] == "from-dotenv"
+    assert "FROM_ENV" in loaded
+    assert loaded["FROM_ENV"].get_secret_value() == "from-dotenv"
+
+
+def test_load_dotenv_variables_preserves_existing_environment(monkeypatch, tmp_path):
+    monkeypatch.setenv("FROM_ENV", "from-env")
+    env_path = tmp_path / ".env"
+    env_path.write_text("FROM_ENV=from-dotenv\n", encoding="utf-8")
+
+    loaded = load_dotenv_variables(search_from=tmp_path)
+
+    assert loaded == {}
+    assert os.environ["FROM_ENV"] == "from-env"
+
+
+def test_load_dotenv_variables_searches_parents(monkeypatch, tmp_path):
+    monkeypatch.delenv("FROM_ENV", raising=False)
+    env_path = tmp_path / ".env"
+    env_path.write_text("FROM_ENV=parent\n", encoding="utf-8")
+    nested = tmp_path / "child"
+    nested.mkdir()
+
+    loaded = load_dotenv_variables(search_from=nested)
+
+    assert loaded
+    assert os.environ["FROM_ENV"] == "parent"

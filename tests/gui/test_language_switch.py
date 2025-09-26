@@ -43,6 +43,11 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app, tmp_path):
                 "ru",
                 frame.llm_settings.base_url,
                 frame.llm_settings.model,
+                getattr(
+                    frame.llm_settings.message_format,
+                    "value",
+                    frame.llm_settings.message_format,
+                ),
                 frame.llm_settings.api_key or "",
                 frame.llm_settings.max_retries,
                 frame.llm_settings.max_context_tokens,

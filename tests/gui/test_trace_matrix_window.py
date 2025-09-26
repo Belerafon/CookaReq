@@ -106,7 +106,7 @@ def test_trace_matrix_frame_renders_links(wx_app, tmp_path):
         assert "SYS2" in frame.details_panel._row_text.GetLabel()
 
         summary = frame._summary.GetLabel()
-        assert "1 × 1" in summary
+        assert "2 × 1" in summary
     finally:
         frame.Destroy()
         wx_app.Yield()

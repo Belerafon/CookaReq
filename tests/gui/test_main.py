@@ -50,8 +50,9 @@ def test_main_runs(monkeypatch):
         instances: ClassVar[list] = []
         shown = False
 
-        def __init__(self, parent):
+        def __init__(self, parent=None, **kwargs):
             self.parent = parent
+            self.kwargs = kwargs
             DummyFrame.instances.append(self)
 
         def Show(self):
@@ -72,3 +73,5 @@ def test_main_runs(monkeypatch):
     assert dummy_app.loop_ran
     assert DummyFrame.shown
     assert DummyFrame.instances and DummyFrame.instances[0].parent is None
+    assert "config" in DummyFrame.instances[0].kwargs
+    assert "model" in DummyFrame.instances[0].kwargs

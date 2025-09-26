@@ -382,7 +382,9 @@ def test_load_column_widths_assigns_defaults(stubbed_list_panel_env):
     panel = env.create_panel()
     panel.set_columns(["labels", "id", "status", "priority"])
 
-    config = types.SimpleNamespace(read_int=lambda key, default: -1)
+    config = types.SimpleNamespace(
+        get_column_width=lambda index, default=-1: default,
+    )
     panel.load_column_widths(config)
 
     assert panel.list._col_widths == {

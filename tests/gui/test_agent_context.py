@@ -54,8 +54,8 @@ def test_agent_context_includes_selected_requirements(tmp_path, wx_app):
         assert "GUI selection #" not in content
         assert "(id=" not in content
         assert "prefix=" not in content
-        assert "SYS-1" in content
-        assert "SYS-2" in content
+        assert "DEMO1" in content
+        assert "DEMO2" in content
     finally:
         frame.Destroy()
         wx_app.Yield()

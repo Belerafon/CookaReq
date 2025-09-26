@@ -26,13 +26,13 @@ def test_title_column_expands_to_available_width(wx_app, monkeypatch):
 
     frame.SetClientSize((400, 300))
     frame.Show()
-    wx.GetApp().Yield()
+    frame.SendSizeEvent()
 
     panel.links_id.SetValue("SYS1")
     panel._on_add_link_generic("links")
 
     panel.links_list.SendSizeEvent()
-    wx.GetApp().Yield()
+    panel._autosize_link_columns(panel.links_list)
 
     total = panel.links_list.GetClientSize().width
     id_width = panel.links_list.GetColumnWidth(0)

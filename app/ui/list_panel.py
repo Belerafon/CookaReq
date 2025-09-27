@@ -21,6 +21,187 @@ from .enums import ENUMS
 from .filter_dialog import FilterDialog
 from .requirement_model import RequirementModel
 
+
+def _apply_item_selection(list_ctrl: wx.ListCtrl, index: int, selected: bool) -> None:
+    """Set ``index`` selection on ``list_ctrl`` while swallowing backend quirks."""
+
+    select_flag = getattr(wx, "LIST_STATE_SELECTED", 0x0002)
+    focus_flag = getattr(wx, "LIST_STATE_FOCUSED", 0x0001)
+    mask = select_flag | focus_flag
+    if hasattr(list_ctrl, "SetItemState"):
+        with suppress(Exception):
+            list_ctrl.SetItemState(index, mask if selected else 0, mask)
+            return
+    if hasattr(list_ctrl, "Select"):
+        try:
+            list_ctrl.Select(index, selected)
+        except TypeError:
+            if selected:
+                list_ctrl.Select(index)
+            else:
+                with suppress(Exception):
+                    list_ctrl.Select(index, False)
+        except Exception:
+            return
+    if selected and hasattr(list_ctrl, "Focus"):
+        with suppress(Exception):
+            list_ctrl.Focus(index)
+
+
+class RequirementsListCtrl(wx.ListCtrl):
+    """List control with marquee selection starting from any cell."""
+
+    _MARQUEE_THRESHOLD = 3
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._marquee_origin: wx.Point | None = None
+        self._marquee_active = False
+        self._marquee_overlay: wx.Overlay | None = None
+        self._marquee_base: set[int] = set()
+        self._marquee_additive = False
+        self.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
+        self.Bind(wx.EVT_LEFT_UP, self._on_left_up)
+        self.Bind(wx.EVT_MOTION, self._on_mouse_move)
+        self.Bind(wx.EVT_LEAVE_WINDOW, self._on_mouse_leave)
+        self.Bind(wx.EVT_KILL_FOCUS, self._on_mouse_leave)
+
+    def _selected_indices(self) -> list[int]:
+        indices: list[int] = []
+        idx = self.GetFirstSelected()
+        while idx != -1:
+            indices.append(idx)
+            idx = self.GetNextSelected(idx)
+        return indices
+
+    def _clear_overlay(self) -> None:
+        if not self._marquee_overlay:
+            return
+        dc = wx.ClientDC(self)
+        overlay_dc = wx.DCOverlay(self._marquee_overlay, dc)
+        overlay_dc.Clear()
+        del overlay_dc
+        self._marquee_overlay.Reset()
+        self._marquee_overlay = None
+
+    def _draw_overlay(self, rect: wx.Rect) -> None:
+        if not hasattr(wx, "Overlay") or not hasattr(wx, "DCOverlay"):
+            return
+        if self._marquee_overlay is None:
+            self._marquee_overlay = wx.Overlay()
+        dc = wx.ClientDC(self)
+        overlay_dc = wx.DCOverlay(self._marquee_overlay, dc)
+        overlay_dc.Clear()
+        pen = wx.Pen(wx.Colour(0, 120, 215), 1)
+        brush = wx.Brush(wx.Colour(0, 120, 215, 40))
+        dc.SetPen(pen)
+        dc.SetBrush(brush)
+        dc.DrawRectangle(rect)
+        del overlay_dc
+
+    def _update_marquee_selection(self, current: wx.Point) -> None:
+        if self._marquee_origin is None:
+            return
+        left = min(self._marquee_origin.x, current.x)
+        top = min(self._marquee_origin.y, current.y)
+        right = max(self._marquee_origin.x, current.x)
+        bottom = max(self._marquee_origin.y, current.y)
+        rect = wx.Rect(left, top, max(right - left, 1), max(bottom - top, 1))
+        self._draw_overlay(rect)
+        selected: set[int] = set()
+        for idx in range(self.GetItemCount()):
+            try:
+                item_rect = self.GetItemRect(idx)
+            except Exception:
+                continue
+            if isinstance(item_rect, tuple):
+                item_rect = item_rect[0]
+            if not isinstance(item_rect, wx.Rect):
+                continue
+            if rect.Intersects(item_rect):
+                selected.add(idx)
+        if self._marquee_additive:
+            selected.update(self._marquee_base)
+        self._apply_selection(selected)
+
+    def _apply_selection(self, indices: set[int]) -> None:
+        count = self.GetItemCount()
+        for idx in range(count):
+            should_select = idx in indices
+            try:
+                is_selected = bool(
+                    self.GetItemState(idx, getattr(wx, "LIST_STATE_SELECTED", 0x0002))
+                    & getattr(wx, "LIST_STATE_SELECTED", 0x0002)
+                )
+            except Exception:
+                is_selected = False
+            if should_select == is_selected:
+                continue
+            _apply_item_selection(self, idx, should_select)
+        if indices:
+            focus_idx = min(indices)
+            with suppress(Exception):
+                self.Focus(focus_idx)
+
+    def _start_marquee(self) -> None:
+        self._marquee_active = True
+        if not self._marquee_additive:
+            for idx in list(self._marquee_base):
+                _apply_item_selection(self, idx, False)
+            self._marquee_base.clear()
+        if not self.HasCapture():  # pragma: no cover - defensive
+            try:
+                self.CaptureMouse()
+            except Exception:  # pragma: no cover - defensive
+                pass
+
+    def _finish_marquee(self) -> None:
+        self._clear_overlay()
+        self._marquee_origin = None
+        self._marquee_base.clear()
+        self._marquee_active = False
+        if self.HasCapture():  # pragma: no cover - defensive
+            with suppress(Exception):
+                self.ReleaseMouse()
+
+    def _on_left_down(self, event: "wx.MouseEvent") -> None:
+        self._marquee_origin = event.GetPosition()
+        self._marquee_base = set(self._selected_indices())
+        self._marquee_additive = event.ControlDown() or event.CmdDown() or event.ShiftDown()
+        self._marquee_active = False
+        self._clear_overlay()
+        event.Skip()
+
+    def _on_left_up(self, event: "wx.MouseEvent") -> None:
+        if self._marquee_origin and self._marquee_active:
+            self._update_marquee_selection(event.GetPosition())
+            self._finish_marquee()
+            return
+        self._marquee_origin = None
+        self._marquee_base.clear()
+        self._marquee_active = False
+        self._clear_overlay()
+        event.Skip()
+
+    def _on_mouse_move(self, event: "wx.MouseEvent") -> None:
+        if not self._marquee_origin or not event.LeftIsDown():
+            event.Skip()
+            return
+        if not self._marquee_active:
+            origin = self._marquee_origin
+            pos = event.GetPosition()
+            if abs(pos.x - origin.x) <= self._MARQUEE_THRESHOLD and abs(pos.y - origin.y) <= self._MARQUEE_THRESHOLD:
+                event.Skip()
+                return
+            self._start_marquee()
+        self._update_marquee_selection(event.GetPosition())
+        event.Skip(False)
+
+    def _on_mouse_leave(self, event: "wx.MouseEvent") -> None:
+        if self._marquee_origin and not event.LeftIsDown():
+            self._finish_marquee()
+        event.Skip()
+
 if TYPE_CHECKING:
     from ..config import ConfigManager
     from .controllers import DocumentsController
@@ -75,7 +256,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         btn_row.Add(self.filter_btn, 0, right, vertical_pad)
         btn_row.Add(self.reset_btn, 0, right, vertical_pad)
         btn_row.Add(self.filter_summary, 0, align_center, 0)
-        self.list = wx.ListCtrl(self, style=wx.LC_REPORT)
+        self.list = RequirementsListCtrl(self, style=wx.LC_REPORT)
         if hasattr(self.list, "SetExtraStyle"):
             extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
             if extra:
@@ -677,27 +858,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _set_item_selected(self, index: int, selected: bool) -> None:
         """Apply selection state without propagating backend errors."""
 
-        select_flag = getattr(wx, "LIST_STATE_SELECTED", 0x0002)
-        focus_flag = getattr(wx, "LIST_STATE_FOCUSED", 0x0001)
-        mask = select_flag | focus_flag
-        if hasattr(self.list, "SetItemState"):
-            with suppress(Exception):
-                self.list.SetItemState(index, mask if selected else 0, mask)
-                return
-        if hasattr(self.list, "Select"):
-            try:
-                self.list.Select(index, selected)
-            except TypeError:
-                if selected:
-                    self.list.Select(index)
-                else:
-                    with suppress(Exception):
-                        self.list.Select(index, False)
-            except Exception:
-                return
-        if selected and hasattr(self.list, "Focus"):
-            with suppress(Exception):
-                self.list.Focus(index)
+        _apply_item_selection(self.list, index, selected)
 
     def record_link(self, parent_rid: str, child_id: int) -> None:
         """Record that ``child_id`` links to ``parent_rid``."""

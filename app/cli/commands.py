@@ -53,6 +53,12 @@ from app.core.trace_matrix import (
     TraceMatrixLinkView,
     build_trace_matrix,
 )
+from app.core.requirement_export import (
+    build_requirement_export,
+    render_requirements_html,
+    render_requirements_markdown,
+    render_requirements_pdf,
+)
 from app.i18n import _
 
 REQ_TYPE_CHOICES = [e.value for e in RequirementType]
@@ -872,6 +878,16 @@ def _open_trace_output(path: str | None) -> tuple[TextIO, bool]:
     return out_path.open("w", encoding="utf-8", newline=""), True
 
 
+def _open_export_output(path: str | None, *, binary: bool) -> tuple[Any, bool]:
+    if not path:
+        return (sys.stdout.buffer if binary else sys.stdout), False
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if binary:
+        return out_path.open("wb"), True
+    return out_path.open("w", encoding="utf-8"), True
+
+
 def cmd_trace(args: argparse.Namespace) -> None:
     """Export traceability matrix in the requested format."""
 
@@ -912,6 +928,79 @@ def cmd_trace(args: argparse.Namespace) -> None:
     finally:
         if close_out:
             out.close()
+
+
+def cmd_export_requirements(args: argparse.Namespace) -> None:
+    """Export requirements into Markdown, HTML, or PDF."""
+
+    selected_docs = tuple(_flatten_arg_list(getattr(args, "documents", []))) or None
+
+    try:
+        export = build_requirement_export(args.directory, prefixes=selected_docs)
+    except (DocumentNotFoundError, FileNotFoundError) as exc:
+        raise SystemExit(str(exc)) from exc
+
+    title = getattr(args, "title", None) or _("Requirements export")
+    fmt = getattr(args, "format", "markdown")
+
+    if fmt == "markdown":
+        payload = render_requirements_markdown(export, title=title)
+        out, close_out = _open_export_output(getattr(args, "output", None), binary=False)
+        try:
+            out.write(payload)
+        finally:
+            if close_out:
+                out.close()
+        return
+
+    if fmt == "html":
+        payload = render_requirements_html(export, title=title)
+        out, close_out = _open_export_output(getattr(args, "output", None), binary=False)
+        try:
+            out.write(payload)
+        finally:
+            if close_out:
+                out.close()
+        return
+
+    if fmt == "pdf":
+        payload = render_requirements_pdf(export, title=title)
+        out, close_out = _open_export_output(getattr(args, "output", None), binary=True)
+        try:
+            out.write(payload)
+        finally:
+            if close_out:
+                out.close()
+        return
+
+    raise SystemExit(f"unknown format: {fmt}")
+
+
+def add_export_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``export`` command."""
+
+    sub = p.add_subparsers(dest="export_command", required=True)
+
+    req = sub.add_parser("requirements", help=_("export requirements"))
+    req.add_argument("directory", help=_("requirements root"))
+    req.add_argument(
+        "-d",
+        "--documents",
+        "--doc",
+        dest="documents",
+        action="append",
+        default=[],
+        help=_("document prefixes (comma separated)"),
+    )
+    req.add_argument(
+        "--format",
+        choices=["markdown", "html", "pdf"],
+        default="markdown",
+        help=_("output format"),
+    )
+    req.add_argument("-o", "--output", help=_("write result to file"))
+    req.add_argument("--title", help=_("title for exported document"))
+    req.set_defaults(func=cmd_export_requirements)
 
 
 def add_trace_arguments(p: argparse.ArgumentParser) -> None:
@@ -1047,5 +1136,6 @@ COMMANDS: dict[str, Command] = {
     "item": Command(lambda args: args.func(args), _("manage items"), add_item_arguments),
     "link": Command(cmd_link, _("link requirements"), add_link_arguments),
     "trace": Command(cmd_trace, _("export trace links"), add_trace_arguments),
+    "export": Command(lambda args: args.func(args), _("export data"), add_export_arguments),
     "check": Command(cmd_check, _("verify LLM and MCP settings"), add_check_arguments),
 }

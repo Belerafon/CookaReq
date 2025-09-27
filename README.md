@@ -85,7 +85,7 @@ Additional dialogs provide filter presets, label management, derivation graph vi
 
 ## Command-line interface
 
-All GUI operations are available through `python3 -m app.cli`. The top-level commands are `doc`, `item`, `link`, `trace`, and `check`. Examples:
+All GUI operations are available through `python3 -m app.cli`. The top-level commands are `doc`, `item`, `link`, `trace`, `export`, and `check`. Examples:
 
 ```bash
 # list documents and inspect repository structure
@@ -103,6 +103,11 @@ python3 -m app.cli item move requirements SYS-0003 --new-prefix LLR
 # link requirements and export a traceability matrix
 python3 -m app.cli link requirements SYS-0001 HLR-0002
 python3 -m app.cli trace requirements --format html -o trace.html
+
+# export selected requirements into Markdown/HTML/PDF with clickable links
+python3 -m app.cli export requirements requirements --format markdown -o requirements.md
+python3 -m app.cli export requirements requirements --format html -o requirements.html
+python3 -m app.cli export requirements requirements --format pdf -o requirements.pdf
 
 # verify LLM and MCP connectivity (uses mocked services by default)
 python3 -m app.cli check --llm --mcp

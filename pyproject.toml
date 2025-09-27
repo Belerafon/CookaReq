@@ -11,6 +11,7 @@ dependencies = [
     "mcp",
     "openai",
     "markdown",
+    "reportlab",
 ]
 
 [project.optional-dependencies]

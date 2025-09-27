@@ -1179,6 +1179,21 @@ msgstr "manage items"
 msgid "move item"
 msgstr "move item"
 
+msgid "export data"
+msgstr "export data"
+
+msgid "export requirements"
+msgstr "export requirements"
+
+msgid "document prefixes (comma separated)"
+msgstr "document prefixes (comma separated)"
+
+msgid "title for exported document"
+msgstr "title for exported document"
+
+msgid "Requirements export"
+msgstr "Requirements export"
+
 msgid "output format"
 msgstr "output format"
 

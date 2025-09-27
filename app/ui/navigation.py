@@ -67,7 +67,6 @@ class Navigation:
         self.agent_chat_menu_item: wx.MenuItem | None = None
         self.recent_menu = wx.Menu()
         self.recent_menu_item: wx.MenuItem | None = None
-        self.run_command_id: int | None = None
         self._build()
 
     # ------------------------------------------------------------------
@@ -145,7 +144,6 @@ class Navigation:
         tools_menu = wx.Menu()
         cmd_item = tools_menu.Append(wx.ID_ANY, _("Open Agent Chat\tCtrl+K"))
         self.frame.Bind(wx.EVT_MENU, self.on_run_command, cmd_item)
-        self.run_command_id = cmd_item.GetId()
         logs_item = tools_menu.Append(wx.ID_ANY, _("Open Log Folder"))
         self.frame.Bind(wx.EVT_MENU, self.on_open_logs, logs_item)
         menu_bar.Append(tools_menu, _("&Tools"))

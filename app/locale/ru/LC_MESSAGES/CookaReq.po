@@ -1195,6 +1195,21 @@ msgstr "управлять элементами"
 msgid "move item"
 msgstr "переместить элемент"
 
+msgid "export data"
+msgstr "экспортировать данные"
+
+msgid "export requirements"
+msgstr "экспортировать требования"
+
+msgid "document prefixes (comma separated)"
+msgstr "префиксы документов через запятую"
+
+msgid "title for exported document"
+msgstr "заголовок экспортируемого документа"
+
+msgid "Requirements export"
+msgstr "Экспорт требований"
+
 msgid "output format"
 msgstr "формат вывода"
 

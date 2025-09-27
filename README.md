@@ -144,6 +144,16 @@ requirements/
 
 Each `document.json` provides the canonical prefix, title, parent prefix, label presets (with `allowFreeform` flags), and arbitrary metadata. Requirement payloads live under `items/<id>.json` and include `title`, `statement`, ownership, verification, revision, attachments, labels, and outgoing links. The GUI/CLI operate strictly on this schema; remove stray files before editing repositories manually.
 
+### Ревизии, история и совместная работа
+
+CookaReq сознательно хранит документы требований в виде прозрачных JSON-файлов, ожидая, что пользователи будут использовать Git (или другой VCS) для управления изменениями. Такой подход обеспечивает:
+
+- **Историю и аудит**: фиксация коммитов, аннотации (`git blame`), ветки и Pull Request'ы дают ту же прослеживаемость, что и специализированные журналы изменений.
+- **Базовые версии**: ветки/теги репозитория служат baseline-снимками; инструменты CI/CD могут автоматически собирать артефакты на их основе.
+- **Совместную работу**: политики доступа, ревью и разрешение конфликтов делегированы Git-серверу (GitHub, GitLab, Gitea и т.п.), поэтому приложение остаётся лёгким локальным клиентом без собственного сервера и блокировок.
+
+GUI и CLI CookaReq сосредоточены на безопасном редактировании файловой структуры и валидации схемы. После изменений используйте обычный Git-процесс — коммит, ревью, слияние — чтобы зафиксировать ревизии и обеспечить контроль качества. Если требуется централизованный аудит или интеграция с ALM-системой, настроенные Git-хуки и внешние сервисы (например, генерация отчётов из JSON) остаются основным расширяемым механизмом.
+
 ## Development workflow
 
 ### Running tests

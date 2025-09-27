@@ -91,22 +91,40 @@ def build_wx_stub() -> tuple[types.SimpleNamespace, types.SimpleNamespace, types
             return self._value
 
     class Button(Window):
-        def __init__(self, parent=None, label=""):
+        def __init__(self, parent=None, label="", style=0):
             super().__init__(parent)
             self._label = label
+            self._style = style
 
         def GetLabel(self):
             return self._label
 
+        def GetWindowStyle(self):
+            return self._style
+
     class BitmapButton(Button):
         def __init__(self, parent=None, bitmap=None, style=0):
-            super().__init__(parent)
+            super().__init__(parent, style=style)
             self._bitmap = bitmap
+
+        def GetBitmap(self):
+            return self._bitmap
 
     class ArtProvider:
         @staticmethod
         def GetBitmap(*args, **kwargs):
-            return object()
+            return Bitmap(ok=False)
+
+    class Size:
+        def __init__(self, width, height):
+            self.width = width
+            self.height = height
+
+        def GetWidth(self):
+            return self.width
+
+        def GetHeight(self):
+            return self.height
 
     class Font:
         pass
@@ -124,15 +142,27 @@ def build_wx_stub() -> tuple[types.SimpleNamespace, types.SimpleNamespace, types
             self._colour = colour
 
     class Bitmap:
-        def __init__(self, width, height):
+        def __init__(self, width=0, height=0, *, ok=True):
             self._w = width
             self._h = height
+            self._ok = ok
 
         def GetWidth(self):
             return self._w
 
         def GetHeight(self):
             return self._h
+
+        def IsOk(self):
+            return self._ok
+
+    class StaticBox(Window):
+        def __init__(self, parent=None, label=""):
+            super().__init__(parent)
+            self._label = label
+
+        def GetLabel(self):
+            return self._label
 
     class MemoryDC:
         def __init__(self):
@@ -377,15 +407,33 @@ def build_wx_stub() -> tuple[types.SimpleNamespace, types.SimpleNamespace, types
     class BoxSizer:
         def __init__(self, orient):
             self._children = []
+            self._orient = orient
 
-        def Add(self, window, proportion, flag, border):
+        def Add(self, window, proportion=0, flag=0, border=0, userData=None):
             self._children.append(window)
+            return types.SimpleNamespace(window=window)
+
+        def Prepend(self, window, proportion=0, flag=0, border=0, userData=None):
+            self._children.insert(0, window)
+            return types.SimpleNamespace(window=window)
+
+        def Insert(self, index, window, proportion=0, flag=0, border=0, userData=None):
+            if index >= len(self._children):
+                self._children.append(window)
+            else:
+                self._children.insert(index, window)
+            return types.SimpleNamespace(window=window)
 
         def GetChildren(self):
             return [
                 types.SimpleNamespace(GetWindow=lambda w=child: w)
                 for child in self._children
             ]
+
+    class StaticBoxSizer(BoxSizer):
+        def __init__(self, box, orient):
+            super().__init__(orient)
+            self._box = box
 
     class Config:
         def read_int(self, key, default):
@@ -413,17 +461,30 @@ def build_wx_stub() -> tuple[types.SimpleNamespace, types.SimpleNamespace, types
         StaticText=StaticText,
         ListCtrl=ListCtrl,
         ImageList=ImageList,
+        StaticBox=StaticBox,
+        StaticBoxSizer=StaticBoxSizer,
+        Size=Size,
         BoxSizer=BoxSizer,
         Window=Window,
         VERTICAL=0,
+        HORIZONTAL=1,
         EXPAND=0,
         ALL=0,
+        LEFT=0x0004,
+        ALIGN_CENTER_VERTICAL=0x0020,
         BU_EXACTFIT=0,
+        BORDER_NONE=0,
         ART_CLOSE="close",
         ART_BUTTON="button",
+        ART_COPY="copy",
         OK=1,
         CANCEL=2,
         EVT_BUTTON=object(),
+        EVT_LEFT_DOWN=object(),
+        EVT_LEFT_UP=object(),
+        EVT_MOTION=object(),
+        EVT_LEAVE_WINDOW=object(),
+        EVT_KILL_FOCUS=object(),
         LC_REPORT=0,
         EVT_LIST_ITEM_RIGHT_CLICK=object(),
         EVT_CONTEXT_MENU=object(),

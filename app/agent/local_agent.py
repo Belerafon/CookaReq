@@ -66,6 +66,7 @@ class LocalAgent:
     DEFAULT_MAX_THOUGHT_STEPS: int | None = None
     DEFAULT_MAX_CONSECUTIVE_TOOL_ERRORS: int | None = 5
     _MESSAGE_PREVIEW_LIMIT = 400
+    _REQUIREMENT_SUMMARY_FIELDS: tuple[str, str] = ("title", "statement")
 
     def __init__(
         self,
@@ -365,6 +366,7 @@ class LocalAgent:
     async def _enrich_workspace_context_async(
         self, messages: Sequence[Mapping[str, Any]]
     ) -> None:
+        """Append summaries for selected requirements to workspace context messages."""
         for message in messages:
             role = message.get("role") if isinstance(message, Mapping) else None
             if role != "system":
@@ -384,14 +386,24 @@ class LocalAgent:
                 for line in existing_lines
                 if " — " in line
             }
-            additions: list[str] = []
+            to_fetch: list[str] = []
+            seen: set[str] = set()
             for rid in selected_rids:
-                if rid in already_present:
+                if rid in already_present or rid in seen:
                     continue
-                summary = await self._fetch_requirement_summary_async(rid)
+                to_fetch.append(rid)
+                seen.add(rid)
+            if not to_fetch:
+                continue
+            summaries = await self._fetch_requirement_summaries_async(to_fetch)
+            if not summaries:
+                continue
+            additions: list[str] = []
+            for rid in to_fetch:
+                summary = summaries.get(rid)
                 if not summary:
                     continue
-                additions.append(f"{rid} — {summary.strip()}")
+                additions.append(f"{rid} — {summary}")
             if additions:
                 message["content"] = "\n".join([*existing_lines, *additions])
 
@@ -418,25 +430,49 @@ class LocalAgent:
             break
         return selected
 
-    async def _fetch_requirement_summary_async(self, rid: str) -> str | None:
+    async def _fetch_requirement_summaries_async(
+        self, rids: Sequence[str]
+    ) -> dict[str, str]:
+        """Return requirement statements or titles for the given ``rids``."""
+        unique: list[str] = []
+        seen: set[str] = set()
+        for rid in rids:
+            if rid in seen:
+                continue
+            unique.append(rid)
+            seen.add(rid)
+        if not unique:
+            return {}
         try:
             response = await self._mcp.call_tool_async(
-                "get_requirement", {"rid": rid}
+                "get_requirement",
+                {"rid": unique, "fields": list(self._REQUIREMENT_SUMMARY_FIELDS)},
             )
         except Exception:
-            return None
+            return {}
         if not isinstance(response, Mapping):
-            return None
+            return {}
         if response.get("ok") is not True:
-            return None
+            return {}
         result = response.get("result")
         if not isinstance(result, Mapping):
-            return None
-        statement = str(result.get("statement") or "").strip()
-        if statement:
-            return statement
-        title = str(result.get("title") or "").strip()
-        return title or None
+            return {}
+        items = result.get("items")
+        if not isinstance(items, Sequence):
+            return {}
+        summaries: dict[str, str] = {}
+        for item in items:
+            if not isinstance(item, Mapping):
+                continue
+            rid_value = str(item.get("rid") or "").strip()
+            if not rid_value:
+                continue
+            statement = str(item.get("statement") or "").strip()
+            summary = statement or str(item.get("title") or "").strip()
+            if not summary:
+                continue
+            summaries[rid_value] = summary
+        return summaries
 
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:

@@ -36,7 +36,14 @@ def test_help_static_box_handles_prepend_and_insert(wx_app):
     assert sizer.GetItem(2).GetWindow() is fourth
     assert sizer.GetItem(3).GetWindow() is second
     assert sizer.GetItemCount() == 4
+    panel.Destroy()
     frame.Destroy()
+    app = wx.GetApp()
+    if app is not None:
+        try:
+            app.Yield(True)
+        except Exception:
+            pass
 
 
 def test_calculate_popup_position_prefers_right():

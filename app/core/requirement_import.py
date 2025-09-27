@@ -7,7 +7,8 @@ from enum import Enum
 import csv
 from pathlib import Path
 import re
-from typing import Any, Iterable, Sequence
+from typing import Any
+from collections.abc import Iterable, Sequence
 
 from .model import (
     Priority,
@@ -100,8 +101,7 @@ class TabularDataset:
 
     def iter_rows(self, *, skip_header: bool = False) -> Iterable[list[Any]]:
         start = 1 if skip_header and self._header_row is not None else 0
-        for row in self.rows[start:]:
-            yield row
+        yield from self.rows[start:]
 
     def row_count(self, *, skip_header: bool = False) -> int:
         if not self.rows:
@@ -199,7 +199,7 @@ class SequentialIDAllocator:
         self._used: set[int] = {int(value) for value in existing}
         self._next = max(start, max(self._used, default=0) + 1)
 
-    def clone(self) -> "SequentialIDAllocator":
+    def clone(self) -> SequentialIDAllocator:
         clone = SequentialIDAllocator(start=self._next)
         clone._used = set(self._used)
         clone._next = self._next

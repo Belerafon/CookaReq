@@ -35,12 +35,12 @@ class MainFrameDocumentsMixin:
     _doc_tree_min_pane: int
 
     @property
-    def recent_dirs(self: "MainFrame") -> list[str]:
+    def recent_dirs(self: MainFrame) -> list[str]:
         """Return directories recently opened by the user."""
 
         return self.config.get_recent_dirs()
 
-    def _current_document_summary(self: "MainFrame") -> str | None:
+    def _current_document_summary(self: MainFrame) -> str | None:
         """Return prefix and title of the active document for the header."""
 
         prefix = self.current_doc_prefix
@@ -62,7 +62,7 @@ class MainFrameDocumentsMixin:
             return prefix_text
         return prefix
 
-    def _update_requirements_label(self: "MainFrame") -> None:
+    def _update_requirements_label(self: MainFrame) -> None:
         """Adjust requirements pane title to reflect active document."""
 
         label_ctrl = getattr(self, "list_label", None)
@@ -81,7 +81,7 @@ class MainFrameDocumentsMixin:
             if container and hasattr(container, "Layout"):
                 container.Layout()
 
-    def on_open_folder(self: "MainFrame", _event: wx.Event) -> None:
+    def on_open_folder(self: MainFrame, _event: wx.Event) -> None:
         """Handle "Open Folder" menu action."""
 
         dlg = wx.DirDialog(self, _("Select requirements folder"))
@@ -92,7 +92,7 @@ class MainFrameDocumentsMixin:
             self._load_directory(Path(dlg.GetPath()))
         dlg.Destroy()
 
-    def on_open_recent(self: "MainFrame", event: wx.CommandEvent) -> None:
+    def on_open_recent(self: MainFrame, event: wx.CommandEvent) -> None:
         """Open a directory selected from the "recent" menu."""
 
         path = self.navigation.get_recent_path(event.GetId())
@@ -107,7 +107,7 @@ class MainFrameDocumentsMixin:
         except OSError:
             return str(path)
 
-    def _sync_mcp_base_path(self: "MainFrame", path: Path) -> None:
+    def _sync_mcp_base_path(self: MainFrame, path: Path) -> None:
         """Persist MCP base path and keep the running server in sync."""
 
         new_base_path = self._normalise_directory_path(path)
@@ -143,7 +143,7 @@ class MainFrameDocumentsMixin:
                 "Failed to start MCP server after applying new base path"
             )
 
-    def _load_directory(self: "MainFrame", path: Path) -> None:
+    def _load_directory(self: MainFrame, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""
 
         controller = DocumentsController(path, self.model)
@@ -192,7 +192,7 @@ class MainFrameDocumentsMixin:
         self._selected_requirement_id = None
         self._clear_editor_panel()
 
-    def _show_directory_error(self: "MainFrame", path: Path, error: Exception) -> None:
+    def _show_directory_error(self: MainFrame, path: Path, error: Exception) -> None:
         """Display error message for a failed directory load."""
 
         message = _(
@@ -201,7 +201,7 @@ class MainFrameDocumentsMixin:
         wx.MessageBox(message, _("Error"), wx.ICON_ERROR)
 
     def _refresh_documents(
-        self: "MainFrame",
+        self: MainFrame,
         *,
         select: str | None = None,
         force_reload: bool = False,
@@ -235,7 +235,7 @@ class MainFrameDocumentsMixin:
             self._clear_editor_panel()
             self._update_requirements_label()
 
-    def _load_document_contents(self: "MainFrame", prefix: str) -> bool:
+    def _load_document_contents(self: MainFrame, prefix: str) -> bool:
         """Load items and labels for ``prefix`` and update the views."""
 
         if not self.docs_controller:
@@ -327,7 +327,7 @@ class MainFrameDocumentsMixin:
         self.splitter.UpdateSize()
         return True
 
-    def on_new_document(self: "MainFrame", parent_prefix: str | None) -> None:
+    def on_new_document(self: MainFrame, parent_prefix: str | None) -> None:
         """Create a new document under ``parent_prefix``."""
 
         if not (self.docs_controller and self.current_dir):
@@ -361,7 +361,7 @@ class MainFrameDocumentsMixin:
         self._selected_requirement_id = None
         self._refresh_documents(select=doc.prefix, force_reload=True)
 
-    def on_rename_document(self: "MainFrame", prefix: str) -> None:
+    def on_rename_document(self: MainFrame, prefix: str) -> None:
         """Rename or retitle document ``prefix``."""
 
         if not self.docs_controller:
@@ -397,7 +397,7 @@ class MainFrameDocumentsMixin:
             return
         self._refresh_documents(select=prefix, force_reload=True)
 
-    def on_delete_document(self: "MainFrame", prefix: str) -> None:
+    def on_delete_document(self: MainFrame, prefix: str) -> None:
         """Delete document ``prefix`` after confirmation."""
 
         if not self.docs_controller:
@@ -419,7 +419,7 @@ class MainFrameDocumentsMixin:
         target = parent_prefix if parent_prefix in self.docs_controller.documents else None
         self._refresh_documents(select=target, force_reload=True)
 
-    def _on_doc_changing(self: "MainFrame", event: wx.TreeEvent) -> None:
+    def _on_doc_changing(self: MainFrame, event: wx.TreeEvent) -> None:
         """Request confirmation before switching documents."""
 
         if event.GetItem() == event.GetOldItem():
@@ -431,7 +431,7 @@ class MainFrameDocumentsMixin:
             return
         event.Skip()
 
-    def on_document_selected(self: "MainFrame", prefix: str) -> None:
+    def on_document_selected(self: MainFrame, prefix: str) -> None:
         """Load items and labels for selected document ``prefix``."""
 
         if prefix == self.current_doc_prefix:
@@ -444,7 +444,7 @@ class MainFrameDocumentsMixin:
             self.editor.set_directory(self.current_dir / prefix)
         self._load_document_contents(prefix)
 
-    def on_import_requirements(self: "MainFrame", _event: wx.Event) -> None:
+    def on_import_requirements(self: MainFrame, _event: wx.Event) -> None:
         """Open the import dialog and persist selected requirements."""
 
         if not (self.docs_controller and self.current_doc_prefix and self.current_dir):
@@ -549,7 +549,7 @@ class MainFrameDocumentsMixin:
                 wx.ICON_WARNING,
             )
 
-    def on_manage_labels(self: "MainFrame", _event: wx.Event) -> None:
+    def on_manage_labels(self: MainFrame, _event: wx.Event) -> None:
         """Open dialog to manage defined labels."""
 
         if not (self.docs_controller and self.current_doc_prefix and self.current_dir):
@@ -567,7 +567,7 @@ class MainFrameDocumentsMixin:
             self.editor.update_labels_list(labels_all, freeform)
         dlg.Destroy()
 
-    def on_show_derivation_graph(self: "MainFrame", _event: wx.Event) -> None:
+    def on_show_derivation_graph(self: MainFrame, _event: wx.Event) -> None:
         """Open window displaying requirement derivation graph."""
 
         if not (self.current_dir and self.docs_controller):
@@ -586,7 +586,7 @@ class MainFrameDocumentsMixin:
         self.register_auxiliary_frame(frame)
         frame.Show()
 
-    def on_show_trace_matrix(self: "MainFrame", _event: wx.Event) -> None:
+    def on_show_trace_matrix(self: MainFrame, _event: wx.Event) -> None:
         """Open window displaying requirement trace links."""
 
         if not (self.current_dir and self.docs_controller):

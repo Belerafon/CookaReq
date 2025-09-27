@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from io import BytesIO
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -129,7 +129,7 @@ def build_requirement_export(
     return RequirementExport(
         documents=ordered_documents,
         selected_prefixes=ordered_prefixes,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )
 
 
@@ -161,10 +161,10 @@ def render_requirements_markdown(export: RequirementExport, *, title: str | None
             req = view.requirement
             parts.append(f"### {req.rid} — {req.title or '(no title)'}")
             parts.append("")
-            parts.append("- **Type:** ``{}``".format(req.type.value))
-            parts.append("- **Status:** ``{}``".format(req.status.value))
+            parts.append(f"- **Type:** ``{req.type.value}``")
+            parts.append(f"- **Status:** ``{req.status.value}``")
             if req.priority:
-                parts.append("- **Priority:** ``{}``".format(req.priority.value))
+                parts.append(f"- **Priority:** ``{req.priority.value}``")
             if req.owner:
                 parts.append(f"- **Owner:** {req.owner}")
             if req.labels:
@@ -175,7 +175,7 @@ def render_requirements_markdown(export: RequirementExport, *, title: str | None
                 parts.append(f"- **Modified:** {req.modified_at}")
             if req.approved_at:
                 parts.append(f"- **Approved:** {req.approved_at}")
-            parts.append("- **Revision:** {}".format(req.revision))
+            parts.append(f"- **Revision:** {req.revision}")
             parts.append("")
 
             sections: list[tuple[str, str | None]] = [

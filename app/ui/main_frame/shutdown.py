@@ -18,7 +18,7 @@ class MainFrameShutdownMixin:
     _detached_editors: dict
     _shutdown_in_progress: bool
 
-    def register_auxiliary_frame(self: "MainFrame", frame: wx.Frame) -> None:
+    def register_auxiliary_frame(self: MainFrame, frame: wx.Frame) -> None:
         """Ensure ``frame`` is configured to follow the main window lifecycle."""
 
         if frame is None:
@@ -32,7 +32,7 @@ class MainFrameShutdownMixin:
         extra_style = frame.GetExtraStyle()
         frame.SetExtraStyle(extra_style | wx.FRAME_FLOAT_ON_PARENT)
 
-    def _request_exit_main_loop(self: "MainFrame") -> None:
+    def _request_exit_main_loop(self: MainFrame) -> None:
         """Ask wx to terminate the main loop if it is still running."""
 
         app = wx.GetApp()
@@ -55,7 +55,7 @@ class MainFrameShutdownMixin:
         except Exception:  # pragma: no cover - wx implementations may vary
             logger.exception("Failed to request wx main loop exit during shutdown")
 
-    def _on_close(self: "MainFrame", event: wx.Event) -> None:  # pragma: no cover - GUI event
+    def _on_close(self: MainFrame, event: wx.Event) -> None:  # pragma: no cover - GUI event
         if self._shutdown_in_progress:
             if event is not None:
                 event.Skip()

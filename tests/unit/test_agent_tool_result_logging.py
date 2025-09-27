@@ -17,7 +17,7 @@ class _StubPanel:
 class _StubFrame(MainFrameAgentMixin):
     def __init__(self) -> None:
         self.current_doc_prefix = "SYS"
-        self.model = SimpleNamespace(get_all=lambda: [])
+        self.model = SimpleNamespace(get_all=list)
         self.panel = _StubPanel()
         self.editor = SimpleNamespace(load=lambda *_args, **_kwargs: None)
         self._selected_requirement_id = None

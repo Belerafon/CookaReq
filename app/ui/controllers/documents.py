@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 from pathlib import Path
-from typing import Dict, Iterable, Tuple
+from collections.abc import Iterable
 
 from ...core.document_store import (
     Document,
@@ -34,12 +34,12 @@ class DocumentsController:
     model: object
 
     def __post_init__(self) -> None:
-        self.documents: Dict[str, Document] = {}
+        self.documents: dict[str, Document] = {}
 
     _PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
     # ------------------------------------------------------------------
-    def load_documents(self) -> Dict[str, Document]:
+    def load_documents(self) -> dict[str, Document]:
         """Populate ``documents`` from ``root`` and return them."""
         self.documents = load_documents(self.root)
         return self.documents
@@ -236,7 +236,7 @@ class DocumentsController:
         return self.documents[prefix]
 
     # ------------------------------------------------------------------
-    def iter_links(self) -> Iterable[Tuple[str, str]]:
+    def iter_links(self) -> Iterable[tuple[str, str]]:
         """Yield ``(child_rid, parent_rid)`` pairs for requirements."""
 
         return doc_iter_links(self.root)

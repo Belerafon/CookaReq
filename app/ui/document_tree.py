@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
-from typing import Callable, Dict
+from collections.abc import Callable
 
 import wx
 
@@ -33,8 +33,8 @@ class DocumentTree(wx.Panel):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.tree, 1, wx.EXPAND)
         self.SetSizer(sizer)
-        self._node_for_prefix: Dict[str, wx.TreeItemId] = {}
-        self._prefix_for_id: Dict[wx.TreeItemId, str] = {}
+        self._node_for_prefix: dict[str, wx.TreeItemId] = {}
+        self._prefix_for_id: dict[wx.TreeItemId, str] = {}
         self.root = self.tree.AddRoot(_("Documents"))
         self.tree.Bind(wx.EVT_TREE_SEL_CHANGED, self._handle_select)
         self.tree.Bind(wx.EVT_TREE_ITEM_MENU, self._show_context_menu)
@@ -42,7 +42,7 @@ class DocumentTree(wx.Panel):
             self.tree.Bind(wx.EVT_CONTEXT_MENU, self._show_background_menu)
         self._menu_target_prefix: str | None = None
 
-    def set_documents(self, docs: Dict[str, Document]) -> None:
+    def set_documents(self, docs: dict[str, Document]) -> None:
         """Populate tree from mapping ``docs``."""
         self.tree.DeleteChildren(self.root)
         self._node_for_prefix.clear()

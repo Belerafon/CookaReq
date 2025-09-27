@@ -7,7 +7,8 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
+from collections.abc import Mapping, Sequence
 
 from app.ui.chat_entry import (
     ChatConversation,

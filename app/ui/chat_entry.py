@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import Any
+from collections.abc import Mapping, Sequence
 from uuid import uuid4
 
 from ..llm.tokenizer import (
@@ -121,7 +122,7 @@ class ChatEntry:
         return info
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "ChatEntry":
+    def from_dict(cls, payload: Mapping[str, Any]) -> ChatEntry:
         """Create :class:`ChatEntry` instance from stored mapping."""
 
         prompt = str(payload.get("prompt", ""))
@@ -244,7 +245,7 @@ class ChatConversation:
     entries: list[ChatEntry] = field(default_factory=list)
 
     @classmethod
-    def new(cls) -> "ChatConversation":
+    def new(cls) -> ChatConversation:
         """Return empty conversation with generated identifiers."""
 
         now = utc_now_iso()
@@ -257,7 +258,7 @@ class ChatConversation:
         )
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "ChatConversation":
+    def from_dict(cls, payload: Mapping[str, Any]) -> ChatConversation:
         """Create :class:`ChatConversation` from stored mapping."""
 
         conversation_id_raw = payload.get("id") or payload.get("conversation_id")

@@ -55,7 +55,7 @@ class AgentChatLayout:
 class AgentChatLayoutBuilder:
     """Build and configure widgets composing :class:`AgentChatPanel`."""
 
-    def __init__(self, panel: "AgentChatPanel") -> None:
+    def __init__(self, panel: AgentChatPanel) -> None:
         self._panel = panel
 
     def build(self, *, status_help_text: str) -> AgentChatLayout:

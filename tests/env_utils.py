@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 
 class SecretEnvValue:
@@ -49,7 +49,7 @@ def load_secret_from_env(
     *,
     search_from: Path | str | None = None,
     env_file_name: str = ".env",
-) -> Optional[SecretEnvValue]:
+) -> SecretEnvValue | None:
     """Load a secret from the environment or the nearest ``.env`` file.
 
     Parameters
@@ -116,7 +116,7 @@ def _iter_env_paths(root: Path, env_file_name: str) -> Iterable[Path]:
             yield env_path
 
 
-def _extract_from_env_file(env_path: Path, variable_name: str) -> Optional[str]:
+def _extract_from_env_file(env_path: Path, variable_name: str) -> str | None:
     return _parse_env_file(env_path).get(variable_name)
 
 

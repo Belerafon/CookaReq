@@ -6,7 +6,8 @@ import logging
 from collections.abc import Mapping, Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 import wx
 

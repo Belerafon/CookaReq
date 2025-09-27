@@ -10,7 +10,8 @@ import sys
 from copy import deepcopy
 from dataclasses import MISSING, asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Any, Callable, Mapping, TextIO
+from typing import Any, TextIO
+from collections.abc import Callable, Mapping
 
 from app.confirm import confirm
 from app.core.document_store import (

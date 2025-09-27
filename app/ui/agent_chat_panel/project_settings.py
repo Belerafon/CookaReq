@@ -6,7 +6,8 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ class AgentProjectSettings:
 
     custom_system_prompt: str = ""
 
-    def normalized(self) -> "AgentProjectSettings":
+    def normalized(self) -> AgentProjectSettings:
         """Return settings with whitespace-normalised fields."""
 
         return AgentProjectSettings(custom_system_prompt=self.custom_system_prompt.strip())
@@ -33,7 +34,7 @@ class AgentProjectSettings:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "AgentProjectSettings":
+    def from_dict(cls, payload: Mapping[str, Any]) -> AgentProjectSettings:
         """Create :class:`AgentProjectSettings` from *payload* data."""
 
         prompt = payload.get("custom_system_prompt", "")

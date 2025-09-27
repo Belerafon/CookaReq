@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 import wx
 
@@ -27,8 +27,8 @@ class DetachedEditorFrame(wx.Frame):
         directory: Path,
         labels: list[LabelDef],
         allow_freeform: bool,
-        on_save: Callable[["DetachedEditorFrame"], bool],
-        on_close: Callable[["DetachedEditorFrame"], None] | None = None,
+        on_save: Callable[[DetachedEditorFrame], bool],
+        on_close: Callable[[DetachedEditorFrame], None] | None = None,
     ) -> None:
         """Create frame initialized with ``requirement`` contents."""
 

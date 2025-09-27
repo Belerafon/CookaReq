@@ -6,7 +6,8 @@ import json
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from ...i18n import translate_resource
 

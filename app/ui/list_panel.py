@@ -162,7 +162,7 @@ class RequirementsListCtrl(wx.ListCtrl):
             with suppress(Exception):
                 self.ReleaseMouse()
 
-    def _on_left_down(self, event: "wx.MouseEvent") -> None:
+    def _on_left_down(self, event: wx.MouseEvent) -> None:
         self._marquee_origin = event.GetPosition()
         self._marquee_base = set(self._selected_indices())
         self._marquee_additive = event.ControlDown() or event.CmdDown() or event.ShiftDown()
@@ -170,7 +170,7 @@ class RequirementsListCtrl(wx.ListCtrl):
         self._clear_overlay()
         event.Skip()
 
-    def _on_left_up(self, event: "wx.MouseEvent") -> None:
+    def _on_left_up(self, event: wx.MouseEvent) -> None:
         if self._marquee_origin and self._marquee_active:
             self._update_marquee_selection(event.GetPosition())
             self._finish_marquee()
@@ -181,7 +181,7 @@ class RequirementsListCtrl(wx.ListCtrl):
         self._clear_overlay()
         event.Skip()
 
-    def _on_mouse_move(self, event: "wx.MouseEvent") -> None:
+    def _on_mouse_move(self, event: wx.MouseEvent) -> None:
         if not self._marquee_origin or not event.LeftIsDown():
             event.Skip()
             return
@@ -195,7 +195,7 @@ class RequirementsListCtrl(wx.ListCtrl):
         self._update_marquee_selection(event.GetPosition())
         event.Skip(False)
 
-    def _on_mouse_leave(self, event: "wx.MouseEvent") -> None:
+    def _on_mouse_leave(self, event: wx.MouseEvent) -> None:
         if self._marquee_origin and not event.LeftIsDown():
             self._finish_marquee()
         event.Skip()

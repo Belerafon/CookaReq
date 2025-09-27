@@ -6,7 +6,8 @@ import contextlib
 from types import MethodType, ModuleType
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping, Sequence
+from typing import TYPE_CHECKING
+from collections.abc import Mapping, Sequence
 
 import pytest
 
@@ -206,7 +207,7 @@ def _destroy_top_windows(wx: ModuleType) -> None:
 
 
 @pytest.fixture(scope="session")
-def _wx_session_app(request: pytest.FixtureRequest, xvfb: None) -> tuple[ModuleType, "wx.App"]:
+def _wx_session_app(request: pytest.FixtureRequest, xvfb: None) -> tuple[ModuleType, wx.App]:
     """Create a shared ``wx.App`` guarded by the xvfb fixture."""
 
     wx = pytest.importorskip("wx")
@@ -223,13 +224,13 @@ def _wx_session_app(request: pytest.FixtureRequest, xvfb: None) -> tuple[ModuleT
     return wx, app
 
 
-def _install_safe_yield(app: "wx.App") -> None:
+def _install_safe_yield(app: wx.App) -> None:
     """Replace ``wx.App.Yield`` with a crash-resistant event pump."""
 
     if not hasattr(app, "HasPendingEvents") or not hasattr(app, "ProcessPendingEvents"):
         return
 
-    def _safe_yield(self: "wx.App", *args, **kwargs) -> None:
+    def _safe_yield(self: wx.App, *args, **kwargs) -> None:
         for _ in range(5):
             had_events = False
             while self.HasPendingEvents():
@@ -245,8 +246,8 @@ def _install_safe_yield(app: "wx.App") -> None:
 def wx_app(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path_factory: pytest.TempPathFactory,
-    _wx_session_app: tuple[ModuleType, "wx.App"],
-) -> "wx.App":
+    _wx_session_app: tuple[ModuleType, wx.App],
+) -> wx.App:
     """Return a ``wx.App`` instance with per-test isolation for configs."""
 
     wx, app = _wx_session_app

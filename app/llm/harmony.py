@@ -6,7 +6,8 @@ import copy
 from dataclasses import dataclass
 from datetime import date
 import json
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
+from collections.abc import Iterable, Mapping, Sequence
 
 
 HARMONY_KNOWLEDGE_CUTOFF = "2024-06"

@@ -50,7 +50,7 @@ def test_wx_confirm(monkeypatch):
 
     monkeypatch.setattr(wx, "MessageDialog", lambda *a, **k: DummyDialog())
     monkeypatch.setattr(wx, "GetActiveWindow", lambda: None)
-    monkeypatch.setattr(wx, "GetTopLevelWindows", lambda: [])
+    monkeypatch.setattr(wx, "GetTopLevelWindows", list)
 
     assert wx_confirm("Proceed?") is True
     assert destroyed.pop(0) is True
@@ -85,7 +85,7 @@ def test_wx_confirm_from_worker_thread(monkeypatch, wx_app):
 
     monkeypatch.setattr(wx, "MessageDialog", lambda *a, **k: DummyDialog())
     monkeypatch.setattr(wx, "GetActiveWindow", lambda: None)
-    monkeypatch.setattr(wx, "GetTopLevelWindows", lambda: [])
+    monkeypatch.setattr(wx, "GetTopLevelWindows", list)
     monkeypatch.setattr(wx, "IsMainThread", fake_is_main_thread)
 
     results: list[bool] = []

@@ -2,7 +2,8 @@ import json
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any, Mapping, Sequence
+from typing import Any
+from collections.abc import Mapping, Sequence
 
 from app.confirm import ConfirmDecision, reset_requirement_update_preference, set_confirm, set_requirement_update_confirm
 from app.llm.tokenizer import TokenCountResult

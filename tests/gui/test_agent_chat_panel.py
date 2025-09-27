@@ -283,6 +283,56 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_migrates_legacy_token_info(tmp_path, wx_app):
+    history_path = tmp_path / "history.json"
+    legacy_payload = {
+        "version": 2,
+        "active_id": "conv-1",
+        "conversations": [
+            {
+                "id": "conv-1",
+                "title": "Legacy conversation",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z",
+                "entries": [
+                    {
+                        "prompt": "hello",
+                        "response": "world",
+                        "tokens": 123,
+                        "prompt_at": "2024-01-01T00:00:00Z",
+                        "response_at": "2024-01-01T00:00:05Z",
+                        "display_response": None,
+                        "tool_results": None,
+                        "raw_result": None,
+                        "context_messages": None,
+                        "reasoning": None,
+                    }
+                ],
+            }
+        ],
+    }
+    history_path.write_text(json.dumps(legacy_payload))
+
+    class IdleAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "result": {"echo": "noop"}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, IdleAgent())
+
+    try:
+        flush_wx_events(wx)
+        saved = json.loads(history_path.read_text())
+        entry_payload = saved["conversations"][0]["entries"][0]
+        token_info = entry_payload.get("token_info")
+        assert isinstance(token_info, Mapping)
+        assert token_info.get("tokens") == entry_payload["tokens"]
+        assert token_info.get("approximate") is False
+        assert token_info.get("model") == "cl100k_base"
+        assert token_info.get("reason") not in {"legacy_tokens", "model_approximation"}
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_response_normalizes_dash_characters(tmp_path, wx_app):
     class HyphenAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):

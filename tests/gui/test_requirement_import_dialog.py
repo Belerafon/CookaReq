@@ -17,7 +17,7 @@ def _select_path(dialog, path):
 
 
 def test_import_dialog_csv_autopreview_enables_ok(wx_app, tmp_path):
-    wx = pytest.importorskip("wx")
+    _wx = pytest.importorskip("wx")
     from app.ui.import_dialog import RequirementImportDialog
 
     csv_path = tmp_path / "requirements.csv"
@@ -57,7 +57,7 @@ def test_import_dialog_csv_autopreview_enables_ok(wx_app, tmp_path):
 
 
 def test_import_dialog_requires_statement_mapping(wx_app, tmp_path):
-    wx = pytest.importorskip("wx")
+    _wx = pytest.importorskip("wx")
     from app.ui.import_dialog import RequirementImportDialog
 
     csv_path = tmp_path / "data.csv"

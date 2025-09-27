@@ -215,10 +215,7 @@ class AgentRunController:
                     )
 
                 history_arg: tuple[dict[str, Any], ...] | None
-                if history_payload:
-                    history_arg = history_payload
-                else:
-                    history_arg = None
+                history_arg = history_payload or None
 
                 return agent.run_command(
                     normalized_prompt,

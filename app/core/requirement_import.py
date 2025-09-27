@@ -158,13 +158,13 @@ class RequirementImportConfiguration:
 
     def __post_init__(self) -> None:
         normalized: dict[str, int | None] = {}
-        for field, column in self.mapping.items():
-            if field not in _FIELD_MAP:
+        for field_name, column in self.mapping.items():
+            if field_name not in _FIELD_MAP:
                 continue
             if column is None:
-                normalized[field] = None
+                normalized[field_name] = None
             else:
-                normalized[field] = int(column)
+                normalized[field_name] = int(column)
         self.mapping = normalized
         spec = _FIELD_MAP.get("statement")
         if spec and spec.required and self.mapping.get("statement") is None:
@@ -250,7 +250,7 @@ def load_csv_dataset(path: str | Path, *, delimiter: str = ",") -> TabularDatase
     with Path(path).open(encoding="utf-8") as fh:
         reader = csv.reader(fh, delimiter=norm_delim)
         for row in reader:
-            rows.append([cell for cell in row])
+            rows.append(list(row))
     return TabularDataset(rows)
 
 
@@ -396,25 +396,30 @@ def _row_payload(
         raise RequirementImportRowError("statement cannot be empty", field="statement")
     payload["statement"] = statement_value
 
-    for field, index in mapping.items():
-        if field in {"statement", "id"}:
+    for field_name, index in mapping.items():
+        if field_name in {"statement", "id"}:
             continue
         if index is None:
             continue
         value = _extract_field_value(
-            row, index=index, field=field, separator=config.labels_separator
+            row,
+            index=index,
+            field=field_name,
+            separator=config.labels_separator,
         )
-        if field == "labels" and value == []:
+        if field_name == "labels" and value == []:
             continue
-        if value in (None, "") and field not in {"title", "notes"}:
+        if value in (None, "") and field_name not in {"title", "notes"}:
             continue
-        payload[field] = value
+        payload[field_name] = value
 
     if mapping.get("id") is not None:
         try:
             candidate_id = _parse_id(row[mapping["id"]])
         except IndexError:
-            raise RequirementImportRowError("id column is missing", field="id")
+            raise RequirementImportRowError(
+                "id column is missing", field="id"
+            ) from None
 
     return payload, candidate_id
 

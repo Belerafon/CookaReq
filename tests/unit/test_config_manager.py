@@ -436,7 +436,7 @@ def test_save_layout_tracks_doc_tree_collapse(tmp_path, wx_app):
     editor_splitter.SplitVertically(wx.Panel(editor_splitter), wx.Panel(editor_splitter))
     doc_splitter.SplitVertically(wx.Panel(doc_splitter), editor_splitter)
     panel = DummyListPanel()
-    log_console = wx.TextCtrl(main_splitter)
+    _log_console = wx.TextCtrl(main_splitter)
 
     frame.SetSize((820, 620))
     doc_splitter.SetSashPosition(250)

@@ -751,8 +751,6 @@ class LocalAgent:
             arguments = prepared.arguments_for_payload
             if isinstance(arguments, Mapping):
                 error_payload["tool_arguments"] = dict(arguments)
-            elif isinstance(arguments, str) and arguments:
-                error_payload["tool_arguments"] = arguments
             elif arguments is not None:
                 error_payload["tool_arguments"] = arguments
             error_payload.setdefault("agent_status", "failed")

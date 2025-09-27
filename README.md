@@ -186,7 +186,8 @@ Without both the environment variable and a valid key the test is skipped automa
 
 ### Linting and formatting
 
-`ruff` enforces code style and import hygiene:
+`ruff` enforces code style, import hygiene, flake8-bugbear safety rules,
+flake8-comprehensions normalisation, and flake8-simplify clarity tweaks:
 
 ```bash
 ruff check app tests

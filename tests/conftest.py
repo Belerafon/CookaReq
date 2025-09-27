@@ -6,11 +6,14 @@ import contextlib
 from types import MethodType, ModuleType
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import TYPE_CHECKING, Mapping, Sequence
 
 import pytest
 
 from tests.env_utils import load_dotenv_variables
+
+if TYPE_CHECKING:  # pragma: no cover - typing hints for wx fixtures
+    import wx
 
 # Load the nearest .env file once so integration tests that rely on external
 # services (for example OpenRouter) automatically receive credentials without
@@ -81,12 +84,13 @@ class SuiteDefinition:
         if not self.include_by_default:
             return False
 
-        if markers & exclude:
-            return False
-        if self._exclude_paths and _path_matches_prefixes(path, self._exclude_paths):
-            return False
-
-        return True
+        return not (
+            markers & exclude
+            or (
+                self._exclude_paths
+                and _path_matches_prefixes(path, self._exclude_paths)
+            )
+        )
 
 
 SUITES: Mapping[str, SuiteDefinition] = {

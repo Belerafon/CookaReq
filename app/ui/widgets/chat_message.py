@@ -5,10 +5,18 @@ from __future__ import annotations
 import hashlib
 import math
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Callable
 
 import wx
+
+from ...i18n import _
+from ..agent_chat_panel.tool_summaries import (
+    ToolCallSummary,
+    render_tool_summary_markdown,
+)
+from ..text import normalize_for_display
 
 
 def _is_window_usable(window: wx.Window | None) -> bool:
@@ -31,14 +39,6 @@ def _is_window_usable(window: wx.Window | None) -> bool:
         except RuntimeError:
             return False
     return True
-
-
-from ...i18n import _
-from ..agent_chat_panel.tool_summaries import (
-    ToolCallSummary,
-    render_tool_summary_markdown,
-)
-from ..text import normalize_for_display
 
 
 def _blend_colour(base: wx.Colour, other: wx.Colour, weight: float) -> wx.Colour:
@@ -553,14 +553,12 @@ class MessageBubble(wx.Panel):
             self._pending_width_update = False
             if self._destroyed:
                 return
-            try:
-                self._update_width_constraints()
-            except RuntimeError:
+            with suppress(RuntimeError):
                 # ``wx`` raises ``RuntimeError`` when invoking methods on a
                 # window whose native counterpart has already been torn down.
                 # The flag above prevents re-entry, so we can silently ignore
                 # the callback.
-                pass
+                self._update_width_constraints()
 
         wx.CallAfter(run)
 
@@ -678,22 +676,16 @@ class MessageBubble(wx.Panel):
         except RuntimeError:
             container_sizer = None
         if container_sizer is not None:
-            try:
+            with suppress(RuntimeError):
                 container_sizer.Layout()
-            except RuntimeError:
-                pass
-        try:
+        with suppress(RuntimeError):
             self.Layout()
-        except RuntimeError:
-            pass
 
         self._initial_width_hint = target_width
 
         if self._on_width_change is not None and target_width > 0:
-            try:
+            with suppress(Exception):
                 self._on_width_change(target_width)
-            except Exception:
-                pass
 
     def _resolve_parent_border(self, parent: wx.Window) -> int:
         try:
@@ -793,10 +785,8 @@ class TranscriptMessagePanel(wx.Panel):
         def _emit_layout_hint(key: str, width: int) -> None:
             if on_layout_hint is None or width <= 0:
                 return
-            try:
+            with suppress(Exception):
                 on_layout_hint(key, int(width))
-            except Exception:
-                pass
 
         def _resolve_hint(key: str) -> int | None:
             if not layout_hints:
@@ -825,12 +815,9 @@ class TranscriptMessagePanel(wx.Panel):
             outer.Add(notice, 0, wx.LEFT | wx.RIGHT | wx.TOP, padding)
 
         if context_messages:
-            context_footer_factory: FooterFactory | None = (
-                lambda container: self._create_context_panel(
-                    container,
-                    context_messages,
-                )
-            )
+            def context_footer_factory(container: wx.Window) -> wx.Window:
+                return self._create_context_panel(container, context_messages)
+
         else:
             context_footer_factory = None
 
@@ -1105,9 +1092,6 @@ class TranscriptMessagePanel(wx.Panel):
             if not text:
                 continue
             type_label = str(type_value).strip() if type_value is not None else ""
-            if type_label:
-                heading = type_label
-            else:
-                heading = _("Thought {index}").format(index=index)
+            heading = type_label or _("Thought {index}").format(index=index)
             blocks.append(f"{heading}\n{text}")
         return "\n\n".join(blocks)

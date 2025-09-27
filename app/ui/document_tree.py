@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Callable, Dict
 
 import wx
@@ -119,7 +120,7 @@ class DocumentTree(wx.Panel):
 
         def _next_menu_id() -> int:
             if hasattr(wx, "ID_ANY"):
-                return getattr(wx, "ID_ANY")
+                return wx.ID_ANY
             if hasattr(wx, "Window") and hasattr(wx.Window, "NewControlId"):
                 return wx.Window.NewControlId()
             # Fallback for extremely limited stubs.
@@ -156,15 +157,10 @@ class DocumentTree(wx.Panel):
             pos = get_position()
             screen_to_client = getattr(self.tree, "ScreenToClient", None)
             if screen_to_client and pos is not None:
-                try:
+                with suppress(Exception):  # pragma: no cover - backend quirks
                     pos = screen_to_client(pos)
-                except Exception:  # pragma: no cover - backend quirks
-                    pass
             hit = hit_test(pos)
-            if isinstance(hit, tuple):
-                hit_item = hit[0]
-            else:
-                hit_item = hit
+            hit_item = hit[0] if isinstance(hit, tuple) else hit
             if hit_item and hasattr(hit_item, "IsOk") and hit_item.IsOk():
                 if hasattr(event, "Skip"):
                     event.Skip()

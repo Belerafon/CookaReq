@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
 import json
 import logging
 import textwrap
@@ -19,7 +18,6 @@ from ...confirm import confirm
 from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT, TOOLS
 from ...llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
-from ...util.cancellation import OperationCancelledError
 from ...util.time import utc_now_iso
 from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import (
@@ -55,15 +53,13 @@ from .project_settings import (
 )
 from .layout import AgentChatLayoutBuilder
 from .settings_dialog import AgentProjectSettingsDialog
-from .time_formatting import format_entry_timestamp, format_last_activity
+from .time_formatting import format_last_activity
 from .token_usage import ContextTokenBreakdown
 from .tool_summaries import (
-    format_value_snippet,
     render_tool_summaries_plain,
     summarize_tool_results,
-    shorten_text,
 )
-from .transcript_view import TranscriptCallbacks, TranscriptView
+from .transcript_view import TranscriptView
 
 
 logger = logging.getLogger("cookareq.ui.agent_chat_panel")
@@ -326,7 +322,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self.input = layout.input_control
         self._stop_btn = layout.stop_button
         self._send_btn = layout.send_button
-        batch_controls = layout.batch_controls
+        self._batch_controls = layout.batch_controls
         self.activity = layout.activity_indicator
         self.status_label = layout.status_label
         self._project_settings_button = layout.project_settings_button
@@ -374,7 +370,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if self._layout is not None:
             self._batch_section = AgentBatchSection(
                 panel=self,
-                controls=self._layout.batch_controls,
+                controls=self._batch_controls,
                 target_provider=self._batch_target_provider,
             )
         else:

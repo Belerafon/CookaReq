@@ -98,9 +98,8 @@ def build_requirement_export(
 
     root_path = Path(root)
     docs = load_documents(root_path)
-    if not docs:
-        if not root_path.is_dir():
-            raise FileNotFoundError(root_path)
+    if not docs and not root_path.is_dir():
+        raise FileNotFoundError(root_path)
     ordered_prefixes = _normalize_prefixes(prefixes, docs)
     requirements = load_requirements(root_path, prefixes=ordered_prefixes or None, docs=docs)
     by_rid = {req.rid: req for req in requirements}

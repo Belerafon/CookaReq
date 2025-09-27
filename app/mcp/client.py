@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import json
 import time
@@ -10,8 +9,6 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 import httpx
-
-logger = logging.getLogger(__name__)
 
 from ..confirm import (
     ConfirmDecision,
@@ -24,6 +21,9 @@ from ..settings import MCPSettings
 from ..telemetry import log_debug_payload, log_event
 from .events import notify_tool_success
 from .utils import ErrorCode, mcp_error
+
+
+logger = logging.getLogger(__name__)
 
 
 class MCPNotReadyError(ConnectionError):

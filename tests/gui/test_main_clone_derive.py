@@ -18,6 +18,8 @@ from app.settings import MCPSettings
 from app.ui.controllers import DocumentsController
 from app.ui.requirement_model import RequirementModel
 
+wx = pytest.importorskip("wx")
+
 pytestmark = pytest.mark.gui
 
 
@@ -49,7 +51,6 @@ def _req(req_id: int, title: str) -> Requirement:
 
 
 def _prepare_frame(tmp_path, extra_requirements=None):
-    wx = pytest.importorskip("wx")
     import app.ui.main_frame as main_frame_mod
 
     importlib.reload(main_frame_mod)
@@ -88,7 +89,6 @@ def _prepare_frame(tmp_path, extra_requirements=None):
 
 def test_clone_creates_new_requirement(wx_app, tmp_path):
     frame = _prepare_frame(tmp_path)
-    wx = pytest.importorskip("wx")
 
     try:
         wx_app.Yield()
@@ -112,7 +112,6 @@ def test_clone_creates_new_requirement(wx_app, tmp_path):
 
 def test_derive_creates_linked_requirement(wx_app, tmp_path):
     frame = _prepare_frame(tmp_path)
-    wx = pytest.importorskip("wx")
 
     try:
         wx_app.Yield()
@@ -149,7 +148,6 @@ def test_derive_creates_linked_requirement(wx_app, tmp_path):
 def test_delete_many_removes_requirements(monkeypatch, wx_app, tmp_path):
     extra = [_req(2, "Second"), _req(3, "Third")]
     frame = _prepare_frame(tmp_path, extra_requirements=extra)
-    wx = pytest.importorskip("wx")
     import app.ui.main_frame as main_frame_mod
 
     try:
@@ -185,7 +183,6 @@ def test_delete_many_removes_requirements(monkeypatch, wx_app, tmp_path):
 
 def test_save_derived_requirement_with_missing_parent_rid(monkeypatch, wx_app, tmp_path):
     frame = _prepare_frame(tmp_path)
-    _ = pytest.importorskip("wx")
     import app.ui.error_dialog as error_dialog_module
     import app.ui.main_frame as main_frame_mod
 

@@ -49,7 +49,7 @@ def _requirement(
 def test_trace_matrix_frame_renders_links(wx_app, tmp_path):
     """The matrix grid should highlight linked pairs and show details."""
 
-    wx = pytest.importorskip("wx")
+    _wx = pytest.importorskip("wx")
 
     controller = DocumentsController(tmp_path, RequirementModel())
 

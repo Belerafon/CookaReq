@@ -82,10 +82,7 @@ def make_openai_mock(responses: dict[str, object]):
             queue = prepared.get(user_msg)
             if queue is None:
                 queue = prepared.setdefault(user_msg, [("list_requirements", {})])
-            if len(queue) > 1:
-                result = queue.pop(0)
-            else:
-                result = queue[0]
+            result = queue.pop(0) if len(queue) > 1 else queue[0]
             if isinstance(result, Exception):
                 raise result
             if isinstance(result, str):

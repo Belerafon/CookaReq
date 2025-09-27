@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import suppress
 from dataclasses import fields
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -665,10 +666,8 @@ def move_requirement(
         save_item(directory, doc, item_payload)
 
     src_path = item_path(src_directory, src_doc, item_id)
-    try:
+    with suppress(FileNotFoundError):  # pragma: no cover - defensive
         src_path.unlink()
-    except FileNotFoundError:  # pragma: no cover - defensive
-        pass
 
     return req
 

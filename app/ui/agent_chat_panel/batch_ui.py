@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Sequence
 
@@ -13,6 +15,9 @@ import wx.dataview as dv
 
 from ...i18n import _
 from .batch_runner import AgentBatchRunner, BatchItem, BatchItemStatus, BatchTarget
+
+if TYPE_CHECKING:  # pragma: no cover - help type checkers
+    from .panel import AgentChatPanel
 
 
 logger = logging.getLogger(__name__)
@@ -36,21 +41,18 @@ class AgentBatchSection:
     def __init__(
         self,
         *,
-        panel: "AgentChatPanel",
+        panel: AgentChatPanel,
         controls: BatchControls,
         runner: AgentBatchRunner | None = None,
         target_provider: Callable[[], Sequence[BatchTarget]] | None = None,
     ) -> None:
-        if TYPE_CHECKING:  # pragma: no cover - help type checkers
-            from .panel import AgentChatPanel
-
         self._panel = panel
         self._controls = controls
         self._target_provider = target_provider
         self._runner = runner or AgentBatchRunner(
             submit_prompt=panel._submit_batch_prompt,
             create_conversation=panel._create_batch_conversation,
-            ensure_conversation_id=lambda conv: getattr(conv, "conversation_id"),
+            ensure_conversation_id=lambda conv: conv.conversation_id,
             on_state_changed=self.update_ui,
             context_factory=panel._build_batch_context,
             prepare_conversation=panel._prepare_batch_conversation,

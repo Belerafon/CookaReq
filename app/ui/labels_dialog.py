@@ -211,7 +211,9 @@ class LabelsDialog(wx.Dialog):
             if not new_key:
                 dlg.Destroy()
                 return
-            existing = {l.key for i, l in enumerate(self._labels) if i != idx}
+            existing = {
+                label.key for i, label in enumerate(self._labels) if i != idx
+            }
             if new_key in existing:
                 wx.MessageBox(_("Label already exists"), _("Error"), style=wx.ICON_ERROR)
             else:

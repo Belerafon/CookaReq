@@ -13,7 +13,6 @@ from ...confirm import (
     RequirementUpdatePrompt,
     reset_requirement_update_preference,
 )
-from ...i18n import _
 
 logger = logging.getLogger("cookareq.ui.agent_chat_panel.confirm")
 

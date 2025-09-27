@@ -638,7 +638,7 @@ def format_value_snippet(value: Any) -> str:
         return joined
     if isinstance(value, Mapping):
         keys: list[str] = []
-        for key in value.keys():
+        for key in value:
             keys.append(normalize_for_display(str(key)))
             if len(keys) >= 5:
                 break

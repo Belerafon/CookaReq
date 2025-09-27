@@ -25,10 +25,7 @@ def _default_config_path(app_name: str) -> Path:
     """Return platform-appropriate config path for *app_name*."""
 
     base = os.environ.get("XDG_CONFIG_HOME")
-    if base:
-        root = Path(base)
-    else:
-        root = Path.home() / ".config"
+    root = Path(base) if base else Path.home() / ".config"
     return root / app_name / "config.json"
 
 

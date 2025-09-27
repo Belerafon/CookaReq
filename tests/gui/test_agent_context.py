@@ -5,6 +5,8 @@ import pytest
 
 pytestmark = pytest.mark.gui
 
+wx = pytest.importorskip("wx")
+
 
 def _copy_sample_repository(tmp_path: Path) -> Path:
     source = Path(__file__).resolve().parents[2] / "requirements"
@@ -14,7 +16,6 @@ def _copy_sample_repository(tmp_path: Path) -> Path:
 
 
 def _create_main_frame(tmp_path: Path):
-    wx = pytest.importorskip("wx")
     from app.config import ConfigManager
     from app.settings import MCPSettings
     from app.ui.main_frame import MainFrame
@@ -31,7 +32,6 @@ def _create_main_frame(tmp_path: Path):
 def test_agent_context_includes_selected_requirements(tmp_path, wx_app):
     repository = _copy_sample_repository(tmp_path)
     frame = _create_main_frame(tmp_path)
-    wx = pytest.importorskip("wx")
 
     try:
         wx_app.Yield()

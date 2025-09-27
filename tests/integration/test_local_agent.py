@@ -862,7 +862,9 @@ def test_run_command_streams_tool_results_to_callback():
     assert [
         payload.get("agent_status") for payload in result["tool_results"]
     ] == ["completed", "completed"]
-    for streamed, final in zip(completed_updates, result["tool_results"]):
+    for streamed, final in zip(
+        completed_updates, result["tool_results"], strict=True
+    ):
         assert streamed == final
         assert streamed is not final
 

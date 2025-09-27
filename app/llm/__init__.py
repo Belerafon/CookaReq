@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 __all__ = ["LLMClient"]
 
 if TYPE_CHECKING:  # pragma: no cover - typing helper
-    from .client import LLMClient as _LLMClient
+    from .client import LLMClient
 
 
 def __getattr__(name: str) -> Any:

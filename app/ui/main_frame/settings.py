@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 import wx
 
-from ...i18n import _
 from ...settings import LLMSettings, MCPSettings
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only

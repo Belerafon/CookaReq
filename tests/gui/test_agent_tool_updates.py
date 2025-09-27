@@ -36,7 +36,7 @@ def _copy_sample_repository(tmp_path: Path) -> Path:
 
 
 def _create_main_frame(tmp_path: Path):
-    wx = pytest.importorskip("wx")
+    _wx = pytest.importorskip("wx")
     from app.config import ConfigManager
     from app.settings import MCPSettings
     from app.ui.main_frame import MainFrame
@@ -50,7 +50,7 @@ def _create_main_frame(tmp_path: Path):
 
 
 def test_agent_tool_updates_reflect_in_ui(tmp_path, wx_app):
-    wx = pytest.importorskip("wx")
+    _wx = pytest.importorskip("wx")
 
     repository = _copy_sample_repository(tmp_path)
     frame = _create_main_frame(tmp_path)
@@ -135,7 +135,7 @@ def test_agent_tool_updates_reflect_in_ui(tmp_path, wx_app):
 
 
 def test_agent_streaming_tool_updates_refresh_list_during_run(tmp_path, wx_app):
-    wx = pytest.importorskip("wx")
+    _wx = pytest.importorskip("wx")
 
     repository = _copy_sample_repository(tmp_path)
     frame = _create_main_frame(tmp_path)

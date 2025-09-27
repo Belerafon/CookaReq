@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -133,10 +134,8 @@ class MainFrameAgentMixin:
         ids: list[int] = []
         panel = getattr(self, "panel", None)
         if panel is not None and hasattr(panel, "get_selected_ids"):
-            try:
+            with suppress(Exception):  # pragma: no cover - defensive
                 ids.extend(panel.get_selected_ids())
-            except Exception:  # pragma: no cover - defensive
-                pass
         current = getattr(self, "_selected_requirement_id", None)
         if isinstance(current, int) and current not in ids:
             ids.append(current)

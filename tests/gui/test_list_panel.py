@@ -61,7 +61,6 @@ def test_list_panel_has_filter_and_list(stubbed_list_panel_env):
 
 def test_column_click_sorts(stubbed_list_panel_env):
     env = stubbed_list_panel_env
-    wx_stub = env.wx
     panel = env.create_panel()
     panel.set_columns(["id"])
     panel.set_requirements(
@@ -165,7 +164,6 @@ def test_apply_status_filter(stubbed_list_panel_env):
 
 def test_labels_column_uses_imagelist(stubbed_list_panel_env):
     env = stubbed_list_panel_env
-    wx_stub = env.wx
     panel = env.create_panel()
     panel.set_columns(["labels"])
     panel.set_requirements([

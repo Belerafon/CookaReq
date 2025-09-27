@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 
 import wx
 
@@ -94,10 +94,8 @@ class _SplitterHighlighter:
         desired = max(self.thickness, _MIN_THICKNESS)
         current = int(getattr(self.splitter, "SashSize", 0) or 0)
         if current < desired:
-            try:
+            with suppress(Exception):
                 self.splitter.SashSize = desired
-            except Exception:
-                pass
 
     def _on_paint(self, event: wx.Event) -> None:
         event.Skip()

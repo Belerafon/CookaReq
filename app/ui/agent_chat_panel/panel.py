@@ -14,8 +14,6 @@ from typing import Any, Callable
 from concurrent.futures import ThreadPoolExecutor
 
 import wx
-import wx.dataview as dv
-from wx.lib.scrolledpanel import ScrolledPanel
 
 from ...confirm import confirm
 from ...i18n import _
@@ -25,21 +23,20 @@ from ...util.cancellation import OperationCancelledError
 from ...util.time import utc_now_iso
 from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import (
-    create_copy_button,
-    dip,
     format_error_message,
     inherit_background,
 )
 from ..text import normalize_for_display
-from ..splitter_utils import refresh_splitter_highlight, style_splitter
-from .batch_runner import AgentBatchRunner, BatchItem, BatchItemStatus, BatchTarget
+from .batch_runner import BatchTarget
+from .batch_ui import AgentBatchSection
 from .confirm_preferences import (
     ConfirmPreferencesMixin,
     RequirementConfirmPreference,
 )
 from .controller import AgentRunCallbacks, AgentRunController
 from .execution import AgentCommandExecutor, ThreadedAgentCommandExecutor, _AgentRunHandle
-from .history_store import HistoryStore
+from .history import AgentChatHistory
+from .history_view import HistoryView
 from .history_utils import (
     clone_streamed_tool_results,
     history_json_safe,
@@ -47,7 +44,6 @@ from .history_utils import (
     stringify_payload,
 )
 from .paths import (
-    _default_history_path,
     _normalize_history_path,
     history_path_for_documents,
     settings_path_for_documents,
@@ -57,8 +53,8 @@ from .project_settings import (
     load_agent_project_settings,
     save_agent_project_settings,
 )
+from .layout import AgentChatLayoutBuilder
 from .settings_dialog import AgentProjectSettingsDialog
-from .history_view import HistoryView
 from .time_formatting import format_entry_timestamp, format_last_activity
 from .token_usage import ContextTokenBreakdown
 from .tool_summaries import (
@@ -115,7 +111,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         inherit_background(self, parent)
         self._agent_supplier = agent_supplier
-        self._history_store = HistoryStore(history_path)
+        self._history = AgentChatHistory(
+            history_path=history_path,
+            on_active_changed=self._on_active_conversation_changed,
+        )
         self._settings_path = settings_path_for_documents(None)
         self._project_settings = load_agent_project_settings(self._settings_path)
         self._token_model_resolver = (
@@ -139,8 +138,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             pool = getattr(command_executor, "pool", None)
             if pool is not None:
                 self._executor_pool = pool
-        self.conversations: list[ChatConversation] = []
-        self._active_conversation_id: str | None = None
         self._is_running = False
         self._timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._on_timer, self._timer)
@@ -160,7 +157,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._context_provider = context_provider
         self._batch_target_provider = batch_target_provider
         self._batch_context_provider = batch_context_provider
-        self._batch_runner: AgentBatchRunner | None = None
+        self._batch_section: AgentBatchSection | None = None
         self._persist_confirm_preference_callback = persist_confirm_preference
         persistent_preference = self._normalize_confirm_preference(confirm_preference)
         if persistent_preference is RequirementConfirmPreference.CHAT_ONLY:
@@ -180,10 +177,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._run_batch_btn: wx.Button | None = None
         self._stop_batch_btn: wx.Button | None = None
         self._batch_panel: wx.Panel | None = None
-        self._batch_list: dv.DataViewListCtrl | None = None
+        self._batch_list = None
         self._batch_progress: wx.Gauge | None = None
         self._batch_status_label: wx.StaticText | None = None
-        self._load_history_from_store()
+        self._layout_builder = AgentChatLayoutBuilder(self)
+        self._layout = None
+        self._history.load()
         self._build_ui()
         self._initialize_controller()
         self._render_transcript()
@@ -219,12 +218,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def set_history_path(self, path: Path | str | None) -> None:
         """Switch to *path* reloading conversations from disk."""
 
-        changed = self._history_store.set_path(
-            path,
-            persist_existing=bool(self.conversations),
-            conversations=self.conversations,
-            active_id=self._active_conversation_id,
-        )
+        changed = self._history.set_path(path, persist_existing=bool(self.conversations))
         if not changed:
             return
         self._load_history_from_store()
@@ -241,7 +235,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def history_path(self) -> Path:
         """Return the path of the current chat history file."""
 
-        return self._history_store.path
+        return self._history.path
 
     def set_project_settings_path(self, path: Path | str | None) -> None:
         """Switch storage for project agent settings to *path*."""
@@ -269,21 +263,29 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         return self._project_settings
 
+    @property
+    def conversations(self) -> list[ChatConversation]:
+        """Expose current conversations managed by the history component."""
+
+        return self._history.conversations
+
+    @property
+    def active_conversation_id(self) -> str | None:
+        """Return identifier of the active conversation."""
+
+        return self._history.active_id
+
+    def _set_active_conversation_id(self, conversation_id: str | None) -> None:
+        """Update active conversation via the history component."""
+
+        self._history.set_active_id(conversation_id)
+
     # ------------------------------------------------------------------
     def _load_history_from_store(self) -> None:
-        previous_id = getattr(self, "_active_conversation_id", None)
-        conversations, active_id = self._history_store.load()
-        self.conversations = list(conversations)
-        self._active_conversation_id = active_id
-        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
+        self._history.load()
 
     def _save_history_to_store(self) -> None:
-        try:
-            self._history_store.save(self.conversations, self._active_conversation_id)
-        except Exception:  # pragma: no cover - defensive logging
-            logger.exception(
-                "Failed to persist agent chat history to %s", self._history_store.path
-            )
+        self._history.save()
 
     # ------------------------------------------------------------------
     def _token_model(self) -> str | None:
@@ -312,270 +314,42 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _build_ui(self) -> None:
         """Construct controls and layout."""
 
-        outer = wx.BoxSizer(wx.VERTICAL)
-        spacing = dip(self, 5)
-
-        splitter_style = wx.SP_LIVE_UPDATE | wx.SP_3D
-        self._vertical_splitter = wx.SplitterWindow(self, style=splitter_style)
-        style_splitter(self._vertical_splitter)
-        self._vertical_splitter.SetMinimumPaneSize(dip(self, 160))
-
-        top_panel = wx.Panel(self._vertical_splitter)
-        bottom_panel = wx.Panel(self._vertical_splitter)
-        self._bottom_panel = bottom_panel
-        for panel in (top_panel, bottom_panel):
-            inherit_background(panel, self)
-
-        self._horizontal_splitter = wx.SplitterWindow(top_panel, style=splitter_style)
-        style_splitter(self._horizontal_splitter)
-        history_min_width = dip(self, 260)
-        self._horizontal_splitter.SetMinimumPaneSize(history_min_width)
-
-        history_panel = wx.Panel(self._horizontal_splitter)
-        self._history_panel = history_panel
-        history_sizer = wx.BoxSizer(wx.VERTICAL)
-        history_header = wx.BoxSizer(wx.HORIZONTAL)
-        history_label = wx.StaticText(history_panel, label=_("Chats"))
-        self._new_chat_btn = wx.Button(history_panel, label=_("New chat"))
-        self._new_chat_btn.Bind(wx.EVT_BUTTON, self._on_new_chat)
-        history_header.Add(history_label, 1, wx.ALIGN_CENTER_VERTICAL)
-        history_header.Add(self._new_chat_btn, 0, wx.ALIGN_CENTER_VERTICAL)
-        style = dv.DV_MULTIPLE | dv.DV_ROW_LINES | dv.DV_VERT_RULES
-        self.history_list = dv.DataViewListCtrl(history_panel, style=style)
-        self.history_list.SetMinSize(wx.Size(dip(self, 260), -1))
-        title_col = self.history_list.AppendTextColumn(
-            _("Title"),
-            mode=dv.DATAVIEW_CELL_INERT,
-            width=dip(self, 180),
-        )
-        title_col.SetMinWidth(dip(self, 140))
-        activity_col = self.history_list.AppendTextColumn(
-            _("Last activity"),
-            mode=dv.DATAVIEW_CELL_INERT,
-            width=dip(self, 140),
-        )
-        activity_col.SetMinWidth(dip(self, 120))
-        self._history_view = HistoryView(
-            self.history_list,
-            get_conversations=lambda: self.conversations,
-            format_row=self._format_conversation_row,
-            get_active_index=self._active_index,
-            activate_conversation=self._on_history_row_activated,
-            handle_delete_request=self._delete_history_rows,
-            is_running=lambda: self._is_running,
-            splitter=self._horizontal_splitter,
-        )
-        inherit_background(history_panel, self)
-        history_sizer.Add(history_header, 0, wx.EXPAND)
-        history_sizer.AddSpacer(spacing)
-        history_sizer.Add(self.history_list, 1, wx.EXPAND)
-        history_panel.SetSizer(history_sizer)
-
-        transcript_panel = wx.Panel(self._horizontal_splitter)
-        transcript_sizer = wx.BoxSizer(wx.VERTICAL)
-        transcript_header = wx.BoxSizer(wx.HORIZONTAL)
-        self._conversation_label = wx.StaticText(
-            transcript_panel, label=_("Conversation")
-        )
-        transcript_header.Add(self._conversation_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        transcript_header.AddStretchSpacer()
-        self._copy_conversation_btn = create_copy_button(
-            transcript_panel,
-            tooltip=_("Copy conversation"),
-            fallback_label=_("Copy conversation"),
-            handler=self._on_copy_conversation,
-        )
-        self._copy_conversation_btn.Enable(False)
-        transcript_header.Add(self._copy_conversation_btn, 0, wx.ALIGN_CENTER_VERTICAL)
-        transcript_header.AddSpacer(dip(self, 4))
-        self._copy_transcript_log_btn = create_copy_button(
-            transcript_panel,
-            tooltip=_("Copy technical log"),
-            fallback_label=_("Copy technical log"),
-            handler=self._on_copy_transcript_log,
-        )
-        self._copy_transcript_log_btn.Enable(False)
-        transcript_header.Add(
-            self._copy_transcript_log_btn, 0, wx.ALIGN_CENTER_VERTICAL
-        )
-        self.transcript_panel = ScrolledPanel(
-            transcript_panel,
-            style=wx.TAB_TRAVERSAL,
-        )
-        inherit_background(transcript_panel, self)
-        inherit_background(self.transcript_panel, transcript_panel)
-        self.transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
-        self._transcript_sizer = wx.BoxSizer(wx.VERTICAL)
-        self.transcript_panel.SetSizer(self._transcript_sizer)
-        self._transcript_view = TranscriptView(
-            self,
-            self.transcript_panel,
-            self._transcript_sizer,
-            callbacks=TranscriptCallbacks(
-                get_conversation=self._get_active_conversation,
-                is_running=lambda: self._is_running,
-                on_regenerate=self._handle_regenerate_request,
-                update_copy_buttons=self._update_transcript_copy_buttons,
-                update_header=self._update_conversation_header,
-            ),
-        )
-        transcript_sizer.Add(transcript_header, 0, wx.EXPAND)
-        transcript_sizer.AddSpacer(spacing)
-        transcript_sizer.Add(self.transcript_panel, 1, wx.EXPAND)
-        transcript_panel.SetSizer(transcript_sizer)
-
-        self._update_conversation_header()
-
-        self._horizontal_splitter.SplitVertically(
-            history_panel, transcript_panel, history_min_width
-        )
-        self._horizontal_splitter.SetSashGravity(1.0)
-        self._horizontal_splitter.Bind(wx.EVT_SIZE, self._on_history_splitter_size)
-        self._horizontal_splitter.Bind(
-            wx.EVT_SPLITTER_SASH_POS_CHANGED, self._on_history_sash_changed
-        )
-        self._history_last_sash = self._horizontal_splitter.GetSashPosition()
-
-        top_sizer = wx.BoxSizer(wx.VERTICAL)
-        top_sizer.Add(self._horizontal_splitter, 1, wx.EXPAND)
-        top_panel.SetSizer(top_sizer)
-
-        bottom_sizer = wx.BoxSizer(wx.VERTICAL)
-        bottom_sizer.Add(wx.StaticLine(bottom_panel), 0, wx.EXPAND)
-        bottom_sizer.AddSpacer(spacing)
-
-        input_label = wx.StaticText(bottom_panel, label=_("Ask the agent"))
-        self.input = wx.TextCtrl(bottom_panel, style=wx.TE_PROCESS_ENTER | wx.TE_MULTILINE)
-        if hasattr(self.input, "SetHint"):
-            self.input.SetHint(_("Describe what you need the agent to do"))
-        self.input.Bind(wx.EVT_TEXT_ENTER, self._on_send)
-
-        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self._run_batch_btn = wx.Button(bottom_panel, label=_("Run batch"))
-        self._run_batch_btn.Bind(wx.EVT_BUTTON, self._on_run_batch)
-        self._stop_batch_btn = wx.Button(bottom_panel, label=_("Stop batch"))
-        self._stop_batch_btn.Bind(wx.EVT_BUTTON, self._on_stop_batch)
-        self._stop_batch_btn.Enable(False)
-        clear_btn = wx.Button(bottom_panel, label=_("Clear input"))
-        clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_input)
-        self._stop_btn = wx.Button(bottom_panel, label=_("Stop"))
-        self._stop_btn.Bind(wx.EVT_BUTTON, self._on_stop)
-        self._stop_btn.Enable(False)
-        self._send_btn = wx.Button(bottom_panel, label=_("Send"))
-        self._send_btn.Bind(wx.EVT_BUTTON, self._on_send)
-        button_sizer.Add(self._run_batch_btn, 0, wx.RIGHT, spacing)
-        button_sizer.Add(self._stop_batch_btn, 0, wx.RIGHT, spacing)
-        button_sizer.Add(clear_btn, 0, wx.RIGHT, spacing)
-        button_sizer.Add(self._stop_btn, 0, wx.RIGHT, spacing)
-        button_sizer.Add(self._send_btn, 0)
-
-        self._batch_panel = wx.Panel(bottom_panel)
-        inherit_background(self._batch_panel, bottom_panel)
-        batch_box = wx.StaticBoxSizer(wx.VERTICAL, self._batch_panel, _("Batch queue"))
-        self._batch_status_label = wx.StaticText(
-            self._batch_panel,
-            label=_("Select requirements and run a batch"),
-        )
-        self._batch_progress = wx.Gauge(self._batch_panel, range=1, style=wx.GA_HORIZONTAL)
-        self._batch_progress.SetValue(0)
-        self._batch_progress.SetMinSize(wx.Size(-1, dip(self, 12)))
-        style = dv.DV_ROW_LINES | dv.DV_VERT_RULES
-        self._batch_list = dv.DataViewListCtrl(self._batch_panel, style=style)
-        self._batch_list.SetMinSize(wx.Size(-1, dip(self, 140)))
-        self._batch_list.AppendTextColumn(
-            _("RID"),
-            mode=dv.DATAVIEW_CELL_INERT,
-            width=dip(self, 120),
-        )
-        self._batch_list.AppendTextColumn(
-            _("Title"),
-            mode=dv.DATAVIEW_CELL_INERT,
-            width=dip(self, 200),
-        )
-        self._batch_list.AppendTextColumn(
-            _("Status"),
-            mode=dv.DATAVIEW_CELL_INERT,
-            width=dip(self, 220),
-        )
-        batch_box.Add(self._batch_status_label, 0, wx.BOTTOM, spacing)
-        batch_box.Add(self._batch_progress, 0, wx.EXPAND | wx.BOTTOM, spacing)
-        batch_box.Add(self._batch_list, 1, wx.EXPAND)
-        self._batch_panel.SetSizer(batch_box)
-        self._batch_panel.Hide()
-
-        status_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.activity = wx.ActivityIndicator(bottom_panel)
-        self.activity.Hide()
-        self.status_label = wx.StaticText(bottom_panel, label=_("Ready"))
-        status_sizer.Add(self.activity, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
-        status_sizer.Add(self.status_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        self.activity.SetToolTip(STATUS_HELP_TEXT)
-        self.status_label.SetToolTip(STATUS_HELP_TEXT)
-
-        settings_btn = wx.Button(bottom_panel, label=_("Agent instructions"))
-        settings_btn.Bind(wx.EVT_BUTTON, self._on_project_settings)
-        self._project_settings_button = settings_btn
-
-        confirm_entries: tuple[
-            tuple[RequirementConfirmPreference, str], ...
-        ] = (
-            (RequirementConfirmPreference.PROMPT, _("Ask every time")),
-            (
-                RequirementConfirmPreference.CHAT_ONLY,
-                _("Skip for this chat"),
-            ),
-            (RequirementConfirmPreference.NEVER, _("Never ask")),
-        )
-        self._confirm_choice_entries = confirm_entries
-        confirm_choice = wx.Choice(
-            bottom_panel,
-            choices=[label for _pref, label in confirm_entries],
-        )
-        self._confirm_choice = confirm_choice
-        self._confirm_choice_index = {
-            pref: idx for idx, (pref, _label) in enumerate(confirm_entries)
-        }
-        confirm_choice.Bind(wx.EVT_CHOICE, self._on_confirm_choice)
-        confirm_label = wx.StaticText(
-            bottom_panel, label=_("Requirement confirmations")
-        )
-        confirm_box = wx.BoxSizer(wx.HORIZONTAL)
-        confirm_box.Add(
-            confirm_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, dip(self, 4)
-        )
-        confirm_box.Add(confirm_choice, 0, wx.ALIGN_CENTER_VERTICAL)
-
-        controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        controls_sizer.Add(status_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
-        controls_sizer.AddStretchSpacer()
-        controls_sizer.Add(settings_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
-        controls_sizer.Add(confirm_box, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
-        controls_sizer.Add(button_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
+        layout = self._layout_builder.build(status_help_text=STATUS_HELP_TEXT)
+        self._layout = layout
+        self._vertical_splitter = layout.vertical_splitter
+        self._horizontal_splitter = layout.horizontal_splitter
+        self._history_panel = layout.history_panel
+        self.history_list = layout.history_list
+        self._history_view = layout.history_view
+        self._new_chat_btn = layout.new_chat_button
+        self._conversation_label = layout.conversation_label
+        self._copy_conversation_btn = layout.copy_conversation_button
+        self._copy_transcript_log_btn = layout.copy_log_button
+        self.transcript_panel = layout.transcript_scroller
+        self._transcript_sizer = layout.transcript_sizer
+        self._transcript_view = layout.transcript_view
+        self._bottom_panel = layout.bottom_panel
+        self.input = layout.input_control
+        self._run_batch_btn = layout.run_batch_button
+        self._stop_batch_btn = layout.stop_batch_button
+        self._stop_btn = layout.stop_button
+        self._send_btn = layout.send_button
+        batch_controls = layout.batch_controls
+        self._batch_panel = batch_controls.panel
+        self._batch_status_label = batch_controls.status_label
+        self._batch_progress = batch_controls.progress
+        self._batch_list = batch_controls.list_ctrl
+        self.activity = layout.activity_indicator
+        self.status_label = layout.status_label
+        self._project_settings_button = layout.project_settings_button
+        self._confirm_choice = layout.confirm_choice
+        self._confirm_choice_entries = layout.confirm_entries
+        self._confirm_choice_index = layout.confirm_choice_index
 
         self._update_confirm_choice_ui(self._confirm_preference)
-
-        bottom_sizer.Add(input_label, 0)
-        bottom_sizer.AddSpacer(spacing)
-        bottom_sizer.Add(self.input, 1, wx.EXPAND)
-        bottom_sizer.AddSpacer(spacing)
-        bottom_sizer.Add(self._batch_panel, 0, wx.EXPAND)
-        bottom_sizer.AddSpacer(spacing)
-        bottom_sizer.Add(controls_sizer, 0, wx.EXPAND)
-        bottom_sizer.AddSpacer(spacing)
-        bottom_panel.SetSizer(bottom_sizer)
-
-        self._vertical_splitter.SplitHorizontally(top_panel, bottom_panel)
-        self._vertical_splitter.SetSashGravity(1.0)
-        self._vertical_splitter.Bind(
-            wx.EVT_SPLITTER_SASH_POS_CHANGED, self._on_vertical_sash_changed
-        )
+        self._history_last_sash = self._horizontal_splitter.GetSashPosition()
         self._vertical_last_sash = self._vertical_splitter.GetSashPosition()
-
-        outer.Add(self._vertical_splitter, 1, wx.EXPAND)
-
-        self.SetSizer(outer)
-        refresh_splitter_highlight(self._horizontal_splitter)
-        refresh_splitter_highlight(self._vertical_splitter)
+        self._update_conversation_header()
         self._refresh_history_list()
         wx.CallAfter(self._adjust_vertical_splitter)
         wx.CallAfter(self._update_project_settings_ui)
@@ -609,15 +383,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             context_provider=self._context_provider,
             callbacks=callbacks,
         )
-        self._batch_runner = AgentBatchRunner(
-            submit_prompt=self._submit_batch_prompt,
-            create_conversation=self._create_batch_conversation,
-            ensure_conversation_id=lambda conv: getattr(conv, "conversation_id"),
-            on_state_changed=self._update_batch_ui,
-            context_factory=self._build_batch_context,
-            prepare_conversation=self._prepare_batch_conversation,
-        )
-        self._update_batch_ui()
+        if self._layout is not None:
+            self._batch_section = AgentBatchSection(
+                panel=self,
+                controls=self._layout.batch_controls,
+                target_provider=self._batch_target_provider,
+            )
+        else:
+            self._batch_section = None
 
     def _create_batch_conversation(self) -> ChatConversation:
         return self._create_conversation(persist=False)
@@ -662,177 +435,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             context_messages=context,
             prompt_at=prompt_at,
         )
-
-    def _collect_batch_targets(self) -> list[BatchTarget]:
-        provider = self._batch_target_provider
-        if provider is None:
-            return []
-        try:
-            candidates = list(provider())
-        except Exception:
-            logger.exception("Failed to collect batch targets")
-            return []
-        unique: list[BatchTarget] = []
-        seen: set[str] = set()
-        for item in candidates:
-            if not isinstance(item, BatchTarget):
-                continue
-            rid = item.rid.strip() if item.rid else ""
-            key = rid or str(item.requirement_id)
-            if key in seen:
-                continue
-            seen.add(key)
-            unique.append(item)
-        return unique
-
-    def _on_run_batch(self, _event: wx.Event) -> None:
-        if self._is_running:
-            return
-        runner = self._batch_runner
-        if runner is None or runner.is_running:
-            return
-        prompt_text = self.input.GetValue().strip()
-        if not prompt_text:
-            self.status_label.SetLabel(_("Enter a prompt before starting a batch"))
-            self.input.SetFocus()
-            return
-        targets = self._collect_batch_targets()
-        if not targets:
-            self.status_label.SetLabel(
-                _("Select at least one requirement in the list to run a batch")
-            )
-            return
-        if not runner.start(prompt_text, targets):
-            self.status_label.SetLabel(_("Unable to start batch queue"))
-            return
-        self.status_label.SetLabel(
-            _("Batch started: {count} requirements").format(count=len(targets))
-        )
-        self._update_batch_ui()
-
-    def _on_stop_batch(self, _event: wx.Event) -> None:
-        runner = self._batch_runner
-        if runner is None:
-            return
-        if not runner.items:
-            return
-        runner.cancel_all()
-        controller = self._controller
-        if controller is not None:
-            controller.stop()
-        self.status_label.SetLabel(_("Batch cancellation requested"))
-        self._update_batch_ui()
-
-    def _format_batch_status(self, item: BatchItem) -> str:
-        labels = {
-            BatchItemStatus.PENDING: _("Pending"),
-            BatchItemStatus.RUNNING: _("Running"),
-            BatchItemStatus.COMPLETED: _("Completed"),
-            BatchItemStatus.FAILED: _("Failed"),
-            BatchItemStatus.CANCELLED: _("Cancelled"),
-        }
-        label = labels.get(item.status, item.status.name.title())
-        if item.error:
-            snippet = textwrap.shorten(str(item.error), width=80, placeholder="…")
-            label = _("{label} — {details}").format(label=label, details=snippet)
-        return label
-
-    def _refresh_batch_table(self, items: Sequence[BatchItem]) -> None:
-        control = self._batch_list
-        if control is None:
-            return
-        control.DeleteAllItems()
-        for item in items:
-            rid = item.target.rid.strip() if item.target.rid else ""
-            if not rid:
-                rid = str(item.target.requirement_id)
-            title = item.target.title.strip() if item.target.title else ""
-            if not title:
-                title = rid
-            status_text = self._format_batch_status(item)
-            control.AppendItem([rid, title, status_text])
-
-    def _update_batch_ui(self) -> None:
-        panel = self._batch_panel
-        if panel is None:
-            return
-        runner = self._batch_runner
-        if runner is None or not runner.items:
-            panel.Hide()
-            if self._batch_status_label is not None:
-                self._batch_status_label.SetLabel(
-                    _("Select requirements and run a batch")
-                )
-            if self._batch_progress is not None:
-                self._batch_progress.SetRange(1)
-                self._batch_progress.SetValue(0)
-            if self._run_batch_btn is not None:
-                self._run_batch_btn.Enable(not self._is_running)
-            if self._stop_batch_btn is not None:
-                self._stop_batch_btn.Enable(False)
-            self._refresh_bottom_panel_layout()
-            return
-
-        if self._batch_status_label is None or self._batch_progress is None:
-            return
-
-        items = runner.items
-        panel.Show()
-        self._refresh_batch_table(items)
-
-        total = len(items)
-        completed_count = sum(
-            1 for item in items if item.status is BatchItemStatus.COMPLETED
-        )
-        failed_count = sum(1 for item in items if item.status is BatchItemStatus.FAILED)
-        cancelled_count = sum(
-            1 for item in items if item.status is BatchItemStatus.CANCELLED
-        )
-        pending_count = sum(1 for item in items if item.status is BatchItemStatus.PENDING)
-        active_item = runner.active_item
-        if total <= 0:
-            self._batch_progress.SetRange(1)
-            self._batch_progress.SetValue(0)
-        else:
-            completed_steps = completed_count + failed_count + cancelled_count
-            self._batch_progress.SetRange(total)
-            self._batch_progress.SetValue(min(completed_steps, total))
-
-        if runner.is_running and active_item is not None:
-            try:
-                active_index = items.index(active_item)
-            except ValueError:
-                active_index = None
-            current = active_index + 1 if active_index is not None else completed_count + 1
-            summary = _(
-                "Running {current} of {total} requirements (done: {done}, failed: {failed}, cancelled: {cancelled})"
-            ).format(
-                current=current,
-                total=total,
-                done=completed_count,
-                failed=failed_count,
-                cancelled=cancelled_count,
-            )
-        elif pending_count:
-            summary = _(
-                "Batch ready: {total} requirements queued ({pending} pending)"
-            ).format(total=total, pending=pending_count)
-        else:
-            summary = _(
-                "Batch finished: {done} completed, {failed} failed, {cancelled} cancelled"
-            ).format(
-                done=completed_count,
-                failed=failed_count,
-                cancelled=cancelled_count,
-            )
-        self._batch_status_label.SetLabel(summary)
-
-        if self._run_batch_btn is not None:
-            self._run_batch_btn.Enable(not runner.is_running and not self._is_running)
-        if self._stop_batch_btn is not None:
-            self._stop_batch_btn.Enable(runner.is_running)
-        panel.Layout()
-        self._refresh_bottom_panel_layout()
 
     @property
     def history_sash(self) -> int:
@@ -977,25 +579,23 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if not indices_to_remove:
             return
         removed_active = (
-            self._active_conversation_id is not None
-            and self._active_conversation_id in ids_to_remove
+            self.active_conversation_id is not None
+            and self.active_conversation_id in ids_to_remove
         )
-        previous_id = self._active_conversation_id
         remaining = [
             conv for conv in self.conversations if conv.conversation_id not in ids_to_remove
         ]
-        self.conversations = remaining
+        self._history.set_conversations(remaining)
         if self.conversations:
-            if self._active_conversation_id not in {
+            if self.active_conversation_id not in {
                 conv.conversation_id for conv in self.conversations
             }:
                 fallback_index = min(indices_to_remove[0], len(self.conversations) - 1)
-                self._active_conversation_id = self.conversations[
-                    fallback_index
-                ].conversation_id
+                self._set_active_conversation_id(
+                    self.conversations[fallback_index].conversation_id
+                )
         else:
-            self._active_conversation_id = None
-        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
+            self._set_active_conversation_id(None)
         self._save_history_to_store()
         self._refresh_history_list()
         self._render_transcript()
@@ -1009,9 +609,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         controller = self._controller
         if controller is None:
             return
-        runner = self._batch_runner
-        if runner is not None and runner.is_running:
-            runner.request_skip_current()
+        if self._batch_section is not None:
+            self._batch_section.request_skip_current()
         handle = controller.stop()
         if handle is None:
             return
@@ -1071,7 +670,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self._start_time = None
             self.input.SetFocus()
         self._update_conversation_header()
-        self._update_batch_ui()
+        if self._batch_section is not None:
+            self._batch_section.update_ui()
 
     def _adjust_vertical_splitter(self) -> None:
         """Size the vertical splitter so the bottom pane hugs the controls."""
@@ -1428,14 +1028,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if isinstance(result, Mapping) and not result.get("ok", False):
             success = False
             error_text = display_text
-        batch_runner = self._batch_runner
-        if batch_runner is not None:
-            batch_runner.handle_completion(
+        batch_section = self._batch_section
+        if batch_section is not None:
+            batch_section.notify_completion(
                 conversation_id=handle.conversation_id,
                 success=success,
                 error=error_text,
             )
-            self._update_batch_ui()
 
         if should_render:
             self._render_transcript()
@@ -1764,12 +1363,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             handle.pending_entry = None
             handle.streamed_tool_results.clear()
             self._render_transcript()
-            batch_runner = self._batch_runner
-            if batch_runner is not None:
-                batch_runner.handle_cancellation(
+            batch_section = self._batch_section
+            if batch_section is not None:
+                batch_section.notify_cancellation(
                     conversation_id=handle.conversation_id
                 )
-                self._update_batch_ui()
             return
 
         cancellation_message = _("Generation cancelled")
@@ -1804,12 +1402,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         handle.pending_entry = None
         handle.streamed_tool_results.clear()
         self._render_transcript()
-        batch_runner = self._batch_runner
-        if batch_runner is not None:
-            batch_runner.handle_cancellation(
+        batch_section = self._batch_section
+        if batch_section is not None:
+            batch_section.notify_cancellation(
                 conversation_id=handle.conversation_id
             )
-            self._update_batch_ui()
 
     def _refresh_history_list(self) -> None:
         if self._history_view is None:
@@ -2603,10 +2200,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             dialog.Destroy()
 
     def _active_index(self) -> int | None:
-        if self._active_conversation_id is None:
+        active_id = self.active_conversation_id
+        if active_id is None:
             return None
         for idx, conversation in enumerate(self.conversations):
-            if conversation.conversation_id == self._active_conversation_id:
+            if conversation.conversation_id == active_id:
                 return idx
         return None
 
@@ -2630,11 +2228,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return None
 
     def _create_conversation(self, *, persist: bool) -> ChatConversation:
-        previous_id = self._active_conversation_id
         conversation = ChatConversation.new()
         self.conversations.append(conversation)
-        self._active_conversation_id = conversation.conversation_id
-        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
+        self._set_active_conversation_id(conversation.conversation_id)
         self._refresh_history_list()
         self._render_transcript()
         if persist:
@@ -2690,9 +2286,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if not (0 <= index < len(self.conversations)):
             return
         conversation = self.conversations[index]
-        previous_id = self._active_conversation_id
-        self._active_conversation_id = conversation.conversation_id
-        self._on_active_conversation_changed(previous_id, self._active_conversation_id)
+        self._set_active_conversation_id(conversation.conversation_id)
         if persist:
             self._save_history_to_store()
         if refresh_history:

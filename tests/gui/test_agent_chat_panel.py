@@ -1607,7 +1607,7 @@ def test_agent_chat_panel_delete_multiple_chats(tmp_path, wx_app):
     assert len(panel.conversations) == 1
     assert panel.history_list.GetItemCount() == 1
     assert panel.conversations[0].conversation_id == last_id
-    assert panel._active_conversation_id == last_id
+    assert panel.active_conversation_id == last_id
     assert panel.input.GetValue() == "draft text"
 
     destroy_panel(frame, panel)

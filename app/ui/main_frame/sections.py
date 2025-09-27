@@ -312,10 +312,12 @@ class MainFrameSectionsMixin:
 
         if not self.editor_menu_item:
             return
-        if not self.editor_menu_item.IsChecked():
-            if not self._confirm_discard_changes():
-                self.editor_menu_item.Check(True)
-                return
+        if (
+            not self.editor_menu_item.IsChecked()
+            and not self._confirm_discard_changes()
+        ):
+            self.editor_menu_item.Check(True)
+            return
         self._apply_editor_visibility(persist=True)
 
     # ------------------------------------------------------------------

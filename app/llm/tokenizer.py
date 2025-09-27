@@ -37,7 +37,7 @@ class TokenCountResult:
         return cls(tokens=max(tokens, 0), approximate=False, model=model, reason=reason)
 
     @classmethod
-    def approximate(
+    def approximate_result(
         cls,
         tokens: int,
         *,
@@ -95,7 +95,7 @@ class TokenCountResult:
         if tokens is None:
             return cls.unavailable(model=model_text, reason=reason_text)
         if approximate:
-            return cls.approximate(tokens, model=model_text, reason=reason_text)
+            return cls.approximate_result(tokens, model=model_text, reason=reason_text)
         return cls.exact(tokens, model=model_text, reason=reason_text)
 
 
@@ -167,21 +167,21 @@ def count_text_tokens(text: object, *, model: str | None = None) -> TokenCountRe
                 tokens = len(encoding.encode(text_value, disallowed_special=()))
             except Exception as exc:  # pragma: no cover - defensive
                 estimate = _whitespace_count(text_value)
-                return TokenCountResult.approximate(
+                return TokenCountResult.approximate_result(
                     estimate,
                     model=model,
                     reason=f"tokenize_failed: {exc}",
                 )
             if model and getattr(encoding, "name", None) == model:
                 return TokenCountResult.exact(tokens, model=model)
-            return TokenCountResult.approximate(
+            return TokenCountResult.approximate_result(
                 tokens,
                 model=model,
                 reason="model_approximation",
             )
 
     estimate = _whitespace_count(text_value)
-    return TokenCountResult.approximate(
+    return TokenCountResult.approximate_result(
         estimate,
         model=model,
         reason="fallback_whitespace",

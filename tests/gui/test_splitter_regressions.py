@@ -1,5 +1,4 @@
 import pytest
-import wx
 
 from app.config import ConfigManager
 from app.settings import MCPSettings

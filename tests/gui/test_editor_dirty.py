@@ -1,5 +1,7 @@
 """Tests for editor dirty state tracking."""
 
+from contextlib import suppress
+
 import pytest
 
 
@@ -167,9 +169,7 @@ def test_detached_editor_cancel_closes_window_without_saving(wx_app, tmp_path):
             with pytest.raises(RuntimeError):
                 frame.IsShown()
         finally:
-            try:
+            with suppress(RuntimeError):
                 frame.Destroy()
-            except RuntimeError:
-                pass
     finally:
         parent.Destroy()

@@ -150,10 +150,8 @@ class RequirementsListCtrl(wx.ListCtrl):
                 _apply_item_selection(self, idx, False)
             self._marquee_base.clear()
         if not self.HasCapture():  # pragma: no cover - defensive
-            try:
+            with suppress(Exception):  # pragma: no cover - defensive
                 self.CaptureMouse()
-            except Exception:  # pragma: no cover - defensive
-                pass
 
     def _finish_marquee(self) -> None:
         self._clear_overlay()
@@ -483,7 +481,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         dc.SetBackground(wx.Brush(self.list.GetBackgroundColour()))
         dc.Clear()
         x = 0
-        for name, w in zip(names, widths):
+        for name, w in zip(names, widths, strict=True):
             colour = wx.Colour(self._label_color(name))
             dc.SetBrush(wx.Brush(colour))
             dc.SetPen(wx.Pen(colour))

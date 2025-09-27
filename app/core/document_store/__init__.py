@@ -7,9 +7,6 @@ from typing import TYPE_CHECKING, Any, List, Mapping
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from ..model import Requirement
 
-from collections.abc import Sequence
-from pathlib import Path
-
 
 class ValidationError(Exception):
     """Raised when requirement links or payload violate business rules."""

@@ -415,11 +415,8 @@ def format_error_message(error: object, *, fallback: str | None = None) -> str:
         parts = [str(part) for part in (code, message) if part]
         if parts:
             return ": ".join(parts)
-    if isinstance(error, BaseException):
-        text = str(error)
-        if text:
-            return text
-    elif error:
+    text: str | None = None
+    if isinstance(error, BaseException) or error:
         text = str(error)
         if text:
             return text

@@ -6,6 +6,7 @@ import asyncio
 import json
 import time
 from collections.abc import Iterable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -13,7 +14,6 @@ from typing import Any
 import httpx
 
 from ..settings import LLMSettings
-from ..log import logger
 from .constants import (
     DEFAULT_MAX_CONTEXT_TOKENS,
     MIN_MAX_CONTEXT_TOKENS,
@@ -242,7 +242,7 @@ class LLMClient:
         summary_parts: list[str] = []
         mapping = self._extract_mapping(completion)
         if mapping is not None:
-            keys = ", ".join(sorted(str(key) for key in mapping.keys())) or "(none)"
+            keys = ", ".join(sorted(str(key) for key in mapping)) or "(none)"
             summary = (
                 f"Response payload type {type(completion).__name__} "
                 f"with keys: {keys}"
@@ -445,7 +445,7 @@ class LLMClient:
             )
         except (TypeError, ValueError):  # pragma: no cover - defensive
             request_snapshot = tuple(
-                {key: value for key, value in message.items()}
+                dict(message)
                 if isinstance(message, Mapping)
                 else {"value": message}
                 for message in messages
@@ -669,6 +669,8 @@ class LLMClient:
         llm_message_text = ""
         normalized_tool_calls: list[dict[str, Any]] = []
         raw_tool_calls_payload: Any = []
+        reasoning_accumulator: list[dict[str, str]] = []
+        reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
 
         try:
             if stream_requested:
@@ -805,10 +807,8 @@ class LLMClient:
                     closed_by_cancel = True
                     closer = getattr(stream, "close", None)
                     if callable(closer):  # pragma: no cover - defensive
-                        try:
+                        with suppress(Exception):
                             closer()
-                        except Exception:
-                            pass
                 raise OperationCancelledError()
 
         stream_manager = self._client.responses.stream(**request_args)
@@ -902,10 +902,8 @@ class LLMClient:
             if cancel_event.wait(timeout=0) or cancel_event.is_set():
                 if callable(closer) and not closed_by_cancel:
                     closed_by_cancel = True
-                    try:
+                    with suppress(Exception):  # pragma: no cover - defensive
                         closer()
-                    except Exception:  # pragma: no cover - defensive
-                        pass
                 raise OperationCancelledError()
 
         try:
@@ -1006,10 +1004,8 @@ class LLMClient:
             raise
         finally:
             if callable(closer) and not closed_by_cancel:
-                try:
+                with suppress(Exception):  # pragma: no cover - defensive
                     closer()
-                except Exception:  # pragma: no cover - defensive
-                    pass
         if cancel_event is not None and cancel_event.is_set():
             raise OperationCancelledError()
         raw_calls: list[dict[str, Any]] = []
@@ -1262,10 +1258,7 @@ class LLMClient:
 
         if not payload:
             return []
-        if isinstance(payload, Mapping):
-            items = [payload]
-        else:
-            items = list(payload)
+        items = [payload] if isinstance(payload, Mapping) else list(payload)
         segments: list[Mapping[str, Any]] = []
         for item in items:
             mapping = self._extract_mapping(item)
@@ -1632,10 +1625,7 @@ class LLMClient:
     def _parse_tool_calls(self, tool_calls: Any) -> tuple[LLMToolCall, ...]:
         if not tool_calls:
             return ()
-        if isinstance(tool_calls, Mapping):  # pragma: no cover - defensive
-            iterable = [tool_calls]
-        else:
-            iterable = list(tool_calls)
+        iterable = [tool_calls] if isinstance(tool_calls, Mapping) else list(tool_calls)
         parsed: list[LLMToolCall] = []
         for idx, call in enumerate(iterable):
             if isinstance(call, LLMToolCall):
@@ -1691,10 +1681,9 @@ class LLMClient:
 
         text = arguments_text or ""
         stripped = text.strip()
-        if len(stripped) > limit:
-            preview = stripped[: limit - 3] + "..."
-        else:
-            preview = stripped
+        preview = (
+            stripped[: limit - 3] + "..." if len(stripped) > limit else stripped
+        )
         return preview, stripped
 
     def _decode_tool_arguments(
@@ -1904,7 +1893,7 @@ class LLMClient:
 
         kept_rev: list[dict[str, Any]] = []
         kept_tokens = 0
-        for index, message in enumerate(reversed(history)):
+        for _index, message in enumerate(reversed(history)):
             tokens = self._count_tokens(message["content"])
             if tokens > remaining_tokens and kept_rev:
                 break

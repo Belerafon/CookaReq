@@ -28,7 +28,11 @@ def _recalculate_pair_token_info(prompt: str, response: str) -> TokenCountResult
     if tokens is None:
         return TokenCountResult.unavailable(model=model, reason=combined.reason)
     if combined.approximate:
-        return TokenCountResult.approximate(tokens, model=model, reason=combined.reason)
+        return TokenCountResult.approximate_result(
+            tokens,
+            model=model,
+            reason=combined.reason,
+        )
     return TokenCountResult.exact(tokens, model=model, reason=combined.reason)
 
 

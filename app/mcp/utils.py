@@ -30,16 +30,14 @@ else:  # pragma: no cover - executed in production/runtime environment
         for name in ("APIConnectionError", "APITimeoutError")
         if hasattr(openai, name)
     )
-    _OPENAI_STATUS_ERROR = (
-        (getattr(openai, "APIStatusError"),)
-        if hasattr(openai, "APIStatusError")
-        else ()
-    )
-    _OPENAI_BASE_ERRORS = (
-        (getattr(openai, "OpenAIError"),)
-        if hasattr(openai, "OpenAIError")
-        else ()
-    )
+    if hasattr(openai, "APIStatusError"):
+        _OPENAI_STATUS_ERROR = (openai.APIStatusError,)
+    else:
+        _OPENAI_STATUS_ERROR = ()
+    if hasattr(openai, "OpenAIError"):
+        _OPENAI_BASE_ERRORS = (openai.OpenAIError,)
+    else:
+        _OPENAI_BASE_ERRORS = ()
 
 _GENERIC_NETWORK_ERRORS: tuple[type[BaseException], ...] = (ConnectionError, TimeoutError)
 

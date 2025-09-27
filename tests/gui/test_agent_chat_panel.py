@@ -851,7 +851,6 @@ def test_transcript_message_panel_shows_reasoning(wx_app):
 
 def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
     wx = pytest.importorskip("wx")
-    from app.i18n import _
     from app.ui.widgets.chat_message import MessageBubble
 
     frame = wx.Frame(None)
@@ -910,7 +909,6 @@ def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
         ), "context pane should be nested under the user message bubble"
 
         reasoning_pane = top_level_collapsible[0]
-        context_pane = context_panes[0]
 
         def collect_labels(window: wx.Window) -> list[str]:
             labels: list[str] = []

@@ -97,13 +97,13 @@ def requirement_from_dict(
         "id",
         "statement",
     ]
-    for field in required:
-        if field not in data:
-            raise KeyError(f"missing required field: {field}")
+    for required_field in required:
+        if required_field not in data:
+            raise KeyError(f"missing required field: {required_field}")
 
-    for field in ("text", "tags"):
-        if field in data:
-            raise KeyError(f"unsupported field: {field}")
+    for legacy_field in ("text", "tags"):
+        if legacy_field in data:
+            raise KeyError(f"unsupported field: {legacy_field}")
 
     def _enum_value(field: str, enum_cls: type[Enum], default: Enum) -> Enum:
         value = data.get(field, default)

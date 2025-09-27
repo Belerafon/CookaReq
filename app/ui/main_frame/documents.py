@@ -307,10 +307,7 @@ class MainFrameDocumentsMixin:
                 filter_details += f" ({filter_summary})"
         elif filter_summary:
             filter_details = f"; filter summary={filter_summary}"
-        if doc_path:
-            location = f" from {doc_path}"
-        else:
-            location = ""
+        location = f" from {doc_path}" if doc_path else ""
         logger.info(
             "Document %s loaded%s: %s requirement(s), %s visible after filters%s; %s parent(s) with %s derived child link(s)",
             prefix,

@@ -158,10 +158,9 @@ class DetachedEditorFrame(wx.Frame):
             event.Skip()
             return
 
-        if self.editor.is_dirty():
-            if not confirm(_("Discard unsaved changes?")):
-                event.Veto()
-                return
+        if self.editor.is_dirty() and not confirm(_("Discard unsaved changes?")):
+            event.Veto()
+            return
         if self._on_close:
             self._on_close(self)
         event.Skip()

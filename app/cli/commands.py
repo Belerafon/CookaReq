@@ -201,7 +201,7 @@ def _sorted_cell_links(matrix: TraceMatrix) -> list[TraceMatrixLinkView]:
     row_order = {entry.rid: index for index, entry in enumerate(matrix.rows)}
     column_order = {entry.rid: index for index, entry in enumerate(matrix.columns)}
     links: list[TraceMatrixLinkView] = []
-    for _, cell in sorted(
+    for _pair, cell in sorted(
         matrix.cells.items(),
         key=lambda pair_cell: (
             row_order.get(pair_cell[0][0], 10**9),

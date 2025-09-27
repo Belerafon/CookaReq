@@ -478,10 +478,7 @@ class EditorPanel(wx.Panel):
         rid = str(link.get("rid", "")).strip()
         title = str(link.get("title", "")).strip()
         doc_title = str(link.get("doc_title", "")).strip()
-        if title:
-            text = f"{rid} — {title}" if rid else title
-        else:
-            text = rid
+        text = (f"{rid} — {title}" if rid else title) if title else rid
         if doc_title and doc_title not in text:
             suffix = f"({doc_title})"
             text = f"{text} {suffix}" if text else suffix
@@ -792,7 +789,9 @@ class EditorPanel(wx.Panel):
             try:
                 revision = int(revision_text)
             except (TypeError, ValueError):
-                raise ValueError(_("Revision must be a positive integer"))
+                raise ValueError(
+                    _("Revision must be a positive integer")
+                ) from None
         else:
             revision = 1
         if revision <= 0:
@@ -977,7 +976,7 @@ class EditorPanel(wx.Panel):
             try:
                 root = Path(self.directory).parent
                 doc = load_document(root / prefix)
-                data, _ = load_item(root / prefix, doc, item_id)
+                data, _metadata = load_item(root / prefix, doc, item_id)
                 title = str(data.get("title", ""))
                 fingerprint = requirement_fingerprint(data)
                 doc_title = doc.title

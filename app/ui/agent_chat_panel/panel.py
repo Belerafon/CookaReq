@@ -174,12 +174,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         ] = ()
         self._suppress_confirm_choice_events = False
         self._project_settings_button: wx.Button | None = None
-        self._run_batch_btn: wx.Button | None = None
-        self._stop_batch_btn: wx.Button | None = None
-        self._batch_panel: wx.Panel | None = None
-        self._batch_list = None
-        self._batch_progress: wx.Gauge | None = None
-        self._batch_status_label: wx.StaticText | None = None
         self._layout_builder = AgentChatLayoutBuilder(self)
         self._layout = None
         self._history.load()
@@ -330,15 +324,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._transcript_view = layout.transcript_view
         self._bottom_panel = layout.bottom_panel
         self.input = layout.input_control
-        self._run_batch_btn = layout.run_batch_button
-        self._stop_batch_btn = layout.stop_batch_button
         self._stop_btn = layout.stop_button
         self._send_btn = layout.send_button
         batch_controls = layout.batch_controls
-        self._batch_panel = batch_controls.panel
-        self._batch_status_label = batch_controls.status_label
-        self._batch_progress = batch_controls.progress
-        self._batch_list = batch_controls.list_ctrl
         self.activity = layout.activity_indicator
         self.status_label = layout.status_label
         self._project_settings_button = layout.project_settings_button

@@ -82,10 +82,19 @@ class HistoryStore:
             if not isinstance(item, Mapping):
                 continue
             try:
-                conversations.append(ChatConversation.from_dict(item))
+                conversation = ChatConversation.from_dict(item)
             except Exception:  # pragma: no cover - defensive
                 logger.exception("Failed to deserialize stored conversation", exc_info=True)
                 continue
+            entries_raw = item.get("entries")
+            had_entries = isinstance(entries_raw, Sequence) and bool(entries_raw)
+            if had_entries and not conversation.entries:
+                logger.warning(
+                    "Skipping chat conversation %s with no valid entries",
+                    conversation.conversation_id,
+                )
+                continue
+            conversations.append(conversation)
 
         if not conversations:
             return [], None

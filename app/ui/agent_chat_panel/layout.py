@@ -41,8 +41,6 @@ class AgentChatLayout:
     transcript_view: TranscriptView
     bottom_panel: wx.Panel
     input_control: wx.TextCtrl
-    run_batch_button: wx.Button
-    stop_batch_button: wx.Button
     stop_button: wx.Button
     send_button: wx.Button
     batch_controls: BatchControls
@@ -325,8 +323,6 @@ class AgentChatLayoutBuilder:
             transcript_view=transcript_view,
             bottom_panel=bottom_panel,
             input_control=input_ctrl,
-            run_batch_button=run_batch_btn,
-            stop_batch_button=stop_batch_btn,
             stop_button=stop_btn,
             send_button=send_btn,
             batch_controls=batch_controls,

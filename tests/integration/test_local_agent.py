@@ -50,6 +50,14 @@ class MCPAsyncBridge:
             ensure_ready()
 
 
+class SilentLLM(LLMAsyncBridge):
+    def check_llm(self):
+        return {"ok": True}
+
+    def respond(self, conversation):
+        return LLMResponse("", ())
+
+
 class FailingLLM(LLMAsyncBridge):
     def check_llm(self):
         raise RuntimeError("llm failure")
@@ -72,6 +80,54 @@ class DummyMCP(MCPAsyncBridge):
 
     def call_tool(self, name, arguments):
         raise AssertionError("should not be called")
+
+
+def test_prepare_context_messages_batches_selected_requirement_summaries():
+    class RecordingMCP(MCPAsyncBridge):
+        def __init__(self):
+            self.calls: list[tuple[str, Mapping[str, Any]]] = []
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def call_tool(self, name, arguments):
+            self.calls.append((name, arguments))
+            assert name == "get_requirement"
+            assert arguments["rid"] == ["SYS1", "SYS2"]
+            assert arguments["fields"] == ["title", "statement"]
+            return {
+                "ok": True,
+                "result": {
+                    "items": [
+                        {"rid": "SYS1", "statement": "System overview."},
+                        {"rid": "SYS2", "title": "Provide audit log"},
+                    ]
+                },
+            }
+
+    mcp = RecordingMCP()
+    agent = LocalAgent(llm=SilentLLM(), mcp=mcp)
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "[Workspace context]\n"
+                "Selected requirement RIDs: SYS1, SYS2, SYS1"
+            ),
+        }
+    ]
+
+    enriched = asyncio.run(agent._prepare_context_messages_async(messages))
+
+    assert len(mcp.calls) == 1
+    expected = (
+        "[Workspace context]\n"
+        "Selected requirement RIDs: SYS1, SYS2, SYS1\n"
+        "SYS1 — System overview.\n"
+        "SYS2 — Provide audit log"
+    )
+    assert enriched[0]["content"] == expected
 
 
 class JSONFailingLLM(LLMAsyncBridge):

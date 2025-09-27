@@ -242,9 +242,9 @@ def link_requirements(
     try:
         (
             source_prefix,
-            _source_id,
-            source_doc,
-            source_dir,
+            _,
+            _,
+            _,
             source_data,
             source_canonical_rid,
         ) = _resolve_requirement(root_path, source_rid, docs_map)

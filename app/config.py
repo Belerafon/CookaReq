@@ -109,7 +109,6 @@ class ConfigManager:
         app_name: str = "CookaReq",
         path: Path | str | None = None,
     ) -> None:
-        self._app_name = app_name
         self._path = Path(path) if path is not None else _default_config_path(app_name)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._settings = AppSettings()
@@ -206,12 +205,6 @@ class ConfigManager:
         if default is not _MISSING:
             return deepcopy(default)
         raise KeyError(name)
-
-    def has_value(self, name: str) -> bool:
-        binding = self._binding_for(name)
-        if binding is not None:
-            return self._is_overridden(binding)
-        return name in self._raw
 
     def set_value(self, name: str, value: Any) -> None:
         binding = self._binding_for(name)

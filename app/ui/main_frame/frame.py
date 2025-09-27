@@ -157,7 +157,6 @@ class MainFrame(
         """Expose frequently used menu items as attributes."""
 
         self._recent_menu = self.navigation.recent_menu
-        self._recent_menu_item = self.navigation.recent_menu_item
         self.log_menu_item = self.navigation.log_menu_item
         self.hierarchy_menu_item = self.navigation.hierarchy_menu_item
         self.editor_menu_item = self.navigation.editor_menu_item

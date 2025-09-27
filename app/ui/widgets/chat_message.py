@@ -345,7 +345,7 @@ class MessageBubble(wx.Panel):
                 bubble_sizer.Add(
                     footer,
                     0,
-                    wx.LEFT | wx.RIGHT | wx.BOTTOM,
+                    wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
                     self._content_padding,
                 )
                 footer_targets.append(footer)
@@ -824,12 +824,23 @@ class TranscriptMessagePanel(wx.Panel):
             )
             outer.Add(notice, 0, wx.LEFT | wx.RIGHT | wx.TOP, padding)
 
+        if context_messages:
+            context_footer_factory: FooterFactory | None = (
+                lambda container: self._create_context_panel(
+                    container,
+                    context_messages,
+                )
+            )
+        else:
+            context_footer_factory = None
+
         user_bubble = MessageBubble(
             self,
             role_label=_("You"),
             timestamp=prompt_timestamp,
             text=prompt,
             align="right",
+            footer_factory=context_footer_factory,
             width_hint=_resolve_hint("user"),
             on_width_change=lambda width: _emit_layout_hint("user", width),
         )
@@ -887,10 +898,6 @@ class TranscriptMessagePanel(wx.Panel):
         if reasoning_panel is not None:
             outer.Add(reasoning_panel, 0, wx.EXPAND | wx.ALL, padding)
 
-        context_panel = self._create_context_panel(context_messages)
-        if context_panel is not None:
-            outer.Add(context_panel, 0, wx.EXPAND | wx.ALL, padding)
-
         self.SetSizer(outer)
 
     @staticmethod
@@ -907,6 +914,7 @@ class TranscriptMessagePanel(wx.Panel):
 
     def _create_context_panel(
         self,
+        container: wx.Window,
         context_messages: Sequence[Mapping[str, Any]] | None,
     ) -> wx.CollapsiblePane | None:
         if not context_messages:
@@ -917,18 +925,30 @@ class TranscriptMessagePanel(wx.Panel):
             return None
 
         pane = wx.CollapsiblePane(
-            self,
+            container,
             label=_("Context"),
             style=wx.CP_DEFAULT_STYLE | wx.CP_NO_TLW_RESIZE,
         )
         pane.Collapse(True)
 
-        pane_background = self.GetBackgroundColour()
+        pane_background = container.GetBackgroundColour()
         if not pane_background.IsOk():
             pane_background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
         pane.SetBackgroundColour(pane_background)
+        pane_foreground = container.GetForegroundColour()
+        if pane_foreground.IsOk():
+            pane.SetForegroundColour(pane_foreground)
+            try:
+                toggle = pane.GetButton()
+            except AttributeError:
+                toggle = None
+            if toggle is not None and _is_window_usable(toggle):
+                toggle.SetForegroundColour(pane_foreground)
+                toggle.SetBackgroundColour(pane_background)
         inner = pane.GetPane()
         inner.SetBackgroundColour(pane_background)
+        if pane_foreground.IsOk():
+            inner.SetForegroundColour(pane_foreground)
 
         content_sizer = wx.BoxSizer(wx.VERTICAL)
         text_ctrl = wx.TextCtrl(

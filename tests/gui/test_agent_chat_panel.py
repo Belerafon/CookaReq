@@ -721,14 +721,13 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
         assert "Active requirements list: sys: Сист. треб." in value
         assert "Selected requirement RIDs: sys48, sys49, sys50" in value
 
-        # Timestamp label should be rendered as a bullet-prefixed static text right after the pane
-        meta_labels = [
-            sibling.GetLabel()
-            for sibling in context_pane.GetParent().GetChildren()
-            if isinstance(sibling, wx.StaticText)
-            and sibling.GetLabel().strip().startswith("•")
-        ]
-        assert meta_labels, "context timestamp label missing"
+        # Context pane should live inside the user message bubble so that it scrolls together with the prompt
+        bubble_ancestor = context_pane.GetParent()
+        while bubble_ancestor is not None and not isinstance(bubble_ancestor, MessageBubble):
+            bubble_ancestor = bubble_ancestor.GetParent()
+        assert isinstance(
+            bubble_ancestor, MessageBubble
+        ), "context pane expected inside the user bubble"
     finally:
         destroy_panel(frame, panel)
 
@@ -877,64 +876,70 @@ def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
         ]
         assert child_windows, "expected child windows"
 
-        panes = [
+        # Reasoning pane is still rendered after the agent bubble on the top level
+        top_level_collapsible = [
             window
             for window in child_windows
             if isinstance(window, wx.CollapsiblePane)
         ]
-        assert len(panes) == 2, "expected reasoning and context panes"
+        assert len(top_level_collapsible) == 1, "expected only reasoning pane on top level"
 
-        def pane_contents(window: wx.CollapsiblePane) -> str:
-            text_controls = [
-                child
-                for child in window.GetPane().GetChildren()
-                if isinstance(child, wx.TextCtrl)
-            ]
-            assert text_controls, "pane missing text control"
-            return text_controls[0].GetValue()
+        def collect_all_panes(window):
+            panes: list[wx.CollapsiblePane] = []
+            for child in window.GetChildren():
+                if isinstance(child, wx.CollapsiblePane):
+                    panes.append(child)
+                panes.extend(collect_all_panes(child))
+            return panes
 
-        first_pane, second_pane = panes
-        if "think" in pane_contents(first_pane):
-            reasoning_pane = first_pane
-            context_pane = second_pane
-        else:
-            reasoning_pane = second_pane
-            context_pane = first_pane
+        all_panes = collect_all_panes(panel)
+        assert len(all_panes) == 2, "expected reasoning and context panes in total"
 
-        meta_labels = [
-            window
-            for window in child_windows
-            if isinstance(window, wx.StaticText)
-            and window.GetLabel().strip().startswith("•")
+        context_panes = [
+            pane
+            for pane in all_panes
+            if pane.GetLabel() in {"", "Контекст", "Context"}
         ]
-        assert len(meta_labels) >= 2, "timestamp labels missing"
-        reasoning_meta, context_meta = meta_labels[:2]
+        assert context_panes, "missing context pane"
 
-        assert response_ts in reasoning_meta.GetLabel()
-        assert prompt_ts in context_meta.GetLabel()
+        context_parent = context_panes[0].GetParent()
+        while context_parent is not None and not isinstance(context_parent, MessageBubble):
+            context_parent = context_parent.GetParent()
+        assert isinstance(
+            context_parent, MessageBubble
+        ), "context pane should be nested under the user message bubble"
 
-        assert child_windows.index(reasoning_pane) < child_windows.index(context_pane)
-        assert child_windows.index(reasoning_meta) > child_windows.index(reasoning_pane)
-        assert child_windows.index(context_meta) > child_windows.index(context_pane)
-        assert child_windows[-1] is context_meta
+        reasoning_pane = top_level_collapsible[0]
+        context_pane = context_panes[0]
 
-        def has_agent_header(window: MessageBubble) -> bool:
-            stack = list(window.GetChildren())
+        def collect_labels(window: wx.Window) -> list[str]:
+            labels: list[str] = []
+            stack = [window]
             while stack:
-                child = stack.pop()
-                if isinstance(child, wx.StaticText) and "Agent" in child.GetLabel():
-                    return True
-                stack.extend(child.GetChildren())
-            return False
+                current = stack.pop()
+                if isinstance(current, wx.StaticText):
+                    labels.append(current.GetLabel())
+                stack.extend(current.GetChildren())
+            return labels
 
-        agent_bubbles = [
-            window
-            for window in child_windows
-            if isinstance(window, MessageBubble) and has_agent_header(window)
-        ]
-        assert agent_bubbles, "agent bubble missing"
-        agent_index = child_windows.index(agent_bubbles[-1])
-        assert agent_index < child_windows.index(reasoning_pane)
+        user_bubble = None
+        agent_bubble = None
+        for window in child_windows:
+            if not isinstance(window, MessageBubble):
+                continue
+            labels = collect_labels(window)
+            if any("Agent" in label for label in labels):
+                agent_bubble = window
+            elif any("You" in label for label in labels):
+                user_bubble = window
+
+        assert user_bubble is not None, "user bubble missing"
+        assert agent_bubble is not None, "agent bubble missing"
+
+        assert prompt_ts in "\n".join(collect_labels(user_bubble))
+        assert response_ts in "\n".join(collect_labels(agent_bubble))
+
+        assert child_windows.index(agent_bubble) < child_windows.index(reasoning_pane)
     finally:
         panel.Destroy()
         frame.Destroy()

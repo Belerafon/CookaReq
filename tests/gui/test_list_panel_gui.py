@@ -76,6 +76,11 @@ def test_reset_button_visibility_gui(wx_app):
     frame.Destroy()
 
 
+def _flush_events(wx, count: int = 5) -> None:
+    for _ in range(count):
+        wx.Yield()
+
+
 def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
@@ -121,6 +126,51 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
 
     assert called == {"clone": 1, "delete": 1}
     assert reqs[0].revision == 2
+
+    frame.Destroy()
+
+
+def test_marquee_selection_starts_from_cell(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
+
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    frame.GetSizer().Add(panel, 1, wx.EXPAND)
+    panel.set_requirements([_req(i, f"Req {i}") for i in range(1, 6)])
+
+    frame.SetSize((600, 400))
+    frame.Show()
+    panel.list.SetFocus()
+    _flush_events(wx)
+
+    list_ctrl = panel.list
+    first_rect = list_ctrl.GetItemRect(0)
+    third_rect = list_ctrl.GetItemRect(2)
+    start = first_rect.GetTopLeft()
+    start = wx.Point(start.x + max(first_rect.GetWidth() // 4, 4), start.y + first_rect.GetHeight() // 2)
+    end = third_rect.GetTopLeft()
+    end = wx.Point(end.x + max(third_rect.GetWidth() // 2, 10), end.y + third_rect.GetHeight() - 2)
+
+    sim = wx.UIActionSimulator()
+    screen_start = list_ctrl.ClientToScreen(start)
+    screen_end = list_ctrl.ClientToScreen(end)
+
+    sim.MouseMove(screen_start.x, screen_start.y)
+    _flush_events(wx)
+    sim.MouseDown(wx.MOUSE_BTN_LEFT)
+    _flush_events(wx)
+    sim.MouseMove(screen_end.x, screen_end.y)
+    _flush_events(wx, count=10)
+    sim.MouseUp(wx.MOUSE_BTN_LEFT)
+    _flush_events(wx, count=6)
+
+    assert panel.get_selected_ids() == [1, 2, 3]
 
     frame.Destroy()
 

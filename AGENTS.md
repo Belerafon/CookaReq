@@ -6,6 +6,7 @@ This file collects instructions and a short overview of the "CookaReq" applicati
 
 - Work on the main branch (no new branches).
 - Run `pytest -q`; tests marked `slow` are skipped. The pytest-xvfb plugin is loaded automatically so GUI checks work headlessly.
+- Для быстрого прогона конкретного GUI-файла помните, что конфигурация `--suite` в pytest по умолчанию отключает файл, поэтому используйте явный вызов вроде `pytest --suite gui-smoke -q tests/gui/test_list_panel_gui.py`, иначе коллекция отметит весь модуль как «deselected» и не даст обратной связи.
 - Quick iterations without the GUI can use `pytest -q -m "not gui"`; to focus solely on the GUI suite run `pytest -q -m gui`.
 - GUI tests already run under `pytest-xvfb`. If you disable it for troubleshooting, wrap manual runs with `xvfb-run -a`.
 - Use the system Python 3.12.3 for builds and tests. The root `.python-version` file is set to `system`, so `pyenv` switches automatically; run commands through `python3`. The `python` alias is not available. All required packages (including `wxPython`) are already preinstalled in the system installation; verified that `python3 -c "import wx; print(wx.version())"` finishes without errors.

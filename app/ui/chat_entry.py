@@ -122,7 +122,6 @@ class ChatEntry:
 
         prompt = str(payload.get("prompt", ""))
         response = str(payload.get("response", ""))
-        tokens_raw = payload.get("tokens")
         display_response = payload.get("display_response")
         if display_response is not None:
             display_response = str(display_response)
@@ -135,22 +134,13 @@ class ChatEntry:
         else:
             tool_results = None
         token_info_raw = payload.get("token_info")
-        token_info: TokenCountResult | None = None
-        if isinstance(token_info_raw, Mapping):
-            try:
-                token_info = TokenCountResult.from_dict(token_info_raw)
-            except Exception:  # pragma: no cover - defensive
-                token_info = None
-        if token_info is None:
-            token_info = _recalculate_pair_token_info(prompt, response)
-        tokens = 0
-        if isinstance(token_info_raw, Mapping) and token_info.tokens is None and tokens_raw is not None:
-            try:
-                tokens = int(tokens_raw)
-            except (TypeError, ValueError):  # pragma: no cover - defensive
-                tokens = 0
-        elif token_info.tokens is not None:
-            tokens = token_info.tokens
+        if not isinstance(token_info_raw, Mapping):
+            raise ValueError("token_info field missing from chat entry payload")
+        try:
+            token_info = TokenCountResult.from_dict(token_info_raw)
+        except Exception as exc:  # pragma: no cover - defensive
+            raise ValueError("invalid token_info payload") from exc
+        tokens = token_info.tokens or 0
         prompt_at_raw = payload.get("prompt_at")
         prompt_at = str(prompt_at_raw) if isinstance(prompt_at_raw, str) else None
         response_at_raw = payload.get("response_at")

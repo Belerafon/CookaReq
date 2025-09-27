@@ -283,56 +283,6 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
-def test_agent_chat_panel_migrates_legacy_token_info(tmp_path, wx_app):
-    history_path = tmp_path / "history.json"
-    legacy_payload = {
-        "version": 2,
-        "active_id": "conv-1",
-        "conversations": [
-            {
-                "id": "conv-1",
-                "title": "Legacy conversation",
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z",
-                "entries": [
-                    {
-                        "prompt": "hello",
-                        "response": "world",
-                        "tokens": 123,
-                        "prompt_at": "2024-01-01T00:00:00Z",
-                        "response_at": "2024-01-01T00:00:05Z",
-                        "display_response": None,
-                        "tool_results": None,
-                        "raw_result": None,
-                        "context_messages": None,
-                        "reasoning": None,
-                    }
-                ],
-            }
-        ],
-    }
-    history_path.write_text(json.dumps(legacy_payload))
-
-    class IdleAgent:
-        def run_command(self, *_args, **_kwargs):
-            return {"ok": True, "result": {"echo": "noop"}}
-
-    wx, frame, panel = create_panel(tmp_path, wx_app, IdleAgent())
-
-    try:
-        flush_wx_events(wx)
-        saved = json.loads(history_path.read_text())
-        entry_payload = saved["conversations"][0]["entries"][0]
-        token_info = entry_payload.get("token_info")
-        assert isinstance(token_info, Mapping)
-        assert token_info.get("tokens") == entry_payload["tokens"]
-        assert token_info.get("approximate") is False
-        assert token_info.get("model") == "cl100k_base"
-        assert token_info.get("reason") not in {"legacy_tokens", "model_approximation"}
-    finally:
-        destroy_panel(frame, panel)
-
-
 def test_agent_response_normalizes_dash_characters(tmp_path, wx_app):
     class HyphenAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
@@ -1527,20 +1477,57 @@ def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
     destroy_panel(frame, panel)
 
 
-def test_agent_chat_panel_ignores_flat_legacy_history(tmp_path, wx_app):
+def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.agent_chat_panel import AgentChatPanel
+
+    legacy_file = tmp_path / "history.json"
+    legacy_file.write_text(json.dumps({"version": 1, "conversations": []}))
+
+    class DummyAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+            return {"ok": True, "error": None, "result": {}}
+
+    frame = wx.Frame(None)
+    panel = AgentChatPanel(
+        frame,
+        agent_supplier=lambda **_overrides: DummyAgent(),
+        history_path=legacy_file,
+    )
+
+    assert panel.history == []
+    assert panel.history_list.GetItemCount() == 0
+    assert "Start chatting" in panel.get_transcript_text()
+
+    destroy_panel(frame, panel)
+
+
+def test_agent_chat_panel_rejects_entries_without_token_info(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
 
     legacy_file = tmp_path / "history.json"
     legacy_file.write_text(
         json.dumps(
-            [
-                {
-                    "prompt": "old request",
-                    "response": "old response",
-                    "tokens": 2,
-                }
-            ]
+            {
+                "version": 2,
+                "active_id": "conv-1",
+                "conversations": [
+                    {
+                        "id": "conv-1",
+                        "title": "Legacy conversation",
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "updated_at": "2024-01-01T00:00:00Z",
+                        "entries": [
+                            {
+                                "prompt": "old request",
+                                "response": "old response",
+                                "tokens": 2,
+                            }
+                        ],
+                    }
+                ],
+            }
         )
     )
 

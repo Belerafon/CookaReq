@@ -27,6 +27,7 @@ class AgentRunCallbacks:
     ensure_active_conversation: Callable[[], ChatConversation]
     get_conversation_by_id: Callable[[str], ChatConversation | None]
     conversation_messages: Callable[[], tuple[dict[str, Any], ...]]
+    conversation_messages_for: Callable[[ChatConversation], tuple[dict[str, Any], ...]]
     prepare_context_messages: Callable[[
         Mapping[str, Any] | Sequence[Mapping[str, Any]] | None
     ], tuple[dict[str, Any], ...]]
@@ -79,18 +80,6 @@ class AgentRunController:
             return
 
         effective_prompt_at = prompt_at or utc_now_iso()
-        self._run_counter += 1
-        cancel_event = CancellationEvent()
-        prompt_tokens = count_text_tokens(normalized_prompt, model=self._token_model())
-        handle = _AgentRunHandle(
-            run_id=self._run_counter,
-            prompt=normalized_prompt,
-            prompt_tokens=prompt_tokens,
-            cancel_event=cancel_event,
-            prompt_at=effective_prompt_at,
-        )
-        self._active_handle = handle
-
         conversation = self._callbacks.ensure_active_conversation()
         history_messages = self._callbacks.conversation_messages()
         context_messages: tuple[dict[str, Any], ...] | None = None
@@ -103,17 +92,84 @@ class AgentRunController:
             context_messages = self._callbacks.prepare_context_messages(provided_context)
             if not context_messages:
                 context_messages = None
-        handle.context_messages = context_messages
-        if history_messages:
-            handle.history_snapshot = tuple(dict(message) for message in history_messages)
-        else:
-            handle.history_snapshot = None
+        history_payload = tuple(dict(message) for message in history_messages)
+        self._start_prompt(
+            conversation=conversation,
+            normalized_prompt=normalized_prompt,
+            prompt_at=effective_prompt_at,
+            history_messages=history_payload,
+            context_messages=context_messages,
+        )
+
+    # ------------------------------------------------------------------
+    def submit_prompt_with_context(
+        self,
+        prompt: str,
+        *,
+        conversation_id: str,
+        context_messages: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
+        prompt_at: str | None = None,
+    ) -> None:
+        normalized_prompt = prompt.strip()
+        if not normalized_prompt:
+            return
+
+        conversation = self._callbacks.get_conversation_by_id(conversation_id)
+        if conversation is None:
+            conversation = self._callbacks.ensure_active_conversation()
+            if conversation.conversation_id != conversation_id:  # pragma: no cover - defensive
+                logger.warning(
+                    "Conversation %s not found for custom context run; using active conversation %s",
+                    conversation_id,
+                    conversation.conversation_id,
+                )
+        history_messages = self._callbacks.conversation_messages_for(conversation)
+        prepared_context = self._callbacks.prepare_context_messages(context_messages)
+        context_payload = prepared_context if prepared_context else None
+        history_payload = tuple(dict(message) for message in history_messages)
+        effective_prompt_at = prompt_at or utc_now_iso()
+        self._start_prompt(
+            conversation=conversation,
+            normalized_prompt=normalized_prompt,
+            prompt_at=effective_prompt_at,
+            history_messages=history_payload,
+            context_messages=context_payload,
+        )
+
+    # ------------------------------------------------------------------
+    def _start_prompt(
+        self,
+        *,
+        conversation: ChatConversation,
+        normalized_prompt: str,
+        prompt_at: str,
+        history_messages: tuple[dict[str, Any], ...],
+        context_messages: tuple[dict[str, Any], ...] | None,
+    ) -> None:
+        self._run_counter += 1
+        cancel_event = CancellationEvent()
+        prompt_tokens = count_text_tokens(normalized_prompt, model=self._token_model())
+        handle = _AgentRunHandle(
+            run_id=self._run_counter,
+            prompt=normalized_prompt,
+            prompt_tokens=prompt_tokens,
+            cancel_event=cancel_event,
+            prompt_at=prompt_at,
+        )
+        self._active_handle = handle
+
+        history_payload = tuple(dict(message) for message in history_messages)
+        context_payload = None
+        if context_messages:
+            context_payload = tuple(dict(message) for message in context_messages)
+        handle.context_messages = context_payload
+        handle.history_snapshot = history_payload if history_payload else None
 
         pending_entry = self._callbacks.add_pending_entry(
             conversation,
             normalized_prompt,
-            effective_prompt_at,
-            context_messages,
+            prompt_at,
+            context_payload,
         )
         handle.conversation_id = conversation.conversation_id
         handle.pending_entry = pending_entry
@@ -158,10 +214,16 @@ class AgentRunController:
                         snapshot,
                     )
 
+                history_arg: tuple[dict[str, Any], ...] | None
+                if history_payload:
+                    history_arg = history_payload
+                else:
+                    history_arg = None
+
                 return agent.run_command(
                     normalized_prompt,
-                    history=history_messages,
-                    context=context_messages,
+                    history=history_arg,
+                    context=context_payload,
                     cancellation=handle.cancel_event,
                     on_tool_result=on_tool_result,
                 )

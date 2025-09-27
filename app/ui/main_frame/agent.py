@@ -15,6 +15,7 @@ from ...core.document_store import parse_rid
 from ...core.model import Requirement, requirement_from_dict
 from ...settings import AppSettings
 from ...mcp.events import ToolResultEvent, add_tool_result_listener
+from ..agent_chat_panel.batch_runner import BatchTarget
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .frame import MainFrame
@@ -149,6 +150,33 @@ class MainFrameAgentMixin:
                 filtered.append(numeric)
         return filtered
 
+    def _agent_batch_targets(self: "MainFrame") -> list[BatchTarget]:
+        model = getattr(self, "model", None)
+        if model is None:
+            return []
+        targets: list[BatchTarget] = []
+        seen: set[str] = set()
+        for req_id in self._selected_requirement_ids_for_agent():
+            requirement = model.get_by_id(req_id)
+            if requirement is None:
+                continue
+            rid = (requirement.rid or "").strip()
+            if not rid:
+                fallback = f"{requirement.doc_prefix}{requirement.id}".strip()
+                rid = fallback if fallback else str(requirement.id)
+            if rid in seen:
+                continue
+            seen.add(rid)
+            title = (requirement.title or "").strip()
+            targets.append(
+                BatchTarget(
+                    requirement_id=requirement.id,
+                    rid=rid,
+                    title=title,
+                )
+            )
+        return targets
+
     def _agent_context_messages(self: "MainFrame") -> list[dict[str, str]]:
         lines: list[str] = ["[Workspace context]"]
         summary = self._current_document_summary()
@@ -245,6 +273,72 @@ class MainFrameAgentMixin:
             )
 
         return [{"role": "system", "content": "\n".join(lines)}]
+
+    def _agent_context_for_requirement(
+        self: "MainFrame", requirement_id: int
+    ) -> tuple[dict[str, str], ...]:
+        model = getattr(self, "model", None)
+        if model is None:
+            return ()
+        requirement = model.get_by_id(requirement_id)
+        if requirement is None:
+            return ()
+
+        rid = (requirement.rid or "").strip()
+        if not rid:
+            rid = f"{requirement.doc_prefix}{requirement.id}".strip()
+        if not rid:
+            rid = str(requirement.id)
+
+        lines: list[str] = ["[Requirement focus]"]
+        lines.append(f"Target RID: {rid}")
+        if requirement.title:
+            lines.append(f"Title: {requirement.title.strip()}")
+        statement = requirement.statement.strip()
+        lines.append(f"Statement: {statement}" if statement else "Statement: (empty)")
+        lines.append(f"Type: {requirement.type.value}")
+        lines.append(f"Status: {requirement.status.value}")
+        owner = requirement.owner.strip() if requirement.owner else ""
+        lines.append(f"Owner: {owner}" if owner else "Owner: (not set)")
+        priority = requirement.priority.value if requirement.priority else ""
+        if priority:
+            lines.append(f"Priority: {priority}")
+        source = requirement.source.strip() if requirement.source else ""
+        if source:
+            lines.append(f"Source: {source}")
+        conditions = requirement.conditions.strip()
+        if conditions:
+            lines.append(f"Conditions: {conditions}")
+        rationale = requirement.rationale.strip()
+        if rationale:
+            lines.append(f"Rationale: {rationale}")
+        assumptions = requirement.assumptions.strip()
+        if assumptions:
+            lines.append(f"Assumptions: {assumptions}")
+        notes = requirement.notes.strip()
+        if notes:
+            lines.append(f"Notes: {notes}")
+        if requirement.labels:
+            labels_text = ", ".join(sorted(label.strip() for label in requirement.labels if label))
+            if labels_text:
+                lines.append(f"Labels: {labels_text}")
+        if requirement.links:
+            link_summaries: list[str] = []
+            for link in requirement.links:
+                label = link.rid
+                if link.suspect:
+                    label = f"{label} (suspect)"
+                link_summaries.append(label)
+            if link_summaries:
+                lines.append("Trace links: " + ", ".join(link_summaries))
+        if requirement.attachments:
+            attachment_labels = [
+                att.path for att in requirement.attachments if getattr(att, "path", "")
+            ]
+            if attachment_labels:
+                lines.append("Attachments: " + ", ".join(attachment_labels))
+
+        return (({"role": "system", "content": "\n".join(lines)}),)
 
     def _on_agent_tool_results(
         self: "MainFrame", tool_results: Sequence[Mapping[str, Any]]

@@ -231,6 +231,8 @@ class MainFrame(
                 context_window_resolver=lambda: self.llm_settings.max_context_tokens,
                 confirm_preference=self.config.get_agent_confirm_mode(),
                 persist_confirm_preference=self.config.set_agent_confirm_mode,
+                batch_target_provider=self._agent_batch_targets,
+                batch_context_provider=self._agent_context_for_requirement,
             ),
         )
         self._init_mcp_tool_listener()
@@ -321,6 +323,8 @@ class MainFrame(
                 context_window_resolver=lambda: self.llm_settings.max_context_tokens,
                 confirm_preference=self.config.get_agent_confirm_mode(),
                 persist_confirm_preference=self.config.set_agent_confirm_mode,
+                batch_target_provider=self._agent_batch_targets,
+                batch_context_provider=self._agent_context_for_requirement,
             )
             self._init_mcp_tool_listener()
             history_sash = self.config.get_agent_history_sash(

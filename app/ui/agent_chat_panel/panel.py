@@ -32,6 +32,7 @@ from ..helpers import (
 )
 from ..text import normalize_for_display
 from ..splitter_utils import refresh_splitter_highlight, style_splitter
+from .batch_runner import AgentBatchRunner, BatchItem, BatchItemStatus, BatchTarget
 from .confirm_preferences import (
     ConfirmPreferencesMixin,
     RequirementConfirmPreference,
@@ -105,6 +106,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         context_window_resolver: Callable[[], int | None] | None = None,
         confirm_preference: RequirementConfirmPreference | str | None = None,
         persist_confirm_preference: Callable[[str], None] | None = None,
+        batch_target_provider: Callable[[], Sequence[BatchTarget]] | None = None,
+        batch_context_provider: Callable[[int], Sequence[Mapping[str, Any]] | Mapping[str, Any] | None] | None = None,
     ) -> None:
         """Create panel bound to ``agent_supplier``."""
 
@@ -155,6 +158,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._vertical_last_sash = 0
         self._controller: AgentRunController | None = None
         self._context_provider = context_provider
+        self._batch_target_provider = batch_target_provider
+        self._batch_context_provider = batch_context_provider
+        self._batch_runner: AgentBatchRunner | None = None
         self._persist_confirm_preference_callback = persist_confirm_preference
         persistent_preference = self._normalize_confirm_preference(confirm_preference)
         if persistent_preference is RequirementConfirmPreference.CHAT_ONLY:
@@ -171,6 +177,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         ] = ()
         self._suppress_confirm_choice_events = False
         self._project_settings_button: wx.Button | None = None
+        self._run_batch_btn: wx.Button | None = None
+        self._stop_batch_btn: wx.Button | None = None
+        self._batch_panel: wx.Panel | None = None
+        self._batch_list: dv.DataViewListCtrl | None = None
+        self._batch_progress: wx.Gauge | None = None
+        self._batch_status_label: wx.StaticText | None = None
         self._load_history_from_store()
         self._build_ui()
         self._initialize_controller()
@@ -439,6 +451,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self.input.Bind(wx.EVT_TEXT_ENTER, self._on_send)
 
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self._run_batch_btn = wx.Button(bottom_panel, label=_("Run batch"))
+        self._run_batch_btn.Bind(wx.EVT_BUTTON, self._on_run_batch)
+        self._stop_batch_btn = wx.Button(bottom_panel, label=_("Stop batch"))
+        self._stop_batch_btn.Bind(wx.EVT_BUTTON, self._on_stop_batch)
+        self._stop_batch_btn.Enable(False)
         clear_btn = wx.Button(bottom_panel, label=_("Clear input"))
         clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_input)
         self._stop_btn = wx.Button(bottom_panel, label=_("Stop"))
@@ -446,9 +463,45 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._stop_btn.Enable(False)
         self._send_btn = wx.Button(bottom_panel, label=_("Send"))
         self._send_btn.Bind(wx.EVT_BUTTON, self._on_send)
+        button_sizer.Add(self._run_batch_btn, 0, wx.RIGHT, spacing)
+        button_sizer.Add(self._stop_batch_btn, 0, wx.RIGHT, spacing)
         button_sizer.Add(clear_btn, 0, wx.RIGHT, spacing)
         button_sizer.Add(self._stop_btn, 0, wx.RIGHT, spacing)
         button_sizer.Add(self._send_btn, 0)
+
+        self._batch_panel = wx.Panel(bottom_panel)
+        inherit_background(self._batch_panel, bottom_panel)
+        batch_box = wx.StaticBoxSizer(wx.VERTICAL, self._batch_panel, _("Batch queue"))
+        self._batch_status_label = wx.StaticText(
+            self._batch_panel,
+            label=_("Select requirements and run a batch"),
+        )
+        self._batch_progress = wx.Gauge(self._batch_panel, range=1, style=wx.GA_HORIZONTAL)
+        self._batch_progress.SetValue(0)
+        self._batch_progress.SetMinSize(wx.Size(-1, dip(self, 12)))
+        style = dv.DV_ROW_LINES | dv.DV_VERT_RULES
+        self._batch_list = dv.DataViewListCtrl(self._batch_panel, style=style)
+        self._batch_list.SetMinSize(wx.Size(-1, dip(self, 140)))
+        self._batch_list.AppendTextColumn(
+            _("RID"),
+            mode=dv.DATAVIEW_CELL_INERT,
+            width=dip(self, 120),
+        )
+        self._batch_list.AppendTextColumn(
+            _("Title"),
+            mode=dv.DATAVIEW_CELL_INERT,
+            width=dip(self, 200),
+        )
+        self._batch_list.AppendTextColumn(
+            _("Status"),
+            mode=dv.DATAVIEW_CELL_INERT,
+            width=dip(self, 220),
+        )
+        batch_box.Add(self._batch_status_label, 0, wx.BOTTOM, spacing)
+        batch_box.Add(self._batch_progress, 0, wx.EXPAND | wx.BOTTOM, spacing)
+        batch_box.Add(self._batch_list, 1, wx.EXPAND)
+        self._batch_panel.SetSizer(batch_box)
+        self._batch_panel.Hide()
 
         status_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.activity = wx.ActivityIndicator(bottom_panel)
@@ -505,6 +558,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         bottom_sizer.AddSpacer(spacing)
         bottom_sizer.Add(self.input, 1, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
+        bottom_sizer.Add(self._batch_panel, 0, wx.EXPAND)
+        bottom_sizer.AddSpacer(spacing)
         bottom_sizer.Add(controls_sizer, 0, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
         bottom_panel.SetSizer(bottom_sizer)
@@ -530,6 +585,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             ensure_active_conversation=self._ensure_active_conversation,
             get_conversation_by_id=self._get_conversation_by_id,
             conversation_messages=self._conversation_messages,
+            conversation_messages_for=self._conversation_messages_for,
             prepare_context_messages=self._prepare_context_messages,
             add_pending_entry=lambda conv, prompt, prompt_at, context: self._add_pending_entry(
                 conv,
@@ -553,6 +609,230 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             context_provider=self._context_provider,
             callbacks=callbacks,
         )
+        self._batch_runner = AgentBatchRunner(
+            submit_prompt=self._submit_batch_prompt,
+            create_conversation=self._create_batch_conversation,
+            ensure_conversation_id=lambda conv: getattr(conv, "conversation_id"),
+            on_state_changed=self._update_batch_ui,
+            context_factory=self._build_batch_context,
+            prepare_conversation=self._prepare_batch_conversation,
+        )
+        self._update_batch_ui()
+
+    def _create_batch_conversation(self) -> ChatConversation:
+        return self._create_conversation(persist=False)
+
+    def _prepare_batch_conversation(
+        self, conversation: ChatConversation, target: BatchTarget
+    ) -> None:
+        rid = target.rid.strip() if target.rid else ""
+        if not rid:
+            rid = str(target.requirement_id)
+        base_title = _("Batch • {rid}").format(rid=rid)
+        conversation.title = base_title
+        self._refresh_history_list()
+
+    def _build_batch_context(
+        self, target: BatchTarget
+    ) -> tuple[dict[str, Any], ...] | None:
+        provider = self._batch_context_provider
+        if provider is None:
+            return None
+        try:
+            raw = provider(target.requirement_id)
+        except Exception:
+            logger.exception("Failed to prepare batch context for %s", target.rid)
+            raise
+        prepared = self._prepare_context_messages(raw)
+        return prepared if prepared else None
+
+    def _submit_batch_prompt(
+        self,
+        prompt: str,
+        conversation_id: str,
+        context: Sequence[Mapping[str, Any]] | Mapping[str, Any] | None,
+        prompt_at: str | None,
+    ) -> None:
+        controller = self._controller
+        if controller is None:
+            return
+        controller.submit_prompt_with_context(
+            prompt,
+            conversation_id=conversation_id,
+            context_messages=context,
+            prompt_at=prompt_at,
+        )
+
+    def _collect_batch_targets(self) -> list[BatchTarget]:
+        provider = self._batch_target_provider
+        if provider is None:
+            return []
+        try:
+            candidates = list(provider())
+        except Exception:
+            logger.exception("Failed to collect batch targets")
+            return []
+        unique: list[BatchTarget] = []
+        seen: set[str] = set()
+        for item in candidates:
+            if not isinstance(item, BatchTarget):
+                continue
+            rid = item.rid.strip() if item.rid else ""
+            key = rid or str(item.requirement_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(item)
+        return unique
+
+    def _on_run_batch(self, _event: wx.Event) -> None:
+        if self._is_running:
+            return
+        runner = self._batch_runner
+        if runner is None or runner.is_running:
+            return
+        prompt_text = self.input.GetValue().strip()
+        if not prompt_text:
+            self.status_label.SetLabel(_("Enter a prompt before starting a batch"))
+            self.input.SetFocus()
+            return
+        targets = self._collect_batch_targets()
+        if not targets:
+            self.status_label.SetLabel(
+                _("Select at least one requirement in the list to run a batch")
+            )
+            return
+        if not runner.start(prompt_text, targets):
+            self.status_label.SetLabel(_("Unable to start batch queue"))
+            return
+        self.status_label.SetLabel(
+            _("Batch started: {count} requirements").format(count=len(targets))
+        )
+        self._update_batch_ui()
+
+    def _on_stop_batch(self, _event: wx.Event) -> None:
+        runner = self._batch_runner
+        if runner is None:
+            return
+        if not runner.items:
+            return
+        runner.cancel_all()
+        controller = self._controller
+        if controller is not None:
+            controller.stop()
+        self.status_label.SetLabel(_("Batch cancellation requested"))
+        self._update_batch_ui()
+
+    def _format_batch_status(self, item: BatchItem) -> str:
+        labels = {
+            BatchItemStatus.PENDING: _("Pending"),
+            BatchItemStatus.RUNNING: _("Running"),
+            BatchItemStatus.COMPLETED: _("Completed"),
+            BatchItemStatus.FAILED: _("Failed"),
+            BatchItemStatus.CANCELLED: _("Cancelled"),
+        }
+        label = labels.get(item.status, item.status.name.title())
+        if item.error:
+            snippet = textwrap.shorten(str(item.error), width=80, placeholder="…")
+            label = _("{label} — {details}").format(label=label, details=snippet)
+        return label
+
+    def _refresh_batch_table(self, items: Sequence[BatchItem]) -> None:
+        control = self._batch_list
+        if control is None:
+            return
+        control.DeleteAllItems()
+        for item in items:
+            rid = item.target.rid.strip() if item.target.rid else ""
+            if not rid:
+                rid = str(item.target.requirement_id)
+            title = item.target.title.strip() if item.target.title else ""
+            if not title:
+                title = rid
+            status_text = self._format_batch_status(item)
+            control.AppendItem([rid, title, status_text])
+
+    def _update_batch_ui(self) -> None:
+        panel = self._batch_panel
+        if panel is None:
+            return
+        runner = self._batch_runner
+        if runner is None or not runner.items:
+            panel.Hide()
+            if self._batch_status_label is not None:
+                self._batch_status_label.SetLabel(
+                    _("Select requirements and run a batch")
+                )
+            if self._batch_progress is not None:
+                self._batch_progress.SetRange(1)
+                self._batch_progress.SetValue(0)
+            if self._run_batch_btn is not None:
+                self._run_batch_btn.Enable(not self._is_running)
+            if self._stop_batch_btn is not None:
+                self._stop_batch_btn.Enable(False)
+            self._refresh_bottom_panel_layout()
+            return
+
+        if self._batch_status_label is None or self._batch_progress is None:
+            return
+
+        items = runner.items
+        panel.Show()
+        self._refresh_batch_table(items)
+
+        total = len(items)
+        completed_count = sum(
+            1 for item in items if item.status is BatchItemStatus.COMPLETED
+        )
+        failed_count = sum(1 for item in items if item.status is BatchItemStatus.FAILED)
+        cancelled_count = sum(
+            1 for item in items if item.status is BatchItemStatus.CANCELLED
+        )
+        pending_count = sum(1 for item in items if item.status is BatchItemStatus.PENDING)
+        active_item = runner.active_item
+        if total <= 0:
+            self._batch_progress.SetRange(1)
+            self._batch_progress.SetValue(0)
+        else:
+            completed_steps = completed_count + failed_count + cancelled_count
+            self._batch_progress.SetRange(total)
+            self._batch_progress.SetValue(min(completed_steps, total))
+
+        if runner.is_running and active_item is not None:
+            try:
+                active_index = items.index(active_item)
+            except ValueError:
+                active_index = None
+            current = active_index + 1 if active_index is not None else completed_count + 1
+            summary = _(
+                "Running {current} of {total} requirements (done: {done}, failed: {failed}, cancelled: {cancelled})"
+            ).format(
+                current=current,
+                total=total,
+                done=completed_count,
+                failed=failed_count,
+                cancelled=cancelled_count,
+            )
+        elif pending_count:
+            summary = _(
+                "Batch ready: {total} requirements queued ({pending} pending)"
+            ).format(total=total, pending=pending_count)
+        else:
+            summary = _(
+                "Batch finished: {done} completed, {failed} failed, {cancelled} cancelled"
+            ).format(
+                done=completed_count,
+                failed=failed_count,
+                cancelled=cancelled_count,
+            )
+        self._batch_status_label.SetLabel(summary)
+
+        if self._run_batch_btn is not None:
+            self._run_batch_btn.Enable(not runner.is_running and not self._is_running)
+        if self._stop_batch_btn is not None:
+            self._stop_batch_btn.Enable(runner.is_running)
+        panel.Layout()
+        self._refresh_bottom_panel_layout()
 
     @property
     def history_sash(self) -> int:
@@ -729,6 +1009,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         controller = self._controller
         if controller is None:
             return
+        runner = self._batch_runner
+        if runner is not None and runner.is_running:
+            runner.request_skip_current()
         handle = controller.stop()
         if handle is None:
             return
@@ -788,6 +1071,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self._start_time = None
             self.input.SetFocus()
         self._update_conversation_header()
+        self._update_batch_ui()
 
     def _adjust_vertical_splitter(self) -> None:
         """Size the vertical splitter so the bottom pane hugs the controls."""
@@ -1068,6 +1352,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         final_tokens: TokenCountResult | None = None
         tool_results: list[Any] | None = None
         should_render = False
+        success = True
+        error_text: str | None = None
         try:
             (
                 conversation_text,
@@ -1138,6 +1424,18 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 else:
                     label = _("Received response in {time}").format(time=time_text)
                 self.status_label.SetLabel(label)
+
+        if isinstance(result, Mapping) and not result.get("ok", False):
+            success = False
+            error_text = display_text
+        batch_runner = self._batch_runner
+        if batch_runner is not None:
+            batch_runner.handle_completion(
+                conversation_id=handle.conversation_id,
+                success=success,
+                error=error_text,
+            )
+            self._update_batch_ui()
 
         if should_render:
             self._render_transcript()
@@ -1233,10 +1531,15 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         return tuple(segments)
 
     # ------------------------------------------------------------------
-    def _conversation_messages(self) -> list[dict[str, str]]:
+    def _conversation_messages(self) -> tuple[dict[str, str], ...]:
         conversation = self._get_active_conversation()
         if conversation is None:
-            return []
+            return ()
+        return self._conversation_messages_for(conversation)
+
+    def _conversation_messages_for(
+        self, conversation: ChatConversation
+    ) -> tuple[dict[str, str], ...]:
         messages: list[dict[str, str]] = []
         custom_prompt = self._custom_system_prompt()
         if custom_prompt:
@@ -1248,7 +1551,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 messages.append({"role": "user", "content": entry.prompt})
             if entry.response:
                 messages.append({"role": "assistant", "content": entry.response})
-        return messages
+        return tuple(messages)
 
     @staticmethod
     def _prepare_context_messages(
@@ -1461,6 +1764,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             handle.pending_entry = None
             handle.streamed_tool_results.clear()
             self._render_transcript()
+            batch_runner = self._batch_runner
+            if batch_runner is not None:
+                batch_runner.handle_cancellation(
+                    conversation_id=handle.conversation_id
+                )
+                self._update_batch_ui()
             return
 
         cancellation_message = _("Generation cancelled")
@@ -1495,6 +1804,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         handle.pending_entry = None
         handle.streamed_tool_results.clear()
         self._render_transcript()
+        batch_runner = self._batch_runner
+        if batch_runner is not None:
+            batch_runner.handle_cancellation(
+                conversation_id=handle.conversation_id
+            )
+            self._update_batch_ui()
 
     def _refresh_history_list(self) -> None:
         if self._history_view is None:

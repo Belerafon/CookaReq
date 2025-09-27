@@ -6,8 +6,30 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
-from ..llm.tokenizer import TokenCountResult, combine_token_counts
+from ..llm.tokenizer import (
+    TokenCountResult,
+    combine_token_counts,
+    count_text_tokens,
+)
 from ..util.time import utc_now_iso
+
+
+_DEFAULT_TOKEN_MODEL = "cl100k_base"
+
+
+def _recalculate_pair_token_info(prompt: str, response: str) -> TokenCountResult:
+    """Return combined token statistics for *prompt* and *response*."""
+
+    prompt_tokens = count_text_tokens(prompt, model=_DEFAULT_TOKEN_MODEL)
+    response_tokens = count_text_tokens(response, model=_DEFAULT_TOKEN_MODEL)
+    combined = combine_token_counts((prompt_tokens, response_tokens))
+    model = combined.model or _DEFAULT_TOKEN_MODEL
+    tokens = combined.tokens
+    if tokens is None:
+        return TokenCountResult.unavailable(model=model, reason=combined.reason)
+    if combined.approximate:
+        return TokenCountResult.approximate(tokens, model=model, reason=combined.reason)
+    return TokenCountResult.exact(tokens, model=model, reason=combined.reason)
 
 
 @dataclass
@@ -32,11 +54,7 @@ class ChatEntry:
     def __post_init__(self) -> None:  # pragma: no cover - trivial
         if self.display_response is None:
             self.display_response = self.response
-        if self.token_info is None:
-            self.token_info = TokenCountResult.approximate(
-                self.tokens,
-                reason="legacy_tokens",
-            )
+        self.ensure_token_info()
         hints = self.layout_hints
         if not isinstance(hints, dict):
             self.layout_hints = {}
@@ -86,17 +104,25 @@ class ChatEntry:
         else:
             self.reasoning = None
 
+    def ensure_token_info(self, *, force: bool = False) -> TokenCountResult | None:
+        """Ensure ``token_info`` reflects the current prompt/response text."""
+
+        if force or self.token_info is None:
+            self.token_info = _recalculate_pair_token_info(self.prompt, self.response)
+        info = self.token_info
+        if info is None:
+            self.tokens = 0
+            return None
+        self.tokens = info.tokens or 0
+        return info
+
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ChatEntry":
         """Create :class:`ChatEntry` instance from stored mapping."""
 
         prompt = str(payload.get("prompt", ""))
         response = str(payload.get("response", ""))
-        tokens_raw = payload.get("tokens", 0)
-        try:
-            tokens = int(tokens_raw)
-        except (TypeError, ValueError):  # pragma: no cover - defensive
-            tokens = 0
+        tokens_raw = payload.get("tokens")
         display_response = payload.get("display_response")
         if display_response is not None:
             display_response = str(display_response)
@@ -115,11 +141,16 @@ class ChatEntry:
                 token_info = TokenCountResult.from_dict(token_info_raw)
             except Exception:  # pragma: no cover - defensive
                 token_info = None
-        if token_info is None and tokens:
-            token_info = TokenCountResult.approximate(
-                tokens,
-                reason="legacy_tokens",
-            )
+        if token_info is None:
+            token_info = _recalculate_pair_token_info(prompt, response)
+        tokens = 0
+        if isinstance(token_info_raw, Mapping) and token_info.tokens is None and tokens_raw is not None:
+            try:
+                tokens = int(tokens_raw)
+            except (TypeError, ValueError):  # pragma: no cover - defensive
+                tokens = 0
+        elif token_info.tokens is not None:
+            tokens = token_info.tokens
         prompt_at_raw = payload.get("prompt_at")
         prompt_at = str(prompt_at_raw) if isinstance(prompt_at_raw, str) else None
         response_at_raw = payload.get("response_at")
@@ -305,15 +336,9 @@ class ChatConversation:
 
         results: list[TokenCountResult] = []
         for item in self.entries:
-            if item.token_info is not None:
-                results.append(item.token_info)
-            else:
-                results.append(
-                    TokenCountResult.approximate(
-                        item.tokens,
-                        reason="legacy_tokens",
-                    )
-                )
+            info = item.ensure_token_info()
+            if info is not None:
+                results.append(info)
         return combine_token_counts(results)
 
     def total_tokens(self) -> int:

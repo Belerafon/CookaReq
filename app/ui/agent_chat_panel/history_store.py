@@ -14,6 +14,24 @@ from .paths import _default_history_path, _normalize_history_path
 logger = logging.getLogger(__name__)
 
 
+def _requires_token_info_migration(conversations_raw: Sequence[Mapping[str, object] | object]) -> bool:
+    """Return ``True`` when stored entries lack token metadata."""
+
+    for conversation in conversations_raw:
+        if not isinstance(conversation, Mapping):
+            continue
+        entries_raw = conversation.get("entries")
+        if not isinstance(entries_raw, Sequence):
+            continue
+        for entry in entries_raw:
+            if not isinstance(entry, Mapping):
+                continue
+            token_info_raw = entry.get("token_info")
+            if not isinstance(token_info_raw, Mapping):
+                return True
+    return False
+
+
 class HistoryStore:
     """Manage loading and saving chat histories on disk."""
 
@@ -72,6 +90,7 @@ class HistoryStore:
             return [], None
 
         conversations: list[ChatConversation] = []
+        migration_needed = _requires_token_info_migration(conversations_raw)
         for item in conversations_raw:
             if not isinstance(item, Mapping):
                 continue
@@ -88,8 +107,11 @@ class HistoryStore:
         if isinstance(active_id, str) and any(
             conv.conversation_id == active_id for conv in conversations
         ):
-            return conversations, active_id
-        return conversations, conversations[-1].conversation_id
+            selected_id = active_id
+        else:
+            selected_id = conversations[-1].conversation_id
+        self._apply_token_info_migration(conversations, selected_id, force=migration_needed)
+        return conversations, selected_id
 
     def save(
         self,
@@ -107,6 +129,28 @@ class HistoryStore:
         }
         with path.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
+
+    def _apply_token_info_migration(
+        self,
+        conversations: list[ChatConversation],
+        active_id: str | None,
+        *,
+        force: bool,
+    ) -> None:
+        """Ensure migrated histories with missing token metadata are saved."""
+
+        if not force or not conversations:
+            return
+        for conversation in conversations:
+            for entry in conversation.entries:
+                entry.ensure_token_info(force=True)
+        try:
+            self.save(conversations, active_id)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to persist migrated chat history with token info to %s",
+                self._path,
+            )
 
 
 __all__ = ["HistoryStore"]

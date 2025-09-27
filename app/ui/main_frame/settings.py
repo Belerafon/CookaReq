@@ -16,7 +16,7 @@ class MainFrameSettingsMixin:
     """Handle opening and applying application settings."""
 
     def on_open_settings(
-        self: "MainFrame",
+        self: MainFrame,
         _event: wx.Event,
     ) -> None:  # pragma: no cover - GUI event
         """Display settings dialog and apply changes."""

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
 
 import wx
 
@@ -12,7 +11,7 @@ from ..i18n import _
 class ErrorDialog(wx.Dialog):
     """Dialog showing a copyable error message."""
 
-    def __init__(self, parent: Optional[wx.Window], message: str, *, title: str) -> None:
+    def __init__(self, parent: wx.Window | None, message: str, *, title: str) -> None:
         super().__init__(
             parent,
             title=title,
@@ -46,7 +45,7 @@ class ErrorDialog(wx.Dialog):
         self._copy_btn.SetDefault()
         self.SetEscapeId(close_btn.GetId())
 
-    def _on_copy(self, event: Optional[wx.CommandEvent]) -> None:
+    def _on_copy(self, event: wx.CommandEvent | None) -> None:
         """Copy error text to clipboard."""
 
         clipboard = wx.TheClipboard
@@ -64,7 +63,7 @@ class ErrorDialog(wx.Dialog):
         if event is not None:
             event.Skip(False)
 
-    def _on_close(self, event: Optional[wx.CommandEvent]) -> None:
+    def _on_close(self, event: wx.CommandEvent | None) -> None:
         """Close dialog."""
 
         self.EndModal(wx.ID_OK)
@@ -73,10 +72,10 @@ class ErrorDialog(wx.Dialog):
 
 
 def show_error_dialog(
-    parent: Optional[wx.Window],
+    parent: wx.Window | None,
     message: str,
     *,
-    title: Optional[str] = None,
+    title: str | None = None,
 ) -> None:
     """Display an :class:`ErrorDialog` with ``message``."""
 

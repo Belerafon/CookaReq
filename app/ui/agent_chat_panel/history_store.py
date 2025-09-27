@@ -6,7 +6,7 @@ import json
 import logging
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Iterable
+from collections.abc import Iterable
 
 from ..chat_entry import ChatConversation
 from .paths import _default_history_path, _normalize_history_path
@@ -84,7 +84,7 @@ class HistoryStore:
             try:
                 conversation = ChatConversation.from_dict(item)
             except Exception:  # pragma: no cover - defensive
-                logger.exception("Failed to deserialize stored conversation", exc_info=True)
+                logger.exception("Failed to deserialize stored conversation")
                 continue
             entries_raw = item.get("entries")
             had_entries = isinstance(entries_raw, Sequence) and bool(entries_raw)

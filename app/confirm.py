@@ -6,7 +6,8 @@ import json
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Iterable, Sequence, TypeVar
+from typing import Any, ParamSpec, TypeVar
+from collections.abc import Callable, Iterable, Sequence
 
 ConfirmCallback = Callable[[str], bool]
 _callback: ConfirmCallback | None = None
@@ -44,6 +45,7 @@ _requirement_update_callback: RequirementUpdateConfirmCallback | None = None
 _requirement_update_always: bool = False
 
 _T = TypeVar("_T")
+_P = ParamSpec("_P")
 
 
 def set_confirm(callback: ConfirmCallback) -> None:
@@ -98,7 +100,7 @@ def confirm_requirement_update(prompt: RequirementUpdatePrompt) -> ConfirmDecisi
 
 
 def _call_in_wx_main_thread(
-    func: Callable[..., _T], /, *args: Any, **kwargs: Any
+    func: Callable[_P, _T], /, *args: _P.args, **kwargs: _P.kwargs
 ) -> _T:
     """Execute *func* on the wx main thread and return its result."""
 

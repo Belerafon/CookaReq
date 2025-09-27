@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, List, Mapping
+from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
 
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from ..model import Requirement
@@ -56,7 +57,7 @@ class DocumentLabels:
     """Label configuration for a document."""
 
     allow_freeform: bool = False
-    defs: List[LabelDef] = field(default_factory=list)
+    defs: list[LabelDef] = field(default_factory=list)
 
 
 @dataclass(init=False)
@@ -96,7 +97,7 @@ class Document:
 class RequirementPage:
     """Represent a paginated slice of requirements."""
 
-    items: list["Requirement"]
+    items: list[Requirement]
     total: int
     page: int
     per_page: int

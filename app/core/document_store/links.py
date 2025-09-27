@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
+from collections.abc import Iterable, Mapping
 
 from ..model import Link, Requirement, requirement_fingerprint, requirement_from_dict, requirement_to_dict
 from . import Document, ValidationError

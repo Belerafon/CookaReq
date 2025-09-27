@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping, TYPE_CHECKING
+from typing import TYPE_CHECKING
+from collections.abc import Mapping
 
 import wx
 import wx.grid as gridlib

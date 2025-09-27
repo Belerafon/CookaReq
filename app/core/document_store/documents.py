@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Mapping, Optional
+from collections.abc import Mapping
 
 from . import Document, DocumentLabels, LabelDef, ValidationError
 
@@ -143,7 +143,7 @@ def collect_labels(prefix: str, docs: Mapping[str, Document]) -> tuple[set[str],
 
 def validate_labels(
     prefix: str, labels: list[str], docs: Mapping[str, Document]
-) -> Optional[str]:
+) -> str | None:
     """Validate ``labels`` for items under document ``prefix``."""
 
     allowed, freeform = collect_labels(prefix, docs)

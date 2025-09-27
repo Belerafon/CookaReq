@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 
 def make_json_safe(

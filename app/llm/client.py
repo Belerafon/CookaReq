@@ -51,7 +51,7 @@ class LLMResponse:
     content: str
     tool_calls: tuple[LLMToolCall, ...] = ()
     request_messages: tuple[dict[str, Any], ...] | None = None
-    reasoning: tuple["LLMReasoningSegment", ...] = ()
+    reasoning: tuple[LLMReasoningSegment, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

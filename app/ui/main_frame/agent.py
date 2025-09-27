@@ -6,7 +6,8 @@ import logging
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
 
 import wx
 
@@ -44,7 +45,7 @@ class MainFrameAgentMixin:
     _mcp_tool_listener_callback: Callable[[ToolResultEvent], None] | None = None
 
     def _create_agent(
-        self: "MainFrame",
+        self: MainFrame,
         *,
         confirm_override: Callable[[str], bool] | None = None,
         confirm_requirement_update_override: Callable[
@@ -64,7 +65,7 @@ class MainFrameAgentMixin:
             confirm_requirement_update=confirm_requirement_update_override,
         )
 
-    def _init_mcp_tool_listener(self: "MainFrame") -> None:
+    def _init_mcp_tool_listener(self: MainFrame) -> None:
         """Subscribe to MCP tool result notifications."""
 
         if getattr(self, "_mcp_tool_listener_remove", None):
@@ -80,7 +81,7 @@ class MainFrameAgentMixin:
         self._mcp_tool_listener_callback = _deliver
         self._mcp_tool_listener_remove = add_tool_result_listener(_deliver)
 
-    def _teardown_mcp_tool_listener(self: "MainFrame") -> None:
+    def _teardown_mcp_tool_listener(self: MainFrame) -> None:
         """Detach from MCP tool result notifications."""
 
         remover = getattr(self, "_mcp_tool_listener_remove", None)
@@ -107,7 +108,7 @@ class MainFrameAgentMixin:
                 return False
 
     def _handle_mcp_tool_event(
-        self: "MainFrame", event: ToolResultEvent
+        self: MainFrame, event: ToolResultEvent
     ) -> None:
         """Apply requirement changes described by *event*."""
 
@@ -125,12 +126,12 @@ class MainFrameAgentMixin:
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to apply MCP tool result event")
 
-    def _on_window_destroy(self: "MainFrame", event: wx.WindowDestroyEvent) -> None:
+    def _on_window_destroy(self: MainFrame, event: wx.WindowDestroyEvent) -> None:
         if event.GetEventObject() is self:
             self._teardown_mcp_tool_listener()
         event.Skip()
 
-    def _selected_requirement_ids_for_agent(self: "MainFrame") -> list[int]:
+    def _selected_requirement_ids_for_agent(self: MainFrame) -> list[int]:
         ids: list[int] = []
         panel = getattr(self, "panel", None)
         if panel is not None and hasattr(panel, "get_selected_ids"):
@@ -149,7 +150,7 @@ class MainFrameAgentMixin:
                 filtered.append(numeric)
         return filtered
 
-    def _agent_batch_targets(self: "MainFrame") -> list[BatchTarget]:
+    def _agent_batch_targets(self: MainFrame) -> list[BatchTarget]:
         model = getattr(self, "model", None)
         if model is None:
             return []
@@ -176,7 +177,7 @@ class MainFrameAgentMixin:
             )
         return targets
 
-    def _agent_context_messages(self: "MainFrame") -> list[dict[str, str]]:
+    def _agent_context_messages(self: MainFrame) -> list[dict[str, str]]:
         lines: list[str] = ["[Workspace context]"]
         summary = self._current_document_summary()
         prefix = getattr(self, "current_doc_prefix", None)
@@ -274,7 +275,7 @@ class MainFrameAgentMixin:
         return [{"role": "system", "content": "\n".join(lines)}]
 
     def _agent_context_for_requirement(
-        self: "MainFrame", requirement_id: int
+        self: MainFrame, requirement_id: int
     ) -> tuple[dict[str, str], ...]:
         model = getattr(self, "model", None)
         if model is None:
@@ -340,7 +341,7 @@ class MainFrameAgentMixin:
         return (({"role": "system", "content": "\n".join(lines)}),)
 
     def _on_agent_tool_results(
-        self: "MainFrame", tool_results: Sequence[Mapping[str, Any]]
+        self: MainFrame, tool_results: Sequence[Mapping[str, Any]]
     ) -> None:
         """Apply requirement updates returned by the agent."""
 
@@ -462,7 +463,7 @@ class MainFrameAgentMixin:
             return str(rid_raw) if isinstance(rid_raw, str) and rid_raw.strip() else None
         return None
 
-    def _convert_tool_result_requirement(self: "MainFrame", result_payload: Any) -> Requirement | None:
+    def _convert_tool_result_requirement(self: MainFrame, result_payload: Any) -> Requirement | None:
         if not isinstance(result_payload, Mapping):
             logger.warning(
                 "Agent tool result has unexpected structure: %s",
@@ -497,7 +498,7 @@ class MainFrameAgentMixin:
         requirement.rid = canonical_rid
         return requirement
 
-    def on_run_command(self: "MainFrame", _event: wx.Event) -> None:
+    def on_run_command(self: MainFrame, _event: wx.Event) -> None:
         """Ensure agent chat panel is visible and focused."""
 
         if not self.agent_chat_menu_item:
@@ -508,7 +509,7 @@ class MainFrameAgentMixin:
         else:
             self._apply_agent_chat_visibility(persist=False)
 
-    def on_toggle_agent_chat(self: "MainFrame", _event: wx.CommandEvent | None) -> None:
+    def on_toggle_agent_chat(self: MainFrame, _event: wx.CommandEvent | None) -> None:
         """Toggle agent chat panel visibility."""
 
         if not self.agent_chat_menu_item:

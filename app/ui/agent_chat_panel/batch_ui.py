@@ -5,7 +5,8 @@ from __future__ import annotations
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Sequence
+from typing import TYPE_CHECKING
+from collections.abc import Callable, Sequence
 
 import logging
 import textwrap

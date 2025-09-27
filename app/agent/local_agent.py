@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from collections.abc import Sequence
-from typing import Any, Awaitable, Callable, Mapping, Protocol, runtime_checkable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Any, Protocol, runtime_checkable
 
 from ..confirm import (
     ConfirmDecision,
@@ -799,7 +799,7 @@ class LocalAgent:
 
     def _prepare_invalid_tool_calls(
         self, raw_calls: Sequence[Any] | None
-    ) -> list["_ValidationToolCallPayload"]:
+    ) -> list[_ValidationToolCallPayload]:
         if not isinstance(raw_calls, Sequence) or isinstance(
             raw_calls, (str, bytes, bytearray)
         ):
@@ -1028,7 +1028,7 @@ class AgentLoopRunner:
     def __init__(
         self,
         *,
-        agent: "LocalAgent",
+        agent: LocalAgent,
         conversation: list[Mapping[str, Any]],
         cancellation: CancellationEvent | None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None,

@@ -5,7 +5,8 @@ import re
 from contextlib import suppress
 from dataclasses import fields
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any
+from collections.abc import Callable, Mapping, Sequence
 
 from ..model import (
     Link,
@@ -643,10 +644,10 @@ def move_requirement(
                 if link.rid == rid:
                     if not is_ancestor(doc.prefix, new_prefix, docs_map):
                         raise ValidationError(
-                            (
-                                "cannot move {rid}: link from {child} would violate "
+                            
+                                f"cannot move {rid}: link from {rid_for(doc, other_id)} would violate "
                                 "document hierarchy"
-                            ).format(rid=rid, child=rid_for(doc, other_id))
+                            
                         )
                     link.rid = new_rid
                     link.fingerprint = None

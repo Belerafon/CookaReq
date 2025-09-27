@@ -21,7 +21,7 @@ class MainFrameEditorMixin:
 
     editor: EditorPanel
 
-    def on_requirement_selected(self: "MainFrame", event: wx.ListEvent) -> None:
+    def on_requirement_selected(self: MainFrame, event: wx.ListEvent) -> None:
         """Load requirement into editor when selected in list."""
 
         index = event.GetIndex()
@@ -44,7 +44,7 @@ class MainFrameEditorMixin:
                 self._show_editor_panel()
                 self.splitter.UpdateSize()
 
-    def on_requirement_activated(self: "MainFrame", event: wx.ListEvent) -> None:
+    def on_requirement_activated(self: MainFrame, event: wx.ListEvent) -> None:
         """Open requirement in a detached editor when activated."""
 
         if self._is_editor_visible():
@@ -65,7 +65,7 @@ class MainFrameEditorMixin:
         self._open_detached_editor(req)
 
     def _save_editor_contents(
-        self: "MainFrame",
+        self: MainFrame,
         editor_panel: EditorPanel,
         *,
         doc_prefix: str | None = None,
@@ -108,12 +108,12 @@ class MainFrameEditorMixin:
         self._selected_requirement_id = requirement.id
         return requirement
 
-    def _on_editor_save(self: "MainFrame") -> None:
+    def _on_editor_save(self: MainFrame) -> None:
         if not self.docs_controller:
             return
         self._save_editor_contents(self.editor, doc_prefix=self.current_doc_prefix)
 
-    def _handle_editor_discard(self: "MainFrame") -> bool:
+    def _handle_editor_discard(self: MainFrame) -> bool:
         """Reload currently selected requirement into the editor."""
 
         if self._selected_requirement_id is None:
@@ -124,7 +124,7 @@ class MainFrameEditorMixin:
         self.editor.load(requirement)
         return True
 
-    def _open_detached_editor(self: "MainFrame", requirement: Requirement) -> None:
+    def _open_detached_editor(self: MainFrame, requirement: Requirement) -> None:
         if not (self.docs_controller and self.current_dir):
             return
         prefix = getattr(requirement, "doc_prefix", "") or self.current_doc_prefix
@@ -155,7 +155,7 @@ class MainFrameEditorMixin:
         self._detached_editors[frame.key] = frame
         frame.Show()
 
-    def _on_detached_editor_save(self: "MainFrame", frame: DetachedEditorFrame) -> bool:
+    def _on_detached_editor_save(self: MainFrame, frame: DetachedEditorFrame) -> bool:
         prefix = frame.doc_prefix
         if not prefix or not self.docs_controller or not self.current_dir:
             return False
@@ -171,7 +171,7 @@ class MainFrameEditorMixin:
         self._detached_editors[frame.key] = frame
         return True
 
-    def _on_detached_editor_closed(self: "MainFrame", frame: DetachedEditorFrame) -> None:
+    def _on_detached_editor_closed(self: MainFrame, frame: DetachedEditorFrame) -> None:
         for key, window in list(self._detached_editors.items()):
             if window is frame:
                 del self._detached_editors[key]

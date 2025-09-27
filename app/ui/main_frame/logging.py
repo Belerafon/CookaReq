@@ -74,7 +74,7 @@ class MainFrameLoggingMixin:
     log_handler: WxLogHandler
     _log_level_values: list[int]
 
-    def _init_log_console(self: "MainFrame") -> None:
+    def _init_log_console(self: MainFrame) -> None:
         """Create the log console panel and attach handler."""
 
         self.log_panel = wx.Panel(self.main_splitter)

@@ -17,7 +17,7 @@ def format_last_activity(timestamp: str | None) -> str:
     except ValueError:
         return timestamp
     if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=datetime.timezone.utc)
+        moment = moment.replace(tzinfo=datetime.UTC)
     local_moment = moment.astimezone()
     now = datetime.datetime.now(local_moment.tzinfo)
     today = now.date()
@@ -41,7 +41,7 @@ def format_entry_timestamp(timestamp: str | None) -> str:
     except ValueError:
         return timestamp
     if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=datetime.timezone.utc)
+        moment = moment.replace(tzinfo=datetime.UTC)
     local_moment = moment.astimezone()
     return local_moment.strftime("%Y-%m-%d %H:%M:%S")
 

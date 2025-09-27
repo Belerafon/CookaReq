@@ -6,7 +6,7 @@ import importlib
 import importlib.util
 import sys
 from dataclasses import dataclass
-from typing import Iterable, Mapping
+from collections.abc import Iterable, Mapping
 
 __all__ = [
     "TokenCountResult",
@@ -31,7 +31,7 @@ class TokenCountResult:
         *,
         model: str | None = None,
         reason: str | None = None,
-    ) -> "TokenCountResult":
+    ) -> TokenCountResult:
         """Return a successful, precise token count."""
 
         return cls(tokens=max(tokens, 0), approximate=False, model=model, reason=reason)
@@ -43,7 +43,7 @@ class TokenCountResult:
         *,
         model: str | None = None,
         reason: str | None = None,
-    ) -> "TokenCountResult":
+    ) -> TokenCountResult:
         """Return an approximate token count."""
 
         return cls(tokens=max(tokens, 0), approximate=True, model=model, reason=reason)
@@ -54,7 +54,7 @@ class TokenCountResult:
         *,
         model: str | None = None,
         reason: str | None = None,
-    ) -> "TokenCountResult":
+    ) -> TokenCountResult:
         """Return a result indicating that tokenisation failed."""
 
         return cls(tokens=None, approximate=False, model=model, reason=reason)
@@ -73,7 +73,7 @@ class TokenCountResult:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, object]) -> "TokenCountResult":
+    def from_dict(cls, payload: Mapping[str, object]) -> TokenCountResult:
         """Create :class:`TokenCountResult` from a mapping."""
 
         tokens_value = payload.get("tokens")

@@ -8,7 +8,8 @@ import textwrap
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -1691,7 +1692,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         def _normalise_json_value(value: Any) -> Any:
             if isinstance(value, str):
                 stripped = value.strip()
-                if stripped.startswith("{") or stripped.startswith("["):
+                if stripped.startswith(("{", "[")):
                     try:
                         decoded = json.loads(stripped)
                     except (TypeError, ValueError):

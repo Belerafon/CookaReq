@@ -6,7 +6,8 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 
 from ..util.time import normalize_timestamp
 
@@ -285,7 +286,7 @@ class Link:
     suspect: bool = False
 
     @classmethod
-    def from_raw(cls, raw: Any) -> "Link":
+    def from_raw(cls, raw: Any) -> Link:
         """Create :class:`Link` from ``raw`` representation."""
 
         if isinstance(raw, str):

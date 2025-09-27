@@ -236,10 +236,7 @@ def list_item_ids(directory: str | Path, doc: Document) -> set[int]:
         stem = fp.stem
         if not stem.isdigit():
             continue
-        item_id = int(stem)
-        if canonical_item_name(item_id) != fp.name:
-            continue
-        ids.add(item_id)
+        ids.add(int(stem))
     return ids
 
 

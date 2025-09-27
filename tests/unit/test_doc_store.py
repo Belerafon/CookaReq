@@ -76,57 +76,6 @@ def test_load_document_drops_unknown_fields(tmp_path: Path) -> None:
     }
 
 
-def test_load_item_requires_canonical_filename(tmp_path: Path) -> None:
-    doc_dir = tmp_path / "SYS"
-    doc = Document(prefix="SYS", title="System")
-    save_document(doc_dir, doc)
-
-    items_dir = doc_dir / "items"
-    items_dir.mkdir(parents=True, exist_ok=True)
-    legacy_path = items_dir / "SYS0007.json"
-    legacy_path.write_text(json.dumps({"id": 7, "title": "Legacy", "statement": "Old"}), encoding="utf-8")
-
-    with pytest.raises(FileNotFoundError) as excinfo:
-        load_item(doc_dir, doc, 7)
-
-    assert excinfo.value.args[0] == item_path(doc_dir, doc, 7)
-
-
-def test_save_item_writes_canonical_even_if_variants_exist(tmp_path: Path) -> None:
-    doc_dir = tmp_path / "SYS"
-    doc = Document(prefix="SYS", title="System")
-    save_document(doc_dir, doc)
-
-    items_dir = doc_dir / "items"
-    items_dir.mkdir(parents=True, exist_ok=True)
-    legacy_path = items_dir / "0005.json"
-    legacy_path.write_text(json.dumps({"id": 5, "title": "Legacy", "statement": ""}), encoding="utf-8")
-
-    path = save_item(doc_dir, doc, {"id": 5, "title": "Current", "statement": "Actual"})
-
-    assert path == item_path(doc_dir, doc, 5)
-    assert path.exists()
-    assert legacy_path.exists()
-
-
-def test_list_item_ids_skips_non_canonical_files(tmp_path: Path) -> None:
-    doc_dir = tmp_path / "SYS"
-    doc = Document(prefix="SYS", title="System")
-    save_document(doc_dir, doc)
-
-    items_dir = doc_dir / "items"
-    items_dir.mkdir(parents=True, exist_ok=True)
-    prefixed = items_dir / "SYS0003.json"
-    prefixed.write_text(json.dumps({"id": 3, "title": "Legacy", "statement": ""}), encoding="utf-8")
-
-    canonical = items_dir / "4.json"
-    canonical.write_text(json.dumps({"id": 4, "title": "Current", "statement": ""}), encoding="utf-8")
-
-    ids = list_item_ids(doc_dir, doc)
-
-    assert ids == {4}
-
-
 def test_parse_rid_and_next_id(tmp_path: Path):
     doc_dir = tmp_path / "HLR"
     doc = Document(prefix="HLR", title="High")

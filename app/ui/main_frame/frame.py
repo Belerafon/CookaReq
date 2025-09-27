@@ -137,6 +137,7 @@ class MainFrame(
             available_fields=self.available_fields,
             selected_fields=self.selected_fields,
             on_open_folder=self.on_open_folder,
+            on_import_requirements=self.on_import_requirements,
             on_open_settings=self.on_open_settings,
             on_manage_labels=self.on_manage_labels,
             on_open_recent=self.on_open_recent,

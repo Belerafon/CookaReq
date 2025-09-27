@@ -10,12 +10,15 @@ import wx
 
 from ...core.document_store import (
     LabelDef,
+    RequirementIDCollisionError,
     ValidationError,
     save_document,
 )
+from ...core.requirement_import import SequentialIDAllocator, build_requirements
 from ...i18n import _
 from ...log import logger
 from ..controllers import DocumentsController
+from ..import_dialog import RequirementImportDialog
 from ..labels_dialog import LabelsDialog
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
@@ -443,6 +446,111 @@ class MainFrameDocumentsMixin:
         if self.current_dir:
             self.editor.set_directory(self.current_dir / prefix)
         self._load_document_contents(prefix)
+
+    def on_import_requirements(self: "MainFrame", _event: wx.Event) -> None:
+        """Open the import dialog and persist selected requirements."""
+
+        if not (self.docs_controller and self.current_doc_prefix and self.current_dir):
+            wx.MessageBox(_("Select requirements folder first"), _("No Data"))
+            return
+        doc = self.docs_controller.documents.get(self.current_doc_prefix)
+        if doc is None:
+            wx.MessageBox(_("Document not found"), _("Error"), wx.ICON_ERROR)
+            return
+
+        existing_ids = [req.id for req in self.model.get_all()]
+        try:
+            next_id = self.docs_controller.next_item_id(self.current_doc_prefix)
+        except Exception as exc:  # pragma: no cover - document access failure
+            logger.exception("Failed to determine next requirement id for %s", self.current_doc_prefix)
+            wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
+            return
+
+        summary_parts = [doc.prefix]
+        if doc.title.strip():
+            summary_parts.append(doc.title.strip())
+        document_label = " — ".join(summary_parts)
+        dlg = RequirementImportDialog(
+            self,
+            existing_ids=existing_ids,
+            next_id=next_id,
+            document_label=document_label,
+        )
+        try:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            plan = dlg.get_plan()
+        finally:
+            dlg.Destroy()
+        if plan is None:
+            return
+
+        allocator = SequentialIDAllocator(start=next_id, existing=existing_ids)
+        result = build_requirements(plan.dataset, plan.configuration, allocator=allocator)
+        if result.issues:
+            messages = []
+            for issue in result.issues[:5]:
+                if issue.field:
+                    messages.append(
+                        _("Row {row}, field {field}: {message}").format(
+                            row=issue.row, field=issue.field, message=issue.message
+                        )
+                    )
+                else:
+                    messages.append(
+                        _("Row {row}: {message}").format(
+                            row=issue.row, message=issue.message
+                        )
+                    )
+            if len(result.issues) > 5:
+                messages.append(
+                    _("{count} more issue(s) not shown").format(
+                        count=len(result.issues) - 5
+                    )
+                )
+            wx.MessageBox(
+                "\n".join(messages),
+                _("Import blocked"),
+                wx.ICON_ERROR,
+            )
+            return
+        if not result.requirements:
+            wx.MessageBox(_("No requirements to import."), _("Import"))
+            return
+
+        failures: list[str] = []
+        imported = 0
+        for requirement in result.requirements:
+            try:
+                self.docs_controller.add_requirement(self.current_doc_prefix, requirement)
+                self.docs_controller.save_requirement(self.current_doc_prefix, requirement)
+                imported += 1
+            except RequirementIDCollisionError as exc:
+                failures.append(str(exc))
+            except ValidationError as exc:
+                failures.append(str(exc))
+            except Exception as exc:  # pragma: no cover - defensive guard
+                logger.exception("Failed to import requirement %s", getattr(requirement, "rid", requirement.id))
+                failures.append(str(exc))
+
+        if imported:
+            last_id = result.requirements[-1].id
+            self.panel.recalc_derived_map(self.model.get_all())
+            self.panel.focus_requirement(last_id)
+            self._selected_requirement_id = last_id
+            logger.info(
+                "Imported %s requirement(s) into %s", imported, self.current_doc_prefix
+            )
+            wx.MessageBox(
+                _("Imported {count} requirement(s).").format(count=imported),
+                _("Import completed"),
+            )
+        if failures:
+            wx.MessageBox(
+                "\n".join(failures),
+                _("Some requirements failed"),
+                wx.ICON_WARNING,
+            )
 
     def on_manage_labels(self: "MainFrame", _event: wx.Event) -> None:
         """Open dialog to manage defined labels."""

@@ -9,13 +9,13 @@ from app.ui.main_frame import MainFrame
 pytestmark = pytest.mark.gui
 
 
-def test_main_frame_loads_multiple_icon_sizes(wx_app, tmp_path):
+def test_main_frame_loads_multiple_icon_sizes(wx_app, tmp_path, gui_context):
     """Main frame should expose all icon sizes for taskbar usage."""
     pytest.importorskip("wx")
     config = ConfigManager(path=tmp_path / "icons.ini")
     config.set_mcp_settings(MCPSettings(auto_start=False))
 
-    frame = MainFrame(None, config=config)
+    frame = MainFrame(None, context=gui_context, config=config)
     try:
         bundle = frame.GetIcons()
         assert bundle.GetIconCount() >= 2

@@ -13,7 +13,7 @@ from app.settings import MCPSettings
 pytestmark = pytest.mark.gui
 
 
-def test_load_directory_reports_validation_error(tmp_path, monkeypatch, wx_app):
+def test_load_directory_reports_validation_error(tmp_path, monkeypatch, wx_app, gui_context):
     wx = pytest.importorskip("wx")
     import app.ui.main_frame as main_frame
 
@@ -36,7 +36,7 @@ def test_load_directory_reports_validation_error(tmp_path, monkeypatch, wx_app):
     config = ConfigManager(path=tmp_path / "config.ini")
     config.set_mcp_settings(MCPSettings(auto_start=False))
 
-    frame = main_frame.MainFrame(None, config=config)
+    frame = main_frame.MainFrame(None, context=gui_context, config=config)
 
     frame._load_directory(root_dir)
 

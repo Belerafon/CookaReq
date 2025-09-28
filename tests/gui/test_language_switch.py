@@ -10,7 +10,7 @@ from app.settings import MCPSettings
 pytestmark = pytest.mark.gui
 
 
-def test_switch_to_russian_updates_ui(monkeypatch, wx_app, tmp_path):
+def test_switch_to_russian_updates_ui(monkeypatch, wx_app, tmp_path, gui_context):
     wx = pytest.importorskip("wx")
     import app.ui.main_frame as main_frame
 
@@ -18,7 +18,7 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app, tmp_path):
     config = ConfigManager(path=tmp_path / "language.ini")
     config.set_mcp_settings(MCPSettings(auto_start=False))
 
-    frame = main_frame.MainFrame(None, config=config)
+    frame = main_frame.MainFrame(None, context=gui_context, config=config)
     assert frame.GetMenuBar().GetMenu(0).GetTitle() == "&File"
 
     import app.main as main_mod

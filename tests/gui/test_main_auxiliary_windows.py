@@ -15,14 +15,19 @@ from app.ui.requirement_model import RequirementModel
 pytestmark = pytest.mark.gui
 
 
-def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path):
+def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path, gui_context):
     """Ensure graph/matrix frames close automatically with the main window."""
 
     wx = pytest.importorskip("wx")
 
     config = ConfigManager(path=tmp_path / "config.ini")
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    frame = MainFrame(None, config=config, model=RequirementModel())
+    frame = MainFrame(
+        None,
+        context=gui_context,
+        config=config,
+        model=RequirementModel(),
+    )
     try:
         from types import SimpleNamespace
 

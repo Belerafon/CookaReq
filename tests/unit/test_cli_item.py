@@ -26,7 +26,7 @@ def _auto_confirm_cli():
 
 
 @pytest.mark.unit
-def test_item_add_and_move(tmp_path, capsys):
+def test_item_add_and_move(tmp_path, capsys, cli_context):
     doc_sys = Document(
         prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True)
     )
@@ -41,7 +41,7 @@ def test_item_add_and_move(tmp_path, capsys):
         statement="User shall login",
         labels=None,
     )
-    commands.cmd_item_add(add_args)
+    commands.cmd_item_add(add_args, cli_context)
     rid = capsys.readouterr().out.strip()
     assert rid == "SYS1"
 
@@ -53,7 +53,7 @@ def test_item_add_and_move(tmp_path, capsys):
     move_args = argparse.Namespace(
         directory=str(tmp_path), rid="SYS1", new_prefix="HLR"
     )
-    commands.cmd_item_move(move_args)
+    commands.cmd_item_move(move_args, cli_context)
     rid2 = capsys.readouterr().out.strip()
     assert rid2 == "HLR1"
 
@@ -67,7 +67,7 @@ def test_item_add_and_move(tmp_path, capsys):
 
 
 @pytest.mark.unit
-def test_item_edit_updates_fields(tmp_path, capsys):
+def test_item_edit_updates_fields(tmp_path, capsys, cli_context):
     doc = Document(
         prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True)
     )
@@ -76,7 +76,7 @@ def test_item_edit_updates_fields(tmp_path, capsys):
     add_args = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="Login", statement="Initial", labels=None
     )
-    commands.cmd_item_add(add_args)
+    commands.cmd_item_add(add_args, cli_context)
     rid = capsys.readouterr().out.strip()
     assert rid == "SYS1"
 
@@ -86,7 +86,7 @@ def test_item_edit_updates_fields(tmp_path, capsys):
         status=Status.APPROVED.value,
         statement="Updated statement",
     )
-    commands.cmd_item_edit(edit_args)
+    commands.cmd_item_edit(edit_args, cli_context)
     rid_after = capsys.readouterr().out.strip()
     assert rid_after == rid
 
@@ -98,7 +98,7 @@ def test_item_edit_updates_fields(tmp_path, capsys):
 
 
 @pytest.mark.unit
-def test_item_move_merges_sources(tmp_path, capsys):
+def test_item_move_merges_sources(tmp_path, capsys, cli_context):
     doc_sys = Document(
         prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True)
     )
@@ -141,19 +141,19 @@ def test_item_move_merges_sources(tmp_path, capsys):
         title="Seed title",
         labels=None,
     )
-    commands.cmd_item_add(add_args)
+    commands.cmd_item_add(add_args, cli_context)
     rid = capsys.readouterr().out.strip()
     assert rid == "SYS1"
 
     parent_args = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="Parent1", statement="", labels=None
     )
-    commands.cmd_item_add(parent_args)
+    commands.cmd_item_add(parent_args, cli_context)
     capsys.readouterr()
     parent_args2 = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="Parent2", statement="", labels=None
     )
-    commands.cmd_item_add(parent_args2)
+    commands.cmd_item_add(parent_args2, cli_context)
     capsys.readouterr()
 
     move_template = {
@@ -180,7 +180,7 @@ def test_item_move_merges_sources(tmp_path, capsys):
         links="SYS2,SYS3",
         acceptance="",
     )
-    commands.cmd_item_move(move_args)
+    commands.cmd_item_move(move_args, cli_context)
     rid_new = capsys.readouterr().out.strip()
     assert rid_new == "HLR1"
 
@@ -212,7 +212,7 @@ def test_item_move_merges_sources(tmp_path, capsys):
 
 
 @pytest.mark.unit
-def test_item_move_rejects_invalid_status(tmp_path, capsys):
+def test_item_move_rejects_invalid_status(tmp_path, capsys, cli_context):
     doc_sys = Document(prefix="SYS", title="System", labels=DocumentLabels())
     doc_hlr = Document(prefix="HLR", title="High", parent="SYS")
     save_document(tmp_path / "SYS", doc_sys)
@@ -221,13 +221,13 @@ def test_item_move_rejects_invalid_status(tmp_path, capsys):
     add_args = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="Seed", statement="Body", labels=None
     )
-    commands.cmd_item_add(add_args)
+    commands.cmd_item_add(add_args, cli_context)
     rid = capsys.readouterr().out.strip()
 
     move_args = argparse.Namespace(
         directory=str(tmp_path), rid=rid, new_prefix="HLR", status="wrong"
     )
-    commands.cmd_item_move(move_args)
+    commands.cmd_item_move(move_args, cli_context)
     out = capsys.readouterr().out
     assert "unknown status" in out
 
@@ -238,7 +238,7 @@ def test_item_move_rejects_invalid_status(tmp_path, capsys):
     assert not any(new_path.glob("*.json"))
 
 @pytest.mark.unit
-def test_item_add_merges_base_and_arguments(tmp_path, capsys):
+def test_item_add_merges_base_and_arguments(tmp_path, capsys, cli_context):
     doc_sys = Document(
         prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True)
     )
@@ -254,12 +254,12 @@ def test_item_add_merges_base_and_arguments(tmp_path, capsys):
     seed_args = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="Seed1", statement="S1", labels=None
     )
-    commands.cmd_item_add(seed_args)
+    commands.cmd_item_add(seed_args, cli_context)
     capsys.readouterr()
     seed_args2 = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="Seed2", statement="S2", labels=None
     )
-    commands.cmd_item_add(seed_args2)
+    commands.cmd_item_add(seed_args2, cli_context)
     capsys.readouterr()
 
     base_data = {
@@ -297,7 +297,7 @@ def test_item_add_merges_base_and_arguments(tmp_path, capsys):
         attachments='[{"path": "cli.txt", "note": "n"}]',
         acceptance="",
     )
-    commands.cmd_item_add(args)
+    commands.cmd_item_add(args, cli_context)
     rid = capsys.readouterr().out.strip()
     assert rid == "HLR1"
 
@@ -326,7 +326,7 @@ def test_item_add_merges_base_and_arguments(tmp_path, capsys):
 
 
 @pytest.mark.unit
-def test_item_add_rejects_invalid_status(tmp_path, capsys):
+def test_item_add_rejects_invalid_status(tmp_path, capsys, cli_context):
     doc_sys = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc_sys)
 
@@ -338,14 +338,14 @@ def test_item_add_rejects_invalid_status(tmp_path, capsys):
         status="wrong",
         labels=None,
     )
-    commands.cmd_item_add(args)
+    commands.cmd_item_add(args, cli_context)
     out = capsys.readouterr().out
     assert "unknown status" in out
     assert not any((tmp_path / "SYS" / "items").glob("*.json"))
 
 
 @pytest.mark.unit
-def test_item_delete_removes_links(tmp_path, capsys):
+def test_item_delete_removes_links(tmp_path, capsys, cli_context):
     doc_sys = Document(prefix="SYS", title="System")
     doc_hlr = Document(prefix="HLR", title="High", parent="SYS")
     save_document(tmp_path / "SYS", doc_sys)
@@ -354,20 +354,20 @@ def test_item_delete_removes_links(tmp_path, capsys):
     add_args = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="S", statement="", labels=None
     )
-    commands.cmd_item_add(add_args)
+    commands.cmd_item_add(add_args, cli_context)
     add_args2 = argparse.Namespace(
         directory=str(tmp_path), prefix="HLR", title="H", statement="", labels=None
     )
-    commands.cmd_item_add(add_args2)
+    commands.cmd_item_add(add_args2, cli_context)
     # link child to parent
     link_args = argparse.Namespace(
         directory=str(tmp_path), rid="HLR1", parents=["SYS1"], replace=False
     )
-    commands.cmd_link(link_args)
+    commands.cmd_link(link_args, cli_context)
     capsys.readouterr()
 
     del_args = argparse.Namespace(directory=str(tmp_path), rid="SYS1")
-    commands.cmd_item_delete(del_args)
+    commands.cmd_item_delete(del_args, cli_context)
     out = capsys.readouterr().out.strip()
     assert out == "SYS1"
 
@@ -378,7 +378,7 @@ def test_item_delete_removes_links(tmp_path, capsys):
 
 
 @pytest.mark.unit
-def test_item_delete_dry_run_lists_links(tmp_path, capsys):
+def test_item_delete_dry_run_lists_links(tmp_path, capsys, cli_context):
     doc_sys = Document(prefix="SYS", title="System")
     doc_hlr = Document(prefix="HLR", title="High", parent="SYS")
     save_document(tmp_path / "SYS", doc_sys)
@@ -387,19 +387,19 @@ def test_item_delete_dry_run_lists_links(tmp_path, capsys):
     add_args = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="S", statement="", labels=None
     )
-    commands.cmd_item_add(add_args)
+    commands.cmd_item_add(add_args, cli_context)
     add_args2 = argparse.Namespace(
         directory=str(tmp_path), prefix="HLR", title="H", statement="", labels=None
     )
-    commands.cmd_item_add(add_args2)
+    commands.cmd_item_add(add_args2, cli_context)
     link_args = argparse.Namespace(
         directory=str(tmp_path), rid="HLR1", parents=["SYS1"], replace=False
     )
-    commands.cmd_link(link_args)
+    commands.cmd_link(link_args, cli_context)
     capsys.readouterr()
 
     del_args = argparse.Namespace(directory=str(tmp_path), rid="SYS1", dry_run=True)
-    commands.cmd_item_delete(del_args)
+    commands.cmd_item_delete(del_args, cli_context)
     out = capsys.readouterr().out.splitlines()
     assert out == ["SYS1", "HLR1"]
     # nothing removed or updated
@@ -409,14 +409,14 @@ def test_item_delete_dry_run_lists_links(tmp_path, capsys):
     assert all(entry.get("fingerprint") for entry in data.get("links", []))
 
 
-def test_item_delete_requires_confirmation(tmp_path, capsys):
+def test_item_delete_requires_confirmation(tmp_path, capsys, cli_context):
     doc_sys = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc_sys)
 
     add_args = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="S", statement="", labels=None
     )
-    commands.cmd_item_add(add_args)
+    commands.cmd_item_add(add_args, cli_context)
     _ = capsys.readouterr()
 
     from app.confirm import set_confirm
@@ -430,7 +430,7 @@ def test_item_delete_requires_confirmation(tmp_path, capsys):
     set_confirm(fake_confirm)
 
     del_args = argparse.Namespace(directory=str(tmp_path), rid="SYS1")
-    commands.cmd_item_delete(del_args)
+    commands.cmd_item_delete(del_args, cli_context)
     out = capsys.readouterr().out.strip()
     assert out == "aborted"
     assert item_path(tmp_path / "SYS", doc_sys, 1).exists()

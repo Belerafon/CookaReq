@@ -9,7 +9,7 @@ from app.core.model import requirement_fingerprint
 
 
 @pytest.mark.unit
-def test_link_add(tmp_path, capsys):
+def test_link_add(tmp_path, capsys, cli_context):
     doc_sys = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc_sys)
     doc_hlr = Document(prefix="HLR", title="High", parent="SYS")
@@ -21,7 +21,7 @@ def test_link_add(tmp_path, capsys):
     args = argparse.Namespace(
         directory=str(tmp_path), rid="HLR1", parents=["SYS1"], replace=False
     )
-    commands.cmd_link(args)
+    commands.cmd_link(args, cli_context)
     out = capsys.readouterr().out.strip()
     assert out == "HLR1"
 
@@ -34,7 +34,7 @@ def test_link_add(tmp_path, capsys):
 
 
 @pytest.mark.unit
-def test_link_rejects_self_link(tmp_path, capsys):
+def test_link_rejects_self_link(tmp_path, capsys, cli_context):
     doc_sys = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc_sys)
 
@@ -47,7 +47,7 @@ def test_link_rejects_self_link(tmp_path, capsys):
     args = argparse.Namespace(
         directory=str(tmp_path), rid="SYS1", parents=["SYS1"], replace=False
     )
-    commands.cmd_link(args)
+    commands.cmd_link(args, cli_context)
     out = capsys.readouterr().out.strip()
     assert out == "invalid link target: SYS1"
 
@@ -57,7 +57,7 @@ def test_link_rejects_self_link(tmp_path, capsys):
 
 
 @pytest.mark.unit
-def test_link_rejects_non_ancestor(tmp_path, capsys):
+def test_link_rejects_non_ancestor(tmp_path, capsys, cli_context):
     doc_sys = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc_sys)
     doc_hlr = Document(prefix="HLR", title="High", parent="SYS")
@@ -71,7 +71,7 @@ def test_link_rejects_non_ancestor(tmp_path, capsys):
     args = argparse.Namespace(
         directory=str(tmp_path), rid="HLR1", parents=["LLR1"], replace=False
     )
-    commands.cmd_link(args)
+    commands.cmd_link(args, cli_context)
     out = capsys.readouterr().out.strip()
     assert out == "invalid link target: LLR1"
 

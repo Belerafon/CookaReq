@@ -53,10 +53,10 @@ def _make_args(tmp_path, **overrides):
 
 
 @pytest.mark.unit
-def test_export_requirements_markdown(tmp_path, capsys):
+def test_export_requirements_markdown(tmp_path, capsys, cli_context):
     _prepare(tmp_path)
     args = _make_args(tmp_path, format="markdown")
-    commands.cmd_export_requirements(args)
+    commands.cmd_export_requirements(args, cli_context)
     data = capsys.readouterr().out
     assert "# Requirements export" in data
     assert "SYS1" in data
@@ -65,10 +65,10 @@ def test_export_requirements_markdown(tmp_path, capsys):
 
 
 @pytest.mark.unit
-def test_export_requirements_html(tmp_path, capsys):
+def test_export_requirements_html(tmp_path, capsys, cli_context):
     _prepare(tmp_path)
     args = _make_args(tmp_path, format="html", title="Custom title")
-    commands.cmd_export_requirements(args)
+    commands.cmd_export_requirements(args, cli_context)
     html = capsys.readouterr().out
     assert "<!DOCTYPE html>" in html
     assert "Custom title" in html
@@ -76,10 +76,10 @@ def test_export_requirements_html(tmp_path, capsys):
 
 
 @pytest.mark.unit
-def test_export_requirements_pdf(tmp_path):
+def test_export_requirements_pdf(tmp_path, cli_context):
     _prepare(tmp_path)
     out_file = tmp_path / "requirements.pdf"
     args = _make_args(tmp_path, format="pdf", output=str(out_file))
-    commands.cmd_export_requirements(args)
+    commands.cmd_export_requirements(args, cli_context)
     data = out_file.read_bytes()
     assert data.startswith(b"%PDF")

@@ -49,6 +49,7 @@ class MainFrameSettingsMixin:
             log_dir=self.mcp_settings.log_dir,
             require_token=self.mcp_settings.require_token,
             token=self.mcp_settings.token,
+            mcp_controller_factory=self._mcp_factory,
         )
         if dlg.ShowModal() == wx.ID_OK:
             (

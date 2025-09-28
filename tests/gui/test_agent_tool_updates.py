@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from app.application import ApplicationContext
+
 from app.core.model import requirement_to_dict
 from app.mcp.events import notify_tool_success
 
@@ -44,7 +46,12 @@ def _create_main_frame(tmp_path: Path):
 
     config = ConfigManager(path=tmp_path / "agent.ini")
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    frame = MainFrame(None, config=config, model=RequirementModel())
+    frame = MainFrame(
+        None,
+        context=ApplicationContext.for_gui(),
+        config=config,
+        model=RequirementModel(),
+    )
     frame.Show()
     return frame
 

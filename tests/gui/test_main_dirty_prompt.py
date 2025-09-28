@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.application import ApplicationContext
 from app.config import ConfigManager
 from app.settings import MCPSettings
 from app.ui.requirement_model import RequirementModel
@@ -13,7 +14,12 @@ pytestmark = pytest.mark.gui
 def _create_frame(module, tmp_path, *, name: str = "config.ini"):
     config = ConfigManager(path=tmp_path / name)
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    return module.MainFrame(None, config=config, model=RequirementModel())
+    return module.MainFrame(
+        None,
+        context=ApplicationContext.for_gui(),
+        config=config,
+        model=RequirementModel(),
+    )
 
 
 def test_confirm_discard_changes(monkeypatch, wx_app, tmp_path):
@@ -305,7 +311,12 @@ def test_close_requests_exit_main_loop(monkeypatch, wx_app, tmp_path):
 
     config = ConfigManager(path=tmp_path / "config.ini")
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    frame = MainFrame(None, config=config, model=RequirementModel())
+    frame = MainFrame(
+        None,
+        context=ApplicationContext.for_gui(),
+        config=config,
+        model=RequirementModel(),
+    )
     try:
         class DummyApp:
             def __init__(self) -> None:

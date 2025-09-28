@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from app.application import ApplicationContext
+
 pytestmark = pytest.mark.gui
 
 wx = pytest.importorskip("wx")
@@ -24,7 +26,12 @@ def _create_main_frame(tmp_path: Path):
     config_path = tmp_path / "context.ini"
     config = ConfigManager(path=config_path)
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    frame = MainFrame(None, config=config, model=RequirementModel())
+    frame = MainFrame(
+        None,
+        context=ApplicationContext.for_gui(),
+        config=config,
+        model=RequirementModel(),
+    )
     frame.Show()
     return frame
 

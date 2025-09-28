@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 import wx
 
 from ...services.requirements import (
-    RequirementsService,
     LabelDef,
     RequirementIDCollisionError,
     ValidationError,
@@ -146,7 +145,10 @@ class MainFrameDocumentsMixin:
     def _load_directory(self: MainFrame, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""
 
-        service = RequirementsService(path)
+        factory = getattr(self, "requirements_service_factory", None)
+        if factory is None:
+            raise RuntimeError("Requirements service factory not configured")
+        service = factory(path)
         controller = DocumentsController(service, self.model)
         try:
             docs = controller.load_documents()

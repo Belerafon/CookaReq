@@ -5,16 +5,9 @@ from pathlib import Path
 import wx
 
 from . import i18n
-from .config import ConfigManager
-from .confirm import (
-    set_confirm,
-    set_requirement_update_confirm,
-    wx_confirm,
-    wx_confirm_requirement_update,
-)
+from .application import ApplicationContext
 from .log import configure_logging
 from .ui.main_frame import MainFrame
-from .ui.requirement_model import RequirementModel
 
 APP_NAME = "CookaReq"
 LOCALE_DIR = Path(__file__).resolve().parent / "locale"
@@ -43,14 +36,17 @@ def init_locale(language: str | None = None) -> wx.Locale:
 def main() -> None:
     """Run wx application with the main frame."""
     configure_logging()
-    app = wx.App()
-    set_confirm(wx_confirm)
-    set_requirement_update_confirm(wx_confirm_requirement_update)
-    config = ConfigManager(APP_NAME)
+    context = ApplicationContext.for_gui(app_name=APP_NAME)
+    config = context.config
     language = config.get_language()
+    app = wx.App()
     app.locale = init_locale(language)
-    model = RequirementModel()
-    frame = MainFrame(parent=None, config=config, model=model)
+    frame = MainFrame(
+        parent=None,
+        context=context,
+        config=config,
+        model=context.requirement_model,
+    )
     frame.Show()
     app.MainLoop()
 

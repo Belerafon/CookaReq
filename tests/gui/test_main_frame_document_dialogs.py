@@ -18,13 +18,18 @@ pytestmark = [pytest.mark.gui, pytest.mark.gui_smoke]
 
 
 @pytest.fixture
-def main_frame(wx_app, tmp_path):
+def main_frame(wx_app, tmp_path, gui_context):
     """Provide a ``MainFrame`` instance with MCP auto-start disabled."""
 
     config_path = tmp_path / "config.ini"
     config = ConfigManager(path=config_path)
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    frame = MainFrame(None, config=config, model=RequirementModel())
+    frame = MainFrame(
+        None,
+        context=gui_context,
+        config=config,
+        model=RequirementModel(),
+    )
     try:
         yield frame
     finally:

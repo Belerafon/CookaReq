@@ -17,7 +17,7 @@ from app.core.document_store import (
 
 
 @pytest.mark.unit
-def test_item_add_rejects_unknown_label(tmp_path, capsys):
+def test_item_add_rejects_unknown_label(tmp_path, capsys, cli_context):
     doc_sys = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc_sys)
     doc_hlr = Document(prefix="HLR", title="High", parent="SYS")
@@ -29,7 +29,7 @@ def test_item_add_rejects_unknown_label(tmp_path, capsys):
         statement="X",
         labels="unknown",
     )
-    commands.cmd_item_add(args)
+    commands.cmd_item_add(args, cli_context)
     out = capsys.readouterr().out
     assert "unknown label: unknown" in out
     items_dir = Path(tmp_path) / "HLR" / "items"
@@ -37,7 +37,7 @@ def test_item_add_rejects_unknown_label(tmp_path, capsys):
 
 
 @pytest.mark.unit
-def test_item_add_accepts_inherited_label(tmp_path, capsys):
+def test_item_add_accepts_inherited_label(tmp_path, capsys, cli_context):
     doc_sys = Document(
         prefix="SYS",
         title="System",
@@ -53,7 +53,7 @@ def test_item_add_accepts_inherited_label(tmp_path, capsys):
         statement="X",
         labels="ui",
     )
-    commands.cmd_item_add(args)
+    commands.cmd_item_add(args, cli_context)
     out = capsys.readouterr().out.strip()
     assert out == "HLR1"
     path = item_path(tmp_path / "HLR", doc_hlr, 1)

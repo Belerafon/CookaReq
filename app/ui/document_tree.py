@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 import wx
 
-from ..core.document_store import Document
+from ..services.requirements import Document
 from ..i18n import _
 
 

@@ -1,8 +1,12 @@
 import pytest
 import wx
 
+import json
+from pathlib import Path
+
 from app.core.document_store import Document
 from app.core.model import requirement_to_dict
+from app.services.requirements import RequirementsService
 from app.ui.editor_panel import EditorPanel
 
 pytestmark = pytest.mark.gui
@@ -20,6 +24,7 @@ def _prepare_requirement(panel: EditorPanel) -> None:
 def test_mark_link_as_suspect_updates_ui_and_serialization(wx_app):
     frame = wx.Frame(None)
     panel = EditorPanel(frame)
+    panel.set_document(None)
     _prepare_requirement(panel)
 
     assert panel.links and panel.links[0]["suspect"] is False
@@ -40,6 +45,7 @@ def test_mark_link_as_suspect_updates_ui_and_serialization(wx_app):
 def test_clear_suspect_resets_display(wx_app):
     frame = wx.Frame(None)
     panel = EditorPanel(frame)
+    panel.set_document(None)
     _prepare_requirement(panel)
 
     panel.set_link_suspect("links", 0, True)
@@ -51,28 +57,17 @@ def test_clear_suspect_resets_display(wx_app):
     frame.Destroy()
 
 
-def test_save_includes_suspect_flag(wx_app, tmp_path, monkeypatch):
+def test_save_includes_suspect_flag(wx_app, tmp_path: Path):
     frame = wx.Frame(None)
     panel = EditorPanel(frame)
+    service = RequirementsService(tmp_path)
+    service.save_document(Document(prefix="SYS", title="Test"))
+    panel.set_service(service)
+    panel.set_document("SYS")
     _prepare_requirement(panel)
-    panel.set_directory(tmp_path)
     panel.set_link_suspect("links", 0, True)
 
-    monkeypatch.setattr("app.ui.editor_panel.list_item_ids", lambda directory, document: set())
-
-    saved_payload: dict[str, dict] = {}
-
-    def fake_save_item(directory, doc, data):
-        saved_payload["data"] = data
-        file_path = tmp_path / "requirement.json"
-        file_path.write_text("{}")
-        return file_path
-
-    monkeypatch.setattr("app.ui.editor_panel.save_item", fake_save_item)
-
-    doc = Document(prefix="SYS", title="Test")
-    panel.save(tmp_path, doc=doc)
-
-    assert "data" in saved_payload
-    assert saved_payload["data"]["links"][0]["suspect"] is True
+    saved_path = panel.save("SYS")
+    payload = json.loads(saved_path.read_text())
+    assert payload["links"][0]["suspect"] is True
     frame.Destroy()

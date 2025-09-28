@@ -2,13 +2,7 @@ import pytest
 
 from pathlib import Path
 
-from app.core.document_store import (
-    Document,
-    RequirementIDCollisionError,
-    load_document,
-    save_document,
-    save_item,
-)
+from app.core.document_store import Document, RequirementIDCollisionError
 from app.core.model import (
     Requirement,
     RequirementType,
@@ -17,6 +11,7 @@ from app.core.model import (
     Verification,
     requirement_to_dict,
 )
+from app.services.requirements import RequirementsService
 from app.ui.editor_panel import EditorPanel
 
 pytestmark = pytest.mark.gui
@@ -40,12 +35,14 @@ def test_editor_save_rejects_duplicate_id(monkeypatch, wx_app, tmp_path: Path) -
     wx = pytest.importorskip("wx")
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
-    save_document(doc_dir, doc)
-    save_item(doc_dir, doc, requirement_to_dict(_make_requirement(1)))
+    service = RequirementsService(tmp_path)
+    service.save_document(doc)
+    service.save_requirement_payload("SYS", requirement_to_dict(_make_requirement(1)))
 
     frame = wx.Frame(None)
     panel = EditorPanel(frame)
-    panel.set_directory(doc_dir)
+    panel.set_service(service)
+    panel.set_document("SYS")
     panel.new_requirement()
     panel.fields["id"].ChangeValue("1")
     panel.fields["title"].ChangeValue("Duplicate")
@@ -62,7 +59,7 @@ def test_editor_save_rejects_duplicate_id(monkeypatch, wx_app, tmp_path: Path) -
     monkeypatch.setattr(editor_module.wx, "MessageBox", fake_message)
 
     with pytest.raises(RequirementIDCollisionError):
-        panel.save(doc_dir, doc=load_document(doc_dir))
+        panel.save("SYS")
 
     assert messages, "duplicate warning should be shown"
     assert "already exists" in messages[0]

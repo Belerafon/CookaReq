@@ -6,10 +6,10 @@ from app.ui.editor_panel import EditorPanel
 pytestmark = pytest.mark.gui
 
 
-def test_title_column_expands_to_available_width(wx_app, monkeypatch):
+def test_title_column_expands_to_available_width(wx_app):
     frame = wx.Frame(None)
     panel = EditorPanel(frame)
-    panel.set_directory("dummy")
+    panel.set_document(None)
 
     frame.SetClientSize((400, 300))
     frame.Show()

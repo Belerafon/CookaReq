@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING
 
 import wx
 
-from ...core.document_store import (
+from ...services.requirements import (
+    RequirementsService,
     LabelDef,
     RequirementIDCollisionError,
     ValidationError,
-    save_document,
 )
 from ...core.requirement_import import SequentialIDAllocator, build_requirements
 from ...i18n import _
@@ -146,7 +146,8 @@ class MainFrameDocumentsMixin:
     def _load_directory(self: MainFrame, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""
 
-        controller = DocumentsController(path, self.model)
+        service = RequirementsService(path)
+        controller = DocumentsController(service, self.model)
         try:
             docs = controller.load_documents()
         except ValidationError as exc:
@@ -163,6 +164,7 @@ class MainFrameDocumentsMixin:
             return
 
         self.docs_controller = controller
+        self.editor.set_service(service)
         self.panel.set_documents_controller(self.docs_controller)
         self.doc_tree.set_documents(docs)
         self.config.add_recent_dir(path)
@@ -176,13 +178,13 @@ class MainFrameDocumentsMixin:
             first = sorted(docs)[0]
             self.current_doc_prefix = first
             self.panel.set_active_document(first)
-            self.editor.set_directory(self.current_dir / first)
+            self.editor.set_document(first)
             self._load_document_contents(first)
             self.doc_tree.select(first)
         else:
             self.current_doc_prefix = None
             self.panel.set_active_document(None)
-            self.editor.set_directory(None)
+            self.editor.set_document(None)
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([])
             self.panel.update_labels_list([])
@@ -227,7 +229,7 @@ class MainFrameDocumentsMixin:
         else:
             self.current_doc_prefix = None
             self.panel.set_active_document(None)
-            self.editor.set_directory(None)
+            self.editor.set_document(None)
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([])
             self.panel.update_labels_list([])
@@ -440,8 +442,7 @@ class MainFrameDocumentsMixin:
             return
         self.current_doc_prefix = prefix
         self.panel.set_active_document(prefix)
-        if self.current_dir:
-            self.editor.set_directory(self.current_dir / prefix)
+        self.editor.set_document(prefix)
         self._load_document_contents(prefix)
 
     def on_import_requirements(self: MainFrame, _event: wx.Event) -> None:
@@ -559,7 +560,7 @@ class MainFrameDocumentsMixin:
         dlg = LabelsDialog(self, labels)
         if dlg.ShowModal() == wx.ID_OK:
             doc.labels.defs = dlg.get_labels()
-            save_document(self.current_dir / self.current_doc_prefix, doc)
+            self.docs_controller.service.save_document(doc)
             labels_all, freeform = self.docs_controller.collect_labels(
                 self.current_doc_prefix
             )

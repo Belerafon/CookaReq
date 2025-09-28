@@ -15,6 +15,7 @@ from app.core.model import (
     requirement_to_dict,
 )
 from app.core.trace_matrix import TraceMatrixAxisConfig, TraceMatrixConfig
+from app.services.requirements import RequirementsService
 from app.ui.controllers import DocumentsController
 from app.ui.requirement_model import RequirementModel
 from app.ui.trace_matrix import TraceMatrixFrame
@@ -51,7 +52,7 @@ def test_trace_matrix_frame_renders_links(wx_app, tmp_path):
 
     _wx = pytest.importorskip("wx")
 
-    controller = DocumentsController(tmp_path, RequirementModel())
+    controller = DocumentsController(RequirementsService(tmp_path), RequirementModel())
 
     hlr = Document(prefix="HLR", title="High Level")
     hlr_dir = tmp_path / "HLR"

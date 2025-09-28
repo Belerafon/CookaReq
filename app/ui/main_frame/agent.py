@@ -13,7 +13,7 @@ import wx
 
 from ...agent import LocalAgent
 from ...confirm import ConfirmDecision, RequirementUpdatePrompt
-from ...core.document_store import parse_rid
+from ...services.requirements import parse_rid
 from ...core.model import Requirement, requirement_from_dict
 from ...settings import AppSettings
 from ...mcp.events import ToolResultEvent, add_tool_result_listener

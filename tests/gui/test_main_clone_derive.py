@@ -15,6 +15,7 @@ from app.core.model import (
 )
 from app.config import ConfigManager
 from app.settings import MCPSettings
+from app.services.requirements import RequirementsService
 from app.ui.controllers import DocumentsController
 from app.ui.requirement_model import RequirementModel
 
@@ -73,7 +74,7 @@ def _prepare_frame(tmp_path, extra_requirements=None):
         for req in extra_requirements:
             save_item(doc_dir, doc, requirement_to_dict(req))
 
-    controller = DocumentsController(tmp_path, model)
+    controller = DocumentsController(RequirementsService(tmp_path), model)
     controller.load_documents()
     controller.load_items("REQ")
 
@@ -83,7 +84,8 @@ def _prepare_frame(tmp_path, extra_requirements=None):
     frame.panel.set_documents_controller(controller)
     frame.panel.set_active_document("REQ")
     frame.panel.recalc_derived_map(model.get_all())
-    frame.editor.set_directory(doc_dir)
+    frame.editor.set_service(controller.service)
+    frame.editor.set_document("REQ")
     return frame
 
 

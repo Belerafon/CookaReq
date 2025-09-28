@@ -3,6 +3,7 @@ from pathlib import Path
 
 import json
 
+from app.services.requirements import RequirementsService
 from app.ui.controllers.documents import DocumentsController
 from app.ui.requirement_model import RequirementModel
 from app.core.document_store import (
@@ -56,7 +57,7 @@ def test_load_documents_and_items(tmp_path: Path):
     save_item(doc_dir, doc, requirement_to_dict(_req(1)))
 
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     docs = controller.load_documents()
     assert "SYS" in docs
     derived = controller.load_items("SYS")
@@ -76,7 +77,7 @@ def test_next_id_save_and_delete(tmp_path: Path):
     save_document(doc_dir, doc)
 
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
 
     new_id = controller.next_item_id("SYS")
@@ -100,7 +101,7 @@ def test_add_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
     save_item(doc_dir, doc, requirement_to_dict(_req(1)))
 
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     controller.load_items("SYS")
 
@@ -117,7 +118,7 @@ def test_save_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
     save_item(doc_dir, doc, requirement_to_dict(_req(2)))
 
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     controller.load_items("SYS")
 
@@ -141,7 +142,7 @@ def test_iter_links(tmp_path: Path):
     data["links"] = ["SYS1"]
     save_item(hlr_dir, hlr_doc, data)
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     links = list(controller.iter_links())
     assert ("HLR1", "SYS1") in links
@@ -159,7 +160,7 @@ def test_delete_requirement_removes_links(tmp_path: Path):
     data["links"] = ["SYS1"]
     save_item(hlr_dir, hlr_doc, data)
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     controller.delete_requirement("SYS", 1)
     assert not item_path(sys_dir, sys_doc, 1).exists()
@@ -181,7 +182,7 @@ def test_delete_document_recursively(tmp_path: Path):
     save_item(hlr_dir, hlr_doc, requirement_to_dict(_req(1)))
     save_item(llr_dir, llr_doc, requirement_to_dict(_req(1)))
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     controller.load_items("LLR")
     assert model.get_all()
@@ -196,7 +197,7 @@ def test_delete_document_recursively(tmp_path: Path):
 
 def test_create_document_persists_configuration(tmp_path: Path) -> None:
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     created = controller.create_document("SYS", "System")
     assert created.prefix == "SYS"
@@ -218,7 +219,7 @@ def test_create_document_with_parent(tmp_path: Path) -> None:
     parent_doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", parent_doc)
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     child = controller.create_document("HLR", "High", parent="SYS")
     assert child.parent == "SYS"
@@ -228,7 +229,7 @@ def test_create_document_with_parent(tmp_path: Path) -> None:
 
 def test_create_document_rejects_invalid_prefix(tmp_path: Path) -> None:
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     with pytest.raises(ValueError):
         controller.create_document("sys", "System")
@@ -238,7 +239,7 @@ def test_create_document_rejects_duplicate(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc)
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     with pytest.raises(ValueError):
         controller.create_document("SYS", "Another")
@@ -248,7 +249,7 @@ def test_rename_document_updates_metadata(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc)
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     updated = controller.rename_document("SYS", title="Updated")
     assert updated.title == "Updated"
@@ -258,7 +259,7 @@ def test_rename_document_updates_metadata(tmp_path: Path) -> None:
 
 def test_rename_document_rejects_unknown(tmp_path: Path) -> None:
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     with pytest.raises(ValueError):
         controller.rename_document("SYS", title="Missing")
@@ -268,7 +269,9 @@ def test_rename_document_without_changes_returns_existing(tmp_path: Path) -> Non
     doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc)
     model = RequirementModel()
-    controller = DocumentsController(tmp_path, model)
+    controller = _controller(tmp_path, model)
     controller.load_documents()
     unchanged = controller.rename_document("SYS")
     assert unchanged.title == "System"
+def _controller(root: Path, model: RequirementModel) -> DocumentsController:
+    return DocumentsController(RequirementsService(root), model)

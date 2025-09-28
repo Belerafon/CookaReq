@@ -295,6 +295,10 @@ class MainFrame(
             on_save=self._on_editor_save,
             on_discard=self._handle_editor_discard,
         )
+        if getattr(self, "docs_controller", None):
+            self.editor.set_service(self.docs_controller.service)
+            if self.current_doc_prefix:
+                self.editor.set_document(self.current_doc_prefix)
         editor_sizer = self.editor_container.GetSizer()
         if editor_sizer is not None:
             editor_sizer.Replace(old_editor, self.editor)

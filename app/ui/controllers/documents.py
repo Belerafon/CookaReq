@@ -5,22 +5,15 @@ import re
 from pathlib import Path
 from collections.abc import Iterable
 
-from ...core.document_store import (
+from ...services.requirements import (
+    RequirementsService,
     Document,
+    DocumentNotFoundError,
     LabelDef,
     RequirementIDCollisionError,
-    collect_label_defs,
-    iter_links as doc_iter_links,
-    load_documents,
-    list_item_ids,
-    load_item,
+    iter_links,
     parse_rid,
-    save_document,
-    save_item,
     rid_for,
-    next_item_id as doc_next_item_id,
-    delete_document as doc_delete_document,
-    delete_item,
 )
 from ...core.model import Requirement, requirement_from_dict, requirement_to_dict
 from ...core.trace_matrix import TraceMatrix, TraceMatrixConfig, build_trace_matrix
@@ -30,7 +23,7 @@ from ...core.trace_matrix import TraceMatrix, TraceMatrixConfig, build_trace_mat
 class DocumentsController:
     """Load documents and their items for the GUI."""
 
-    root: Path
+    service: RequirementsService
     model: object
 
     def __post_init__(self) -> None:
@@ -40,8 +33,9 @@ class DocumentsController:
 
     # ------------------------------------------------------------------
     def load_documents(self) -> dict[str, Document]:
-        """Populate ``documents`` from ``root`` and return them."""
-        self.documents = load_documents(self.root)
+        """Populate ``documents`` from the service and return them."""
+
+        self.documents = self.service.load_documents(refresh=True)
         return self.documents
 
     def load_items(self, prefix: str) -> dict[str, list[int]]:
@@ -49,15 +43,15 @@ class DocumentsController:
 
         Returns a mapping of parent requirement RID to list of linked item ids.
         """
-        doc = self.documents.get(prefix)
-        if not doc:
+        try:
+            doc = self._get_document(prefix)
+        except ValueError:
             self.model.set_requirements([])
             return {}
-        directory = self.root / prefix
         items: list[Requirement] = []
         derived_map: dict[str, list[int]] = {}
-        for item_id in sorted(list_item_ids(directory, doc)):
-            data, _mtime = load_item(directory, doc, item_id)
+        for item_id in self.service.list_item_ids(prefix):
+            data, _mtime = self.service.load_item(prefix, item_id)
             rid = rid_for(doc, item_id)
             req = requirement_from_dict(data, doc_prefix=doc.prefix, rid=rid)
             items.append(req)
@@ -70,16 +64,27 @@ class DocumentsController:
     def collect_labels(self, prefix: str) -> tuple[list[LabelDef], bool]:
         """Return labels and free-form flag for document ``prefix``."""
 
-        return collect_label_defs(prefix, self.documents)
+        return self.service.collect_label_defs(prefix)
 
     def build_trace_matrix(self, config: TraceMatrixConfig) -> TraceMatrix:
         """Construct traceability matrix for ``config`` using cached documents."""
 
         if not self.documents:
             self.load_documents()
-        return build_trace_matrix(self.root, config, docs=self.documents)
+        return build_trace_matrix(self.service.root, config, docs=self.documents)
 
     # helpers ---------------------------------------------------------
+    def _get_document(self, prefix: str) -> Document:
+        doc = self.documents.get(prefix)
+        if doc is not None:
+            return doc
+        try:
+            doc = self.service.get_document(prefix)
+        except DocumentNotFoundError as exc:
+            raise ValueError(f"unknown document prefix: {prefix}") from exc
+        self.documents[prefix] = doc
+        return doc
+
     @staticmethod
     def _parse_original_id(doc: Document, rid: str | None) -> int | None:
         if not rid:
@@ -101,8 +106,7 @@ class DocumentsController:
         original_id: int | None = None,
         original_rid: str | None = None,
     ) -> None:
-        directory = self.root / prefix
-        existing_ids = set(list_item_ids(directory, doc))
+        existing_ids = set(self.service.list_item_ids(prefix))
         if original_id is not None:
             existing_ids.discard(original_id)
         if req.id in existing_ids:
@@ -132,13 +136,13 @@ class DocumentsController:
     def next_item_id(self, prefix: str) -> int:
         """Return next available requirement id for document ``prefix``."""
 
-        doc = self.documents[prefix]
-        return doc_next_item_id(self.root / prefix, doc)
+        doc = self._get_document(prefix)
+        return self.service.next_item_id(prefix)
 
     def add_requirement(self, prefix: str, req: Requirement) -> None:
         """Add ``req`` to the in-memory model for document ``prefix``."""
 
-        doc = self.documents[prefix]
+        doc = self._get_document(prefix)
         self._ensure_unique_id(prefix, doc, req)
         req.doc_prefix = prefix
         req.rid = rid_for(doc, req.id)
@@ -147,7 +151,7 @@ class DocumentsController:
     def save_requirement(self, prefix: str, req: Requirement) -> Path:
         """Persist ``req`` within document ``prefix`` and return file path."""
 
-        doc = self.documents[prefix]
+        doc = self._get_document(prefix)
         original_rid = getattr(req, "rid", "")
         original_id = self._parse_original_id(doc, original_rid)
         self._ensure_unique_id(
@@ -160,16 +164,17 @@ class DocumentsController:
         req.doc_prefix = prefix
         req.rid = rid_for(doc, req.id)
         data = requirement_to_dict(req)
-        return save_item(self.root / prefix, doc, data)
+        return self.service.save_requirement_payload(prefix, data)
 
     def delete_requirement(self, prefix: str, req_id: int) -> bool:
         """Remove requirement ``req_id`` from document ``prefix``."""
 
-        doc = self.documents.get(prefix)
-        if not doc:
+        try:
+            doc = self._get_document(prefix)
+        except ValueError:
             return False
         rid = rid_for(doc, req_id)
-        removed = delete_item(self.root, rid, self.documents)
+        removed = self.service.delete_requirement(rid)
         if removed:
             self.model.delete(req_id)
         return removed
@@ -177,7 +182,7 @@ class DocumentsController:
     def delete_document(self, prefix: str) -> bool:
         """Remove document ``prefix`` and its descendants."""
 
-        removed = doc_delete_document(self.root, prefix, self.documents)
+        removed = self.service.delete_document(prefix)
         if removed:
             self.load_documents()
             self.model.set_requirements([])
@@ -205,12 +210,11 @@ class DocumentsController:
                 raise ValueError("document cannot be its own parent")
             if parent not in self.documents:
                 raise ValueError(f"unknown parent document: {parent}")
-        doc = Document(
+        doc = self.service.create_document(
             prefix=prefix,
             title=title or prefix,
             parent=parent or None,
         )
-        save_document(self.root / prefix, doc)
         self.load_documents()
         return self.documents[prefix]
 
@@ -224,14 +228,18 @@ class DocumentsController:
 
         doc = self.documents.get(prefix)
         if doc is None:
-            raise ValueError(f"unknown document prefix: {prefix}")
+            try:
+                doc = self.service.get_document(prefix)
+            except DocumentNotFoundError as exc:
+                raise ValueError(f"unknown document prefix: {prefix}") from exc
+            self.documents[prefix] = doc
         updated = False
         if title is not None:
             doc.title = title
             updated = True
         if not updated:
             return doc
-        save_document(self.root / prefix, doc)
+        self.service.save_document(doc)
         self.load_documents()
         return self.documents[prefix]
 
@@ -239,4 +247,10 @@ class DocumentsController:
     def iter_links(self) -> Iterable[tuple[str, str]]:
         """Yield ``(child_rid, parent_rid)`` pairs for requirements."""
 
-        return doc_iter_links(self.root)
+        return iter_links(self.service.root)
+
+    @property
+    def root(self) -> Path:
+        """Return the filesystem root backing the requirements service."""
+
+        return self.service.root

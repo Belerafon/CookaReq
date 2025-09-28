@@ -27,6 +27,9 @@ dev = [
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.package-data]
+"app.resources.fonts" = ["*.ttf", "OFL.txt"]
+
 [tool.ruff]
 line-length = 88
 target-version = "py312"

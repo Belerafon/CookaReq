@@ -1,9 +1,24 @@
 import argparse
+import os
 
 import pytest
 
 from app.cli import commands
 from app.core.document_store import Document, save_document, save_item
+
+
+@pytest.fixture(scope="session", autouse=True)
+def configure_pdf_font_cache(tmp_path_factory):
+    cache_dir = tmp_path_factory.mktemp("font-cache")
+    previous = os.environ.get("COOKAREQ_FONT_CACHE_DIR")
+    os.environ["COOKAREQ_FONT_CACHE_DIR"] = str(cache_dir)
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("COOKAREQ_FONT_CACHE_DIR", None)
+        else:
+            os.environ["COOKAREQ_FONT_CACHE_DIR"] = previous
 
 
 def _prepare(root):
@@ -36,6 +51,24 @@ def _prepare(root):
             "links": ["SYS1"],
             "status": "draft",
             "assumptions": "Assumption text",
+        },
+    )
+
+
+def _prepare_cyrillic(root):
+    doc_rus = Document(prefix="RUS", title="Система")
+    save_document(root / "RUS", doc_rus)
+    save_item(
+        root / "RUS",
+        doc_rus,
+        {
+            "id": 1,
+            "title": "Требование",
+            "statement": "Система должна поддерживать кириллицу",
+            "labels": ["локализация"],
+            "links": [],
+            "status": "draft",
+            "notes": "Проверка PDF",
         },
     )
 
@@ -78,6 +111,16 @@ def test_export_requirements_html(tmp_path, capsys):
 @pytest.mark.unit
 def test_export_requirements_pdf(tmp_path):
     _prepare(tmp_path)
+    out_file = tmp_path / "requirements.pdf"
+    args = _make_args(tmp_path, format="pdf", output=str(out_file))
+    commands.cmd_export_requirements(args)
+    data = out_file.read_bytes()
+    assert data.startswith(b"%PDF")
+
+
+@pytest.mark.unit
+def test_export_requirements_pdf_cyrillic(tmp_path):
+    _prepare_cyrillic(tmp_path)
     out_file = tmp_path / "requirements.pdf"
     args = _make_args(tmp_path, format="pdf", output=str(out_file))
     commands.cmd_export_requirements(args)

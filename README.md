@@ -108,10 +108,13 @@ python3 -m app.cli trace requirements --format html -o trace.html
 python3 -m app.cli export requirements requirements --format markdown -o requirements.md
 python3 -m app.cli export requirements requirements --format html -o requirements.html
 python3 -m app.cli export requirements requirements --format pdf -o requirements.pdf
-
 # verify LLM and MCP connectivity (uses mocked services by default)
 python3 -m app.cli check --llm --mcp
 ```
+
+> **Примечание.** При первом экспорте CookaReq автоматически скачает шрифты
+> Noto Sans в кэш `~/.cache/cookareq/fonts` (или в каталог из переменной
+> `COOKAREQ_FONT_CACHE_DIR`), чтобы PDF корректно отображал кириллицу.
 
 Every command validates inputs before mutating files and reuses the same schema as the GUI, including label validation, revision requirements, and MCP authentication checks.
 

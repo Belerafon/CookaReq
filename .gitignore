@@ -44,3 +44,6 @@ app/locale/missing.po
 /server.jsonl
 # Helper logs emitted during wx GUI tests
 requirements/server.log
+
+# Downloaded PDF fonts
+app/resources/fonts/*.ttf

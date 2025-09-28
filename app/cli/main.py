@@ -6,12 +6,7 @@ import argparse
 from pathlib import Path
 
 from app import i18n
-from app.confirm import (
-    auto_confirm,
-    auto_confirm_requirement_update,
-    set_confirm,
-    set_requirement_update_confirm,
-)
+from app.application import ApplicationContext
 from app.i18n import _
 from app.log import configure_logging
 from app.settings import AppSettings, load_app_settings
@@ -21,8 +16,6 @@ from .commands import COMMANDS
 APP_NAME = "CookaReq"
 LOCALE_DIR = Path(__file__).resolve().parent.parent / "locale"
 
-set_confirm(auto_confirm)
-set_requirement_update_confirm(auto_confirm_requirement_update)
 i18n.install(APP_NAME, LOCALE_DIR)
 
 
@@ -44,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     configure_logging()
+    context = ApplicationContext.for_cli(app_name=APP_NAME)
     parser = build_parser()
     args = parser.parse_args(argv)
     settings = AppSettings()
@@ -53,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     if preferred_language:
         i18n.install(APP_NAME, LOCALE_DIR, [preferred_language])
     args.app_settings = settings
-    args.func(args)
+    args.func(args, context)
     return 0
 
 

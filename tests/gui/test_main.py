@@ -73,5 +73,6 @@ def test_main_runs(monkeypatch):
     assert dummy_app.loop_ran
     assert DummyFrame.shown
     assert DummyFrame.instances and DummyFrame.instances[0].parent is None
+    assert "context" in DummyFrame.instances[0].kwargs
     assert "config" in DummyFrame.instances[0].kwargs
     assert "model" in DummyFrame.instances[0].kwargs

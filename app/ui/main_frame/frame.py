@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import wx
 
+from ...application import (
+    ApplicationContext,
+    LocalAgentFactory,
+    MCPControllerFactory,
+    RequirementsServiceFactory,
+)
 from ...columns import available_columns
 from ...config import ConfigManager
 from ...i18n import _
-from ...mcp.controller import MCPController
 from ..requirement_model import RequirementModel
 from ..splitter_utils import refresh_splitter_highlight
 from .agent import MainFrameAgentMixin
@@ -49,15 +53,29 @@ class MainFrame(
         self,
         parent: wx.Window | None,
         *,
+        context: ApplicationContext,
         config: ConfigManager | None = None,
         model: RequirementModel | None = None,
-        mcp_factory: Callable[[], MCPController] = MCPController,
+        requirements_service_factory: RequirementsServiceFactory | None = None,
+        local_agent_factory: LocalAgentFactory | None = None,
+        mcp_factory: MCPControllerFactory | None = None,
     ) -> None:
         """Set up main application window and controllers."""
 
         self._base_title = "CookaReq"
-        self.config = config if config is not None else ConfigManager()
-        self.model = model if model is not None else RequirementModel()
+        if context is None:
+            raise ValueError("MainFrame requires an ApplicationContext instance")
+        self.context = context
+        self.config = config if config is not None else self.context.config
+        self.model = model if model is not None else self.context.requirement_model
+        self.requirements_service_factory = (
+            requirements_service_factory
+            or self.context.requirements_service_factory
+        )
+        self.local_agent_factory = (
+            local_agent_factory or self.context.local_agent_factory
+        )
+        self._mcp_factory = mcp_factory or self.context.mcp_controller_factory
         self.available_fields = available_columns()
         self.selected_fields = self.config.get_columns()
         self.auto_open_last = self.config.get_auto_open_last()
@@ -66,7 +84,7 @@ class MainFrame(
         self.sort_column, self.sort_ascending = self.config.get_sort_settings()
         self.llm_settings = self.config.get_llm_settings()
         self.mcp_settings = self.config.get_mcp_settings()
-        self.mcp = mcp_factory()
+        self.mcp = self._mcp_factory()
         if self.mcp_settings.auto_start:
             self.mcp.start(self.mcp_settings)
         self.docs_controller: DocumentsController | None = None

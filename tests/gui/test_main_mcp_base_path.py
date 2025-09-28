@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from app.application import ApplicationContext
+
 
 pytestmark = pytest.mark.gui
 
@@ -42,6 +44,7 @@ def _make_frame(tmp_path, *, auto_start: bool):
     config.set_mcp_settings(MCPSettings(auto_start=auto_start, base_path=""))
     frame = main_frame_module.MainFrame(
         None,
+        context=ApplicationContext.for_gui(),
         config=config,
         model=RequirementModel(),
         mcp_factory=_StubMCP,

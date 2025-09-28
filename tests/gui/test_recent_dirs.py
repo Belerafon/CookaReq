@@ -10,7 +10,7 @@ from app.settings import MCPSettings
 pytestmark = pytest.mark.gui
 
 
-def test_recent_dirs_history(tmp_path, wx_app):
+def test_recent_dirs_history(tmp_path, wx_app, gui_context):
     pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
     import app.ui.main_frame as main_frame
@@ -19,7 +19,7 @@ def test_recent_dirs_history(tmp_path, wx_app):
     importlib.reload(main_frame)
     config = ConfigManager(path=tmp_path / "recent.ini")
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    frame = main_frame.MainFrame(None, config=config)
+    frame = main_frame.MainFrame(None, context=gui_context, config=config)
 
     dirs = [tmp_path / f"d{i}" for i in range(6)]
     for d in dirs:

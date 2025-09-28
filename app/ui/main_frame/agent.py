@@ -11,7 +11,6 @@ from collections.abc import Callable
 
 import wx
 
-from ...agent import LocalAgent
 from ...confirm import ConfirmDecision, RequirementUpdatePrompt
 from ...services.requirements import parse_rid
 from ...core.model import Requirement, requirement_from_dict
@@ -52,18 +51,24 @@ class MainFrameAgentMixin:
             [RequirementUpdatePrompt], ConfirmDecision
         ]
         | None = None,
-    ) -> LocalAgent:
+    ):
         """Construct ``LocalAgent`` using current settings."""
 
         from . import confirm
 
+        factory = getattr(self, "local_agent_factory", None)
+        if factory is None:
+            raise RuntimeError("Local agent factory not configured")
+
         settings = AppSettings(llm=self.llm_settings, mcp=self.mcp_settings)
-        confirm_callback = confirm_override or confirm
-        return LocalAgent(
-            settings=settings,
-            confirm=confirm_callback,
-            confirm_requirement_update=confirm_requirement_update_override,
-        )
+        overrides: dict[str, object] = {
+            "confirm_override": confirm_override or confirm,
+        }
+        if confirm_requirement_update_override is not None:
+            overrides["confirm_requirement_update_override"] = (
+                confirm_requirement_update_override
+            )
+        return factory(settings, **overrides)
 
     def _init_mcp_tool_listener(self: MainFrame) -> None:
         """Subscribe to MCP tool result notifications."""

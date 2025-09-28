@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, TextIO
 from collections.abc import Callable, Mapping
 
+from app.application import ApplicationContext
 from app.confirm import confirm
 from app.services.requirements import (
     RequirementsService,
@@ -53,12 +54,11 @@ STATUS_CHOICES = [e.value for e in Status]
 PRIORITY_CHOICES = [e.value for e in Priority]
 VERIFICATION_CHOICES = [e.value for e in Verification]
 
-
 @dataclass
 class Command:
     """Describe a CLI command and its argument handler."""
 
-    func: Callable[[argparse.Namespace], None]
+    func: Callable[[argparse.Namespace, ApplicationContext], None]
     help: str
     add_arguments: Callable[[argparse.ArgumentParser], None]
 
@@ -156,10 +156,13 @@ def _flatten_arg_list(values: Any) -> list[str]:
     return tokens
 
 
-def _service_for(directory: str | Path) -> RequirementsService:
+def _service_for(
+    context: ApplicationContext, directory: str | Path
+) -> RequirementsService:
     """Return requirements service rooted at ``directory``."""
 
-    return RequirementsService(Path(directory))
+    factory = context.requirements_service_factory
+    return factory(Path(directory))
 
 
 def _build_axis_config(args: argparse.Namespace, axis: str) -> TraceMatrixAxisConfig:
@@ -486,10 +489,12 @@ def build_item_payload(
     return payload.to_payload()
 
 
-def cmd_doc_create(args: argparse.Namespace) -> None:
+def cmd_doc_create(
+    args: argparse.Namespace, context: ApplicationContext
+) -> None:
     """Create new document within requirements root."""
 
-    service = _service_for(args.directory)
+    service = _service_for(context, args.directory)
     doc = service.create_document(
         prefix=args.prefix,
         title=args.title,
@@ -498,20 +503,24 @@ def cmd_doc_create(args: argparse.Namespace) -> None:
     sys.stdout.write(f"{doc.prefix}\n")
 
 
-def cmd_doc_list(args: argparse.Namespace) -> None:
+def cmd_doc_list(
+    args: argparse.Namespace, context: ApplicationContext
+) -> None:
     """List documents configured under requirements root."""
 
-    service = _service_for(args.directory)
+    service = _service_for(context, args.directory)
     docs = service.load_documents(refresh=True)
     for prefix in sorted(docs):
         doc = docs[prefix]
         sys.stdout.write(f"{doc.prefix} {doc.title}\n")
 
 
-def cmd_doc_delete(args: argparse.Namespace) -> None:
+def cmd_doc_delete(
+    args: argparse.Namespace, context: ApplicationContext
+) -> None:
     """Delete document ``prefix`` and its descendants."""
 
-    service = _service_for(args.directory)
+    service = _service_for(context, args.directory)
     if getattr(args, "dry_run", False):
         doc_list, item_list = service.plan_delete_document(args.prefix)
         if not doc_list:
@@ -564,14 +573,16 @@ def add_doc_arguments(p: argparse.ArgumentParser) -> None:
     del_p.set_defaults(func=cmd_doc_delete)
 
 
-def cmd_item_add(args: argparse.Namespace) -> None:
+def cmd_item_add(
+    args: argparse.Namespace, context: ApplicationContext
+) -> None:
     """Create a new requirement item under a document."""
     base: dict[str, Any] = {}
     data_path = getattr(args, "data", None)
     if data_path:
         with open(data_path, encoding="utf-8") as fh:
             base = json.load(fh)
-    service = _service_for(args.directory)
+    service = _service_for(context, args.directory)
     try:
         payload = build_item_payload(args, base)
         req = service.create_requirement(prefix=args.prefix, data=payload)
@@ -586,11 +597,13 @@ def cmd_item_add(args: argparse.Namespace) -> None:
     sys.stdout.write(f"{req.rid}\n")
 
 
-def cmd_item_edit(args: argparse.Namespace) -> None:
+def cmd_item_edit(
+    args: argparse.Namespace, context: ApplicationContext
+) -> None:
     """Update an existing requirement without changing its RID."""
 
     prefix, item_id = parse_rid(args.rid)
-    service = _service_for(args.directory)
+    service = _service_for(context, args.directory)
     try:
         doc = service.get_document(prefix)
     except DocumentNotFoundError:
@@ -631,10 +644,12 @@ def cmd_item_edit(args: argparse.Namespace) -> None:
     sys.stdout.write(f"{req.rid}\n")
 
 
-def cmd_item_move(args: argparse.Namespace) -> None:
+def cmd_item_move(
+    args: argparse.Namespace, context: ApplicationContext
+) -> None:
     """Move existing item ``rid`` to document ``new_prefix``."""
 
-    service = _service_for(args.directory)
+    service = _service_for(context, args.directory)
     try:
         current = service.get_requirement(args.rid)
     except RequirementNotFoundError:
@@ -680,10 +695,12 @@ def cmd_item_move(args: argparse.Namespace) -> None:
     sys.stdout.write(f"{moved.rid}\n")
 
 
-def cmd_item_delete(args: argparse.Namespace) -> None:
+def cmd_item_delete(
+    args: argparse.Namespace, context: ApplicationContext
+) -> None:
     """Delete requirement ``rid`` and update references."""
 
-    service = _service_for(args.directory)
+    service = _service_for(context, args.directory)
     if getattr(args, "dry_run", False):
         exists, refs = service.plan_delete_requirement(args.rid)
         if not exists:
@@ -797,10 +814,12 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     del_p.set_defaults(func=cmd_item_delete)
 
 
-def cmd_link(args: argparse.Namespace) -> None:
+def cmd_link(
+    args: argparse.Namespace, context: ApplicationContext
+) -> None:
     """Add links from requirement ``rid`` to ``parents``."""
 
-    service = _service_for(args.directory)
+    service = _service_for(context, args.directory)
     try:
         prefix, item_id = parse_rid(args.rid)
     except ValueError:
@@ -887,7 +906,9 @@ def _open_export_output(path: str | None, *, binary: bool) -> tuple[Any, bool]:
     return out_path.open("w", encoding="utf-8"), True
 
 
-def cmd_trace(args: argparse.Namespace) -> None:
+def cmd_trace(
+    args: argparse.Namespace, context: ApplicationContext
+) -> None:
     """Export traceability matrix in the requested format."""
 
     row_axis = _build_axis_config(args, "row")
@@ -929,7 +950,9 @@ def cmd_trace(args: argparse.Namespace) -> None:
             out.close()
 
 
-def cmd_export_requirements(args: argparse.Namespace) -> None:
+def cmd_export_requirements(
+    args: argparse.Namespace, context: ApplicationContext
+) -> None:
     """Export requirements into Markdown, HTML, or PDF."""
 
     selected_docs = tuple(_flatten_arg_list(getattr(args, "documents", []))) or None
@@ -1109,11 +1132,14 @@ def add_trace_arguments(p: argparse.ArgumentParser) -> None:
     p.add_argument("-o", "--output", help=_("write result to file"))
 
 
-def cmd_check(args: argparse.Namespace) -> None:
+def cmd_check(
+    args: argparse.Namespace, context: ApplicationContext
+) -> None:
     """Verify LLM and MCP connectivity using loaded settings."""
-    from app.agent import LocalAgent
-
-    agent = LocalAgent(settings=args.app_settings, confirm=confirm)
+    agent = context.local_agent_factory(
+        args.app_settings,
+        confirm_override=confirm,
+    )
     results: dict[str, object] = {}
     if args.llm or not (args.llm or args.mcp):
         results["llm"] = agent.check_llm()
@@ -1131,10 +1157,22 @@ def add_check_arguments(p: argparse.ArgumentParser) -> None:
 
 
 COMMANDS: dict[str, Command] = {
-    "doc": Command(lambda args: args.func(args), _("manage documents"), add_doc_arguments),
-    "item": Command(lambda args: args.func(args), _("manage items"), add_item_arguments),
+    "doc": Command(
+        lambda args, context: args.func(args, context),
+        _("manage documents"),
+        add_doc_arguments,
+    ),
+    "item": Command(
+        lambda args, context: args.func(args, context),
+        _("manage items"),
+        add_item_arguments,
+    ),
     "link": Command(cmd_link, _("link requirements"), add_link_arguments),
     "trace": Command(cmd_trace, _("export trace links"), add_trace_arguments),
-    "export": Command(lambda args: args.func(args), _("export data"), add_export_arguments),
+    "export": Command(
+        lambda args, context: args.func(args, context),
+        _("export data"),
+        add_export_arguments,
+    ),
     "check": Command(cmd_check, _("verify LLM and MCP settings"), add_check_arguments),
 }

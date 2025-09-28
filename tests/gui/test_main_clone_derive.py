@@ -13,6 +13,7 @@ from app.core.model import (
     Verification,
     requirement_to_dict,
 )
+from app.application import ApplicationContext
 from app.config import ConfigManager
 from app.settings import MCPSettings
 from app.services.requirements import RequirementsService
@@ -61,6 +62,7 @@ def _prepare_frame(tmp_path, extra_requirements=None):
     config.set_mcp_settings(MCPSettings(auto_start=False))
     frame = main_frame_mod.MainFrame(
         None,
+        context=ApplicationContext.for_gui(),
         config=config,
         model=model,
         mcp_factory=_StubMCP,

@@ -1,5 +1,6 @@
 import pytest
 
+from app.application import ApplicationContext
 from app.config import ConfigManager
 from app.settings import MCPSettings
 from app.ui.main_frame import MainFrame
@@ -16,7 +17,12 @@ def configured_frame(wx_app, tmp_path):
         config_path = tmp_path / name
         config = ConfigManager(path=config_path)
         config.set_mcp_settings(MCPSettings(auto_start=False))
-        frame = MainFrame(None, config=config, model=RequirementModel())
+        frame = MainFrame(
+            None,
+            context=ApplicationContext.for_gui(),
+            config=config,
+            model=RequirementModel(),
+        )
         frame.Show()
         wx_app.Yield()
         created.append(frame)
@@ -65,7 +71,12 @@ def test_hierarchy_state_persists_between_sessions(configured_frame, wx_app):
 
     config = ConfigManager(path=config_path)
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    restored = MainFrame(None, config=config, model=RequirementModel())
+    restored = MainFrame(
+        None,
+        context=ApplicationContext.for_gui(),
+        config=config,
+        model=RequirementModel(),
+    )
     restored.Show()
     wx_app.Yield()
 
@@ -121,7 +132,12 @@ def test_agent_state_persists_between_sessions(configured_frame, wx_app):
 
     config = ConfigManager(path=config_path)
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    restored = MainFrame(None, config=config, model=RequirementModel())
+    restored = MainFrame(
+        None,
+        context=ApplicationContext.for_gui(),
+        config=config,
+        model=RequirementModel(),
+    )
     restored.Show()
     wx_app.Yield()
 
@@ -178,7 +194,12 @@ def test_agent_history_persists_between_sessions(configured_frame, wx_app):
 
     config = ConfigManager(path=config_path)
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    restored = MainFrame(None, config=config, model=RequirementModel())
+    restored = MainFrame(
+        None,
+        context=ApplicationContext.for_gui(),
+        config=config,
+        model=RequirementModel(),
+    )
     restored.Show()
     wx_app.Yield()
 

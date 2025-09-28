@@ -5,21 +5,21 @@ from app.cli import commands
 from app.core.document_store import load_document
 
 
-def test_doc_create_and_list(tmp_path, capsys):
+def test_doc_create_and_list(tmp_path, capsys, cli_context):
     args = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="System", parent=None
     )
-    commands.cmd_doc_create(args)
+    commands.cmd_doc_create(args, cli_context)
     _ = capsys.readouterr()
 
     args2 = argparse.Namespace(
         directory=str(tmp_path), prefix="HLR", title="High", parent="SYS"
     )
-    commands.cmd_doc_create(args2)
+    commands.cmd_doc_create(args2, cli_context)
     _ = capsys.readouterr()
 
     list_args = argparse.Namespace(directory=str(tmp_path))
-    commands.cmd_doc_list(list_args)
+    commands.cmd_doc_list(list_args, cli_context)
     out = capsys.readouterr().out.splitlines()
 
     assert out == ["HLR High", "SYS System"]
@@ -31,75 +31,75 @@ def test_doc_create_and_list(tmp_path, capsys):
     assert doc_hlr.parent == "SYS"
 
 
-def test_doc_delete_removes_subtree(tmp_path, capsys):
+def test_doc_delete_removes_subtree(tmp_path, capsys, cli_context):
     args = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="System", parent=None
     )
-    commands.cmd_doc_create(args)
+    commands.cmd_doc_create(args, cli_context)
     _ = capsys.readouterr()
 
     args2 = argparse.Namespace(
         directory=str(tmp_path), prefix="HLR", title="High", parent="SYS"
     )
-    commands.cmd_doc_create(args2)
+    commands.cmd_doc_create(args2, cli_context)
     _ = capsys.readouterr()
 
     args3 = argparse.Namespace(
         directory=str(tmp_path), prefix="LLR", title="Low", parent="HLR"
     )
-    commands.cmd_doc_create(args3)
+    commands.cmd_doc_create(args3, cli_context)
     _ = capsys.readouterr()
 
     del_args = argparse.Namespace(directory=str(tmp_path), prefix="HLR")
-    commands.cmd_doc_delete(del_args)
+    commands.cmd_doc_delete(del_args, cli_context)
     out = capsys.readouterr().out.splitlines()
     assert out == ["HLR"]
     assert not (Path(tmp_path) / "HLR").exists()
     assert not (Path(tmp_path) / "LLR").exists()
 
-    commands.cmd_doc_delete(del_args)
+    commands.cmd_doc_delete(del_args, cli_context)
     out2 = capsys.readouterr().out
     assert out2 == "document not found: HLR\n"
 
 
-def test_doc_delete_dry_run_lists_subtree(tmp_path, capsys):
+def test_doc_delete_dry_run_lists_subtree(tmp_path, capsys, cli_context):
     args_sys = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="System", parent=None
     )
-    commands.cmd_doc_create(args_sys)
+    commands.cmd_doc_create(args_sys, cli_context)
     _ = capsys.readouterr()
 
     args_hlr = argparse.Namespace(
         directory=str(tmp_path), prefix="HLR", title="High", parent="SYS"
     )
-    commands.cmd_doc_create(args_hlr)
+    commands.cmd_doc_create(args_hlr, cli_context)
     _ = capsys.readouterr()
 
     item1 = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="S", statement="", labels=None
     )
-    commands.cmd_item_add(item1)
+    commands.cmd_item_add(item1, cli_context)
     _ = capsys.readouterr()
 
     item2 = argparse.Namespace(
         directory=str(tmp_path), prefix="HLR", title="H", statement="", labels=None
     )
-    commands.cmd_item_add(item2)
+    commands.cmd_item_add(item2, cli_context)
     _ = capsys.readouterr()
 
     del_args = argparse.Namespace(directory=str(tmp_path), prefix="SYS", dry_run=True)
-    commands.cmd_doc_delete(del_args)
+    commands.cmd_doc_delete(del_args, cli_context)
     out = capsys.readouterr().out.splitlines()
     assert out == ["SYS", "HLR", "SYS1", "HLR1"]
     assert (Path(tmp_path) / "SYS").exists()
     assert (Path(tmp_path) / "HLR").exists()
 
 
-def test_doc_delete_requires_confirmation(tmp_path, capsys):
+def test_doc_delete_requires_confirmation(tmp_path, capsys, cli_context):
     args = argparse.Namespace(
         directory=str(tmp_path), prefix="SYS", title="System", parent=None
     )
-    commands.cmd_doc_create(args)
+    commands.cmd_doc_create(args, cli_context)
     _ = capsys.readouterr()
 
     from app.confirm import set_confirm
@@ -113,7 +113,7 @@ def test_doc_delete_requires_confirmation(tmp_path, capsys):
     set_confirm(fake_confirm)
 
     del_args = argparse.Namespace(directory=str(tmp_path), prefix="SYS")
-    commands.cmd_doc_delete(del_args)
+    commands.cmd_doc_delete(del_args, cli_context)
     out = capsys.readouterr().out.strip()
     assert out == "aborted"
     assert (Path(tmp_path) / "SYS").exists()

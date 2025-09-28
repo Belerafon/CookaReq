@@ -224,6 +224,7 @@ class SettingsDialog(wx.Dialog):
         log_dir: str | None,
         require_token: bool,
         token: str,
+        mcp_controller_factory: Callable[[], MCPController],
     ) -> None:
         """Create settings dialog with LLM and MCP configuration."""
         super().__init__(parent, title=_("Settings"))
@@ -538,7 +539,7 @@ class SettingsDialog(wx.Dialog):
         self._token = wx.TextCtrl(mcp, value=token)
         self._token.Enable(require_token)
 
-        self._mcp = MCPController()
+        self._mcp = mcp_controller_factory()
         self._start = wx.Button(mcp, label=_("Start MCP"))
         self._stop = wx.Button(mcp, label=_("Stop MCP"))
         self._check = wx.Button(mcp, label=_("Check MCP"))

@@ -11,7 +11,7 @@ from app.settings import MCPSettings
 pytestmark = pytest.mark.gui
 
 
-def test_gui_imports(wx_app, tmp_path):
+def test_gui_imports(wx_app, tmp_path, gui_context):
     pytest.importorskip("wx")
     from app.main import main
     from app.ui.editor_panel import EditorPanel
@@ -21,7 +21,7 @@ def test_gui_imports(wx_app, tmp_path):
     config = ConfigManager(path=tmp_path / "gui.ini")
     config.set_mcp_settings(MCPSettings(auto_start=False))
 
-    frame = MainFrame(None, config=config)
+    frame = MainFrame(None, context=gui_context, config=config)
     list_panel = ListPanel(frame)
     editor_panel = EditorPanel(frame)
     assert list_panel.GetParent() is frame
@@ -29,7 +29,7 @@ def test_gui_imports(wx_app, tmp_path):
     assert callable(main)
 
 
-def test_view_menu_lists_derived_from_column(wx_app, tmp_path):
+def test_view_menu_lists_derived_from_column(wx_app, tmp_path, gui_context):
     pytest.importorskip("wx")
     from app.config import ConfigManager
     from app.settings import MCPSettings
@@ -38,7 +38,7 @@ def test_view_menu_lists_derived_from_column(wx_app, tmp_path):
     config = ConfigManager(path=tmp_path / "columns.ini")
     config.set_mcp_settings(MCPSettings(auto_start=False))
 
-    frame = MainFrame(None, config=config)
+    frame = MainFrame(None, context=gui_context, config=config)
     try:
         assert "derived_from" in frame.available_fields
         derived_items = [
@@ -57,7 +57,7 @@ def test_view_menu_lists_derived_from_column(wx_app, tmp_path):
         wx_app.Yield()
 
 
-def test_log_level_persistence(wx_app, tmp_path):
+def test_log_level_persistence(wx_app, tmp_path, gui_context):
     pytest.importorskip("wx")
     from app.config import ConfigManager
     from app.ui.main_frame import MainFrame
@@ -68,7 +68,7 @@ def test_log_level_persistence(wx_app, tmp_path):
     config.set_log_level(logging.ERROR)
     config.set_mcp_settings(MCPSettings(auto_start=False))
 
-    frame = MainFrame(None, config=config, model=RequirementModel())
+    frame = MainFrame(None, context=gui_context, config=config, model=RequirementModel())
     try:
         selection = frame.log_level_choice.GetSelection()
         assert selection >= 0

@@ -12,6 +12,7 @@ from collections.abc import Mapping, Sequence
 import pytest
 
 from tests.env_utils import load_dotenv_variables
+from app.application import ApplicationContext
 
 if TYPE_CHECKING:  # pragma: no cover - typing hints for wx fixtures
     import wx
@@ -20,6 +21,13 @@ if TYPE_CHECKING:  # pragma: no cover - typing hints for wx fixtures
 # services (for example OpenRouter) automatically receive credentials without
 # requiring ``source .env`` beforehand.
 load_dotenv_variables(search_from=Path(__file__).resolve())
+
+
+@pytest.fixture
+def cli_context() -> ApplicationContext:
+    """Provide a fresh CLI application context for each test."""
+
+    return ApplicationContext.for_cli()
 
 
 def _normalise_marker_name(name: str) -> str:

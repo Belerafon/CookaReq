@@ -3,8 +3,29 @@
 import pytest
 
 from app.llm.constants import DEFAULT_LLM_TEMPERATURE, DEFAULT_MAX_CONTEXT_TOKENS
+from app.mcp.controller import MCPCheckResult, MCPStatus
 
 pytestmark = [pytest.mark.gui, pytest.mark.integration, pytest.mark.gui_smoke]
+
+
+class IdleMCPController:
+    """Stub MCP controller keeping buttons consistent during tests."""
+
+    def __init__(self) -> None:
+        self.state = MCPStatus.NOT_RUNNING
+        self.running = False
+
+    def is_running(self) -> bool:
+        return self.running
+
+    def start(self, _settings):
+        self.running = True
+
+    def stop(self):
+        self.running = False
+
+    def check(self, _settings):
+        return MCPCheckResult(self.state, f"{self.state.value}")
 
 
 def test_available_translations_contains_locales():
@@ -43,6 +64,7 @@ def test_settings_dialog_returns_language(wx_app):
         log_dir="/logs",
         require_token=True,
         token="abc",
+        mcp_controller_factory=lambda: IdleMCPController(),
     )
     values = dlg.get_values()
     assert values == (
@@ -95,7 +117,6 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
             return MCPCheckResult(MCPStatus.NOT_RUNNING, "")
 
     fake = FakeMCP()
-    monkeypatch.setattr("app.ui.settings_dialog.MCPController", lambda: fake)
 
     dlg = SettingsDialog(
         None,
@@ -119,6 +140,7 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         log_dir="",
         require_token=False,
         token="",
+        mcp_controller_factory=lambda: fake,
     )
 
     assert dlg._start.IsEnabled()
@@ -172,7 +194,6 @@ def test_mcp_check_status(monkeypatch, wx_app):
             return MCPCheckResult(self.state, f"{self.state.value}")
 
     dummy = DummyMCP()
-    monkeypatch.setattr("app.ui.settings_dialog.MCPController", lambda: dummy)
     messages: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "wx.MessageBox",
@@ -201,6 +222,7 @@ def test_mcp_check_status(monkeypatch, wx_app):
         log_dir="",
         require_token=True,
         token="abc",
+        mcp_controller_factory=lambda: dummy,
     )
 
     dummy.state = MCPStatus.READY
@@ -274,6 +296,7 @@ def test_llm_agent_checks(monkeypatch, wx_app):
         log_dir="",
         require_token=False,
         token="",
+        mcp_controller_factory=lambda: IdleMCPController(),
     )
 
     dlg._on_check_llm(wx.CommandEvent())
@@ -336,6 +359,7 @@ def test_llm_agent_check_failure_logs(monkeypatch, wx_app):
         log_dir="",
         require_token=False,
         token="",
+        mcp_controller_factory=lambda: IdleMCPController(),
     )
 
     dlg._on_check_llm(wx.CommandEvent())
@@ -383,6 +407,7 @@ def test_settings_help_buttons(monkeypatch, wx_app):
         log_dir="",
         require_token=False,
         token="",
+        mcp_controller_factory=lambda: IdleMCPController(),
     )
 
     base_btn = next(

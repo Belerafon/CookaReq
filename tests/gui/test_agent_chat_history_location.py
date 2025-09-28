@@ -16,7 +16,7 @@ def _copy_sample_repository(tmp_path: Path) -> Path:
     return destination
 
 
-def _create_main_frame(tmp_path: Path):
+def _create_main_frame(tmp_path: Path, context):
     pytest.importorskip("wx")
     from app.config import ConfigManager
     from app.settings import MCPSettings
@@ -26,14 +26,19 @@ def _create_main_frame(tmp_path: Path):
     config_path = tmp_path / "config.ini"
     config = ConfigManager(path=config_path)
     config.set_mcp_settings(MCPSettings(auto_start=False))
-    frame = MainFrame(None, config=config, model=RequirementModel())
+    frame = MainFrame(
+        None,
+        context=context,
+        config=config,
+        model=RequirementModel(),
+    )
     frame.Show()
     return frame
 
 
-def test_agent_chat_history_saved_next_to_documents(tmp_path, wx_app):
+def test_agent_chat_history_saved_next_to_documents(tmp_path, wx_app, gui_context):
     repository = _copy_sample_repository(tmp_path)
-    frame = _create_main_frame(tmp_path)
+    frame = _create_main_frame(tmp_path, gui_context)
     try:
         wx_app.Yield()
         frame._load_directory(repository)

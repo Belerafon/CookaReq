@@ -2,11 +2,14 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.ui.agent_chat_panel.coordinator import AgentChatCoordinator
 from app.ui.agent_chat_panel.controller import AgentRunController
+from app.ui.agent_chat_panel.coordinator import AgentChatCoordinator
 from app.ui.agent_chat_panel.history import AgentChatHistory
 from app.ui.agent_chat_panel.session import AgentChatSession
 from app.llm.tokenizer import TokenCountResult
+
+
+pytestmark = [pytest.mark.gui, pytest.mark.gui_full]
 
 
 class _StubExecutor:

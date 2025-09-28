@@ -107,7 +107,7 @@ class AgentChatLayoutBuilder:
             get_active_index=panel._active_index,
             activate_conversation=panel._on_history_row_activated,
             handle_delete_request=panel._delete_history_rows,
-            is_running=lambda: panel._is_running,
+            is_running=lambda: panel.is_running,
             splitter=horizontal_splitter,
         )
 
@@ -158,7 +158,7 @@ class AgentChatLayoutBuilder:
             transcript_box,
             callbacks=TranscriptCallbacks(
                 get_conversation=panel._get_active_conversation,
-                is_running=lambda: panel._is_running,
+                is_running=lambda: panel.is_running,
                 on_regenerate=panel._handle_regenerate_request,
                 update_copy_buttons=panel._update_transcript_copy_buttons,
                 update_header=panel._update_conversation_header,

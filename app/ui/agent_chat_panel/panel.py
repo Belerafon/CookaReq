@@ -293,6 +293,18 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         return self._session.history.active_id
 
+    @property
+    def is_running(self) -> bool:
+        """Expose whether the session currently waits for the agent."""
+
+        return self._session.is_running
+
+    @property
+    def coordinator(self) -> AgentChatCoordinator | None:
+        """Return the coordinator driving backend interactions."""
+
+        return self._coordinator
+
     def _set_active_conversation_id(self, conversation_id: str | None) -> None:
         """Update active conversation via the history component."""
 
@@ -962,9 +974,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         if handle.is_cancelled:
             return
-        controller = self._controller
-        if controller is not None:
-            controller.reset_active_handle(handle)
+        coordinator = self._coordinator
+        if coordinator is not None:
+            coordinator.reset_active_handle(handle)
         elapsed = self._session.elapsed
         final_tokens: TokenCountResult | None = None
         tool_results: list[Any] | None = None
@@ -2330,16 +2342,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _handle_regenerate_request(
         self, conversation_id: str, entry: ChatEntry
     ) -> None:
-        controller = self._controller
-        if controller is None:
+        coordinator = self._coordinator
+        if coordinator is None:
             return
-        controller.regenerate_entry(conversation_id, entry)
+        coordinator.regenerate_entry(conversation_id, entry)
 
     def _active_handle(self) -> _AgentRunHandle | None:
-        controller = self._controller
-        if controller is None:
+        coordinator = self._coordinator
+        if coordinator is None:
             return None
-        return controller.active_handle
+        return coordinator.active_handle
 
     @property
     def history(self) -> list[ChatEntry]:

@@ -69,7 +69,7 @@ class AgentBatchSection:
 
     # ------------------------------------------------------------------
     def start_batch(self) -> None:
-        if self._panel._is_running:
+        if self._panel.is_running:
             return
         runner = self._runner
         if runner.is_running:
@@ -101,9 +101,9 @@ class AgentBatchSection:
         if not runner.items:
             return
         runner.cancel_all()
-        controller = self._panel._controller
-        if controller is not None:
-            controller.stop()
+        coordinator = self._panel.coordinator
+        if coordinator is not None:
+            coordinator.stop()
         self._panel.status_label.SetLabel(_("Batch cancellation requested"))
         self.update_ui()
 
@@ -145,7 +145,7 @@ class AgentBatchSection:
             status_label.SetLabel(_("Select requirements and run a batch"))
             progress.SetRange(1)
             progress.SetValue(0)
-            run_button.Enable(not self._panel._is_running)
+            run_button.Enable(not self._panel.is_running)
             stop_button.Enable(False)
             self._panel._refresh_bottom_panel_layout()
             return
@@ -196,7 +196,7 @@ class AgentBatchSection:
             )
 
         status_label.SetLabel(summary)
-        run_button.Enable(not runner.is_running and not self._panel._is_running)
+        run_button.Enable(not runner.is_running and not self._panel.is_running)
         stop_button.Enable(runner.is_running)
         self._panel._refresh_bottom_panel_layout()
 

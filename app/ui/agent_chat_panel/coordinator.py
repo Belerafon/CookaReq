@@ -7,6 +7,7 @@ from typing import Mapping, Sequence
 from .controller import AgentRunController
 from .execution import AgentCommandExecutor, _AgentRunHandle
 from .session import AgentChatSession
+from ..chat_entry import ChatEntry
 
 
 class AgentChatCoordinator:
@@ -63,6 +64,25 @@ class AgentChatCoordinator:
         """Stop the underlying controller and cancel the executor."""
 
         self._run_controller.stop()
+
+    # ------------------------------------------------------------------
+    @property
+    def active_handle(self) -> _AgentRunHandle | None:
+        """Expose the controller's active handle for inspection."""
+
+        return self._run_controller.active_handle
+
+    # ------------------------------------------------------------------
+    def reset_active_handle(self, handle: _AgentRunHandle) -> None:
+        """Clear the active handle if it matches *handle*."""
+
+        self._run_controller.reset_active_handle(handle)
+
+    # ------------------------------------------------------------------
+    def regenerate_entry(self, conversation_id: str, entry: ChatEntry) -> None:
+        """Trigger regeneration of the last entry in a conversation."""
+
+        self._run_controller.regenerate_entry(conversation_id, entry)
 
 
 __all__ = ["AgentChatCoordinator"]

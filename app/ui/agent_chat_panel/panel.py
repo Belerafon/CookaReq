@@ -5,11 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import textwrap
-import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -28,10 +26,12 @@ from ..helpers import (
 from ..text import normalize_for_display
 from .batch_runner import BatchTarget
 from .batch_ui import AgentBatchSection
+from .components.view import AgentChatView, WaitStateCallbacks
 from .confirm_preferences import (
     ConfirmPreferencesMixin,
     RequirementConfirmPreference,
 )
+from .coordinator import AgentChatCoordinator
 from .controller import AgentRunCallbacks, AgentRunController
 from .execution import AgentCommandExecutor, ThreadedAgentCommandExecutor, _AgentRunHandle
 from .history import AgentChatHistory
@@ -53,9 +53,14 @@ from .project_settings import (
     save_agent_project_settings,
 )
 from .layout import AgentChatLayoutBuilder
+from .session import AgentChatSession
 from .settings_dialog import AgentProjectSettingsDialog
 from .time_formatting import format_last_activity
-from .token_usage import ContextTokenBreakdown
+from .token_usage import (
+    ContextTokenBreakdown,
+    TOKEN_UNAVAILABLE_LABEL,
+    format_token_quantity,
+)
 from .tool_summaries import (
     render_tool_summaries_plain,
     summarize_tool_results,
@@ -71,15 +76,25 @@ try:  # pragma: no cover - import only used for typing
 except Exception:  # pragma: no cover - fallback when wx stubs are used
     LocalAgent = object  # type: ignore[assignment]
 
-TOKEN_UNAVAILABLE_LABEL = "n/a"
-
-
 STATUS_HELP_TEXT = _(
     "The waiting status shows three elements:\n"
     "• The timer reports how long the agent has been running in mm:ss and updates every second.\n"
     "• The status text describes whether the agent is still working or has finished.\n"
     "• The spinning indicator on the left stays active while the agent is still working."
 )
+
+
+class _PanelWaitCallbacks(WaitStateCallbacks):
+    """Bridge view wait state callbacks back to the panel."""
+
+    def __init__(self, panel: "AgentChatPanel") -> None:
+        self._panel = panel
+
+    def on_refresh_layout(self) -> None:
+        self._panel._refresh_bottom_panel_layout()
+
+    def on_focus_input(self) -> None:
+        self._panel.input.SetFocus()
 
 
 class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
@@ -108,10 +123,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         inherit_background(self, parent)
         self._agent_supplier = agent_supplier
-        self._history = AgentChatHistory(
+        history = AgentChatHistory(
             history_path=history_path,
             on_active_changed=self._on_active_conversation_changed,
         )
+        self._session = AgentChatSession(history=history, timer_owner=self)
         self._settings_path = settings_path_for_documents(None)
         self._project_settings = load_agent_project_settings(self._settings_path)
         self._token_model_resolver = (
@@ -135,11 +151,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             pool = getattr(command_executor, "pool", None)
             if pool is not None:
                 self._executor_pool = pool
-        self._is_running = False
-        self._timer = wx.Timer(self)
-        self.Bind(wx.EVT_TIMER, self._on_timer, self._timer)
-        self._start_time: float | None = None
-        self._current_tokens: TokenCountResult = TokenCountResult.exact(0)
         self._new_chat_btn: wx.Button | None = None
         self._conversation_label: wx.StaticText | None = None
         self._stop_btn: wx.Button | None = None
@@ -151,6 +162,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._vertical_sash_goal: int | None = None
         self._vertical_last_sash = 0
         self._controller: AgentRunController | None = None
+        self._coordinator: AgentChatCoordinator | None = None
         self._context_provider = context_provider
         self._batch_target_provider = batch_target_provider
         self._batch_context_provider = batch_context_provider
@@ -171,15 +183,25 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         ] = ()
         self._suppress_confirm_choice_events = False
         self._project_settings_button: wx.Button | None = None
-        self._layout_builder = AgentChatLayoutBuilder(self)
+        self._view = AgentChatView(
+            self,
+            layout_builder=AgentChatLayoutBuilder(self),
+            status_help_text=STATUS_HELP_TEXT,
+        )
+        self._wait_callbacks = _PanelWaitCallbacks(self)
         self._layout = None
-        self._history.load()
+        self._session.events.elapsed.connect(self._on_session_elapsed)
+        self._session.events.running_changed.connect(self._on_session_running_changed)
+        self._session.events.tokens_changed.connect(self._on_session_tokens_changed)
+        self._session.events.history_changed.connect(self._on_session_history_changed)
+        self._session.load_history()
         self._build_ui()
         self._initialize_controller()
         self._render_transcript()
 
     # ------------------------------------------------------------------
     def Destroy(self) -> bool:  # pragma: no cover - exercised via GUI tests
+        self._session.shutdown()
         self._cleanup_executor()
         return super().Destroy()
 
@@ -191,9 +213,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     # ------------------------------------------------------------------
     def _cleanup_executor(self) -> None:
-        controller = getattr(self, "_controller", None)
-        if controller is not None:
-            controller.stop()
+        coordinator = getattr(self, "_coordinator", None)
+        if coordinator is not None:
+            coordinator.stop()
+        else:
+            controller = getattr(self, "_controller", None)
+            if controller is not None:
+                controller.stop()
         pool = self._executor_pool
         if pool is None:
             return
@@ -209,7 +235,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def set_history_path(self, path: Path | str | None) -> None:
         """Switch to *path* reloading conversations from disk."""
 
-        changed = self._history.set_path(path, persist_existing=bool(self.conversations))
+        changed = self._session.set_history_path(
+            path, persist_existing=bool(self.conversations)
+        )
         if not changed:
             return
         self._load_history_from_store()
@@ -226,7 +254,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def history_path(self) -> Path:
         """Return the path of the current chat history file."""
 
-        return self._history.path
+        return self._session.history.path
 
     def set_project_settings_path(self, path: Path | str | None) -> None:
         """Switch storage for project agent settings to *path*."""
@@ -258,25 +286,37 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def conversations(self) -> list[ChatConversation]:
         """Expose current conversations managed by the history component."""
 
-        return self._history.conversations
+        return self._session.history.conversations
 
     @property
     def active_conversation_id(self) -> str | None:
         """Return identifier of the active conversation."""
 
-        return self._history.active_id
+        return self._session.history.active_id
+
+    @property
+    def is_running(self) -> bool:
+        """Expose whether the session currently waits for the agent."""
+
+        return self._session.is_running
+
+    @property
+    def coordinator(self) -> AgentChatCoordinator | None:
+        """Return the coordinator driving backend interactions."""
+
+        return self._coordinator
 
     def _set_active_conversation_id(self, conversation_id: str | None) -> None:
         """Update active conversation via the history component."""
 
-        self._history.set_active_id(conversation_id)
+        self._session.history.set_active_id(conversation_id)
 
     # ------------------------------------------------------------------
     def _load_history_from_store(self) -> None:
-        self._history.load()
+        self._session.load_history()
 
     def _save_history_to_store(self) -> None:
-        self._history.save()
+        self._session.save_history()
 
     # ------------------------------------------------------------------
     def _token_model(self) -> str | None:
@@ -305,7 +345,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _build_ui(self) -> None:
         """Construct controls and layout."""
 
-        layout = self._layout_builder.build(status_help_text=STATUS_HELP_TEXT)
+        state = self._view.build()
+        layout = state.layout
         self._layout = layout
         self._vertical_splitter = layout.vertical_splitter
         self._horizontal_splitter = layout.horizontal_splitter
@@ -352,9 +393,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 prompt_at=prompt_at,
                 context_messages=context,
             ),
-            is_running=lambda: self._is_running,
+            is_running=lambda: self._session.is_running,
             persist_history=self._save_history_to_store,
-            refresh_history=self._refresh_history_list,
+            refresh_history=self._notify_history_changed,
             render_transcript=self._render_transcript,
             set_wait_state=self._set_wait_state,
             confirm_override_kwargs=self._confirm_override_kwargs,
@@ -367,6 +408,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             token_model_resolver=self._token_model,
             context_provider=self._context_provider,
             callbacks=callbacks,
+        )
+        self._coordinator = AgentChatCoordinator(
+            session=self._session,
+            run_controller=self._controller,
+            command_executor=self._command_executor,
         )
         if self._layout is not None:
             self._batch_section = AgentBatchSection(
@@ -388,7 +434,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             rid = str(target.requirement_id)
         base_title = _("Batch • {rid}").format(rid=rid)
         conversation.title = base_title
-        self._refresh_history_list()
+        self._notify_history_changed()
 
     def _build_batch_context(
         self, target: BatchTarget
@@ -411,10 +457,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         context: Sequence[Mapping[str, Any]] | Mapping[str, Any] | None,
         prompt_at: str | None,
     ) -> None:
-        controller = self._controller
-        if controller is None:
+        coordinator = self._coordinator
+        if coordinator is None:
             return
-        controller.submit_prompt_with_context(
+        coordinator.submit_prompt_with_context(
             prompt,
             conversation_id=conversation_id,
             context_messages=context,
@@ -486,7 +532,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _on_send(self, _event: wx.Event) -> None:
         """Send prompt to agent."""
 
-        if self._is_running:
+        if self._session.is_running:
             return
 
         text = self.input.GetValue().strip()
@@ -499,10 +545,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _submit_prompt(self, prompt: str, *, prompt_at: str | None = None) -> None:
         """Submit ``prompt`` to the agent pipeline."""
 
-        controller = self._controller
-        if controller is None:
+        coordinator = self._coordinator
+        if coordinator is None:
             return
-        controller.submit_prompt(prompt, prompt_at=prompt_at)
+        coordinator.submit_prompt(prompt, prompt_at=prompt_at)
 
     def _on_clear_input(self, _event: wx.Event) -> None:
         """Clear input field and reset selection."""
@@ -521,7 +567,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _delete_selected_conversations(
         self, *, require_confirmation: bool, rows: Sequence[int] | None
     ) -> None:
-        if self._is_running:
+        if self._session.is_running:
             return
         if rows is None:
             if self._history_view is None:
@@ -570,7 +616,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         remaining = [
             conv for conv in self.conversations if conv.conversation_id not in ids_to_remove
         ]
-        self._history.set_conversations(remaining)
+        self._session.history.set_conversations(remaining)
         if self.conversations:
             if self.active_conversation_id not in {
                 conv.conversation_id for conv in self.conversations
@@ -582,8 +628,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         else:
             self._set_active_conversation_id(None)
         self._save_history_to_store()
-        self._refresh_history_list()
-        self._render_transcript()
+        self._notify_history_changed()
         if removed_active:
             self.input.SetValue("")
         self.input.SetFocus()
@@ -591,17 +636,17 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _on_stop(self, _event: wx.Event) -> None:
         """Cancel the in-flight agent request, if any."""
 
-        controller = self._controller
-        if controller is None:
+        coordinator = self._coordinator
+        if coordinator is None:
             return
         if self._batch_section is not None:
             self._batch_section.request_skip_current()
-        handle = controller.stop()
+        handle = coordinator.cancel_active_run()
         if handle is None:
             return
         self._finalize_cancelled_run(handle)
         self._set_wait_state(False)
-        self.status_label.SetLabel(_("Generation cancelled"))
+        self._view.update_status_label(_("Generation cancelled"))
         self.input.SetValue(handle.prompt)
         self.input.SetInsertionPointEnd()
         self.input.SetFocus()
@@ -625,38 +670,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     ) -> None:
         """Enable or disable busy indicators."""
 
-        self._is_running = active
-        self._send_btn.Enable(not active)
-        self.input.Enable(not active)
-        if self._stop_btn is not None:
-            self._stop_btn.Enable(active)
-        self._update_project_settings_ui()
-        self._update_history_controls()
         if active:
-            self._current_tokens = (
-                tokens if tokens is not None else TokenCountResult.exact(0)
-            )
-            self._start_time = time.monotonic()
-            self.activity.Show()
-            self.activity.Start()
-            self._refresh_bottom_panel_layout()
-            self._update_status(0.0)
-            self._timer.Start(100)
-        else:
-            if tokens is not None:
-                self._current_tokens = tokens
-            else:
-                self._current_tokens = TokenCountResult.exact(0)
-            self._timer.Stop()
-            self.activity.Stop()
-            self.activity.Hide()
-            self._refresh_bottom_panel_layout()
-            self.status_label.SetLabel(_("Ready"))
-            self._start_time = None
-            self.input.SetFocus()
-        self._update_conversation_header()
-        if self._batch_section is not None:
-            self._batch_section.update_ui()
+            self._session.begin_run(tokens=tokens)
+            return
+        self._session.finalize_run(tokens=tokens)
 
     def _adjust_vertical_splitter(self) -> None:
         """Size the vertical splitter so the bottom pane hugs the controls."""
@@ -708,31 +725,57 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._vertical_sash_goal = self._vertical_last_sash
         event.Skip()
 
-    def _on_timer(self, _event: wx.TimerEvent) -> None:
+    def _on_session_elapsed(self, elapsed: float) -> None:
         """Refresh elapsed time display while waiting for response."""
 
-        if not self._is_running or self._start_time is None:
+        if not self._session.is_running:
             return
-        elapsed = time.monotonic() - self._start_time
         self._update_status(elapsed)
 
-    def _format_tokens_for_status(self, tokens: TokenCountResult) -> str:
-        """Return status label representation for ``tokens``."""
+    def _on_session_running_changed(self, running: bool) -> None:
+        """Synchronize UI with the session running state."""
 
-        if tokens.tokens is None:
-            return TOKEN_UNAVAILABLE_LABEL
-        quantity = tokens.tokens / 1000 if tokens.tokens else 0.0
-        label = f"{quantity:.2f} k tokens"
-        return f"~{label}" if tokens.approximate else label
+        if self._layout is None:
+            return
+        tokens = self._session.tokens
+        self._view.set_wait_state(
+            running,
+            tokens=tokens,
+            context_limit=self._context_token_limit(),
+            callbacks=self._wait_callbacks,
+        )
+        self._update_project_settings_ui()
+        self._update_history_controls()
+        if running:
+            self._update_status(0.0)
+        if self._batch_section is not None:
+            self._batch_section.update_ui()
+
+    def _on_session_tokens_changed(self, _tokens: TokenCountResult) -> None:
+        """Update UI whenever the session token accounting changes."""
+
+        if self._layout is None:
+            return
+        self._update_conversation_header()
+
+    def _on_session_history_changed(self, _history: AgentChatHistory) -> None:
+        """React to history changes propagated by the session model."""
+
+        if self._layout is None:
+            return
+        self._refresh_history_list()
+        self._render_transcript()
 
     def _update_status(self, elapsed: float) -> None:
         """Show formatted timer and prompt size."""
 
-        minutes, seconds = divmod(int(elapsed), 60)
-        label = _("Waiting for agent… {time}").format(
-            time=f"{minutes:02d}:{seconds:02d}",
+        if self._layout is None:
+            return
+        self._view.update_wait_status(
+            elapsed,
+            self._session.tokens,
+            self._context_token_limit(),
         )
-        self.status_label.SetLabel(label)
 
     def _context_token_limit(self) -> int | None:
         """Return resolved context window size when available."""
@@ -886,7 +929,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         breakdown = self._compute_context_token_breakdown()
         total_tokens = breakdown.total
-        tokens_text = self._format_tokens_for_status(total_tokens)
+        tokens_text = format_token_quantity(total_tokens)
         percent_text = self._format_context_percentage(
             total_tokens, self._context_token_limit()
         )
@@ -897,7 +940,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 limit,
                 model=total_tokens.model,
             )
-            limit_text = self._format_tokens_for_status(limit_tokens)
+            limit_text = format_token_quantity(limit_tokens)
             tokens_text = _("{used} / {limit}").format(
                 used=tokens_text,
                 limit=limit_text,
@@ -926,14 +969,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         if handle.is_cancelled:
             return
-        controller = self._controller
-        if controller is not None:
-            controller.reset_active_handle(handle)
-        elapsed = (
-            time.monotonic() - self._start_time
-            if self._start_time is not None
-            else 0.0
-        )
+        coordinator = self._coordinator
+        if coordinator is not None:
+            coordinator.reset_active_handle(handle)
+        elapsed = self._session.elapsed
         final_tokens: TokenCountResult | None = None
         tool_results: list[Any] | None = None
         should_render = False
@@ -1000,7 +1039,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if elapsed:
                 minutes, seconds = divmod(int(elapsed), 60)
                 time_text = f"{minutes:02d}:{seconds:02d}"
-                token_label = self._format_tokens_for_status(self._current_tokens)
+                token_label = format_token_quantity(self._session.tokens)
                 if token_label:
                     label = _("Received response in {time} • {tokens}").format(
                         time=time_text,
@@ -1008,7 +1047,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     )
                 else:
                     label = _("Received response in {time}").format(time=time_text)
-                self.status_label.SetLabel(label)
+                self._view.update_status_label(label)
 
         if isinstance(result, Mapping) and not result.get("ok", False):
             success = False
@@ -1247,7 +1286,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         conversation.append_entry(entry)
         self._save_history_to_store()
-        self._refresh_history_list()
+        self._notify_history_changed()
 
     def _complete_pending_entry(
         self,
@@ -1298,7 +1337,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         conversation.updated_at = response_at
         conversation.ensure_title()
         self._save_history_to_store()
-        self._refresh_history_list()
+        self._notify_history_changed()
 
     def _pop_conversation_entry(
         self,
@@ -1333,8 +1372,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         handle.pending_entry = None
         handle.streamed_tool_results.clear()
         self._save_history_to_store()
-        self._refresh_history_list()
-        self._render_transcript()
+        self._notify_history_changed()
 
     def _finalize_cancelled_run(self, handle: _AgentRunHandle) -> None:
         """Preserve transcript state after cancelling an agent run."""
@@ -1386,12 +1424,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         handle.pending_entry = None
         handle.streamed_tool_results.clear()
-        self._render_transcript()
         batch_section = self._batch_section
         if batch_section is not None:
             batch_section.notify_cancellation(
                 conversation_id=handle.conversation_id
             )
+
+    def _notify_history_changed(self) -> None:
+        """Propagate history updates through the session events."""
+
+        self._session.notify_history_changed()
 
     def _refresh_history_list(self) -> None:
         if self._history_view is None:
@@ -1409,7 +1451,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         conversation_id: str,
         entry: ChatEntry,
     ) -> None:
-        if self._is_running:
+        if self._session.is_running:
             return
         conversation = self._get_conversation_by_id(conversation_id)
         if conversation is None or not conversation.entries:
@@ -1422,16 +1464,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         previous_state = entry.regenerated
         entry.regenerated = True
         self._save_history_to_store()
-        self._refresh_history_list()
-        self._render_transcript()
+        self._notify_history_changed()
         try:
             self._submit_prompt(prompt)
         except Exception:  # pragma: no cover - defensive
             logger.exception("Failed to regenerate agent response")
             entry.regenerated = previous_state
             self._save_history_to_store()
-            self._refresh_history_list()
-            self._render_transcript()
+            self._notify_history_changed()
 
     def _ensure_history_visible(self, index: int) -> None:
         if self._history_view is None:
@@ -2153,7 +2193,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 "Define project-specific instructions appended to the system prompt."
             )
         button.SetToolTip(tooltip)
-        button.Enable(not self._is_running)
+        button.Enable(not self._session.is_running)
 
     def _apply_project_settings(
         self,
@@ -2216,8 +2256,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         conversation = ChatConversation.new()
         self.conversations.append(conversation)
         self._set_active_conversation_id(conversation.conversation_id)
-        self._refresh_history_list()
-        self._render_transcript()
+        self._notify_history_changed()
         if persist:
             self._save_history_to_store()
         return conversation
@@ -2284,12 +2323,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _update_history_controls(self) -> None:
         has_conversations = bool(self.conversations)
-        self.history_list.Enable(has_conversations and not self._is_running)
+        self.history_list.Enable(has_conversations and not self._session.is_running)
         if self._new_chat_btn is not None:
-            self._new_chat_btn.Enable(not self._is_running)
+            self._new_chat_btn.Enable(not self._session.is_running)
 
     def _on_new_chat(self, _event: wx.Event) -> None:
-        if self._is_running:
+        if self._session.is_running:
             return
         self._create_conversation(persist=True)
         self.input.SetValue("")
@@ -2298,16 +2337,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _handle_regenerate_request(
         self, conversation_id: str, entry: ChatEntry
     ) -> None:
-        controller = self._controller
-        if controller is None:
+        coordinator = self._coordinator
+        if coordinator is None:
             return
-        controller.regenerate_entry(conversation_id, entry)
+        coordinator.regenerate_entry(conversation_id, entry)
 
     def _active_handle(self) -> _AgentRunHandle | None:
-        controller = self._controller
-        if controller is None:
+        coordinator = self._coordinator
+        if coordinator is None:
             return None
-        return controller.active_handle
+        return coordinator.active_handle
 
     @property
     def history(self) -> list[ChatEntry]:

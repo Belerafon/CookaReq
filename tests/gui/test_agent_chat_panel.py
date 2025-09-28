@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 
 from app.confirm import ConfirmDecision, reset_requirement_update_preference, set_confirm, set_requirement_update_confirm
 from app.llm.tokenizer import TokenCountResult
+from app.ui.agent_chat_panel.token_usage import summarize_token_usage
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.widgets.chat_message import MessageBubble, TranscriptMessagePanel
 
@@ -1401,6 +1402,50 @@ def test_agent_chat_panel_activity_indicator_layout(tmp_path, wx_app):
         indicator_height = max(1, panel.activity.GetSize().GetHeight())
 
         assert abs(activity_pos.y - status_pos.y) <= indicator_height
+    finally:
+        panel._set_wait_state(False)
+        destroy_panel(frame, panel)
+
+
+def test_agent_chat_panel_ready_status_reflects_tokens(tmp_path, wx_app):
+    class IdleAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+        ):  # pragma: no cover - defensive
+            return {"ok": True, "error": None, "result": text}
+
+    wx, frame, panel = create_panel(
+        tmp_path,
+        wx_app,
+        IdleAgent(),
+        context_window=4000,
+    )
+
+    from app.i18n import _
+
+    try:
+        prompt_tokens = TokenCountResult.exact(1000)
+        panel._set_wait_state(True, prompt_tokens)
+        flush_wx_events(wx)
+
+        final_tokens = TokenCountResult.exact(2000)
+        panel._set_wait_state(False, final_tokens)
+        flush_wx_events(wx)
+
+        limit = panel._context_token_limit()
+        expected_details = summarize_token_usage(final_tokens, limit)
+        expected_label = _("{base} — {details}").format(
+            base=_("Ready"),
+            details=expected_details,
+        )
+
+        assert panel.status_label.GetLabel() == expected_label
     finally:
         panel._set_wait_state(False)
         destroy_panel(frame, panel)

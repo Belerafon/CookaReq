@@ -10,7 +10,8 @@ from types import SimpleNamespace
 import pytest
 import httpx
 
-from app.llm.client import LLMResponse, LLMToolCall, LLMClient, NO_API_KEY
+from app.llm.client import LLMClient, NO_API_KEY
+from app.llm.types import LLMResponse, LLMToolCall
 from app.llm.harmony import convert_tools_for_harmony
 from app.llm.validation import ToolValidationError
 from app.llm.spec import SYSTEM_PROMPT, TOOLS
@@ -393,8 +394,10 @@ def test_parse_command_recovers_concatenated_tool_arguments(
                 completions=SimpleNamespace(create=create)
             )
 
-    monkeypatch.setattr("app.llm.client.log_event", fake_log_event)
-    monkeypatch.setattr("app.llm.client.log_debug_payload", fake_log_debug)
+    monkeypatch.setattr("app.llm.response_parser.log_event", fake_log_event)
+    monkeypatch.setattr(
+        "app.llm.response_parser.log_debug_payload", fake_log_debug
+    )
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = LLMClient(settings.llm)
 
@@ -474,8 +477,10 @@ def test_parse_command_reports_invalid_tool_arguments(
                 completions=SimpleNamespace(create=create)
             )
 
-    monkeypatch.setattr("app.llm.client.log_event", fake_log_event)
-    monkeypatch.setattr("app.llm.client.log_debug_payload", fake_log_debug)
+    monkeypatch.setattr("app.llm.response_parser.log_event", fake_log_event)
+    monkeypatch.setattr(
+        "app.llm.response_parser.log_debug_payload", fake_log_debug
+    )
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = LLMClient(settings.llm)
 
@@ -791,8 +796,14 @@ def test_parse_command_trims_history_by_tokens(tmp_path: Path, monkeypatch) -> N
             )
 
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
-    monkeypatch.setattr(LLMClient, "_resolved_max_context_tokens", lambda self: 4)
-    monkeypatch.setattr(LLMClient, "_count_tokens", staticmethod(lambda text: 1 if text else 0))
+    monkeypatch.setattr(
+        "app.llm.request_builder.LLMRequestBuilder._resolved_max_context_tokens",
+        lambda self: 4,
+    )
+    monkeypatch.setattr(
+        "app.llm.request_builder.LLMRequestBuilder._count_tokens",
+        lambda self, text: 1 if text else 0,
+    )
     
     def fake_log_event(
         event: str,
@@ -802,7 +813,7 @@ def test_parse_command_trims_history_by_tokens(tmp_path: Path, monkeypatch) -> N
     ) -> None:
         logged_events.append((event, dict(payload or {})))
 
-    monkeypatch.setattr("app.llm.client.log_event", fake_log_event)
+    monkeypatch.setattr("app.llm.request_builder.log_event", fake_log_event)
     client = LLMClient(settings.llm)
     history = [
         {"role": "user", "content": "h1"},

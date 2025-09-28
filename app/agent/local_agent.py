@@ -15,7 +15,8 @@ from ..confirm import (
     confirm_requirement_update as default_update_confirm,
 )
 from ..services.requirements import parse_rid
-from ..llm.client import LLMClient, LLMReasoningSegment, LLMResponse, LLMToolCall
+from ..llm.client import LLMClient
+from ..llm.types import LLMReasoningSegment, LLMResponse, LLMToolCall
 from ..llm.validation import ToolValidationError
 from ..mcp.client import MCPClient
 from ..mcp.utils import exception_to_mcp_error

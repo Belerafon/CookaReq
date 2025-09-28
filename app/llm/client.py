@@ -3,86 +3,20 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import time
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
-from dataclasses import dataclass
-from datetime import date
 from typing import Any
 
-import httpx
-
 from ..settings import LLMSettings
-from .constants import (
-    DEFAULT_MAX_CONTEXT_TOKENS,
-    MIN_MAX_CONTEXT_TOKENS,
-)
-
-# ``OpenAI`` импортируется динамически в конструкторе, чтобы тесты могли
-# подменять ``openai.OpenAI`` до первого использования и тем самым избежать
-# реальных сетевых запросов.
-from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
-from .harmony import (
-    HARMONY_KNOWLEDGE_CUTOFF,
-    HarmonyPrompt,
-    convert_tools_for_harmony,
-    render_harmony_prompt,
-)
-from .spec import SYSTEM_PROMPT, TOOLS
-from .tokenizer import count_text_tokens
-from .validation import ToolValidationError, validate_tool_call
-
-
-@dataclass(frozen=True, slots=True)
-class LLMToolCall:
-    """Structured representation of an MCP tool invocation."""
-
-    id: str
-    name: str
-    arguments: Mapping[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class LLMResponse:
-    """Assistant message possibly containing tool calls."""
-
-    content: str
-    tool_calls: tuple[LLMToolCall, ...] = ()
-    request_messages: tuple[dict[str, Any], ...] | None = None
-    reasoning: tuple[LLMReasoningSegment, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class LLMReasoningSegment:
-    """Captured reasoning segment produced by the LLM."""
-
-    type: str
-    text: str
-
-
-@dataclass(frozen=True, slots=True)
-class _ToolArgumentRecovery:
-    """Describe a successful recovery from a malformed tool argument payload."""
-
-    arguments: Mapping[str, Any]
-    classification: str
-    fragments: int
-    recovered_fragment_index: int
-    empty_fragment_count: int
-
-
-@dataclass(frozen=True, slots=True)
-class HistoryTrimResult:
-    """Container describing the outcome of history trimming."""
-
-    kept_messages: list[dict[str, Any]]
-    dropped_messages: int
-    dropped_tokens: int
-    total_messages: int
-    total_tokens: int
-    kept_tokens: int
+from .harmony import convert_tools_for_harmony
+from .logging import log_request, log_response
+from .request_builder import LLMRequestBuilder
+from .response_parser import LLMResponseParser, normalise_tool_calls
+from .spec import TOOLS
+from .types import LLMReasoningSegment, LLMResponse
+from .validation import ToolValidationError
 
 # When the backend does not require authentication, the official OpenAI client
 # still insists on a non-empty ``api_key``.  Using a harmless placeholder allows
@@ -95,22 +29,10 @@ class LLMClient:
     """High-level client for LLM operations."""
 
     _SUPPORTED_MESSAGE_FORMATS = frozenset({"openai-chat", "harmony", "qwen"})
-    _REASONING_TYPE_ALIASES = frozenset(
-        {
-            "analysis",
-            "chain_of_thought",
-            "internal_thought",
-            "reason",
-            "reasoning",
-            "reflection",
-            "thought",
-            "thinking",
-        }
-    )
-    _REASONING_KEYWORDS = ("reason", "think", "analysis", "reflect")
 
     def __init__(self, settings: LLMSettings) -> None:
         """Initialize client with LLM configuration ``settings``."""
+
         import openai
 
         self.settings = settings
@@ -118,13 +40,12 @@ class LLMClient:
         if message_format not in self._SUPPORTED_MESSAGE_FORMATS:
             raise ValueError(
                 "Unsupported LLM message format: "
-                f"{message_format}."
-                " Configure one of: "
+                f"{message_format}. Configure one of: "
                 + ", ".join(sorted(self._SUPPORTED_MESSAGE_FORMATS))
             )
-        self._message_format = message_format
         if not self.settings.base_url:
             raise ValueError("LLM base URL is not configured")
+        self._message_format = message_format
         api_key = self.settings.api_key or NO_API_KEY
         self._client = openai.OpenAI(
             base_url=self.settings.base_url,
@@ -132,6 +53,8 @@ class LLMClient:
             timeout=self.settings.timeout_minutes * 60,
             max_retries=self.settings.max_retries,
         )
+        self._request_builder = LLMRequestBuilder(settings, message_format)
+        self._response_parser = LLMResponseParser(settings, message_format)
 
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
@@ -152,12 +75,7 @@ class LLMClient:
         history: Sequence[Mapping[str, Any]] | None = None,
         cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
-        """Interpret *text* into an assistant reply with optional tool calls.
-
-        The helper wraps :meth:`respond` by appending the user prompt to the
-        provided *history* prior to dispatching the request.  Consumers that
-        already manage the conversation can call :meth:`respond` directly.
-        """
+        """Interpret *text* into an assistant reply with optional tool calls."""
 
         conversation: list[Mapping[str, Any]] = list(history or [])
         conversation.append({"role": "user", "content": text})
@@ -174,9 +92,7 @@ class LLMClient:
 
         conversation: list[Mapping[str, Any]] = list(history or [])
         conversation.append({"role": "user", "content": text})
-        return await self.respond_async(
-            conversation, cancellation=cancellation
-        )
+        return await self.respond_async(conversation, cancellation=cancellation)
 
     # ------------------------------------------------------------------
     def respond(
@@ -187,9 +103,7 @@ class LLMClient:
     ) -> LLMResponse:
         """Send the full *conversation* to the model and return its reply."""
 
-        return self._respond(
-            list(conversation or []), cancellation=cancellation
-        )
+        return self._respond(list(conversation or []), cancellation=cancellation)
 
     async def respond_async(
         self,
@@ -205,160 +119,45 @@ class LLMClient:
             cancellation=cancellation,
         )
 
-    def _format_invalid_completion_error(
-        self, prefix: str, completion: Any
-    ) -> str:
-        """Return a detailed error message for unexpected completion payloads."""
-
-        summary = self._summarize_completion_payload(completion)
-        hint = (
-            "Verify that the configured base URL "
-            f"{self.settings.base_url!r} exposes an OpenAI-compatible chat "
-            "completions endpoint. If you are using LM Studio, ensure the URL "
-            "ends with '/v1' (for example 'http://127.0.0.1:1234/v1')."
-        )
-
-        def _normalize(text: str) -> str:
-            return text.rstrip(".")
-
-        parts = [_normalize(prefix)]
-        if summary:
-            parts.append(_normalize(summary))
-        parts.append(_normalize(hint))
-        message = ". ".join(parts)
-        if not message.endswith("."):
-            message += "."
-        return message
-
-    def _summarize_completion_payload(self, completion: Any) -> str:
-        """Return a concise description of an unexpected completion payload."""
-
-        def _clip(text: str, limit: int = 120) -> str:
-            snippet = str(text).strip()
-            if len(snippet) <= limit:
-                return snippet
-            return snippet[: limit - 3] + "..."
-
-        summary_parts: list[str] = []
-        mapping = self._extract_mapping(completion)
-        if mapping is not None:
-            keys = ", ".join(sorted(str(key) for key in mapping)) or "(none)"
-            summary = (
-                f"Response payload type {type(completion).__name__} "
-                f"with keys: {keys}"
-            )
-            details: list[str] = []
-            error_info = mapping.get("error")
-            if isinstance(error_info, Mapping):
-                message = error_info.get("message") or error_info.get("detail")
-                code = error_info.get("code") or error_info.get("type")
-                if message:
-                    details.append(_clip(message))
-                if code:
-                    details.append(str(code))
-            elif error_info:
-                details.append(_clip(error_info))
-            detail_value = mapping.get("detail")
-            if detail_value:
-                details.append(_clip(detail_value))
-            if details:
-                summary += f" ({'; '.join(details)})"
-            summary_parts.append(summary)
-        elif isinstance(completion, str):
-            summary_parts.append(f"Response payload was a string: {_clip(completion)}")
-        elif completion is None:
-            summary_parts.append("Response payload was empty (None)")
-        else:
-            summary_parts.append(
-                "Response payload type "
-                f"{type(completion).__name__} is not OpenAI ChatCompletion-compatible"
-            )
-
-        response_obj = getattr(completion, "response", None)
-        status_code = getattr(response_obj, "status_code", None)
-        if status_code is not None:
-            summary_parts.append(f"HTTP status {status_code}")
-        return "; ".join(summary_parts)
-
-    @staticmethod
-    def _extract_mapping(obj: Any) -> Mapping[str, Any] | None:
-        """Return a mapping representation of *obj* when possible."""
-
-        if isinstance(obj, Mapping):
-            return obj
-        for attr in ("model_dump", "dict"):
-            method = getattr(obj, attr, None)
-            if callable(method):
-                try:
-                    data = method()
-                except Exception:  # pragma: no cover - defensive
-                    continue
-                if isinstance(data, Mapping):
-                    return data
-        data = getattr(obj, "_data", None)
-        if isinstance(data, Mapping):
-            return data
-        namespace = getattr(obj, "__dict__", None)
-        if isinstance(namespace, Mapping):
-            return namespace
-        return None
-
     # ------------------------------------------------------------------
     def _check_llm(self) -> dict[str, Any]:
-        """Implementation shared by sync and async ``check_llm`` variants."""
-
         if self._message_format == "harmony":
             return self._check_llm_harmony()
         return self._check_llm_chat()
 
     def _check_llm_chat(self) -> dict[str, Any]:
-        request_args = self._build_request_args(
+        request_args = self._request_builder.build_raw_request_args(
             [{"role": "user", "content": "ping"}],
-            temperature=self._resolved_temperature(),
+            temperature=self._request_builder.resolve_temperature(),
         )
         start = time.monotonic()
-        self._log_outbound_request(request_args)
+        log_request(request_args)
         try:
-            self._chat_completion(
-                **request_args,
-            )
+            self._chat_completion(**request_args)
         except Exception as exc:  # pragma: no cover - network errors
-            log_event(
-                "LLM_RESPONSE",
-                {"error": {"type": type(exc).__name__, "message": str(exc)}},
-                start_time=start,
-            )
-            log_debug_payload(
-                "LLM_RESPONSE",
-                {
-                    "direction": "inbound",
-                    "error": {"type": type(exc).__name__, "message": str(exc)},
-                },
-            )
-            return {
-                "ok": False,
-                "error": {"type": type(exc).__name__, "message": str(exc)},
+            payload = {
+                "error": {"type": type(exc).__name__, "message": str(exc)}
             }
-        log_event("LLM_RESPONSE", {"ok": True}, start_time=start)
-        log_debug_payload(
-            "LLM_RESPONSE",
-            {"direction": "inbound", "ok": True},
-        )
+            log_response(payload, start_time=start)
+            return {"ok": False, **payload}
+        log_response({"ok": True}, start_time=start)
         return {"ok": True}
 
     def _check_llm_harmony(self) -> dict[str, Any]:
-        prompt = self._build_harmony_prompt([{"role": "user", "content": "ping"}])
+        prompt = self._request_builder.build_harmony_prompt(
+            [{"role": "user", "content": "ping"}]
+        )
         request_args = {
             "model": self.settings.model,
             "input": prompt.prompt,
             "tools": convert_tools_for_harmony(TOOLS),
             "reasoning": {"effort": "high"},
         }
-        temperature = self._resolved_temperature()
+        temperature = self._request_builder.resolve_temperature()
         if temperature is not None:
             request_args["temperature"] = temperature
         start = time.monotonic()
-        self._log_outbound_request(request_args)
+        log_request(request_args)
         try:
             self._client.responses.create(**request_args)
         except Exception as exc:  # pragma: no cover - network errors
@@ -369,52 +168,10 @@ class LLMClient:
             hint = self._describe_harmony_check_error(exc)
             if hint:
                 error_payload["hint"] = hint
-            log_event(
-                "LLM_RESPONSE",
-                {"error": error_payload},
-                start_time=start,
-            )
-            log_debug_payload(
-                "LLM_RESPONSE",
-                {
-                    "direction": "inbound",
-                    "error": error_payload,
-                },
-            )
+            log_response({"error": error_payload}, start_time=start)
             return {"ok": False, "error": error_payload}
-        log_event("LLM_RESPONSE", {"ok": True}, start_time=start)
-        log_debug_payload(
-            "LLM_RESPONSE",
-            {"direction": "inbound", "ok": True},
-        )
+        log_response({"ok": True}, start_time=start)
         return {"ok": True}
-
-    def _describe_harmony_check_error(self, exc: Exception) -> str | None:
-        """Return a diagnostic hint for Harmony health-check failures."""
-
-        response = getattr(exc, "response", None)
-        status_code = getattr(response, "status_code", None)
-        if status_code is None:
-            status_code = getattr(exc, "status_code", None)
-        if status_code is None:
-            parts = []
-            if getattr(exc, "args", None):
-                parts.extend(str(arg) for arg in exc.args)
-            message_text = " ".join(parts) or str(exc)
-            lowered = message_text.lower()
-            if "404" in message_text and (
-                "not found" in lowered or "not_found" in lowered
-            ):
-                status_code = 404
-        if status_code == 404:
-            return (
-                "Harmony требует поддержку OpenAI Responses API. "
-                f"Провайдер по адресу {self.settings.base_url!r} вернул 404 Not Found "
-                "на попытку вызвать /responses. Обновите прокси/endpoint до версии, "
-                "совместимой с Responses API, или используйте формат \"OpenAI "
-                "(legacy)\" для несовместимых серверов."
-            )
-        return None
 
     # ------------------------------------------------------------------
     def _respond(
@@ -423,136 +180,63 @@ class LLMClient:
         *,
         cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
-        """Implementation shared by sync and async response helpers."""
-
         if self._message_format == "harmony":
             return self._respond_harmony(conversation, cancellation=cancellation)
         return self._respond_chat(conversation, cancellation=cancellation)
 
-    # ------------------------------------------------------------------
     def _respond_chat(
         self,
         conversation: Sequence[Mapping[str, Any]],
         *,
         cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
-        """Implementation shared by sync and async response helpers."""
-
-        messages = self._prepare_messages(conversation)
-        try:
-            request_snapshot: tuple[dict[str, Any], ...] | None = tuple(
-                json.loads(json.dumps(messages, ensure_ascii=False))
-            )
-        except (TypeError, ValueError):  # pragma: no cover - defensive
-            request_snapshot = tuple(
-                dict(message)
-                if isinstance(message, Mapping)
-                else {"value": message}
-                for message in messages
-            )
+        temperature = self._request_builder.resolve_temperature()
         use_stream = bool(cancellation) or self.settings.stream
-        request_args = self._build_request_args(
-            messages,
+        prepared = self._request_builder.build_chat_request(
+            conversation,
             tools=TOOLS,
-            temperature=self._resolved_temperature(),
             stream=use_stream,
+            temperature=temperature,
         )
         start = time.monotonic()
-        self._log_outbound_request(request_args)
+        log_request(prepared.request_args)
 
-        llm_message_text: str = ""
+        llm_message_text = ""
         normalized_tool_calls: list[dict[str, Any]] = []
-        raw_tool_calls_payload: Any = []
+        raw_tool_calls_payload: list[Any] = []
         reasoning_accumulator: list[dict[str, str]] = []
         reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
 
         try:
-            completion = self._chat_completion(
-                **request_args,
-            )
-            if use_stream:
+            completion = self._chat_completion(**prepared.request_args)
+            if prepared.request_args.get("stream"):
                 (
                     message_text,
                     raw_tool_calls_payload,
                     stream_reasoning,
-                ) = self._consume_stream(
+                ) = self._response_parser.consume_stream(
                     completion, cancellation=cancellation
                 )
                 if stream_reasoning:
-                    reasoning_accumulator.extend(
-                        dict(seg)
-                        for seg in stream_reasoning
-                    )
+                    reasoning_accumulator.extend(stream_reasoning)
             else:
-                choices = getattr(completion, "choices", None)
-                if not choices:
-                    raise ToolValidationError(
-                        self._format_invalid_completion_error(
-                            "LLM response did not include any choices",
-                            completion,
-                        )
-                    )
-                message = getattr(choices[0], "message", None)
-                if message is None:
-                    raise ToolValidationError(
-                        self._format_invalid_completion_error(
-                            "LLM response did not include an assistant message",
-                            completion,
-                        )
-                    )
-                reasoning_payload = getattr(message, "reasoning_content", None)
-                message_map = self._extract_mapping(message)
-                if reasoning_payload is None:
-                    reasoning_payload = getattr(message, "reasoning", None)
-                if reasoning_payload is None and message_map is not None:
-                    reasoning_payload = (
-                        message_map.get("reasoning_content")
-                        or message_map.get("reasoning")
-                    )
-                raw_tool_calls_payload: list[Any] = list(
-                    getattr(message, "tool_calls", None) or []
-                )
-                if reasoning_payload:
-                    raw_tool_calls_payload.extend(
-                        self._extract_reasoning_tool_calls(reasoning_payload)
-                    )
-                    self._append_reasoning_fragments(
-                        reasoning_accumulator,
-                        self._collect_reasoning_fragments(reasoning_payload),
-                    )
-                reasoning_details = None
-                if message_map is not None:
-                    reasoning_details = message_map.get("reasoning_details")
-                if reasoning_details is None:
-                    reasoning_details = getattr(message, "reasoning_details", None)
-                if reasoning_details:
-                    self._append_reasoning_fragments(
-                        reasoning_accumulator,
-                        self._collect_reasoning_fragments(reasoning_details),
-                    )
-                content_payload = getattr(message, "content", None)
-                if isinstance(content_payload, (Mapping, Sequence)) and not isinstance(
-                    content_payload, (str, bytes, bytearray)
-                ):
-                    self._append_reasoning_fragments(
-                        reasoning_accumulator,
-                        self._collect_reasoning_fragments(content_payload),
-                    )
-                message_text = self._extract_message_text(
-                    content_payload
-                ).strip()
-            reasoning_segments = self._finalize_reasoning_segments(
+                (
+                    message_text,
+                    raw_tool_calls_payload,
+                    reasoning_entries,
+                ) = self._response_parser.parse_chat_completion(completion)
+                if reasoning_entries:
+                    reasoning_accumulator.extend(reasoning_entries)
+            llm_message_text = message_text
+            normalized_tool_calls = normalise_tool_calls(raw_tool_calls_payload)
+            tool_calls = self._response_parser.parse_tool_calls(raw_tool_calls_payload)
+            reasoning_segments = self._response_parser.finalize_reasoning_segments(
                 reasoning_accumulator
             )
-            llm_message_text = message_text
-            normalized_tool_calls = self._normalise_tool_calls(
-                raw_tool_calls_payload
-            )
-            tool_calls = self._parse_tool_calls(raw_tool_calls_payload)
             response = LLMResponse(
                 content=message_text,
                 tool_calls=tool_calls,
-                request_messages=request_snapshot,
+                request_messages=prepared.snapshot,
                 reasoning=reasoning_segments,
             )
             if not response.tool_calls and not response.content:
@@ -560,155 +244,11 @@ class LLMClient:
                     "LLM response did not include a tool call or message",
                 )
         except OperationCancelledError:
-            log_event(
-                "LLM_RESPONSE",
-                {"cancelled": True},
-                start_time=start,
-            )
-            log_debug_payload(
-                "LLM_RESPONSE",
-                {"direction": "inbound", "cancelled": True},
-            )
-            raise
-        except ToolValidationError as exc:
-            log_payload: dict[str, Any] = {
-                "error": {
-                    "type": type(exc).__name__,
-                    "message": str(exc),
-                }
-            }
-            if llm_message_text:
-                log_payload["message"] = llm_message_text
-            if normalized_tool_calls:
-                log_payload["tool_calls"] = normalized_tool_calls
-            if reasoning_segments:
-                log_payload["reasoning"] = [
-                    {"type": segment.type, "preview": segment.text[:160]}
-                    for segment in reasoning_segments
-                ]
-            log_event(
-                "LLM_RESPONSE",
-                log_payload,
-                start_time=start,
-            )
-            log_debug_payload(
-                "LLM_RESPONSE",
-                {"direction": "inbound", **log_payload},
-            )
-            if not hasattr(exc, "llm_message"):
-                exc.llm_message = llm_message_text
-            if not hasattr(exc, "llm_tool_calls"):
-                exc.llm_tool_calls = tuple(normalized_tool_calls)
-            if request_snapshot and not hasattr(exc, "llm_request_messages"):
-                exc.llm_request_messages = request_snapshot
-            raise
-        except Exception as exc:  # pragma: no cover - network errors
-            log_event(
-                "LLM_RESPONSE",
-                {"error": {"type": type(exc).__name__, "message": str(exc)}},
-                start_time=start,
-            )
-            log_debug_payload(
-                "LLM_RESPONSE",
-                {
-                    "direction": "inbound",
-                    "error": {"type": type(exc).__name__, "message": str(exc)},
-                },
-            )
-            raise
-        else:
-            log_payload: dict[str, Any] = {"message": response.content}
-            if response.tool_calls:
-                log_payload["tool_calls"] = [
-                    {
-                        "id": call.id,
-                        "name": call.name,
-                        "arguments": call.arguments,
-                    }
-                    for call in response.tool_calls
-                ]
-            log_event(
-                "LLM_RESPONSE",
-                log_payload,
-                start_time=start,
-            )
-            log_debug_payload(
-                "LLM_RESPONSE",
-                {"direction": "inbound", **log_payload},
-            )
-            return LLMResponse(
-                content=response.content.strip(),
-                tool_calls=response.tool_calls,
-                request_messages=request_snapshot,
-                reasoning=response.reasoning,
-            )
-
-    def _respond_harmony(
-        self,
-        conversation: Sequence[Mapping[str, Any]],
-        *,
-        cancellation: CancellationEvent | None = None,
-    ) -> LLMResponse:
-        if cancellation and cancellation.is_set():
-            raise OperationCancelledError()
-        prompt = self._build_harmony_prompt(conversation)
-        request_snapshot: tuple[dict[str, Any], ...] | None = (prompt.snapshot(),)
-        stream_requested = bool(cancellation) or self.settings.stream
-        request_args = {
-            "model": self.settings.model,
-            "input": prompt.prompt,
-            "tools": convert_tools_for_harmony(TOOLS),
-            "reasoning": {"effort": "high"},
-        }
-        temperature = self._resolved_temperature()
-        if temperature is not None:
-            request_args["temperature"] = temperature
-        start = time.monotonic()
-        self._log_outbound_request(request_args)
-
-        llm_message_text = ""
-        normalized_tool_calls: list[dict[str, Any]] = []
-        raw_tool_calls_payload: Any = []
-        reasoning_accumulator: list[dict[str, str]] = []
-        reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
-
-        try:
-            if stream_requested:
-                completion = self._request_harmony_stream(
-                    request_args,
-                    cancellation=cancellation,
-                )
-            else:
-                completion = self._client.responses.create(**request_args)
-            message_text, raw_tool_calls_payload = self._parse_harmony_output(
-                completion
-            )
-            llm_message_text = message_text
-            normalized_tool_calls = self._normalise_tool_calls(raw_tool_calls_payload)
-            tool_calls = self._parse_tool_calls(raw_tool_calls_payload)
-            response = LLMResponse(
-                content=message_text,
-                tool_calls=tool_calls,
-                request_messages=request_snapshot,
-            )
-            if not response.tool_calls and not response.content:
-                raise ToolValidationError(
-                    "LLM response did not include a tool call or message",
-                )
-        except OperationCancelledError:
-            log_event(
-                "LLM_RESPONSE",
-                {"cancelled": True},
-                start_time=start,
-            )
-            log_debug_payload(
-                "LLM_RESPONSE",
-                {"direction": "inbound", "cancelled": True},
-            )
+            log_response({"cancelled": True}, start_time=start)
             raise
         except ToolValidationError as exc:
             if not reasoning_segments and reasoning_accumulator:
-                reasoning_segments = self._finalize_reasoning_segments(
+                reasoning_segments = self._response_parser.finalize_reasoning_segments(
                     reasoning_accumulator
                 )
             log_payload: dict[str, Any] = {
@@ -726,21 +266,13 @@ class LLMClient:
                     {"type": segment.type, "preview": segment.text[:160]}
                     for segment in reasoning_segments
                 ]
-            log_event(
-                "LLM_RESPONSE",
-                log_payload,
-                start_time=start,
-            )
-            log_debug_payload(
-                "LLM_RESPONSE",
-                {"direction": "inbound", **log_payload},
-            )
+            log_response(log_payload, start_time=start)
             if not hasattr(exc, "llm_message"):
                 exc.llm_message = llm_message_text
             if not hasattr(exc, "llm_tool_calls"):
                 exc.llm_tool_calls = tuple(normalized_tool_calls)
-            if request_snapshot and not hasattr(exc, "llm_request_messages"):
-                exc.llm_request_messages = request_snapshot
+            if prepared.snapshot and not hasattr(exc, "llm_request_messages"):
+                exc.llm_request_messages = prepared.snapshot
             if reasoning_segments and not hasattr(exc, "llm_reasoning"):
                 exc.llm_reasoning = [
                     {"type": segment.type, "text": segment.text}
@@ -748,17 +280,9 @@ class LLMClient:
                 ]
             raise
         except Exception as exc:  # pragma: no cover - network errors
-            log_event(
-                "LLM_RESPONSE",
+            log_response(
                 {"error": {"type": type(exc).__name__, "message": str(exc)}},
                 start_time=start,
-            )
-            log_debug_payload(
-                "LLM_RESPONSE",
-                {
-                    "direction": "inbound",
-                    "error": {"type": type(exc).__name__, "message": str(exc)},
-                },
             )
             raise
         else:
@@ -772,20 +296,141 @@ class LLMClient:
                     }
                     for call in response.tool_calls
                 ]
-            log_event(
-                "LLM_RESPONSE",
-                log_payload,
+            if response.reasoning:
+                log_payload["reasoning"] = [
+                    {"type": segment.type, "preview": segment.text[:160]}
+                    for segment in response.reasoning
+                ]
+            log_response(log_payload, start_time=start)
+            return LLMResponse(
+                content=response.content.strip(),
+                tool_calls=response.tool_calls,
+                request_messages=prepared.snapshot,
+                reasoning=response.reasoning,
+            )
+
+    def _respond_harmony(
+        self,
+        conversation: Sequence[Mapping[str, Any]],
+        *,
+        cancellation: CancellationEvent | None = None,
+    ) -> LLMResponse:
+        if cancellation and cancellation.is_set():
+            raise OperationCancelledError()
+
+        prompt = self._request_builder.build_harmony_prompt(conversation)
+        request_snapshot: tuple[Mapping[str, Any], ...] | None = (
+            prompt.snapshot(),
+        )
+        stream_requested = bool(cancellation) or self.settings.stream
+        request_args = {
+            "model": self.settings.model,
+            "input": prompt.prompt,
+            "tools": convert_tools_for_harmony(TOOLS),
+            "reasoning": {"effort": "high"},
+        }
+        temperature = self._request_builder.resolve_temperature()
+        if temperature is not None:
+            request_args["temperature"] = temperature
+        start = time.monotonic()
+        log_request(request_args)
+
+        llm_message_text = ""
+        normalized_tool_calls: list[dict[str, Any]] = []
+        raw_tool_calls_payload: list[Any] = []
+        reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
+
+        try:
+            if stream_requested:
+                completion = self._request_harmony_stream(
+                    request_args,
+                    cancellation=cancellation,
+                )
+            else:
+                completion = self._client.responses.create(**request_args)
+            message_text, raw_tool_calls_payload = self._response_parser.parse_harmony_output(
+                completion
+            )
+            llm_message_text = message_text
+            normalized_tool_calls = normalise_tool_calls(raw_tool_calls_payload)
+            tool_calls = self._response_parser.parse_tool_calls(raw_tool_calls_payload)
+            response = LLMResponse(
+                content=message_text,
+                tool_calls=tool_calls,
+                request_messages=request_snapshot,
+            )
+            if not response.tool_calls and not response.content:
+                raise ToolValidationError(
+                    "LLM response did not include a tool call or message",
+                )
+        except OperationCancelledError:
+            log_response({"cancelled": True}, start_time=start)
+            raise
+        except ToolValidationError as exc:
+            log_payload: dict[str, Any] = {
+                "error": {
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                }
+            }
+            if llm_message_text:
+                log_payload["message"] = llm_message_text
+            if normalized_tool_calls:
+                log_payload["tool_calls"] = normalized_tool_calls
+            if reasoning_segments:
+                log_payload["reasoning"] = [
+                    {"type": segment.type, "preview": segment.text[:160]}
+                    for segment in reasoning_segments
+                ]
+            log_response(log_payload, start_time=start)
+            if not hasattr(exc, "llm_message"):
+                exc.llm_message = llm_message_text
+            if not hasattr(exc, "llm_tool_calls"):
+                exc.llm_tool_calls = tuple(normalized_tool_calls)
+            if request_snapshot and not hasattr(exc, "llm_request_messages"):
+                exc.llm_request_messages = request_snapshot
+            if reasoning_segments and not hasattr(exc, "llm_reasoning"):
+                exc.llm_reasoning = [
+                    {"type": segment.type, "text": segment.text}
+                    for segment in reasoning_segments
+                ]
+            raise
+        except Exception as exc:  # pragma: no cover - network errors
+            log_response(
+                {"error": {"type": type(exc).__name__, "message": str(exc)}},
                 start_time=start,
             )
-            log_debug_payload(
-                "LLM_RESPONSE",
-                {"direction": "inbound", **log_payload},
-            )
+            raise
+        else:
+            log_payload: dict[str, Any] = {"message": response.content}
+            if response.tool_calls:
+                log_payload["tool_calls"] = [
+                    {
+                        "id": call.id,
+                        "name": call.name,
+                        "arguments": call.arguments,
+                    }
+                    for call in response.tool_calls
+                ]
+            log_response(log_payload, start_time=start)
             return LLMResponse(
                 content=response.content.strip(),
                 tool_calls=response.tool_calls,
                 request_messages=request_snapshot,
+                reasoning=reasoning_segments,
             )
+
+    # ------------------------------------------------------------------
+    def _chat_completion(self, **request_args: Any) -> Any:
+        """Call the chat completions endpoint with normalized arguments."""
+
+        try:
+            return self._client.chat.completions.create(**request_args)
+        except TypeError as exc:
+            raise TypeError(
+                "LLM client rejected provided arguments; "
+                "verify that the backend is OpenAI-compatible."
+            ) from exc
 
     def _request_harmony_stream(
         self,
@@ -793,8 +438,6 @@ class LLMClient:
         *,
         cancellation: CancellationEvent | None,
     ) -> Any:
-        """Execute a Harmony request in streaming mode and return the final payload."""
-
         cancel_event = cancellation
         closed_by_cancel = False
 
@@ -819,1095 +462,27 @@ class LLMClient:
             ensure_not_cancelled(stream)
             return stream.get_final_response()
 
-    def _parse_harmony_output(
-        self, completion: Any
-    ) -> tuple[str, list[dict[str, Any]]]:
-        output = getattr(completion, "output", None)
-        if output is None:
-            completion_map = self._extract_mapping(completion)
-            if completion_map is not None:
-                output = completion_map.get("output")
-        if not output:
-            raise ToolValidationError(
-                self._format_invalid_completion_error(
-                    "LLM response did not include any output blocks",
-                    completion,
-                )
+    def _describe_harmony_check_error(self, exc: Exception) -> str | None:
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        if status_code is None:
+            status_code = getattr(exc, "status_code", None)
+        if status_code is None:
+            parts = []
+            if getattr(exc, "args", None):
+                parts.extend(str(arg) for arg in exc.args)
+            message_text = " ".join(parts) or str(exc)
+            lowered = message_text.lower()
+            if "404" in message_text and (
+                "not found" in lowered or "not_found" in lowered
+            ):
+                status_code = 404
+        if status_code == 404:
+            return (
+                "Harmony требует поддержку OpenAI Responses API. "
+                f"Провайдер по адресу {self.settings.base_url!r} вернул 404 Not Found "
+                "на попытку вызвать /responses. Обновите прокси/endpoint до версии, "
+                "совместимой с Responses API, или используйте формат \"OpenAI "
+                "(legacy)\" для несовместимых серверов."
             )
-        message_parts: list[str] = []
-        tool_calls: list[dict[str, Any]] = []
-        for item in output:
-            item_map = self._extract_mapping(item)
-            item_type = getattr(item, "type", None)
-            if item_type is None and item_map is not None:
-                item_type = item_map.get("type")
-            if item_type == "message":
-                content = getattr(item, "content", None)
-                if content is None and item_map is not None:
-                    content = item_map.get("content")
-                for segment in content or []:
-                    seg_map = self._extract_mapping(segment)
-                    seg_type = getattr(segment, "type", None)
-                    if seg_type is None and seg_map is not None:
-                        seg_type = seg_map.get("type")
-                    if seg_type in {"output_text", "text"}:
-                        text_value = getattr(segment, "text", None)
-                        if text_value is None and seg_map is not None:
-                            text_value = seg_map.get("text")
-                        if text_value:
-                            message_parts.append(str(text_value))
-            elif item_type == "function_call":
-                item_map = item_map or {}
-                name = getattr(item, "name", None) or item_map.get("name")
-                arguments = (
-                    getattr(item, "arguments", None) or item_map.get("arguments")
-                )
-                call_id = (
-                    item_map.get("id")
-                    or getattr(item, "id", None)
-                    or item_map.get("call_id")
-                    or getattr(item, "call_id", None)
-                )
-                tool_calls.append(
-                    {
-                        "id": call_id,
-                        "type": "function",
-                        "function": {"name": name, "arguments": arguments},
-                    }
-                )
-            elif item_type == "reasoning":
-                continue
-        return "".join(part for part in message_parts if part).strip(), tool_calls
-
-    def _consume_stream(
-        self,
-        stream: Iterable[Any],
-        *,
-        cancellation: CancellationEvent | None,
-    ) -> tuple[str, list[dict[str, Any]], list[dict[str, str]]]:
-        """Read streaming response and return message, tool calls and reasoning."""
-
-        message_parts: list[str] = []
-        tool_chunks: dict[tuple[int, int], dict[str, Any]] = {}
-        order: list[tuple[int, int]] = []
-        closer = getattr(stream, "close", None)
-        cancel_event = cancellation
-        closed_by_cancel = False
-        reasoning_segments: list[dict[str, str]] = []
-
-        def ensure_not_cancelled() -> None:
-            nonlocal closed_by_cancel
-            if cancel_event is None:
-                return
-            if cancel_event.wait(timeout=0) or cancel_event.is_set():
-                if callable(closer) and not closed_by_cancel:
-                    closed_by_cancel = True
-                    with suppress(Exception):  # pragma: no cover - defensive
-                        closer()
-                raise OperationCancelledError()
-
-        try:
-            ensure_not_cancelled()
-            for chunk in stream:  # pragma: no cover - network/streaming
-                ensure_not_cancelled()
-                chunk_map = self._extract_mapping(chunk)
-                choices = getattr(chunk, "choices", None)
-                if choices is None and chunk_map is not None:
-                    choices = chunk_map.get("choices")
-                if not choices:
-                    continue
-                for choice in choices:
-                    choice_map = self._extract_mapping(choice)
-                    raw_choice_index = getattr(choice, "index", None)
-                    if choice_map is not None and raw_choice_index is None:
-                        raw_choice_index = choice_map.get("index")
-                    try:
-                        choice_index = int(raw_choice_index)
-                    except (TypeError, ValueError):
-                        choice_index = 0
-                    delta = getattr(choice, "delta", None)
-                    if delta is None and choice_map is not None:
-                        delta = choice_map.get("delta")
-                    if delta is None:
-                        continue
-                    delta_map = self._extract_mapping(delta)
-                    tool_calls_delta = getattr(delta, "tool_calls", None)
-                    if tool_calls_delta is None and delta_map is not None:
-                        tool_calls_delta = delta_map.get("tool_calls")
-                    if tool_calls_delta:
-                        self._append_stream_tool_calls(
-                            tool_chunks,
-                            order,
-                            tool_calls_delta,
-                            choice_index,
-                        )
-                    reasoning_delta = getattr(delta, "reasoning_content", None)
-                    if reasoning_delta is None and delta_map is not None:
-                        reasoning_delta = (
-                            delta_map.get("reasoning_content")
-                            or delta_map.get("reasoning")
-                        )
-                    if reasoning_delta:
-                        reasoning_fragments = self._extract_reasoning_tool_calls(
-                            reasoning_delta
-                        )
-                        if reasoning_fragments:
-                            self._append_stream_tool_calls(
-                                tool_chunks,
-                                order,
-                                reasoning_fragments,
-                                choice_index,
-                            )
-                        text_fragments = self._collect_reasoning_fragments(
-                            reasoning_delta
-                        )
-                        if text_fragments:
-                            self._append_reasoning_fragments(
-                                reasoning_segments,
-                                text_fragments,
-                            )
-                    reasoning_details_delta = None
-                    if delta_map is not None:
-                        reasoning_details_delta = delta_map.get(
-                            "reasoning_details"
-                        )
-                    if reasoning_details_delta:
-                        details_fragments = self._collect_reasoning_fragments(
-                            reasoning_details_delta
-                        )
-                        if details_fragments:
-                            self._append_reasoning_fragments(
-                                reasoning_segments,
-                                details_fragments,
-                            )
-                    function_call = getattr(delta, "function_call", None)
-                    if function_call is None and delta_map is not None:
-                        function_call = delta_map.get("function_call")
-                    if function_call:
-                        self._append_stream_function_call(
-                            tool_chunks,
-                            order,
-                            function_call,
-                            choice_index,
-                        )
-                    content = getattr(delta, "content", None)
-                    if content is None and delta_map is not None:
-                        content = delta_map.get("content")
-                    text = self._extract_message_text(content)
-                    if text:
-                        message_parts.append(text)
-                if cancel_event is not None and cancel_event.is_set():
-                    ensure_not_cancelled()
-        except httpx.HTTPError as exc:  # pragma: no cover - network errors
-            if cancel_event is not None and cancel_event.is_set():
-                raise OperationCancelledError() from exc
-            raise
-        finally:
-            if callable(closer) and not closed_by_cancel:
-                with suppress(Exception):  # pragma: no cover - defensive
-                    closer()
-        if cancel_event is not None and cancel_event.is_set():
-            raise OperationCancelledError()
-        raw_calls: list[dict[str, Any]] = []
-        for key in order:
-            data = tool_chunks.get(key)
-            if not data:
-                continue
-            function = data.get("function", {})
-            name = function.get("name")
-            if not name:
-                continue
-            entry: dict[str, Any] = {
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "arguments": function.get("arguments") or "",
-                },
-            }
-            call_id = data.get("id")
-            if call_id:
-                entry["id"] = call_id
-            raw_calls.append(entry)
-        return (
-            "".join(message_parts).strip(),
-            raw_calls,
-            [dict(segment) for segment in reasoning_segments],
-        )
-
-    def _append_stream_tool_calls(
-        self,
-        tool_chunks: dict[tuple[int, int], dict[str, Any]],
-        order: list[tuple[int, int]],
-        tool_calls_delta: Any,
-        choice_index: int,
-    ) -> None:
-        """Accumulate incremental tool call payloads from streaming chunks."""
-
-        if isinstance(tool_calls_delta, Mapping):
-            iterable = [tool_calls_delta]
-        else:
-            iterable = list(tool_calls_delta)
-        for item in iterable:
-            item_map = self._extract_mapping(item)
-            raw_index = getattr(item, "index", None)
-            if item_map is not None and raw_index is None:
-                raw_index = item_map.get("index")
-            try:
-                tool_index = int(raw_index)
-            except (TypeError, ValueError):
-                tool_index = len(order)
-            key = (choice_index, tool_index)
-            if key not in tool_chunks:
-                tool_chunks[key] = {
-                    "id": None,
-                    "type": "function",
-                    "function": {"name": None, "arguments": ""},
-                }
-                order.append(key)
-            entry = tool_chunks[key]
-            call_id = getattr(item, "id", None) or getattr(item, "tool_call_id", None)
-            if item_map is not None:
-                call_id = item_map.get("id", call_id) or item_map.get(
-                    "tool_call_id", call_id
-                )
-            if call_id:
-                entry["id"] = call_id
-            function = getattr(item, "function", None)
-            if item_map is not None:
-                function = item_map.get("function", function)
-            if function is None:
-                continue
-            func_map = self._extract_mapping(function)
-            name = getattr(function, "name", None)
-            if func_map is not None and name is None:
-                name = func_map.get("name")
-            if name:
-                entry["function"]["name"] = name
-            args_fragment = getattr(function, "arguments", None)
-            if func_map is not None:
-                args_fragment = func_map.get("arguments", args_fragment)
-            if args_fragment:
-                entry["function"]["arguments"] += str(args_fragment)
-
-    def _append_stream_function_call(
-        self,
-        tool_chunks: dict[tuple[int, int], dict[str, Any]],
-        order: list[tuple[int, int]],
-        function_call: Any,
-        choice_index: int,
-    ) -> None:
-        """Normalize legacy ``function_call`` deltas during streaming."""
-
-        func_map = self._extract_mapping(function_call)
-        key = (choice_index, -1)
-        if key not in tool_chunks:
-            tool_chunks[key] = {
-                "id": None,
-                "type": "function",
-                "function": {"name": None, "arguments": ""},
-            }
-            order.append(key)
-        entry = tool_chunks[key]
-        name = getattr(function_call, "name", None)
-        if func_map is not None and name is None:
-            name = func_map.get("name")
-        if name:
-            entry["function"]["name"] = name
-        args_fragment = getattr(function_call, "arguments", None)
-        if func_map is not None:
-            args_fragment = func_map.get("arguments", args_fragment)
-        if args_fragment:
-            entry["function"]["arguments"] += str(args_fragment)
-
-    # ------------------------------------------------------------------
-    def _build_request_args(
-        self,
-        messages: Sequence[Mapping[str, Any]],
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        """Return concrete arguments for the chat completion request."""
-
-        request_args: dict[str, Any] = {
-            "model": self.settings.model,
-            "messages": messages,
-        }
-        if kwargs:
-            request_args.update({k: v for k, v in kwargs.items() if v is not None})
-        return request_args
-
-    @staticmethod
-    def _log_outbound_request(request_args: Mapping[str, Any]) -> None:
-        """Record telemetry for an outbound LLM request."""
-
-        log_debug_payload("LLM_REQUEST", request_args)
-        log_event("LLM_REQUEST", request_args)
-
-    def _resolved_temperature(self) -> float | None:
-        """Return the user-configured temperature or ``None`` when unset."""
-
-        if getattr(self.settings, "use_custom_temperature", False):
-            value = getattr(self.settings, "temperature", None)
-            if value is None:
-                return None
-            try:
-                return float(value)
-            except (TypeError, ValueError):  # pragma: no cover - defensive
-                return None
         return None
-
-    def _chat_completion(self, **request_args: Any) -> Any:
-        """Call the chat completions endpoint with normalized arguments."""
-
-        try:
-            return self._client.chat.completions.create(**request_args)
-        except TypeError as exc:
-            raise TypeError(
-                "LLM client rejected provided arguments; "
-                "verify that the backend is OpenAI-compatible."
-            ) from exc
-
-    def _resolved_max_context_tokens(self) -> int:
-        """Return an explicit prompt context cap for requests."""
-
-        limit = getattr(self.settings, "max_context_tokens", None)
-        if limit is None or limit <= 0:
-            return DEFAULT_MAX_CONTEXT_TOKENS
-        if limit < MIN_MAX_CONTEXT_TOKENS:
-            return MIN_MAX_CONTEXT_TOKENS
-        return limit
-
-    def _count_tokens(self, text: Any) -> int:
-        """Return token usage for ``text`` using the configured model."""
-
-        result = count_text_tokens(text, model=self.settings.model)
-        return result.tokens or 0
-
-    def _extract_message_text(self, content: Any) -> str:
-        """Return user-visible payload from a chat message *content*."""
-
-        if content is None:
-            return ""
-        if isinstance(content, str):
-            return content
-        if isinstance(content, Mapping):
-            type_field = content.get("type")
-            if self._should_skip_segment(type_field):
-                return ""
-            text_value = content.get("text")
-            if isinstance(text_value, str):
-                return text_value
-            return self._extract_message_text(content.get("content"))
-        if isinstance(content, Sequence) and not isinstance(
-            content, (str, bytes, bytearray)
-        ):
-            parts = [self._extract_message_text(part) for part in content]
-            return "".join(part for part in parts if part)
-        type_attr = getattr(content, "type", None)
-        if self._should_skip_segment(type_attr):
-            return ""
-        text_attr = getattr(content, "text", None)
-        if isinstance(text_attr, str):
-            return text_attr
-        return self._extract_message_text(getattr(content, "content", None))
-
-    def _should_skip_segment(self, segment_type: Any) -> bool:
-        """Return ``True`` when *segment_type* is hidden for the current format."""
-
-        return self._is_reasoning_type(segment_type)
-
-    def _convert_messages_for_qwen(
-        self, messages: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
-        """Return *messages* rewritten for the Qwen chat protocol."""
-
-        converted: list[dict[str, Any]] = []
-        for message in messages:
-            entry = {key: value for key, value in message.items() if key != "content"}
-            entry["content"] = self._ensure_qwen_segments(message.get("content"))
-            converted.append(entry)
-        return converted
-
-    def _ensure_qwen_segments(self, content: Any) -> list[dict[str, Any]]:
-        """Coerce *content* into the Qwen ``[{type, text}]`` representation."""
-
-        if isinstance(content, list):
-            segments: list[dict[str, Any]] = []
-            for part in content:
-                mapping = self._extract_mapping(part)
-                if not mapping:
-                    text = self._extract_message_text(part)
-                    if text:
-                        segments.append({"type": "text", "text": text})
-                    continue
-                part_type = mapping.get("type") or "text"
-                text_value = mapping.get("text")
-                if isinstance(text_value, str):
-                    segments.append({"type": str(part_type), "text": text_value})
-                    continue
-                inner = mapping.get("content")
-                text = self._extract_message_text(inner)
-                if text:
-                    segments.append({"type": str(part_type), "text": text})
-            if segments:
-                return segments
-        text_payload = self._extract_message_text(content)
-        return [{"type": "text", "text": text_payload}]
-
-    def _extract_reasoning_entries(self, payload: Any) -> list[Mapping[str, Any]]:
-        """Return flattened reasoning segments from *payload*."""
-
-        if not payload:
-            return []
-        items = [payload] if isinstance(payload, Mapping) else list(payload)
-        segments: list[Mapping[str, Any]] = []
-        for item in items:
-            mapping = self._extract_mapping(item)
-            if not mapping:
-                continue
-            segments.append(mapping)
-            nested = mapping.get("reasoning_content") or mapping.get("items")
-            if nested:
-                segments.extend(self._extract_reasoning_entries(nested))
-        return segments
-
-    def _extract_reasoning_tool_calls(self, payload: Any) -> list[dict[str, Any]]:
-        """Return tool call payloads encoded inside Qwen reasoning blocks."""
-
-        entries = self._extract_reasoning_entries(payload)
-        fragments: dict[str, dict[str, Any]] = {}
-        order: list[str] = []
-        for entry in entries:
-            entry_type = str(entry.get("type") or "").lower()
-            if entry_type not in {
-                "tool_call",
-                "tool_calls",
-                "function_call",
-                "tool_call_delta",
-            } and not any(key in entry for key in ("tool_calls", "function")):
-                continue
-            tool_items: list[Mapping[str, Any]]
-            raw_tool_calls = entry.get("tool_calls")
-            if raw_tool_calls:
-                if isinstance(raw_tool_calls, Mapping):
-                    tool_items = [raw_tool_calls]
-                else:
-                    tool_items = [self._extract_mapping(elem) or {} for elem in raw_tool_calls]
-            else:
-                tool_items = [entry]
-            for tool_entry in tool_items:
-                if not tool_entry:
-                    continue
-                call_id = (
-                    str(tool_entry.get("id"))
-                    if tool_entry.get("id") is not None
-                    else tool_entry.get("tool_call_id")
-                )
-                if not call_id:
-                    call_id = str(len(order))
-                if call_id not in fragments:
-                    fragments[call_id] = {
-                        "id": call_id,
-                        "type": "function",
-                        "function": {"name": None, "arguments": ""},
-                    }
-                    order.append(call_id)
-                fragment = fragments[call_id]
-                function = tool_entry.get("function") or tool_entry.get("call") or {}
-                if not isinstance(function, Mapping):
-                    function = {}
-                name = function.get("name") or tool_entry.get("name")
-                if name:
-                    fragment["function"]["name"] = str(name)
-                args_fragment: Any = (
-                    function.get("arguments")
-                    if function.get("arguments") is not None
-                    else tool_entry.get("arguments")
-                )
-                if args_fragment is None and "input" in tool_entry:
-                    args_fragment = tool_entry.get("input")
-                if args_fragment is None and "parameters" in tool_entry:
-                    args_fragment = tool_entry.get("parameters")
-                if args_fragment is None:
-                    continue
-                if isinstance(args_fragment, str):
-                    fragment["function"]["arguments"] += args_fragment
-                else:
-                    try:
-                        fragment["function"]["arguments"] += json.dumps(
-                            args_fragment, ensure_ascii=False
-                        )
-                    except (TypeError, ValueError):
-                        fragment["function"]["arguments"] += str(args_fragment)
-        return [fragments[key] for key in order if fragments[key]["function"]["name"]]
-
-    def _is_reasoning_type(self, value: Any) -> bool:
-        if not isinstance(value, str):
-            return False
-        lowered = value.strip().lower()
-        if not lowered:
-            return False
-        if lowered in self._REASONING_TYPE_ALIASES:
-            return True
-        return any(keyword in lowered for keyword in self._REASONING_KEYWORDS)
-
-    def _collect_reasoning_fragments(self, payload: Any) -> list[tuple[str, str]]:
-        """Return ``(type, text)`` tuples extracted from reasoning payload."""
-
-        fragments: list[tuple[str, str]] = []
-        if not payload:
-            return fragments
-
-        def add_fragment(raw_type: Any, text: Any) -> None:
-            if text is None:
-                return
-            text_str = str(text).strip()
-            if not text_str:
-                return
-            type_str = str(raw_type).strip() if isinstance(raw_type, str) else ""
-            if type_str and not self._is_reasoning_type(type_str):
-                return
-            if type_str and "encrypted" in type_str.lower():
-                return
-            fragments.append((type_str or "reasoning", text_str))
-
-        if isinstance(payload, (bytes, bytearray)):
-            try:
-                payload = payload.decode("utf-8")
-            except Exception:  # pragma: no cover - defensive fallback
-                payload = payload.decode("utf-8", "ignore")
-
-        if isinstance(payload, str):
-            add_fragment("reasoning", payload)
-            return fragments
-
-        if isinstance(payload, Mapping):
-            entry_type = payload.get("type")
-            text_value = payload.get("text")
-            if text_value is None:
-                text_value = payload.get("summary")
-            if text_value is None and isinstance(payload.get("content"), str):
-                text_value = payload.get("content")
-            add_fragment(entry_type or "reasoning", text_value)
-
-            content_value = payload.get("content")
-            if content_value is not None and (
-                not isinstance(entry_type, str)
-                or self._is_reasoning_type(entry_type)
-            ):
-                fragments.extend(self._collect_reasoning_fragments(content_value))
-
-            for key in (
-                "reasoning_content",
-                "reasoning",
-                "items",
-                "entries",
-                "details",
-                "reasoning_details",
-            ):
-                nested = payload.get(key)
-                if nested:
-                    fragments.extend(self._collect_reasoning_fragments(nested))
-            return fragments
-
-        if isinstance(payload, Sequence) and not isinstance(payload, (str, bytes, bytearray)):
-            for item in payload:
-                fragments.extend(self._collect_reasoning_fragments(item))
-        return fragments
-
-    @staticmethod
-    def _append_reasoning_fragments(
-        aggregated: list[dict[str, str]], fragments: Sequence[tuple[str, str]]
-    ) -> None:
-        """Merge reasoning fragments into ``aggregated`` preserving order."""
-
-        for raw_type, raw_text in fragments:
-            if not raw_text:
-                continue
-            text = str(raw_text)
-            if not text:
-                continue
-            seg_type = str(raw_type or "reasoning")
-            aggregated.append({"type": seg_type, "text": text})
-
-    @staticmethod
-    def _is_context_snapshot(content: str) -> bool:
-        stripped = content.lstrip()
-        return stripped.startswith("[Workspace context]")
-
-    @staticmethod
-    def _finalize_reasoning_segments(
-        segments: Sequence[Mapping[str, str]]
-    ) -> tuple[LLMReasoningSegment, ...]:
-        finalized: list[LLMReasoningSegment] = []
-        for segment in segments:
-            seg_type = str(segment.get("type") or "reasoning")
-            text = str(segment.get("text") or "").strip()
-            if not text:
-                continue
-            finalized.append(LLMReasoningSegment(type=seg_type, text=text))
-        return tuple(finalized)
-
-    def _prepare_messages(
-        self,
-        conversation: Sequence[Mapping[str, Any]],
-    ) -> list[dict[str, Any]]:
-        system_parts, ordered_messages, trim_result = self._prepare_history_components(
-            conversation
-        )
-        merged_system_message = {
-            "role": "system",
-            "content": "\n\n".join(
-                part for part in system_parts if isinstance(part, str) and part
-            ),
-        }
-
-        prepared = [merged_system_message, *ordered_messages]
-        if self._message_format == "qwen":
-            return self._convert_messages_for_qwen(prepared)
-        return prepared
-
-    def _prepare_history_components(
-        self,
-        conversation: Sequence[Mapping[str, Any]],
-    ) -> tuple[list[str], list[dict[str, Any]], HistoryTrimResult]:
-        sanitized_history = self._sanitise_conversation(conversation)
-        limit = self._resolved_max_context_tokens()
-        reserved = self._count_tokens(SYSTEM_PROMPT)
-        remaining = max(limit - reserved, 0)
-        trim_result = self._trim_history(
-            sanitized_history,
-            remaining_tokens=remaining,
-        )
-        if trim_result.dropped_messages:
-            history_messages_after = len(trim_result.kept_messages)
-            log_event(
-                "LLM_CONTEXT_TRIMMED",
-                {
-                    "dropped_messages": trim_result.dropped_messages,
-                    "dropped_tokens": trim_result.dropped_tokens,
-                    "history_messages_before": trim_result.total_messages,
-                    "history_messages_after": history_messages_after,
-                    "history_tokens_before": trim_result.total_tokens,
-                    "history_tokens_after": trim_result.kept_tokens,
-                    "max_context_tokens": limit,
-                    "system_prompt_tokens": reserved,
-                    "history_token_budget": remaining,
-                },
-            )
-        system_parts: list[str] = [SYSTEM_PROMPT]
-        ordered_messages: list[dict[str, Any]] = []
-        for message in trim_result.kept_messages:
-            role = message.get("role")
-            if role == "system":
-                content = message.get("content")
-                if isinstance(content, str) and content:
-                    if self._is_context_snapshot(content):
-                        system_parts.append(content)
-                        continue
-                    ordered_messages.append(message)
-                continue
-            ordered_messages.append(message)
-
-        return system_parts, ordered_messages, trim_result
-
-    def _build_harmony_prompt(
-        self,
-        conversation: Sequence[Mapping[str, Any]],
-    ) -> HarmonyPrompt:
-        system_parts, ordered_messages, _ = self._prepare_history_components(
-            conversation
-        )
-        return render_harmony_prompt(
-            instruction_blocks=system_parts,
-            history=ordered_messages,
-            tools=TOOLS,
-            reasoning_level="high",
-            current_date=date.today().isoformat(),
-            knowledge_cutoff=HARMONY_KNOWLEDGE_CUTOFF,
-        )
-
-    def _sanitise_conversation(
-        self,
-        conversation: Sequence[Mapping[str, Any]],
-    ) -> list[dict[str, Any]]:
-        if not conversation:
-            return []
-        sanitized: list[dict[str, Any]] = []
-        for message in conversation:
-            role: str | None
-            content: Any
-            if isinstance(message, Mapping):
-                role = message.get("role")  # type: ignore[assignment]
-                content = message.get("content")
-            else:  # pragma: no cover - defensive for duck typing
-                role = getattr(message, "role", None)
-                content = getattr(message, "content", None)
-            if role is None:
-                continue
-            role_str = str(role)
-            if role_str not in {"user", "assistant", "tool", "system"}:
-                continue
-            entry: dict[str, Any] = {
-                "role": role_str,
-                "content": "" if content is None else str(content),
-            }
-            if role_str == "assistant":
-                tool_calls = (
-                    message.get("tool_calls")  # type: ignore[assignment]
-                    if isinstance(message, Mapping)
-                    else getattr(message, "tool_calls", None)
-                )
-                normalized_calls = self._normalise_tool_calls(tool_calls)
-                if normalized_calls:
-                    entry["tool_calls"] = normalized_calls
-            elif role_str == "tool":
-                if isinstance(message, Mapping):
-                    tool_call_id = message.get("tool_call_id")
-                    name = message.get("name")
-                else:  # pragma: no cover - defensive
-                    tool_call_id = getattr(message, "tool_call_id", None)
-                    name = getattr(message, "name", None)
-                if tool_call_id:
-                    entry["tool_call_id"] = str(tool_call_id)
-                if name:
-                    entry["name"] = str(name)
-            sanitized.append(entry)
-        return sanitized
-
-    def _normalise_tool_calls(self, tool_calls: Any) -> list[dict[str, Any]]:
-        if not tool_calls:
-            return []
-        if isinstance(tool_calls, Mapping):  # pragma: no cover - defensive
-            tool_calls = [tool_calls]
-        normalized: list[dict[str, Any]] = []
-        for idx, call in enumerate(tool_calls):
-            if isinstance(call, LLMToolCall):
-                call_id = call.id or f"tool_call_{idx}"
-                name = call.name
-                arguments: Any = call.arguments
-            elif isinstance(call, Mapping):
-                call_id = call.get("id") or call.get("tool_call_id")
-                function = call.get("function")
-                if isinstance(function, Mapping):
-                    name = function.get("name")
-                    arguments = function.get("arguments")
-                else:
-                    name = call.get("name")
-                    arguments = call.get("arguments")
-            else:  # pragma: no cover - defensive for duck typing
-                call_id = getattr(call, "id", None)
-                function = getattr(call, "function", None)
-                name = getattr(function, "name", None) if function else None
-                arguments = getattr(function, "arguments", None) if function else None
-            if not name:
-                continue
-            if call_id is None:
-                call_id = f"tool_call_{idx}"
-            if isinstance(arguments, str):
-                arguments_str = arguments
-            else:
-                try:
-                    arguments_str = json.dumps(arguments or {}, ensure_ascii=False)
-                except (TypeError, ValueError):
-                    arguments_str = "{}"
-            normalized.append(
-                {
-                    "id": str(call_id),
-                    "type": "function",
-                    "function": {
-                        "name": str(name),
-                        "arguments": arguments_str or "{}",
-                    },
-                }
-            )
-        return normalized
-
-    def _parse_tool_calls(self, tool_calls: Any) -> tuple[LLMToolCall, ...]:
-        if not tool_calls:
-            return ()
-        iterable = [tool_calls] if isinstance(tool_calls, Mapping) else list(tool_calls)
-        parsed: list[LLMToolCall] = []
-        for idx, call in enumerate(iterable):
-            if isinstance(call, LLMToolCall):
-                parsed.append(call)
-                continue
-            if isinstance(call, Mapping):
-                call_id = call.get("id") or call.get("tool_call_id")
-                function = call.get("function")
-                if not isinstance(function, Mapping):
-                    function = {}
-                name = function.get("name")
-                arguments_payload = function.get("arguments")
-            else:  # pragma: no cover - defensive for duck typing
-                call_id = getattr(call, "id", None)
-                function = getattr(call, "function", None)
-                name = getattr(function, "name", None) if function else None
-                arguments_payload = (
-                    getattr(function, "arguments", None) if function else None
-                )
-            if not name:
-                raise ToolValidationError(
-                    "LLM response did not include a tool name",
-                )
-            if call_id is None:
-                call_id = f"tool_call_{idx}"
-            if isinstance(arguments_payload, str):
-                arguments_text = arguments_payload or "{}"
-            else:
-                try:
-                    arguments_text = json.dumps(
-                        arguments_payload or {}, ensure_ascii=False
-                    )
-                except (TypeError, ValueError) as exc:
-                    raise ToolValidationError(
-                        "LLM returned invalid JSON for tool arguments",
-                    ) from exc
-            call_id_str = str(call_id)
-            arguments = self._decode_tool_arguments(
-                arguments_text or "{}",
-                call_id=call_id_str,
-                tool_name=str(name),
-            )
-            validated_arguments = validate_tool_call(name, arguments)
-            parsed.append(
-                LLMToolCall(id=call_id_str, name=name, arguments=validated_arguments)
-            )
-        return tuple(parsed)
-
-    def _arguments_preview(
-        self, arguments_text: str, *, limit: int = 200
-    ) -> tuple[str, str]:
-        """Return a compact preview and stripped copy of *arguments_text*."""
-
-        text = arguments_text or ""
-        stripped = text.strip()
-        preview = (
-            stripped[: limit - 3] + "..." if len(stripped) > limit else stripped
-        )
-        return preview, stripped
-
-    def _decode_tool_arguments(
-        self,
-        arguments_text: str,
-        *,
-        call_id: str,
-        tool_name: str,
-    ) -> Any:
-        """Parse tool arguments and report malformed payloads."""
-
-        text = arguments_text or "{}"
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            recovery = self._recover_tool_arguments(text)
-            if recovery is not None:
-                self._log_recovered_tool_arguments(
-                    text,
-                    call_id=call_id,
-                    tool_name=tool_name,
-                    error=exc,
-                    recovery=recovery,
-                )
-                return recovery.arguments
-            self._log_invalid_tool_arguments(
-                text,
-                call_id=call_id,
-                tool_name=tool_name,
-                error=exc,
-            )
-            raise ToolValidationError(
-                "LLM returned invalid JSON for tool arguments",
-            ) from exc
-
-    def _recover_tool_arguments(
-        self, arguments_text: str
-    ) -> _ToolArgumentRecovery | None:
-        """Attempt to salvage tool arguments from concatenated JSON fragments."""
-
-        stripped = (arguments_text or "").strip()
-        if not stripped:
-            return None
-        decoder = json.JSONDecoder()
-        fragments: list[Any] = []
-        idx = 0
-        length = len(stripped)
-        while idx < length:
-            char = stripped[idx]
-            if char.isspace():
-                idx += 1
-                continue
-            if char not in "{[":
-                return None
-            try:
-                fragment, end = decoder.raw_decode(stripped, idx)
-            except json.JSONDecodeError:
-                return None
-            fragments.append(fragment)
-            idx = end
-        if idx != length:
-            return None
-        if len(fragments) <= 1:
-            return None
-        mapping_fragments: list[tuple[int, Mapping[str, Any]]] = [
-            (index, fragment)
-            for index, fragment in enumerate(fragments)
-            if isinstance(fragment, Mapping)
-        ]
-        if not mapping_fragments:
-            return None
-        selected_index: int | None = None
-        selected_fragment: Mapping[str, Any] | None = None
-        for index, fragment in reversed(mapping_fragments):
-            if fragment:
-                selected_index = index
-                selected_fragment = fragment
-                break
-        if selected_fragment is None:
-            selected_index, selected_fragment = mapping_fragments[-1]
-        if selected_fragment is None:
-            return None
-        empty_mappings = sum(
-            1
-            for fragment in fragments
-            if isinstance(fragment, Mapping) and not fragment
-        )
-        return _ToolArgumentRecovery(
-            arguments=dict(selected_fragment),
-            classification="concatenated_json",
-            fragments=len(fragments),
-            recovered_fragment_index=selected_index or 0,
-            empty_fragment_count=empty_mappings,
-        )
-
-    def _log_invalid_tool_arguments(
-        self,
-        arguments_text: str,
-        *,
-        call_id: str,
-        tool_name: str,
-        error: json.JSONDecodeError,
-    ) -> None:
-        """Emit telemetry describing malformed tool arguments from the LLM."""
-
-        text = arguments_text or ""
-        preview, stripped = self._arguments_preview(text)
-        classification: str | None = None
-        if stripped:
-            if "}{" in stripped or stripped.count("{") > 1:
-                classification = "concatenated_json"
-            elif stripped[0] not in "{[" and stripped[-1:] in "}]":
-                classification = "trailing_garbage"
-        payload = {
-            "call_id": call_id,
-            "tool_name": tool_name,
-            "length": len(text),
-            "classification": classification,
-            "preview": preview,
-            "error": {"type": type(error).__name__, "message": str(error)},
-        }
-        log_event("LLM_TOOL_ARGUMENTS_INVALID", payload)
-        log_debug_payload(
-            "LLM_TOOL_ARGUMENTS_INVALID",
-            {
-                **payload,
-                "arguments_text": text,
-                "lineno": error.lineno,
-                "colno": error.colno,
-                "pos": error.pos,
-            },
-        )
-
-    def _log_recovered_tool_arguments(
-        self,
-        arguments_text: str,
-        *,
-        call_id: str,
-        tool_name: str,
-        error: json.JSONDecodeError,
-        recovery: _ToolArgumentRecovery,
-    ) -> None:
-        """Log telemetry when tool arguments are successfully recovered."""
-
-        text = arguments_text or ""
-        preview, _ = self._arguments_preview(text)
-        error_info = {
-            "type": type(error).__name__,
-            "message": str(error),
-        }
-        payload: dict[str, Any] = {
-            "call_id": call_id,
-            "tool_name": tool_name,
-            "length": len(text),
-            "classification": recovery.classification,
-            "fragments": recovery.fragments,
-            "recovered_fragment_index": recovery.recovered_fragment_index,
-            "empty_fragments": recovery.empty_fragment_count,
-            "preview": preview,
-            "error": error_info,
-        }
-        if recovery.arguments:
-            payload["recovered_keys"] = sorted(recovery.arguments.keys())
-        log_event("LLM_TOOL_ARGUMENTS_RECOVERED", payload)
-        debug_error = {
-            **error_info,
-            "lineno": error.lineno,
-            "colno": error.colno,
-            "pos": error.pos,
-        }
-        log_debug_payload(
-            "LLM_TOOL_ARGUMENTS_RECOVERED",
-            {
-                **payload,
-                "arguments_text": text,
-                "recovered_arguments": dict(recovery.arguments),
-                "error": debug_error,
-            },
-        )
-
-    def _trim_history(
-        self,
-        history: list[dict[str, Any]],
-        *,
-        remaining_tokens: int,
-    ) -> HistoryTrimResult:
-        if not history:
-            return HistoryTrimResult(
-                kept_messages=[],
-                dropped_messages=0,
-                dropped_tokens=0,
-                total_messages=0,
-                total_tokens=0,
-                kept_tokens=0,
-            )
-        total_tokens = sum(self._count_tokens(msg["content"]) for msg in history)
-        total_messages = len(history)
-        if remaining_tokens <= 0:
-            return HistoryTrimResult(
-                kept_messages=[],
-                dropped_messages=total_messages,
-                dropped_tokens=total_tokens,
-                total_messages=total_messages,
-                total_tokens=total_tokens,
-                kept_tokens=0,
-            )
-
-        kept_rev: list[dict[str, Any]] = []
-        kept_tokens = 0
-        for _index, message in enumerate(reversed(history)):
-            tokens = self._count_tokens(message["content"])
-            if tokens > remaining_tokens and kept_rev:
-                break
-            kept_rev.append(message)
-            kept_tokens += tokens
-            remaining_tokens = max(remaining_tokens - tokens, 0)
-        kept = list(reversed(kept_rev))
-        dropped_messages = total_messages - len(kept)
-        dropped_tokens = total_tokens - kept_tokens
-        return HistoryTrimResult(
-            kept_messages=kept,
-            dropped_messages=dropped_messages,
-            dropped_tokens=dropped_tokens,
-            total_messages=total_messages,
-            total_tokens=total_tokens,
-            kept_tokens=kept_tokens,
-        )

@@ -4,8 +4,13 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Mapping, Sequence
 
-from ..core import document_store as doc_store
 from ..core.model import requirement_to_dict
+from ..services.requirements import (
+    RequirementsService,
+    DocumentNotFoundError,
+    RequirementNotFoundError,
+    ValidationError,
+)
 from .utils import ErrorCode, log_tool, mcp_error
 
 
@@ -18,15 +23,16 @@ def _result_payload(req) -> dict:
 def create_requirement(directory: str | Path, *, prefix: str, data: Mapping[str, Any]) -> dict:
     """Create a new requirement under *prefix* document."""
     params = {"directory": str(directory), "prefix": prefix, "data": dict(data)}
+    service = RequirementsService(directory)
     try:
-        req = doc_store.create_requirement(directory, prefix=prefix, data=data)
-    except doc_store.DocumentNotFoundError as exc:
+        req = service.create_requirement(prefix=prefix, data=data)
+    except DocumentNotFoundError as exc:
         return log_tool(
             "create_requirement",
             params,
             mcp_error(ErrorCode.NOT_FOUND, str(exc)),
         )
-    except doc_store.ValidationError as exc:
+    except ValidationError as exc:
         return log_tool(
             "create_requirement",
             params,
@@ -54,20 +60,16 @@ def update_requirement_field(
         "field": field,
         "value": value,
     }
+    service = RequirementsService(directory)
     try:
-        req = doc_store.update_requirement_field(
-            directory,
-            rid,
-            field=field,
-            value=value,
-        )
-    except doc_store.RequirementNotFoundError as exc:
+        req = service.update_requirement_field(rid, field=field, value=value)
+    except RequirementNotFoundError as exc:
         return log_tool(
             "update_requirement_field",
             params,
             mcp_error(ErrorCode.NOT_FOUND, str(exc)),
         )
-    except doc_store.ValidationError as exc:
+    except ValidationError as exc:
         return log_tool(
             "update_requirement_field",
             params,
@@ -100,19 +102,16 @@ def set_requirement_labels(
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, "labels must be an array of strings"),
         )
+    service = RequirementsService(directory)
     try:
-        req = doc_store.set_requirement_labels(
-            directory,
-            rid,
-            labels=labels,
-        )
-    except doc_store.RequirementNotFoundError as exc:
+        req = service.set_requirement_labels(rid, labels=labels)
+    except RequirementNotFoundError as exc:
         return log_tool(
             "set_requirement_labels",
             params,
             mcp_error(ErrorCode.NOT_FOUND, str(exc)),
         )
-    except doc_store.ValidationError as exc:
+    except ValidationError as exc:
         return log_tool(
             "set_requirement_labels",
             params,
@@ -145,19 +144,16 @@ def set_requirement_attachments(
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, "attachments must be an array"),
         )
+    service = RequirementsService(directory)
     try:
-        req = doc_store.set_requirement_attachments(
-            directory,
-            rid,
-            attachments=attachments,
-        )
-    except doc_store.RequirementNotFoundError as exc:
+        req = service.set_requirement_attachments(rid, attachments=attachments)
+    except RequirementNotFoundError as exc:
         return log_tool(
             "set_requirement_attachments",
             params,
             mcp_error(ErrorCode.NOT_FOUND, str(exc)),
         )
-    except (doc_store.ValidationError, TypeError, ValueError) as exc:
+    except (ValidationError, TypeError, ValueError) as exc:
         return log_tool(
             "set_requirement_attachments",
             params,
@@ -190,19 +186,16 @@ def set_requirement_links(
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, "links must be an array"),
         )
+    service = RequirementsService(directory)
     try:
-        req = doc_store.set_requirement_links(
-            directory,
-            rid,
-            links=links,
-        )
-    except doc_store.RequirementNotFoundError as exc:
+        req = service.set_requirement_links(rid, links=links)
+    except RequirementNotFoundError as exc:
         return log_tool(
             "set_requirement_links",
             params,
             mcp_error(ErrorCode.NOT_FOUND, str(exc)),
         )
-    except (doc_store.ValidationError, TypeError, ValueError) as exc:
+    except (ValidationError, TypeError, ValueError) as exc:
         return log_tool(
             "set_requirement_links",
             params,
@@ -220,21 +213,22 @@ def set_requirement_links(
 def delete_requirement(directory: str | Path, rid: str) -> dict:
     """Delete requirement *rid* from the document store."""
     params = {"directory": str(directory), "rid": rid}
+    service = RequirementsService(directory)
     try:
-        doc_store.delete_requirement(directory, rid)
+        canonical = service.delete_requirement_record(rid)
     except ValueError as exc:
         return log_tool(
             "delete_requirement",
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
         )
-    except doc_store.ValidationError as exc:
+    except ValidationError as exc:
         return log_tool(
             "delete_requirement",
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
         )
-    except doc_store.RequirementNotFoundError as exc:
+    except RequirementNotFoundError as exc:
         return log_tool(
             "delete_requirement",
             params,
@@ -244,7 +238,7 @@ def delete_requirement(directory: str | Path, rid: str) -> dict:
         return log_tool(
             "delete_requirement", params, mcp_error(ErrorCode.INTERNAL, str(exc))
         )
-    return log_tool("delete_requirement", params, {"rid": rid})
+    return log_tool("delete_requirement", params, {"rid": canonical})
 
 
 def link_requirements(
@@ -261,20 +255,20 @@ def link_requirements(
         "derived_rid": derived_rid,
         "link_type": link_type,
     }
+    service = RequirementsService(directory)
     try:
-        req = doc_store.link_requirements(
-            directory,
+        req = service.link_requirements(
             source_rid=source_rid,
             derived_rid=derived_rid,
             link_type=link_type,
         )
-    except doc_store.ValidationError as exc:
+    except ValidationError as exc:
         return log_tool(
             "link_requirements",
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
         )
-    except doc_store.RequirementNotFoundError as exc:
+    except RequirementNotFoundError as exc:
         return log_tool(
             "link_requirements",
             params,

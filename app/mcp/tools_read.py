@@ -4,8 +4,12 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from ..core import document_store as doc_store
 from ..core.model import Requirement, requirement_to_dict
+from ..services.requirements import (
+    RequirementsService,
+    RequirementNotFoundError,
+    RequirementPage,
+)
 from .utils import ErrorCode, log_tool, mcp_error
 
 _SEQUENCE_STRING_TYPES = (str, bytes, bytearray)
@@ -98,7 +102,7 @@ def _apply_field_selection(data: Mapping[str, Any], fields: list[str] | None) ->
 
 
 def _page_to_payload(
-    page: doc_store.RequirementPage, fields: list[str] | None
+    page: RequirementPage, fields: list[str] | None
 ) -> dict[str, Any]:
     items: list[dict[str, Any]] = []
     for req in page.items:
@@ -131,9 +135,9 @@ def list_requirements(
         "labels": list(labels) if labels else None,
         "fields": logged_fields,
     }
+    service = RequirementsService(directory)
     try:
-        page_data = doc_store.list_requirements(
-            directory,
+        page_data = service.list_requirements(
             page=page,
             per_page=per_page,
             status=status,
@@ -166,6 +170,7 @@ def get_requirement(
         "directory": str(directory),
         "fields": logged_fields,
     }
+    service = RequirementsService(directory)
     try:
         requested_rids, logged_rid = _normalize_rid_argument(rid)
     except ValueError as exc:
@@ -181,14 +186,14 @@ def get_requirement(
     if isinstance(rid, _SEQUENCE_STRING_TYPES):
         rid_value = requested_rids[0]
         try:
-            req = doc_store.get_requirement(directory, rid_value)
+            req = service.get_requirement(rid_value)
         except ValueError as exc:
             return log_tool(
                 "get_requirement",
                 params,
                 mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
             )
-        except doc_store.RequirementNotFoundError as exc:
+        except RequirementNotFoundError as exc:
             return log_tool(
                 "get_requirement",
                 params,
@@ -212,14 +217,14 @@ def get_requirement(
     missing: list[str] = []
     for rid_value in requested_rids:
         try:
-            req = doc_store.get_requirement(directory, rid_value)
+            req = service.get_requirement(rid_value)
         except ValueError as exc:
             return log_tool(
                 "get_requirement",
                 params,
                 mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
             )
-        except doc_store.RequirementNotFoundError:
+        except RequirementNotFoundError:
             missing.append(rid_value)
             continue
         except Exception as exc:  # pragma: no cover - defensive
@@ -258,9 +263,9 @@ def search_requirements(
         "per_page": per_page,
         "fields": logged_fields,
     }
+    service = RequirementsService(directory)
     try:
-        page_data = doc_store.search_requirements(
-            directory,
+        page_data = service.search_requirements(
             query=query,
             labels=labels,
             status=status,

@@ -12,18 +12,15 @@ import wx
 import wx.adv
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from ..core.document_store import (
+from ..services.requirements import (
     Document,
     LabelDef,
+    RequirementsService,
     RequirementIDCollisionError,
     label_color,
-    list_item_ids,
-    load_item,
-    save_item,
-    stable_color,
     parse_rid,
     rid_for,
-    load_document,
+    stable_color,
 )
 from ..core.model import (
     Priority,
@@ -65,7 +62,8 @@ class EditorPanel(wx.Panel):
         self.original_modified_at = ""
         self._on_save_callback = on_save
         self._on_discard_callback = on_discard
-        self.directory: Path | None = None
+        self._service: RequirementsService | None = None
+        self._doc_prefix: str | None = None
         self.original_id: int | None = None
         self._document: Document | None = None
         self._known_ids: set[int] | None = None
@@ -277,31 +275,70 @@ class EditorPanel(wx.Panel):
         return super().Layout()
 
     # helpers -------------------------------------------------------------
-    def _load_document(self) -> Document | None:
-        if not self.directory:
+    def set_service(self, service: RequirementsService | None) -> None:
+        """Configure requirements service used by the editor."""
+
+        self._service = service
+        self._document = None
+        self._known_ids = None
+        self._id_conflict = False
+        self._link_metadata_cache = {}
+        self._on_id_change()
+
+    def set_document(self, prefix: str | None) -> None:
+        """Select active document ``prefix`` for ID validation."""
+
+        self._doc_prefix = prefix
+        self.extra["doc_prefix"] = prefix or ""
+        self._document = None
+        self._known_ids = None
+        self._id_conflict = False
+        self._link_metadata_cache = {}
+        self._on_id_change()
+
+    def _effective_prefix(self) -> str | None:
+        prefix = self._doc_prefix or str(self.extra.get("doc_prefix", "")).strip()
+        return prefix or None
+
+    def _require_service(self) -> RequirementsService:
+        if self._service is None:
+            raise RuntimeError("requirements service is not configured")
+        return self._service
+
+    def _resolve_document(self, prefix: str | None = None) -> Document | None:
+        service = self._service
+        target = prefix or self._effective_prefix()
+        if service is None or not target:
             return None
-        if self._document is not None:
+        if self._document is not None and self._document.prefix == target:
             return self._document
         try:
-            self._document = load_document(self.directory)
-        except Exception:  # pragma: no cover - filesystem errors
-            logger.exception("Failed to load document metadata from %s", self.directory)
-            self._document = None
-        return self._document
-
-    def _refresh_known_ids(self, doc: Document | None = None) -> set[int]:
-        if doc is not None:
+            doc = service.get_document(target)
+        except Exception:  # pragma: no cover - service errors surfaced via UI
+            logger.exception("Failed to load document metadata for %s", target)
+            return None
+        if target == self._doc_prefix:
             self._document = doc
-        document = doc or self._load_document()
-        if not document or not self.directory:
+        return doc
+
+    def _refresh_known_ids(
+        self,
+        *,
+        prefix: str | None = None,
+        doc: Document | None = None,
+    ) -> set[int]:
+        service = self._service
+        target = prefix or (doc.prefix if doc else self._effective_prefix())
+        if service is None or not target:
             self._known_ids = set()
             return self._known_ids
         try:
-            ids = list_item_ids(self.directory, document)
-        except Exception:  # pragma: no cover - filesystem errors
-            logger.exception("Failed to enumerate requirement ids in %s", self.directory)
+            ids = set(service.list_item_ids(target))
+        except Exception:  # pragma: no cover - filesystem/service errors
+            logger.exception("Failed to enumerate requirement ids in %s", target)
             ids = set()
-        self._known_ids = ids
+        if target == self._effective_prefix():
+            self._known_ids = ids
         return ids
 
     def _get_known_ids(self) -> set[int]:
@@ -309,12 +346,18 @@ class EditorPanel(wx.Panel):
             return self._refresh_known_ids()
         return self._known_ids
 
-    def _has_id_conflict(self, req_id: int, *, doc: Document | None = None) -> bool:
-        if not self.directory or req_id <= 0:
+    def _has_id_conflict(
+        self,
+        req_id: int,
+        *,
+        prefix: str | None = None,
+        doc: Document | None = None,
+    ) -> bool:
+        if req_id <= 0:
             return False
         if self.original_id is not None and req_id == self.original_id:
             return False
-        ids = self._refresh_known_ids(doc) if doc is not None else self._get_known_ids()
+        ids = self._refresh_known_ids(prefix=prefix, doc=doc) if doc is not None else self._get_known_ids()
         return req_id in ids
 
     def _bind_autosize(self, ctrl: wx.TextCtrl) -> None:
@@ -424,7 +467,8 @@ class EditorPanel(wx.Panel):
         cached = self._link_metadata_cache.get(rid)
         if cached is not None:
             return cached or None
-        if not self.directory:
+        service = self._service
+        if service is None:
             self._link_metadata_cache[rid] = {}
             return None
         try:
@@ -432,11 +476,9 @@ class EditorPanel(wx.Panel):
         except ValueError:
             self._link_metadata_cache[rid] = {}
             return None
-        root = Path(self.directory).parent
-        doc_path = root / prefix
         try:
-            doc = load_document(doc_path)
-            data, _mtime = load_item(doc_path, doc, item_id)
+            doc = service.get_document(prefix)
+            data, _mtime = service.load_item(prefix, item_id)
         except Exception:  # pragma: no cover - filesystem errors
             logger.exception("Failed to load metadata for parent requirement %s", rid)
             self._link_metadata_cache[rid] = {}
@@ -588,15 +630,6 @@ class EditorPanel(wx.Panel):
         menu.Destroy()
 
     # basic operations -------------------------------------------------
-    def set_directory(self, directory: str | Path | None) -> None:
-        """Set working directory for ID validation."""
-        self.directory = Path(directory) if directory else None
-        self._document = None
-        self._known_ids = None
-        self._id_conflict = False
-        self._link_metadata_cache = {}
-        self._on_id_change()
-
     def new_requirement(self) -> None:
         """Reset UI fields to create a new requirement."""
 
@@ -973,11 +1006,15 @@ class EditorPanel(wx.Panel):
         fingerprint = None
         doc_title = ""
         doc_prefix = ""
-        if self.directory:
+        service = self._service
+        if service is not None:
             try:
-                root = Path(self.directory).parent
-                doc = load_document(root / prefix)
-                data, _metadata = load_item(root / prefix, doc, item_id)
+                doc = service.get_document(prefix)
+                data, _metadata = service.load_item(prefix, item_id)
+            except Exception:  # pragma: no cover - lookup errors
+                logger.exception("Failed to load requirement %s", value)
+                self._link_metadata_cache[value] = {}
+            else:
                 title = str(data.get("title", ""))
                 fingerprint = requirement_fingerprint(data)
                 doc_title = doc.title
@@ -988,9 +1025,6 @@ class EditorPanel(wx.Panel):
                     "doc_prefix": doc_prefix,
                     "doc_title": doc_title,
                 }
-            except Exception:  # pragma: no cover - lookup errors
-                logger.exception("Failed to load requirement %s", value)
-                self._link_metadata_cache[value] = {}
         links_list.append(
             {
                 "rid": value,
@@ -1027,7 +1061,7 @@ class EditorPanel(wx.Panel):
         ctrl = self.fields["id"]
         ctrl.SetBackgroundColour(wx.NullColour)
         self._id_conflict = False
-        if not self.directory:
+        if self._service is None or self._effective_prefix() is None:
             ctrl.Refresh()
             return
         value = ctrl.GetValue().strip()
@@ -1058,12 +1092,18 @@ class EditorPanel(wx.Panel):
     def _on_cancel_button(self, _evt: wx.Event) -> None:
         self.discard_changes()
 
-    def save(self, directory: str | Path, *, doc: Document) -> Path:
-        """Persist editor contents to ``directory`` within ``doc`` and return path."""
+    def save(self, prefix: str) -> Path:
+        """Persist editor contents within document ``prefix`` and return path."""
+
+        service = self._require_service()
+        try:
+            doc = service.get_document(prefix)
+        except Exception as exc:
+            raise RuntimeError(f"Unknown document prefix: {prefix}") from exc
 
         req = self.get_data()
         self._document = doc
-        if self._has_id_conflict(req.id, doc=doc):
+        if self._has_id_conflict(req.id, prefix=prefix, doc=doc):
             rid = rid_for(doc, req.id)
             message = _("Requirement {rid} already exists").format(rid=rid)
             wx.MessageBox(message, _("Error"), style=wx.ICON_ERROR)
@@ -1080,12 +1120,14 @@ class EditorPanel(wx.Panel):
         )
         req.modified_at = normalize_timestamp(mod) if mod else local_now_str()
         data = requirement_to_dict(req)
-        path = save_item(directory, doc, data)
+        path = service.save_requirement_payload(prefix, data)
         self.fields["modified_at"].ChangeValue(req.modified_at)
         self.original_modified_at = req.modified_at
         self.current_path = path
         self.mtime = path.stat().st_mtime
-        self.directory = Path(directory)
+        self._doc_prefix = prefix
+        self.extra["doc_prefix"] = prefix
+        self._refresh_known_ids(prefix=prefix, doc=doc)
         self.original_id = req.id
         self._known_ids = None
         self._on_id_change()

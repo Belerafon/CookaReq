@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import wx
 
-from ...core.document_store import RequirementIDCollisionError
+from ...services.requirements import RequirementIDCollisionError
 from ...core.model import Requirement
 from ...i18n import _
 from ..detached_editor import DetachedEditorFrame
@@ -77,12 +77,8 @@ class MainFrameEditorMixin:
             prefix = self.current_doc_prefix or ""
         if not prefix:
             return None
-        doc = self.docs_controller.documents.get(prefix)
-        if not doc:
-            return None
-        directory = self.current_dir / prefix
         try:
-            editor_panel.save(directory, doc=doc)
+            editor_panel.save(prefix)
         except RequirementIDCollisionError:
             return None
         except Exception as exc:  # pragma: no cover - GUI event
@@ -125,28 +121,24 @@ class MainFrameEditorMixin:
         return True
 
     def _open_detached_editor(self: MainFrame, requirement: Requirement) -> None:
-        if not (self.docs_controller and self.current_dir):
+        if not self.docs_controller:
             return
         prefix = getattr(requirement, "doc_prefix", "") or self.current_doc_prefix
         if not prefix:
             return
-        doc = self.docs_controller.documents.get(prefix)
-        if not doc:
-            return
-        directory = self.current_dir / prefix
         labels, freeform = self.docs_controller.collect_labels(prefix)
         key = (prefix, getattr(requirement, "id", 0))
         existing = self._detached_editors.get(key)
         if existing:
-            existing.reload(requirement, directory, labels, freeform)
+            existing.reload(requirement, prefix, labels, freeform)
             existing.Raise()
             existing.SetFocus()
             return
         frame = DetachedEditorFrame(
             self,
             requirement=requirement,
+            service=self.docs_controller.service,
             doc_prefix=prefix,
-            directory=directory,
             labels=labels,
             allow_freeform=freeform,
             on_save=self._on_detached_editor_save,
@@ -157,15 +149,14 @@ class MainFrameEditorMixin:
 
     def _on_detached_editor_save(self: MainFrame, frame: DetachedEditorFrame) -> bool:
         prefix = frame.doc_prefix
-        if not prefix or not self.docs_controller or not self.current_dir:
+        if not prefix or not self.docs_controller:
             return False
         old_key = frame.key
         requirement = self._save_editor_contents(frame.editor, doc_prefix=prefix)
         if requirement is None:
             return False
-        directory = self.current_dir / prefix
         labels, freeform = self.docs_controller.collect_labels(prefix)
-        frame.reload(requirement, directory, labels, freeform)
+        frame.reload(requirement, prefix, labels, freeform)
         if old_key in self._detached_editors and self._detached_editors[old_key] is frame:
             del self._detached_editors[old_key]
         self._detached_editors[frame.key] = frame

@@ -7,7 +7,7 @@ from collections.abc import Sequence
 
 import wx
 
-from ..core.document_store import parse_rid, stable_color
+from ..services.requirements import parse_rid, stable_color
 from ..i18n import _
 
 

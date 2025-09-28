@@ -14,7 +14,7 @@ from ..confirm import (
     confirm as default_confirm,
     confirm_requirement_update as default_update_confirm,
 )
-from ..core.document_store import parse_rid
+from ..services.requirements import parse_rid
 from ..llm.client import LLMClient, LLMReasoningSegment, LLMResponse, LLMToolCall
 from ..llm.validation import ToolValidationError
 from ..mcp.client import MCPClient

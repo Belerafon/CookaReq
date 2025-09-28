@@ -11,7 +11,7 @@ import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
 from .. import columns
-from ..core.document_store import LabelDef, label_color, load_item, parse_rid, stable_color
+from ..services.requirements import LabelDef, label_color, parse_rid, stable_color
 from ..core.model import Requirement
 from ..i18n import _
 from ..log import logger
@@ -423,12 +423,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             except ValueError:
                 self._link_display_cache[rid] = rid
                 return rid
-            doc = self._docs_controller.documents.get(prefix)
-            if doc:
+            service = getattr(self._docs_controller, "service", None)
+            if service:
                 doc_title = self._doc_title_for_prefix(prefix)
-                directory = self._docs_controller.root / prefix
                 try:
-                    data, _mtime = load_item(directory, doc, item_id)
+                    data, _mtime = service.load_item(prefix, item_id)
                 except Exception:
                     logger.exception("Failed to load linked requirement %s", rid)
                 else:

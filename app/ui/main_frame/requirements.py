@@ -8,7 +8,7 @@ from collections.abc import Sequence
 
 import wx
 
-from ...core.document_store import rid_for
+from ...services.requirements import rid_for
 from ...core.model import Link, Requirement, requirement_fingerprint
 from ...i18n import _
 from ...log import logger

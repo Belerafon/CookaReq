@@ -9,7 +9,7 @@ from collections.abc import Mapping
 import wx
 import wx.grid as gridlib
 
-from ..core.document_store import Document
+from ..services.requirements import Document
 from ..core.trace_matrix import (
     TraceDirection,
     TraceMatrix,

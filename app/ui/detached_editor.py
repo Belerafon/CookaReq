@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from collections.abc import Callable
 
 import wx
 
 from ..confirm import confirm
-from ..core.document_store import LabelDef
+from ..services.requirements import LabelDef, RequirementsService
 from ..core.model import Requirement
 from ..i18n import _
 from .editor_panel import EditorPanel
@@ -23,8 +22,8 @@ class DetachedEditorFrame(wx.Frame):
         parent: wx.Window,
         *,
         requirement: Requirement,
+        service: RequirementsService,
         doc_prefix: str,
-        directory: Path,
         labels: list[LabelDef],
         allow_freeform: bool,
         on_save: Callable[[DetachedEditorFrame], bool],
@@ -39,9 +38,9 @@ class DetachedEditorFrame(wx.Frame):
         self._on_save = on_save
         self._on_close = on_close
         self._closing_via_cancel = False
+        self._service = service
         self.doc_prefix = doc_prefix
         self.requirement_id = requirement.id
-        self.directory = Path(directory)
         self._allow_freeform = allow_freeform
         self._labels: list[LabelDef] = list(labels)
 
@@ -53,6 +52,7 @@ class DetachedEditorFrame(wx.Frame):
             on_save=self._handle_save,
             on_discard=self._handle_cancel,
         )
+        self.editor.set_service(service)
         editor_sizer = wx.BoxSizer(wx.VERTICAL)
         editor_sizer.Add(self.editor, 1, wx.EXPAND)
         container.SetSizer(editor_sizer)
@@ -61,7 +61,7 @@ class DetachedEditorFrame(wx.Frame):
         sizer.Add(container, 1, wx.EXPAND)
         self.SetSizer(sizer)
 
-        self.editor.set_directory(self.directory)
+        self.editor.set_document(self.doc_prefix)
         self.editor.update_labels_list(self._labels, self._allow_freeform)
         self.editor.load(requirement)
 
@@ -114,18 +114,18 @@ class DetachedEditorFrame(wx.Frame):
     def reload(
         self,
         requirement: Requirement,
-        directory: Path,
+        doc_prefix: str,
         labels: list[LabelDef],
         allow_freeform: bool,
     ) -> None:
         """Load ``requirement`` replacing current contents."""
 
-        self.directory = Path(directory)
-        self.doc_prefix = requirement.doc_prefix or self.doc_prefix
+        self.doc_prefix = requirement.doc_prefix or doc_prefix or self.doc_prefix
         self.requirement_id = requirement.id
         self._labels = list(labels)
         self._allow_freeform = allow_freeform
-        self.editor.set_directory(self.directory)
+        self.editor.set_service(self._service)
+        self.editor.set_document(self.doc_prefix)
         self.editor.update_labels_list(self._labels, self._allow_freeform)
         self.editor.load(requirement)
         self._update_title(requirement)

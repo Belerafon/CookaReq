@@ -14,27 +14,13 @@ from typing import Any, TextIO
 from collections.abc import Callable, Mapping
 
 from app.confirm import confirm
-from app.core.document_store import (
-    Document,
+from app.services.requirements import (
+    RequirementsService,
     DocumentNotFoundError,
     RequirementIDCollisionError,
     RequirementNotFoundError,
     ValidationError,
-    create_requirement,
-    delete_document,
-    delete_item,
-    get_requirement,
-    is_ancestor,
-    load_document,
-    load_documents,
-    load_item,
-    move_requirement,
     parse_rid,
-    plan_delete_document,
-    plan_delete_item,
-    save_document,
-    save_item,
-    validate_labels,
 )
 from app.core.model import (
     Link,
@@ -168,6 +154,12 @@ def _flatten_arg_list(values: Any) -> list[str]:
         else:
             tokens.append(str(value))
     return tokens
+
+
+def _service_for(directory: str | Path) -> RequirementsService:
+    """Return requirements service rooted at ``directory``."""
+
+    return RequirementsService(Path(directory))
 
 
 def _build_axis_config(args: argparse.Namespace, axis: str) -> TraceMatrixAxisConfig:
@@ -497,33 +489,31 @@ def build_item_payload(
 def cmd_doc_create(args: argparse.Namespace) -> None:
     """Create new document within requirements root."""
 
-    doc = Document(
+    service = _service_for(args.directory)
+    doc = service.create_document(
         prefix=args.prefix,
         title=args.title,
         parent=args.parent,
     )
-    save_document(Path(args.directory) / args.prefix, doc)
-    sys.stdout.write(f"{args.prefix}\n")
+    sys.stdout.write(f"{doc.prefix}\n")
 
 
 def cmd_doc_list(args: argparse.Namespace) -> None:
     """List documents configured under requirements root."""
 
-    root = Path(args.directory)
-    for path in sorted(root.iterdir()):
-        if (path / "document.json").is_file():
-            doc = load_document(path)
-            sys.stdout.write(f"{doc.prefix} {doc.title}\n")
+    service = _service_for(args.directory)
+    docs = service.load_documents(refresh=True)
+    for prefix in sorted(docs):
+        doc = docs[prefix]
+        sys.stdout.write(f"{doc.prefix} {doc.title}\n")
 
 
 def cmd_doc_delete(args: argparse.Namespace) -> None:
     """Delete document ``prefix`` and its descendants."""
 
-    docs = load_documents(args.directory)
+    service = _service_for(args.directory)
     if getattr(args, "dry_run", False):
-        doc_list, item_list = plan_delete_document(
-            args.directory, args.prefix, docs
-        )
+        doc_list, item_list = service.plan_delete_document(args.prefix)
         if not doc_list:
             sys.stdout.write(
                 _("document not found: {prefix}\n").format(prefix=args.prefix)
@@ -538,7 +528,7 @@ def cmd_doc_delete(args: argparse.Namespace) -> None:
     if not confirm(msg):
         sys.stdout.write(_("aborted\n"))
         return
-    removed = delete_document(args.directory, args.prefix, docs)
+    removed = service.delete_document(args.prefix)
     if removed:
         sys.stdout.write(f"{args.prefix}\n")
     else:
@@ -581,9 +571,10 @@ def cmd_item_add(args: argparse.Namespace) -> None:
     if data_path:
         with open(data_path, encoding="utf-8") as fh:
             base = json.load(fh)
+    service = _service_for(args.directory)
     try:
         payload = build_item_payload(args, base)
-        req = create_requirement(args.directory, prefix=args.prefix, data=payload)
+        req = service.create_requirement(prefix=args.prefix, data=payload)
     except DocumentNotFoundError:
         sys.stdout.write(
             _("unknown document prefix: {prefix}\n").format(prefix=args.prefix)
@@ -599,9 +590,17 @@ def cmd_item_edit(args: argparse.Namespace) -> None:
     """Update an existing requirement without changing its RID."""
 
     prefix, item_id = parse_rid(args.rid)
-    item_dir = Path(args.directory) / prefix
-    doc = load_document(item_dir)
-    data, _mtime = load_item(item_dir, doc, item_id)
+    service = _service_for(args.directory)
+    try:
+        doc = service.get_document(prefix)
+    except DocumentNotFoundError:
+        sys.stdout.write(_("document not found: {prefix}\n").format(prefix=prefix))
+        return
+    try:
+        data, _mtime = service.load_item(prefix, item_id)
+    except FileNotFoundError:
+        sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
+        return
 
     template: Mapping[str, Any] = {}
     data_path = getattr(args, "data", None)
@@ -618,9 +617,8 @@ def cmd_item_edit(args: argparse.Namespace) -> None:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
         return
 
-    docs = load_documents(args.directory)
     labels = list(payload.get("labels", []))
-    err = validate_labels(prefix, labels, docs)
+    err = service.validate_labels(prefix, labels)
     if err:
         sys.stdout.write(_("{msg}\n").format(msg=err))
         return
@@ -629,15 +627,16 @@ def cmd_item_edit(args: argparse.Namespace) -> None:
     payload["id"] = int(data["id"])
 
     req = requirement_from_dict(payload, doc_prefix=doc.prefix, rid=args.rid)
-    save_item(item_dir, doc, requirement_to_dict(req))
+    service.save_requirement_payload(prefix, requirement_to_dict(req))
     sys.stdout.write(f"{req.rid}\n")
 
 
 def cmd_item_move(args: argparse.Namespace) -> None:
     """Move existing item ``rid`` to document ``new_prefix``."""
 
+    service = _service_for(args.directory)
     try:
-        current = get_requirement(args.directory, args.rid)
+        current = service.get_requirement(args.rid)
     except RequirementNotFoundError:
         sys.stdout.write(_("requirement not found: {rid}\n").format(rid=args.rid))
         return
@@ -658,8 +657,7 @@ def cmd_item_move(args: argparse.Namespace) -> None:
         return
 
     try:
-        moved = move_requirement(
-            args.directory,
+        moved = service.move_requirement(
             args.rid,
             new_prefix=args.new_prefix,
             payload=payload,
@@ -685,9 +683,9 @@ def cmd_item_move(args: argparse.Namespace) -> None:
 def cmd_item_delete(args: argparse.Namespace) -> None:
     """Delete requirement ``rid`` and update references."""
 
-    docs = load_documents(args.directory)
+    service = _service_for(args.directory)
     if getattr(args, "dry_run", False):
-        exists, refs = plan_delete_item(args.directory, args.rid, docs)
+        exists, refs = service.plan_delete_requirement(args.rid)
         if not exists:
             sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
             return
@@ -699,7 +697,7 @@ def cmd_item_delete(args: argparse.Namespace) -> None:
     if not confirm(msg):
         sys.stdout.write(_("aborted\n"))
         return
-    removed = delete_item(args.directory, args.rid, docs)
+    removed = service.delete_requirement(args.rid)
     if removed:
         sys.stdout.write(f"{args.rid}\n")
     else:
@@ -802,19 +800,19 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
 def cmd_link(args: argparse.Namespace) -> None:
     """Add links from requirement ``rid`` to ``parents``."""
 
-    docs = load_documents(args.directory)
+    service = _service_for(args.directory)
     try:
         prefix, item_id = parse_rid(args.rid)
     except ValueError:
         sys.stdout.write(_("invalid requirement identifier: {rid}\n").format(rid=args.rid))
         return
-    doc = docs.get(prefix)
-    if doc is None:
+    try:
+        doc = service.get_document(prefix)
+    except DocumentNotFoundError:
         sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=prefix))
         return
-    item_dir = Path(args.directory) / prefix
     try:
-        data, _mtime = load_item(item_dir, doc, item_id)
+        data, _mtime = service.load_item(prefix, item_id)
     except FileNotFoundError:
         sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
         return
@@ -828,16 +826,16 @@ def cmd_link(args: argparse.Namespace) -> None:
         except ValueError:
             sys.stdout.write(_("invalid requirement identifier: {rid}\n").format(rid=rid))
             return
-        if parent_prefix not in docs:
+        try:
+            service.get_document(parent_prefix)
+        except DocumentNotFoundError:
             sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=parent_prefix))
             return
-        if not is_ancestor(prefix, parent_prefix, docs):
+        if not service.is_ancestor(prefix, parent_prefix):
             sys.stdout.write(_("invalid link target: {rid}\n").format(rid=rid))
             return
-        parent_dir = Path(args.directory) / parent_prefix
-        parent_doc = docs[parent_prefix]
         try:
-            parent_data, _parent_mtime = load_item(parent_dir, parent_doc, parent_id)
+            parent_data, _parent_mtime = service.load_item(parent_prefix, parent_id)
         except FileNotFoundError:
             sys.stdout.write(_("linked item not found: {rid}\n").format(rid=rid))
             return
@@ -854,7 +852,7 @@ def cmd_link(args: argparse.Namespace) -> None:
             suspect=False,
         )
     req.links = [existing_links[rid] for rid in sorted(existing_links)]
-    save_item(item_dir, doc, requirement_to_dict(req))
+    service.save_requirement_payload(prefix, requirement_to_dict(req))
     sys.stdout.write(f"{args.rid}\n")
 
 

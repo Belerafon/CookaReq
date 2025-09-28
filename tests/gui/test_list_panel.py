@@ -16,6 +16,7 @@ from app.core.model import (
     Verification,
     requirement_to_dict,
 )
+from app.services.requirements import RequirementsService
 
 pytestmark = pytest.mark.gui
 pytest_plugins = ("tests.gui.wx_stub_utils",)
@@ -316,7 +317,7 @@ def test_context_edit_saves_to_disk(
     save_item(doc_dir, doc, requirement_to_dict(original))
 
     model = requirement_model_cls()
-    controller = documents_controller_cls(tmp_path, model)
+    controller = documents_controller_cls(RequirementsService(tmp_path), model)
     controller.load_documents()
     derived_map = controller.load_items("SYS")
 

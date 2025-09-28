@@ -5,7 +5,7 @@ import wx
 from ..config import ConfigManager
 from ..confirm import confirm
 from ..core.label_presets import PRESET_SET_TITLES, PRESET_SETS
-from ..core.document_store import LabelDef, label_color
+from ..services.requirements import LabelDef, label_color
 from ..i18n import _
 
 

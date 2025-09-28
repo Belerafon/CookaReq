@@ -13,7 +13,8 @@ import pytest
 
 import app.agent.local_agent as la
 from app.agent.local_agent import LocalAgent
-from app.llm.client import LLMClient, LLMResponse, LLMToolCall
+from app.llm.client import LLMClient
+from app.llm.types import LLMResponse, LLMToolCall
 from app.llm.validation import ToolValidationError
 from app.mcp.client import MCPNotReadyError
 from app.mcp.utils import ErrorCode

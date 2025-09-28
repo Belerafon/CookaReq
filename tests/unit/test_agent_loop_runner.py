@@ -4,7 +4,7 @@ from typing import Any
 from collections.abc import Mapping
 
 from app.agent.local_agent import AgentLoopRunner, LocalAgent
-from app.llm.client import LLMResponse, LLMToolCall
+from app.llm.types import LLMResponse, LLMToolCall
 from app.llm.validation import ToolValidationError
 
 

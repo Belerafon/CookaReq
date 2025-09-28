@@ -9,7 +9,11 @@ import wx
 
 from ....i18n import _
 from ..layout import AgentChatLayout, AgentChatLayoutBuilder
-from ..token_usage import TokenCountResult
+from ..token_usage import (
+    TOKEN_UNAVAILABLE_LABEL,
+    TokenCountResult,
+    summarize_token_usage,
+)
 
 
 class WaitStateCallbacks(Protocol):
@@ -67,6 +71,7 @@ class AgentChatView:
         active: bool,
         *,
         tokens: TokenCountResult | None = None,
+        context_limit: int | None = None,
         callbacks: WaitStateCallbacks,
     ) -> None:
         """Reflect busy state in the view."""
@@ -76,7 +81,6 @@ class AgentChatView:
         input_ctrl = state.layout.input_control
         stop_btn = state.layout.stop_button
         activity = state.layout.activity_indicator
-        status_label = state.layout.status_label
 
         send_btn.Enable(not active)
         input_ctrl.Enable(not active)
@@ -86,12 +90,17 @@ class AgentChatView:
         if active:
             activity.Show()
             activity.Start()
+            self.update_status_label(
+                self._build_running_status(tokens, context_limit)
+            )
             callbacks.on_refresh_layout()
         else:
             activity.Stop()
             activity.Hide()
+            self.update_status_label(
+                self._build_ready_status(tokens, context_limit)
+            )
             callbacks.on_refresh_layout()
-            status_label.SetLabel(_("Ready"))
             callbacks.on_focus_input()
 
     # ------------------------------------------------------------------
@@ -99,3 +108,58 @@ class AgentChatView:
         """Update the text shown in the status area."""
 
         self.state.layout.status_label.SetLabel(label)
+
+    # ------------------------------------------------------------------
+    def update_wait_status(
+        self,
+        elapsed: float,
+        tokens: TokenCountResult | None,
+        context_limit: int | None,
+    ) -> None:
+        """Show running timer alongside prompt token summary."""
+
+        minutes, seconds = divmod(int(elapsed), 60)
+        base = _("Waiting for agent… {time}").format(
+            time=f"{minutes:02d}:{seconds:02d}",
+        )
+        if tokens is None:
+            self.update_status_label(base)
+            return
+        details = summarize_token_usage(tokens, context_limit)
+        if details == TOKEN_UNAVAILABLE_LABEL and context_limit is None:
+            self.update_status_label(base)
+            return
+        combined = _("{base} — {details}").format(base=base, details=details)
+        self.update_status_label(combined)
+
+    # ------------------------------------------------------------------
+    def _build_ready_status(
+        self,
+        tokens: TokenCountResult | None,
+        context_limit: int | None,
+    ) -> str:
+        """Return label for the ready state."""
+
+        base = _("Ready")
+        if tokens is None:
+            return base
+        details = summarize_token_usage(tokens, context_limit)
+        if details == TOKEN_UNAVAILABLE_LABEL and context_limit is None:
+            return base
+        return _("{base} — {details}").format(base=base, details=details)
+
+    # ------------------------------------------------------------------
+    def _build_running_status(
+        self,
+        tokens: TokenCountResult | None,
+        context_limit: int | None,
+    ) -> str:
+        """Return label for the initial running state."""
+
+        if tokens is None:
+            return _("Waiting for agent… {time}").format(time="00:00")
+        details = summarize_token_usage(tokens, context_limit)
+        if details == TOKEN_UNAVAILABLE_LABEL and context_limit is None:
+            return _("Waiting for agent… {time}").format(time="00:00")
+        base = _("Waiting for agent… {time}").format(time="00:00")
+        return _("{base} — {details}").format(base=base, details=details)

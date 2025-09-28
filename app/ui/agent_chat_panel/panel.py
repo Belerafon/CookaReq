@@ -56,7 +56,11 @@ from .layout import AgentChatLayoutBuilder
 from .session import AgentChatSession
 from .settings_dialog import AgentProjectSettingsDialog
 from .time_formatting import format_last_activity
-from .token_usage import ContextTokenBreakdown
+from .token_usage import (
+    ContextTokenBreakdown,
+    TOKEN_UNAVAILABLE_LABEL,
+    format_token_quantity,
+)
 from .tool_summaries import (
     render_tool_summaries_plain,
     summarize_tool_results,
@@ -71,9 +75,6 @@ try:  # pragma: no cover - import only used for typing
     from ..agent import LocalAgent  # noqa: TCH004
 except Exception:  # pragma: no cover - fallback when wx stubs are used
     LocalAgent = object  # type: ignore[assignment]
-
-TOKEN_UNAVAILABLE_LABEL = "n/a"
-
 
 STATUS_HELP_TEXT = _(
     "The waiting status shows three elements:\n"
@@ -645,7 +646,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return
         self._finalize_cancelled_run(handle)
         self._set_wait_state(False)
-        self.status_label.SetLabel(_("Generation cancelled"))
+        self._view.update_status_label(_("Generation cancelled"))
         self.input.SetValue(handle.prompt)
         self.input.SetInsertionPointEnd()
         self.input.SetFocus()
@@ -740,6 +741,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._view.set_wait_state(
             running,
             tokens=tokens,
+            context_limit=self._context_token_limit(),
             callbacks=self._wait_callbacks,
         )
         self._update_project_settings_ui()
@@ -764,23 +766,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._refresh_history_list()
         self._render_transcript()
 
-    def _format_tokens_for_status(self, tokens: TokenCountResult) -> str:
-        """Return status label representation for ``tokens``."""
-
-        if tokens.tokens is None:
-            return TOKEN_UNAVAILABLE_LABEL
-        quantity = tokens.tokens / 1000 if tokens.tokens else 0.0
-        label = f"{quantity:.2f} k tokens"
-        return f"~{label}" if tokens.approximate else label
-
     def _update_status(self, elapsed: float) -> None:
         """Show formatted timer and prompt size."""
 
-        minutes, seconds = divmod(int(elapsed), 60)
-        label = _("Waiting for agent… {time}").format(
-            time=f"{minutes:02d}:{seconds:02d}",
+        if self._layout is None:
+            return
+        self._view.update_wait_status(
+            elapsed,
+            self._session.tokens,
+            self._context_token_limit(),
         )
-        self.status_label.SetLabel(label)
 
     def _context_token_limit(self) -> int | None:
         """Return resolved context window size when available."""
@@ -934,7 +929,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         breakdown = self._compute_context_token_breakdown()
         total_tokens = breakdown.total
-        tokens_text = self._format_tokens_for_status(total_tokens)
+        tokens_text = format_token_quantity(total_tokens)
         percent_text = self._format_context_percentage(
             total_tokens, self._context_token_limit()
         )
@@ -945,7 +940,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 limit,
                 model=total_tokens.model,
             )
-            limit_text = self._format_tokens_for_status(limit_tokens)
+            limit_text = format_token_quantity(limit_tokens)
             tokens_text = _("{used} / {limit}").format(
                 used=tokens_text,
                 limit=limit_text,
@@ -1044,7 +1039,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if elapsed:
                 minutes, seconds = divmod(int(elapsed), 60)
                 time_text = f"{minutes:02d}:{seconds:02d}"
-                token_label = self._format_tokens_for_status(self._session.tokens)
+                token_label = format_token_quantity(self._session.tokens)
                 if token_label:
                     label = _("Received response in {time} • {tokens}").format(
                         time=time_text,
@@ -1052,7 +1047,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     )
                 else:
                     label = _("Received response in {time}").format(time=time_text)
-                self.status_label.SetLabel(label)
+                self._view.update_status_label(label)
 
         if isinstance(result, Mapping) and not result.get("ok", False):
             success = False

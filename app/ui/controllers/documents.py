@@ -11,6 +11,8 @@ from ...services.requirements import (
     DocumentNotFoundError,
     LabelDef,
     RequirementIDCollisionError,
+    RequirementNotFoundError,
+    ValidationError,
     iter_links,
     parse_rid,
     rid_for,
@@ -166,18 +168,21 @@ class DocumentsController:
         data = requirement_to_dict(req)
         return self.service.save_requirement_payload(prefix, data)
 
-    def delete_requirement(self, prefix: str, req_id: int) -> bool:
+    def delete_requirement(self, prefix: str, req_id: int) -> str:
         """Remove requirement ``req_id`` from document ``prefix``."""
 
         try:
             doc = self._get_document(prefix)
-        except ValueError:
-            return False
+        except ValueError as exc:
+            rid = f"{prefix}{req_id}"
+            raise RequirementNotFoundError(rid) from exc
         rid = rid_for(doc, req_id)
-        removed = self.service.delete_requirement(rid)
-        if removed:
-            self.model.delete(req_id)
-        return removed
+        try:
+            canonical = self.service.delete_requirement(rid)
+        except ValidationError as exc:
+            raise ValidationError(f"{rid}: {exc}") from exc
+        self.model.delete(req_id)
+        return canonical
 
     def delete_document(self, prefix: str) -> bool:
         """Remove document ``prefix`` and its descendants."""

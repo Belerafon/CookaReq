@@ -137,14 +137,7 @@ class RequirementsService:
         directory = self.root / prefix
         return doc_store.save_item(directory, doc, dict(payload))
 
-    def delete_requirement(self, rid: str) -> bool:
-        """Delete requirement ``rid`` and remove it from caches."""
-
-        docs = self._ensure_documents()
-        removed = doc_store.delete_item(self.root, rid, docs)
-        return bool(removed)
-
-    def delete_requirement_record(self, rid: str) -> str:
+    def delete_requirement(self, rid: str) -> str:
         """Delete requirement ``rid`` enforcing revision semantics."""
 
         docs = self._ensure_documents()

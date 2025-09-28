@@ -714,11 +714,22 @@ def cmd_item_delete(
     if not confirm(msg):
         sys.stdout.write(_("aborted\n"))
         return
-    removed = service.delete_requirement(args.rid)
-    if removed:
-        sys.stdout.write(f"{args.rid}\n")
-    else:
+    try:
+        canonical = service.delete_requirement(args.rid)
+    except ValueError as exc:
+        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
+        return
+    except ValidationError as exc:
+        sys.stdout.write(
+            _("cannot delete {rid}: revision error: {msg}\n").format(
+                rid=args.rid, msg=str(exc)
+            )
+        )
+        return
+    except RequirementNotFoundError:
         sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
+        return
+    sys.stdout.write(f"{canonical}\n")
 
 
 def _add_item_payload_arguments(parser: argparse.ArgumentParser) -> None:

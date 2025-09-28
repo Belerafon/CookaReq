@@ -215,7 +215,7 @@ def delete_requirement(directory: str | Path, rid: str) -> dict:
     params = {"directory": str(directory), "rid": rid}
     service = RequirementsService(directory)
     try:
-        canonical = service.delete_requirement_record(rid)
+        canonical = service.delete_requirement(rid)
     except ValueError as exc:
         return log_tool(
             "delete_requirement",

@@ -1,6 +1,12 @@
+import json
 from pathlib import Path
 
-from app.core.document_store import Document, DocumentLabels, LabelDef, save_document
+from app.core.document_store import (
+    Document,
+    DocumentLabels,
+    LabelDef,
+    save_document,
+)
 from app.mcp import tools_write
 
 
@@ -33,6 +39,19 @@ def test_create_update_delete(tmp_path: Path) -> None:
     assert res2["revision"] == 2
     res3 = tools_write.delete_requirement(tmp_path, "SYS1")
     assert res3 == {"rid": "SYS1"}
+
+
+def test_delete_requirement_reports_revision_error(tmp_path: Path) -> None:
+    save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc"))
+    created = tools_write.create_requirement(tmp_path, prefix="SYS", data=_base_req())
+    item_file = tmp_path / "SYS" / "items" / "1.json"
+    payload = json.loads(item_file.read_text(encoding="utf-8"))
+    payload["revision"] = 0
+    item_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = tools_write.delete_requirement(tmp_path, created["rid"])
+    assert result["error"]["code"] == "VALIDATION_ERROR"
+    assert "revision" in result["error"]["message"].lower()
 
 
 def test_update_rejects_prefix_case_mismatch(tmp_path: Path) -> None:

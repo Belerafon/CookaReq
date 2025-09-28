@@ -436,3 +436,27 @@ def test_item_delete_requires_confirmation(tmp_path, capsys, cli_context):
     assert item_path(tmp_path / "SYS", doc_sys, 1).exists()
     assert messages and "SYS1" in messages[0]
 
+
+@pytest.mark.unit
+def test_item_delete_reports_revision_error(tmp_path, capsys, cli_context):
+    doc_sys = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc_sys)
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path), prefix="SYS", title="S", statement="", labels=None
+    )
+    commands.cmd_item_add(add_args, cli_context)
+    capsys.readouterr()
+
+    path = item_path(tmp_path / "SYS", doc_sys, 1)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["revision"] = 0
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    del_args = argparse.Namespace(directory=str(tmp_path), rid="SYS1")
+    commands.cmd_item_delete(del_args, cli_context)
+    out = capsys.readouterr().out.strip()
+    assert "revision" in out.lower()
+    assert "SYS1" in out
+    assert path.exists()
+

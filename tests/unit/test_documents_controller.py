@@ -11,6 +11,7 @@ from app.core.document_store import (
     DocumentLabels,
     LabelDef,
     RequirementIDCollisionError,
+    ValidationError,
     item_path,
     load_document,
     save_document,
@@ -90,7 +91,8 @@ def test_next_id_save_and_delete(tmp_path: Path):
     assert req.doc_prefix == "SYS"
     assert req.rid == "SYS1"
 
-    controller.delete_requirement("SYS", req.id)
+    deleted = controller.delete_requirement("SYS", req.id)
+    assert deleted == "SYS1"
     assert not path.exists()
 
 
@@ -162,10 +164,34 @@ def test_delete_requirement_removes_links(tmp_path: Path):
     model = RequirementModel()
     controller = _controller(tmp_path, model)
     controller.load_documents()
-    controller.delete_requirement("SYS", 1)
+    deleted = controller.delete_requirement("SYS", 1)
+    assert deleted == "SYS1"
     assert not item_path(sys_dir, sys_doc, 1).exists()
     data2, _ = load_item(hlr_dir, hlr_doc, 1)
     assert data2.get("links") in (None, [])
+
+
+def test_delete_requirement_with_invalid_revision(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    save_item(doc_dir, doc, requirement_to_dict(_req(1)))
+
+    path = item_path(doc_dir, doc, 1)
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    model = RequirementModel()
+    controller = _controller(tmp_path, model)
+    controller.load_documents()
+    controller.load_items("SYS")
+
+    data["revision"] = 0
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(ValidationError) as excinfo:
+        controller.delete_requirement("SYS", 1)
+    assert "revision" in str(excinfo.value).lower()
+    assert path.exists()
 
 
 def test_delete_document_recursively(tmp_path: Path):

@@ -8,7 +8,11 @@ from collections.abc import Sequence
 
 import wx
 
-from ...services.requirements import rid_for
+from ...services.requirements import (
+    RequirementNotFoundError,
+    ValidationError,
+    rid_for,
+)
 from ...core.model import Link, Requirement, requirement_fingerprint
 from ...i18n import _
 from ...log import logger
@@ -218,12 +222,34 @@ class MainFrameRequirementsMixin:
             return
 
         deleted_any = False
+        revision_errors: list[str] = []
         for req_id in unique_ids:
-            if not self.docs_controller.delete_requirement(
-                self.current_doc_prefix, req_id
-            ):
+            try:
+                self.docs_controller.delete_requirement(
+                    self.current_doc_prefix, req_id
+                )
+            except RequirementNotFoundError:
+                continue
+            except ValidationError as exc:
+                doc = self.docs_controller.documents.get(self.current_doc_prefix)
+                rid = (
+                    rid_for(doc, req_id)
+                    if doc is not None
+                    else f"{self.current_doc_prefix}{req_id}"
+                )
+                revision_errors.append(
+                    _("{rid}: {message}").format(rid=rid, message=str(exc))
+                )
                 continue
             deleted_any = True
+
+        if revision_errors:
+            unique_errors = list(dict.fromkeys(revision_errors))
+            wx.MessageBox(
+                "\n".join(unique_errors),
+                _("Delete requirement failed"),
+                wx.ICON_WARNING,
+            )
 
         if not deleted_any:
             return

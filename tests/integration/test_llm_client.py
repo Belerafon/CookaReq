@@ -1273,3 +1273,52 @@ def test_harmony_streaming(tmp_path: Path, monkeypatch) -> None:
     assert call.id == "call-42"
     assert call.name == "list_requirements"
     assert call.arguments == {"page": 2}
+
+def test_respond_infers_selected_rids_for_get_requirement(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = settings_with_llm(tmp_path)
+
+    class FakeOpenAI:
+        def __init__(self, *args, **kwargs) -> None:  # noqa: D401 - simple stub
+            def create(*, model, messages, tools=None, **_):  # noqa: ANN001
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="",
+                                tool_calls=[
+                                    SimpleNamespace(
+                                        id="call-0",
+                                        function=SimpleNamespace(
+                                            name="get_requirement",
+                                            arguments="{}",
+                                        ),
+                                    )
+                                ],
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    conversation = [
+        {
+            "role": "system",
+            "content": (
+                "[Workspace context]\nSelected requirement RIDs: SYS7, SYS8"
+            ),
+        },
+        {"role": "user", "content": "translate"},
+    ]
+
+    response = client.respond(conversation)
+
+    assert response.tool_calls
+    assert response.tool_calls[0].name == "get_requirement"
+    assert response.tool_calls[0].arguments["rid"] == ["SYS7", "SYS8"]

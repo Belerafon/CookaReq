@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import textwrap
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,127 @@ from .transcript_view import TranscriptView
 
 
 logger = logging.getLogger("cookareq.ui.agent_chat_panel")
+
+
+class _ChatSwitchDiagnostics:
+    """Collect timing and size metrics for chat switching diagnostics."""
+
+    def __init__(
+        self,
+        *,
+        panel: "AgentChatPanel",
+        conversation: ChatConversation,
+        index: int,
+        total: int,
+        title: str,
+        preview: str,
+        source: str,
+        persist: bool,
+        refresh_history: bool,
+    ) -> None:
+        self._panel = panel
+        self._conversation = conversation
+        self._index = index
+        self._total = total
+        self._title = " ".join(title.split()) if title else ""
+        self._preview = " ".join(preview.split()) if preview else ""
+        self._source = source
+        self._persist = persist
+        self._refresh_history = refresh_history
+        self._start = time.perf_counter()
+        self._steps: list[tuple[str, float]] = []
+        self._metrics = self._collect_metrics(conversation)
+
+    @staticmethod
+    def _sequence_length(value: Any) -> int:
+        if value is None:
+            return 0
+        if isinstance(value, (str, bytes, bytearray)):
+            return 1 if value else 0
+        if isinstance(value, Sequence):
+            return len(value)
+        return 1
+
+    def _collect_metrics(self, conversation: ChatConversation) -> dict[str, Any]:
+        prompt_chars = 0
+        response_chars = 0
+        tool_results = 0
+        context_messages = 0
+        reasoning_segments = 0
+        max_prompt = 0
+        max_response = 0
+        for entry in conversation.entries:
+            prompt_text = entry.prompt or ""
+            response_source = entry.display_response or entry.response or ""
+            prompt_len = len(prompt_text)
+            response_len = len(response_source) if isinstance(response_source, str) else 0
+            prompt_chars += prompt_len
+            response_chars += response_len
+            max_prompt = max(max_prompt, prompt_len)
+            max_response = max(max_response, response_len)
+            tool_results += self._sequence_length(getattr(entry, "tool_results", None))
+            context_messages += self._sequence_length(getattr(entry, "context_messages", None))
+            reasoning_segments += self._sequence_length(getattr(entry, "reasoning", None))
+        return {
+            "entries": len(conversation.entries),
+            "prompt_chars": prompt_chars,
+            "response_chars": response_chars,
+            "tool_results": tool_results,
+            "context_messages": context_messages,
+            "reasoning_segments": reasoning_segments,
+            "max_prompt": max_prompt,
+            "max_response": max_response,
+        }
+
+    def step(self, label: str, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """Measure callable *func* execution time under *label*."""
+
+        start = time.perf_counter()
+        try:
+            result = func(*args, **kwargs)
+        except Exception as exc:  # pragma: no cover - defensive logging aid
+            end = time.perf_counter()
+            self._steps.append((f"{label} !{exc.__class__.__name__}", end - start))
+            raise
+        end = time.perf_counter()
+        self._steps.append((label, end - start))
+        return result
+
+    def add_duration(self, label: str, duration: float) -> None:
+        """Register custom timing under *label*."""
+
+        self._steps.append((label, duration))
+
+    def finish(self) -> None:
+        """Dump accumulated diagnostics to stdout."""
+
+        total = time.perf_counter() - self._start
+        conversation_id = self._conversation.conversation_id
+        metrics = self._metrics
+        header = (
+            "[AgentChatSwitch] "
+            f"source={self._source} "
+            f"conversation={conversation_id} "
+            f"index={self._index + 1}/{self._total} "
+            f"entries={metrics['entries']} "
+            f"prompt_chars={metrics['prompt_chars']} "
+            f"response_chars={metrics['response_chars']} "
+            f"tools={metrics['tool_results']} "
+            f"contexts={metrics['context_messages']} "
+            f"reasoning={metrics['reasoning_segments']} "
+            f"max_prompt={metrics['max_prompt']} "
+            f"max_response={metrics['max_response']} "
+            f"persist={self._persist} "
+            f"refresh_history={self._refresh_history} "
+            f"total_ms={total * 1000:.1f}"
+        )
+        print(header, flush=True)
+        if self._title:
+            print(f"    title={self._title}", flush=True)
+        if self._preview:
+            print(f"    preview={self._preview}", flush=True)
+        for label, duration in self._steps:
+            print(f"    {label}: {duration * 1000:.1f}ms", flush=True)
 
 
 try:  # pragma: no cover - import only used for typing
@@ -1441,10 +1563,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._history_view.refresh()
         self._update_history_controls()
 
-    def _render_transcript(self) -> None:
+    def _render_transcript(
+        self, *, diagnostics: _ChatSwitchDiagnostics | None = None
+    ) -> None:
         if self._transcript_view is None:
             return
-        self._transcript_view.render()
+        self._transcript_view.render(diagnostics=diagnostics)
 
     def _on_regenerate_entry(
         self,
@@ -2297,7 +2421,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _on_history_row_activated(self, index: int) -> None:
         self._activate_conversation_by_index(
-            index, persist=True, refresh_history=False
+            index, persist=True, refresh_history=False, source="history_row"
         )
 
     def _activate_conversation_by_index(
@@ -2306,20 +2430,64 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         *,
         persist: bool = True,
         refresh_history: bool = True,
+        source: str = "unknown",
     ) -> None:
         if not (0 <= index < len(self.conversations)):
             return
         conversation = self.conversations[index]
-        self._set_active_conversation_id(conversation.conversation_id)
-        if persist:
-            self._session.history.persist_active_selection()
-        if refresh_history:
-            self._refresh_history_list()
-        else:
-            self._update_history_controls()
-        self._ensure_history_visible(index)
-        self._render_transcript()
-        self.input.SetFocus()
+        title, _last_activity = self._format_conversation_row(conversation)
+        preview = self._conversation_preview(conversation)
+        diagnostics = _ChatSwitchDiagnostics(
+            panel=self,
+            conversation=conversation,
+            index=index,
+            total=len(self.conversations),
+            title=title,
+            preview=preview,
+            source=source,
+            persist=persist,
+            refresh_history=refresh_history,
+        )
+        try:
+            diagnostics.step(
+                "set_active_conversation_id",
+                self._set_active_conversation_id,
+                conversation.conversation_id,
+            )
+            if persist:
+                diagnostics.step(
+                    "persist_active_selection",
+                    self._session.history.persist_active_selection,
+                )
+            if refresh_history:
+                diagnostics.step("refresh_history_list", self._refresh_history_list)
+            else:
+                diagnostics.step(
+                    "update_history_controls", self._update_history_controls
+                )
+            diagnostics.step(
+                "ensure_history_visible", self._ensure_history_visible, index
+            )
+            render_start = time.perf_counter()
+            self._render_transcript(diagnostics=diagnostics)
+            diagnostics.add_duration(
+                "render_transcript", time.perf_counter() - render_start
+            )
+
+            def _focus_input() -> None:
+                input_ctrl = getattr(self, "input", None)
+                if input_ctrl is None:
+                    return
+                try:
+                    if not input_ctrl or input_ctrl.IsBeingDeleted():
+                        return
+                except RuntimeError:
+                    return
+                input_ctrl.SetFocus()
+
+            diagnostics.step("focus_input", _focus_input)
+        finally:
+            diagnostics.finish()
 
     def _update_history_controls(self) -> None:
         has_conversations = bool(self.conversations)

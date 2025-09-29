@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+import time
 
 import wx
 from wx.lib.scrolledpanel import ScrolledPanel
@@ -13,6 +14,11 @@ from ..helpers import dip
 from ..widgets.chat_message import TranscriptMessagePanel
 from .time_formatting import format_entry_timestamp
 from .tool_summaries import summarize_tool_results
+
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .panel import _ChatSwitchDiagnostics
 
 
 class TranscriptCallbacks:
@@ -51,32 +57,59 @@ class TranscriptView:
         self._callbacks = callbacks
 
     # ------------------------------------------------------------------
-    def render(self) -> None:
+    def render(self, *, diagnostics: "_ChatSwitchDiagnostics" | None = None) -> None:
         last_panel: wx.Window | None = None
         has_entries = False
         transcript_panel = self._panel
         transcript_panel.Freeze()
+
+        def run(label: str, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+            if diagnostics is not None:
+                return diagnostics.step(label, func, *args, **kwargs)
+            return func(*args, **kwargs)
+
         try:
-            self._sizer.Clear(delete_windows=True)
-            conversation = self._callbacks.get_conversation()
+            run("transcript:clear", self._sizer.Clear, delete_windows=True)
+            conversation = run(
+                "transcript:get_conversation", self._callbacks.get_conversation
+            )
             if conversation is None:
-                placeholder = wx.StaticText(
+                placeholder = run(
+                    "transcript:placeholder:init",
+                    wx.StaticText,
                     transcript_panel,
                     label=_("Start chatting with the agent to see responses here."),
                 )
-                self._sizer.Add(placeholder, 0, wx.ALL, dip(self._owner, 8))
+                run(
+                    "transcript:placeholder:add",
+                    self._sizer.Add,
+                    placeholder,
+                    0,
+                    wx.ALL,
+                    dip(self._owner, 8),
+                )
             elif not conversation.entries:
-                placeholder = wx.StaticText(
+                placeholder = run(
+                    "transcript:placeholder:empty",
+                    wx.StaticText,
                     transcript_panel,
                     label=_(
                         "This chat does not have any messages yet. Send one to get started."
                     ),
                 )
-                self._sizer.Add(placeholder, 0, wx.ALL, dip(self._owner, 8))
+                run(
+                    "transcript:placeholder:add",
+                    self._sizer.Add,
+                    placeholder,
+                    0,
+                    wx.ALL,
+                    dip(self._owner, 8),
+                )
             else:
                 has_entries = True
                 last_entry = conversation.entries[-1]
-                for entry in conversation.entries:
+                for index, entry in enumerate(conversation.entries):
+                    entry_start = time.perf_counter()
                     can_regenerate = (
                         entry is last_entry and entry.response_at is not None
                     )
@@ -116,15 +149,53 @@ class TranscriptView:
                     panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_pane_toggled)
                     self._sizer.Add(panel, 0, wx.EXPAND)
                     last_panel = panel
+                    if diagnostics is not None:
+                        prompt_len = len(entry.prompt or "")
+                        response_source = entry.display_response or entry.response or ""
+                        response_len = (
+                            len(response_source)
+                            if isinstance(response_source, str)
+                            else 0
+                        )
+                        tool_results = entry.tool_results
+                        if isinstance(tool_results, (str, bytes, bytearray)):
+                            tool_count = 1 if tool_results else 0
+                        elif isinstance(tool_results, Sequence):
+                            tool_count = len(tool_results)
+                        elif tool_results:
+                            tool_count = 1
+                        else:
+                            tool_count = 0
+                        duration = time.perf_counter() - entry_start
+                        diagnostics.add_duration(
+                            (
+                                f"transcript:entry[{index}] "
+                                f"prompt={prompt_len} "
+                                f"response={response_len} "
+                                f"tools={tool_count}"
+                            ),
+                            duration,
+                        )
         finally:
-            transcript_panel.Layout()
-            transcript_panel.FitInside()
-            transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
-            transcript_panel.Thaw()
+            try:
+                run("transcript:layout", transcript_panel.Layout)
+                run("transcript:fit_inside", transcript_panel.FitInside)
+                run(
+                    "transcript:setup_scrolling",
+                    transcript_panel.SetupScrolling,
+                    scroll_x=False,
+                    scroll_y=True,
+                )
+            finally:
+                transcript_panel.Thaw()
             if last_panel is not None:
-                self._scroll_to_bottom(last_panel)
-        self._callbacks.update_copy_buttons(has_entries)
-        self._callbacks.update_header()
+                run("transcript:scroll_bottom", self._scroll_to_bottom, last_panel)
+        run(
+            "transcript:update_copy_buttons",
+            self._callbacks.update_copy_buttons,
+            has_entries,
+        )
+        run("transcript:update_header", self._callbacks.update_header)
 
     # ------------------------------------------------------------------
     def _scroll_to_bottom(self, target: wx.Window | None) -> None:

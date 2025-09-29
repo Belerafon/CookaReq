@@ -159,3 +159,57 @@ def test_transcript_panels_reused_between_switches(tmp_path, wx_app):
             assert restored is original
     finally:
         destroy_panel(frame, panel)
+
+
+def test_token_breakdown_uses_cached_entry_counts(tmp_path, wx_app, monkeypatch):
+    """Verify conversation token metrics reuse cached prompt/response counts."""
+
+    class IdleAgent:
+        def run_command(self, *args, **kwargs):  # pragma: no cover - interface stub
+            raise AssertionError("Agent commands are not expected during the benchmark")
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, IdleAgent())
+
+    try:
+        spec = ConversationSpec(prompts=2, prompt_length=2, response_length=2)
+        conversations = [_create_conversation(spec, index=0)]
+        _prepare_panel_history(panel, conversations)
+        flush_wx_events(wx)
+
+        active_conversation = conversations[0]
+        for entry in active_conversation.entries:
+            entry.token_cache.clear()
+        panel._system_token_cache.clear()
+
+        prompts = {entry.prompt for entry in active_conversation.entries}
+        responses = {entry.response for entry in active_conversation.entries}
+
+        calls: list[str] = []
+
+        def fake_count(text, *, model=None):
+            value = "" if text is None else str(text)
+            calls.append(value)
+            return TokenCountResult.exact(len(value), model=model)
+
+        monkeypatch.setattr("app.ui.agent_chat_panel.panel.count_text_tokens", fake_count)
+        monkeypatch.setattr("app.ui.chat_entry.count_text_tokens", fake_count)
+
+        first_breakdown = panel._compute_context_token_breakdown()
+        first_calls = list(calls)
+        assert any(call in prompts for call in first_calls)
+        assert any(call in responses for call in first_calls)
+
+        for entry in active_conversation.entries:
+            assert entry.token_cache, "Expected token cache populated after measurement"
+            payload = entry.to_dict()
+            assert payload.get("token_cache"), "Serialized entry should persist token cache"
+
+        calls.clear()
+        second_breakdown = panel._compute_context_token_breakdown()
+        second_calls = list(calls)
+
+        assert second_breakdown.total.tokens == first_breakdown.total.tokens
+        assert all(call not in prompts for call in second_calls)
+        assert all(call not in responses for call in second_calls)
+    finally:
+        destroy_panel(frame, panel)

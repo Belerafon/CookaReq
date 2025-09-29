@@ -19,7 +19,11 @@ from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT, TOOLS
 from ...llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
 from ...util.time import utc_now_iso
-from ..chat_entry import ChatConversation, ChatEntry
+from ..chat_entry import (
+    ChatConversation,
+    ChatEntry,
+    count_context_message_tokens,
+)
 from ..helpers import (
     format_error_message,
     inherit_background,
@@ -316,6 +320,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         self._wait_callbacks = _PanelWaitCallbacks(self)
         self._layout = None
+        self._system_token_cache: dict[tuple[str | None, tuple[str, ...]], TokenCountResult] = {}
         self._session.events.elapsed.connect(self._on_session_elapsed)
         self._session.events.running_changed.connect(self._on_session_running_changed)
         self._session.events.tokens_changed.connect(self._on_session_tokens_changed)
@@ -924,47 +929,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return None
         return numeric if numeric > 0 else None
 
-    @staticmethod
-    def _count_context_message_tokens(
-        message: Mapping[str, Any],
-        model: str | None,
-    ) -> TokenCountResult:
-        """Return token usage for *message* passed as contextual metadata."""
-
-        if not isinstance(message, Mapping):
-            return TokenCountResult.exact(0, model=model)
-
-        parts: list[TokenCountResult] = []
-        role = message.get("role")
-        if role:
-            parts.append(count_text_tokens(str(role), model=model))
-        name = message.get("name")
-        if name:
-            parts.append(count_text_tokens(str(name), model=model))
-
-        content = message.get("content")
-        if content not in (None, ""):
-            if isinstance(content, str):
-                content_text = content
-            else:
-                try:
-                    content_text = json.dumps(content, ensure_ascii=False)
-                except Exception:  # pragma: no cover - defensive
-                    content_text = str(content)
-            parts.append(count_text_tokens(content_text, model=model))
-
-        tool_calls = message.get("tool_calls")
-        if tool_calls:
-            try:
-                serialized = json.dumps(tool_calls, ensure_ascii=False)
-            except Exception:  # pragma: no cover - defensive
-                serialized = str(tool_calls)
-            parts.append(count_text_tokens(serialized, model=model))
-
-        if not parts:
-            return TokenCountResult.exact(0, model=model)
-        return combine_token_counts(parts)
-
     def _active_context_messages(self) -> tuple[Mapping[str, Any], ...]:
         """Return contextual messages relevant to the current prompt."""
 
@@ -987,9 +951,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         custom_prompt = self._custom_system_prompt()
         if custom_prompt:
             system_parts.append(custom_prompt)
-        system_tokens = combine_token_counts(
-            [count_text_tokens(part, model=model) for part in system_parts if part]
-        )
+        system_key = (model, tuple(part for part in system_parts if part))
+        system_tokens = self._system_token_cache.get(system_key)
+        if system_tokens is None:
+            if system_key[1]:
+                system_tokens = combine_token_counts(
+                    [count_text_tokens(part, model=model) for part in system_key[1]]
+                )
+            else:
+                system_tokens = TokenCountResult.exact(0, model=model)
+            self._system_token_cache[system_key] = system_tokens
 
         history_counts: list[TokenCountResult] = []
         conversation = self._get_active_conversation()
@@ -1002,20 +973,34 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 if pending_entry is not None and entry is pending_entry:
                     continue
                 if entry.prompt:
-                    history_counts.append(
-                        count_text_tokens(entry.prompt, model=model)
-                    )
+                    history_counts.append(entry.ensure_prompt_token_usage(model))
                 if entry.response:
-                    history_counts.append(
-                        count_text_tokens(entry.response, model=model)
-                    )
-        history_tokens = combine_token_counts(history_counts)
+                    history_counts.append(entry.ensure_response_token_usage(model))
+        if history_counts:
+            history_tokens = combine_token_counts(history_counts)
+        else:
+            history_tokens = TokenCountResult.exact(0, model=model)
 
-        context_counts = [
-            self._count_context_message_tokens(message, model)
-            for message in self._active_context_messages()
-        ]
-        context_tokens = combine_token_counts(context_counts)
+        context_messages = self._active_context_messages()
+        if context_messages:
+            cached_entry: ChatEntry | None = None
+            if conversation is not None:
+                for entry in reversed(conversation.entries):
+                    if entry.context_messages == context_messages:
+                        cached_entry = entry
+                        break
+            if cached_entry is not None:
+                context_tokens = cached_entry.ensure_context_token_usage(
+                    model,
+                    messages=context_messages,
+                )
+            else:
+                context_tokens = combine_token_counts(
+                    count_context_message_tokens(message, model)
+                    for message in context_messages
+                )
+        else:
+            context_tokens = TokenCountResult.exact(0, model=model)
 
         if handle is not None:
             prompt_tokens = handle.prompt_tokens

@@ -920,7 +920,7 @@ def test_respond_preserves_context_for_update(tmp_path: Path, monkeypatch) -> No
     system_messages = [msg for msg in messages if msg.get("role") == "system"]
     assert len(system_messages) == 1
     system_content = system_messages[0].get("content", "")
-    assert "Translate the user request" in system_content
+    assert "Analyse the user's intent" in system_content
     assert "Selected requirement RIDs:" in system_content
     assert "SYS-1" in system_content
     assert "GUI selection #" not in system_content
@@ -990,7 +990,7 @@ def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> No
     system_messages = [msg for msg in messages if msg.get("role") == "system"]
     assert len(system_messages) == 1
     system_content = system_messages[0].get("content", "")
-    assert "Translate the user request" in system_content
+    assert "Analyse the user's intent" in system_content
     assert "Selected requirement RIDs:" in system_content
     assert "SYS-2" in system_content
     assert "SYS-3" in system_content

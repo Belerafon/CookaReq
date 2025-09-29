@@ -191,6 +191,38 @@ class LocalAgent:
             payload["agent_stop_reason"] = dict(stop_reason)
         return payload
 
+    @staticmethod
+    def _format_validation_fallback_message(
+        error_template: Mapping[str, Any]
+    ) -> str:
+        """Compose a human-readable fallback message from *error_template*."""
+
+        message = str(error_template.get("message") or "").strip()
+        details = error_template.get("details")
+        detail_parts: list[str] = []
+        if isinstance(details, Mapping):
+            for key, value in details.items():
+                if key in {
+                    "llm_tool_calls",
+                    "llm_request_messages",
+                    "tool_results",
+                }:
+                    continue
+                text = str(value).strip()
+                if not text:
+                    continue
+                detail_parts.append(f"{key}: {text}")
+        elif details is not None:
+            text = str(details).strip()
+            if text:
+                detail_parts.append(text)
+        if detail_parts:
+            details_text = "; ".join(detail_parts)
+            if message:
+                return f"{message} ({details_text})"
+            return details_text
+        return message or "Tool call failed validation."
+
     def _record_request_messages(self, response: LLMResponse) -> None:
         """Append request snapshot from *response* to diagnostic log."""
 
@@ -714,6 +746,17 @@ class LocalAgent:
                 reasoning_segments = tuple(prepared_segments)
 
         error_template = exception_to_mcp_error(exc)["error"]
+
+        if not message_text.strip():
+            fallback_message = self._format_validation_fallback_message(error_template)
+            message_text = fallback_message
+            details_payload = error_template.get("details")
+            if isinstance(details_payload, Mapping):
+                details_payload = dict(details_payload)
+            else:
+                details_payload = {}
+            details_payload["llm_message"] = fallback_message
+            error_template["details"] = details_payload
 
         assistant_tool_calls = [
             prepared.assistant_fragment for prepared in prepared_calls

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
@@ -10,6 +11,7 @@ from typing import Any
 
 from ..settings import LLMSettings
 from ..util.cancellation import CancellationEvent, OperationCancelledError
+from .context import extract_selected_rids_from_messages
 from .harmony import convert_tools_for_harmony
 from .logging import log_request, log_response
 from .request_builder import LLMRequestBuilder
@@ -229,7 +231,13 @@ class LLMClient:
                     reasoning_accumulator.extend(reasoning_entries)
             llm_message_text = message_text
             normalized_tool_calls = normalise_tool_calls(raw_tool_calls_payload)
-            tool_calls = self._response_parser.parse_tool_calls(raw_tool_calls_payload)
+            normalized_tool_calls = self._apply_tool_call_defaults(
+                normalized_tool_calls,
+                request_messages=prepared.snapshot,
+            )
+            tool_calls = self._response_parser.parse_tool_calls(
+                normalized_tool_calls
+            )
             reasoning_segments = self._response_parser.finalize_reasoning_segments(
                 reasoning_accumulator
             )
@@ -353,7 +361,13 @@ class LLMClient:
             )
             llm_message_text = message_text
             normalized_tool_calls = normalise_tool_calls(raw_tool_calls_payload)
-            tool_calls = self._response_parser.parse_tool_calls(raw_tool_calls_payload)
+            normalized_tool_calls = self._apply_tool_call_defaults(
+                normalized_tool_calls,
+                request_messages=request_snapshot,
+            )
+            tool_calls = self._response_parser.parse_tool_calls(
+                normalized_tool_calls
+            )
             response = LLMResponse(
                 content=message_text,
                 tool_calls=tool_calls,
@@ -419,6 +433,91 @@ class LLMClient:
                 request_messages=request_snapshot,
                 reasoning=reasoning_segments,
             )
+
+    def _apply_tool_call_defaults(
+        self,
+        tool_calls: Sequence[Mapping[str, Any]],
+        *,
+        request_messages: Sequence[Mapping[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        """Fill missing get_requirement arguments using workspace context."""
+
+        if not tool_calls:
+            return []
+
+        selected_rids = extract_selected_rids_from_messages(request_messages)
+        if not selected_rids:
+            return [dict(call) for call in tool_calls]
+
+        patched: list[dict[str, Any]] = []
+        changed = False
+        for call in tool_calls:
+            call_entry = dict(call)
+            function = call_entry.get("function")
+            if not isinstance(function, Mapping):
+                patched.append(call_entry)
+                continue
+            name = function.get("name")
+            if str(name) != "get_requirement":
+                patched.append(call_entry)
+                continue
+
+            arguments_text = function.get("arguments")
+            if isinstance(arguments_text, str):
+                stripped = arguments_text.strip()
+                if stripped:
+                    try:
+                        payload = json.loads(stripped)
+                    except json.JSONDecodeError:
+                        patched.append(call_entry)
+                        continue
+                else:
+                    payload = {}
+            elif isinstance(arguments_text, Mapping):  # pragma: no cover - defensive
+                payload = dict(arguments_text)
+            else:
+                payload = {}
+
+            if not isinstance(payload, dict):
+                patched.append(call_entry)
+                continue
+
+            rid_value = payload.get("rid")
+            should_patch = False
+            if isinstance(rid_value, str):
+                should_patch = not rid_value.strip()
+            elif isinstance(rid_value, Sequence) and not isinstance(
+                rid_value, (str, bytes, bytearray)
+            ):
+                cleaned = [
+                    str(item).strip()
+                    for item in rid_value
+                    if str(item).strip()
+                ]
+                if cleaned:
+                    payload["rid"] = cleaned if len(cleaned) > 1 else cleaned[0]
+                else:
+                    should_patch = True
+            elif rid_value is None:
+                should_patch = True
+
+            if should_patch:
+                payload["rid"] = (
+                    selected_rids
+                    if len(selected_rids) > 1
+                    else selected_rids[0]
+                )
+                function = dict(function)
+                function["arguments"] = json.dumps(payload, ensure_ascii=False)
+                call_entry = dict(call_entry)
+                call_entry["function"] = function
+                changed = True
+
+            patched.append(call_entry)
+
+        if not changed:
+            return [dict(call) for call in tool_calls]
+        return patched
 
     # ------------------------------------------------------------------
     def _chat_completion(self, **request_args: Any) -> Any:

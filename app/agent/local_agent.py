@@ -15,6 +15,7 @@ from ..confirm import (
     confirm_requirement_update as default_update_confirm,
 )
 from ..services.requirements import parse_rid
+from ..llm.context import extract_selected_rids_from_text
 from ..llm.client import LLMClient
 from ..llm.types import LLMReasoningSegment, LLMResponse, LLMToolCall
 from ..llm.validation import ToolValidationError
@@ -410,26 +411,7 @@ class LocalAgent:
 
     @staticmethod
     def _extract_selected_rids_from_context(content: str) -> list[str]:
-        selected: list[str] = []
-        for line in content.splitlines():
-            stripped = line.strip()
-            if not stripped.startswith("Selected requirement RIDs:"):
-                continue
-            _, _, remainder = stripped.partition(":")
-            values = remainder.strip()
-            if not values or values.startswith("("):
-                return []
-            for token in values.split(","):
-                candidate = token.strip()
-                if not candidate:
-                    continue
-                try:
-                    prefix, numeric = parse_rid(candidate)
-                except ValueError:
-                    continue
-                selected.append(f"{prefix}{numeric}")
-            break
-        return selected
+        return extract_selected_rids_from_text(content)
 
     async def _fetch_requirement_summaries_async(
         self, rids: Sequence[str]

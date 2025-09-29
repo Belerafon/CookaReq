@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демонстрация должна описывать процессы резервного копирования, восстановления и миграции схем требований, включая известные проблемы ручного слияния.",
+  "statement": "The demo must describe requirement backup, restore, and schema migration processes, including known issues with manual merges.",
   "status": "draft",
-  "title": "Управление данными",
+  "title": "Data management",
   "type": "requirement",
   "verification": "analysis"
 }

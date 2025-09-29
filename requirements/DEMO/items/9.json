@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "В демо-описании должна присутствовать таблица рисков и задач по архитектуре, включая идеи автоматизации и контрольных проверок.",
+  "statement": "The demo description must include a risk and task table for the architecture, including automation ideas and control checks.",
   "status": "draft",
-  "title": "Риски и задачи",
+  "title": "Risks and tasks",
   "type": "requirement",
   "verification": "analysis"
 }

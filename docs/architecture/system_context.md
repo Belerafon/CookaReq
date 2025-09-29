@@ -1,34 +1,34 @@
-# Системный контекст CookaReq
+# CookaReq system context
 
-> Черновой каркас: структура разделов и список данных, которые нужно собрать перед заполнением.
+> Draft scaffold describing the sections and data to collect before writing the full content.
 
-## 1. Цель и позиционирование продукта
-- [ ] Сформулировать краткое описание задачи, которую решает CookaReq.
-- [ ] Уточнить, чем настольное приложение отличается от CLI и как они дополняют друг друга.
-- [ ] Зафиксировать основные сценарии использования (редактирование требований, трассировка, ревью изменений).
+## 1. Product goal and positioning
+- [ ] Summarise the problem CookaReq solves.
+- [ ] Clarify how the desktop application differs from the CLI and how they complement each other.
+- [ ] Capture primary usage scenarios (editing requirements, traceability, reviewing changes).
 
-## 2. Акторы и внешние системы
-- [ ] Составить таблицу акторов (GUI-пользователь, CLI-пользователь, LLM, MCP, файловая система).
-- [ ] Для каждого актора описать интересы и точки взаимодействия с системой.
-- [ ] Зафиксировать зависимости от внешних сервисов (OpenRouter, локальные инструменты MCP).
+## 2. Actors and external systems
+- [ ] Build a table of actors (GUI user, CLI user, LLM, MCP, filesystem).
+- [ ] Describe each actor’s interests and interaction points with the system.
+- [ ] Record dependencies on external services (OpenRouter, local MCP tools).
 
-## 3. Границы системы и ключевые потоки
-- [ ] Нарисовать текстовую диаграмму контекста с выделением интерфейсов.
-- [ ] Описать основные потоки данных: загрузка требований, запуск агента, обновление trace matrix.
-- [ ] Определить ограничения на обмен данными (форматы, протоколы, требования к окружению).
+## 3. System boundaries and key flows
+- [ ] Produce a textual context diagram highlighting interfaces.
+- [ ] Document major data flows: loading requirements, running the agent, updating the trace matrix.
+- [ ] Define data exchange constraints (formats, protocols, environment requirements).
 
-## 4. Жизненные циклы
-- [ ] GUI: запуск приложения, открытие проекта, взаимодействие с панелями, завершение работы.
-- [ ] CLI: инициализация, выполнение команд (например, export, validate), выход.
-- [ ] Агент/MCP: запуск сервера, регистрация инструментов, обработка запросов, ошибки и восстановление.
+## 4. Lifecycles
+- [ ] GUI: application startup, project selection, panel interactions, shutdown.
+- [ ] CLI: initialisation, command execution (export, validate, etc.), exit.
+- [ ] Agent/MCP: server startup, tool registration, request handling, failures and recovery.
 
-## 5. Ограничения и предположения
-- [ ] Выявить технические и организационные ограничения (off-line режим, зависимость от wxPython, поддерживаемые ОС).
-- [ ] Зафиксировать предположения о данных (структура каталога `requirements/`, правила именования файлов).
-- [ ] Собрать известные риски и TODO для дальнейших улучшений.
+## 5. Constraints and assumptions
+- [ ] Identify technical and organisational constraints (offline mode, wxPython dependency, supported OSes).
+- [ ] Document assumptions about the data (structure of `requirements/`, file naming rules).
+- [ ] Collect known risks and TODOs for future improvements.
 
-## 6. Артефакты и ссылки
-- [ ] Список схем/диаграмм, которые нужно подготовить (Graphviz/PlantUML).
-- [ ] Ссылки на ключевые модули в кодовой базе, которые описывают системный контекст.
+## 6. Artefacts and references
+- [ ] List diagrams to prepare (Graphviz/PlantUML).
+- [ ] Link to key modules in the codebase that define the system context.
 
-> Примечание: после наполнения раздела пересмотреть план, чтобы убедиться, что соседние документы получают нужные ссылки.
+> After filling the section, revisit the roadmap to ensure neighbouring documents receive the necessary cross-links.

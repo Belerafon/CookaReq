@@ -1,134 +1,77 @@
-# Подсистемы и слои CookaReq
+# CookaReq subsystems and layers
 
-> Черновой каркас: структура разделов и список вопросов, которые нужно закрыть при наполнении.
+> Draft scaffold: outlines the sections and questions that must be answered when the document is filled in.
 
-## 1. Карта слоёв
-- [ ] Кратко описать слои (GUI, ядро/Document Store, агент, MCP, CLI, общие сервисы).
-- [ ] Зафиксировать правила взаимодействия между слоями и допустимые зависимости.
-- [ ] Продумать формат диаграммы (текстовая матрица/Graphviz) и отметить её местоположение.
+## 1. Layer map
+- [ ] Summarise each layer (GUI, core/document store, agent, MCP, CLI, shared services).
+- [ ] Define interaction rules between layers and the allowed dependencies.
+- [ ] Decide on a diagram format (text matrix/Graphviz) and record where it will live.
 
 ## 2. GUI
-- [ ] Сформулировать ответственность GUI и границы по отношению к ядру.
-- [ ] Выделить ключевые контроллеры/панели и их API.
-- [ ] Описать взаимодействия с агентом и document_store.
-- [x] `EditorPanel`, `DetachedEditorFrame` и миксины главного окна работают через
-      `RequirementsService`, поэтому проверка уникальности ID, загрузка ссылок и
-      сохранение требований больше не обращаются к `app/core/document_store`
-      напрямую.
-- [x] Реализован диалог `RequirementImportDialog` для импорта CSV/Excel: пользователь настраивает разделитель, сопоставляет колонки полям требований, видит предпросмотр и передаёт результат `MainFrameDocumentsMixin` для сохранения.
+- [ ] Describe the GUI responsibilities and its boundaries relative to the core.
+- [ ] Highlight the key controllers/panels and their APIs.
+- [ ] Document the interactions with the agent and the document store.
+- [x] `EditorPanel`, `DetachedEditorFrame`, and the main-window mixins now work through `RequirementsService`, so ID uniqueness checks, link loading, and requirement persistence no longer depend on `app/core/document_store` directly.
+- [x] `RequirementImportDialog` imports CSV/Excel files: the user configures the delimiter, maps columns to requirement fields, previews the table, and sends the data to `MainFrameDocumentsMixin` for saving.
 
-### Batch-режим панели агента
+### Agent panel batch mode
 
-- `AgentChatPanel` создаёт `AgentBatchRunner`, который управляет очередью
-  требований и последовательно вызывает `AgentRunController`. Runner получает
-  `BatchTarget` (RID, id, заголовок) и для каждого шага создаёт новый
-  `ChatConversation` без повторного подтягивания прошлой истории.
-- `MainFrameAgentMixin` предоставляет `_agent_batch_targets()` и
-  `_agent_context_for_requirement()`, формируя список требований и точечный
-  системный контекст по каждому из них. Оба колбэка передаются в
-  `AgentChatPanel` при инициализации.
-- Внизу панели появляется блок «Batch queue» с прогресс-баром и таблицей
-  состояний (`pending`, `running`, `completed`, `failed`, `cancelled`) и
-  кнопками «Run batch»/«Stop batch». Очередь показывает ход выполнения и
-  скрывается, когда список пуст.
-- Метод `_finalize_prompt()` и обработчик отмены `_finalize_cancelled_run()`
-  уведомляют `AgentBatchRunner` о результате шага, чтобы перейти к следующему
-  требованию или корректно завершить пакет.
+- `AgentChatPanel` spawns an `AgentBatchRunner` that manages the queue of requirements and sequentially drives `AgentRunController`. The runner receives a `BatchTarget` (RID, ID, title) and creates a fresh `ChatConversation` for every iteration without reloading previous history.
+- `MainFrameAgentMixin` provides `_agent_batch_targets()` and `_agent_context_for_requirement()`, generating the requirement list and per-item system context. Both callbacks are passed to `AgentChatPanel` during initialisation.
+- The panel footer exposes a “Batch queue” block with a progress bar, a table of states (`pending`, `running`, `completed`, `failed`, `cancelled`), and “Run batch”/“Stop batch” buttons. The queue visualises progress and collapses once it empties.
+- `_finalize_prompt()` and the cancellation handler `_finalize_cancelled_run()` notify `AgentBatchRunner` about each step so it can advance to the next requirement or close the batch gracefully.
 
-### View-модель-контроллер для панели агента
+### Agent panel view–model–controller
 
-- UI теперь строится отдельным классом `AgentChatView` (пакет
-  `app/ui/agent_chat_panel/components`). Он инкапсулирует создание виджетов и
-  операции вроде переключения состояния ожидания, а `AgentChatPanel`
-  получает ссылки на элементы через возвращаемый `AgentChatLayout`.
-- `AgentChatView` формирует текст статуса ожидания и готовности, используя
-  подсчёт токенов и лимит контекста из `AgentChatSession`, чтобы эта логика не
-  размазывалась между панелью и контроллером.
-- Состояние (`AgentChatHistory`, таймер, текущие токены) вынесено в модель
-  `AgentChatSession`. Она генерирует события (`running_changed`,
-  `tokens_changed`, `elapsed`, `history_changed`), чтобы контроллер или
-  внешний код мог синхронизировать UI без прямых обращений к приватным полям.
-- `AgentChatPanel` подписывается на события сессии и через `AgentChatView`
-  обновляет статус, историю и заголовки разговоров. Таймер и подсчёт токенов
-  больше не вызывают прямые манипуляции виджетами из контроллера.
-- Новый `AgentChatCoordinator` соединяет сессию, `AgentRunController` и
-  исполнитель команд: UI вызывает только его публичные методы для отправки
-  промптов, остановки/отмены и batch-вызовов, а обратная связь от бэкенда
-  проходит через `AgentRunCallbacks` и обновляет `AgentChatSession`.
-- При повторной генерации `AgentRunController.regenerate_entry()` запрашивает у
-  панели удаление последнего сообщения. `AgentChatPanel` возвращает структуру
-  `RemovedConversationEntry`, сохраняет историю и сразу перерисовывает
-  транскрипт. Если запуск агента завершился ошибкой ещё до добавления новой
-  записи, контроллер вызывает обратный колбэк и восстанавливает удалённое
-  сообщение с прежними временными метками, поэтому пользователь не теряет
-  контекст и не видит дублей промпта.
+- The UI layout now lives in `AgentChatView` (`app/ui/agent_chat_panel/components`). It encapsulates widget creation and operations such as toggling the waiting state. `AgentChatPanel` receives references via the returned `AgentChatLayout`.
+- `AgentChatView` renders waiting/ready status strings based on token counts and the context limit provided by `AgentChatSession`, keeping this logic out of the controller.
+- The state ( `AgentChatHistory`, timer, token counters) moved into `AgentChatSession`. It emits events (`running_changed`, `tokens_changed`, `elapsed`, `history_changed`) so the controller or external code can sync the UI without touching private fields.
+- `AgentChatPanel` subscribes to the session events and refreshes the status, history, and conversation headers through `AgentChatView`. Timers and token updates no longer manipulate widgets directly from the controller.
+- The new `AgentChatCoordinator` links the session, `AgentRunController`, and the command executor. The UI talks only to its public methods for prompt submission, stop/cancel, and batch actions, while backend feedback flows through `AgentRunCallbacks` into `AgentChatSession`.
+- During regeneration `AgentRunController.regenerate_entry()` asks the panel to remove the latest message. `AgentChatPanel` returns a `RemovedConversationEntry`, persists history, and redraws the transcript immediately. If the agent fails before adding a new entry, the controller triggers the undo callback, restoring the previous message with original timestamps so the user keeps context and avoids duplicate prompts.
 
-## 3. Ядро и хранилище требований
-- [x] Добавлен сервисный слой `app.services.requirements.RequirementsService`, который инкапсулирует вызовы `document_store` и предоставляет единое API для GUI, CLI и MCP.
-- [ ] Рассказать про модели требований, сервисы document_store, правила ревизий.
-- [ ] Зафиксировать публичные точки расширения (новые типы документов, плагины).
-- [ ] Обозначить зависимости от файловой системы и конфигурации.
+## 3. Core and requirement storage
+- [x] Introduced `app.services.requirements.RequirementsService`, which encapsulates document store operations and provides a shared API for the GUI, CLI, and MCP.
+- [ ] Describe requirement models, document store services, and revision rules.
+- [ ] List public extension points (new document types, plugins).
+- [ ] Capture filesystem and configuration dependencies.
 
-## 4. Агент и LLM
-- [ ] Описать `LocalAgent`, планировщик операций, использование LLM.
-- [ ] Указать, как агент обращается к MCP и document_store.
-- [ ] Собрать риски и TODO (например, ограничения потоков, обработка длинных операций).
+## 4. Agent and LLM
+- [ ] Explain `LocalAgent`, the operation scheduler, and LLM usage.
+- [ ] Detail how the agent interacts with MCP and the document store.
+- [ ] Collect risks and TODOs (e.g. threading limits, long-running operations).
 
-### Контекстные подсказки агента
+### Agent context enrichment hints
 
-- `LocalAgent._prepare_context_messages_async()` нормализует системный контекст и
-  передаёт его в `_enrich_workspace_context_async()`, чтобы дополнить блок
-  `[Workspace context]` краткими выдержками из выбранных требований. Метод
-  разбирает строку `Selected requirement RIDs:` и игнорирует некорректные RID,
-  сохраняя порядок валидных идентификаторов.
-- `_enrich_workspace_context_async()` собирает новые описания в один запрос к
-  MCP: `_fetch_requirement_summaries_async()` вызывает инструмент
-  `get_requirement`, передавая список RID и набор полей (`title`, `statement`).
-  MCP возвращает массив объектов, после чего агент добавляет строки `RID —
-  summary`, пропуская уже присутствующие записи. Повторяющиеся идентификаторы
-  фильтруются до обращения к MCP, поэтому инструмент вызывается не более одного
-  раза на контекстное сообщение.
-- При ошибке вызова MCP или некорректном ответе обогащение контекста
-  пропускается, чтобы не блокировать основной сценарий. Стоит рассмотреть
-  телеметрию для таких отказов, если обогащение станет критичным для UX.
+- `LocalAgent._prepare_context_messages_async()` normalises the system context and forwards it to `_enrich_workspace_context_async()` to populate the `[Workspace context]` block with brief excerpts from selected requirements. The method parses the `Selected requirement RIDs:` line, ignores invalid RIDs, and keeps the order of valid identifiers.
+- `_enrich_workspace_context_async()` composes a single MCP request: `_fetch_requirement_summaries_async()` calls the `get_requirement` tool with the RID list and selected fields (`title`, `statement`). MCP returns an array of objects; the agent appends `RID — summary` lines, skipping entries already present. Duplicate identifiers are filtered before reaching MCP, so each context message triggers at most one tool invocation.
+- If the MCP call fails or the response is malformed, context enrichment is skipped to avoid blocking the main scenario. Consider telemetry for such failures if enrichment becomes critical to the UX.
 
-## 5. MCP и инструменты
-- [ ] Дать обзор MCP-сервера, зарегистрированных инструментов и их контрактов.
-- [ ] Отметить жизненный цикл инструментов, обработку ошибок и логи.
-- [ ] Сформировать список мест в коде, откуда подключаются новые инструменты.
+## 5. MCP and tools
+- [ ] Provide an overview of the MCP server, registered tools, and their contracts.
+- [ ] Note the tool lifecycle, error handling, and logging strategy.
+- [ ] List the code locations used to register new tools.
 
 ## 6. CLI
-- [x] Команды CLI используют `RequirementsService`, чтобы не зависеть напрямую от файлового слоя `document_store`.
-- [ ] Объяснить, как CLI переиспользует ядро и сервисы.
-- [ ] Выделить основные команды и точки расширения.
-- [ ] Зафиксировать особенности окружения (запуск без GUI, конфигурация).
-- [x] Отметить экспорт требований: команда `python3 -m app.cli export requirements` собирает данные через
-      `app/core/requirement_export.py` и выдаёт Markdown/HTML/PDF-отчёты с кликабельными ссылками между RID.
+- [x] CLI commands rely on `RequirementsService`, decoupling them from the `document_store` filesystem layer.
+- [ ] Explain how the CLI reuses the core services.
+- [ ] Highlight major commands and extension points.
+- [ ] Document environment specifics (headless execution, configuration files).
+- [x] Requirement export: `python3 -m app.cli export requirements` gathers data through `app/core/requirement_export.py` and produces Markdown/HTML/PDF reports with clickable RID links.
 
-## 7. Общие сервисы
-- [ ] Список вспомогательных модулей (конфиг, локализация, логирование, плагины).
-- [ ] Прописать зависимости и правила использования.
-- [ ] Выделить потенциальные зоны рефакторинга.
-- [x] В качестве composition root введён `app.application.ApplicationContext`. Он лениво
-      создаёт `ConfigManager`, `RequirementModel`, фабрики `RequirementsService`,
-      `LocalAgent`, `MCPController` и одновременно настраивает confirm-обработчики.
-      Оба фронтенда (`app/main.py` и `app/cli/main.py`) получают зависимости через
-      этот контекст: GUI пробрасывает фабрики дальше в `MainFrame`, а CLI отдаёт
-      контекст командам, поэтому повторная конфигурация сервисов и confirm-колбеков
-      в разных точках больше не требуется. `MainFrame` и CLI-команды больше не
-      создают контекст по умолчанию: зависимости должны быть переданы явно из
-      composition root, что устраняет скрытые глобальные синглтоны в тестах и
-      продакшене. Даже вспомогательные окна, например `SettingsDialog`, получают
-      `MCPController` через фабрику, переданную из фрейма, поэтому инъекцию можно
-      проверять и в юнит-тестах без monkeypatch глобальных конструкторов.
+## 7. Shared services
+- [ ] Catalogue helper modules (configuration, localisation, logging, plugins).
+- [ ] Describe dependencies and usage rules.
+- [ ] Identify potential refactoring areas.
+- [x] `app.application.ApplicationContext` acts as the composition root. It lazily creates `ConfigManager`, `RequirementModel`, `RequirementsService` factories, `LocalAgent`, `MCPController`, and configures confirmation handlers. Both front ends (`app/main.py` and `app/cli/main.py`) receive dependencies through this context: the GUI passes factories to `MainFrame`, while the CLI hands the context to commands, removing the need for repeated service wiring or confirmation callbacks. `MainFrame` and CLI commands no longer create default contexts; dependencies must be provided from the composition root, eliminating hidden singletons in tests and production. Even helper windows such as `SettingsDialog` obtain `MCPController` through a factory supplied by the frame, making injection verifiable in unit tests without monkeypatching global constructors.
 
-## 8. Сценарии взаимодействия
-- [ ] Подготовить 2–3 ключевых сквозных сценария (открытие проекта, правка требования, построение отчёта).
-- [ ] Для каждого сценария описать последовательность взаимодействий между слоями.
-- [ ] Определить, нужны ли диаграммы последовательностей или таблицы.
+## 8. Interaction scenarios
+- [ ] Prepare 2–3 end-to-end journeys (opening a project, editing a requirement, generating a report).
+- [ ] For each journey, describe the sequence of interactions across layers.
+- [ ] Decide whether to include sequence diagrams or tables.
 
-## 9. Риски и задачи
-- [ ] Собрать список выявленных проблем и решений.
-- [ ] Зафиксировать идеи для автоматизации (генерация диаграмм, проверка зависимостей).
+## 9. Risks and tasks
+- [ ] Collect known issues and mitigation ideas.
+- [ ] Record automation opportunities (diagram generation, dependency checks).
 
-> После заполнения раздела проверить, что системный контекст и данные/конфигурации содержат соответствующие ссылки.
+> After completing this section ensure the system context and data/configuration documents contain matching references.

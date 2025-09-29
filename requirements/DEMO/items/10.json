@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демо-документация должна описывать системный контекст с акторами, внешними зависимостями и ограничениями обмена данными, отражая различия между GUI и CLI.",
+  "statement": "Demo documentation must describe the system context with actors, external dependencies, and data-exchange constraints, highlighting differences between the GUI and CLI.",
   "status": "draft",
-  "title": "Системный контекст",
+  "title": "System context",
   "type": "requirement",
   "verification": "analysis"
 }

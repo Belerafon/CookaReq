@@ -1,35 +1,35 @@
-# Нефункциональные аспекты CookaReq
+# CookaReq non-functional aspects
 
-> Черновой каркас: список тем, которые нужно проработать при описании эксплуатации и качества.
+> Draft scaffold listing the topics to cover when documenting operations and quality.
 
-## 1. Надёжность и устойчивость
-- [ ] Сценарии отказов (падение MCP, ошибки LLM, потеря файла требований).
-- [ ] Механизмы восстановления и резервирования.
-- [ ] Планируемые улучшения по устойчивости.
+## 1. Reliability and resilience
+- [ ] Failure scenarios (MCP outage, LLM errors, missing requirement files).
+- [ ] Recovery and redundancy mechanisms.
+- [ ] Planned resilience improvements.
 
-## 2. Производительность и масштабирование
-- [ ] Известные узкие места (загрузка больших проектов, длинные tool-call’ы).
-- [ ] Подходы к профилированию и оптимизации.
-- [ ] Планы по параллельности и асинхронности.
+## 2. Performance and scalability
+- [ ] Known bottlenecks (loading large projects, long tool calls).
+- [ ] Profiling and optimisation approaches.
+- [ ] Plans for parallelism and async execution.
 
-## 3. Наблюдаемость
-- [ ] Логирование, трассировка, метрики.
-- [ ] Инструменты диагностики и процедуры отладки.
-- [ ] TODO по улучшению мониторинга.
+## 3. Observability
+- [ ] Logging, tracing, metrics.
+- [ ] Diagnostic tooling and debugging procedures.
+- [ ] TODOs for monitoring improvements.
 
-## 4. Тестирование и качество
-- [ ] Тестовые пирамиды (юнит, интеграция, GUI), покрытие, обязательные прогонки.
-- [ ] Как обеспечивается детерминизм и изоляция окружения.
-- [ ] Список долгов и областей без тестов.
+## 4. Testing and quality
+- [ ] Test pyramid (unit, integration, GUI), coverage, required suites.
+- [ ] How determinism and environment isolation are ensured.
+- [ ] Debt list and areas lacking tests.
 
-## 5. UX и локализация
-- [ ] Требования к пользовательскому опыту, поддержка языков.
-- [ ] Особенности взаимодействия GUI/CLI, доступность.
-- [ ] Риски и улучшения.
+## 5. UX and localisation
+- [ ] User experience requirements and language support.
+- [ ] GUI/CLI interaction specifics, accessibility considerations.
+- [ ] Risks and improvement ideas.
 
-## 6. Расширяемость и сопровождение
-- [ ] Подходы к добавлению новых функций (панели GUI, инструменты MCP, типы данных).
-- [ ] Политика версионирования и обратной совместимости (по умолчанию не сохраняем легаси).
-- [ ] План задач по рефакторингу.
+## 6. Extensibility and maintenance
+- [ ] Approaches for adding new features (GUI panels, MCP tools, data types).
+- [ ] Versioning and compatibility policy (legacy is removed by default).
+- [ ] Refactoring task plan.
 
-> После заполнения свериться с `components.md`, чтобы ссылки на подсистемы были актуальны.
+> After filling this section, cross-check `components.md` to keep subsystem references up to date.

@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демонстрация должна уточнять, какие ресурсы локализации поставляются для GUI и CLI, и как поддерживаются языки en и ru.",
+  "statement": "The demo must clarify which localisation resources ship for the GUI and CLI and how the en and ru languages are supported.",
   "status": "draft",
-  "title": "Локализация демо",
+  "title": "Demo localisation",
   "type": "requirement",
   "verification": "analysis"
 }

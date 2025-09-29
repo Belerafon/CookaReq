@@ -1,44 +1,41 @@
-# Архитектурный пакет CookaReq
+# CookaReq architecture workspace
 
-Каталог `docs/architecture/` — личный рабочий набор заметок об архитектуре CookaReq. Я единственный сопровождающий, поэтому
-формат ориентирован на быстрое восстановление контекста перед изменениями в коде. Первичная задача текущего круга работ —
-полностью переписать архитектурное описание и сделать его компактным, но полезным, без громоздких перечней модулей.
+The `docs/architecture/` directory is a personal working set of notes about the CookaReq architecture. I am currently the sole maintainer, so the format is optimised for regaining context quickly before touching the code. The first goal for this iteration is to rewrite the architectural overview completely, keeping it concise yet useful instead of dumping exhaustive module lists.
 
-## Структура пакета
+## Package layout
 
-| Файл | Роль | Текущее состояние |
+| File | Role | Current state |
 | --- | --- | --- |
-| [`system_context.md`](system_context.md) | Системный контекст: назначение продукта, акторы, ключевые пользовательские сценарии и жизненные циклы. | черновой каркас (ожидает наполнения) |
-| [`components.md`](components.md) | Карта подсистем и слоёв, их ответственность и точки расширения. | черновой каркас (ожидает наполнения) |
-| [`data_and_config.md`](data_and_config.md) | Данные, форматы хранения, конфигурации и правила миграции. | черновой каркас (ожидает наполнения) |
-| [`integrations.md`](integrations.md) | Интеграции с внешними сервисами, LLM, MCP и ОС. | черновой каркас (ожидает наполнения) |
-| [`non_functional.md`](non_functional.md) | Нефункциональные аспекты: эксплуатация, тестирование, расширяемость. | черновой каркас (ожидает наполнения) |
+| [`system_context.md`](system_context.md) | System context: product purpose, actors, key user journeys, and lifecycle diagrams. | skeleton (needs content) |
+| [`components.md`](components.md) | Subsystem and layer map, their responsibilities, and extension points. | skeleton (needs content) |
+| [`data_and_config.md`](data_and_config.md) | Data domains, storage formats, configuration sources, and migration rules. | skeleton (needs content) |
+| [`integrations.md`](integrations.md) | Integrations with external services, LLM, MCP, and the OS. | skeleton (needs content) |
+| [`non_functional.md`](non_functional.md) | Non-functional concerns: operations, testing, extensibility. | skeleton (needs content) |
 
-Дополнительные материалы (исходники диаграмм, временные выписки из кода) допустимо хранить рядом, но после завершения этапа
-их нужно либо интегрировать в основной текст, либо удалить.
+Supporting materials (diagram sources, temporary code excerpts) can live next to the documents, but once a milestone completes they should either be merged into the main text or removed.
 
-## Принципы оформления
+## Editing principles
 
-* **Сценарии важнее файлов.** Фиксирую ключевые жизненные циклы и взаимодействия, избегаю перечисления всех модулей подряд.
-* **Локальные ссылки.** Для каждого упоминаемого компонента добавляю путь к исходникам, чтобы быстро перейти к коду.
-* **Минимум легаси.** Если встречаю устаревший подход, сразу помечаю задачу на пересмотр архитектуры или кода.
+* **Scenarios over file listings.** Capture key lifecycles and interactions rather than enumerating every module.
+* **Local links.** Add source paths for every mentioned component so jumping to code stays quick.
+* **No legacy leftovers.** When a document uncovers an outdated pattern, log a follow-up task to revisit the architecture or implementation.
 
-## План переписывания
+## Rewrite plan
 
-1. [x] **Структура пакета.** Подготовить каркасы файлов и зафиксировать назначение каждого раздела (текущий шаг).
-2. [ ] **Системный контекст.** Наполнить `system_context.md`: цель продукта, акторы, high-level потоки, жизненные циклы.
-3. [ ] **Карта подсистем.** Наполнить `components.md`: слои, зависимости, сценарии взаимодействия.
-4. [ ] **Данные и конфигурации.** Расписать `data_and_config.md`: модели, форматы, миграции.
-5. [ ] **Интеграции.** Заполнить `integrations.md`: LLM, MCP, взаимодействие с ОС.
-6. [ ] **Нефункциональные аспекты.** Заполнить `non_functional.md`: эксплуатация, тестирование, расширение.
-7. [ ] **Финальная ревизия.** Сверить перекрёстные ссылки, перечень задач и согласованность терминов.
+1. [x] **Package structure.** Prepare file scaffolds and document each section's purpose (current step).
+2. [ ] **System context.** Populate `system_context.md` with the product goal, actors, high-level flows, and lifecycle diagrams.
+3. [ ] **Subsystem map.** Fill in `components.md` with layers, dependencies, and interaction scenarios.
+4. [ ] **Data and configuration.** Describe models, formats, and migrations in `data_and_config.md`.
+5. [ ] **Integrations.** Document LLM, MCP, and OS integration points in `integrations.md`.
+6. [ ] **Non-functional aspects.** Summarise operations, testing, and extension strategy in `non_functional.md`.
+7. [ ] **Final review.** Align cross-links, task lists, and terminology.
 
-После завершения каждого шага проверяю, не появились ли изменения в соседних файлах, и обновляю ссылки/термины при необходимости.
+After each step, check for related updates in neighbouring files and adjust links or vocabulary as needed.
 
-## Что подготовить к следующему шагу
+## Preparation for the next phase
 
-* Сборка списка акторов и внешних систем.
-* Выписка ключевых пользовательских сценариев (GUI, CLI, агент).
-* Схема жизненных циклов: запуск приложения, сессия агента, обновление хранилища требований.
+* Compile a list of actors and external systems.
+* Capture the main user workflows (GUI, CLI, agent).
+* Outline lifecycle diagrams for application startup, agent sessions, and requirement repository updates.
 
-Эти заметки лягут в основу системного контекста на следующем этапе.
+These notes will feed directly into the upcoming system context chapter.

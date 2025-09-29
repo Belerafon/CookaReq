@@ -10,6 +10,7 @@ from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel.token_usage import summarize_token_usage
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.widgets.chat_message import MessageBubble, TranscriptMessagePanel
+from app import i18n
 
 import pytest
 
@@ -246,9 +247,11 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
         assert first_entry.response.endswith("1")
         assert not getattr(first_entry, "regenerated", False)
 
+        target_labels = {"Regenerate", i18n.gettext("Regenerate")}
+
         def find_regenerate_button(window):
             for child in window.GetChildren():
-                if isinstance(child, wx.Button) and child.GetLabel() in {"Перегенерить", "Regenerate"}:
+                if isinstance(child, wx.Button) and child.GetLabel() in target_labels:
                     return child
                 found = find_regenerate_button(child)
                 if found is not None:
@@ -286,7 +289,7 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
 def test_agent_response_normalizes_dash_characters(tmp_path, wx_app):
     class HyphenAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
-            return "одно\u2010папочный"
+            return "single\u2010folder"
 
     wx, frame, panel = create_panel(tmp_path, wx_app, HyphenAgent())
 
@@ -295,12 +298,12 @@ def test_agent_response_normalizes_dash_characters(tmp_path, wx_app):
     flush_wx_events(wx)
 
     transcript = panel.get_transcript_text()
-    assert "одно-папочный" in transcript
+    assert "single-folder" in transcript
 
     assert panel.history
     entry = panel.history[0]
-    assert entry.response == "одно-папочный"
-    assert entry.display_response == "одно-папочный"
+    assert entry.response == "single-folder"
+    assert entry.display_response == "single-folder"
 
     destroy_panel(frame, panel)
 
@@ -668,7 +671,7 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
             "role": "system",
             "content": (
                 "[Workspace context]\n"
-                "Active requirements list: sys: Сист. треб.\n"
+                "Active requirements list: sys: System req.\n"
                 "Selected requirement RIDs: sys48, sys49, sys50"
             ),
         }
@@ -699,7 +702,8 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
 
         context_pane = panes[0]
         label_value = context_pane.GetLabel()
-        assert label_value in {"", "Контекст", "Context"}
+        expected_labels = {"", "Context", i18n.gettext("Context")}
+        assert label_value in expected_labels
         assert context_pane.IsCollapsed()
 
         context_pane.Collapse(False)
@@ -718,7 +722,7 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
 
         value = text_controls[0].GetValue()
         assert "[Workspace context]" in value
-        assert "Active requirements list: sys: Сист. треб." in value
+        assert "Active requirements list: sys: System req." in value
         assert "Selected requirement RIDs: sys48, sys49, sys50" in value
 
         # Context pane should live inside the user message bubble so that it scrolls together with the prompt
@@ -897,7 +901,7 @@ def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
         context_panes = [
             pane
             for pane in all_panes
-            if pane.GetLabel() in {"", "Контекст", "Context"}
+            if pane.GetLabel() in {"", "Context", i18n.gettext("Context")}
         ]
         assert context_panes, "missing context pane"
 
@@ -1065,7 +1069,7 @@ def test_agent_transcript_log_includes_planned_tool_calls(tmp_path, wx_app):
                     "message": "Invalid arguments",
                     "details": {
                         "type": "ToolValidationError",
-                        "llm_message": "Готовлю обращение",
+                        "llm_message": "Preparing the request",
                         "llm_tool_calls": [
                             {
                                 "id": "call-0",

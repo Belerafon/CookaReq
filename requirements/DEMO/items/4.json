@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демо-описание должно фиксировать архитектуру LocalAgent, взаимодействие с MCP и document_store, включая ограничения по шагам, обработку ошибок и риски долгих операций.",
+  "statement": "The demo description must document the LocalAgent architecture, interactions with MCP and the document_store, step limits, error handling, and risks of long-running operations.",
   "status": "draft",
-  "title": "Потоки агента и LLM",
+  "title": "Agent and LLM flows",
   "type": "requirement",
   "verification": "analysis"
 }

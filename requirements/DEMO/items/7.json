@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демо-материалы должны перечислять вспомогательные модули (настройки, локализация, логирование) и описывать правила их использования и потенциальные точки рефакторинга.",
+  "statement": "Demo materials must list auxiliary modules (settings, localisation, logging), describe usage rules, and point out potential refactoring targets.",
   "status": "draft",
-  "title": "Общие сервисы",
+  "title": "Shared services",
   "type": "requirement",
   "verification": "analysis"
 }

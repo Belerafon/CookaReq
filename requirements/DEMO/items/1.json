@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демо-набор требований должен включать завершённый раздел архитектуры с картой слоёв CookaReq, описывающей GUI, ядро/Document Store, агент, MCP, CLI и общие сервисы, а также фиксирующей допустимые зависимости между ними.",
+  "statement": "The demo requirement set must include a complete architecture section with a CookaReq layer map describing the GUI, core/document store, agent, MCP, CLI, and shared services, as well as the permitted dependencies between them.",
   "status": "draft",
-  "title": "Карта слоёв демо",
+  "title": "Demo layer map",
   "type": "requirement",
   "verification": "analysis"
 }

@@ -104,7 +104,7 @@ def test_validate_tool_call_rejects_unknown_status_update():
     with pytest.raises(ToolValidationError) as exc:
         validate_tool_call(
             "update_requirement_field",
-            {"rid": "SYS1", "field": "status", "value": "На утверждении"},
+            {"rid": "SYS1", "field": "status", "value": "pending approval"},
         )
 
     message = str(exc.value)

@@ -1,76 +1,42 @@
-# Данные и конфигурация CookaReq
+# CookaReq data and configuration
 
-> Черновой каркас: перечисляет вопросы, на которые нужно ответить при описании данных и настроек.
+> Draft scaffold listing the questions to answer when describing data and settings.
 
-## 1. Хранилище требований
-- [ ] Описать структуру каталога `requirements/` и вспомогательных директорий.
-- [ ] Зафиксировать формат RID-файлов, правила именования, версионирование.
-- [ ] Уточнить механизм загрузки/сохранения (document_store, кэширование, обработка конфликтов).
+## 1. Requirement repository
+- [ ] Describe the structure of the `requirements/` directory and auxiliary folders.
+- [ ] Document the RID file format, naming rules, and versioning approach.
+- [ ] Explain loading/saving mechanics (document_store, caching, conflict handling).
 
-## 2. Доменные модели и схемы
-- [ ] Собрать список ключевых Pydantic-моделей и их поля.
-- [ ] Для каждой модели указать инварианты и правила валидации.
-- [ ] Описать связь моделей с UI и MCP инструментами.
+## 2. Domain models and schemas
+- [ ] Gather key Pydantic models and their fields.
+- [ ] Note invariants and validation rules per model.
+- [ ] Describe how models connect to the UI and MCP tools.
 
-## 3. Конфигурация приложения
-- [ ] Перечислить источники настроек (файлы, переменные окружения, GUI).
-- [ ] Определить приоритеты и правила переопределения.
-- [ ] Зафиксировать чувствительные параметры (LLM ключи, пути к проекту).
+## 3. Application configuration
+- [ ] List configuration sources (files, environment variables, GUI).
+- [ ] Define precedence and override rules.
+- [ ] Highlight sensitive parameters (LLM keys, project paths).
 
-## 4. Конфигурация агента и MCP
-- [ ] Описать настройки LLM-клиента, режимы работы, лимиты.
-- [ ] Рассказать о конфигурации MCP-сервера и инструментах.
-- [ ] Сформировать таблицу зависимостей между настройками и функциональностью.
+## 4. Agent and MCP configuration
+- [ ] Outline LLM client settings, operating modes, and limits.
+- [ ] Describe MCP server configuration and tool setup.
+- [ ] Build a dependency table between settings and functionality.
 
-### Параметры агента
+### Agent parameters
 
-- `agent.max_consecutive_tool_errors` — ограничение на количество подряд
-  неуспешных вызовов MCP-инструментов. Значение по умолчанию равно 5, что
-  позволяет LLM увидеть ответ с кодом ошибки и скорректировать аргументы.
-  Неположительные значения и `null` отключают отсечку, перенося контроль на
-  лимит шагов (`agent.max_thought_steps`).
-- В каталоге требований создаётся поддиректория `.cookareq` с файлом
-  `agent_settings.json`. В нём хранится пользовательский системный промпт,
-  дописываемый к базовому тексту агента только для выбранного проекта. Файл
-  записывается рядом с историей чата (`agent_chats.json`) и позволяет хранить
-  специфичные требования (термины, правила оформления) вместе с
-  репозиторием требований. Активная беседа сохраняется в отдельном
-  сайдкар-файле `agent_chats_active.json`, чтобы при переключении между
-  диалогами не приходилось сериализовывать всю историю целиком.
-  В `agent_chats.json` каждая запись (`ChatEntry`) теперь включает дополнительное
-  поле `reasoning`: массив словарей вида `{ "type": str, "text": str }`, где
-  сохраняются скрытые мысли модели (CoT), поступающие от Reasoning-моделей
-  OpenAI/Qwen. Эти сегменты не попадают в основной ответ, но отображаются в GUI
-  в отдельной сворачиваемой панели «Model reasoning», чтобы оператор мог
-  посмотреть ход рассуждений и отладить ошибочные шаги.
-- `llm.message_format` — режим кодирования диалогов при обращении к модели.
-  На форме настроек доступен классический формат OpenAI (`openai-chat`),
-  Harmony (`harmony`) для GPT-OSS и свежая интеграция Qwen (`qwen`). Режим
-  Qwen формирует ChatML-подобные сообщения, поддерживает Reasoning-модели с
-  полем `reasoning_content` и извлекает вызовы MCP-инструментов даже когда они
-  генерируются в ходе «мысленного» шага. Harmony использует собственный
-  рендерер: системный промпт, инструкции и JSON-схемы MCP-инструментов
-  преобразуются в Harmony-последовательность, после чего клиент вызывает
-  Responses API и разбирает блоки `message` и `function_call`, скрывая CoT от
-  пользователя. Потоковый режим реализован через `responses.stream`, поэтому
-  Harmony реагирует на отмену запросов так же, как и остальные форматы, без
-  блокирующих fallback-запросов.
-- `llm.use_custom_temperature` и `llm.temperature` — пара настроек, управляющих
-  передачей параметра `temperature` в OpenAI-совместимый API. По умолчанию
-  чекбокс отключён, и клиент вовсе не отправляет значение температуры, чтобы
-  провайдер применял собственные дефолты. Если пользователь активирует опцию,
-  в GUI становится доступен `SpinCtrlDouble` с диапазоном 0–2 (шаг 0.1) и
-  дефолтным значением 0.7. Клиент LLM учитывает это значение во всех запросах
-  (включая health-check) и пропускает параметр, когда чекбокс снят.
+- `agent.max_consecutive_tool_errors` — caps the number of consecutive MCP tool failures. The default value (5) lets the LLM see the error payload and adjust arguments. Non-positive values or `null` disable the guard, deferring control to `agent.max_thought_steps`.
+- The requirements directory contains a `.cookareq` subfolder with `agent_settings.json`. It stores the user-defined system prompt appended to the agent’s base text for the selected project. The file sits next to the chat history (`agent_chats.json`) so domain-specific rules travel with the repository. The active conversation is kept in the sidecar `agent_chats_active.json` to avoid serialising the entire history when switching contexts. Each `ChatEntry` in `agent_chats.json` now includes a `reasoning` field: an array of `{ "type": str, "text": str }` capturing hidden model thoughts (CoT) returned by reasoning-capable OpenAI/Qwen models. The GUI exposes these segments in the collapsible “Model reasoning” panel so operators can inspect the chain of thought and debug mistakes.
+- `llm.message_format` selects how conversations are encoded for the model. The Settings dialog offers the classic OpenAI format (`openai-chat`), Harmony (`harmony`) for GPT-OSS, and the Qwen integration (`qwen`). Qwen builds ChatML-like messages, supports reasoning models with a `reasoning_content` field, and extracts MCP tool calls even when they appear inside the reasoning stream. Harmony uses its own renderer: the system prompt, instructions, and MCP JSON schemas are converted into a Harmony sequence before the client calls the Responses API and parses `message`/`function_call` blocks, keeping CoT hidden from the user. Streaming relies on `responses.stream`, so Harmony honours cancellation the same way as other formats without fallback blocking requests.
+- `llm.use_custom_temperature` and `llm.temperature` toggle whether the client sends the `temperature` parameter to OpenAI-compatible APIs. By default the checkbox is disabled and the client omits the value so providers fall back to their defaults. When enabled, the GUI exposes a `SpinCtrlDouble` with a 0–2 range (step 0.1) and a default of 0.7. `LLMClient` applies the value to every request, including health checks, and removes the parameter when the checkbox is cleared.
 
-## 5. Управление данными и миграции
-- [ ] Выписать процессы резервного копирования и восстановления.
-- [ ] Описать стратегии миграции схем (изменение структуры требований, обновление конфигов).
-- [ ] Собрать известные проблемы (например, ручное слияние конфликтов).
+## 5. Data management and migrations
+- [ ] Document backup and restore processes.
+- [ ] Outline schema migration strategies (changing requirement structure, updating configs).
+- [ ] Collect known issues (for example manual conflict resolution).
 
-## 6. Наблюдаемость данных
-- [ ] Где логируются операции с данными и конфигурацией.
-- [ ] Какие проверки и валидации выполняются автоматически.
-- [ ] TODO на улучшение мониторинга и диагностики.
+## 6. Data observability
+- [ ] Identify where data and configuration operations are logged.
+- [ ] List automatic checks and validations.
+- [ ] TODOs for improving monitoring and diagnostics.
 
-> При наполнении раздела свериться с `integrations.md`, чтобы не дублировать описания внешних сервисов.
+> When filling the section, cross-check with `integrations.md` to avoid duplicating external service descriptions.

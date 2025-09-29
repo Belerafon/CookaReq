@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Артефакты демо должны раскрывать модели требований, сервисы document_store, правила ревизий и зависимости от файловой системы, подчёркивая точки расширения для новых типов документов.",
+  "statement": "Demo artifacts must detail the requirement models, document_store services, revision rules, and filesystem dependencies while highlighting extension points for new document types.",
   "status": "draft",
-  "title": "Описание ядра и хранилища",
+  "title": "Core and storage overview",
   "type": "requirement",
   "verification": "analysis"
 }

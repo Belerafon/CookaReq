@@ -13,7 +13,7 @@ class DummyLLM:
         return {"ok": True}
 
     async def respond_async(self, conversation, *, cancellation=None) -> LLMResponse:
-        return LLMResponse("готово", ())
+        return LLMResponse("done", ())
 
 
 class DummyMCP:
@@ -37,13 +37,13 @@ def test_handle_tool_batch_returns_success(monkeypatch):
         on_tool_result=None,
     )
 
-    response = LLMResponse("Результат", ())
+    response = LLMResponse("Result", ())
     outcome = asyncio.run(runner.handle_tool_batch(response))
 
-    assert outcome.final_result == {"ok": True, "error": None, "result": "Результат"}
+    assert outcome.final_result == {"ok": True, "error": None, "result": "Result"}
     assert runner.should_abort() is False
     assert runner._step == 1
-    assert runner._conversation == [{"role": "assistant", "content": "Результат"}]
+    assert runner._conversation == [{"role": "assistant", "content": "Result"}]
 
 
 def test_step_llm_handles_validation_error(monkeypatch):

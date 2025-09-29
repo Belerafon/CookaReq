@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Материалы демо должны описывать источники настроек приложения, правила приоритизации и чувствительные параметры вроде LLM-ключей и путей проектов.",
+  "statement": "Demo materials must describe application configuration sources, priority rules, and sensitive parameters such as LLM keys and project paths.",
   "status": "draft",
-  "title": "Конфигурация приложения",
+  "title": "Application configuration",
   "type": "requirement",
   "verification": "analysis"
 }

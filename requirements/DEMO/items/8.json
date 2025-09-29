@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демонстрационный пакет обязан включать минимум три сквозных сценария (открытие проекта, правка требования, построение отчёта) с последовательностью взаимодействий между слоями.",
+  "statement": "The demo package must include at least three end-to-end scenarios (open project, edit requirement, generate report) with the sequence of cross-layer interactions.",
   "status": "draft",
-  "title": "Сквозные сценарии",
+  "title": "End-to-end scenarios",
   "type": "requirement",
   "verification": "analysis"
 }

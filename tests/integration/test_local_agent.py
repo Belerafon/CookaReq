@@ -215,7 +215,7 @@ def test_run_command_reports_llm_tool_validation_details(
         "openai.OpenAI",
         make_openai_mock(
             {
-                "Напиши текст первого требования": [
+                "Write the text of the first requirement": [
                     (
                         "create_requirement",
                         {"prefix": "SYS", "data": {"title": "Req-1"}},
@@ -245,7 +245,7 @@ def test_run_command_reports_llm_tool_validation_details(
     mcp = RecordingMCP()
     agent = LocalAgent(llm=llm_client, mcp=mcp)
 
-    result = agent.run_command("Напиши текст первого требования")
+    result = agent.run_command("Write the text of the first requirement")
 
     assert result["ok"] is False
     error = result["error"]
@@ -265,7 +265,7 @@ def test_run_command_reports_llm_tool_validation_details(
     first_request = requests[0]
     assert first_request["step"] == 1
     assert first_request["messages"][-1]["content"].startswith(
-        "Напиши текст первого требования"
+        "Write the text of the first requirement"
     )
     assert mcp.call_calls == 0
     assert mcp.ensure_calls == 0
@@ -435,7 +435,7 @@ def test_run_command_executes_tool_and_returns_final_message():
             self.calls += 1
             if self.calls == 1:
                 return LLMResponse(
-                    "Секунду, посмотрю",
+                    "One moment, checking",
                     (
                         LLMToolCall(
                             id="call-0",
@@ -445,7 +445,7 @@ def test_run_command_executes_tool_and_returns_final_message():
                     ),
                 )
             self.last_conversation = list(conversation)
-            return LLMResponse("Нашёл 0 записей", ())
+            return LLMResponse("Found 0 records", ())
 
     class RecordingMCP(MCPAsyncBridge):
         def __init__(self) -> None:
@@ -464,7 +464,7 @@ def test_run_command_executes_tool_and_returns_final_message():
 
     result = agent.run_command("list latest")
     assert result["ok"] is True
-    assert result["result"] == "Нашёл 0 записей"
+    assert result["result"] == "Found 0 records"
     assert result.get("tool_results")
     first_tool = result["tool_results"][0]
     assert first_tool["result"]["items"] == []
@@ -581,7 +581,7 @@ def test_run_command_recovers_after_tool_error():
                         ),
                     ),
                 )
-            return LLMResponse("Готово", ())
+            return LLMResponse("Done", ())
 
     class FlakyMCP(MCPAsyncBridge):
         def __init__(self) -> None:
@@ -613,7 +613,7 @@ def test_run_command_recovers_after_tool_error():
     result = agent.run_command("adjust please")
 
     assert result["ok"] is True
-    assert result["result"] == "Готово"
+    assert result["result"] == "Done"
     assert "agent_stop_reason" not in result
     assert result.get("tool_results")
     assert result["tool_results"][0]["tool_name"] == "adjust_requirement"
@@ -788,7 +788,7 @@ def test_run_command_recovers_after_tool_validation_error():
                         ),
                     ),
                 )
-            return LLMResponse("Готово", ())
+            return LLMResponse("Done", ())
 
     class TrackingMCP(MCPAsyncBridge):
         def __init__(self) -> None:
@@ -812,7 +812,7 @@ def test_run_command_recovers_after_tool_validation_error():
     result = agent.run_command("adjust please")
 
     assert result["ok"] is True
-    assert result["result"] == "Готово"
+    assert result["result"] == "Done"
     assert result.get("tool_results")
     assert result["tool_results"][0]["result"] == {"value": "in_review"}
     assert llm.calls == 3
@@ -967,7 +967,7 @@ def test_run_command_reports_loop_details_when_max_steps_exceeded():
     mcp = RecordingMCP()
     agent = LocalAgent(llm=llm, mcp=mcp, max_thought_steps=5)
 
-    result = agent.run_command("покажи SYS-8")
+    result = agent.run_command("show SYS-8")
 
     assert result["ok"] is False
     error = result["error"]
@@ -1011,7 +1011,7 @@ def test_run_command_handles_long_sequences_without_step_limit():
                         ),
                     ),
                 )
-            return LLMResponse("готово", ())
+            return LLMResponse("done", ())
 
     class CountingMCP(MCPAsyncBridge):
         def __init__(self) -> None:
@@ -1028,11 +1028,11 @@ def test_run_command_handles_long_sequences_without_step_limit():
     mcp = CountingMCP()
     agent = LocalAgent(llm=llm, mcp=mcp)
 
-    result = agent.run_command("запроси серию требований")
+    result = agent.run_command("request a series of requirements")
 
     assert agent.max_thought_steps is None
     assert result["ok"] is True
-    assert result["result"] == "готово"
+    assert result["result"] == "done"
     assert len(mcp.calls) == 10
     assert [call[1]["rid"] for call in mcp.calls] == [
         f"SYS-{index:04d}" for index in range(1, 11)
@@ -1049,7 +1049,7 @@ def test_run_command_returns_message_without_mcp_call():
 
         def respond(self, conversation):
             self.conversations.append(list(conversation))
-            return LLMResponse("Привет!", ())
+            return LLMResponse("Hello!", ())
 
         async def respond_async(self, conversation, *, cancellation=None):
             return self.respond(conversation)
@@ -1070,19 +1070,19 @@ def test_run_command_returns_message_without_mcp_call():
     agent = LocalAgent(llm=llm, mcp=mcp)
 
     result = agent.run_command("hi")
-    assert result == {"ok": True, "error": None, "result": "Привет!"}
+    assert result == {"ok": True, "error": None, "result": "Hello!"}
     assert mcp.called is False
     assert llm.conversations[0][-1] == {"role": "user", "content": "hi"}
     assert "tool_results" not in result
 
     async def exercise() -> None:
-        async_result = await agent.run_command_async("ещё")
-        assert async_result == {"ok": True, "error": None, "result": "Привет!"}
+        async_result = await agent.run_command_async("more")
+        assert async_result == {"ok": True, "error": None, "result": "Hello!"}
         assert "tool_results" not in async_result
 
     asyncio.run(exercise())
     assert mcp.called is False
-    assert llm.conversations[1][-1] == {"role": "user", "content": "ещё"}
+    assert llm.conversations[1][-1] == {"role": "user", "content": "more"}
 
 
 def test_run_command_attaches_llm_request_messages():
@@ -1097,7 +1097,7 @@ def test_run_command_attaches_llm_request_messages():
             cloned = [dict(message) for message in conversation]
             self.conversations.append(cloned)
             return LLMResponse(
-                "Ответ",
+                "Answer",
                 (),
                 request_messages=tuple(dict(message) for message in conversation),
             )
@@ -1144,7 +1144,7 @@ def test_run_command_records_full_llm_request_sequence():
                     request_messages=tuple(dict(message) for message in conversation),
                 )
             return LLMResponse(
-                "Готово",
+                "Done",
                 (),
                 request_messages=tuple(dict(message) for message in conversation),
             )
@@ -1168,7 +1168,7 @@ def test_run_command_records_full_llm_request_sequence():
     mcp = EchoMCP()
     agent = LocalAgent(llm=llm, mcp=mcp)
 
-    result = agent.run_command("начать")
+    result = agent.run_command("start")
 
     assert result["ok"] is True
     diagnostic = result.get("diagnostic")
@@ -1185,7 +1185,7 @@ def test_run_command_records_full_llm_request_sequence():
     assert second_request["step"] == 2
     second_roles = [msg["role"] for msg in second_request["messages"]]
     assert second_roles[-2:] == ["assistant", "tool"]
-    assert second_request["messages"][0]["content"] == "начать"
+    assert second_request["messages"][0]["content"] == "start"
 
     assert len(mcp.tool_calls) == 1
     assert mcp.tool_calls[0][0] == "demo_tool"
@@ -1201,7 +1201,7 @@ def test_run_command_passes_history_to_llm():
 
         def respond(self, conversation):
             self.conversations.append(list(conversation))
-            return LLMResponse("Готово", ())
+            return LLMResponse("Done", ())
 
     class SilentMCP(MCPAsyncBridge):
         def check_tools(self):
@@ -1240,7 +1240,7 @@ def test_run_command_includes_context_messages():
 
         def respond(self, conversation):
             self.conversations.append(list(conversation))
-            return LLMResponse("готово", ())
+            return LLMResponse("done", ())
 
     class PassiveMCP(MCPAsyncBridge):
         def check_tools(self):
@@ -1258,13 +1258,13 @@ def test_run_command_includes_context_messages():
         ),
     }
 
-    agent.run_command("выполни", context=context_message)
+    agent.run_command("execute", context=context_message)
     assert llm.conversations[0][-2] == context_message
-    assert llm.conversations[0][-1] == {"role": "user", "content": "выполни"}
+    assert llm.conversations[0][-1] == {"role": "user", "content": "execute"}
 
     async def exercise() -> None:
         await agent.run_command_async(
-            "повтори",
+            "repeat",
             context=[
                 {
                     "role": "system",
@@ -1282,7 +1282,7 @@ def test_run_command_includes_context_messages():
             "Selected requirement RIDs: SYS-2"
         ),
     }
-    assert llm.conversations[1][-1] == {"role": "user", "content": "повтори"}
+    assert llm.conversations[1][-1] == {"role": "user", "content": "repeat"}
 
 
 def test_custom_confirm_message(monkeypatch):
@@ -1312,7 +1312,7 @@ def test_custom_confirm_message(monkeypatch):
                         ),
                     ),
                 )
-            return LLMResponse("Удалено", ())
+            return LLMResponse("Deleted", ())
 
         async def respond_async(self, conversation, *, cancellation=None):
             return self.respond(conversation)
@@ -1346,7 +1346,7 @@ def test_custom_confirm_message(monkeypatch):
     agent = LocalAgent(settings=AppSettings(), confirm=custom_confirm)
     result = agent.run_command("remove")
     assert result["ok"] is True
-    assert result["result"] == "Удалено"
+    assert result["result"] == "Deleted"
     assert result.get("tool_results")
     assert result["tool_results"][0]["ok"] is True
     for tool_payload in result["tool_results"]:
@@ -1384,7 +1384,7 @@ def test_async_methods_offload_to_threads():
                         ),
                     ),
                 )
-            return LLMResponse("готово", ())
+            return LLMResponse("done", ())
 
         async def check_llm_async(self):
             return await asyncio.to_thread(self.check_llm)
@@ -1420,7 +1420,7 @@ def test_async_methods_offload_to_threads():
         assert await agent.check_tools_async() == {"ok": True, "error": None}
         result = await agent.run_command_async("anything")
         assert result["ok"] is True
-        assert result["result"] == "готово"
+        assert result["result"] == "done"
         assert result.get("tool_results")
         assert result["tool_results"][0]["ok"] is True
         for tool_payload in result["tool_results"]:
@@ -1462,7 +1462,7 @@ def test_async_methods_prefer_native_coroutines():
                         ),
                     ),
                 )
-            return LLMResponse("готово", ())
+            return LLMResponse("done", ())
 
     class AsyncMCP:
         def __init__(self) -> None:
@@ -1489,7 +1489,7 @@ def test_async_methods_prefer_native_coroutines():
         assert await agent.check_tools_async() == {"ok": True, "error": None}
         result = await agent.run_command_async("text")
         assert result["ok"] is True
-        assert result["result"] == "готово"
+        assert result["result"] == "done"
         assert result.get("tool_results")
         assert result["tool_results"][0]["ok"] is True
         for tool_payload in result["tool_results"]:

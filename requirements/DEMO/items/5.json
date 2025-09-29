@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демонстрационная документация обязана перечислять зарегистрированные MCP-инструменты, их контракты, жизненный цикл и стратегии логирования ошибок.",
+  "statement": "The demo documentation must enumerate registered MCP tools, their contracts, lifecycles, and error logging strategies.",
   "status": "draft",
-  "title": "Инструменты MCP",
+  "title": "MCP tools",
   "type": "requirement",
   "verification": "analysis"
 }

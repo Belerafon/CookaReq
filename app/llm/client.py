@@ -578,10 +578,10 @@ class LLMClient:
                 status_code = 404
         if status_code == 404:
             return (
-                "Harmony требует поддержку OpenAI Responses API. "
-                f"Провайдер по адресу {self.settings.base_url!r} вернул 404 Not Found "
-                "на попытку вызвать /responses. Обновите прокси/endpoint до версии, "
-                "совместимой с Responses API, или используйте формат \"OpenAI "
-                "(legacy)\" для несовместимых серверов."
+                "Harmony requires support for the OpenAI Responses API. "
+                f"The provider at {self.settings.base_url!r} returned 404 Not Found "
+                "when /responses was requested. Upgrade the proxy/endpoint to a "
+                "Responses-compatible version or switch to the \"OpenAI (legacy)\" "
+                "format for incompatible servers."
             )
         return None

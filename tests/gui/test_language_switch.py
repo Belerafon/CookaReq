@@ -70,7 +70,8 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app, tmp_path, gui_context
     monkeypatch.setattr(main_frame, "SettingsDialog", DummySettingsDialog)
 
     frame.on_open_settings(None)
-    assert frame.GetMenuBar().GetMenu(0).GetTitle() == "&Файл"
+    expected_title = i18n.gettext("&File")
+    assert frame.GetMenuBar().GetMenu(0).GetTitle() == expected_title
 
     frame.Destroy()
     # restore default language for subsequent tests

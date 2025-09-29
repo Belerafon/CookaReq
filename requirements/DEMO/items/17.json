@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демо-набор должен содержать пример использования trace matrix с настройками осей, показывающий связи между слоями и сценариями.",
+  "statement": "The demo set must include a trace matrix example with axis settings that illustrates links between layers and scenarios.",
   "status": "draft",
-  "title": "Пример трассировки",
+  "title": "Traceability example",
   "type": "requirement",
   "verification": "analysis"
 }

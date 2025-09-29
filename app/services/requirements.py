@@ -285,6 +285,18 @@ class RequirementsService:
             docs=docs,
         )
 
+    def load_requirements(
+        self, *, prefixes: Sequence[str] | None = None
+    ) -> list[Requirement]:
+        """Return requirements for ``prefixes`` refreshing link metadata."""
+
+        docs = self._ensure_documents()
+        return doc_store.load_requirements(
+            self.root,
+            prefixes=prefixes,
+            docs=docs,
+        )
+
     def search_requirements(
         self,
         *,

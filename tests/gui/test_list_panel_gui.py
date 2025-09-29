@@ -11,7 +11,10 @@ from app.core.model import (
     RequirementType,
     Status,
     Verification,
+    requirement_to_dict,
 )
+from app.services.requirements import RequirementsService
+from app.ui.controllers import DocumentsController
 
 pytestmark = [pytest.mark.gui, pytest.mark.gui_smoke]
 
@@ -392,6 +395,45 @@ def test_derived_column_and_marker(wx_app):
 
     assert panel.list.GetItemText(1, 0).startswith("↳")
     assert panel.list.GetItemText(1, 1) == "REQ-001 — Parent"
+    frame.Destroy()
+
+
+def test_reload_marks_child_suspect_after_parent_change(wx_app, tmp_path):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    from app.ui.requirement_model import RequirementModel
+
+    service = RequirementsService(tmp_path)
+    service.create_document(prefix="SYS", title="System")
+    service.create_document(prefix="REQ", title="Requirements", parent="SYS")
+    service.create_requirement("SYS", requirement_to_dict(_req(1, "Parent")))
+    service.create_requirement(
+        "REQ",
+        requirement_to_dict(_req(1, "Child", links=["SYS1"])),
+    )
+
+    model = RequirementModel()
+    controller = DocumentsController(service, model)
+    controller.load_documents()
+    derived_map = controller.load_items("REQ")
+
+    frame = wx.Frame(None)
+    panel = list_panel.ListPanel(frame, model=model)
+    panel.set_requirements(model.get_all(), derived_map)
+
+    child = panel.model.get_all()[0]
+    assert child.links and child.links[0].suspect is False
+
+    service.update_requirement_field("SYS1", field="statement", value="Updated body")
+    derived_map = controller.load_items("REQ")
+    panel.set_requirements(model.get_all(), derived_map)
+
+    child = panel.model.get_all()[0]
+    assert child.links and child.links[0].suspect is True
+    assert panel.derived_map.get("SYS1") == [child.id]
+
     frame.Destroy()
 
 

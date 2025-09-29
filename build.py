@@ -11,12 +11,17 @@ from pathlib import Path
 
 import PyInstaller.__main__  # type: ignore
 
+from app.resources.fonts import ensure_cached_fonts
+
 
 def main() -> None:
     """Build project executables using PyInstaller."""
     root = Path(__file__).resolve().parent
     script = root / "app" / "main.py"
     icon = root / "app" / "resources" / "app.ico"
+    font_dir = root / "app" / "resources" / "fonts"
+    fonts = ensure_cached_fonts()
+
     args: list[str] = [
         str(script),
         "--name=CookaReq",
@@ -33,6 +38,16 @@ def main() -> None:
         f"--add-data={icon}{os.pathsep}app/resources",
         f"--icon={icon}",
     ]
+
+    args.append(
+        f"--add-data={fonts.regular}{os.pathsep}app/resources/fonts/NotoSans-Regular.ttf"
+    )
+    args.append(
+        f"--add-data={fonts.bold}{os.pathsep}app/resources/fonts/NotoSans-Bold.ttf"
+    )
+    license_file = font_dir / "OFL.txt"
+    if license_file.exists():
+        args.append(f"--add-data={license_file}{os.pathsep}app/resources/fonts/OFL.txt")
 
     # Allow switching to a single EXE if user passes "--onefile"
     if any(a == "--onefile" for a in sys.argv[1:]):

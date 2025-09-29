@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, UTC
 from io import BytesIO
 from pathlib import Path
-from collections.abc import Iterable, Mapping, Sequence
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, StyleSheet1, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     ListFlowable,
     ListItem,
@@ -25,6 +27,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 from .document_store import Document, DocumentNotFoundError, load_documents, load_requirements
 from .model import Requirement
+from ..resources.fonts import ensure_font_paths
 
 __all__ = [
     "DocumentExport",
@@ -36,6 +39,11 @@ __all__ = [
     "render_requirements_markdown",
     "render_requirements_pdf",
 ]
+
+_PDF_FONT_FAMILY = "CookaReqSans"
+_PDF_FONT_NORMAL = _PDF_FONT_FAMILY
+_PDF_FONT_BOLD = f"{_PDF_FONT_FAMILY}-Bold"
+_PDF_FONTS_REGISTERED = False
 
 
 @dataclass(slots=True)
@@ -325,8 +333,36 @@ def render_requirements_html(export: RequirementExport, *, title: str | None = N
     return "".join(parts)
 
 
+def _register_pdf_fonts() -> None:
+    global _PDF_FONTS_REGISTERED
+    if _PDF_FONTS_REGISTERED:
+        return
+
+    with ensure_font_paths() as fonts:
+        pdfmetrics.registerFont(TTFont(_PDF_FONT_NORMAL, str(fonts.regular)))
+        pdfmetrics.registerFont(TTFont(_PDF_FONT_BOLD, str(fonts.bold)))
+        pdfmetrics.registerFontFamily(
+            _PDF_FONT_FAMILY,
+            normal=_PDF_FONT_NORMAL,
+            bold=_PDF_FONT_BOLD,
+            italic=_PDF_FONT_NORMAL,
+            boldItalic=_PDF_FONT_BOLD,
+        )
+
+    _PDF_FONTS_REGISTERED = True
+
+
 def _ensure_stylesheet() -> StyleSheet1:
+    _register_pdf_fonts()
+
     styles = getSampleStyleSheet()
+    styles["Title"].fontName = _PDF_FONT_BOLD
+    styles["BodyText"].fontName = _PDF_FONT_NORMAL
+    styles["Heading1"].fontName = _PDF_FONT_BOLD
+    styles["Heading2"].fontName = _PDF_FONT_BOLD
+    styles["Heading3"].fontName = _PDF_FONT_BOLD
+    styles["Heading4"].fontName = _PDF_FONT_BOLD
+    styles["Normal"].fontName = _PDF_FONT_NORMAL
     if "RequirementHeading" not in styles:
         styles.add(
             ParagraphStyle(
@@ -430,6 +466,7 @@ def render_requirements_pdf(export: RequirementExport, *, title: str | None = No
                             ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
                             ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
                             ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ("FONT", (0, 0), (-1, -1), _PDF_FONT_NORMAL, 9),
                         ]
                     )
                 )

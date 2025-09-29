@@ -63,9 +63,14 @@ class TranscriptView:
         transcript_panel = self._panel
         transcript_panel.Freeze()
 
-        def run(label: str, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        def run(
+            step_name: str,
+            func: Callable[..., Any],
+            *args: Any,
+            **kwargs: Any,
+        ) -> Any:
             if diagnostics is not None:
-                return diagnostics.step(label, func, *args, **kwargs)
+                return diagnostics.step(step_name, func, *args, **kwargs)
             return func(*args, **kwargs)
 
         try:

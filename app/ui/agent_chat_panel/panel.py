@@ -184,13 +184,17 @@ class _ChatSwitchDiagnostics:
             f"refresh_history={self._refresh_history} "
             f"total_ms={total * 1000:.1f}"
         )
-        print(header, flush=True)
+        lines = [header]
         if self._title:
-            print(f"    title={self._title}", flush=True)
+            lines.append(f"    title={self._title}")
         if self._preview:
-            print(f"    preview={self._preview}", flush=True)
-        for label, duration in self._steps:
-            print(f"    {label}: {duration * 1000:.1f}ms", flush=True)
+            lines.append(f"    preview={self._preview}")
+        lines.extend(
+            f"    {label}: {duration * 1000:.1f}ms" for label, duration in self._steps
+        )
+        for line in lines:
+            print(line, flush=True)
+        logger.info("\n".join(lines))
 
 
 try:  # pragma: no cover - import only used for typing

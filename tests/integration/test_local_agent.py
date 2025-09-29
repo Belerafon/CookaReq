@@ -84,6 +84,18 @@ class DummyMCP(MCPAsyncBridge):
         raise AssertionError("should not be called")
 
 
+def _make_validation_error(message: str) -> ToolValidationError:
+    error = ToolValidationError(message)
+    error.llm_message = ""
+    error.llm_tool_calls = [
+        {
+            "id": "call-0",
+            "function": {"name": "list_requirements", "arguments": "{}"},
+        }
+    ]
+    return error
+
+
 def test_prepare_context_messages_batches_selected_requirement_summaries():
     class RecordingMCP(MCPAsyncBridge):
         def __init__(self):
@@ -266,6 +278,50 @@ def test_run_command_reports_internal_error_for_openai_failure():
     assert result["error"]["code"] == ErrorCode.INTERNAL
     assert result["error"]["message"] == "temporary outage"
     assert result["error"]["details"]["type"] == "APIConnectionError"
+
+
+def test_run_command_reports_validation_fallback_message():
+    class EmptyValidationLLM(LLMAsyncBridge):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            self.calls += 1
+            raise _make_validation_error(
+                "Invalid arguments for list_requirements: per_page is required"
+            )
+
+    llm = EmptyValidationLLM()
+    agent = LocalAgent(
+        llm=llm,
+        mcp=DummyMCP(),
+        max_consecutive_tool_errors=1,
+    )
+
+    result = agent.run_command("list requirements")
+
+    assert llm.calls == 1
+    assert result["ok"] is False
+    error = result["error"]
+    assert error["code"] == ErrorCode.VALIDATION_ERROR
+    assert (
+        error["message"]
+        == "Invalid arguments for list_requirements: per_page is required"
+    )
+    details = error.get("details") or {}
+    assert details.get("type") == "ToolValidationError"
+    fallback_message = details.get("llm_message")
+    assert fallback_message
+    assert (
+        fallback_message
+        == "Invalid arguments for list_requirements: per_page is required (type: ToolValidationError)"
+    )
+    stop_reason = result.get("agent_stop_reason") or {}
+    assert stop_reason.get("type") == "consecutive_tool_errors"
+    assert stop_reason.get("count") == 1
 
 
 def test_run_command_propagates_mcp_exception():

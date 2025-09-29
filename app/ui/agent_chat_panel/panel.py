@@ -1073,8 +1073,28 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if isinstance(result, Mapping):
             raw_payload = history_json_safe(result)
             if not result.get("ok", False):
-                display_text = format_error_message(result.get("error"))
+                error_payload = result.get("error")
+                display_text = format_error_message(error_payload)
                 conversation_parts.append(display_text)
+                llm_detail_text: str | None = None
+                if isinstance(error_payload, Mapping):
+                    details_payload = error_payload.get("details")
+                    if isinstance(details_payload, Mapping):
+                        raw_llm_message = details_payload.get("llm_message")
+                        if isinstance(raw_llm_message, str):
+                            stripped = raw_llm_message.strip()
+                            if stripped:
+                                llm_detail_text = stripped
+                if (
+                    llm_detail_text
+                    and llm_detail_text not in conversation_parts
+                ):
+                    conversation_parts.append(llm_detail_text)
+                    if llm_detail_text not in display_text:
+                        if display_text:
+                            display_text = f"{display_text}\n\n{llm_detail_text}"
+                        else:
+                            display_text = llm_detail_text
             else:
                 payload = result.get("result")
                 display_text = stringify_payload(payload)

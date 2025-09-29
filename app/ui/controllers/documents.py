@@ -17,7 +17,7 @@ from ...services.requirements import (
     parse_rid,
     rid_for,
 )
-from ...core.model import Requirement, requirement_from_dict, requirement_to_dict
+from ...core.model import Requirement, requirement_to_dict
 from ...core.trace_matrix import TraceMatrix, TraceMatrixConfig, build_trace_matrix
 
 
@@ -46,17 +46,13 @@ class DocumentsController:
         Returns a mapping of parent requirement RID to list of linked item ids.
         """
         try:
-            doc = self._get_document(prefix)
+            self._get_document(prefix)
         except ValueError:
             self.model.set_requirements([])
             return {}
-        items: list[Requirement] = []
+        items = self.service.load_requirements(prefixes=[prefix])
         derived_map: dict[str, list[int]] = {}
-        for item_id in self.service.list_item_ids(prefix):
-            data, _mtime = self.service.load_item(prefix, item_id)
-            rid = rid_for(doc, item_id)
-            req = requirement_from_dict(data, doc_prefix=doc.prefix, rid=rid)
-            items.append(req)
+        for req in items:
             for parent in getattr(req, "links", []):
                 parent_rid = getattr(parent, "rid", parent)
                 derived_map.setdefault(parent_rid, []).append(req.id)

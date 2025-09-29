@@ -183,6 +183,7 @@ class MessageBubble(wx.Panel):
             hint_value = None
         if hint_value is not None and hint_value <= 0:
             hint_value = None
+        self._explicit_width_hint = hint_value
         self._initial_width_hint = hint_value
 
         display_text = normalize_for_display(text)
@@ -228,6 +229,7 @@ class MessageBubble(wx.Panel):
         bubble_sizer = wx.BoxSizer(wx.VERTICAL)
         bubble.SetSizer(bubble_sizer)
         self._bubble = bubble
+        self._bubble_sizer = bubble_sizer
         self._min_bubble_width = (
             self.FromDIP(160)
             if allow_selection or render_markdown
@@ -244,6 +246,11 @@ class MessageBubble(wx.Panel):
         if header_font.IsOk():
             header_font.MakeSmaller()
             header.SetFont(header_font)
+        self._header = header
+        self._role_label = role_label
+        self._timestamp = timestamp
+        self._align = align
+        self._render_markdown = render_markdown
 
         header_row = wx.BoxSizer(wx.HORIZONTAL)
         header_row.Add(header, 1, wx.ALIGN_CENTER_VERTICAL)
@@ -329,6 +336,7 @@ class MessageBubble(wx.Panel):
         )
 
         footer_targets: list[wx.Window] = []
+        footer_object: wx.Sizer | wx.Window | None = None
         if footer_factory is not None:
             footer = footer_factory(bubble)
             if isinstance(footer, wx.Sizer):
@@ -338,6 +346,7 @@ class MessageBubble(wx.Panel):
                     wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
                     self._content_padding,
                 )
+                footer_object = footer
                 for item in footer.GetChildren():
                     window = item.GetWindow()
                     if window is not None:
@@ -349,7 +358,9 @@ class MessageBubble(wx.Panel):
                     wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
                     self._content_padding,
                 )
+                footer_object = footer
                 footer_targets.append(footer)
+        self._footer = footer_object
 
         bubble.Bind(wx.EVT_SIZE, self._on_bubble_resize)
         self.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
@@ -382,6 +393,120 @@ class MessageBubble(wx.Panel):
             else:
                 self._cached_width_constraints = (initial_width, initial_width)
 
+        self._schedule_width_update()
+
+    # ------------------------------------------------------------------
+    def update_header(self, role_label: str, timestamp: str) -> None:
+        """Update the header label and timestamp."""
+
+        header = self._header
+        if not _is_window_usable(header):
+            return
+        self._role_label = role_label
+        self._timestamp = timestamp
+        header_text = role_label if not timestamp else f"{role_label} • {timestamp}"
+        if header.GetLabel() != header_text:
+            header.SetLabel(header_text)
+
+    # ------------------------------------------------------------------
+    def update_text(self, text: str) -> None:
+        """Refresh main message text without rebuilding the widget."""
+
+        display_text = normalize_for_display(text)
+        if display_text == self._text_value:
+            return
+        self._text_value = display_text
+        control = self._text
+        if isinstance(control, wx.StaticText):
+            control.SetLabel(display_text)
+            control.Wrap(self.FromDIP(320))
+        elif isinstance(control, wx.TextCtrl):
+            control.ChangeValue(display_text)
+        else:
+            from .markdown_view import MarkdownContent
+
+            if isinstance(control, MarkdownContent):
+                control.SetMarkdown(text)
+
+    # ------------------------------------------------------------------
+    def set_footer(self, footer_factory: FooterFactory | None) -> None:
+        """Replace the optional footer contents."""
+
+        bubble = self._bubble
+        if not _is_window_usable(bubble):
+            return
+        existing = self._footer
+        if isinstance(existing, wx.Window) and _is_window_usable(existing):
+            try:
+                self._bubble_sizer.Detach(existing)
+            except RuntimeError:
+                pass
+            existing.Destroy()
+        elif isinstance(existing, wx.Sizer):
+            try:
+                self._bubble_sizer.Detach(existing)
+            except RuntimeError:
+                pass
+            existing.Clear(delete_windows=True)
+        self._footer = None
+        if footer_factory is None:
+            return
+        footer = footer_factory(bubble)
+        footer_targets: list[wx.Window] = []
+        if isinstance(footer, wx.Sizer):
+            self._bubble_sizer.Add(
+                footer,
+                0,
+                wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
+                self._content_padding,
+            )
+            for item in footer.GetChildren():
+                window = item.GetWindow()
+                if window is not None:
+                    footer_targets.append(window)
+        elif isinstance(footer, wx.Window):
+            self._bubble_sizer.Add(
+                footer,
+                0,
+                wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
+                self._content_padding,
+            )
+            footer_targets.append(footer)
+        self._footer = footer
+        for target in footer_targets:
+            self._attach_context_menu_handlers(target)
+
+    # ------------------------------------------------------------------
+    def set_explicit_width_hint(self, width_hint: int | None) -> None:
+        """Apply explicit width hint without recreating the bubble."""
+
+        if width_hint is not None:
+            try:
+                hint = int(width_hint)
+            except (TypeError, ValueError):
+                hint = None
+            else:
+                if hint <= 0:
+                    hint = None
+        else:
+            hint = None
+        if hint == self._explicit_width_hint:
+            return
+        self._explicit_width_hint = hint
+        bubble = self._bubble
+        if not _is_window_usable(bubble):
+            return
+        try:
+            if hint is None:
+                bubble.SetMinSize(wx.DefaultSize)
+                bubble.SetMaxSize(wx.DefaultSize)
+            else:
+                size = wx.Size(hint, -1)
+                bubble.SetMinSize(size)
+                bubble.SetMaxSize(size)
+        except RuntimeError:
+            return
+        self._cached_width_constraints = None
         self._schedule_width_update()
 
     def _build_default_palette(
@@ -756,6 +881,21 @@ class MessageBubble(wx.Panel):
         return max_width
 
 
+@dataclass(slots=True)
+class _TranscriptPanelState:
+    prompt: str
+    prompt_timestamp: str
+    response: str
+    response_timestamp: str
+    regenerate_enabled: bool
+    regenerate_available: bool
+    tool_summaries: tuple[ToolCallSummary, ...]
+    context_signature: str
+    reasoning_signature: str
+    regenerated: bool
+    layout_hints: tuple[tuple[str, int], ...]
+
+
 class TranscriptMessagePanel(wx.Panel):
     """Compact chat entry view for a prompt/response pair."""
 
@@ -780,47 +920,39 @@ class TranscriptMessagePanel(wx.Panel):
         self.SetBackgroundColour(parent.GetBackgroundColour())
         self.SetDoubleBuffered(True)
 
+        self._padding = self.FromDIP(4)
+        self._on_layout_hint = on_layout_hint
+        self._regenerate_handler = on_regenerate
+        self._regenerate_button: wx.Button | None = None
+        self._user_bubble: MessageBubble | None = None
+        self._agent_bubble: MessageBubble | None = None
+        self._tool_bubbles: list[tuple[ToolCallSummary, MessageBubble]] = []
+        self._tool_section = wx.BoxSizer(wx.VERTICAL)
+        self._reasoning_section = wx.BoxSizer(wx.VERTICAL)
+        self._reasoning_pane: wx.CollapsiblePane | None = None
+        self._context_signature = ""
+        self._reasoning_signature = ""
+        self._layout_hints = self._sanitize_layout_hints(layout_hints)
+        self._state = _TranscriptPanelState(
+            prompt="",
+            prompt_timestamp="",
+            response="",
+            response_timestamp="",
+            regenerate_enabled=regenerate_enabled,
+            regenerate_available=on_regenerate is not None,
+            tool_summaries=(),
+            context_signature="",
+            reasoning_signature="",
+            regenerated=False,
+            layout_hints=tuple(sorted(self._layout_hints.items())),
+        )
+
         outer = wx.BoxSizer(wx.VERTICAL)
-        padding = self.FromDIP(4)
+        self.SetSizer(outer)
 
-        def _emit_layout_hint(key: str, width: int) -> None:
-            if on_layout_hint is None or width <= 0:
-                return
-            with suppress(Exception):
-                on_layout_hint(key, int(width))
-
-        def _resolve_hint(key: str) -> int | None:
-            if not layout_hints:
-                return None
-            value = layout_hints.get(key)
-            if value is None:
-                return None
-            try:
-                width = int(value)
-            except (TypeError, ValueError):
-                return None
-            return width if width > 0 else None
-
+        self._regenerated_notice: wx.StaticText | None = None
         if regenerated:
-            notice = wx.StaticText(
-                self,
-                label=_("Previous attempt (kept after regeneration)"),
-            )
-            notice_font = notice.GetFont()
-            if notice_font.IsOk():
-                notice_font.MakeItalic()
-                notice.SetFont(notice_font)
-            notice.SetForegroundColour(
-                wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT)
-            )
-            outer.Add(notice, 0, wx.LEFT | wx.RIGHT | wx.TOP, padding)
-
-        if context_messages:
-            def context_footer_factory(container: wx.Window) -> wx.Window:
-                return self._create_context_panel(container, context_messages)
-
-        else:
-            context_footer_factory = None
+            self._regenerated_notice = self._create_regenerated_notice(outer)
 
         user_bubble = MessageBubble(
             self,
@@ -828,37 +960,16 @@ class TranscriptMessagePanel(wx.Panel):
             timestamp=prompt_timestamp,
             text=prompt,
             align="right",
-            footer_factory=context_footer_factory,
-            width_hint=_resolve_hint("user"),
-            on_width_change=lambda width: _emit_layout_hint("user", width),
+            footer_factory=self._context_footer_factory(context_messages),
+            width_hint=self._resolve_hint("user"),
+            on_width_change=lambda width: self._emit_layout_hint("user", width),
         )
-        outer.Add(user_bubble, 0, wx.EXPAND | wx.ALL, padding)
+        outer.Add(user_bubble, 0, wx.EXPAND | wx.ALL, self._padding)
+        self._user_bubble = user_bubble
+        self._context_signature = self._context_messages_signature(context_messages)
 
-        summaries = list(tool_summaries or [])
-        tool_bubbles: list[MessageBubble] = []
-        if summaries:
-            parent_background = self.GetBackgroundColour()
-            for summary in summaries:
-                markdown = render_tool_summary_markdown(summary).strip()
-                if not markdown:
-                    continue
-                hint_key = self.tool_layout_hint_key(summary)
-                bubble = MessageBubble(
-                    self,
-                    role_label=summary.tool_name,
-                    timestamp="",
-                    text=markdown,
-                    align="left",
-                    allow_selection=True,
-                    render_markdown=True,
-                    palette=_tool_bubble_palette(parent_background, summary.tool_name),
-                    width_hint=_resolve_hint(hint_key),
-                    on_width_change=lambda width, key=hint_key: _emit_layout_hint(key, width),
-                )
-                tool_bubbles.append(bubble)
-
-        for bubble in tool_bubbles:
-            outer.Add(bubble, 0, wx.EXPAND | wx.ALL, padding)
+        outer.Add(self._tool_section, 0, wx.EXPAND)
+        self._build_tool_bubbles(tool_summaries)
 
         agent_bubble = MessageBubble(
             self,
@@ -868,37 +979,239 @@ class TranscriptMessagePanel(wx.Panel):
             align="left",
             allow_selection=True,
             render_markdown=True,
-            footer_factory=(
-                lambda container: self._create_regenerate_footer(
-                    container,
-                    on_regenerate=on_regenerate,
-                    enabled=regenerate_enabled,
-                )
-                if on_regenerate is not None
-                else None
+            footer_factory=self._regenerate_footer_factory(
+                on_regenerate, regenerate_enabled
             ),
-            width_hint=_resolve_hint("agent"),
-            on_width_change=lambda width: _emit_layout_hint("agent", width),
+            width_hint=self._resolve_hint("agent"),
+            on_width_change=lambda width: self._emit_layout_hint("agent", width),
         )
-        outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, padding)
+        outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, self._padding)
+        self._agent_bubble = agent_bubble
 
-        reasoning_panel = self._create_reasoning_panel(reasoning_segments)
-        if reasoning_panel is not None:
-            outer.Add(reasoning_panel, 0, wx.EXPAND | wx.ALL, padding)
+        outer.Add(self._reasoning_section, 0, wx.EXPAND)
+        self._update_reasoning(reasoning_segments)
 
-        self.SetSizer(outer)
+        self._state = _TranscriptPanelState(
+            prompt=prompt,
+            prompt_timestamp=prompt_timestamp,
+            response=response,
+            response_timestamp=response_timestamp,
+            regenerate_enabled=regenerate_enabled,
+            regenerate_available=on_regenerate is not None,
+            tool_summaries=tuple(tool_summaries or ()),
+            context_signature=self._context_signature,
+            reasoning_signature=self._reasoning_signature,
+            regenerated=regenerated,
+            layout_hints=tuple(sorted(self._layout_hints.items())),
+        )
 
     @staticmethod
     def tool_layout_hint_key(summary: ToolCallSummary) -> str:
+        return f"tool:{summary.tool_name.strip().lower()}:{summary.index}"
+
+    def update_from_entry(
+        self,
+        *,
+        prompt: str,
+        response: str,
+        prompt_timestamp: str = "",
+        response_timestamp: str = "",
+        on_regenerate: Callable[[], None] | None = None,
+        regenerate_enabled: bool = True,
+        tool_summaries: Sequence[ToolCallSummary] | None = None,
+        context_messages: Sequence[Mapping[str, Any]] | None = None,
+        reasoning_segments: Sequence[Mapping[str, Any]] | None = None,
+        regenerated: bool = False,
+        layout_hints: Mapping[str, int] | None = None,
+    ) -> None:
+        self._layout_hints = self._sanitize_layout_hints(layout_hints)
+        layout_hint_state = tuple(sorted(self._layout_hints.items()))
+
+        if self._regenerated_notice is None and regenerated:
+            self._regenerated_notice = self._create_regenerated_notice(self.GetSizer())
+        elif self._regenerated_notice is not None and not regenerated:
+            notice = self._regenerated_notice
+            if _is_window_usable(notice):
+                try:
+                    self.GetSizer().Detach(notice)
+                except Exception:
+                    pass
+                notice.Destroy()
+            self._regenerated_notice = None
+
+        user_bubble = self._user_bubble
+        if user_bubble is not None:
+            if prompt != self._state.prompt:
+                user_bubble.update_text(prompt)
+            if prompt_timestamp != self._state.prompt_timestamp:
+                user_bubble.update_header(_("You"), prompt_timestamp)
+            user_bubble.set_explicit_width_hint(self._resolve_hint("user"))
+            context_signature = self._context_messages_signature(context_messages)
+            if context_signature != self._context_signature:
+                user_bubble.set_footer(
+                    self._context_footer_factory(context_messages)
+                )
+                self._context_signature = context_signature
+
+        self._update_tool_bubbles(tool_summaries)
+
+        agent_bubble = self._agent_bubble
+        if agent_bubble is not None:
+            if response != self._state.response:
+                agent_bubble.update_text(response)
+            if response_timestamp != self._state.response_timestamp:
+                agent_bubble.update_header(_("Agent"), response_timestamp)
+            agent_bubble.set_explicit_width_hint(self._resolve_hint("agent"))
+            self._update_regenerate_footer(on_regenerate, regenerate_enabled)
+
+        self._update_reasoning(reasoning_segments)
+
+        self._state = _TranscriptPanelState(
+            prompt=prompt,
+            prompt_timestamp=prompt_timestamp,
+            response=response,
+            response_timestamp=response_timestamp,
+            regenerate_enabled=regenerate_enabled,
+            regenerate_available=on_regenerate is not None,
+            tool_summaries=tuple(tool_summaries or ()),
+            context_signature=self._context_signature,
+            reasoning_signature=self._reasoning_signature,
+            regenerated=regenerated,
+            layout_hints=layout_hint_state,
+        )
+
+    def _sanitize_layout_hints(
+        self, layout_hints: Mapping[str, int] | None
+    ) -> dict[str, int]:
+        sanitized: dict[str, int] = {}
+        if not layout_hints:
+            return sanitized
+        for key, value in layout_hints.items():
+            try:
+                width = int(value)
+            except (TypeError, ValueError):
+                continue
+            if width <= 0:
+                continue
+            sanitized[str(key)] = width
+        return sanitized
+
+    def _emit_layout_hint(self, key: str, width: int) -> None:
+        if self._on_layout_hint is None or width <= 0:
+            return
         try:
-            index = int(summary.index)
-        except (TypeError, ValueError):
-            index = 0
-        name = normalize_for_display(summary.tool_name).strip()
-        index_label = str(index) if index > 0 else "0"
-        if name:
-            return f"tool:{index_label}:{name}"
-        return f"tool:{index_label}"
+            self._on_layout_hint(key, int(width))
+        except Exception:
+            return
+
+    def _resolve_hint(self, key: str) -> int | None:
+        return self._layout_hints.get(key)
+
+    def _context_footer_factory(
+        self, context_messages: Sequence[Mapping[str, Any]] | None
+    ) -> FooterFactory | None:
+        if not context_messages:
+            return None
+
+        def factory(container: wx.Window) -> wx.Window | None:
+            return self._create_context_panel(container, context_messages)
+
+        return factory
+
+    def _context_messages_signature(
+        self, context_messages: Sequence[Mapping[str, Any]] | None
+    ) -> str:
+        return self._format_context_messages(context_messages).strip()
+
+    def _build_tool_bubbles(
+        self, tool_summaries: Sequence[ToolCallSummary] | None
+    ) -> None:
+        self._clear_tool_bubbles()
+        summaries = list(tool_summaries or [])
+        if not summaries:
+            return
+        parent_background = self.GetBackgroundColour()
+        for summary in summaries:
+            markdown = render_tool_summary_markdown(summary).strip()
+            if not markdown:
+                continue
+            hint_key = self.tool_layout_hint_key(summary)
+            bubble = MessageBubble(
+                self,
+                role_label=summary.tool_name,
+                timestamp="",
+                text=markdown,
+                align="left",
+                allow_selection=True,
+                render_markdown=True,
+                palette=_tool_bubble_palette(parent_background, summary.tool_name),
+                width_hint=self._resolve_hint(hint_key),
+                on_width_change=lambda width, key=hint_key: self._emit_layout_hint(
+                    key, width
+                ),
+            )
+            self._tool_section.Add(
+                bubble,
+                0,
+                wx.EXPAND | wx.ALL,
+                self._padding,
+            )
+            self._tool_bubbles.append((summary, bubble))
+
+    def _clear_tool_bubbles(self) -> None:
+        if not self._tool_bubbles:
+            return
+        for _, bubble in self._tool_bubbles:
+            if not _is_window_usable(bubble):
+                continue
+            try:
+                self._tool_section.Detach(bubble)
+            except Exception:
+                pass
+            bubble.Destroy()
+        self._tool_bubbles.clear()
+
+    def _update_tool_bubbles(
+        self, tool_summaries: Sequence[ToolCallSummary] | None
+    ) -> None:
+        current = tuple(summary for summary, _ in self._tool_bubbles)
+        desired = tuple(tool_summaries or ())
+        if current == desired:
+            for summary, bubble in self._tool_bubbles:
+                bubble.set_explicit_width_hint(
+                    self._resolve_hint(self.tool_layout_hint_key(summary))
+                )
+            return
+        self._build_tool_bubbles(tool_summaries)
+
+    def _create_regenerate_footer(
+        self,
+        container: wx.Window,
+        *,
+        on_regenerate: Callable[[], None],
+        enabled: bool,
+    ) -> wx.Sizer:
+        button = wx.Button(container, label=_("Regenerate"), style=wx.BU_EXACTFIT)
+        button.SetBackgroundColour(container.GetBackgroundColour())
+        button.SetForegroundColour(container.GetForegroundColour())
+        button.SetToolTip(_("Restart response generation"))
+        button.Bind(wx.EVT_BUTTON, self._on_regenerate_clicked)
+        button.Enable(enabled)
+        self._regenerate_button = button
+        self._regenerate_handler = on_regenerate
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        sizer.AddStretchSpacer()
+        sizer.Add(button, 0, wx.ALIGN_CENTER_VERTICAL)
+        return sizer
+
+    def _on_regenerate_clicked(self, _event: wx.CommandEvent) -> None:
+        handler = self._regenerate_handler
+        if handler is None:
+            return
+        try:
+            handler()
+        except Exception:  # pragma: no cover - defensive
+            pass
 
     def _create_context_panel(
         self,
@@ -1006,23 +1319,61 @@ class TranscriptMessagePanel(wx.Panel):
 
         return "\n\n".join(block for block in blocks if block)
 
-    def _create_regenerate_footer(
+    def _regenerate_footer_factory(
         self,
-        container: wx.Window,
-        *,
-        on_regenerate: Callable[[], None],
+        on_regenerate: Callable[[], None] | None,
         enabled: bool,
-    ) -> wx.Sizer:
-        button = wx.Button(container, label=_("Regenerate"), style=wx.BU_EXACTFIT)
-        button.SetBackgroundColour(container.GetBackgroundColour())
-        button.SetForegroundColour(container.GetForegroundColour())
-        button.SetToolTip(_("Restart response generation"))
-        button.Bind(wx.EVT_BUTTON, lambda _event: on_regenerate())
-        button.Enable(enabled)
-        sizer = wx.BoxSizer(wx.HORIZONTAL)
-        sizer.AddStretchSpacer()
-        sizer.Add(button, 0, wx.ALIGN_CENTER_VERTICAL)
-        return sizer
+    ) -> FooterFactory | None:
+        if on_regenerate is None:
+            self._regenerate_button = None
+            self._regenerate_handler = None
+            return None
+        self._regenerate_handler = on_regenerate
+
+        def factory(container: wx.Window) -> wx.Sizer:
+            return self._create_regenerate_footer(
+                container,
+                on_regenerate=on_regenerate,
+                enabled=enabled,
+            )
+
+        return factory
+
+    def _update_regenerate_footer(
+        self,
+        on_regenerate: Callable[[], None] | None,
+        enabled: bool,
+    ) -> None:
+        if on_regenerate is None:
+            if self._regenerate_button is not None:
+                self._agent_bubble.set_footer(None)
+                self._regenerate_button = None
+            self._regenerate_handler = None
+            return
+        if self._regenerate_button is None or not _is_window_usable(
+            self._regenerate_button
+        ):
+            self._agent_bubble.set_footer(
+                self._regenerate_footer_factory(on_regenerate, enabled)
+            )
+        else:
+            self._regenerate_handler = on_regenerate
+            self._regenerate_button.Enable(enabled)
+
+    def _create_regenerated_notice(self, outer: wx.Sizer) -> wx.StaticText:
+        notice = wx.StaticText(
+            self,
+            label=_("Previous attempt (kept after regeneration)"),
+        )
+        notice_font = notice.GetFont()
+        if notice_font.IsOk():
+            notice_font.MakeItalic()
+            notice.SetFont(notice_font)
+        notice.SetForegroundColour(
+            wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT)
+        )
+        outer.Insert(0, notice, 0, wx.LEFT | wx.RIGHT | wx.TOP, self._padding)
+        return notice
 
     def _create_reasoning_panel(
         self, reasoning_segments: Sequence[Mapping[str, Any]] | None
@@ -1070,7 +1421,48 @@ class TranscriptMessagePanel(wx.Panel):
         text_ctrl.SetMinSize((-1, self.FromDIP(100)))
         content_sizer.Add(text_ctrl, 1, wx.EXPAND | wx.TOP, self.FromDIP(4))
         inner.SetSizer(content_sizer)
+        setattr(pane, "_transcript_reasoning_text_ctrl", text_ctrl)
         return pane
+
+    def _update_reasoning(
+        self, reasoning_segments: Sequence[Mapping[str, Any]] | None
+    ) -> None:
+        signature = self._format_reasoning_segments(reasoning_segments).strip()
+        if signature == self._reasoning_signature:
+            if self._reasoning_pane is not None and _is_window_usable(
+                self._reasoning_pane
+            ):
+                text_ctrl = getattr(
+                    self._reasoning_pane,
+                    "_transcript_reasoning_text_ctrl",
+                    None,
+                )
+                if isinstance(text_ctrl, wx.TextCtrl):
+                    text_ctrl.ChangeValue(normalize_for_display(signature))
+            return
+        if self._reasoning_pane is not None and _is_window_usable(
+            self._reasoning_pane
+        ):
+            try:
+                self._reasoning_section.Detach(self._reasoning_pane)
+            except Exception:
+                pass
+            self._reasoning_pane.Destroy()
+            self._reasoning_pane = None
+        if not signature:
+            self._reasoning_signature = ""
+            return
+        pane = self._create_reasoning_panel(reasoning_segments)
+        if pane is not None:
+            self._reasoning_section.Add(
+                pane,
+                0,
+                wx.EXPAND | wx.ALL,
+                self._padding,
+            )
+            self._reasoning_pane = pane
+            self._reasoning_signature = signature
+
 
     @staticmethod
     def _format_reasoning_segments(

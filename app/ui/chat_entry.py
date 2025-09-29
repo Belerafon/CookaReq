@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import Any
 from collections.abc import Mapping, Sequence
@@ -16,6 +18,125 @@ from ..util.time import utc_now_iso
 
 
 _DEFAULT_TOKEN_MODEL = "cl100k_base"
+_DEFAULT_MODEL_KEY = "__default__"
+
+
+def _normalise_model_key(model: str | None) -> str:
+    text = (model or "").strip()
+    return text if text else _DEFAULT_MODEL_KEY
+
+
+def _hash_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _hash_context_messages(
+    messages: Sequence[Mapping[str, Any]] | None,
+) -> str:
+    if not messages:
+        return "empty"
+    serialised: list[str] = []
+    for message in messages:
+        try:
+            serialised.append(
+                json.dumps(message, ensure_ascii=False, sort_keys=True)
+            )
+        except TypeError:
+            fallback = {str(key): str(value) for key, value in message.items()}
+            serialised.append(
+                json.dumps(fallback, ensure_ascii=False, sort_keys=True)
+            )
+    blob = "\u241e".join(serialised)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class EntryTokenCacheRecord:
+    """Persisted token statistics for a chat entry component."""
+
+    digest: str
+    tokens: TokenCountResult
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"digest": self.digest, "tokens": self.tokens.to_dict()}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> EntryTokenCacheRecord:
+        digest = payload.get("digest")
+        if not isinstance(digest, str) or not digest:
+            raise ValueError("missing digest in cached token payload")
+        tokens_payload = payload.get("tokens")
+        if not isinstance(tokens_payload, Mapping):
+            raise ValueError("missing token info in cached token payload")
+        tokens = TokenCountResult.from_dict(tokens_payload)
+        return cls(digest=digest, tokens=tokens)
+
+
+def _deserialize_token_cache(
+    payload: Any,
+) -> dict[str, dict[str, EntryTokenCacheRecord]]:
+    """Return sanitised cache mapping from serialized representation."""
+
+    if not isinstance(payload, Mapping):
+        return {}
+    cache: dict[str, dict[str, EntryTokenCacheRecord]] = {}
+    for model_key, parts in payload.items():
+        if not isinstance(model_key, str) or not isinstance(parts, Mapping):
+            continue
+        model_cache: dict[str, EntryTokenCacheRecord] = {}
+        for part_name in ("prompt", "response", "context"):
+            raw_part = parts.get(part_name)
+            if not isinstance(raw_part, Mapping):
+                continue
+            try:
+                record = EntryTokenCacheRecord.from_dict(raw_part)
+            except Exception:
+                continue
+            model_cache[part_name] = record
+        if model_cache:
+            cache[model_key] = model_cache
+    return cache
+
+
+def count_context_message_tokens(
+    message: Mapping[str, Any],
+    model: str | None,
+) -> TokenCountResult:
+    """Return token usage for a single contextual message."""
+
+    if not isinstance(message, Mapping):
+        return TokenCountResult.exact(0, model=model)
+
+    parts: list[TokenCountResult] = []
+    role = message.get("role")
+    if role:
+        parts.append(count_text_tokens(str(role), model=model))
+    name = message.get("name")
+    if name:
+        parts.append(count_text_tokens(str(name), model=model))
+
+    content = message.get("content")
+    if content not in (None, ""):
+        if isinstance(content, str):
+            content_text = content
+        else:
+            try:
+                content_text = json.dumps(content, ensure_ascii=False)
+            except Exception:
+                content_text = str(content)
+        parts.append(count_text_tokens(content_text, model=model))
+
+    tool_calls = message.get("tool_calls")
+    if tool_calls:
+        try:
+            serialized = json.dumps(tool_calls, ensure_ascii=False)
+        except Exception:
+            serialized = str(tool_calls)
+        parts.append(count_text_tokens(serialized, model=model))
+
+    if not parts:
+        return TokenCountResult.exact(0, model=model)
+    return combine_token_counts(parts)
 
 
 def _recalculate_pair_token_info(prompt: str, response: str) -> TokenCountResult:
@@ -55,6 +176,11 @@ class ChatEntry:
     diagnostic: dict[str, Any] | None = None
     regenerated: bool = False
     layout_hints: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
+    token_cache: dict[str, dict[str, EntryTokenCacheRecord]] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:  # pragma: no cover - trivial
         if self.display_response is None:
@@ -108,6 +234,45 @@ class ChatEntry:
             self.reasoning = tuple(normalised_segments) if normalised_segments else None
         else:
             self.reasoning = None
+        self._sanitize_token_cache()
+
+    def _sanitize_token_cache(self) -> None:
+        raw_cache = self.token_cache
+        if isinstance(raw_cache, Mapping):
+            sanitized = _deserialize_token_cache(raw_cache)
+        else:
+            sanitized = {}
+        self.token_cache = sanitized
+
+    def _cache_lookup(
+        self,
+        part: str,
+        *,
+        model: str | None,
+        digest: str,
+    ) -> TokenCountResult | None:
+        model_key = _normalise_model_key(model)
+        cache = self.token_cache.get(model_key)
+        if not cache:
+            return None
+        record = cache.get(part)
+        if record is None:
+            return None
+        if record.digest != digest:
+            return None
+        return record.tokens
+
+    def _cache_store(
+        self,
+        part: str,
+        *,
+        model: str | None,
+        digest: str,
+        tokens: TokenCountResult,
+    ) -> None:
+        model_key = _normalise_model_key(model)
+        cache = self.token_cache.setdefault(model_key, {})
+        cache[part] = EntryTokenCacheRecord(digest=digest, tokens=tokens)
 
     def ensure_token_info(self, *, force: bool = False) -> TokenCountResult | None:
         """Ensure ``token_info`` reflects the current prompt/response text."""
@@ -120,6 +285,55 @@ class ChatEntry:
             return None
         self.tokens = info.tokens or 0
         return info
+
+    def ensure_prompt_token_usage(self, model: str | None) -> TokenCountResult:
+        """Return token count for the prompt, caching the result."""
+
+        text = self.prompt or ""
+        digest = _hash_text(text)
+        cached = self._cache_lookup("prompt", model=model, digest=digest)
+        if cached is not None:
+            return cached
+        result = count_text_tokens(text, model=model)
+        self._cache_store("prompt", model=model, digest=digest, tokens=result)
+        return result
+
+    def ensure_response_token_usage(self, model: str | None) -> TokenCountResult:
+        """Return token count for the response, caching the result."""
+
+        text = self.response or ""
+        digest = _hash_text(text)
+        cached = self._cache_lookup("response", model=model, digest=digest)
+        if cached is not None:
+            return cached
+        result = count_text_tokens(text, model=model)
+        self._cache_store("response", model=model, digest=digest, tokens=result)
+        return result
+
+    def ensure_context_token_usage(
+        self,
+        model: str | None,
+        *,
+        messages: tuple[dict[str, Any], ...] | None = None,
+    ) -> TokenCountResult:
+        """Return token count for contextual messages, caching the result."""
+
+        if messages is None:
+            messages = self.context_messages
+        if not messages:
+            return TokenCountResult.exact(0, model=model)
+        digest = _hash_context_messages(messages)
+        cached = self._cache_lookup("context", model=model, digest=digest)
+        if cached is not None:
+            return cached
+        parts = [
+            count_context_message_tokens(message, model)
+            for message in messages
+        ]
+        combined = combine_token_counts(parts)
+        if messages == self.context_messages:
+            self._cache_store("context", model=model, digest=digest, tokens=combined)
+        return combined
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> ChatEntry:
@@ -192,6 +406,9 @@ class ChatEntry:
         regenerated_raw = payload.get("regenerated")
         regenerated = bool(regenerated_raw) if isinstance(regenerated_raw, bool) else False
 
+        token_cache_raw = payload.get("token_cache")
+        token_cache = _deserialize_token_cache(token_cache_raw)
+
         return cls(
             prompt=prompt,
             response=response,
@@ -206,12 +423,13 @@ class ChatEntry:
             reasoning=reasoning,
             diagnostic=diagnostic,
             regenerated=regenerated,
+            token_cache=token_cache,
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Return representation suitable for JSON storage."""
 
-        return {
+        payload = {
             "prompt": self.prompt,
             "response": self.response,
             "tokens": self.tokens,
@@ -232,6 +450,21 @@ class ChatEntry:
             "diagnostic": dict(self.diagnostic) if self.diagnostic is not None else None,
             "regenerated": self.regenerated,
         }
+        cache_payload: dict[str, dict[str, Any]] = {}
+        for model_key, parts in self.token_cache.items():
+            if not isinstance(model_key, str) or not parts:
+                continue
+            part_payload: dict[str, Any] = {}
+            for part_name, record in parts.items():
+                if part_name not in {"prompt", "response", "context"}:
+                    continue
+                if not isinstance(record, EntryTokenCacheRecord):
+                    continue
+                part_payload[part_name] = record.to_dict()
+            if part_payload:
+                cache_payload[model_key] = part_payload
+        payload["token_cache"] = cache_payload
+        return payload
 
 
 @dataclass

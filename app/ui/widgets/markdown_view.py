@@ -280,6 +280,11 @@ class MarkdownContent(wx.Panel):
     def GetSelectionText(self) -> str:
         return self._view.GetSelectionText()
 
+    def SetMarkdown(self, markdown: str) -> None:
+        """Forward updated markdown to the underlying view."""
+
+        self._view.SetMarkdown(markdown)
+
     def SelectAll(self) -> None:  # noqa: N802 - wx naming convention
         self._view.SelectAll()
 

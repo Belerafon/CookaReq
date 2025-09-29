@@ -1064,7 +1064,7 @@ def test_respond_accepts_tool_history(tmp_path: Path, monkeypatch) -> None:
         {"role": "user", "content": "list"},
         {
             "role": "assistant",
-            "content": "",
+            "content": " ",
             "tool_calls": [
                 {
                     "id": "call-0",
@@ -1092,7 +1092,7 @@ def test_respond_accepts_tool_history(tmp_path: Path, monkeypatch) -> None:
         {"role": "user", "content": "list"},
         {
             "role": "assistant",
-            "content": "",
+            "content": " ",
             "tool_calls": [
                 {
                     "id": "call-0",

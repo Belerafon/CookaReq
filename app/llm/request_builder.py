@@ -211,9 +211,15 @@ class LLMRequestBuilder:
             role_str = str(role)
             if role_str not in {"user", "assistant", "tool", "system"}:
                 continue
+            text = "" if content is None else str(content)
+            if role_str in {"assistant", "user"} and not text:
+                # OpenRouter serialises empty strings as ``null`` which breaks
+                # its request templating.  Substitute a harmless space so the
+                # payload remains truthful while staying compatible.
+                text = " "
             entry: dict[str, Any] = {
                 "role": role_str,
-                "content": "" if content is None else str(content),
+                "content": text,
             }
             if role_str == "assistant":
                 tool_calls = (

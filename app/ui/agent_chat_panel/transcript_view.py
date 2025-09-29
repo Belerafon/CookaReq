@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-import time
 
 import wx
 from wx.lib.scrolledpanel import ScrolledPanel
@@ -16,10 +15,7 @@ from ..widgets.chat_message import TranscriptMessagePanel
 from .time_formatting import format_entry_timestamp
 from .tool_summaries import summarize_tool_results
 
-from typing import Any, Iterable, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .panel import _ChatSwitchDiagnostics
+from typing import Any, Iterable
 
 
 class TranscriptCallbacks:
@@ -69,59 +65,35 @@ class TranscriptView:
         self._start_placeholder: wx.Window | None = None
 
     # ------------------------------------------------------------------
-    def render(self, *, diagnostics: "_ChatSwitchDiagnostics" | None = None) -> None:
+    def render(self) -> None:
         last_panel: wx.Window | None = None
         has_entries = False
         transcript_panel = self._panel
         transcript_panel.Freeze()
-
-        def run(
-            step_name: str,
-            func: Callable[..., Any],
-            *args: Any,
-            **kwargs: Any,
-        ) -> Any:
-            if diagnostics is not None:
-                return diagnostics.step(step_name, func, *args, **kwargs)
-            return func(*args, **kwargs)
-
         try:
-            conversation = run(
-                "transcript:get_conversation", self._callbacks.get_conversation
-            )
+            conversation = self._callbacks.get_conversation()
             if conversation is None:
                 self._detach_active_conversation()
-                self._show_start_placeholder(run)
+                self._show_start_placeholder()
             elif not conversation.entries:
-                self._show_empty_conversation(conversation, run)
+                self._show_empty_conversation(conversation)
             else:
                 has_entries = True
                 if self._active_conversation_id != conversation.conversation_id:
                     self._detach_active_conversation()
                 self._clear_current_placeholder()
-                last_panel = self._display_conversation(
-                    conversation, diagnostics, run
-                )
+                last_panel = self._display_conversation(conversation)
         finally:
             try:
-                run("transcript:layout", transcript_panel.Layout)
-                run("transcript:fit_inside", transcript_panel.FitInside)
-                run(
-                    "transcript:setup_scrolling",
-                    transcript_panel.SetupScrolling,
-                    scroll_x=False,
-                    scroll_y=True,
-                )
+                transcript_panel.Layout()
+                transcript_panel.FitInside()
+                transcript_panel.SetupScrolling(scroll_x=False, scroll_y=True)
             finally:
                 transcript_panel.Thaw()
             if last_panel is not None:
-                run("transcript:scroll_bottom", self._scroll_to_bottom, last_panel)
-        run(
-            "transcript:update_copy_buttons",
-            self._callbacks.update_copy_buttons,
-            has_entries,
-        )
-        run("transcript:update_header", self._callbacks.update_header)
+                self._scroll_to_bottom(last_panel)
+        self._callbacks.update_copy_buttons(has_entries)
+        self._callbacks.update_header()
 
     # ------------------------------------------------------------------
     def forget_conversations(self, conversation_ids: Iterable[str]) -> None:
@@ -163,21 +135,17 @@ class TranscriptView:
         )
 
     # ------------------------------------------------------------------
-    def _show_start_placeholder(self, run: Callable[..., Any]) -> None:
+    def _show_start_placeholder(self) -> None:
         self._clear_current_placeholder()
         placeholder = self._start_placeholder
         if not self._is_window_alive(placeholder):
-            placeholder = run(
-                "transcript:placeholder:init",
-                wx.StaticText,
+            placeholder = wx.StaticText(
                 self._panel,
                 label=_("Start chatting with the agent to see responses here."),
             )
             self._start_placeholder = placeholder
         self._current_placeholder = placeholder
-        run(
-            "transcript:placeholder:add",
-            self._sizer.Add,
+        self._sizer.Add(
             placeholder,
             0,
             wx.ALL,
@@ -186,18 +154,14 @@ class TranscriptView:
         placeholder.Show()
 
     # ------------------------------------------------------------------
-    def _show_empty_conversation(
-        self, conversation: ChatConversation, run: Callable[..., Any]
-    ) -> None:
+    def _show_empty_conversation(self, conversation: ChatConversation) -> None:
         self._detach_active_conversation()
         self._clear_current_placeholder()
         conversation_id = conversation.conversation_id
         cache = self._get_cache(conversation_id)
         placeholder = cache.placeholder
         if not self._is_window_alive(placeholder):
-            placeholder = run(
-                "transcript:placeholder:empty",
-                wx.StaticText,
+            placeholder = wx.StaticText(
                 self._panel,
                 label=_(
                     "This chat does not have any messages yet. Send one to get started."
@@ -206,9 +170,7 @@ class TranscriptView:
             cache.placeholder = placeholder
         self._active_conversation_id = conversation_id
         self._current_placeholder = placeholder
-        run(
-            "transcript:placeholder:add",
-            self._sizer.Add,
+        self._sizer.Add(
             placeholder,
             0,
             wx.ALL,
@@ -220,33 +182,20 @@ class TranscriptView:
     def _display_conversation(
         self,
         conversation: ChatConversation,
-        diagnostics: "_ChatSwitchDiagnostics" | None,
-        run: Callable[..., Any],
     ) -> wx.Window | None:
         conversation_id = conversation.conversation_id
         cache = self._get_cache(conversation_id)
         self._active_conversation_id = conversation_id
         ordered: list[tuple[int, TranscriptMessagePanel]] = []
-        for index, entry in enumerate(conversation.entries):
+        for entry in conversation.entries:
             key = id(entry)
             panel = cache.panels_by_entry.get(key)
             data = self._prepare_entry_render_data(conversation, entry)
-            start = time.perf_counter()
-            created = False
             if panel is None or not self._is_window_alive(panel):
                 panel = self._create_entry_panel(entry, data)
                 cache.panels_by_entry[key] = panel
-                created = True
             else:
                 self._update_entry_panel(panel, data)
-            duration = time.perf_counter() - start
-            self._record_entry_diagnostics(
-                diagnostics,
-                index,
-                entry,
-                duration,
-                "create" if created else "update",
-            )
             ordered.append((key, panel))
         keep_keys = {key for key, _ in ordered}
         for stale_key in list(cache.panels_by_entry.keys()):
@@ -380,41 +329,6 @@ class TranscriptView:
             reasoning_segments=data["reasoning_segments"],
             regenerated=data["regenerated"],
             layout_hints=data["layout_hints"],
-        )
-
-    # ------------------------------------------------------------------
-    def _record_entry_diagnostics(
-        self,
-        diagnostics: "_ChatSwitchDiagnostics" | None,
-        index: int,
-        entry: ChatEntry,
-        duration: float,
-        action: str,
-    ) -> None:
-        if diagnostics is None:
-            return
-        prompt_len = len(entry.prompt or "")
-        response_source = entry.display_response or entry.response or ""
-        response_len = (
-            len(response_source)
-            if isinstance(response_source, str)
-            else 0
-        )
-        tool_results = entry.tool_results
-        if isinstance(tool_results, Sequence) and not isinstance(
-            tool_results, (str, bytes, bytearray)
-        ):
-            tool_count = len(tool_results)
-        elif tool_results:
-            tool_count = 1
-        else:
-            tool_count = 0
-        diagnostics.add_duration(
-            (
-                f"transcript:entry[{index}] {action} "
-                f"prompt={prompt_len} response={response_len} tools={tool_count}"
-            ),
-            duration,
         )
 
     # ------------------------------------------------------------------

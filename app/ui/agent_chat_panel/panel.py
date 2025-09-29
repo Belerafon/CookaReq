@@ -2312,7 +2312,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         conversation = self.conversations[index]
         self._set_active_conversation_id(conversation.conversation_id)
         if persist:
-            self._save_history_to_store()
+            self._session.history.persist_active_selection()
         if refresh_history:
             self._refresh_history_list()
         else:

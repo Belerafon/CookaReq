@@ -69,6 +69,18 @@ class AgentChatHistory:
             self._on_active_changed(previous, conversation_id)
 
     # ------------------------------------------------------------------
+    def persist_active_selection(self) -> None:
+        """Persist the currently selected conversation id."""
+
+        try:
+            self._store.save_active_id(self._active_id)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to persist active agent chat selection to %s",
+                self._store.path,
+            )
+
+    # ------------------------------------------------------------------
     def load(self) -> tuple[list[ChatConversation], str | None]:
         """Populate memory state from disk and report the loaded payload."""
 

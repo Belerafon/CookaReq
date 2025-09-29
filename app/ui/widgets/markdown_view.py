@@ -45,7 +45,7 @@ def _build_markdown_renderer() -> markdown.Markdown:
         ],
         output_format="html5",
     )
-    # Сырый HTML от LLM не отображаем, чтобы не встраивать произвольные теги.
+    # Hide raw HTML returned by the LLM to avoid embedding arbitrary tags.
     renderer.preprocessors.deregister("html_block")
     renderer.inlinePatterns.deregister("html")
     renderer.reset()

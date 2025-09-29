@@ -49,7 +49,7 @@ def test_openrouter_handles_context_prompt(tmp_path):
         },
         {
             "role": "user",
-            "content": "исправь описание в выбранном требовании",
+            "content": "fix the description in the selected requirement",
         },
     ]
     response = client.respond(conversation)

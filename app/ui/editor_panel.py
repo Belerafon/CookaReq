@@ -95,8 +95,7 @@ class EditorPanel(wx.Panel):
             if spec.multiline:
                 self._bind_autosize(ctrl)
             self.fields[spec.name] = ctrl
-            # Высоту многострочных полей мы управляем вручную,
-            # поэтому не передаём sizer'у коэффициент роста.
+            # Multiline controls are sized manually, so the sizer receives no grow factor.
             content_sizer.Add(ctrl, 0, wx.EXPAND | wx.TOP, border)
             if spec.hint:
                 ctrl.SetHint(_(spec.hint))
@@ -204,7 +203,7 @@ class EditorPanel(wx.Panel):
         self.labels_panel = wx.Panel(box)
         self.labels_panel.SetBackgroundColour(box.GetBackgroundColour())
         self.labels_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
-        # ограничиваем высоту меток одной строкой
+        # Limit the label panel height to a single line.
         line_height = self.GetCharHeight() + 6
         self.labels_panel.SetMinSize((-1, line_height))
         self.labels_panel.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)
@@ -445,7 +444,7 @@ class EditorPanel(wx.Panel):
             lambda evt, a=attr: self._on_links_context_menu(a, evt),
         )
         sizer.Add(lst, 1, wx.EXPAND | wx.TOP, pad)
-        # по умолчанию список и кнопка удаления скрыты
+        # Hide the list and the remove button by default.
         lst.Hide()
         sizer.Show(lst, False)
         remove_btn.Hide()

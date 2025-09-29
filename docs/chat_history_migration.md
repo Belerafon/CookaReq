@@ -1,76 +1,73 @@
-# Миграция истории агента
+# Agent history migration
 
-Начиная с версии приложения, в которой появилась эта инструкция, история
-агентского чата хранится только в формате **версии 2**. Каждая запись в
-разговорах содержит обязательный блок `token_info`, и приложение отказывается
-загружать файлы с другими версиями или без этого поля. Это позволяет упростить
-код загрузки, избежать теневых миграций во время запуска и гарантировать, что в
-GUI всегда доступны корректные сведения о количестве токенов.
+Starting with the release that introduced this note, the agent chat history is
+stored exclusively in **version 2** format. Every conversation entry carries a
+mandatory `token_info` block, and the application refuses to load files that use
+other versions or omit the field. The policy simplifies the loading code,
+eliminates implicit migrations during startup, and guarantees that the GUI
+always displays an accurate token count.
 
-С этого же релиза `ChatEntry` дополнительно сохраняет словарь `token_cache` —
-он содержит хэши текста промпта/ответа и кэшированные значения
-`TokenCountResult` по каждому LLM. Записи, созданные ранее и не имеющие этого
-поля, остаются валидными: приложение заполнит кэш в памяти и сохранит его при
-следующем обновлении истории.
+The same release added the `token_cache` dictionary to each `ChatEntry`. It holds
+hashes of the prompt/response text and cached `TokenCountResult` values per LLM.
+Older entries without this field remain valid: CookaReq will populate the cache
+in memory and persist it on the next history update.
 
-Если у вас сохранились архивы с более старыми форматами, их нужно конвертировать
-перед запуском приложения. Для этого в репозитории добавлена утилита
-`tools/migrate_agent_history.py`.
+Legacy archives must be converted before opening them in the application. The
+repository provides a helper script, `tools/migrate_agent_history.py`, for this
+purpose.
 
-## Поддерживаемые варианты исходных файлов
+## Supported input layouts
 
-Скрипт понимает два основных типа легаси-структур:
+The script understands two legacy shapes:
 
-1. **Файлы версии 2 без `token_info`**. В таких записях поле `tokens` могло
-   заполняться вручную, а метаданные по токенам отсутствуют. Утилита пересчитывает
-   статистику по тексту и дописывает блок `token_info` в каждую запись.
-2. **Плоский список словарей** без обёртки `{"version": ..., "conversations": ...}`.
-   Скрипт создает новую беседу, переносит записи в неё и вычисляет недостающие
-   поля. Активной беседой становится последняя успешная.
+1. **Version 2 files without `token_info`**. In these entries the `tokens` field
+   may have been filled manually and token metadata is missing. The utility
+   recomputes the statistics from text and appends the `token_info` block to each
+   record.
+2. **A flat list of dictionaries** without the `{"version": ..., "conversations": ...}`
+   wrapper. The script creates a new conversation, copies entries into it, and
+   derives missing fields. The last successfully migrated conversation becomes
+   active.
 
-Файлы с неизвестной версией (например, `version: 3`) обрабатываться не будут —
-утилита завершится с ошибкой, чтобы избежать повреждения данных.
+Files with unknown versions (for example `version: 3`) are rejected to avoid
+corrupting data.
 
-## Как пользоваться
-
-```bash
-python3 tools/migrate_agent_history.py /путь/к/history.json
-```
-
-По умолчанию результат сохраняется в соседнем файле с суффиксом `.migrated`
-(например, `history.migrated.json`). Чтобы переписать файл на месте и одновременно
-получить резервную копию, используйте флаг `--in-place`:
+## Usage
 
 ```bash
-python3 tools/migrate_agent_history.py /путь/к/history.json --in-place
+python3 tools/migrate_agent_history.py /path/to/history.json
 ```
 
-Резервная копия сохраняется рядом с исходником и получает расширение `.bak`.
-Путь можно задать явно через `--backup`, а перезаписывать существующие файлы —
-флагом `--force`.
+By default the result is written next to the source file with the `.migrated`
+suffix (for example, `history.migrated.json`). To overwrite the file in place and
+create a backup at the same time, add `--in-place`:
 
-После миграции убедитесь, что приложение стартует и корректно отображает историю
-(в окне должна появиться лента чата без сообщений о несовместимом формате).
-Если требуется откат, замените `history.json` на резервную копию и повторите
-миграцию, разобравшись с сообщением об ошибке.
+```bash
+python3 tools/migrate_agent_history.py /path/to/history.json --in-place
+```
 
-## Известные ограничения
+The backup lives alongside the original with the `.bak` extension. Specify a
+custom path via `--backup`, and use `--force` to overwrite existing output or
+backup files.
 
-- В старых форматах не хранились временные метки бесед, поэтому при миграции
-  скрипт восстанавливает `created_at` и `updated_at` по первым доступным
-  значениям `prompt_at`/`response_at`. Если они отсутствуют, используются
-  текущие значения на момент конвертации.
-- При обработке сильно поврежденных файлов (например, где сообщения не являются
-  словарями) утилита пропустит некорректные элементы. Если в результате не
-  останется ни одной валидной записи, будет сгенерировано исключение.
-- Скрипт не модифицирует значения `raw_result` и `tool_results`, а лишь переносит
-  их как есть. Если структура этих полей изменилась между версиями, проверьте
-  результат вручную.
+After migration, launch the application and confirm that the chat history opens
+without incompatible-format warnings. To roll back, replace `history.json` with
+the backup and rerun the migration after addressing the reported issue.
 
-## Тестирование и сопровождение
+## Known limitations
 
-- Перед релизом новых версий истории запускайте модульные тесты GUI: они
-  проверяют, что приложение корректно отклоняет устаревшие файлы и не выполняет
-  скрытых миграций.
-- При расширении формата истории обновляйте как код загрузки, так и эту
-  инструкцию — пользователи должны заранее знать, как подготовить данные.
+- Older formats did not store conversation timestamps. During migration the
+  script reconstructs `created_at` and `updated_at` from the first available
+  `prompt_at`/`response_at` values. When they are absent, the current time is
+  used.
+- Severely corrupted files (for instance, entries that are not dictionaries) are
+  skipped. If no valid records remain, the utility raises an exception.
+- The script copies `raw_result` and `tool_results` verbatim. If those fields
+  changed between versions, review the output manually.
+
+## Testing and maintenance
+
+- Before shipping new history formats, run the GUI unit tests. They confirm that
+  the application rejects outdated files instead of silently migrating them.
+- Whenever the history schema evolves, update the loader code and this document
+  so users know how to prepare their data in advance.

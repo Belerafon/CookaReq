@@ -144,15 +144,15 @@ requirements/
 
 Each `document.json` provides the canonical prefix, title, parent prefix, label presets (with `allowFreeform` flags), and arbitrary metadata. Requirement payloads live under `items/<id>.json` and include `title`, `statement`, ownership, verification, revision, attachments, labels, and outgoing links. The GUI/CLI operate strictly on this schema; remove stray files before editing repositories manually.
 
-### Ревизии, история и совместная работа
+### Revisions, history, and collaboration
 
-CookaReq сознательно хранит документы требований в виде прозрачных JSON-файлов, ожидая, что пользователи будут использовать Git (или другой VCS) для управления изменениями. Такой подход обеспечивает:
+CookaReq deliberately stores requirement documents as plain JSON files and expects teams to manage them with Git (or another VCS). This design provides:
 
-- **Историю и аудит**: фиксация коммитов, аннотации (`git blame`), ветки и Pull Request'ы дают ту же прослеживаемость, что и специализированные журналы изменений.
-- **Базовые версии**: ветки/теги репозитория служат baseline-снимками; инструменты CI/CD могут автоматически собирать артефакты на их основе.
-- **Совместную работу**: политики доступа, ревью и разрешение конфликтов делегированы Git-серверу (GitHub, GitLab, Gitea и т.п.), поэтому приложение остаётся лёгким локальным клиентом без собственного сервера и блокировок.
+- **History and auditability**: commits, annotations (`git blame`), branches, and pull requests deliver the same traceability as specialised change logs.
+- **Baselines**: repository branches/tags serve as baseline snapshots that CI/CD tooling can package automatically.
+- **Collaboration**: access policies, reviews, and conflict resolution live on the Git server (GitHub, GitLab, Gitea, etc.), keeping CookaReq a lightweight local client without its own locking server.
 
-GUI и CLI CookaReq сосредоточены на безопасном редактировании файловой структуры и валидации схемы. После изменений используйте обычный Git-процесс — коммит, ревью, слияние — чтобы зафиксировать ревизии и обеспечить контроль качества. Если требуется централизованный аудит или интеграция с ALM-системой, настроенные Git-хуки и внешние сервисы (например, генерация отчётов из JSON) остаются основным расширяемым механизмом.
+The CookaReq GUI and CLI focus on safe filesystem edits and schema validation. After applying changes, follow the standard Git workflow—commit, review, merge—to capture revisions and guarantee quality. If centralised audits or ALM integrations are required, configured Git hooks and external services (for example, generating reports from JSON exports) remain the primary extension points.
 
 ## Development workflow
 

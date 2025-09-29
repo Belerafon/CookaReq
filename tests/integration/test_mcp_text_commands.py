@@ -38,14 +38,14 @@ def test_run_command_list_logs(tmp_path: Path, monkeypatch, mcp_server) -> None:
         "",
         tmp_path=tmp_path,
     )
-    # Мокаем OpenAI, чтобы исключить внешние вызовы.
+    # Mock OpenAI so tests avoid external calls.
     monkeypatch.setattr(
         "openai.OpenAI",
         make_openai_mock(
             {
                 "list requirements per page 1": [
                     ("list_requirements", {"per_page": 1}),
-                    {"message": "Готово"},
+                    {"message": "Done"},
                 ]
             },
         ),
@@ -63,7 +63,7 @@ def test_run_command_list_logs(tmp_path: Path, monkeypatch, mcp_server) -> None:
         logger.removeHandler(handler)
     assert result["ok"] is True
     assert result.get("tool_results")
-    assert result["result"] == "Готово"
+    assert result["result"] == "Done"
     assert result["tool_results"][0]["result"]["items"] == []
     entries = [json.loads(line) for line in log_file.read_text().splitlines()]
     events = {e.get("event") for e in entries}
@@ -80,7 +80,7 @@ def test_run_command_error_logs(tmp_path: Path, monkeypatch, mcp_server) -> None
         "",
         tmp_path=tmp_path,
     )
-    # Мокаем OpenAI, чтобы исключить внешние вызовы.
+    # Mock OpenAI so tests avoid external calls.
     monkeypatch.setattr(
         "openai.OpenAI",
         make_openai_mock({"get requirement SYS1": ("get_requirement", {"rid": "SYS1"})}),
@@ -126,8 +126,8 @@ def test_run_command_fetches_requirement_with_prefixed_rid(
     save_document(doc_dir, doc)
     requirement = Requirement(
         id=11,
-        title="Первое требование",
-        statement="Содержимое первого требования.",
+        title="First requirement",
+        statement="Content of the first requirement.",
         type=RequirementType.REQUIREMENT,
         status=Status.APPROVED,
         owner="owner",
@@ -138,9 +138,9 @@ def test_run_command_fetches_requirement_with_prefixed_rid(
     save_item(doc_dir, doc, requirement_to_dict(requirement))
 
     responses = {
-        "Напиши текст первого требования": [
+        "Write the text of the first requirement": [
             ("get_requirement", {"rid": "SYS11"}),
-            {"message": "Текст требования: Содержимое первого требования."},
+            {"message": "Requirement text: Content of the first requirement."},
         ]
     }
     prepared: dict[str, list[Any]] = {
@@ -213,31 +213,31 @@ def test_run_command_fetches_requirement_with_prefixed_rid(
             "role": "system",
             "content": (
                 "[Workspace context]\n"
-                "Active requirements list: SYS: Сист. треб.\n"
+                "Active requirements list: SYS: System req.\n"
                 "Selected requirement RIDs: SYS11"
             ),
         }
     ]
     result = client.run_command(
-        "Напиши текст первого требования",
+        "Write the text of the first requirement",
         context=context,
     )
 
     assert result["ok"] is True, result
     assert result["error"] is None
-    assert result["result"] == "Текст требования: Содержимое первого требования."
+    assert result["result"] == "Requirement text: Content of the first requirement."
     tool_results = result.get("tool_results")
     assert isinstance(tool_results, list) and tool_results
     first_tool = tool_results[0]
     assert first_tool["tool_name"] == "get_requirement"
     assert first_tool["tool_arguments"]["rid"] == "SYS11"
     assert first_tool["result"]["rid"] == "SYS11"
-    assert first_tool["result"]["statement"] == "Содержимое первого требования."
+    assert first_tool["result"]["statement"] == "Content of the first requirement."
 
     assert captured_messages, "LLM mock should capture at least one request"
     system_prompt = captured_messages[0][0]["content"]
     assert "<prefix><number>" in system_prompt
-    assert "SYS11 — Содержимое первого требования." in system_prompt
+    assert "SYS11 — Content of the first requirement." in system_prompt
     assert "Selected requirement RIDs:" in system_prompt
 
 

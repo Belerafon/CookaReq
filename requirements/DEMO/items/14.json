@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демо должно фиксировать параметры конфигурации агента и MCP, включая лимиты ошибок инструментов, форматы сообщений LLM и файлы .cookareq, создаваемые в каталоге проекта.",
+  "statement": "The demo must record agent and MCP configuration parameters, including tool error limits, LLM message formats, and .cookareq files created in the project directory.",
   "status": "draft",
-  "title": "Настройки агента",
+  "title": "Agent settings",
   "type": "requirement",
   "verification": "analysis"
 }

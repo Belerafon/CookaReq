@@ -1,64 +1,54 @@
-# Интеграции и внешние взаимодействия CookaReq
+# CookaReq integrations and external interactions
 
-> Черновой каркас: фиксирует структуру раздела и список аспектов, которые нужно осветить.
+> Draft scaffold: captures the section structure and the aspects that must be covered.
 
-## 1. LLM и OpenRouter
+## 1. LLM and OpenRouter
 
-### Конфигурация по умолчанию
-- `app.settings.LLMSettings` наследует значения из `app.llm.constants`: базовый URL `https://openrouter.ai/api/v1` и модель `meta-llama/llama-3.3-70b-instruct:free`. Эта связка показала наименьшую вариативность в инструментальных ответах и используется GUI/CLI по умолчанию.
-- Для тестов с reasoning-сегментами выбрана бесплатная модель `x-ai/grok-4-fast:free`, поскольку она поддерживает параметры `include_reasoning` и `reasoning` без дополнительной тарификации. Переопределить модель можно переменной окружения `OPENROUTER_REASONING_MODEL`, что упрощает эксплуатационные переключения.
+### Default configuration
+- `app.settings.LLMSettings` inherits defaults from `app.llm.constants`: base URL `https://openrouter.ai/api/v1` and model `meta-llama/llama-3.3-70b-instruct:free`. The pair provides the most stable tool-call behaviour and is used by the GUI/CLI by default.
+- Reasoning-enabled smoke tests use the free `x-ai/grok-4-fast:free` model because it supports the `include_reasoning` and `reasoning` parameters without additional cost. Override the model via the `OPENROUTER_REASONING_MODEL` environment variable for operational switches.
 
-### Настройка и секреты
-- Ключ OpenRouter ищется в `.env` (переменная `OPEN_ROUTER`) и прокидывается в тесты через `tests.env_utils.load_secret_from_env`.
-- GUI и CLI позволяют переопределить модель, URL и формат сообщений в пользовательских настройках (`settings.json`), которые валидируются Pydantic-схемами.
+### Configuration and secrets
+- The OpenRouter key is loaded from `.env` (`OPEN_ROUTER`) and injected into tests with `tests.env_utils.load_secret_from_env`.
+- The GUI and CLI allow overriding the model, URL, and message format in user settings (`settings.json`), validated by Pydantic schemas.
 
-### Ограничения и fallback
-- Без ключа или при отключённых реальных тестах (`COOKAREQ_RUN_REAL_LLM_TESTS` не установлен) сценарии в `tests/integration/test_llm_openrouter_integration.py` пропускаются, чтобы не генерировать ошибочные обращения.
-- Ошибки валидации инструментов мапятся через `app.mcp.utils.exception_to_mcp_error` в финальный ответ агента, что предотвращает бесконечные повторы при некорректных tool calls.
+### Limitations and fallbacks
+- Without a key or when real tests are disabled (`COOKAREQ_RUN_REAL_LLM_TESTS` unset), the scenarios in `tests/integration/test_llm_openrouter_integration.py` are skipped to avoid spurious calls.
+- Tool validation errors are mapped via `app.mcp.utils.exception_to_mcp_error` into the agent response, preventing infinite retries when arguments are invalid.
 
 ### LLM client
-- `LLMClient` остаётся тонким фасадом, который выбирает стратегию (chat/harmony/stream) и делегирует подготовку запросов и разбор ответов специализированным компонентам.
-- `LLMRequestBuilder` отвечает за подготовку payload: нормализует историю, режет её по лимиту токенов, собирает системные блоки и преобразует формат сообщений (например, в Qwen-сегменты). Отдельный метод строит Harmony prompt на основе того же пайплайна.
-- При сборке истории `LLMRequestBuilder` дополнительно заменяет пустые текстовые поля в пользовательских и ассистентских сообщениях на одиночный пробел. OpenRouter сериализует пустые строки как `null`, что ломает его серверные шаблоны; «мягкий» заполнитель сохраняет семантику отсутствия ответа и предотвращает 500-ошибки при повторных шагах агента.
-- `LLMResponseParser` принимает сырой ответ от бэкенда, нормализует tool calls, восстанавливает JSON аргументов, собирает reasoning-сегменты и конвертирует их в `LLMReasoningSegment`/`LLMToolCall`. Логика восстановления и телеметрия по аргументам теперь сосредоточены здесь.
-- Фасад дополнительно подставляет отсутствующий `rid` для вызовов
-  `get_requirement`, считывая актуальный список выбранных требований из
-  системного сообщения (`Selected requirement RIDs`). Это сглаживает ответы
-  моделей, которые забывают указать идентификаторы, и избавляет агента от
-  повторного диалога с LLM после ToolValidationError.
-- Модуль `app.llm.logging` предоставляет `log_request`/`log_response`, чтобы фасад просто прокидывал полезную нагрузку, а детали телеметрии хранились в одном месте.
-- Для юнит-тестов добавлены заглушки `tests/unit/llm/factories.py`: они позволяют подменить `LLMRequestBuilder`/`LLMResponseParser` и собрать синтетический `LLMResponse`, когда важно протестировать потребителей LLM без реальных сетевых обращений.
+- `LLMClient` remains a thin façade that selects the strategy (chat/harmony/stream) and delegates request assembly and response parsing to specialised components.
+- `LLMRequestBuilder` prepares the payload: it normalises history, truncates it to the token limit, builds system blocks, and converts message formats (for example, to Qwen segments). A dedicated method constructs the Harmony prompt using the same pipeline.
+- While assembling history, `LLMRequestBuilder` replaces empty user/assistant message fields with a single space. OpenRouter serialises empty strings as `null`, breaking server templates; the placeholder keeps the semantics of “no content” and prevents 500 errors during agent retries.
+- `LLMResponseParser` consumes the backend response, normalises tool calls, reconstructs JSON arguments, collects reasoning segments, and converts them to `LLMReasoningSegment`/`LLMToolCall`. Recovery logic and telemetry reside in one place.
+- The façade injects a missing `rid` for `get_requirement` calls by reading the currently selected RIDs from the system message (`Selected requirement RIDs`). This smooths over models that omit identifiers and removes an extra agent/LLM turn after a `ToolValidationError`.
+- `app.llm.logging` exposes `log_request`/`log_response` so the façade simply forwards payloads while telemetry stays centralised.
+- Unit tests include stubs in `tests/unit/llm/factories.py` that swap in fake `LLMRequestBuilder`/`LLMResponseParser` instances and create synthetic `LLMResponse` objects to test LLM consumers without real network calls.
 
-## 2. MCP-сервер и инструменты
-- [ ] Архитектура MCP-сервера (FastAPI, IPC, запуск из GUI/CLI).
-- [ ] Таблица зарегистрированных инструментов и их контрактов.
-- [ ] Процедура добавления новых инструментов и тестирования.
+## 2. MCP server and tools
+- [ ] Architecture of the MCP server (FastAPI, IPC, GUI/CLI launch sequence).
+- [ ] Table of registered tools and their contracts.
+- [ ] Procedure for adding new tools and testing them.
 
 ### `get_requirement`
 
-- Инструмент принимает `rid` строкой или массивом строк. Агент при обогащении
-  контекста (см. `LocalAgent._fetch_requirement_summaries_async`) передаёт
-  массив, сохраняя порядок RID из системного сообщения и удаляя дубликаты.
-- Параметр `fields` используется для ограничения ответа двумя ключевыми
-  полями (`title`, `statement`), чтобы сократить полезную нагрузку при
-  асинхронных запросах контекста.
-- Ответ всегда включает `result.items` с объектами `{rid, ...}` и опциональный
-  список `missing`. Агент игнорирует пропущенные RID и не прерывает работу,
-  если инструмент возвращает пустой список.
+- The tool accepts a `rid` string or an array of strings. When enriching context (see `LocalAgent._fetch_requirement_summaries_async`) the agent passes an array, preserving the order from the system message and removing duplicates.
+- The `fields` parameter limits the reply to two key fields (`title`, `statement`) to reduce payload size during asynchronous context requests.
+- Responses always include `result.items` with `{rid, ...}` objects and an optional `missing` list. The agent skips missing RIDs and continues even when the tool returns an empty set.
 
-## 3. Взаимодействие с файловой системой и ОС
-- [ ] Работа с файловыми диалогами, разрешениями, путями.
-- [ ] Требования к окружению (wxPython, Python 3.12, зависимости).
-- [ ] Особенности кроссплатформенности и различий между ОС.
+## 3. Filesystem and OS interaction
+- [ ] File dialogs, permissions, and path handling.
+- [ ] Environment requirements (wxPython, Python 3.12, dependencies).
+- [ ] Cross-platform considerations and OS differences.
 
-## 4. Интеграция с другими сервисами
-- [ ] Проверить наличие сторонних API (например, экспорты, уведомления).
-- [ ] Зафиксировать потенциальные интеграции и ограничения.
-- [ ] Сформулировать TODO для дальнейшего исследования.
+## 4. Other services
+- [ ] Check for third-party APIs (exports, notifications, etc.).
+- [ ] Capture potential integrations and constraints.
+- [ ] List TODOs for further research.
 
-## 5. Диаграммы и последовательности
-- [ ] Определить ключевые сценарии для диаграмм последовательностей.
-- [ ] Зафиксировать, какие инструменты использовать для визуализации.
-- [ ] Прописать, где хранить исходники диаграмм и как их обновлять.
+## 5. Diagrams and sequences
+- [ ] Identify scenarios that warrant sequence diagrams.
+- [ ] Select tooling for visualisations.
+- [ ] Decide where to store diagram sources and how to update them.
 
-> После заполнения проверить согласованность с `components.md` и `data_and_config.md`.
+> Once populated, ensure the content stays consistent with `components.md` and `data_and_config.md`.

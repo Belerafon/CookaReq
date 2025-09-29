@@ -255,7 +255,7 @@ class MCPClient:
         request_body = {"name": "list_requirements", "arguments": {"per_page": 1}}
         headers = self._headers(json_body=True)
         start = time.monotonic()
-        # ``log_event`` выполняет собственную очистку чувствительных данных.
+        # ``log_event`` performs its own sanitisation of sensitive fields.
         log_debug_payload(
             "MCP_REQUEST",
             {
@@ -406,7 +406,7 @@ class MCPClient:
                 log_event("CANCELLED", {"tool": name})
                 return {"ok": False, "error": err}
 
-        # ``log_event`` выполняет собственную очистку чувствительных данных.
+        # ``log_event`` performs its own sanitisation of sensitive fields.
         log_event(
             "TOOL_CALL",
             {"tool": name, "params": dict(arguments)},

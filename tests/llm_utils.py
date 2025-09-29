@@ -30,24 +30,23 @@ def require_real_llm_tests_flag(*, env_var: str = "COOKAREQ_RUN_REAL_LLM_TESTS")
 def make_openai_mock(responses: dict[str, object]):
     """Return a ``FakeOpenAI`` class wired with *responses*.
 
-    ``responses`` — словарь ``{prompt: sequence}``, где элементами
-    последовательности могут быть кортежи ``(tool, args)``, строки (как
-    свободный ответ ассистента), словари ``{"message": "..."}`` или
-    исключения. При вызове ``chat.completions.create`` будет найден последний
-    пользовательский промпт и взят следующий ответ из очереди. Если ответы
-    закончились, используется последнее значение. Исключения пробрасываются
-    напрямую. Формат результата соответствует минимальному подмножеству
-    OpenAI, используемому в ``LLMClient``. Такой мок можно переиспользовать в
-    других тестах:
+    ``responses`` is a mapping ``{prompt: sequence}`` where each sequence entry
+    can be a ``(tool, args)`` tuple, a string (representing a free-form assistant
+    reply), a dictionary ``{"message": "..."}``, or an exception. When
+    ``chat.completions.create`` is called, the helper finds the latest user
+    prompt and consumes the next entry from the queue. Once responses run out,
+    the last value is reused. Exceptions are raised as-is. The returned payload
+    mirrors the minimal subset of OpenAI fields consumed by ``LLMClient``. The
+    mock can be reused across tests:
 
-    >>> mapping = {"list": [("list_requirements", {"per_page": 1}), {"message": "готово"}]}
+    >>> mapping = {"list": [("list_requirements", {"per_page": 1}), {"message": "done"}]}
     >>> monkeypatch.setattr("openai.OpenAI", make_openai_mock(mapping))
 
-    Это позволит детерминированно эмулировать ответ LLM без сетевых
-    запросов. Для простых ping-запросов достаточно указать ключ ``"ping"``
-    c произвольным значением, например ``("noop", {})``. Если подходящего
-    ключа нет, мок возвращает валидный по MCP контракту вызов
-    ``list_requirements`` с пустыми аргументами.
+    This makes it possible to emulate deterministic LLM replies without
+    network traffic. For simple ping requests provide the ``"ping"`` key with
+    any value, for example ``("noop", {})``. When a prompt is missing, the mock
+    returns a contract-compliant ``list_requirements`` call with empty
+    arguments.
     """
 
     prepared: dict[str, list[object]] = {}

@@ -23,7 +23,7 @@ def _load_json(path: Path) -> Any:
         with path.open("r", encoding="utf-8") as handle:
             return json.load(handle)
     except Exception as exc:  # pragma: no cover - defensive
-        raise RuntimeError(f"Не удалось прочитать JSON из {path}: {exc}") from exc
+        raise RuntimeError(f"Failed to read JSON from {path}: {exc}") from exc
 
 
 def _normalise_entry_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -103,10 +103,10 @@ def migrate_history(raw: Any) -> dict[str, Any]:
     if isinstance(raw, Mapping):
         version = raw.get("version")
         if version is not None and version not in {1, 2}:
-            raise RuntimeError(f"Неизвестная версия истории: {version!r}")
+            raise RuntimeError(f"Unknown history version: {version!r}")
         conversations_raw = raw.get("conversations")
         if not isinstance(conversations_raw, Sequence):
-            raise RuntimeError("Отсутствует список бесед в истории")
+            raise RuntimeError("History does not contain a conversation list")
         for conversation_raw in conversations_raw:
             if not isinstance(conversation_raw, Mapping):
                 continue
@@ -123,10 +123,10 @@ def migrate_history(raw: Any) -> dict[str, Any]:
         if conversation is not None:
             conversations.append(conversation)
     else:
-        raise RuntimeError("Поддерживаются только объекты JSON или массив записей")
+        raise RuntimeError("Only JSON objects or arrays of entries are supported")
 
     if not conversations:
-        raise RuntimeError("Не удалось извлечь ни одной валидной беседы из истории")
+        raise RuntimeError("Could not extract any valid conversations from history")
 
     if active_id is None:
         active_id = conversations[-1].conversation_id
@@ -153,38 +153,38 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Конвертирует файлы истории агента в актуальный формат (версия 2) "
-            "с обязательным блоком token_info."
+            "Convert agent history files to the current format (version 2) "
+            "with the mandatory token_info block."
         )
     )
-    parser.add_argument("input", type=Path, help="Путь к исходному файлу истории")
+    parser.add_argument("input", type=Path, help="Path to the source history file")
     parser.add_argument(
         "--output",
         type=Path,
-        help="Путь для сохранения результата (по умолчанию <input>.migrated.json)",
+        help="Output path (defaults to <input>.migrated.json)",
     )
     parser.add_argument(
         "--in-place",
         action="store_true",
         help=(
-            "Переписать исходный файл на месте. Перед записью создаётся резервная "
-            "копия с суффиксом .bak, либо по пути из --backup"
+            "Overwrite the source file in place. A backup copy with the .bak suffix "
+            "or the path from --backup is created beforehand."
         ),
     )
     parser.add_argument(
         "--backup",
         type=Path,
-        help="Путь к резервной копии при использовании --in-place (по умолчанию <input>.bak)",
+        help="Backup path when using --in-place (defaults to <input>.bak)",
     )
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Перезаписать существующие файлы вывода или резервной копии",
+        help="Overwrite existing output or backup files",
     )
     args = parser.parse_args(argv)
 
     if args.in_place and args.output is not None:
-        parser.error("нельзя одновременно использовать --output и --in-place")
+        parser.error("--output and --in-place cannot be used together")
 
     input_path = args.input
     raw = _load_json(input_path)
@@ -193,23 +193,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.in_place:
         backup_path = args.backup or input_path.with_suffix(input_path.suffix + ".bak")
         if backup_path.exists() and not args.force:
-            parser.error(f"файл резервной копии уже существует: {backup_path}")
+            parser.error(f"backup file already exists: {backup_path}")
         if backup_path != input_path:
             input_path.replace(backup_path)
         output_path = input_path
     else:
         output_path = args.output or _default_output_path(input_path)
         if output_path.exists() and not args.force:
-            parser.error(f"файл назначения уже существует: {output_path}")
+            parser.error(f"destination file already exists: {output_path}")
 
     _write_json(output_path, payload)
 
     if args.in_place:
         sys.stdout.write(
-            f"История успешно мигрирована и записана в {output_path} (резервная копия: {backup_path})\n"
+            f"History successfully migrated and written to {output_path} (backup: {backup_path})\n"
         )
     else:
-        sys.stdout.write(f"История успешно мигрирована и записана в {output_path}\n")
+        sys.stdout.write(f"History successfully migrated and written to {output_path}\n")
     return 0
 
 

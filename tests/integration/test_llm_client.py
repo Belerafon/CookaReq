@@ -401,7 +401,7 @@ def test_parse_command_recovers_concatenated_tool_arguments(
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = LLMClient(settings.llm)
 
-    response = client.parse_command("обнови статус SYS-1")
+    response = client.parse_command("update status SYS-1")
     assert response.tool_calls, "expected recovered tool call"
     call = response.tool_calls[0]
     assert call.name == "update_requirement_field"
@@ -485,7 +485,7 @@ def test_parse_command_reports_invalid_tool_arguments(
     client = LLMClient(settings.llm)
 
     with pytest.raises(ToolValidationError):
-        client.parse_command("обнови статус SYS-1")
+        client.parse_command("update status SYS-1")
 
     assert events, "expected telemetry for invalid tool arguments"
     event_name, payload = events[0]
@@ -581,7 +581,7 @@ def test_parse_command_without_tool_call(tmp_path: Path, monkeypatch) -> None:
                         SimpleNamespace(
                             message=SimpleNamespace(
                                 tool_calls=None,
-                                content="Привет",
+                                content="Hello",
                             ),
                         )
                     ]
@@ -593,15 +593,15 @@ def test_parse_command_without_tool_call(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = LLMClient(settings.llm)
-    response = client.parse_command("куку")
+    response = client.parse_command("hi")
     assert isinstance(response, LLMResponse)
     assert response.tool_calls == ()
-    assert response.content == "Привет"
+    assert response.content == "Hello"
 
 
 def test_respond_includes_request_snapshot(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
-    monkeypatch.setattr("openai.OpenAI", make_openai_mock({"hello": "Готово"}))
+    monkeypatch.setattr("openai.OpenAI", make_openai_mock({"hello": "Done"}))
     client = LLMClient(settings.llm)
 
     conversation = [
@@ -625,7 +625,7 @@ def test_parse_command_reports_tool_validation_details(
         "openai.OpenAI",
         make_openai_mock(
             {
-                "Напиши текст первого требования": [
+                "Write the text of the first requirement": [
                     (
                         "create_requirement",
                         {"prefix": "SYS", "data": {"title": "Req-1"}},
@@ -638,7 +638,7 @@ def test_parse_command_reports_tool_validation_details(
     client = LLMClient(settings.llm)
 
     with pytest.raises(ToolValidationError) as excinfo:
-        client.parse_command("Напиши текст первого требования")
+        client.parse_command("Write the text of the first requirement")
 
     exc = excinfo.value
     assert hasattr(exc, "llm_tool_calls")
@@ -661,7 +661,7 @@ def test_parse_command_streaming_message(tmp_path: Path, monkeypatch) -> None:
                         choices=[
                             SimpleNamespace(
                                 delta=SimpleNamespace(
-                                    content=[{"type": "text", "text": "Прив"}],
+                                    content=[{"type": "text", "text": "Hel"}],
                                     tool_calls=None,
                                 )
                             )
@@ -671,7 +671,7 @@ def test_parse_command_streaming_message(tmp_path: Path, monkeypatch) -> None:
                         choices=[
                             SimpleNamespace(
                                 delta=SimpleNamespace(
-                                    content=[{"type": "text", "text": "ет!"}],
+                                    content=[{"type": "text", "text": "lo!"}],
                                     tool_calls=None,
                                 )
                             )
@@ -688,7 +688,7 @@ def test_parse_command_streaming_message(tmp_path: Path, monkeypatch) -> None:
     response = client.parse_command("say hi")
     assert isinstance(response, LLMResponse)
     assert response.tool_calls == ()
-    assert response.content == "Привет!"
+    assert response.content == "Hello!"
 
 
 def test_streaming_cancellation_closes_stream(tmp_path: Path, monkeypatch) -> None:
@@ -901,7 +901,7 @@ def test_respond_preserves_context_for_update(tmp_path: Path, monkeypatch) -> No
         },
         {
             "role": "user",
-            "content": "впиши в текст этого требования дополнительную информацию",
+            "content": "add more information to this requirement text",
         },
     ]
 
@@ -976,7 +976,7 @@ def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> No
                 "Selected requirement RIDs: SYS-2, SYS-3"
             ),
         },
-        {"role": "user", "content": "удали эти требования"},
+        {"role": "user", "content": "delete these requirements"},
     ]
 
     response = client.respond(conversation)
@@ -1048,7 +1048,7 @@ def test_respond_accepts_tool_history(tmp_path: Path, monkeypatch) -> None:
                         SimpleNamespace(
                             message=SimpleNamespace(
                                 tool_calls=None,
-                                content="Готово",
+                                content="Done",
                             )
                         )
                     ]
@@ -1085,7 +1085,7 @@ def test_respond_accepts_tool_history(tmp_path: Path, monkeypatch) -> None:
     ]
     response = client.respond(conversation)
     assert isinstance(response, LLMResponse)
-    assert response.content == "Готово"
+    assert response.content == "Done"
     messages = captured["messages"]
     assert messages[0] == {"role": "system", "content": SYSTEM_PROMPT}
     assert messages[1:] == [
@@ -1133,7 +1133,7 @@ def test_harmony_prompt_includes_tools(tmp_path: Path, monkeypatch) -> None:
                         SimpleNamespace(
                             type="message",
                             content=[
-                                SimpleNamespace(type="output_text", text="готово")
+                                SimpleNamespace(type="output_text", text="done")
                             ],
                         )
                     ]
@@ -1156,7 +1156,7 @@ def test_harmony_prompt_includes_tools(tmp_path: Path, monkeypatch) -> None:
     assert captured["tools"] == convert_tools_for_harmony(TOOLS)
     assert captured["temperature"] is None
     assert "temperature" not in captured["kwargs"]
-    assert response.content == "готово"
+    assert response.content == "done"
     assert response.tool_calls == ()
 
 
@@ -1247,7 +1247,7 @@ def test_harmony_streaming(tmp_path: Path, monkeypatch) -> None:
                         SimpleNamespace(
                             type="message",
                             content=[
-                                SimpleNamespace(type="output_text", text="готово")
+                                SimpleNamespace(type="output_text", text="done")
                             ],
                         ),
                     ]
@@ -1267,7 +1267,7 @@ def test_harmony_streaming(tmp_path: Path, monkeypatch) -> None:
     response = client.parse_command("streamed request")
     assert captured["model"] == settings.llm.model
     assert captured["input"]
-    assert response.content == "готово"
+    assert response.content == "done"
     assert len(response.tool_calls) == 1
     call = response.tool_calls[0]
     assert call.id == "call-42"

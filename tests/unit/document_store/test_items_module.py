@@ -161,7 +161,7 @@ def test_update_requirement_field_rejects_unknown_status(
             tmp_path,
             created.rid,
             field="status",
-            value="На утверждении",
+            value="Pending approval",
             docs=docs,
         )
 

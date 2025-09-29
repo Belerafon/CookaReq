@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Материалы демо должны указывать, где логируются операции с данными и конфигурацией, какие проверки выполняются автоматически и какие улучшения мониторинга требуются.",
+  "statement": "Demo materials must specify where data and configuration operations are logged, which checks run automatically, and what monitoring improvements are needed.",
   "status": "draft",
-  "title": "Наблюдаемость данных",
+  "title": "Data observability",
   "type": "requirement",
   "verification": "analysis"
 }

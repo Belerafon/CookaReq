@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демо должно содержать раздел о CLI, показывающий, как команды переиспользуют ядро, какие подкоманды доступны и какие настройки требуются для запуска без GUI.",
+  "statement": "The demo must contain a CLI section showing how commands reuse the core, which subcommands are available, and what configuration is required for headless execution.",
   "status": "draft",
-  "title": "CLI в демо",
+  "title": "CLI in the demo",
   "type": "requirement",
   "verification": "analysis"
 }

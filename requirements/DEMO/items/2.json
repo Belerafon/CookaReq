@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демонстрационный пакет должен описывать ответственность GUI-слоя, ключевые панели и контроллеры, включая их API и взаимодействие с агентом и document_store.",
+  "statement": "The demo package must describe the GUI layer responsibilities, key panels and controllers, including their APIs and interactions with the agent and document_store.",
   "status": "draft",
-  "title": "Ответственность GUI",
+  "title": "GUI responsibilities",
   "type": "requirement",
   "verification": "analysis"
 }

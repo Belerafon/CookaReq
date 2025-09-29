@@ -215,7 +215,7 @@ class TraceMatrixDetailsPanel(wx.Panel):
     def __init__(self, parent: wx.Window) -> None:
         super().__init__(parent)
         self._build_ui()
-        self.show_message(_("Выберите ячейку или заголовок для просмотра деталей."))
+        self.show_message(_("Select a cell or header to view details."))
 
     def _build_ui(self) -> None:
         padding = self.FromDIP(12)
@@ -224,17 +224,17 @@ class TraceMatrixDetailsPanel(wx.Panel):
         self._message = wx.StaticText(self, label="")
         root.Add(self._message, 0, wx.ALL | wx.EXPAND, padding)
 
-        self._row_box = wx.StaticBoxSizer(wx.VERTICAL, self, _("Строка"))
+        self._row_box = wx.StaticBoxSizer(wx.VERTICAL, self, _("Row"))
         self._row_text = wx.StaticText(self._row_box.GetStaticBox(), label="")
         self._row_box.Add(self._row_text, 0, wx.ALL | wx.EXPAND, padding)
         root.Add(self._row_box, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, padding)
 
-        self._column_box = wx.StaticBoxSizer(wx.VERTICAL, self, _("Столбец"))
+        self._column_box = wx.StaticBoxSizer(wx.VERTICAL, self, _("Column"))
         self._column_text = wx.StaticText(self._column_box.GetStaticBox(), label="")
         self._column_box.Add(self._column_text, 0, wx.ALL | wx.EXPAND, padding)
         root.Add(self._column_box, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, padding)
 
-        self._links_box = wx.StaticBoxSizer(wx.VERTICAL, self, _("Связи"))
+        self._links_box = wx.StaticBoxSizer(wx.VERTICAL, self, _("Links"))
         self._links_text = wx.StaticText(self._links_box.GetStaticBox(), label="")
         self._links_box.Add(self._links_text, 0, wx.ALL | wx.EXPAND, padding)
         root.Add(self._links_box, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, padding)
@@ -292,7 +292,7 @@ class TraceMatrixFrame(wx.Frame):
         left = wx.BoxSizer(wx.VERTICAL)
 
         controls = wx.BoxSizer(wx.HORIZONTAL)
-        self._rebuild_btn = wx.Button(container, label=_("Перестроить…"))
+        self._rebuild_btn = wx.Button(container, label=_("Rebuild…"))
         self._rebuild_btn.Bind(wx.EVT_BUTTON, self._on_rebuild)
         controls.Add(self._rebuild_btn, 0, wx.RIGHT, self.FromDIP(8))
 
@@ -336,7 +336,7 @@ class TraceMatrixFrame(wx.Frame):
             self.grid.EndBatch()
         self.grid.ForceRefresh()
         self._summary.SetLabel(self._format_summary(matrix.summary))
-        self.details_panel.show_message(_("Выберите ячейку или заголовок для просмотра деталей."))
+        self.details_panel.show_message(_("Select a cell or header to view details."))
 
     # event handlers --------------------------------------------------
     def _on_rebuild(self, _event: wx.CommandEvent) -> None:
@@ -350,8 +350,8 @@ class TraceMatrixFrame(wx.Frame):
             return
         if not matrix.rows or not matrix.columns:
             wx.MessageBox(
-                _("В выбранных документах нет требований для отображения."),
-                _("Нет данных"),
+                _("The selected documents contain no requirements to display."),
+                _("No data"),
             )
             return
         self.config = config
@@ -422,7 +422,7 @@ class TraceMatrixFrame(wx.Frame):
         state = _DetailsState(
             row_label=_describe_requirement(entry),
             column_label="",
-            link_details=_("Выберите ячейку, чтобы увидеть информацию о связи."),
+            link_details=_("Select a cell to view link information."),
         )
         self.details_panel.show_state(state)
 
@@ -435,7 +435,7 @@ class TraceMatrixFrame(wx.Frame):
         state = _DetailsState(
             row_label="",
             column_label=_describe_requirement(entry),
-            link_details=_("Выберите ячейку, чтобы увидеть информацию о связи."),
+            link_details=_("Select a cell to view link information."),
         )
         self.details_panel.show_state(state)
 
@@ -444,10 +444,10 @@ class TraceMatrixFrame(wx.Frame):
     def _format_summary(summary) -> str:
         if summary.total_pairs == 0:
             return _(
-                "Требования: {rows} × {columns}. Нет доступных комбинаций требований"
+                "Requirements: {rows} × {columns}. No requirement combinations available"
             ).format(rows=summary.total_rows, columns=summary.total_columns)
         return _(
-            "Требования: {rows} × {columns}. Связано {linked} из {pairs} пар ({coverage:.0%})"
+            "Requirements: {rows} × {columns}. Linked {linked} of {pairs} pairs ({coverage:.0%})"
         ).format(
             rows=summary.total_rows,
             columns=summary.total_columns,
@@ -514,27 +514,27 @@ def _describe_requirement(entry) -> str:
     lines = [
         _("RID: {rid}").format(rid=req.rid),
         req.title or _("(untitled)"),
-        _("Документ: {doc}").format(doc=_format_document_label(doc)),
-        _("Тип: {type}").format(type=req_type),
-        _("Статус: {status}").format(status=status),
+        _("Document: {doc}").format(doc=_format_document_label(doc)),
+        _("Type: {type}").format(type=req_type),
+        _("Status: {status}").format(status=status),
     ]
     return "\n".join(lines)
 
 
 def _describe_links(cell: TraceMatrixCell | None, direction: TraceDirection) -> str:
     if cell is None or not cell.links:
-        return _("Связи отсутствуют.")
-    lines = [_("Всего связей: {count}").format(count=len(cell.links))]
+        return _("No links.")
+    lines = [_("Total links: {count}").format(count=len(cell.links))]
     if direction == TraceDirection.CHILD_TO_PARENT:
-        header = _("Родители:")
+        header = _("Parents:")
         items = [link.target_rid for link in cell.links]
     else:
-        header = _("Потомки:")
+        header = _("Children:")
         items = [link.source_rid for link in cell.links]
     lines.append(header)
     lines.extend(f"• {rid}" for rid in items)
     if any(link.suspect for link in cell.links):
-        lines.append(_("Есть подозрительные связи."))
+        lines.append(_("There are suspect links."))
     return "\n".join(lines)
 
 

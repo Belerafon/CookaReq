@@ -1,40 +1,40 @@
-# Harmony / Responses протокол для LLM
+# Harmony / Responses protocol for LLMs
 
-## Назначение и область применения
-Harmony — это формат представления диалогов, который OpenAI использует в линейке моделей gpt-oss и совместим с Responses API. Протокол задаёт единое кодирование ролей, каналов и дополнительных метаданных сообщений, чтобы модель могла различать системные инструкции, разработческие указания, пользовательские запросы, поток рассуждений и вызовы инструментов. В отличие от классических Chat Completions, Harmony требует строгого следования структуре и зарезервированным токенам (`<|start|>`, `<|channel|>`, `<|message|>`, `<|end|>` и др.), а также разделяет команды для инструментов и пользовательский вывод.
+## Purpose and scope
+Harmony is the dialogue representation format used by OpenAI for the gpt-oss family of models and is compatible with the Responses API. The protocol defines a unified encoding for roles, channels, and auxiliary message metadata so the model can differentiate system instructions, developer guidance, user prompts, reasoning flow, and tool calls. Unlike classic Chat Completions, Harmony mandates strict adherence to the structure and reserved tokens (`<|start|>`, `<|channel|>`, `<|message|>`, `<|end|>`, etc.) while separating tool commands from user-facing output.
 
-## Базовые сущности
-- **Роли**: `system`, `developer`, `user`, `assistant`, `tool`. Иерархия инструкций совпадает с порядком перечисления (system > developer > user > assistant > tool).
-- **Каналы ассистента**:
-  - `analysis` — поток внутреннего рассуждения (CoT), не предназначен для пользователя.
-  - `commentary` — сообщения о планируемых действиях, вызовы инструментов, служебная информация.
-  - `final` — пользовательский ответ.
-- **Спецтокены**: `<|start|>` (200006), `<|channel|>` (200005), `<|message|>` (200008), `<|constrain|>` (200003), `<|end|>` (200007), `<|return|>` (200002), `<|call|>` (200012). Они используются при токенизации в словаре `o200k_harmony`.
+## Core entities
+- **Roles**: `system`, `developer`, `user`, `assistant`, `tool`. Instruction precedence matches this order (system > developer > user > assistant > tool).
+- **Assistant channels**:
+  - `analysis` — chain-of-thought reasoning, hidden from the user.
+  - `commentary` — planned actions, tool calls, diagnostic messages.
+  - `final` — user-visible response.
+- **Special tokens**: `<|start|>` (200006), `<|channel|>` (200005), `<|message|>` (200008), `<|constrain|>` (200003), `<|end|>` (200007), `<|return|>` (200002), `<|call|>` (200012). They are part of the `o200k_harmony` vocabulary.
 
-## Структура сообщения
-Каждое сообщение кодируется как `<|start|>{header}<|message|>{content}<|end|>`, где в заголовке указываются роль, канал, получатель (для инструментов) и тип контента. Системные и разработческие сообщения обычно не задают канал явно. Сообщения ассистента могут завершаться `<|return|>` (нормальное окончание генерации) или `<|call|>` (запрос вызова инструмента); перед сохранением в историю завершающий токен заменяют на `<|end|>`.
+## Message structure
+Every message is encoded as `<|start|>{header}<|message|>{content}<|end|>`, where the header defines the role, channel, recipient (for tools), and content type. System and developer messages typically omit the channel. Assistant messages may end with `<|return|>` (normal completion) or `<|call|>` (tool invocation); when persisted in history the closing token is replaced with `<|end|>`.
 
-## Системное и разработческое сообщения
-- **System**: фиксирует идентичность модели («You are ChatGPT…»), knowledge cutoff, текущую дату, уровень рассуждений (`Reasoning: high|medium|low`), список допустимых каналов и встроенных инструментов (browser, python и т. п.). Если доступны функции, здесь же помечается, что вызовы должны идти в `commentary`.
-- **Developer**: содержит инструкции «системного промпта» и декларацию инструментов/форматов. Определение инструментов выполняется в псевдотипизации TypeScript внутри пространства имён `functions`, с комментариями для описаний и JSON Schema для структурированных ответов.
+## System and developer messages
+- **System**: specifies the model identity (“You are ChatGPT…”), knowledge cutoff, current date, reasoning level (`Reasoning: high|medium|low`), allowed channels, and built-in tools (browser, python, etc.). When functions are available the message also notes that calls must be emitted via `commentary`.
+- **Developer**: contains system-prompt instructions and tool/format declarations. Tools are defined using TypeScript-like pseudo-typing under the `functions` namespace with descriptive comments and JSON Schema for structured outputs.
 
-## История диалога
-При формировании промпта Conversation состоит из последовательности Harmony-сообщений: системное, разработческое, затем попеременно `user` и `assistant`. Сообщения `assistant` могут включать CoT в `analysis`, затем финальный ответ или вызов инструмента. Ответы инструментов кодируются как сообщения `tool` c автором `functions.<name>` и каналом `commentary`. При повторном запросе в историю передают финальные сообщения ассистента и все tool-ответы; цепочку рассуждений сохраняют только если взаимодействие завершилось вызовом инструмента.
+## Conversation history
+When building a prompt the conversation consists of Harmony messages in order: system, developer, then alternating `user` and `assistant` entries. Assistant messages can include CoT in `analysis`, followed by a final reply or tool call. Tool responses are encoded as `tool` messages authored by `functions.<name>` on the `commentary` channel. During a follow-up request the history includes the assistant’s final message and all tool replies; reasoning chains are replayed only when the interaction ended with a tool call.
 
-## Потоковая передача
-Responses API возвращает поток событий: `response.stream.delta` (части контента), `response.stream.error`, `response.completed`, `response.output_text.delta`, `response.output_tool_call.delta` и т. д. Для Harmony стоит использовать `StreamableParser` из `openai_harmony`, который отслеживает текущий канал, тип контента, получателя и собирает финальные сообщения без потери юникодных последовательностей. Поток завершается событием `<|return|>` или `<|call|>`.
+## Streaming
+The Responses API delivers a stream of events: `response.stream.delta` (content chunks), `response.stream.error`, `response.completed`, `response.output_text.delta`, `response.output_tool_call.delta`, etc. Use `StreamableParser` from `openai_harmony` to track the active channel, content type, and recipient while reconstructing messages without losing Unicode sequences. The stream ends on `<|return|>` or `<|call|>`.
 
-## Вызовы инструментов
-Ассистент формирует сообщение с каналом `commentary`, указывает получателя `to=functions.<имя>` и при необходимости добавляет `<|constrain|>json` для типа аргументов. После выполнения инструмента приложение добавляет сообщение `tool` (`<|start|>functions.<имя> to=assistant<|channel|>commentary<|message|>{output}<|end|>`). В следующем проходе истории нужно включать и CoT, и tool-ответ, чтобы модель могла продолжить рассуждения.
+## Tool calls
+The assistant emits a `commentary` message, sets the recipient `to=functions.<name>`, and, if necessary, adds `<|constrain|>json` to indicate the argument type. After the tool finishes, the application appends a `tool` message (`<|start|>functions.<name> to=assistant<|channel|>commentary<|message|>{output}<|end|>`). The next conversation replay must include both the CoT and the tool response so the model can continue reasoning.
 
-## Практические советы по интеграции
-1. **Рендеринг**: используйте `openai_harmony.Conversation` и `load_harmony_encoding`, чтобы формировать токены. При отсутствии доступа к библиотеке допустимо реализовать минимальный рендерер, но важно соблюдать формат спецтокенов.
-2. **Парсинг**: обрабатывайте сообщения построчно через `StreamableParser`. Для неблокирующего вывода в Responses API доступен `responses.stream`, который передаёт те же события.
-3. **Совместимость**: проверьте, поддерживает ли ваш провайдер Harmony (OpenRouter, собственный inference). Если нет, переключитесь на сервис, который умеет Responses/Harmony, и ведите сессии в едином формате.
-4. **Инструменты**: перед вызовом `responses.create` приведите определения MCP-функций к плоскому виду (`type/name/parameters` без вложенного блока `function`). Это делает `convert_tools_for_harmony`, благодаря чему SDK не требует `openai.pydantic_function_tool()`.
-5. **Тестирование**: пишите интеграционные тесты, симулирующие потоковые события и проверяющие разбор CoT, tool-call и финального сообщения. Для регресса удобно иметь заранее сохранённые последовательности токенов.
+## Integration tips
+1. **Rendering**: use `openai_harmony.Conversation` and `load_harmony_encoding` to build token payloads. When the library is unavailable, implement a minimal renderer but keep the token format intact.
+2. **Parsing**: process messages line-by-line with `StreamableParser`. For non-blocking output the Responses API exposes `responses.stream`, which emits the same events.
+3. **Compatibility**: confirm that your provider supports Harmony (OpenRouter, custom inference). If not, switch to a service that offers Responses/Harmony and keep conversations in a single format.
+4. **Tools**: before calling `responses.create`, flatten MCP tool definitions into `type/name/parameters` without the nested `function` block. `convert_tools_for_harmony` handles this transformation so the SDK does not require `openai.pydantic_function_tool()`.
+5. **Testing**: add integration tests that simulate streaming events and verify parsing of CoT, tool calls, and the final message. Pre-recorded token sequences are useful for regression coverage.
 
-## Дополнительные материалы
-- Репозиторий `openai_harmony`: содержит рендерер, парсер и определения токенов.
-- Документация Responses API: описывает структуру событий `responses.create` и `responses.stream`.
-- Примеры промптов: стоит хранить локально (например, в `tests/fixtures`) для отладки и обучения новых разработчиков.
+## Additional references
+- `openai_harmony` repository: renderer, parser, and token definitions.
+- Responses API documentation: details the `responses.create` and `responses.stream` event structure.
+- Prompt examples: keep local copies (for example under `tests/fixtures`) for debugging and onboarding.

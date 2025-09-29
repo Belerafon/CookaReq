@@ -13,9 +13,9 @@
   "rationale": "",
   "revision": 1,
   "source": "",
-  "statement": "Демо-описание должно перечислять ключевые модели требований и их инварианты, связывая их с UI и MCP-инструментами.",
+  "statement": "The demo description must list key requirement models and their invariants, linking them to the UI and MCP tools.",
   "status": "draft",
-  "title": "Доменные модели",
+  "title": "Domain models",
   "type": "requirement",
   "verification": "analysis"
 }

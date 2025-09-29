@@ -90,7 +90,7 @@ def test_build_entry_diagnostic_includes_llm_details():
                 "message": "Invalid arguments",
                 "details": {
                     "type": "ToolValidationError",
-                    "llm_message": "Подготавливаю требование",
+                    "llm_message": "Preparing the requirement",
                     "llm_tool_calls": [
                         {
                             "id": "call-0",
@@ -109,7 +109,7 @@ def test_build_entry_diagnostic_includes_llm_details():
         context_snapshot=None,
     )
 
-    assert diagnostic["llm_final_message"] == "Подготавливаю требование"
+    assert diagnostic["llm_final_message"] == "Preparing the requirement"
     planned = diagnostic["llm_tool_calls"]
     assert isinstance(planned, list)
     assert planned

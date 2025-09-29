@@ -116,3 +116,46 @@ def test_transcript_switch_benchmark(tmp_path, wx_app, record_property):
         assert max(measurement) < 0.75, "Switching chats exceeds the acceptable latency"
     finally:
         destroy_panel(frame, panel)
+
+
+def test_transcript_panels_reused_between_switches(tmp_path, wx_app):
+    """Ensure transcript panels are cached when switching conversations."""
+
+    class IdleAgent:
+        def run_command(self, *args, **kwargs):  # pragma: no cover - interface stub
+            raise AssertionError("Agent commands are not expected during the benchmark")
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, IdleAgent())
+
+    try:
+        spec = ConversationSpec(prompts=3, prompt_length=1, response_length=2)
+        conversations = [_create_conversation(spec, index=i) for i in range(2)]
+        _prepare_panel_history(panel, conversations)
+        flush_wx_events(wx)
+
+        view = panel._transcript_view
+        assert view is not None
+        first_id = conversations[0].conversation_id
+        cache = view._conversation_cache.get(first_id)
+        assert cache is not None
+        first_order = list(cache.order)
+        first_panels = [cache.panels_by_entry[key] for key in first_order]
+        assert first_panels, "Expected transcript panels for the initial conversation"
+
+        panel._activate_conversation_by_index(1)
+        wx_app.Yield()
+        flush_wx_events(wx)
+        panel._activate_conversation_by_index(0)
+        wx_app.Yield()
+        flush_wx_events(wx)
+
+        cache_after = view._conversation_cache.get(first_id)
+        assert cache_after is not None
+        second_panels = [
+            cache_after.panels_by_entry[key] for key in cache_after.order
+        ]
+        assert len(second_panels) == len(first_panels)
+        for original, restored in zip(first_panels, second_panels):
+            assert restored is original
+    finally:
+        destroy_panel(frame, panel)

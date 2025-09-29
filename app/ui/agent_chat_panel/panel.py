@@ -739,6 +739,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self.active_conversation_id is not None
             and self.active_conversation_id in ids_to_remove
         )
+        view = self._transcript_view
+        if view is not None:
+            view.forget_conversations(ids_to_remove)
         remaining = [
             conv for conv in self.conversations if conv.conversation_id not in ids_to_remove
         ]
@@ -1566,6 +1569,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return
         self._history_view.refresh()
         self._update_history_controls()
+        view = self._transcript_view
+        if view is not None:
+            view.sync_known_conversations(
+                [conversation.conversation_id for conversation in self.conversations]
+            )
 
     def _render_transcript(
         self, *, diagnostics: _ChatSwitchDiagnostics | None = None

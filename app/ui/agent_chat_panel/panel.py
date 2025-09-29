@@ -36,7 +36,7 @@ from .confirm_preferences import (
     RequirementConfirmPreference,
 )
 from .coordinator import AgentChatCoordinator
-from .controller import AgentRunCallbacks, AgentRunController
+from .controller import AgentRunCallbacks, AgentRunController, RemovedConversationEntry
 from .execution import AgentCommandExecutor, ThreadedAgentCommandExecutor, _AgentRunHandle
 from .history import AgentChatHistory
 from .history_view import HistoryView
@@ -398,6 +398,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 prompt_at=prompt_at,
                 context_messages=context,
             ),
+            remove_entry=self._remove_conversation_entry,
+            restore_entry=self._restore_conversation_entry,
             is_running=lambda: self._session.is_running,
             persist_history=self._save_history_to_store,
             refresh_history=self._notify_history_changed,
@@ -1331,7 +1333,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self,
         conversation: ChatConversation,
         entry: ChatEntry,
-    ) -> tuple[int, ChatEntry, str] | None:
+    ) -> RemovedConversationEntry | None:
         try:
             index = conversation.entries.index(entry)
         except ValueError:
@@ -1345,7 +1347,32 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             )
         else:
             conversation.updated_at = conversation.created_at
-        return index, removed, previous_updated
+        return RemovedConversationEntry(
+            index=index,
+            entry=removed,
+            previous_updated_at=previous_updated,
+        )
+
+    def _remove_conversation_entry(
+        self, conversation: ChatConversation, entry: ChatEntry
+    ) -> RemovedConversationEntry | None:
+        removal = self._pop_conversation_entry(conversation, entry)
+        if removal is None:
+            return None
+        self._save_history_to_store()
+        self._notify_history_changed()
+        self._render_transcript()
+        return removal
+
+    def _restore_conversation_entry(
+        self, conversation: ChatConversation, removal: RemovedConversationEntry
+    ) -> None:
+        conversation.entries.insert(removal.index, removal.entry)
+        conversation.updated_at = removal.previous_updated_at
+        conversation.ensure_title()
+        self._save_history_to_store()
+        self._notify_history_changed()
+        self._render_transcript()
 
     def _discard_pending_entry(self, handle: _AgentRunHandle) -> None:
         entry = handle.pending_entry
@@ -1438,33 +1465,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if self._transcript_view is None:
             return
         self._transcript_view.render()
-
-    def _on_regenerate_entry(
-        self,
-        conversation_id: str,
-        entry: ChatEntry,
-    ) -> None:
-        if self._session.is_running:
-            return
-        conversation = self._get_conversation_by_id(conversation_id)
-        if conversation is None or not conversation.entries:
-            return
-        if entry is not conversation.entries[-1]:
-            return
-        prompt = entry.prompt
-        if not prompt.strip():
-            return
-        previous_state = entry.regenerated
-        entry.regenerated = True
-        self._save_history_to_store()
-        self._notify_history_changed()
-        try:
-            self._submit_prompt(prompt)
-        except Exception:  # pragma: no cover - defensive
-            logger.exception("Failed to regenerate agent response")
-            entry.regenerated = previous_state
-            self._save_history_to_store()
-            self._notify_history_changed()
 
     def _ensure_history_visible(self, index: int) -> None:
         if self._history_view is None:

@@ -271,14 +271,12 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
         flush_wx_events(wx, count=6)
 
         assert panel.history
-        assert len(panel.history) == 2
-        archived, regenerated_entry = panel.history
-        assert archived.response.endswith("1")
-        assert getattr(archived, "regenerated", False)
+        assert len(panel.history) == 1
+        regenerated_entry = panel.history[0]
         assert regenerated_entry.response.endswith("2")
         assert not getattr(regenerated_entry, "regenerated", False)
         transcript = panel.get_transcript_text()
-        assert "answer 1" in transcript
+        assert "answer 1" not in transcript
         assert "answer 2" in transcript
         assert agent.history_snapshots[1] in (None, [])
     finally:

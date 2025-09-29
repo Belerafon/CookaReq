@@ -22,6 +22,15 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
+class RemovedConversationEntry:
+    """Container describing an entry removed from a conversation."""
+
+    index: int
+    entry: ChatEntry
+    previous_updated_at: str
+
+
+@dataclass(slots=True)
 class AgentRunCallbacks:
     """Callables used by :class:`AgentRunController` to update the UI."""
 
@@ -35,6 +44,8 @@ class AgentRunCallbacks:
     add_pending_entry: Callable[
         [ChatConversation, str, str, tuple[dict[str, Any], ...] | None], ChatEntry
     ]
+    remove_entry: Callable[[ChatConversation, ChatEntry], RemovedConversationEntry | None]
+    restore_entry: Callable[[ChatConversation, RemovedConversationEntry], None]
     is_running: Callable[[], bool]
     persist_history: Callable[[], None]
     refresh_history: Callable[[], None]
@@ -275,19 +286,14 @@ class AgentRunController:
         prompt = entry.prompt
         if not prompt.strip():
             return
-        previous_state = entry.regenerated
-        entry.regenerated = True
+        removal = self._callbacks.remove_entry(conversation, entry)
+        if removal is None:
+            return
         try:
-            self._callbacks.persist_history()
-            self._callbacks.refresh_history()
-            self._callbacks.render_transcript()
             self.submit_prompt(prompt)
         except Exception:  # pragma: no cover - defensive
             logger.exception("Failed to regenerate agent response")
-            entry.regenerated = previous_state
-            self._callbacks.persist_history()
-            self._callbacks.refresh_history()
-            self._callbacks.render_transcript()
+            self._callbacks.restore_entry(conversation, removal)
 
     # ------------------------------------------------------------------
     def _finalize_prompt(self, prompt: str, result: Any, handle: _AgentRunHandle) -> None:
@@ -308,4 +314,8 @@ class AgentRunController:
             return None
 
 
-__all__ = ["AgentRunController", "AgentRunCallbacks"]
+__all__ = [
+    "AgentRunController",
+    "AgentRunCallbacks",
+    "RemovedConversationEntry",
+]

@@ -104,6 +104,11 @@ class AgentChatSession:
     def finalize_run(self, *, tokens: TokenCountResult | None = None) -> None:
         """Mark the agent run as completed."""
 
+        if self._start_time is not None:
+            try:
+                self._elapsed = max(0.0, time.monotonic() - self._start_time)
+            except Exception:  # pragma: no cover - defensive
+                self._elapsed = 0.0
         if tokens is not None:
             self._tokens = tokens
         else:

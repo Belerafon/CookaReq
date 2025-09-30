@@ -57,6 +57,8 @@ class _AgentRunHandle:
     history_snapshot: tuple[dict[str, Any], ...] | None = None
     streamed_tool_results: list[dict[str, Any]] = field(default_factory=list)
     llm_steps: list[dict[str, Any]] = field(default_factory=list)
+    latest_llm_response: str | None = None
+    latest_reasoning_segments: tuple[dict[str, str], ...] | None = None
 
     @property
     def is_cancelled(self) -> bool:

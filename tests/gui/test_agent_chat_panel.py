@@ -123,6 +123,7 @@ def test_switching_to_previous_chat_after_starting_new_one(tmp_path, wx_app):
             context=None,
             cancellation=None,
             on_tool_result=None,
+            on_llm_step=None,
         ):
             return {"ok": True, "error": None, "result": {"echo": text}}
 
@@ -163,6 +164,7 @@ def test_agent_custom_system_prompt_appended(tmp_path, wx_app):
             context=None,
             cancellation=None,
             on_tool_result=None,
+            on_llm_step=None,
         ):
             self.last_history = list(history or [])
             return {"ok": True, "result": {"echo": text}}
@@ -773,7 +775,7 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
-def test_agent_chat_panel_orders_tool_bubbles_before_agent_reply(tmp_path, wx_app):
+def test_agent_chat_panel_orders_tool_bubbles_after_agent_reply(tmp_path, wx_app):
     class ToolAgent:
         def run_command(
             self,
@@ -842,8 +844,8 @@ def test_agent_chat_panel_orders_tool_bubbles_before_agent_reply(tmp_path, wx_ap
         agent_index = agent_indexes[-1]
         tool_indexes = [idx for idx, label in enumerate(headers) if "demo_tool" in label]
         assert tool_indexes, "tool bubble missing"
-        assert tool_indexes[0] < agent_index
-        assert agent_index == len(headers) - 1
+        assert tool_indexes[0] > agent_index
+        assert tool_indexes[-1] == len(headers) - 1
     finally:
         destroy_panel(frame, panel)
 
@@ -1514,6 +1516,195 @@ def test_agent_chat_panel_streams_tool_results(tmp_path, wx_app):
         assert not panel._is_running
     finally:
         agent.release.set()
+        destroy_panel(frame, panel)
+
+
+def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
+    tmp_path, wx_app, monkeypatch
+):
+    wx = pytest.importorskip("wx")
+
+    class TimelineAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            if callable(on_llm_step):
+                on_llm_step(
+                    {
+                        "step": 1,
+                        "response": {
+                            "content": (
+                                "Now I will translate the selected requirements into Russian."
+                            ),
+                            "reasoning": [
+                                {"type": "thinking", "text": "Fetch requirement data"}
+                            ],
+                            "tool_calls": [
+                                {
+                                    "id": "call-123",
+                                    "name": "update_requirement_field",
+                                    "arguments": {
+                                        "rid": "DEMO14",
+                                        "field": "title",
+                                        "value": "Настройки агента",
+                                    },
+                                }
+                            ],
+                        },
+                        "request_messages": [
+                            {"role": "user", "content": text},
+                        ],
+                    }
+                )
+            if callable(on_tool_result):
+                on_tool_result(
+                    {
+                        "tool_name": "update_requirement_field",
+                        "tool_call_id": "call-123",
+                        "call_id": "call-123",
+                        "tool_arguments": {
+                            "rid": "DEMO14",
+                            "field": "title",
+                            "value": "Настройки агента",
+                        },
+                        "agent_status": "running",
+                    }
+                )
+                on_tool_result(
+                    {
+                        "ok": False,
+                        "tool_name": "update_requirement_field",
+                        "tool_call_id": "call-123",
+                        "call_id": "call-123",
+                        "tool_arguments": {
+                            "rid": "DEMO14",
+                            "field": "title",
+                            "value": "Настройки агента",
+                        },
+                        "error": {
+                            "code": "VALIDATION_ERROR",
+                            "message": "update_requirement_field() missing rid",
+                        },
+                        "agent_status": "failed",
+                    }
+                )
+            return {
+                "ok": False,
+                "error": {
+                    "type": "ToolValidationError",
+                    "message": "update_requirement_field() missing rid",
+                },
+                "tool_results": [
+                    {
+                        "tool_name": "update_requirement_field",
+                        "tool_call_id": "call-123",
+                        "call_id": "call-123",
+                        "tool_arguments": {
+                            "rid": "DEMO14",
+                            "field": "title",
+                            "value": "Настройки агента",
+                        },
+                        "ok": False,
+                        "error": {
+                            "code": "VALIDATION_ERROR",
+                            "message": "update_requirement_field() missing rid",
+                        },
+                    }
+                ],
+                "diagnostic": {
+                    "llm_steps": [
+                        {
+                            "step": 1,
+                            "response": {
+                                "content": (
+                                    "Now I will translate the selected requirements into Russian."
+                                ),
+                                "reasoning": [
+                                    {
+                                        "type": "thinking",
+                                        "text": "Fetch requirement data",
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                },
+            }
+
+    times = iter(
+        [
+            "2025-01-01T12:00:00Z",
+            "2025-01-01T12:00:02Z",
+            "2025-01-01T12:00:04Z",
+            "2025-01-01T12:00:06Z",
+            "2025-01-01T12:00:08Z",
+        ]
+    )
+
+    def fake_utc_now_iso() -> str:
+        try:
+            return next(times)
+        except StopIteration:
+            return "2025-01-01T12:59:59Z"
+
+    monkeypatch.setattr("app.ui.agent_chat_panel.panel.utc_now_iso", fake_utc_now_iso)
+    monkeypatch.setattr("app.ui.agent_chat_panel.controller.utc_now_iso", fake_utc_now_iso)
+
+    agent = TimelineAgent()
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent)
+
+    try:
+        panel.input.SetValue("translate selected requirements")
+        panel._on_send(None)
+        flush_wx_events(wx, count=6)
+
+        history = panel.history
+        assert len(history) == 1
+        entry = history[0]
+        assert "Now I will translate the selected requirements into Russian." in entry.display_response
+        assert "update_requirement_field() missing rid" in entry.display_response
+        assert entry.reasoning
+        assert entry.reasoning[0]["text"] == "Fetch requirement data"
+        assert entry.tool_results and entry.tool_results[0]["started_at"] == "2025-01-01T12:00:02Z"
+        assert entry.tool_results[0]["completed_at"] == "2025-01-01T12:00:04Z"
+
+        raw_tool = entry.raw_result["tool_results"][0]
+        assert raw_tool["started_at"] == "2025-01-01T12:00:02Z"
+        assert raw_tool["completed_at"] == "2025-01-01T12:00:04Z"
+
+        diagnostic = entry.diagnostic
+        tool_exchange = diagnostic["tool_exchanges"][0]
+        assert tool_exchange["started_at"] == "2025-01-01T12:00:02Z"
+        assert tool_exchange["completed_at"] == "2025-01-01T12:00:04Z"
+
+        conversation = panel._get_active_conversation()
+        assert conversation is not None
+        cache = panel._transcript_view._conversation_cache[conversation.conversation_id]
+        message_panel = cache.panels_by_entry[id(entry)]
+        children = message_panel.GetSizer().GetChildren()
+        assert children[0].IsWindow()
+        assert children[0].GetWindow() is message_panel._user_bubble
+        assert children[1].IsWindow()
+        assert children[1].GetWindow() is message_panel._agent_bubble
+        assert children[2].IsSizer()
+        assert children[2].GetSizer() is message_panel._tool_section
+
+        assert message_panel._tool_bubbles
+        _, tool_bubble = message_panel._tool_bubbles[0]
+        assert tool_bubble._timestamp == "2025-01-01T12:00:04Z"
+
+        log_text = panel._compose_transcript_log_text()
+        assert "Started at 2025-01-01T12:00:02Z" in log_text
+        assert "Completed at 2025-01-01T12:00:04Z" in log_text
+        assert "Now I will translate the selected requirements into Russian." in log_text
+    finally:
         destroy_panel(frame, panel)
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import textwrap
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -306,6 +307,18 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         return self._session.is_running
 
     @property
+    def _is_running(self) -> bool:
+        """Compat shim for legacy callers expecting a private flag."""
+
+        return self._session.is_running
+
+    @property
+    def _current_tokens(self) -> TokenCountResult:
+        """Compat shim exposing the latest token accounting."""
+
+        return self._session.tokens
+
+    @property
     def coordinator(self) -> AgentChatCoordinator | None:
         """Return the coordinator driving backend interactions."""
 
@@ -365,6 +378,17 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self.transcript_panel = layout.transcript_scroller
         self._transcript_sizer = layout.transcript_sizer
         self._transcript_view = layout.transcript_view
+        self._transcript_selection_probe = wx.TextCtrl(
+            self,
+            style=(
+                wx.TE_MULTILINE
+                | wx.TE_READONLY
+                | wx.TE_WORDWRAP
+                | wx.TE_NO_VSCROLL
+                | wx.BORDER_NONE
+            ),
+        )
+        self._transcript_selection_probe.Hide()
         self._bottom_panel = layout.bottom_panel
         self.input = layout.input_control
         self._stop_btn = layout.stop_button
@@ -911,6 +935,21 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return f"~{formatted}"
         return formatted
 
+    def _format_tokens_for_status(self, tokens: TokenCountResult) -> str:
+        tokens_text = format_token_quantity(tokens)
+        limit = self._context_token_limit()
+        if limit is not None:
+            limit_tokens = TokenCountResult.exact(
+                limit,
+                model=tokens.model,
+            )
+            limit_text = format_token_quantity(limit_tokens)
+            tokens_text = _("{used} / {limit}").format(
+                used=tokens_text,
+                limit=limit_text,
+            )
+        return tokens_text
+
     def _update_conversation_header(self) -> None:
         """Refresh the transcript header with token statistics."""
 
@@ -920,22 +959,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         breakdown = self._compute_context_token_breakdown()
         total_tokens = breakdown.total
-        tokens_text = format_token_quantity(total_tokens)
+        tokens_text = self._format_tokens_for_status(total_tokens)
         percent_text = self._format_context_percentage(
             total_tokens, self._context_token_limit()
         )
-
-        limit = self._context_token_limit()
-        if limit is not None:
-            limit_tokens = TokenCountResult.exact(
-                limit,
-                model=total_tokens.model,
-            )
-            limit_text = format_token_quantity(limit_tokens)
-            tokens_text = _("{used} / {limit}").format(
-                used=tokens_text,
-                limit=limit_text,
-            )
 
         stats_text = _("Tokens: {tokens} • Context window: {usage}").format(
             tokens=tokens_text,
@@ -963,7 +990,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         coordinator = self._coordinator
         if coordinator is not None:
             coordinator.reset_active_handle(handle)
-        elapsed = self._session.elapsed
+        elapsed = 0.0
         final_tokens: TokenCountResult | None = None
         tool_results: list[Any] | None = None
         should_render = False
@@ -977,10 +1004,35 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 tool_results,
                 reasoning_segments,
             ) = self._process_result(result)
+            latest_response = normalize_for_display(
+                handle.latest_llm_response or ""
+            )
+            if latest_response:
+                if latest_response not in conversation_text:
+                    conversation_text = (
+                        f"{latest_response}\n\n{conversation_text}"
+                        if conversation_text
+                        else latest_response
+                    )
+                if display_text:
+                    if latest_response not in display_text:
+                        display_text = f"{latest_response}\n\n{display_text}"
+                else:
+                    display_text = latest_response
+            if not reasoning_segments and handle.latest_reasoning_segments:
+                reasoning_segments = handle.latest_reasoning_segments
             if not tool_results and handle.streamed_tool_results:
                 tool_results = list(
                     clone_streamed_tool_results(handle.streamed_tool_results)
                 )
+            merged_tool_results = self._merge_tool_result_timelines(
+                tool_results, handle.streamed_tool_results
+            )
+            if merged_tool_results is not None:
+                tool_results = merged_tool_results
+                if isinstance(raw_result, Mapping):
+                    raw_result = dict(raw_result)
+                    raw_result["tool_results"] = merged_tool_results
             response_tokens = count_text_tokens(
                 conversation_text,
                 model=self._token_model(),
@@ -1024,9 +1076,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 )
             handle.pending_entry = None
             handle.streamed_tool_results.clear()
+            handle.latest_llm_response = None
+            handle.latest_reasoning_segments = None
             should_render = True
         finally:
             self._set_wait_state(False, final_tokens)
+            elapsed = self._session.elapsed
             if elapsed:
                 minutes, seconds = divmod(int(elapsed), 60)
                 time_text = f"{minutes:02d}:{seconds:02d}"
@@ -1436,22 +1491,28 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         token_info = combine_token_counts([handle.prompt_tokens])
         tool_results_payload = handle.prepare_tool_results_payload()
         tool_results = list(tool_results_payload) if tool_results_payload else None
-        last_step_payload: Mapping[str, Any] | None = None
-        if handle.llm_steps:
-            candidate = handle.llm_steps[-1]
-            if isinstance(candidate, Mapping):
-                last_step_payload = candidate
-        response_text = ""
-        reasoning_segments: tuple[dict[str, str], ...] | None = None
-        if isinstance(last_step_payload, Mapping):
-            response_payload = last_step_payload.get("response")
-            if isinstance(response_payload, Mapping):
-                content_value = response_payload.get("content")
-                if isinstance(content_value, str):
-                    response_text = content_value
-                reasoning_segments = self._normalise_reasoning_segments(
-                    response_payload.get("reasoning")
-                )
+        response_text = handle.latest_llm_response or ""
+        reasoning_segments: tuple[dict[str, str], ...] | None = (
+            handle.latest_reasoning_segments
+            if handle.latest_reasoning_segments
+            else None
+        )
+        if not response_text:
+            last_step_payload: Mapping[str, Any] | None = None
+            if handle.llm_steps:
+                candidate = handle.llm_steps[-1]
+                if isinstance(candidate, Mapping):
+                    last_step_payload = candidate
+            if isinstance(last_step_payload, Mapping):
+                response_payload = last_step_payload.get("response")
+                if isinstance(response_payload, Mapping):
+                    content_value = response_payload.get("content")
+                    if isinstance(content_value, str):
+                        response_text = content_value
+                    if reasoning_segments is None:
+                        reasoning_segments = self._normalise_reasoning_segments(
+                            response_payload.get("reasoning")
+                        ) or None
         combined_display = cancellation_message
         if response_text:
             combined_display = f"{response_text}\n\n{cancellation_message}"
@@ -1485,6 +1546,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         handle.pending_entry = None
         handle.streamed_tool_results.clear()
         handle.llm_steps.clear()
+        handle.latest_llm_response = None
+        handle.latest_reasoning_segments = None
         batch_section = self._batch_section
         if batch_section is not None:
             batch_section.notify_cancellation(
@@ -1511,6 +1574,17 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if self._transcript_view is None:
             return
         self._transcript_view.render()
+        self._update_transcript_selection_probe(self._compose_transcript_text())
+
+    def _update_transcript_selection_probe(self, text: str | None = None) -> None:
+        probe = getattr(self, "_transcript_selection_probe", None)
+        if not isinstance(probe, wx.TextCtrl):
+            return
+        if text is None:
+            text = self._compose_transcript_text()
+        normalised = normalize_for_display(text or "")
+        if probe.GetValue() != normalised:
+            probe.ChangeValue(normalised)
 
     def _ensure_history_visible(self, index: int) -> None:
         if self._history_view is None:
@@ -1763,14 +1837,63 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 if text and text != entry.display_response:
                     entry.response = text
                     entry.display_response = text
+                    handle.latest_llm_response = text
                     updated = True
             reasoning_payload = response_payload.get("reasoning")
             reasoning_segments = self._normalise_reasoning_segments(reasoning_payload)
             if reasoning_segments:
                 entry.reasoning = reasoning_segments
+                handle.latest_reasoning_segments = reasoning_segments
                 updated = True
         if updated:
             self._render_transcript()
+
+    @staticmethod
+    def _merge_tool_result_timelines(
+        final_results: Sequence[Mapping[str, Any]] | None,
+        streamed_results: Sequence[Mapping[str, Any]] | None,
+    ) -> list[dict[str, Any]] | None:
+        if not final_results:
+            return None
+        timeline_by_id: dict[str, Mapping[str, Any]] = {}
+        if streamed_results:
+            for entry in streamed_results:
+                if not isinstance(entry, Mapping):
+                    continue
+                call_id = entry.get("call_id") or entry.get("tool_call_id")
+                if not call_id:
+                    continue
+                timeline_by_id[str(call_id)] = entry
+
+        merged: list[dict[str, Any]] = []
+        for payload in final_results:
+            if not isinstance(payload, Mapping):
+                continue
+            combined = dict(payload)
+            call_id = combined.get("call_id") or combined.get("tool_call_id")
+            timeline: Mapping[str, Any] | None = None
+            if call_id is not None:
+                timeline = timeline_by_id.get(str(call_id))
+            if timeline:
+                start = (
+                    timeline.get("started_at")
+                    or timeline.get("first_observed_at")
+                    or timeline.get("observed_at")
+                )
+                end = timeline.get("completed_at") or timeline.get("last_observed_at")
+                last_seen = timeline.get("last_observed_at") or end or start
+                if start and not combined.get("started_at"):
+                    combined["started_at"] = start
+                if start and not combined.get("first_observed_at"):
+                    combined["first_observed_at"] = start
+                if end and not combined.get("completed_at"):
+                    combined["completed_at"] = end
+                if last_seen and not combined.get("last_observed_at"):
+                    combined["last_observed_at"] = last_seen
+                if last_seen and not combined.get("observed_at"):
+                    combined["observed_at"] = last_seen
+            merged.append(combined)
+        return merged if merged else None
 
     def _compose_transcript_text(self) -> str:
         conversation = self._get_active_conversation()
@@ -2030,6 +2153,32 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                         prefix="        ",
                     )
                 )
+            started_at = (
+                payload.get("started_at")
+                or payload.get("first_observed_at")
+                or payload.get("observed_at")
+            )
+            completed_at = payload.get("completed_at") or payload.get("last_observed_at")
+            if started_at or completed_at:
+                lines.append(indent_block(_("Timeline:")))
+                if started_at:
+                    lines.append(
+                        indent_block(
+                            _("Started at {timestamp}").format(
+                                timestamp=normalize_for_display(str(started_at))
+                            ),
+                            prefix="        ",
+                        )
+                    )
+                if completed_at:
+                    lines.append(
+                        indent_block(
+                            _("Completed at {timestamp}").format(
+                                timestamp=normalize_for_display(str(completed_at))
+                            ),
+                            prefix="        ",
+                        )
+                    )
             extras = {
                 key: value
                 for key, value in payload.items()
@@ -2044,6 +2193,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     "tool_arguments",
                     "result",
                     "error",
+                    "started_at",
+                    "completed_at",
+                    "first_observed_at",
+                    "last_observed_at",
+                    "observed_at",
                 }
             }
             if extras:

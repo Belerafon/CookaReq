@@ -113,6 +113,43 @@ def destroy_panel(frame, panel):
     frame.Destroy()
 
 
+def test_switching_to_previous_chat_after_starting_new_one(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+        ):
+            return {"ok": True, "error": None, "result": {"echo": text}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
+
+    try:
+        panel.input.SetValue("first message")
+        panel._on_send(None)
+        flush_wx_events(wx)
+
+        assert panel.history_list.GetItemCount() == 1
+        assert "first message" in panel.get_transcript_text()
+
+        panel._on_new_chat(None)
+        flush_wx_events(wx)
+
+        assert panel.history_list.GetItemCount() == 2
+        assert panel._active_index() == 1
+
+        panel._on_history_row_activated(0)
+        flush_wx_events(wx)
+
+        assert panel._active_index() == 0
+        transcript = panel.get_transcript_text()
+        assert "first message" in transcript
+    finally:
+        destroy_panel(frame, panel)
 def test_agent_custom_system_prompt_appended(tmp_path, wx_app):
     class CaptureAgent:
         def __init__(self) -> None:

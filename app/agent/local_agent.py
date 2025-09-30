@@ -22,7 +22,7 @@ from ..llm.validation import ToolValidationError
 from ..mcp.client import MCPClient
 from ..mcp.utils import exception_to_mcp_error
 from ..settings import AppSettings
-from ..telemetry import log_event
+from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import (
     CancellationEvent,
     OperationCancelledError,
@@ -151,6 +151,57 @@ class LocalAgent:
             )
         return summary
 
+    @staticmethod
+    def _prepare_reasoning_segments(
+        segments: Sequence[LLMReasoningSegment],
+    ) -> list[dict[str, str]]:
+        """Convert reasoning segments into a JSON-serialisable list."""
+
+        prepared: list[dict[str, str]] = []
+        for segment in segments:
+            text_value = getattr(segment, "text", "")
+            if not text_value:
+                continue
+            text = str(text_value).strip()
+            if not text:
+                continue
+            prepared.append(
+                {
+                    "type": getattr(segment, "type", "reasoning"),
+                    "text": text,
+                }
+            )
+        return prepared
+
+    @staticmethod
+    def _tool_call_debug_payload(call: LLMToolCall) -> dict[str, Any]:
+        """Return detailed payload describing *call* for debug logging."""
+
+        arguments: Any
+        if isinstance(call.arguments, Mapping):
+            arguments = dict(call.arguments)
+        else:
+            arguments = call.arguments
+        return {
+            "id": call.id,
+            "name": call.name,
+            "arguments": arguments,
+        }
+
+    @staticmethod
+    def _normalise_request_messages(
+        messages: Sequence[Mapping[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        """Return a shallow copy of *messages* suitable for logging."""
+
+        if not messages:
+            return []
+        prepared: list[dict[str, Any]] = []
+        for message in messages:
+            if isinstance(message, Mapping):
+                prepared.append(dict(message))
+        return prepared
+
     def _log_step(self, step: int, response: LLMResponse) -> None:
         """Record intermediate agent step for diagnostics."""
 
@@ -168,6 +219,23 @@ class LocalAgent:
                 for segment in response.reasoning
             ]
         log_event("AGENT_STEP", payload)
+        log_debug_payload(
+            "AGENT_STEP_DETAIL",
+            {
+                "step": step,
+                "response": {
+                    "content": response.content,
+                    "tool_calls": [
+                        self._tool_call_debug_payload(call)
+                        for call in response.tool_calls
+                    ],
+                    "reasoning": self._prepare_reasoning_segments(response.reasoning),
+                },
+                "request_messages": self._normalise_request_messages(
+                    response.request_messages
+                ),
+            },
+        )
 
     @classmethod
     def _summarize_result(cls, result: Mapping[str, Any]) -> dict[str, Any]:
@@ -661,6 +729,14 @@ class LocalAgent:
                         "arguments": call.arguments,
                     },
                 )
+                log_debug_payload(
+                    "AGENT_TOOL_CALL_DETAIL",
+                    {
+                        "call_id": call.id,
+                        "tool_name": call.name,
+                        "arguments": self._normalise_tool_arguments(call),
+                    },
+                )
                 await self._mcp.ensure_ready_async()
                 result = await self._mcp.call_tool_async(call.name, call.arguments)
             except Exception as exc:
@@ -682,6 +758,16 @@ class LocalAgent:
                 )
                 payload.setdefault("agent_status", "failed")
                 self._emit_tool_result(on_tool_result, payload)
+                log_debug_payload(
+                    "AGENT_TOOL_RESULT_DETAIL",
+                    {
+                        "call_id": call.id,
+                        "tool_name": call.name,
+                        "ok": False,
+                        "error": error,
+                        "arguments": self._normalise_tool_arguments(call),
+                    },
+                )
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
             if not isinstance(result, Mapping):
@@ -698,6 +784,16 @@ class LocalAgent:
                 )
                 payload.setdefault("agent_status", "failed")
                 self._emit_tool_result(on_tool_result, payload)
+                log_debug_payload(
+                    "AGENT_TOOL_RESULT_DETAIL",
+                    {
+                        "call_id": call.id,
+                        "tool_name": call.name,
+                        "ok": False,
+                        "raw_result": result,
+                        "arguments": self._normalise_tool_arguments(call),
+                    },
+                )
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
             result_dict = self._prepare_tool_payload(
@@ -717,6 +813,18 @@ class LocalAgent:
             if not log_payload["ok"] and result_dict.get("error"):
                 log_payload["error"] = result_dict["error"]
             log_event("AGENT_TOOL_RESULT", log_payload)
+            log_debug_payload(
+                "AGENT_TOOL_RESULT_DETAIL",
+                {
+                    "call_id": call.id,
+                    "tool_name": call.name,
+                    "ok": bool(result.get("ok", False))
+                    if isinstance(result, Mapping)
+                    else False,
+                    "result": result,
+                    "arguments": self._normalise_tool_arguments(call),
+                },
+            )
             self._emit_tool_result(on_tool_result, result_dict)
             messages.append(self._tool_message(call, result_dict))
             if not result_dict.get("ok", False):

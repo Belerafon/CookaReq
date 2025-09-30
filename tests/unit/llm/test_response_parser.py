@@ -162,3 +162,59 @@ def test_consume_stream_collects_plain_string_chunks():
     assert message == "Hello world"
     assert tool_calls == []
     assert reasoning == []
+
+
+def test_consume_stream_recovers_tool_calls_from_message_payload():
+    parser = _parser()
+    stream = [
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "call-0",
+                                "function": {
+                                    "name": "update_requirement_field",
+                                    "arguments": "",
+                                },
+                            }
+                        ]
+                    },
+                    "message": {
+                        "content": [
+                            {"type": "text", "text": "Готово"},
+                        ],
+                        "tool_calls": [
+                            {
+                                "id": "call-0",
+                                "type": "function",
+                                "function": {
+                                    "name": "update_requirement_field",
+                                    "arguments": {
+                                        "rid": "DEMO15",
+                                        "field": "statement",
+                                        "value": "Перевод",
+                                    },
+                                },
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+    ]
+
+    message, tool_calls, reasoning = parser.consume_stream(stream, cancellation=None)
+
+    assert message == "Готово"
+    assert len(tool_calls) == 1
+    tool_call = tool_calls[0]
+    assert tool_call["function"]["name"] == "update_requirement_field"
+    assert tool_call["function"]["arguments"] == {
+        "rid": "DEMO15",
+        "field": "statement",
+        "value": "Перевод",
+    }
+    assert reasoning == []

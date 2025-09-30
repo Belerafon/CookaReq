@@ -432,6 +432,24 @@ class LLMResponseParser:
                                         f"choices[0].message.{key}",
                                         message_map.get(key),
                                     )
+                            message_tool_calls = message_map.get("tool_calls")
+                            if message_tool_calls:
+                                for tool_index, payload in enumerate(message_tool_calls):
+                                    self._append_stream_tool_call(
+                                        tool_chunks,
+                                        order,
+                                        payload,
+                                        choice_index=choice_index,
+                                        tool_index=tool_index,
+                                    )
+                            message_function_call = message_map.get("function_call")
+                            if message_function_call:
+                                self._append_stream_function_call(
+                                    tool_chunks,
+                                    order,
+                                    message_function_call,
+                                    choice_index=choice_index,
+                                )
                     if choice_map is not None:
                         for key in ("text", "assistant", "content"):
                             if key in choice_map:
@@ -439,6 +457,24 @@ class LLMResponseParser:
                                     f"choices[0].{key}",
                                     choice_map.get(key),
                                 )
+                        choice_tool_calls = choice_map.get("tool_calls")
+                        if choice_tool_calls:
+                            for tool_index, payload in enumerate(choice_tool_calls):
+                                self._append_stream_tool_call(
+                                    tool_chunks,
+                                    order,
+                                    payload,
+                                    choice_index=choice_index,
+                                    tool_index=tool_index,
+                                )
+                        choice_function_call = choice_map.get("function_call")
+                        if choice_function_call:
+                            self._append_stream_function_call(
+                                tool_chunks,
+                                order,
+                                choice_function_call,
+                                choice_index=choice_index,
+                            )
                 if chunk_map is not None:
                     for key in ("message", "assistant", "content"):
                         if key in chunk_map:
@@ -446,6 +482,24 @@ class LLMResponseParser:
                                 f"chunk.{key}",
                                 chunk_map.get(key),
                             )
+                    chunk_tool_calls = chunk_map.get("tool_calls")
+                    if chunk_tool_calls:
+                        for tool_index, payload in enumerate(chunk_tool_calls):
+                            self._append_stream_tool_call(
+                                tool_chunks,
+                                order,
+                                payload,
+                                choice_index=0,
+                                tool_index=tool_index,
+                            )
+                    chunk_function_call = chunk_map.get("function_call")
+                    if chunk_function_call:
+                        self._append_stream_function_call(
+                            tool_chunks,
+                            order,
+                            chunk_function_call,
+                            choice_index=0,
+                        )
             ensure_not_cancelled()
         except Exception as exc:
             if cancel_event is not None and (
@@ -1027,7 +1081,8 @@ class LLMResponseParser:
         tool_index: int | None = None,
     ) -> None:
         call_map = extract_mapping(tool_call)
-        key = (choice_index, tool_index or len(order))
+        key_index = tool_index if tool_index is not None else len(order)
+        key = (choice_index, key_index)
         if key not in tool_chunks:
             tool_chunks[key] = {
                 "id": None,
@@ -1056,8 +1111,7 @@ class LLMResponseParser:
         args_fragment = getattr(function, "arguments", None) if function else None
         if func_map is not None:
             args_fragment = func_map.get("arguments", args_fragment)
-        if args_fragment:
-            entry["function"]["arguments"] += str(args_fragment)
+        self._merge_tool_arguments(entry["function"], args_fragment)
 
     def _append_stream_function_call(
         self,
@@ -1085,8 +1139,48 @@ class LLMResponseParser:
         args_fragment = getattr(function_call, "arguments", None)
         if func_map is not None:
             args_fragment = func_map.get("arguments", args_fragment)
-        if args_fragment:
-            entry["function"]["arguments"] += str(args_fragment)
+        self._merge_tool_arguments(entry["function"], args_fragment)
+
+    @staticmethod
+    def _merge_tool_arguments(target: dict[str, Any], fragment: Any) -> None:
+        if fragment is None:
+            return
+        if isinstance(fragment, str):
+            current = target.get("arguments")
+            if isinstance(current, str):
+                target["arguments"] = (current or "") + fragment
+            elif current in (None, ""):
+                target["arguments"] = fragment
+            else:
+                return
+            return
+        if isinstance(fragment, Mapping):
+            incoming = dict(fragment)
+            current = target.get("arguments")
+            if isinstance(current, Mapping):
+                merged = dict(current)
+                merged.update(incoming)
+            else:
+                merged = incoming
+            target["arguments"] = merged
+            return
+        if isinstance(fragment, Sequence) and not isinstance(
+            fragment, (str, bytes, bytearray)
+        ):
+            incoming_list = list(fragment)
+            current = target.get("arguments")
+            if isinstance(current, Sequence) and not isinstance(
+                current, (str, bytes, bytearray)
+            ):
+                target["arguments"] = list(current) + incoming_list
+            else:
+                target["arguments"] = incoming_list
+            return
+        current = target.get("arguments")
+        if isinstance(current, str):
+            target["arguments"] = current + str(fragment)
+        elif current in (None, ""):
+            target["arguments"] = str(fragment)
 
     # ------------------------------------------------------------------
     def _decode_tool_arguments(

@@ -205,6 +205,16 @@ class LLMResponseParser:
         cancel_event = cancellation
         closed_by_cancel = False
         reasoning_segments: list[dict[str, str]] = []
+        fallback_candidates: list[tuple[str, str]] = []
+        fallback_samples: list[tuple[str, str]] = []
+
+        def _collect_candidate(label: str, value: Any) -> None:
+            text = self._stringify_content(value)
+            if not text:
+                return
+            fallback_samples.append((label, text))
+            if text.strip():
+                fallback_candidates.append((label, text))
 
         def ensure_not_cancelled() -> None:
             nonlocal closed_by_cancel
@@ -288,12 +298,60 @@ class LLMResponseParser:
                             function_call,
                             choice_index=choice_index,
                         )
+                    message_value = None
+                    if choice_map is not None:
+                        message_value = choice_map.get("message")
+                    if message_value is not None:
+                        _collect_candidate("choices[0].message", message_value)
+                        message_map = extract_mapping(message_value)
+                        if message_map is not None:
+                            for key in (
+                                "text",
+                                "assistant",
+                                "output_text",
+                                "value",
+                                "content",
+                            ):
+                                if key in message_map:
+                                    _collect_candidate(
+                                        f"choices[0].message.{key}",
+                                        message_map.get(key),
+                                    )
+                    if choice_map is not None:
+                        for key in ("text", "assistant", "content"):
+                            if key in choice_map:
+                                _collect_candidate(
+                                    f"choices[0].{key}",
+                                    choice_map.get(key),
+                                )
+                if chunk_map is not None:
+                    for key in ("message", "assistant", "content"):
+                        if key in chunk_map:
+                            _collect_candidate(
+                                f"chunk.{key}",
+                                chunk_map.get(key),
+                            )
             ensure_not_cancelled()
         finally:
             if callable(closer):
                 with suppress(Exception):  # pragma: no cover - defensive
                     closer()
         message = "".join(message_parts)
+        if not message and fallback_candidates:
+            source, text = fallback_candidates[0]
+            message = text
+            log_debug_payload(
+                "llm.response_parser.stream_message_fallback",
+                {"source": source, "preview": text.strip()[:160]},
+            )
+        elif not message and fallback_samples:
+            log_debug_payload(
+                "llm.response_parser.stream_empty_message_candidates",
+                [
+                    {"source": source, "preview": sample.strip()[:160]}
+                    for source, sample in fallback_samples
+                ],
+            )
         tool_calls = [tool_chunks[key] for key in order if tool_chunks[key]["function"]["name"]]
         return message, tool_calls, reasoning_segments
 

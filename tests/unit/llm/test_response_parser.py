@@ -34,3 +34,48 @@ def test_parse_chat_completion_falls_back_to_top_level_text():
     assert message == "Resolved translation"
     assert tool_calls == []
     assert reasoning == []
+
+
+def test_consume_stream_uses_message_fallback_from_choice_message():
+    parser = _parser()
+    stream = [
+        {
+            "choices": [
+                {
+                    "delta": {},
+                    "message": {"assistant": "Translation output"},
+                }
+            ]
+        }
+    ]
+
+    message, tool_calls, reasoning = parser.consume_stream(stream, cancellation=None)
+
+    assert message == "Translation output"
+    assert tool_calls == []
+    assert reasoning == []
+
+
+def test_consume_stream_uses_message_fallback_from_nested_segments():
+    parser = _parser()
+    stream = [
+        {
+            "choices": [
+                {
+                    "delta": {},
+                    "message": {
+                        "content": [
+                            {"type": "output_text", "text": "Line 1"},
+                            {"type": "output_text", "text": " and Line 2"},
+                        ]
+                    },
+                }
+            ]
+        }
+    ]
+
+    message, tool_calls, reasoning = parser.consume_stream(stream, cancellation=None)
+
+    assert message == "Line 1 and Line 2"
+    assert tool_calls == []
+    assert reasoning == []

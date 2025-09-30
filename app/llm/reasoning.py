@@ -12,6 +12,7 @@ __all__ = [
     "is_reasoning_type",
     "extract_reasoning_entries",
     "collect_reasoning_fragments",
+    "normalise_reasoning_segments",
 ]
 
 REASONING_TYPE_ALIASES = frozenset(
@@ -85,6 +86,10 @@ def collect_reasoning_fragments(payload: Any) -> list[tuple[str, str]]:
         except Exception:  # pragma: no cover - defensive
             return fragments
 
+    mapping_candidate = extract_mapping(payload)
+    if mapping_candidate and not isinstance(payload, Mapping):
+        payload = mapping_candidate
+
     if isinstance(payload, str):
         add_fragment("reasoning", payload)
         return fragments
@@ -119,3 +124,21 @@ def collect_reasoning_fragments(payload: Any) -> list[tuple[str, str]]:
         for item in payload:
             fragments.extend(collect_reasoning_fragments(item))
     return fragments
+
+
+def normalise_reasoning_segments(payload: Any) -> list[dict[str, str]]:
+    """Return sanitized reasoning segments suitable for JSON payloads."""
+
+    normalized: list[dict[str, str]] = []
+    if not payload:
+        return normalized
+
+    for segment_type, text in collect_reasoning_fragments(payload):
+        text_str = str(text).strip()
+        if not text_str:
+            continue
+        type_str = str(segment_type).strip() if segment_type is not None else ""
+        if not type_str:
+            type_str = "reasoning"
+        normalized.append({"type": type_str, "text": text_str})
+    return normalized

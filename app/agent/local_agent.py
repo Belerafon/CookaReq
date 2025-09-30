@@ -17,6 +17,7 @@ from ..confirm import (
 from ..services.requirements import parse_rid
 from ..llm.context import extract_selected_rids_from_text
 from ..llm.client import LLMClient
+from ..llm.reasoning import normalise_reasoning_segments
 from ..llm.types import LLMReasoningSegment, LLMResponse, LLMToolCall
 from ..llm.validation import ToolValidationError
 from ..mcp.client import MCPClient
@@ -153,28 +154,6 @@ class LocalAgent:
         return summary
 
     @staticmethod
-    def _prepare_reasoning_segments(
-        segments: Sequence[LLMReasoningSegment],
-    ) -> list[dict[str, str]]:
-        """Convert reasoning segments into a JSON-serialisable list."""
-
-        prepared: list[dict[str, str]] = []
-        for segment in segments:
-            text_value = getattr(segment, "text", "")
-            if not text_value:
-                continue
-            text = str(text_value).strip()
-            if not text:
-                continue
-            prepared.append(
-                {
-                    "type": getattr(segment, "type", "reasoning"),
-                    "text": text,
-                }
-            )
-        return prepared
-
-    @staticmethod
     def _tool_call_debug_payload(call: LLMToolCall) -> dict[str, Any]:
         """Return detailed payload describing *call* for debug logging."""
 
@@ -206,18 +185,19 @@ class LocalAgent:
     def _log_step(self, step: int, response: LLMResponse) -> dict[str, Any]:
         """Record intermediate agent step for diagnostics."""
 
+        normalized_reasoning = normalise_reasoning_segments(response.reasoning)
         payload = {
             "step": step,
             "message_preview": self._preview(response.content),
             "tool_calls": self._summarize_tool_calls(response.tool_calls),
         }
-        if response.reasoning:
+        if normalized_reasoning:
             payload["reasoning"] = [
                 {
-                    "type": segment.type,
-                    "preview": self._preview(segment.text, limit=200),
+                    "type": segment["type"],
+                    "preview": self._preview(segment["text"], limit=200),
                 }
-                for segment in response.reasoning
+                for segment in normalized_reasoning
             ]
         detail_payload = {
             "step": step,
@@ -227,7 +207,7 @@ class LocalAgent:
                     self._tool_call_debug_payload(call)
                     for call in response.tool_calls
                 ],
-                "reasoning": self._prepare_reasoning_segments(response.reasoning),
+                "reasoning": normalized_reasoning,
             },
             "request_messages": self._normalise_request_messages(
                 response.request_messages
@@ -261,30 +241,15 @@ class LocalAgent:
         if isinstance(stop_reason, Mapping):
             payload["agent_stop_reason"] = dict(stop_reason)
         reasoning_segments = result.get("reasoning")
-        if isinstance(reasoning_segments, Sequence) and not isinstance(
-            reasoning_segments, (str, bytes, bytearray)
-        ):
-            reasoning_preview: list[dict[str, str]] = []
-            for segment in reasoning_segments:
-                if isinstance(segment, Mapping):
-                    type_value = segment.get("type")
-                    text_value = segment.get("text")
-                else:
-                    type_value = getattr(segment, "type", None)
-                    text_value = getattr(segment, "text", None)
-                if not text_value:
-                    continue
-                text_str = str(text_value).strip()
-                if not text_str:
-                    continue
-                reasoning_preview.append(
-                    {
-                        "type": str(type_value or "reasoning"),
-                        "preview": cls._preview(text_str, limit=200),
-                    }
-                )
-            if reasoning_preview:
-                payload["reasoning"] = reasoning_preview
+        normalized_reasoning = normalise_reasoning_segments(reasoning_segments)
+        if normalized_reasoning:
+            payload["reasoning"] = [
+                {
+                    "type": segment["type"],
+                    "preview": cls._preview(segment["text"], limit=200),
+                }
+                for segment in normalized_reasoning
+            ]
         return payload
 
     @staticmethod
@@ -868,6 +833,7 @@ class LocalAgent:
         raw_reasoning = getattr(exc, "llm_reasoning", None)
         prepared_calls = self._prepare_invalid_tool_calls(raw_calls)
         request_snapshot: tuple[dict[str, Any], ...] | None = None
+        normalized_reasoning = normalise_reasoning_segments(raw_reasoning)
         reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
         if isinstance(raw_request_messages, Sequence) and not isinstance(
             raw_request_messages, (str, bytes, bytearray)
@@ -878,29 +844,14 @@ class LocalAgent:
                     prepared_messages.append(dict(message))
             if prepared_messages:
                 request_snapshot = tuple(prepared_messages)
-        if isinstance(raw_reasoning, Sequence) and not isinstance(
-            raw_reasoning, (str, bytes, bytearray)
-        ):
-            prepared_segments: list[LLMReasoningSegment] = []
-            for item in raw_reasoning:
-                if isinstance(item, LLMReasoningSegment):
-                    prepared_segments.append(item)
-                    continue
-                if not isinstance(item, Mapping):
-                    continue
-                text_value = item.get("text")
-                if text_value is None:
-                    continue
-                text_str = str(text_value).strip()
-                if not text_str:
-                    continue
-                type_value = item.get("type")
-                type_str = str(type_value) if type_value is not None else "reasoning"
-                prepared_segments.append(
-                    LLMReasoningSegment(type=type_str, text=text_str)
+        if normalized_reasoning:
+            reasoning_segments = tuple(
+                LLMReasoningSegment(
+                    type=segment["type"],
+                    text=segment["text"],
                 )
-            if prepared_segments:
-                reasoning_segments = tuple(prepared_segments)
+                for segment in normalized_reasoning
+            )
 
         error_template = exception_to_mcp_error(exc)["error"]
 
@@ -948,9 +899,8 @@ class LocalAgent:
         }
         if assistant_tool_calls:
             assistant_message["tool_calls"] = assistant_tool_calls
-        reasoning_payload = self._prepare_reasoning_segments(reasoning_segments)
-        if reasoning_payload:
-            assistant_message["reasoning"] = reasoning_payload
+        if normalized_reasoning:
+            assistant_message["reasoning"] = normalized_reasoning
         conversation.append(assistant_message)
 
         if tool_messages:
@@ -1108,23 +1058,9 @@ class LocalAgent:
                 self._max_consecutive_tool_errors
             )
         prepared["agent_stop_reason"] = stop_reason
-        reasoning_payload: list[dict[str, str]] = []
-        if reasoning_segments:
-            for segment in reasoning_segments:
-                text = getattr(segment, "text", "")
-                if not text:
-                    continue
-                text_str = str(text).strip()
-                if not text_str:
-                    continue
-                reasoning_payload.append(
-                    {
-                        "type": getattr(segment, "type", "reasoning"),
-                        "text": text_str,
-                    }
-                )
-        if reasoning_payload:
-            prepared.setdefault("reasoning", reasoning_payload)
+        normalized_reasoning = normalise_reasoning_segments(reasoning_segments)
+        if normalized_reasoning:
+            prepared.setdefault("reasoning", normalized_reasoning)
         return prepared
 
     def _success_result(
@@ -1144,22 +1080,9 @@ class LocalAgent:
             segments = reasoning_segments
         else:
             segments = response.reasoning
-        prepared_reasoning: list[dict[str, str]] = []
-        for segment in segments:
-            text_value = getattr(segment, "text", "")
-            if not text_value:
-                continue
-            text = str(text_value).strip()
-            if not text:
-                continue
-            prepared_reasoning.append(
-                {
-                    "type": getattr(segment, "type", "reasoning"),
-                    "text": text,
-                }
-            )
-        if prepared_reasoning:
-            payload["reasoning"] = prepared_reasoning
+        normalized_reasoning = normalise_reasoning_segments(segments)
+        if normalized_reasoning:
+            payload["reasoning"] = normalized_reasoning
         if tool_results:
             payload["tool_results"] = [dict(result) for result in tool_results]
         return payload
@@ -1196,7 +1119,7 @@ class LocalAgent:
             "role": "assistant",
             "content": response.content,
         }
-        reasoning_segments = self._prepare_reasoning_segments(response.reasoning)
+        reasoning_segments = normalise_reasoning_segments(response.reasoning)
         if reasoning_segments:
             message["reasoning"] = reasoning_segments
         if response.tool_calls:

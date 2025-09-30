@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, is_dataclass
 from typing import Any, Mapping
 
 __all__ = ["extract_mapping"]
@@ -21,6 +22,15 @@ def extract_mapping(obj: Any) -> Mapping[str, Any] | None:
                 continue
             if isinstance(data, Mapping):
                 return data
+    if is_dataclass(obj):
+        try:
+            data = asdict(obj)
+        except Exception:  # pragma: no cover - defensive
+            data = None
+        if isinstance(data, Mapping):
+            return data
+        if isinstance(data, dict):  # pragma: no cover - defensive fallback
+            return data
     data = getattr(obj, "_data", None)
     if isinstance(data, Mapping):
         return data

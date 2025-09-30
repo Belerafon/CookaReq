@@ -15,11 +15,7 @@ from .context import extract_selected_rids_from_messages
 from .harmony import convert_tools_for_harmony
 from .logging import log_request, log_response
 from .request_builder import LLMRequestBuilder
-from .response_parser import (
-    LLMResponseParser,
-    StreamConsumptionError,
-    normalise_tool_calls,
-)
+from .response_parser import LLMResponseParser, normalise_tool_calls
 from .spec import TOOLS
 from .types import LLMReasoningSegment, LLMResponse
 from .validation import ToolValidationError
@@ -216,18 +212,13 @@ class LLMClient:
         try:
             completion = self._chat_completion(**prepared.request_args)
             if prepared.request_args.get("stream"):
-                try:
-                    (
-                        message_text,
-                        raw_tool_calls_payload,
-                        stream_reasoning,
-                    ) = self._response_parser.consume_stream(
-                        completion, cancellation=cancellation
-                    )
-                except StreamConsumptionError as stream_exc:
-                    message_text = stream_exc.message_text
-                    raw_tool_calls_payload = stream_exc.raw_tool_calls_payload
-                    stream_reasoning = stream_exc.reasoning_segments
+                (
+                    message_text,
+                    raw_tool_calls_payload,
+                    stream_reasoning,
+                ) = self._response_parser.consume_stream(
+                    completion, cancellation=cancellation
+                )
                 if stream_reasoning:
                     reasoning_accumulator.extend(stream_reasoning)
             else:

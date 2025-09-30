@@ -765,6 +765,65 @@ def test_streaming_cancellation_closes_stream(tmp_path: Path, monkeypatch) -> No
     assert isinstance(result.get("exc"), OperationCancelledError)
 
 
+def test_streaming_truncation_returns_partial_message(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    settings.llm.stream = True
+
+    class FakeStream:
+        # This fake stream emits a single partial chunk and then simulates a dropped
+        # connection.  The scenario documents why the client must surface the text
+        # that already arrived: downstream agents rely on the partial statement to
+        # decide whether a retry is necessary, and regressions in this behaviour
+        # manifest exactly as the "empty message" errors observed in the field.
+        def __init__(self) -> None:
+            self.closed = False
+            self.iteration = 0
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            if self.iteration == 0:
+                self.iteration += 1
+                return {
+                    "choices": [
+                        {
+                            "delta": {
+                                "content": [
+                                    {"type": "text", "text": "partial"},
+                                ]
+                            },
+                        }
+                    ]
+                }
+            raise httpx.ReadError("connection dropped", request=None)
+
+        def close(self) -> None:
+            self.closed = True
+
+    class FakeOpenAI:
+        def __init__(self, *args, **kwargs):  # pragma: no cover - simple container
+            self.stream = FakeStream()
+
+            def create(**_kwargs):  # noqa: ANN001
+                return self.stream
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    fake_client = client._client  # type: ignore[attr-defined]
+    stream: FakeStream = fake_client.stream  # type: ignore[assignment]
+
+    response = client.respond([])
+
+    assert response.content == "partial"
+    assert response.tool_calls == ()
+    assert stream.closed is True
+
+
 def test_parse_command_trims_history_by_tokens(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
     captured: dict[str, object] = {}

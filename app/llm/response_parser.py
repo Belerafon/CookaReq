@@ -180,6 +180,8 @@ class LLMResponseParser:
         cancel_event = cancellation
         closed_by_cancel = False
         reasoning_segments: list[dict[str, str]] = []
+        final_messages: dict[int, str] = {}
+        chunk_level_fallback: str | None = None
 
         def ensure_not_cancelled() -> None:
             nonlocal closed_by_cancel
@@ -194,6 +196,7 @@ class LLMResponseParser:
 
         from contextlib import suppress
 
+        stream_error: Exception | None = None
         try:
             ensure_not_cancelled()
             for chunk in stream:  # pragma: no cover - network/streaming
@@ -203,6 +206,10 @@ class LLMResponseParser:
                 if choices is None and chunk_map is not None:
                     choices = chunk_map.get("choices")
                 if not choices:
+                    if chunk_map is not None:
+                        assistant_value = chunk_map.get("assistant")
+                        if isinstance(assistant_value, str):
+                            chunk_level_fallback = assistant_value
                     continue
                 for choice in choices:
                     choice_map = extract_mapping(choice)
@@ -233,18 +240,13 @@ class LLMResponseParser:
                     else:
                         content_delta = getattr(delta, "content", None)
                     if content_delta:
-                        if isinstance(content_delta, list):
-                            for item in content_delta:
-                                segment = extract_mapping(item) or {}
-                                if segment.get("type") == "text":
-                                    text_value = segment.get("text") or ""
-                                    message_parts.append(str(text_value))
-                        else:
-                            text_delta = getattr(content_delta, "text", None)
-                            if text_delta is None and isinstance(content_delta, Mapping):
-                                text_delta = content_delta.get("text")
-                            if text_delta:
-                                message_parts.append(str(text_delta))
+                        text_fragment = self._collect_text_segments(
+                            content_delta,
+                            reasoning_accumulator=None,
+                            tool_payload_sink=None,
+                        )
+                        if text_fragment:
+                            message_parts.append(text_fragment)
                     tool_calls = delta_map.get("tool_calls")
                     if tool_calls:
                         for idx, tool_call in enumerate(tool_calls):
@@ -263,13 +265,57 @@ class LLMResponseParser:
                             function_call,
                             choice_index=choice_index,
                         )
+                    if choice_map is not None:
+                        message_value = choice_map.get("message")
+                        if message_value is not None:
+                            temp_tool_payloads: list[Any] = []
+                            message_text = self._extract_message_text(
+                                message_value,
+                                reasoning_accumulator=reasoning_segments,
+                                tool_payload_sink=temp_tool_payloads,
+                            )
+                            if message_text:
+                                final_messages[choice_index] = message_text
+                            for idx, payload in enumerate(temp_tool_payloads):
+                                self._append_stream_tool_call(
+                                    tool_chunks,
+                                    order,
+                                    payload,
+                                    choice_index=choice_index,
+                                    tool_index=idx,
+                                )
+                        assistant_value = choice_map.get("assistant")
+                        if isinstance(assistant_value, str):
+                            chunk_level_fallback = assistant_value
             ensure_not_cancelled()
+        except Exception as exc:
+            if cancel_event is not None and (
+                cancel_event.wait(timeout=0) or cancel_event.is_set()
+            ):
+                raise OperationCancelledError() from exc
+            stream_error = exc
         finally:
             if callable(closer):
                 with suppress(Exception):  # pragma: no cover - defensive
                     closer()
         message = "".join(message_parts)
+        if not message and final_messages:
+            message = final_messages.get(0) or next(iter(final_messages.values()))
+        if not message and chunk_level_fallback:
+            message = chunk_level_fallback
         tool_calls = [tool_chunks[key] for key in order if tool_chunks[key]["function"]["name"]]
+        if stream_error is not None:
+            log_debug_payload(
+                "llm.response_parser.stream_interrupted",
+                {
+                    "error": {
+                        "type": type(stream_error).__name__,
+                        "message": str(stream_error),
+                    },
+                    "message_preview": message[:160],
+                    "tool_calls": len(tool_calls),
+                },
+            )
         return message, tool_calls, reasoning_segments
 
     # ------------------------------------------------------------------
@@ -293,54 +339,139 @@ class LLMResponseParser:
                     completion,
                 )
             )
-        reasoning_payload = getattr(message, "reasoning_content", None)
         message_map = extract_mapping(message)
-        if reasoning_payload is None:
-            reasoning_payload = getattr(message, "reasoning", None)
-        if reasoning_payload is None and message_map is not None:
-            reasoning_payload = (
-                message_map.get("reasoning_content")
-                or message_map.get("reasoning")
-            )
-        raw_tool_calls_payload: list[Any] = list(
-            getattr(message, "tool_calls", None) or []
+        attribute_tool_calls = getattr(message, "tool_calls", None) or []
+        raw_tool_calls_payload: list[Any] = (
+            [attribute_tool_calls]
+            if isinstance(attribute_tool_calls, Mapping)
+            else list(attribute_tool_calls)
         )
         reasoning_accumulator: list[dict[str, str]] = []
-        if reasoning_payload:
-            raw_tool_calls_payload.extend(
-                self._extract_reasoning_tool_calls(reasoning_payload)
-            )
-            self._append_reasoning_fragments(
-                reasoning_accumulator,
-                collect_reasoning_fragments(reasoning_payload),
-            )
-        if message_map is not None:
-            details_payload = message_map.get("reasoning_details")
-            if details_payload:
-                self._append_reasoning_fragments(
-                    reasoning_accumulator,
-                    collect_reasoning_fragments(details_payload),
+        message_text = self._extract_message_text(
+            message,
+            reasoning_accumulator=reasoning_accumulator,
+            tool_payload_sink=raw_tool_calls_payload,
+        )
+        if not message_text and message_map is not None:
+            direct_message = message_map.get("message")
+            if isinstance(direct_message, str):
+                message_text = direct_message
+        if not message_text:
+            completion_map = extract_mapping(completion)
+            completion_assistant = getattr(completion, "assistant", None)
+            if completion_assistant is None and completion_map is not None:
+                completion_assistant = completion_map.get("assistant")
+            if isinstance(completion_assistant, str):
+                message_text = completion_assistant
+        return message_text, raw_tool_calls_payload, reasoning_accumulator
+
+    # ------------------------------------------------------------------
+    def _extract_message_text(
+        self,
+        message: Any,
+        *,
+        reasoning_accumulator: list[dict[str, str]] | None = None,
+        tool_payload_sink: list[Any] | None = None,
+    ) -> str:
+        if isinstance(message, str):
+            return message
+        message_map = extract_mapping(message)
+        if message_map is None:
+            return str(message or "")
+
+        reasoning_payload = (
+            message_map.get("reasoning_content")
+            or message_map.get("reasoning")
+        )
+        if reasoning_payload and reasoning_accumulator is not None:
+            fragments = collect_reasoning_fragments(reasoning_payload)
+            if fragments:
+                self._append_reasoning_fragments(reasoning_accumulator, fragments)
+            if tool_payload_sink is not None:
+                tool_payload_sink.extend(
+                    self._extract_reasoning_tool_calls(reasoning_payload)
                 )
-        content = getattr(message, "content", None)
-        if content is None and message_map is not None:
-            content = message_map.get("content")
-        if isinstance(content, list):
+        details_payload = message_map.get("reasoning_details")
+        if details_payload and reasoning_accumulator is not None:
+            fragments = collect_reasoning_fragments(details_payload)
+            if fragments:
+                self._append_reasoning_fragments(reasoning_accumulator, fragments)
+
+        content = message_map.get("content")
+        if content is None:
+            content = getattr(message, "content", None)
+        text = self._collect_text_segments(
+            content,
+            reasoning_accumulator=reasoning_accumulator,
+            tool_payload_sink=tool_payload_sink,
+        )
+
+        tool_calls_payload = message_map.get("tool_calls")
+        if (
+            tool_calls_payload
+            and tool_payload_sink is not None
+            and not tool_payload_sink
+        ):
+            if isinstance(tool_calls_payload, Mapping):
+                tool_payload_sink.append(tool_calls_payload)
+            else:
+                tool_payload_sink.extend(tool_calls_payload)
+
+        if not text:
+            for key in ("assistant", "text", "value", "output_text"):
+                if key not in message_map:
+                    continue
+                fallback_text = self._collect_text_segments(
+                    message_map.get(key),
+                    reasoning_accumulator=None,
+                    tool_payload_sink=None,
+                )
+                if fallback_text:
+                    text = fallback_text
+                    break
+        return text
+
+    def _collect_text_segments(
+        self,
+        content: Any,
+        *,
+        reasoning_accumulator: list[dict[str, str]] | None,
+        tool_payload_sink: list[Any] | None,
+    ) -> str:
+        if not content:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, Sequence) and not isinstance(content, (bytes, bytearray)):
             parts: list[str] = []
-            for segment in content:
-                mapping = extract_mapping(segment)
-                if not mapping:
+            for element in content:
+                mapping = extract_mapping(element)
+                if mapping is None:
+                    if isinstance(element, str):
+                        parts.append(element)
                     continue
                 seg_type = mapping.get("type")
-                if isinstance(seg_type, str) and is_reasoning_type(seg_type):
+                if (
+                    reasoning_accumulator is not None
+                    and isinstance(seg_type, str)
+                    and is_reasoning_type(seg_type)
+                ):
                     fragments = collect_reasoning_fragments(mapping)
                     if fragments:
-                        self._append_reasoning_fragments(reasoning_accumulator, fragments)
-                    tool_fragments = self._extract_reasoning_tool_calls(mapping)
-                    if tool_fragments:
-                        raw_tool_calls_payload.extend(tool_fragments)
+                        self._append_reasoning_fragments(
+                            reasoning_accumulator, fragments
+                        )
+                    if tool_payload_sink is not None:
+                        tool_payload_sink.extend(
+                            self._extract_reasoning_tool_calls(mapping)
+                        )
                     continue
-                if seg_type == "text" or (
-                    isinstance(seg_type, str) and seg_type.endswith("_text")
+                if (
+                    seg_type == "text"
+                    or (
+                        isinstance(seg_type, str)
+                        and seg_type.endswith("_text")
+                    )
                 ):
                     text_value = mapping.get("text")
                     if text_value:
@@ -349,19 +480,30 @@ class LLMResponseParser:
                 text_value = mapping.get("text")
                 if text_value and seg_type in {None, "message"}:
                     parts.append(str(text_value))
-            message_text = "".join(parts)
-        elif isinstance(content, Mapping):
+                    continue
+                nested_content = mapping.get("content")
+                if nested_content:
+                    nested_text = self._collect_text_segments(
+                        nested_content,
+                        reasoning_accumulator=reasoning_accumulator,
+                        tool_payload_sink=tool_payload_sink,
+                    )
+                    if nested_text:
+                        parts.append(nested_text)
+            return "".join(parts)
+        if isinstance(content, Mapping):
             fragments = collect_reasoning_fragments(content)
-            if fragments:
+            if fragments and reasoning_accumulator is not None:
                 self._append_reasoning_fragments(reasoning_accumulator, fragments)
-            tool_fragments = self._extract_reasoning_tool_calls(content)
-            if tool_fragments:
-                raw_tool_calls_payload.extend(tool_fragments)
+            if tool_payload_sink is not None:
+                tool_payload_sink.extend(
+                    self._extract_reasoning_tool_calls(content)
+                )
             text_candidate = content.get("text") or content.get("content")
-            message_text = str(text_candidate or "")
-        else:
-            message_text = str(content or "")
-        return message_text, raw_tool_calls_payload, reasoning_accumulator
+            if isinstance(text_candidate, (str, bytes, bytearray)):
+                return str(text_candidate)
+            return str(text_candidate or "")
+        return str(content or "")
 
     # ------------------------------------------------------------------
     def parse_harmony_output(

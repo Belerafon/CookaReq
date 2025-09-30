@@ -141,6 +141,7 @@ def settings_with_llm(
     *,
     api_key: str = "dummy",
     message_format: str = "openai-chat",
+    stream: bool = False,
 ) -> AppSettings:
     """Persist LLM settings with *api_key* to a file and load them."""
     data = {
@@ -150,7 +151,7 @@ def settings_with_llm(
             "api_key": api_key,
             "max_retries": 3,
             "timeout_minutes": 60,
-            "stream": False,
+            "stream": stream,
             "message_format": message_format,
         },
     }

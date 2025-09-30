@@ -21,6 +21,7 @@ from ..settings import MCPSettings
 from ..telemetry import log_debug_payload, log_event
 from .events import notify_tool_success
 from .utils import ErrorCode, mcp_error
+from ..llm.validation import ToolValidationError
 
 
 logger = logging.getLogger(__name__)
@@ -148,10 +149,22 @@ class MCPClient:
             return {}
         if isinstance(arguments, Mapping):
             return dict(arguments)
-        logger.warning(
-            "Received non-mapping arguments for tool %s; dropping local copy", name
+
+        message = _(
+            "Invalid arguments for %(tool)s: expected a JSON object but received %(type)s"
+        ) % {"tool": name, "type": type(arguments).__name__}
+        error = ToolValidationError(message)
+        error.llm_message = message
+        error.llm_tool_calls = (
+            [
+                {
+                    "id": None,
+                    "name": name,
+                    "arguments": arguments,
+                }
+            ]
         )
-        return {}
+        raise error
 
     @staticmethod
     def _build_requirement_update_prompt(

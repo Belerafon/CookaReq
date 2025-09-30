@@ -1,4 +1,7 @@
-"""Local agent that combines LLM parsing with MCP tool execution."""
+"""Local agent that combines LLM parsing with MCP tool execution.
+
+The agent intentionally leaves MCP business validation to the server: tool calls are logged and forwarded without local argument checks so that the MCP layer remains the single authority over tool semantics.
+"""
 
 from __future__ import annotations
 
@@ -17,12 +20,13 @@ from ..confirm import (
 from ..services.requirements import parse_rid
 from ..llm.context import extract_selected_rids_from_text
 from ..llm.client import LLMClient
+from ..llm.reasoning import normalise_reasoning_segments
 from ..llm.types import LLMReasoningSegment, LLMResponse, LLMToolCall
 from ..llm.validation import ToolValidationError
 from ..mcp.client import MCPClient
 from ..mcp.utils import exception_to_mcp_error
 from ..settings import AppSettings
-from ..telemetry import log_event
+from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import (
     CancellationEvent,
     OperationCancelledError,
@@ -117,6 +121,7 @@ class LocalAgent:
         self._llm: SupportsAgentLLM = llm
         self._mcp: SupportsAgentMCP = mcp
         self._llm_requests: list[list[dict[str, Any]]] = []
+        self._llm_steps: list[dict[str, Any]] = []
         self._max_thought_steps: int | None = self._normalise_max_thought_steps(
             max_thought_steps
         )
@@ -151,23 +156,70 @@ class LocalAgent:
             )
         return summary
 
-    def _log_step(self, step: int, response: LLMResponse) -> None:
+    @staticmethod
+    def _tool_call_debug_payload(call: LLMToolCall) -> dict[str, Any]:
+        """Return detailed payload describing *call* for debug logging."""
+
+        arguments: Any
+        if isinstance(call.arguments, Mapping):
+            arguments = dict(call.arguments)
+        else:
+            arguments = call.arguments
+        return {
+            "id": call.id,
+            "name": call.name,
+            "arguments": arguments,
+        }
+
+    @staticmethod
+    def _normalise_request_messages(
+        messages: Sequence[Mapping[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        """Return a shallow copy of *messages* suitable for logging."""
+
+        if not messages:
+            return []
+        prepared: list[dict[str, Any]] = []
+        for message in messages:
+            if isinstance(message, Mapping):
+                prepared.append(dict(message))
+        return prepared
+
+    def _log_step(self, step: int, response: LLMResponse) -> dict[str, Any]:
         """Record intermediate agent step for diagnostics."""
 
+        normalized_reasoning = normalise_reasoning_segments(response.reasoning)
         payload = {
             "step": step,
             "message_preview": self._preview(response.content),
             "tool_calls": self._summarize_tool_calls(response.tool_calls),
         }
-        if response.reasoning:
+        if normalized_reasoning:
             payload["reasoning"] = [
                 {
-                    "type": segment.type,
-                    "preview": self._preview(segment.text, limit=200),
+                    "type": segment["type"],
+                    "preview": self._preview(segment["text"], limit=200),
                 }
-                for segment in response.reasoning
+                for segment in normalized_reasoning
             ]
+        detail_payload = {
+            "step": step,
+            "response": {
+                "content": response.content,
+                "tool_calls": [
+                    self._tool_call_debug_payload(call)
+                    for call in response.tool_calls
+                ],
+                "reasoning": normalized_reasoning,
+            },
+            "request_messages": self._normalise_request_messages(
+                response.request_messages
+            ),
+        }
         log_event("AGENT_STEP", payload)
+        log_debug_payload("AGENT_STEP_DETAIL", detail_payload)
+        self._llm_steps.append(detail_payload)
+        return detail_payload
 
     @classmethod
     def _summarize_result(cls, result: Mapping[str, Any]) -> dict[str, Any]:
@@ -192,30 +244,15 @@ class LocalAgent:
         if isinstance(stop_reason, Mapping):
             payload["agent_stop_reason"] = dict(stop_reason)
         reasoning_segments = result.get("reasoning")
-        if isinstance(reasoning_segments, Sequence) and not isinstance(
-            reasoning_segments, (str, bytes, bytearray)
-        ):
-            reasoning_preview: list[dict[str, str]] = []
-            for segment in reasoning_segments:
-                if isinstance(segment, Mapping):
-                    type_value = segment.get("type")
-                    text_value = segment.get("text")
-                else:
-                    type_value = getattr(segment, "type", None)
-                    text_value = getattr(segment, "text", None)
-                if not text_value:
-                    continue
-                text_str = str(text_value).strip()
-                if not text_str:
-                    continue
-                reasoning_preview.append(
-                    {
-                        "type": str(type_value or "reasoning"),
-                        "preview": cls._preview(text_str, limit=200),
-                    }
-                )
-            if reasoning_preview:
-                payload["reasoning"] = reasoning_preview
+        normalized_reasoning = normalise_reasoning_segments(reasoning_segments)
+        if normalized_reasoning:
+            payload["reasoning"] = [
+                {
+                    "type": segment["type"],
+                    "preview": cls._preview(segment["text"], limit=200),
+                }
+                for segment in normalized_reasoning
+            ]
         return payload
 
     @staticmethod
@@ -269,6 +306,10 @@ class LocalAgent:
         """Attach captured LLM request messages to ``result`` when available."""
 
         prepared = dict(result)
+        diagnostic_payload: dict[str, Any] = {}
+        existing = prepared.get("diagnostic")
+        if isinstance(existing, Mapping):
+            diagnostic_payload.update(existing)
         if self._llm_requests:
             requests_payload = [
                 {
@@ -277,7 +318,16 @@ class LocalAgent:
                 }
                 for index, messages in enumerate(self._llm_requests)
             ]
-            prepared["diagnostic"] = {"llm_requests": requests_payload}
+            diagnostic_payload["llm_requests"] = requests_payload
+        if self._llm_steps:
+            step_payloads: list[dict[str, Any]] = []
+            for entry in self._llm_steps:
+                if isinstance(entry, Mapping):
+                    step_payloads.append(dict(entry))
+            if step_payloads:
+                diagnostic_payload["llm_steps"] = step_payloads
+        if diagnostic_payload:
+            prepared["diagnostic"] = diagnostic_payload
         return prepared
 
     @staticmethod
@@ -547,6 +597,7 @@ class LocalAgent:
         context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
         cancellation: CancellationEvent | None = None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Drive an agent loop that may invoke MCP tools before replying."""
 
@@ -561,12 +612,14 @@ class LocalAgent:
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},
         )
         self._llm_requests = []
+        self._llm_steps = []
         try:
             result = self._run_sync(
                 self._run_loop_core(
                     conversation,
                     cancellation=cancellation,
                     on_tool_result=on_tool_result,
+                    on_llm_step=on_llm_step,
                 )
             )
         except OperationCancelledError:
@@ -587,6 +640,7 @@ class LocalAgent:
         context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
         cancellation: CancellationEvent | None = None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Asynchronous variant of :meth:`run_command`."""
 
@@ -601,11 +655,13 @@ class LocalAgent:
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},
         )
         self._llm_requests = []
+        self._llm_steps = []
         try:
             result = await self._run_loop_core(
                 conversation,
                 cancellation=cancellation,
                 on_tool_result=on_tool_result,
+                on_llm_step=on_llm_step,
             )
         except OperationCancelledError:
             log_event("AGENT_CANCELLED", {"reason": "user-request"})
@@ -624,12 +680,14 @@ class LocalAgent:
         *,
         cancellation: CancellationEvent | None = None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         runner = AgentLoopRunner(
             agent=self,
             conversation=conversation,
             cancellation=cancellation,
             on_tool_result=on_tool_result,
+            on_llm_step=on_llm_step,
         )
         return await runner.run()
 
@@ -661,6 +719,14 @@ class LocalAgent:
                         "arguments": call.arguments,
                     },
                 )
+                log_debug_payload(
+                    "AGENT_TOOL_CALL_DETAIL",
+                    {
+                        "call_id": call.id,
+                        "tool_name": call.name,
+                        "arguments": self._normalise_tool_arguments(call),
+                    },
+                )
                 await self._mcp.ensure_ready_async()
                 result = await self._mcp.call_tool_async(call.name, call.arguments)
             except Exception as exc:
@@ -682,6 +748,16 @@ class LocalAgent:
                 )
                 payload.setdefault("agent_status", "failed")
                 self._emit_tool_result(on_tool_result, payload)
+                log_debug_payload(
+                    "AGENT_TOOL_RESULT_DETAIL",
+                    {
+                        "call_id": call.id,
+                        "tool_name": call.name,
+                        "ok": False,
+                        "error": error,
+                        "arguments": self._normalise_tool_arguments(call),
+                    },
+                )
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
             if not isinstance(result, Mapping):
@@ -698,6 +774,16 @@ class LocalAgent:
                 )
                 payload.setdefault("agent_status", "failed")
                 self._emit_tool_result(on_tool_result, payload)
+                log_debug_payload(
+                    "AGENT_TOOL_RESULT_DETAIL",
+                    {
+                        "call_id": call.id,
+                        "tool_name": call.name,
+                        "ok": False,
+                        "raw_result": result,
+                        "arguments": self._normalise_tool_arguments(call),
+                    },
+                )
                 messages.append(self._tool_message(call, payload))
                 return messages, payload, successful
             result_dict = self._prepare_tool_payload(
@@ -717,6 +803,18 @@ class LocalAgent:
             if not log_payload["ok"] and result_dict.get("error"):
                 log_payload["error"] = result_dict["error"]
             log_event("AGENT_TOOL_RESULT", log_payload)
+            log_debug_payload(
+                "AGENT_TOOL_RESULT_DETAIL",
+                {
+                    "call_id": call.id,
+                    "tool_name": call.name,
+                    "ok": bool(result.get("ok", False))
+                    if isinstance(result, Mapping)
+                    else False,
+                    "result": result,
+                    "arguments": self._normalise_tool_arguments(call),
+                },
+            )
             self._emit_tool_result(on_tool_result, result_dict)
             messages.append(self._tool_message(call, result_dict))
             if not result_dict.get("ok", False):
@@ -738,6 +836,7 @@ class LocalAgent:
         raw_reasoning = getattr(exc, "llm_reasoning", None)
         prepared_calls = self._prepare_invalid_tool_calls(raw_calls)
         request_snapshot: tuple[dict[str, Any], ...] | None = None
+        normalized_reasoning = normalise_reasoning_segments(raw_reasoning)
         reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
         if isinstance(raw_request_messages, Sequence) and not isinstance(
             raw_request_messages, (str, bytes, bytearray)
@@ -748,29 +847,14 @@ class LocalAgent:
                     prepared_messages.append(dict(message))
             if prepared_messages:
                 request_snapshot = tuple(prepared_messages)
-        if isinstance(raw_reasoning, Sequence) and not isinstance(
-            raw_reasoning, (str, bytes, bytearray)
-        ):
-            prepared_segments: list[LLMReasoningSegment] = []
-            for item in raw_reasoning:
-                if isinstance(item, LLMReasoningSegment):
-                    prepared_segments.append(item)
-                    continue
-                if not isinstance(item, Mapping):
-                    continue
-                text_value = item.get("text")
-                if text_value is None:
-                    continue
-                text_str = str(text_value).strip()
-                if not text_str:
-                    continue
-                type_value = item.get("type")
-                type_str = str(type_value) if type_value is not None else "reasoning"
-                prepared_segments.append(
-                    LLMReasoningSegment(type=type_str, text=text_str)
+        if normalized_reasoning:
+            reasoning_segments = tuple(
+                LLMReasoningSegment(
+                    type=segment["type"],
+                    text=segment["text"],
                 )
-            if prepared_segments:
-                reasoning_segments = tuple(prepared_segments)
+                for segment in normalized_reasoning
+            )
 
         error_template = exception_to_mcp_error(exc)["error"]
 
@@ -818,6 +902,8 @@ class LocalAgent:
         }
         if assistant_tool_calls:
             assistant_message["tool_calls"] = assistant_tool_calls
+        if normalized_reasoning:
+            assistant_message["reasoning"] = normalized_reasoning
         conversation.append(assistant_message)
 
         if tool_messages:
@@ -975,23 +1061,9 @@ class LocalAgent:
                 self._max_consecutive_tool_errors
             )
         prepared["agent_stop_reason"] = stop_reason
-        reasoning_payload: list[dict[str, str]] = []
-        if reasoning_segments:
-            for segment in reasoning_segments:
-                text = getattr(segment, "text", "")
-                if not text:
-                    continue
-                text_str = str(text).strip()
-                if not text_str:
-                    continue
-                reasoning_payload.append(
-                    {
-                        "type": getattr(segment, "type", "reasoning"),
-                        "text": text_str,
-                    }
-                )
-        if reasoning_payload:
-            prepared.setdefault("reasoning", reasoning_payload)
+        normalized_reasoning = normalise_reasoning_segments(reasoning_segments)
+        if normalized_reasoning:
+            prepared.setdefault("reasoning", normalized_reasoning)
         return prepared
 
     def _success_result(
@@ -1011,22 +1083,9 @@ class LocalAgent:
             segments = reasoning_segments
         else:
             segments = response.reasoning
-        prepared_reasoning: list[dict[str, str]] = []
-        for segment in segments:
-            text_value = getattr(segment, "text", "")
-            if not text_value:
-                continue
-            text = str(text_value).strip()
-            if not text:
-                continue
-            prepared_reasoning.append(
-                {
-                    "type": getattr(segment, "type", "reasoning"),
-                    "text": text,
-                }
-            )
-        if prepared_reasoning:
-            payload["reasoning"] = prepared_reasoning
+        normalized_reasoning = normalise_reasoning_segments(segments)
+        if normalized_reasoning:
+            payload["reasoning"] = normalized_reasoning
         if tool_results:
             payload["tool_results"] = [dict(result) for result in tool_results]
         return payload
@@ -1063,6 +1122,9 @@ class LocalAgent:
             "role": "assistant",
             "content": response.content,
         }
+        reasoning_segments = normalise_reasoning_segments(response.reasoning)
+        if reasoning_segments:
+            message["reasoning"] = reasoning_segments
         if response.tool_calls:
             message["tool_calls"] = [
                 {
@@ -1123,11 +1185,13 @@ class AgentLoopRunner:
         conversation: list[Mapping[str, Any]],
         cancellation: CancellationEvent | None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None,
     ) -> None:
         self._agent = agent
         self._conversation = conversation
         self._cancellation = cancellation
         self._on_tool_result = on_tool_result
+        self._on_llm_step = on_llm_step
         self._accumulated_results: list[Mapping[str, Any]] = []
         self._last_response: LLMResponse | None = None
         self._step = 0
@@ -1222,7 +1286,20 @@ class AgentLoopRunner:
 
     def _advance_step(self, response: LLMResponse) -> None:
         self._step += 1
-        self._agent._log_step(self._step, response)
+        detail_payload = self._agent._log_step(self._step, response)
+        if self._on_llm_step is not None and isinstance(detail_payload, Mapping):
+            try:
+                self._on_llm_step(detail_payload)
+            except Exception as exc:  # pragma: no cover - defensive
+                log_event(
+                    "AGENT_STEP_STREAM_ERROR",
+                    {
+                        "error": {
+                            "type": type(exc).__name__,
+                            "message": str(exc),
+                        }
+                    },
+                )
 
     def _finalise_step(self, outcome: _AgentLoopStep) -> dict[str, Any] | None:
         self._accumulated_results.extend(outcome.batch_results)

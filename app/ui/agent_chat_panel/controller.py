@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import Mapping, Sequence
 from concurrent.futures import Future
@@ -11,14 +12,31 @@ from collections.abc import Callable
 
 import wx
 
+from ...llm.reasoning import normalise_reasoning_segments
 from ...llm.tokenizer import TokenCountResult, count_text_tokens
 from ...util.cancellation import CancellationEvent, OperationCancelledError
 from ...util.time import utc_now_iso
 from ..chat_entry import ChatConversation, ChatEntry
 from .execution import AgentCommandExecutor, _AgentRunHandle
-from .history_utils import clone_streamed_tool_results
+from .history_utils import clone_streamed_tool_results, history_json_safe
 
 logger = logging.getLogger(__name__)
+
+
+def _call_supports_keyword(func: Any, name: str) -> bool:
+    """Return True when *func* accepts the keyword argument ``name``."""
+
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):  # pragma: no cover - fallback for builtins
+        return True
+    parameters = signature.parameters
+    if name in parameters:
+        return True
+    return any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
 
 
 @dataclass(slots=True)
@@ -55,6 +73,9 @@ class AgentRunCallbacks:
     finalize_prompt: Callable[[str, Any, _AgentRunHandle], None]
     handle_streamed_tool_results: Callable[[
         _AgentRunHandle, Sequence[Mapping[str, Any]] | None
+    ], None]
+    handle_llm_step: Callable[[
+        _AgentRunHandle, Mapping[str, Any] | None
     ], None]
 
 
@@ -204,9 +225,37 @@ class AgentRunController:
                         existing_id = existing.get("call_id") or existing.get("tool_call_id")
                         if existing_id == call_id:
                             merged = dict(existing)
+                            first_seen = (
+                                merged.get("first_observed_at")
+                                or merged.get("started_at")
+                                or merged.get("observed_at")
+                            )
+                            if first_seen:
+                                merged.setdefault("first_observed_at", first_seen)
+                                merged.setdefault("started_at", first_seen)
                             merged.update(payload)
+                            observed = merged.get("observed_at")
+                            if isinstance(observed, str) and observed.strip():
+                                merged["last_observed_at"] = observed
+                                if merged.get("agent_status") in {"completed", "failed"} or merged.get(
+                                    "ok"
+                                ) in (True, False):
+                                    merged.setdefault("completed_at", observed)
                             handle.streamed_tool_results[index] = merged
                             return
+                    first_seen = (
+                        payload.get("first_observed_at")
+                        or payload.get("started_at")
+                        or payload.get("observed_at")
+                    )
+                    if isinstance(first_seen, str) and first_seen.strip():
+                        payload.setdefault("first_observed_at", first_seen)
+                        payload.setdefault("started_at", first_seen)
+                        payload.setdefault("last_observed_at", first_seen)
+                        if payload.get("agent_status") in {"completed", "failed"} or payload.get(
+                            "ok"
+                        ) in (True, False):
+                            payload.setdefault("completed_at", first_seen)
                     handle.streamed_tool_results.append(payload)
 
                 def on_tool_result(payload: Mapping[str, Any]) -> None:
@@ -218,6 +267,35 @@ class AgentRunController:
                         prepared = dict(payload)
                     except Exception:  # pragma: no cover - defensive
                         return
+                    observed_at = prepared.get("observed_at")
+                    if not isinstance(observed_at, str) or not observed_at.strip():
+                        observed_at = utc_now_iso()
+                        prepared["observed_at"] = observed_at
+                    existing_started = None
+                    for existing in handle.streamed_tool_results:
+                        if (
+                            existing.get("call_id") == prepared.get("call_id")
+                            or existing.get("tool_call_id")
+                            == prepared.get("tool_call_id")
+                        ):
+                            existing_started = (
+                                existing.get("started_at")
+                                or existing.get("first_observed_at")
+                            )
+                            break
+                    if existing_started:
+                        prepared.setdefault("started_at", existing_started)
+                        prepared.setdefault("first_observed_at", existing_started)
+                    else:
+                        prepared.setdefault("started_at", observed_at)
+                        prepared.setdefault("first_observed_at", observed_at)
+                    prepared["last_observed_at"] = observed_at
+                    agent_status = prepared.get("agent_status")
+                    if agent_status in {"completed", "failed"} or prepared.get("ok") in (
+                        True,
+                        False,
+                    ):
+                        prepared.setdefault("completed_at", observed_at)
                     _merge_streamed_tool_result(prepared)
                     snapshot = clone_streamed_tool_results(handle.streamed_tool_results)
                     wx.CallAfter(
@@ -226,16 +304,50 @@ class AgentRunController:
                         snapshot,
                     )
 
+                def on_llm_step(payload: Mapping[str, Any]) -> None:
+                    if handle.is_cancelled:
+                        return
+                    if not isinstance(payload, Mapping):
+                        return
+                    safe_payload_raw = history_json_safe(payload)
+                    if isinstance(safe_payload_raw, Mapping):
+                        safe_payload = dict(safe_payload_raw)
+                    else:
+                        safe_payload = {"step": payload.get("step"), "payload": safe_payload_raw}
+                    handle.llm_steps.append(safe_payload)
+                    response_payload = payload.get("response")
+                    if isinstance(response_payload, Mapping):
+                        content_value = response_payload.get("content")
+                        if isinstance(content_value, str):
+                            handle.latest_llm_response = content_value
+                        reasoning_payload = response_payload.get("reasoning")
+                        reasoning_segments = normalise_reasoning_segments(
+                            reasoning_payload
+                        )
+                        if reasoning_segments:
+                            handle.latest_reasoning_segments = tuple(
+                                {"type": segment["type"], "text": segment["text"]}
+                                for segment in reasoning_segments
+                            )
+                    wx.CallAfter(
+                        self._callbacks.handle_llm_step,
+                        handle,
+                        safe_payload,
+                    )
+
                 history_arg: tuple[dict[str, Any], ...] | None
                 history_arg = history_payload or None
 
-                return agent.run_command(
-                    normalized_prompt,
-                    history=history_arg,
-                    context=context_payload,
-                    cancellation=handle.cancel_event,
-                    on_tool_result=on_tool_result,
-                )
+                run_command = agent.run_command
+                kwargs = {
+                    "history": history_arg,
+                    "context": context_payload,
+                    "cancellation": handle.cancel_event,
+                    "on_tool_result": on_tool_result,
+                }
+                if _call_supports_keyword(run_command, "on_llm_step"):
+                    kwargs["on_llm_step"] = on_llm_step
+                return run_command(normalized_prompt, **kwargs)
             except OperationCancelledError:
                 raise
             except Exception as exc:  # pragma: no cover - defensive

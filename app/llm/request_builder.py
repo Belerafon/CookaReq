@@ -10,11 +10,11 @@ from typing import Any, Mapping, Sequence
 from ..telemetry import log_event
 from .constants import DEFAULT_MAX_CONTEXT_TOKENS, MIN_MAX_CONTEXT_TOKENS
 from .harmony import HARMONY_KNOWLEDGE_CUTOFF, HarmonyPrompt, render_harmony_prompt
-from .reasoning import is_reasoning_type
+from .reasoning import is_reasoning_type, normalise_reasoning_segments
 from .response_parser import normalise_tool_calls
 from .spec import SYSTEM_PROMPT, TOOLS
 from .tokenizer import count_text_tokens
-from .types import HistoryTrimResult
+from .types import HistoryTrimResult, LLMReasoningSegment
 from .utils import extract_mapping
 
 __all__ = ["LLMRequestBuilder", "PreparedChatRequest"]
@@ -230,6 +230,14 @@ class LLMRequestBuilder:
                 normalized_calls = normalise_tool_calls(tool_calls)
                 if normalized_calls:
                     entry["tool_calls"] = normalized_calls
+                reasoning_value = (
+                    message.get("reasoning")
+                    if isinstance(message, Mapping)
+                    else getattr(message, "reasoning", None)
+                )
+                normalized_reasoning = normalise_reasoning_segments(reasoning_value)
+                if normalized_reasoning:
+                    entry["reasoning"] = normalized_reasoning
             elif role_str == "tool":
                 if isinstance(message, Mapping):
                     tool_call_id = message.get("tool_call_id")

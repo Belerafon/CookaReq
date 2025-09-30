@@ -20,6 +20,9 @@ class ToolCallSummary:
     tool_name: str
     status: str
     bullet_lines: tuple[str, ...]
+    started_at: str | None = None
+    completed_at: str | None = None
+    last_observed_at: str | None = None
 
 
 def summarize_tool_results(
@@ -39,17 +42,47 @@ def summarize_tool_results(
     return tuple(summaries)
 
 
+def _normalise_timestamp(value: Any) -> str | None:
+    if isinstance(value, str):
+        text = value.strip()
+        if text:
+            return normalize_for_display(text)
+    return None
+
+
 def summarize_tool_payload(
     index: int, payload: Mapping[str, Any]
 ) -> ToolCallSummary | None:
     tool_name = extract_tool_name(payload)
     status = format_tool_status(payload)
-    bullet_lines = summarize_tool_details(payload)
+    bullet_lines = list(summarize_tool_details(payload))
+    started_at = _normalise_timestamp(
+        payload.get("started_at") or payload.get("first_observed_at")
+    )
+    completed_at = _normalise_timestamp(payload.get("completed_at"))
+    last_observed = _normalise_timestamp(
+        payload.get("last_observed_at") or payload.get("observed_at")
+    )
+    if started_at:
+        bullet_lines.append(
+            _("Started at {timestamp}").format(timestamp=started_at)
+        )
+    if completed_at:
+        bullet_lines.append(
+            _("Completed at {timestamp}").format(timestamp=completed_at)
+        )
+    elif last_observed and last_observed != started_at:
+        bullet_lines.append(
+            _("Last updated at {timestamp}").format(timestamp=last_observed)
+        )
     return ToolCallSummary(
         index=index,
         tool_name=tool_name,
         status=status,
         bullet_lines=tuple(bullet_lines),
+        started_at=started_at,
+        completed_at=completed_at,
+        last_observed_at=last_observed,
     )
 
 

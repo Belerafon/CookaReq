@@ -123,6 +123,7 @@ def test_switching_to_previous_chat_after_starting_new_one(tmp_path, wx_app):
             context=None,
             cancellation=None,
             on_tool_result=None,
+            on_llm_step=None,
         ):
             return {"ok": True, "error": None, "result": {"echo": text}}
 
@@ -163,6 +164,7 @@ def test_agent_custom_system_prompt_appended(tmp_path, wx_app):
             context=None,
             cancellation=None,
             on_tool_result=None,
+            on_llm_step=None,
         ):
             self.last_history = list(history or [])
             return {"ok": True, "result": {"echo": text}}
@@ -194,7 +196,7 @@ def test_agent_custom_system_prompt_appended(tmp_path, wx_app):
         destroy_panel(frame, panel)
 def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     class DummyAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "error": None, "result": {"echo": text}}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
@@ -258,7 +260,7 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
             self.calls: int = 0
             self.history_snapshots: list[Sequence[Mapping[str, Any]] | None] = []
 
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             self.calls += 1
             if history is None:
                 self.history_snapshots.append(None)
@@ -325,7 +327,7 @@ def test_agent_chat_panel_regenerates_last_response(tmp_path, wx_app):
 
 def test_agent_response_normalizes_dash_characters(tmp_path, wx_app):
     class HyphenAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return "single\u2010folder"
 
     wx, frame, panel = create_panel(tmp_path, wx_app, HyphenAgent())
@@ -347,7 +349,7 @@ def test_agent_response_normalizes_dash_characters(tmp_path, wx_app):
 
 def test_agent_chat_panel_handles_error(tmp_path, wx_app):
     class FailingAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": False, "error": {"code": "FAIL", "message": "bad"}}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, FailingAgent())
@@ -368,7 +370,7 @@ def test_agent_chat_panel_handles_error(tmp_path, wx_app):
 
 def test_confirmation_preference_resets_on_chat_switch(tmp_path, wx_app):
     class DummyAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "result": text, "error": None}
 
     persisted: list[str] = []
@@ -439,7 +441,7 @@ def test_confirmation_preference_resets_on_chat_switch(tmp_path, wx_app):
 
 def test_agent_chat_panel_applies_vertical_sash(tmp_path, wx_app):
     class DummyAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "result": text, "error": None}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
@@ -476,7 +478,7 @@ def test_agent_chat_panel_passes_context(tmp_path, wx_app):
     captured: list[dict[str, Any]] = []
 
     class RecordingAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             captured.append({"text": text, "context": context})
             return {"ok": True, "error": None, "result": "ok"}
 
@@ -511,7 +513,7 @@ def test_agent_chat_panel_passes_context(tmp_path, wx_app):
 
 def test_agent_response_allows_text_selection(tmp_path, wx_app):
     class EchoAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return f"agent: {text}"
 
     wx, frame, panel = create_panel(tmp_path, wx_app, EchoAgent())
@@ -555,7 +557,7 @@ def test_agent_response_allows_text_selection(tmp_path, wx_app):
 
 def test_transcript_scrolls_to_bottom_on_new_messages(tmp_path, wx_app):
     class EchoAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return text
 
     wx, frame, panel = create_panel(tmp_path, wx_app, EchoAgent())
@@ -623,7 +625,7 @@ def test_copy_conversation_button_copies_transcript(monkeypatch, tmp_path, wx_ap
             clipboard["text"] = data.GetText()
 
     class SimpleAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return f"response to {text}"
 
     wx, frame, panel = create_panel(tmp_path, wx_app, SimpleAgent())
@@ -647,7 +649,7 @@ def test_copy_conversation_button_copies_transcript(monkeypatch, tmp_path, wx_ap
 
 def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
     class ToolAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {
                 "ok": True,
                 "error": None,
@@ -700,7 +702,7 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
 
 def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
     class DummyAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "result": text, "error": None}
 
     context_payload = [
@@ -773,7 +775,7 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
-def test_agent_chat_panel_orders_tool_bubbles_before_agent_reply(tmp_path, wx_app):
+def test_agent_chat_panel_orders_tool_bubbles_after_agent_reply(tmp_path, wx_app):
     class ToolAgent:
         def run_command(
             self,
@@ -842,8 +844,8 @@ def test_agent_chat_panel_orders_tool_bubbles_before_agent_reply(tmp_path, wx_ap
         agent_index = agent_indexes[-1]
         tool_indexes = [idx for idx, label in enumerate(headers) if "demo_tool" in label]
         assert tool_indexes, "tool bubble missing"
-        assert tool_indexes[0] < agent_index
-        assert agent_index == len(headers) - 1
+        assert tool_indexes[0] > agent_index
+        assert tool_indexes[-1] == len(headers) - 1
     finally:
         destroy_panel(frame, panel)
 
@@ -1062,7 +1064,7 @@ def test_transcript_message_panel_reuses_layout_hints(wx_app):
 
 def test_agent_transcript_log_orders_sections_for_errors(tmp_path, wx_app):
     class ErrorAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {
                 "ok": False,
                 "error": {
@@ -1098,7 +1100,7 @@ def test_agent_transcript_log_orders_sections_for_errors(tmp_path, wx_app):
 
 def test_agent_transcript_log_includes_planned_tool_calls(tmp_path, wx_app):
     class ToolErrorAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {
                 "ok": False,
                 "error": {
@@ -1290,7 +1292,7 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
             self.release = threading.Event()
             self.cancel_seen = threading.Event()
 
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             self.started.set()
             try:
                 while True:
@@ -1337,6 +1339,98 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
         assert entry.display_response == _("Generation cancelled")
         assert entry.response == ""
         assert entry.response_at is not None
+    finally:
+        if frame is not None and panel is not None:
+            destroy_panel(frame, panel)
+        pool.shutdown(wait=True, cancel_futures=True)
+
+
+def test_agent_chat_panel_cancellation_preserves_llm_step(tmp_path, wx_app):
+    from app.i18n import _
+    from app.ui.agent_chat_panel import ThreadedAgentCommandExecutor
+
+    class StepAgent:
+        def __init__(self) -> None:
+            self.started = threading.Event()
+            self.cancel_seen = threading.Event()
+
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            self.started.set()
+            if on_llm_step is not None:
+                on_llm_step(
+                    {
+                        "step": 1,
+                        "response": {
+                            "content": "Initial translation plan",
+                            "tool_calls": [
+                                {
+                                    "id": "tool_call_0",
+                                    "name": "update_requirement_field",
+                                    "arguments": {
+                                        "rid": "DEMO14",
+                                        "field": "title",
+                                        "value": "Настройки агента",
+                                    },
+                                }
+                            ],
+                            "reasoning": [
+                                {"type": "thought", "text": "Перевести требование"}
+                            ],
+                        },
+                        "request_messages": [
+                            {"role": "user", "content": text},
+                        ],
+                    }
+                )
+            while cancellation is not None and not cancellation.wait(0.05):
+                pass
+            if cancellation is not None:
+                self.cancel_seen.set()
+                cancellation.raise_if_cancelled()
+            return {"ok": True, "error": None, "result": text.upper()}
+
+    agent = StepAgent()
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="TestAgentChat")
+    frame = panel = None
+    try:
+        wx, frame, panel = create_panel(
+            tmp_path,
+            wx_app,
+            agent,
+            executor=ThreadedAgentCommandExecutor(pool),
+        )
+
+        panel.input.SetValue("translate requirements")
+        panel._on_send(None)
+        assert agent.started.wait(1.0)
+        wx.Yield()
+
+        panel._on_stop(None)
+        assert agent.cancel_seen.wait(1.0)
+        wx.Yield()
+
+        history = panel.history
+        assert len(history) == 1
+        entry = history[0]
+        display_text = entry.display_response
+        assert "Initial translation plan" in display_text
+        assert _("Generation cancelled") in display_text
+        assert entry.reasoning
+        assert entry.reasoning[0]["text"] == "Перевести требование"
+        diagnostic = entry.raw_result["diagnostic"]
+        assert "llm_steps" in diagnostic
+        steps = diagnostic["llm_steps"]
+        assert isinstance(steps, list) and steps
+        assert steps[0]["response"]["content"] == "Initial translation plan"
     finally:
         if frame is not None and panel is not None:
             destroy_panel(frame, panel)
@@ -1425,9 +1519,198 @@ def test_agent_chat_panel_streams_tool_results(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
+    tmp_path, wx_app, monkeypatch
+):
+    wx = pytest.importorskip("wx")
+
+    class TimelineAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            if callable(on_llm_step):
+                on_llm_step(
+                    {
+                        "step": 1,
+                        "response": {
+                            "content": (
+                                "Now I will translate the selected requirements into Russian."
+                            ),
+                            "reasoning": [
+                                {"type": "thinking", "text": "Fetch requirement data"}
+                            ],
+                            "tool_calls": [
+                                {
+                                    "id": "call-123",
+                                    "name": "update_requirement_field",
+                                    "arguments": {
+                                        "rid": "DEMO14",
+                                        "field": "title",
+                                        "value": "Настройки агента",
+                                    },
+                                }
+                            ],
+                        },
+                        "request_messages": [
+                            {"role": "user", "content": text},
+                        ],
+                    }
+                )
+            if callable(on_tool_result):
+                on_tool_result(
+                    {
+                        "tool_name": "update_requirement_field",
+                        "tool_call_id": "call-123",
+                        "call_id": "call-123",
+                        "tool_arguments": {
+                            "rid": "DEMO14",
+                            "field": "title",
+                            "value": "Настройки агента",
+                        },
+                        "agent_status": "running",
+                    }
+                )
+                on_tool_result(
+                    {
+                        "ok": False,
+                        "tool_name": "update_requirement_field",
+                        "tool_call_id": "call-123",
+                        "call_id": "call-123",
+                        "tool_arguments": {
+                            "rid": "DEMO14",
+                            "field": "title",
+                            "value": "Настройки агента",
+                        },
+                        "error": {
+                            "code": "VALIDATION_ERROR",
+                            "message": "update_requirement_field() missing rid",
+                        },
+                        "agent_status": "failed",
+                    }
+                )
+            return {
+                "ok": False,
+                "error": {
+                    "type": "ToolValidationError",
+                    "message": "update_requirement_field() missing rid",
+                },
+                "tool_results": [
+                    {
+                        "tool_name": "update_requirement_field",
+                        "tool_call_id": "call-123",
+                        "call_id": "call-123",
+                        "tool_arguments": {
+                            "rid": "DEMO14",
+                            "field": "title",
+                            "value": "Настройки агента",
+                        },
+                        "ok": False,
+                        "error": {
+                            "code": "VALIDATION_ERROR",
+                            "message": "update_requirement_field() missing rid",
+                        },
+                    }
+                ],
+                "diagnostic": {
+                    "llm_steps": [
+                        {
+                            "step": 1,
+                            "response": {
+                                "content": (
+                                    "Now I will translate the selected requirements into Russian."
+                                ),
+                                "reasoning": [
+                                    {
+                                        "type": "thinking",
+                                        "text": "Fetch requirement data",
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                },
+            }
+
+    times = iter(
+        [
+            "2025-01-01T12:00:00Z",
+            "2025-01-01T12:00:02Z",
+            "2025-01-01T12:00:04Z",
+            "2025-01-01T12:00:06Z",
+            "2025-01-01T12:00:08Z",
+        ]
+    )
+
+    def fake_utc_now_iso() -> str:
+        try:
+            return next(times)
+        except StopIteration:
+            return "2025-01-01T12:59:59Z"
+
+    monkeypatch.setattr("app.ui.agent_chat_panel.panel.utc_now_iso", fake_utc_now_iso)
+    monkeypatch.setattr("app.ui.agent_chat_panel.controller.utc_now_iso", fake_utc_now_iso)
+
+    agent = TimelineAgent()
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent)
+
+    try:
+        panel.input.SetValue("translate selected requirements")
+        panel._on_send(None)
+        flush_wx_events(wx, count=6)
+
+        history = panel.history
+        assert len(history) == 1
+        entry = history[0]
+        assert "Now I will translate the selected requirements into Russian." in entry.display_response
+        assert "update_requirement_field() missing rid" in entry.display_response
+        assert entry.reasoning
+        assert entry.reasoning[0]["text"] == "Fetch requirement data"
+        assert entry.tool_results and entry.tool_results[0]["started_at"] == "2025-01-01T12:00:02Z"
+        assert entry.tool_results[0]["completed_at"] == "2025-01-01T12:00:04Z"
+
+        raw_tool = entry.raw_result["tool_results"][0]
+        assert raw_tool["started_at"] == "2025-01-01T12:00:02Z"
+        assert raw_tool["completed_at"] == "2025-01-01T12:00:04Z"
+
+        diagnostic = entry.diagnostic
+        tool_exchange = diagnostic["tool_exchanges"][0]
+        assert tool_exchange["started_at"] == "2025-01-01T12:00:02Z"
+        assert tool_exchange["completed_at"] == "2025-01-01T12:00:04Z"
+
+        conversation = panel._get_active_conversation()
+        assert conversation is not None
+        cache = panel._transcript_view._conversation_cache[conversation.conversation_id]
+        message_panel = cache.panels_by_entry[id(entry)]
+        children = message_panel.GetSizer().GetChildren()
+        assert children[0].IsWindow()
+        assert children[0].GetWindow() is message_panel._user_bubble
+        assert children[1].IsWindow()
+        assert children[1].GetWindow() is message_panel._agent_bubble
+        assert children[2].IsSizer()
+        assert children[2].GetSizer() is message_panel._tool_section
+
+        assert message_panel._tool_bubbles
+        _, tool_bubble = message_panel._tool_bubbles[0]
+        assert tool_bubble._timestamp == "2025-01-01T12:00:04Z"
+
+        log_text = panel._compose_transcript_log_text()
+        assert "Started at 2025-01-01T12:00:02Z" in log_text
+        assert "Completed at 2025-01-01T12:00:04Z" in log_text
+        assert "Now I will translate the selected requirements into Russian." in log_text
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_activity_indicator_layout(tmp_path, wx_app):
     class IdleAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):  # pragma: no cover - defensive
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):  # pragma: no cover - defensive
             return {"ok": True, "error": None, "result": text}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, IdleAgent())
@@ -1492,7 +1775,7 @@ def test_agent_chat_panel_ready_status_reflects_tokens(tmp_path, wx_app):
 
 def test_agent_chat_panel_shuts_down_executor_pool_on_destroy(tmp_path, wx_app):
     class DummyAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):  # pragma: no cover - defensive
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):  # pragma: no cover - defensive
             raise AssertionError("Should not be called")
 
     class DummyPool:
@@ -1524,7 +1807,7 @@ def test_agent_chat_panel_shuts_down_executor_pool_on_destroy(tmp_path, wx_app):
 
 def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):
     class EchoAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "error": None, "result": text}
 
     wx, frame1, panel1 = create_panel(tmp_path, wx_app, EchoAgent())
@@ -1547,7 +1830,7 @@ def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
     bad_file.write_text("{not json}")
 
     class DummyAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "error": None, "result": {}}
 
     frame = wx.Frame(None)
@@ -1568,7 +1851,7 @@ def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
     legacy_file.write_text(json.dumps({"version": 1, "conversations": []}))
 
     class DummyAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "error": None, "result": {}}
 
     frame = wx.Frame(None)
@@ -1615,7 +1898,7 @@ def test_agent_chat_panel_rejects_entries_without_token_info(tmp_path, wx_app):
     )
 
     class DummyAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "error": None, "result": {}}
 
     frame = wx.Frame(None)
@@ -1637,7 +1920,7 @@ def test_agent_chat_panel_provides_history_context(tmp_path, wx_app):
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
 
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             recorded_history = list(history or [])
             self.calls.append({"text": text, "history": recorded_history})
             return {"ok": True, "error": None, "result": f"answer {len(self.calls)}"}
@@ -1669,7 +1952,7 @@ def test_agent_chat_panel_clear_history_resets_context(tmp_path, wx_app):
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
 
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             recorded_history = list(history or [])
             self.calls.append({"text": text, "history": recorded_history})
             return {"ok": True, "error": None, "result": f"answer {len(self.calls)}"}
@@ -1698,7 +1981,7 @@ def test_agent_chat_panel_clear_history_resets_context(tmp_path, wx_app):
 
 def test_agent_chat_panel_delete_multiple_chats(tmp_path, wx_app):
     class RecordingAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "error": None, "result": f"answer {text}"}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, RecordingAgent())
@@ -1737,7 +2020,7 @@ def test_agent_chat_panel_history_context_menu_handles_multiselect(
     monkeypatch, tmp_path, wx_app
 ):
     class QuietAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "error": None, "result": text}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, QuietAgent())
@@ -1799,7 +2082,7 @@ def test_agent_chat_panel_new_chat_creates_separate_conversation(tmp_path, wx_ap
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
 
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             recorded_history = list(history or [])
             self.calls.append({"text": text, "history": recorded_history})
             return {"ok": True, "error": None, "result": f"echo {len(self.calls)}"}
@@ -1839,7 +2122,7 @@ def test_agent_chat_panel_new_chat_creates_separate_conversation(tmp_path, wx_ap
 
 def test_agent_chat_panel_history_columns_show_metadata(tmp_path, wx_app):
     class EchoAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "error": None, "result": text.upper()}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, EchoAgent())
@@ -1954,7 +2237,7 @@ def test_agent_chat_panel_updates_status_with_token_count(
 
 def test_agent_history_sash_waits_for_ready_size(tmp_path, wx_app, monkeypatch):
     class DummyAgent:
-        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None):
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return {"ok": True, "error": None, "result": text}
 
     wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())

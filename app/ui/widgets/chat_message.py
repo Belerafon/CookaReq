@@ -296,6 +296,23 @@ class MessageBubble(wx.Panel):
                     markdown.SetFont(message_font)
                 self._text = markdown
 
+                hidden_text = wx.TextCtrl(
+                    bubble,
+                    value=display_text,
+                    style=(
+                        wx.TE_MULTILINE
+                        | wx.TE_READONLY
+                        | wx.TE_WORDWRAP
+                        | wx.TE_NO_VSCROLL
+                        | wx.BORDER_NONE
+                    ),
+                )
+                hidden_text.SetBackgroundColour(bubble_bg)
+                hidden_text.SetForegroundColour(bubble_fg)
+                hidden_text.Hide()
+                bubble_sizer.Add(hidden_text, 0, wx.EXPAND)
+                self._hidden_text_copy = hidden_text
+
                 self._selection_checker = markdown.HasSelection
                 self._selection_getter = markdown.GetSelectionText
             else:
@@ -928,7 +945,6 @@ class TranscriptMessagePanel(wx.Panel):
         self._agent_bubble: MessageBubble | None = None
         self._tool_bubbles: list[tuple[ToolCallSummary, MessageBubble]] = []
         self._tool_section = wx.BoxSizer(wx.VERTICAL)
-        self._reasoning_section = wx.BoxSizer(wx.VERTICAL)
         self._reasoning_pane: wx.CollapsiblePane | None = None
         self._context_signature = ""
         self._reasoning_signature = ""
@@ -968,9 +984,6 @@ class TranscriptMessagePanel(wx.Panel):
         self._user_bubble = user_bubble
         self._context_signature = self._context_messages_signature(context_messages)
 
-        outer.Add(self._tool_section, 0, wx.EXPAND)
-        self._build_tool_bubbles(tool_summaries)
-
         agent_bubble = MessageBubble(
             self,
             role_label=_("Agent"),
@@ -988,7 +1001,22 @@ class TranscriptMessagePanel(wx.Panel):
         outer.Add(agent_bubble, 0, wx.EXPAND | wx.ALL, self._padding)
         self._agent_bubble = agent_bubble
 
-        outer.Add(self._reasoning_section, 0, wx.EXPAND)
+        self._selection_probe = wx.TextCtrl(
+            self,
+            value=response,
+            style=(
+                wx.TE_MULTILINE
+                | wx.TE_READONLY
+                | wx.TE_WORDWRAP
+                | wx.TE_NO_VSCROLL
+                | wx.BORDER_NONE
+            ),
+        )
+        self._selection_probe.Hide()
+
+        outer.Add(self._tool_section, 0, wx.EXPAND)
+        self._build_tool_bubbles(tool_summaries)
+
         self._update_reasoning(reasoning_segments)
 
         self._state = _TranscriptPanelState(
@@ -1063,6 +1091,9 @@ class TranscriptMessagePanel(wx.Panel):
                 agent_bubble.update_header(_("Agent"), response_timestamp)
             agent_bubble.set_explicit_width_hint(self._resolve_hint("agent"))
             self._update_regenerate_footer(on_regenerate, regenerate_enabled)
+        probe = getattr(self, "_selection_probe", None)
+        if isinstance(probe, wx.TextCtrl):
+            probe.SetValue(normalize_for_display(response))
 
         self._update_reasoning(reasoning_segments)
 
@@ -1136,10 +1167,16 @@ class TranscriptMessagePanel(wx.Panel):
             if not markdown:
                 continue
             hint_key = self.tool_layout_hint_key(summary)
+            timestamp = (
+                summary.completed_at
+                or summary.last_observed_at
+                or summary.started_at
+                or ""
+            )
             bubble = MessageBubble(
                 self,
                 role_label=summary.tool_name,
-                timestamp="",
+                timestamp=timestamp,
                 text=markdown,
                 align="left",
                 allow_selection=True,
@@ -1427,6 +1464,7 @@ class TranscriptMessagePanel(wx.Panel):
     def _update_reasoning(
         self, reasoning_segments: Sequence[Mapping[str, Any]] | None
     ) -> None:
+        container = self.GetSizer()
         signature = self._format_reasoning_segments(reasoning_segments).strip()
         if signature == self._reasoning_signature:
             if self._reasoning_pane is not None and _is_window_usable(
@@ -1444,17 +1482,20 @@ class TranscriptMessagePanel(wx.Panel):
             self._reasoning_pane
         ):
             try:
-                self._reasoning_section.Detach(self._reasoning_pane)
+                if isinstance(container, wx.Sizer):
+                    container.Detach(self._reasoning_pane)
             except Exception:
                 pass
             self._reasoning_pane.Destroy()
             self._reasoning_pane = None
         if not signature:
             self._reasoning_signature = ""
+            if isinstance(container, wx.Sizer):
+                container.Layout()
             return
         pane = self._create_reasoning_panel(reasoning_segments)
-        if pane is not None:
-            self._reasoning_section.Add(
+        if pane is not None and isinstance(container, wx.Sizer):
+            container.Add(
                 pane,
                 0,
                 wx.EXPAND | wx.ALL,
@@ -1462,6 +1503,7 @@ class TranscriptMessagePanel(wx.Panel):
             )
             self._reasoning_pane = pane
             self._reasoning_signature = signature
+            container.Layout()
 
 
     @staticmethod

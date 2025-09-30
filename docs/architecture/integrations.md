@@ -14,9 +14,10 @@
 
 ### Limitations and fallbacks
 - Without a key or when real tests are disabled (`COOKAREQ_RUN_REAL_LLM_TESTS` unset), the scenarios in `tests/integration/test_llm_openrouter_integration.py` are skipped to avoid spurious calls.
-- Argument issues are now reported directly from the MCP server; the client no
-  longer performs pre-flight validation and simply relays the server response
-  through `app.mcp.utils.exception_to_mcp_error`.
+- Argument issues are reported directly by the MCP server. `LocalAgent` forwards
+  every tool call verbatim and does not attempt to validate arguments, so the
+  MCP layer remains the single authority over business rules. `MCPClient`
+  simply relays the server response through `app.mcp.utils.exception_to_mcp_error`.
 
 ### LLM client
 - `LLMClient` remains a thin façade that selects the strategy (chat/harmony/stream) and delegates request assembly and response parsing to specialised components.

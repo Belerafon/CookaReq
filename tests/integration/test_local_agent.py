@@ -283,6 +283,9 @@ def test_run_command_reports_llm_tool_validation_details(
     assert first_request["messages"][-1]["content"].startswith(
         "Write the text of the first requirement"
     )
+    steps = diagnostic.get("llm_steps")
+    assert isinstance(steps, list) and steps
+    assert steps[0]["step"] == 1
     assert mcp.call_calls == 1
     assert mcp.ensure_calls == 1
 
@@ -338,6 +341,66 @@ def test_run_command_reports_validation_fallback_message():
     stop_reason = result.get("agent_stop_reason") or {}
     assert stop_reason.get("type") == "consecutive_tool_errors"
     assert stop_reason.get("count") == 1
+
+
+def test_agent_relays_missing_required_tool_arguments_to_mcp():
+    class MissingRidLLM(LLMAsyncBridge):
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            return LLMResponse(
+                content="",
+                tool_calls=(
+                    LLMToolCall(
+                        id="call-0",
+                        name="update_requirement_field",
+                        arguments={"field": "title", "value": "Новый заголовок"},
+                    ),
+                ),
+            )
+
+    class RecordingMCP(MCPAsyncBridge):
+        def __init__(self) -> None:
+            self.ensure_calls = 0
+            self.call_args: list[tuple[str, Mapping[str, Any]]] = []
+
+        def check_tools(self):
+            return {"ok": True, "error": None}
+
+        def ensure_ready(self):
+            self.ensure_calls += 1
+
+        def call_tool(self, name, arguments):
+            self.call_args.append((name, dict(arguments)))
+            exc = ToolValidationError("Invalid arguments from MCP: rid is required")
+            exc.error_payload = {
+                "code": ErrorCode.VALIDATION_ERROR,
+                "message": "Invalid arguments from MCP: rid is required",
+                "details": {"type": "ToolValidationError"},
+            }
+            raise exc
+
+    mcp = RecordingMCP()
+    agent = LocalAgent(
+        llm=MissingRidLLM(),
+        mcp=mcp,
+        max_consecutive_tool_errors=1,
+    )
+
+    result = agent.run_command("translate demo requirements")
+
+    assert mcp.ensure_calls == 1
+    assert len(mcp.call_args) == 1
+    name, arguments = mcp.call_args[0]
+    assert name == "update_requirement_field"
+    assert "rid" not in arguments
+    assert result["ok"] is False
+    error = result["error"]
+    assert error["code"] == ErrorCode.VALIDATION_ERROR
+    assert error["message"] == "Invalid arguments from MCP: rid is required"
+    details = error.get("details") or {}
+    assert details.get("type") == "ToolValidationError"
 
 
 def test_run_command_propagates_mcp_exception():
@@ -1086,14 +1149,26 @@ def test_run_command_returns_message_without_mcp_call():
     agent = LocalAgent(llm=llm, mcp=mcp)
 
     result = agent.run_command("hi")
-    assert result == {"ok": True, "error": None, "result": "Hello!"}
+    assert result["ok"] is True
+    assert result["error"] is None
+    assert result["result"] == "Hello!"
+    diagnostic = result.get("diagnostic")
+    assert isinstance(diagnostic, dict)
+    steps = diagnostic.get("llm_steps")
+    assert isinstance(steps, list) and steps
     assert mcp.called is False
     assert llm.conversations[0][-1] == {"role": "user", "content": "hi"}
     assert "tool_results" not in result
 
     async def exercise() -> None:
         async_result = await agent.run_command_async("more")
-        assert async_result == {"ok": True, "error": None, "result": "Hello!"}
+        assert async_result["ok"] is True
+        assert async_result["error"] is None
+        assert async_result["result"] == "Hello!"
+        diag_async = async_result.get("diagnostic")
+        assert isinstance(diag_async, dict)
+        async_steps = diag_async.get("llm_steps")
+        assert isinstance(async_steps, list) and async_steps
         assert "tool_results" not in async_result
 
     asyncio.run(exercise())

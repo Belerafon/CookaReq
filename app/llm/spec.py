@@ -9,7 +9,7 @@ testing and keeps the LLM contract consistent across components.
 from __future__ import annotations
 
 from textwrap import dedent
-from typing import Any
+from typing import Any, Mapping
 
 from ..core.model import Priority, RequirementType, Status, Verification
 
@@ -539,3 +539,6 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
 ]
+
+
+

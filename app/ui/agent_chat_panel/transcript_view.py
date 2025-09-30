@@ -343,6 +343,15 @@ class TranscriptView:
         except RuntimeError:
             pass
         placeholder.Hide()
+        try:
+            placeholder.Destroy()
+        except RuntimeError:  # pragma: no cover - defensive cleanup
+            pass
+        if placeholder is self._start_placeholder:
+            self._start_placeholder = None
+        for cache in self._conversation_cache.values():
+            if cache.placeholder is placeholder:
+                cache.placeholder = None
         self._current_placeholder = None
 
     # ------------------------------------------------------------------

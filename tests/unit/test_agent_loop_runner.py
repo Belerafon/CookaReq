@@ -35,6 +35,7 @@ def test_handle_tool_batch_returns_success(monkeypatch):
         conversation=[],
         cancellation=None,
         on_tool_result=None,
+        on_llm_step=None,
     )
 
     response = LLMResponse("Result", ())
@@ -58,7 +59,7 @@ def test_step_llm_handles_validation_error(monkeypatch):
     synthetic_response = LLMResponse("", ())
     synthetic_error = {"tool_name": "demo"}
 
-    def fake_handle(self, exc, conversation, *, on_tool_result=None):
+    def fake_handle(self, exc, conversation, *, on_tool_result=None, on_llm_step=None):
         conversation.append({"role": "assistant", "content": "oops"})
         return synthetic_response, synthetic_error
 
@@ -69,6 +70,7 @@ def test_step_llm_handles_validation_error(monkeypatch):
         conversation=[],
         cancellation=None,
         on_tool_result=None,
+        on_llm_step=None,
     )
 
     outcome = asyncio.run(runner.step_llm())
@@ -136,6 +138,7 @@ def test_runner_aborts_after_consecutive_tool_errors(monkeypatch):
         conversation=[],
         cancellation=None,
         on_tool_result=None,
+        on_llm_step=None,
     )
 
     result = asyncio.run(runner.run())
@@ -210,12 +213,19 @@ def test_reasoning_segments_survive_tool_roundtrip(monkeypatch):
         conversation=[],
         cancellation=None,
         on_tool_result=None,
+        on_llm_step=None,
     )
 
     result = asyncio.run(runner.run())
 
     assert result["result"] == "final reply"
     assert result["reasoning"] == [
+        {"type": "analysis", "text": "gathering data"}
+    ]
+    assert runner._conversation
+    first_assistant = runner._conversation[0]
+    assert first_assistant["role"] == "assistant"
+    assert first_assistant["reasoning"] == [
         {"type": "analysis", "text": "gathering data"}
     ]
 

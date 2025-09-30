@@ -222,6 +222,12 @@ def test_reasoning_segments_survive_tool_roundtrip(monkeypatch):
     assert result["reasoning"] == [
         {"type": "analysis", "text": "gathering data"}
     ]
+    assert runner._conversation
+    first_assistant = runner._conversation[0]
+    assert first_assistant["role"] == "assistant"
+    assert first_assistant["reasoning"] == [
+        {"type": "analysis", "text": "gathering data"}
+    ]
 
 
 def test_validation_error_payloads_mirror_tool_execution():

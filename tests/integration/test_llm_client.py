@@ -183,6 +183,54 @@ def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
     ]
 
 
+def test_parse_command_preserves_assistant_reasoning(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = settings_with_llm(tmp_path)
+    captured: dict[str, object] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple capture
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                captured["messages"] = messages
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="ok",
+                                tool_calls=None,
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+    history = [
+        {
+            "role": "assistant",
+            "content": "previous reply",
+            "reasoning": [{"type": "analysis", "text": "thinking"}],
+        }
+    ]
+
+    client.parse_command("follow up", history=history)
+
+    messages = captured["messages"]
+    assert messages[0] == {"role": "system", "content": SYSTEM_PROMPT}
+    assistant_message = messages[1]
+    assert assistant_message["role"] == "assistant"
+    assert assistant_message["content"].strip() == "previous reply"
+    assert assistant_message["reasoning"] == [
+        {"type": "analysis", "text": "thinking"}
+    ]
+    assert messages[-1] == {"role": "user", "content": "follow up"}
+
+
 def test_qwen_message_format_wraps_segments(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path, message_format="qwen")
     captured: dict[str, object] = {}

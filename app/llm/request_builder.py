@@ -14,7 +14,7 @@ from .reasoning import is_reasoning_type
 from .response_parser import normalise_tool_calls
 from .spec import SYSTEM_PROMPT, TOOLS
 from .tokenizer import count_text_tokens
-from .types import HistoryTrimResult
+from .types import HistoryTrimResult, LLMReasoningSegment
 from .utils import extract_mapping
 
 __all__ = ["LLMRequestBuilder", "PreparedChatRequest"]
@@ -230,6 +230,16 @@ class LLMRequestBuilder:
                 normalized_calls = normalise_tool_calls(tool_calls)
                 if normalized_calls:
                     entry["tool_calls"] = normalized_calls
+                reasoning_value = (
+                    message.get("reasoning")
+                    if isinstance(message, Mapping)
+                    else getattr(message, "reasoning", None)
+                )
+                normalized_reasoning = self._normalise_reasoning_segments(
+                    reasoning_value
+                )
+                if normalized_reasoning:
+                    entry["reasoning"] = normalized_reasoning
             elif role_str == "tool":
                 if isinstance(message, Mapping):
                     tool_call_id = message.get("tool_call_id")
@@ -243,6 +253,30 @@ class LLMRequestBuilder:
                     entry["name"] = str(name)
             sanitized.append(entry)
         return sanitized
+
+    def _normalise_reasoning_segments(self, payload: Any) -> list[dict[str, str]]:
+        if isinstance(payload, LLMReasoningSegment):
+            payload = (payload,)
+        if not isinstance(payload, Sequence) or isinstance(
+            payload, (str, bytes, bytearray)
+        ):
+            return []
+        segments: list[dict[str, str]] = []
+        for item in payload:
+            if isinstance(item, Mapping):
+                text_value = item.get("text")
+                segment_type = item.get("type")
+            else:
+                text_value = getattr(item, "text", None)
+                segment_type = getattr(item, "type", None)
+            if text_value is None:
+                continue
+            text_str = str(text_value).strip()
+            if not text_str:
+                continue
+            type_str = str(segment_type) if segment_type is not None else "reasoning"
+            segments.append({"type": type_str, "text": text_str})
+        return segments
 
     # ------------------------------------------------------------------
     def _convert_messages_for_qwen(

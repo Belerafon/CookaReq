@@ -948,6 +948,9 @@ class LocalAgent:
         }
         if assistant_tool_calls:
             assistant_message["tool_calls"] = assistant_tool_calls
+        reasoning_payload = self._prepare_reasoning_segments(reasoning_segments)
+        if reasoning_payload:
+            assistant_message["reasoning"] = reasoning_payload
         conversation.append(assistant_message)
 
         if tool_messages:
@@ -1193,6 +1196,9 @@ class LocalAgent:
             "role": "assistant",
             "content": response.content,
         }
+        reasoning_segments = self._prepare_reasoning_segments(response.reasoning)
+        if reasoning_segments:
+            message["reasoning"] = reasoning_segments
         if response.tool_calls:
             message["tool_calls"] = [
                 {

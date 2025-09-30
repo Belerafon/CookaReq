@@ -167,6 +167,31 @@ class LLMResponseParser:
         return "; ".join(summary_parts)
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _stringify_content(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, Mapping):
+            for key in ("text", "content", "value", "assistant"):
+                if key not in value:
+                    continue
+                text = LLMResponseParser._stringify_content(value.get(key))
+                if text:
+                    return text
+            return ""
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray)
+        ):
+            parts = [
+                LLMResponseParser._stringify_content(item)
+                for item in value
+            ]
+            return "".join(part for part in parts if part)
+        return str(value)
+
+    # ------------------------------------------------------------------
     def consume_stream(
         self,
         stream: Iterable[Any],
@@ -285,7 +310,9 @@ class LLMResponseParser:
                     completion,
                 )
             )
-        message = getattr(choices[0], "message", None)
+        first_choice = choices[0]
+        choice_map = extract_mapping(first_choice)
+        message = getattr(first_choice, "message", None)
         if message is None:
             raise ToolValidationError(
                 self.format_invalid_completion_error(
@@ -361,6 +388,74 @@ class LLMResponseParser:
             message_text = str(text_candidate or "")
         else:
             message_text = str(content or "")
+        if not message_text:
+            fallback_candidates: list[tuple[str, str]] = []
+            fallback_samples: list[tuple[str, str]] = []
+
+            def _collect_candidate(label: str, value: Any) -> None:
+                text = self._stringify_content(value)
+                if not text:
+                    return
+                fallback_samples.append((label, text))
+                if text.strip():
+                    fallback_candidates.append((label, text))
+
+            if isinstance(message, str):
+                _collect_candidate("choices[0].message", message)
+            else:
+                _collect_candidate(
+                    "choices[0].message.text", getattr(message, "text", None)
+                )
+
+            if message_map is not None:
+                for key in ("text", "assistant", "output_text", "value", "content"):
+                    if key in message_map:
+                        _collect_candidate(
+                            f"choices[0].message.{key}", message_map.get(key)
+                        )
+
+            if choice_map is not None:
+                for key in ("text", "assistant"):
+                    if key in choice_map:
+                        _collect_candidate(f"choices[0].{key}", choice_map.get(key))
+                message_value = choice_map.get("message")
+                if isinstance(message_value, str):
+                    _collect_candidate("choices[0].message", message_value)
+
+            completion_map = extract_mapping(completion)
+            if completion_map is not None:
+                for key in ("assistant", "content"):
+                    if key in completion_map:
+                        _collect_candidate(
+                            f"completion.{key}", completion_map.get(key)
+                        )
+                message_payload = completion_map.get("message")
+                if isinstance(message_payload, str):
+                    _collect_candidate("completion.message", message_payload)
+
+            if fallback_candidates:
+                source, text = fallback_candidates[0]
+                message_text = text
+                log_debug_payload(
+                    "llm.response_parser.message_fallback",
+                    {
+                        "source": source,
+                        "preview": text.strip()[:160],
+                    },
+                )
+            elif fallback_samples:
+                log_debug_payload(
+                    "llm.response_parser.empty_message_candidates",
+                    {
+                        "candidates": [
+                            {
+                                "source": source,
+                                "preview": sample.strip()[:160],
+                            }
+                            for source, sample in fallback_samples
+                        ],
+                    },
+                )
         return message_text, raw_tool_calls_payload, reasoning_accumulator
 
     # ------------------------------------------------------------------

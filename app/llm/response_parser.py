@@ -227,6 +227,8 @@ class LLMResponseParser:
         fallback_samples: list[tuple[str, str]] = []
         fallback_primary: dict[str, str] | None = None
         fallback_secondary: list[dict[str, str]] | None = None
+        recorded_chunks: list[dict[str, Any]] = []
+        chunk_count = 0
 
         def _collect_candidate(label: str, value: Any) -> None:
             text = self._stringify_content(value)
@@ -271,13 +273,29 @@ class LLMResponseParser:
         try:
             ensure_not_cancelled()
             for chunk in stream:  # pragma: no cover - network/streaming
+                chunk_count += 1
                 ensure_not_cancelled()
                 chunk_map = extract_mapping(chunk)
                 choices = getattr(chunk, "choices", None)
                 if choices is None and chunk_map is not None:
                     choices = chunk_map.get("choices")
                 if not choices:
+                    if (
+                        chunk_map is not None
+                        and len(recorded_chunks) < 8
+                    ):
+                        recorded_chunks.append(
+                            self._summarize_stream_chunk(
+                                chunk_map, index=chunk_count
+                            )
+                        )
                     continue
+                if chunk_map is not None and len(recorded_chunks) < 8:
+                    recorded_chunks.append(
+                        self._summarize_stream_chunk(
+                            chunk_map, index=chunk_count
+                        )
+                    )
                 for choice in choices:
                     choice_map = extract_mapping(choice)
                     raw_choice_index = getattr(choice, "index", None)
@@ -456,6 +474,23 @@ class LLMResponseParser:
                 with suppress(Exception):  # pragma: no cover - defensive
                     closer()
         message = _finalize_message()
+        if not message:
+            debug_payload: dict[str, Any] = {
+                "chunks_seen": chunk_count,
+                "recorded_chunks": recorded_chunks,
+            }
+            if fallback_primary is not None:
+                debug_payload["fallback_primary"] = fallback_primary
+            if fallback_secondary is not None:
+                debug_payload["fallback_secondary"] = fallback_secondary
+            if reasoning_segments:
+                debug_payload["reasoning_fragments"] = len(reasoning_segments)
+            if tool_chunks:
+                debug_payload["tool_chunks"] = len(tool_chunks)
+            log_debug_payload(
+                "llm.response_parser.stream_empty_message_details",
+                debug_payload,
+            )
         if fallback_primary is not None:
             log_debug_payload(
                 "llm.response_parser.stream_message_fallback",
@@ -509,6 +544,7 @@ class LLMResponseParser:
             getattr(message, "tool_calls", None) or []
         )
         reasoning_accumulator: list[dict[str, str]] = []
+        completion_debug: dict[str, Any] | None = None
         if reasoning_payload:
             raw_tool_calls_payload.extend(
                 self._extract_reasoning_tool_calls(reasoning_payload)
@@ -576,6 +612,12 @@ class LLMResponseParser:
                 if text.strip():
                     fallback_candidates.append((label, text))
 
+            if completion_debug is None:
+                completion_debug = self._summarize_completion_choice(
+                    choice_map or {},
+                    message_map or {},
+                )
+
             if isinstance(message, str):
                 _collect_candidate("choices[0].message", message)
             else:
@@ -632,6 +674,15 @@ class LLMResponseParser:
                         ],
                     },
                 )
+            if completion_debug is None:
+                completion_debug = self._summarize_completion_choice(
+                    choice_map or {},
+                    message_map or {},
+                )
+            log_debug_payload(
+                "llm.response_parser.empty_message_details",
+                completion_debug,
+            )
         return message_text, raw_tool_calls_payload, reasoning_accumulator
 
     # ------------------------------------------------------------------
@@ -747,6 +798,95 @@ class LLMResponseParser:
                 LLMToolCall(id=call_id_str, name=name, arguments=validated_arguments)
             )
         return tuple(parsed)
+
+    # ------------------------------------------------------------------
+    def _summarize_stream_chunk(
+        self, chunk_map: Mapping[str, Any], *, index: int
+    ) -> dict[str, Any]:
+        summary: dict[str, Any] = {"index": index}
+        if chunk_map:
+            summary["chunk_keys"] = sorted(str(key) for key in chunk_map)[:8]
+        choices = chunk_map.get("choices") if chunk_map else None
+        if isinstance(choices, Sequence) and not isinstance(
+            choices, (str, bytes, bytearray)
+        ):
+            summary["choices"] = len(choices)
+            first_choice_map = extract_mapping(choices[0]) if choices else None
+            if first_choice_map:
+                summary["choice_keys"] = sorted(str(key) for key in first_choice_map)[
+                    :8
+                ]
+                delta = first_choice_map.get("delta")
+                if delta is None:
+                    delta = getattr(choices[0], "delta", None)
+                delta_map = extract_mapping(delta)
+                if delta_map:
+                    summary["delta_keys"] = sorted(str(key) for key in delta_map)[:8]
+                    preview = self._stringify_content(delta_map.get("content"))
+                    if not preview:
+                        preview = self._stringify_content(delta_map.get("message"))
+                    if preview:
+                        summary["preview"] = preview.strip()[:160]
+                    tool_calls = delta_map.get("tool_calls")
+                    if tool_calls:
+                        if isinstance(tool_calls, Sequence) and not isinstance(
+                            tool_calls, (str, bytes, bytearray)
+                        ):
+                            summary["tool_call_deltas"] = len(tool_calls)
+                        else:
+                            summary["tool_call_deltas"] = 1
+                    if delta_map.get("function_call"):
+                        summary["has_function_call_delta"] = True
+            else:
+                preview = self._stringify_content(choices[0]) if choices else ""
+                if preview:
+                    summary["preview"] = preview.strip()[:160]
+        else:
+            preview = self._stringify_content(
+                chunk_map.get("message")
+                if chunk_map
+                else None
+            )
+            if not preview and chunk_map:
+                preview = self._stringify_content(chunk_map.get("assistant"))
+            if preview:
+                summary["preview"] = preview.strip()[:160]
+        return summary
+
+    def _summarize_completion_choice(
+        self,
+        choice_map: Mapping[str, Any],
+        message_map: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        summary: dict[str, Any] = {}
+        if choice_map:
+            summary["choice_keys"] = sorted(str(key) for key in choice_map)[:8]
+            raw_message = choice_map.get("message")
+            if isinstance(raw_message, str):
+                summary["message_str_preview"] = raw_message.strip()[:160]
+        if message_map:
+            summary["message_keys"] = sorted(str(key) for key in message_map)[:8]
+            role = message_map.get("role")
+            if role:
+                summary["role"] = str(role)
+            tool_calls = message_map.get("tool_calls")
+            if tool_calls:
+                if isinstance(tool_calls, Sequence) and not isinstance(
+                    tool_calls, (str, bytes, bytearray)
+                ):
+                    summary["tool_calls"] = len(tool_calls)
+                else:
+                    summary["tool_calls"] = 1
+            content = message_map.get("content")
+            if content is not None:
+                summary["content_type"] = type(content).__name__
+                preview = self._stringify_content(content)
+                if preview:
+                    summary["content_preview"] = preview.strip()[:160]
+            text_value = message_map.get("text")
+            if isinstance(text_value, str) and text_value.strip():
+                summary["text_preview"] = text_value.strip()[:160]
+        return summary
 
     # ------------------------------------------------------------------
     def _extract_reasoning_tool_calls(self, payload: Any) -> list[dict[str, Any]]:

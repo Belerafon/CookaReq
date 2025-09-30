@@ -309,10 +309,56 @@ class LLMResponseParser:
                     if content_delta:
                         if isinstance(content_delta, list):
                             for item in content_delta:
-                                segment = extract_mapping(item) or {}
-                                if segment.get("type") == "text":
-                                    text_value = segment.get("text") or ""
+                                segment = extract_mapping(item)
+                                if segment is None:
+                                    if isinstance(item, str):
+                                        message_parts.append(str(item))
+                                    continue
+                                seg_type = segment.get("type")
+                                if isinstance(seg_type, str) and is_reasoning_type(seg_type):
+                                    fragments = collect_reasoning_fragments(segment)
+                                    if fragments:
+                                        self._append_reasoning_fragments(
+                                            reasoning_segments, fragments
+                                        )
+                                    tool_fragments = self._extract_reasoning_tool_calls(
+                                        segment
+                                    )
+                                    for payload in tool_fragments:
+                                        self._append_stream_tool_call(
+                                            tool_chunks,
+                                            order,
+                                            payload,
+                                            choice_index=choice_index,
+                                        )
+                                    continue
+                                if seg_type == "text" or (
+                                    isinstance(seg_type, str)
+                                    and seg_type.endswith("_text")
+                                ):
+                                    text_value = segment.get("text")
+                                    if text_value:
+                                        message_parts.append(str(text_value))
+                                    continue
+                                text_value = segment.get("text")
+                                if text_value and seg_type in {None, "message"}:
                                     message_parts.append(str(text_value))
+                                    continue
+                                if text_value and seg_type not in {
+                                    "tool_calls",
+                                    "tool_call",
+                                    "function_call",
+                                }:
+                                    message_parts.append(str(text_value))
+                                    continue
+                                nested_content = segment.get("content")
+                                if nested_content:
+                                    nested_text = self._stringify_content(
+                                        nested_content
+                                    )
+                                    if nested_text:
+                                        message_parts.append(nested_text)
+                                    continue
                         else:
                             text_delta = getattr(content_delta, "text", None)
                             if text_delta is None and isinstance(content_delta, Mapping):

@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.llm.response_parser import LLMResponseParser
 import pytest
 
-from app.llm.response_parser import StreamConsumptionError
+from app.llm.response_parser import LLMResponseParser, StreamConsumptionError
 from app.settings import LLMSettings
 
 
@@ -110,3 +109,28 @@ def test_consume_stream_raises_error_with_partial_payload():
     assert excinfo.value.message_text == "Finished text"
     assert excinfo.value.raw_tool_calls_payload == []
     assert excinfo.value.reasoning_segments == []
+
+
+def test_consume_stream_collects_output_text_delta_segments():
+    parser = _parser()
+    stream = [
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "content": [
+                            {"type": "output_text", "text": "First"},
+                            {"type": "message", "text": " part"},
+                        ]
+                    },
+                }
+            ]
+        }
+    ]
+
+    message, tool_calls, reasoning = parser.consume_stream(stream, cancellation=None)
+
+    assert message == "First part"
+    assert tool_calls == []
+    assert reasoning == []

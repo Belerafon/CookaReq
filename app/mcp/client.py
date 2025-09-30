@@ -17,7 +17,6 @@ from ..confirm import (
     confirm_requirement_update as global_confirm_requirement_update,
 )
 from ..i18n import _
-from ..llm.validation import KNOWN_TOOLS, ToolValidationError, validate_tool_call
 from ..settings import MCPSettings
 from ..telemetry import log_debug_payload, log_event
 from .events import notify_tool_success
@@ -142,37 +141,17 @@ class MCPClient:
 
     def _prepare_tool_arguments(
         self, name: str, arguments: Mapping[str, Any]
-    ) -> dict[str, Any]:
-        """Validate MCP tool arguments when the schema is known."""
+    ) -> Any:
+        """Return tool arguments without performing local validation."""
 
-        if name not in KNOWN_TOOLS:
+        if arguments is None:
+            return {}
+        if isinstance(arguments, Mapping):
             return dict(arguments)
-        try:
-            return validate_tool_call(name, arguments)
-        except ToolValidationError as exc:
-            self._attach_tool_validation_context(exc, name, arguments)
-            raise
-
-    @staticmethod
-    def _attach_tool_validation_context(
-        exc: ToolValidationError, name: str, arguments: Mapping[str, Any]
-    ) -> None:
-        """Populate *exc* with MCP-specific context for diagnostics."""
-
-        if getattr(exc, "llm_tool_calls", None):
-            return
-        try:
-            arguments_text = json.dumps(arguments, ensure_ascii=False, default=str)
-        except Exception:  # pragma: no cover - defensive
-            arguments_text = "{}"
-        exc.llm_tool_calls = [
-            {
-                "function": {
-                    "name": name,
-                    "arguments": arguments_text,
-                }
-            }
-        ]
+        logger.warning(
+            "Received non-mapping arguments for tool %s; dropping local copy", name
+        )
+        return {}
 
     @staticmethod
     def _build_requirement_update_prompt(

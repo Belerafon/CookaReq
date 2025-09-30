@@ -22,6 +22,7 @@
 - While assembling history, `LLMRequestBuilder` replaces empty user/assistant message fields with a single space. OpenRouter serialises empty strings as `null`, breaking server templates; the placeholder keeps the semantics of “no content” and prevents 500 errors during agent retries.
 - `LLMResponseParser` consumes the backend response, normalises tool calls, reconstructs JSON arguments, collects reasoning segments, and converts them to `LLMReasoningSegment`/`LLMToolCall`. Recovery logic and telemetry reside in one place.
 - The façade injects a missing `rid` for `get_requirement` calls by reading the currently selected RIDs from the system message (`Selected requirement RIDs`). This smooths over models that omit identifiers and removes an extra agent/LLM turn after a `ToolValidationError`.
+- The base system prompt now makes an explicit distinction between translating free-form user text (respond directly) and translating workspace data referenced by RID. For the latter the model must call `get_requirement` first, ensuring the agent always works with the up-to-date statements instead of hallucinating from the context header.
 - `app.llm.logging` exposes `log_request`/`log_response` so the façade simply forwards payloads while telemetry stays centralised.
 - Unit tests include stubs in `tests/unit/llm/factories.py` that swap in fake `LLMRequestBuilder`/`LLMResponseParser` instances and create synthetic `LLMResponse` objects to test LLM consumers without real network calls.
 

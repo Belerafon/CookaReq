@@ -227,7 +227,7 @@ def test_run_command_reports_llm_tool_validation_details(
 
     llm_client = LLMClient(settings.llm)
 
-    class RecordingMCP(MCPAsyncBridge):
+    class ValidatingMCP(MCPAsyncBridge):
         def __init__(self) -> None:
             self.ensure_calls = 0
             self.call_calls = 0
@@ -238,12 +238,28 @@ def test_run_command_reports_llm_tool_validation_details(
         def ensure_ready(self) -> None:
             self.ensure_calls += 1
 
-        def call_tool(self, name, arguments):  # pragma: no cover - defensive
+        def call_tool(self, name, arguments):
             self.call_calls += 1
-            return {"ok": True, "error": None, "result": {}}
+            error = ToolValidationError(
+                "Invalid arguments for create_requirement: data.title is required"
+            )
+            error.llm_tool_calls = [
+                {
+                    "id": "tool_call_0",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(arguments, ensure_ascii=False),
+                    },
+                }
+            ]
+            raise error
 
-    mcp = RecordingMCP()
-    agent = LocalAgent(llm=llm_client, mcp=mcp)
+    mcp = ValidatingMCP()
+    agent = LocalAgent(
+        llm=llm_client,
+        mcp=mcp,
+        max_consecutive_tool_errors=1,
+    )
 
     result = agent.run_command("Write the text of the first requirement")
 
@@ -267,8 +283,8 @@ def test_run_command_reports_llm_tool_validation_details(
     assert first_request["messages"][-1]["content"].startswith(
         "Write the text of the first requirement"
     )
-    assert mcp.call_calls == 0
-    assert mcp.ensure_calls == 0
+    assert mcp.call_calls == 1
+    assert mcp.ensure_calls == 1
 
 
 def test_run_command_reports_internal_error_for_openai_failure():
@@ -856,7 +872,7 @@ def test_run_command_streams_tool_results_to_callback():
                         LLMToolCall(
                             id="call-0",
                             name="list_requirements",
-                            arguments={"query": "recent"},
+                            arguments={"per_page": 5},
                         ),
                         LLMToolCall(
                             id="call-1",

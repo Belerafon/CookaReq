@@ -56,6 +56,9 @@ class SuiteDefinition:
     include_by_default: bool = True
     include_paths: Sequence[str] = ()
     exclude_paths: Sequence[str] = ()
+    description: str = ""
+    runtime_hint: str = ""
+    when_to_run: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -110,36 +113,75 @@ SUITES: Mapping[str, SuiteDefinition] = {
             "tests/gui",
             "tests/slow",
         ),
+        description="Default fast checks (unit, smoke, and pure service tests)",
+        runtime_hint="~1.5 min",
+        when_to_run="Every local edit and before sending a PR",
     ),
     "service": SuiteDefinition(
         name="service",
         exclude_any=("gui", "gui_smoke", "gui_full", "real_llm", "quality"),
         exclude_paths=("tests/gui",),
+        description="Core suite plus CLI/MCP integration flows",
+        runtime_hint="~3 min",
+        when_to_run="When touching CLI, doc-store, or MCP service layers",
     ),
     "real-llm": SuiteDefinition(
         name="real-llm",
         include_any=("real_llm",),
         include_by_default=False,
         include_paths=("tests/integration/test_llm_openrouter_integration.py",),
+        description="Smoke check that calls the OpenRouter backend",
+        runtime_hint="~2 min (plus network latency)",
+        when_to_run="Before releases or when changing OpenRouter/MCP wiring",
     ),
     "gui-smoke": SuiteDefinition(
         name="gui-smoke",
         include_any=("gui_smoke",),
         include_by_default=False,
         include_paths=("tests/gui",),
+        description="Focused GUI happy-path checks for the main windows",
+        runtime_hint="~20 s",
+        when_to_run="After tweaks to layout logic or UI state machines",
     ),
     "gui-full": SuiteDefinition(
         name="gui-full",
         include_any=("gui_full",),
         include_by_default=False,
         include_paths=("tests/gui",),
+        description="Comprehensive GUI regression coverage",
+        runtime_hint="~8 min",
+        when_to_run="Nightly or before a release with significant UI work",
     ),
     "quality": SuiteDefinition(
         name="quality",
         include_any=("quality",),
         include_by_default=False,
+        description="Static analysis, translations, and style enforcement",
+        runtime_hint="~1 min",
+        when_to_run="When touching i18n resources or lint-configurable code",
     ),
 }
+
+
+def _format_suite_table() -> str:
+    headers = ("Suite", "Runtime", "When to run", "Description")
+    rows = [
+        (
+            suite.name,
+            suite.runtime_hint or "n/a",
+            suite.when_to_run or "",
+            suite.description or "",
+        )
+        for suite in SUITES.values()
+    ]
+    widths = [
+        max(len(str(value)) for value in column)
+        for column in zip(headers, *rows, strict=True)
+    ]
+    fmt = "  ".join(f"{{:<{width}}}" for width in widths)
+    lines = [fmt.format(*headers), fmt.format(*("-" * width for width in widths))]
+    lines.extend(fmt.format(*row) for row in rows)
+    return "\n".join(lines)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -149,9 +191,17 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         choices=sorted(SUITES),
         help="Select the logical test suite to run",
     )
+    parser.addoption(
+        "--list-suites",
+        action="store_true",
+        help="List available CookaReq suites and exit",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    if config.getoption("--list-suites"):
+        print(_format_suite_table())
+        pytest.exit("suite listing requested", returncode=0)
     suite_name = config.getoption("--suite")
     if suite_name is None:
         return

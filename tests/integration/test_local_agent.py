@@ -343,7 +343,7 @@ def test_run_command_reports_validation_fallback_message():
     assert stop_reason.get("count") == 1
 
 
-def test_agent_rejects_missing_required_tool_arguments():
+def test_agent_relays_missing_required_tool_arguments_to_mcp():
     class MissingRidLLM(LLMAsyncBridge):
         def check_llm(self):
             return {"ok": True}
@@ -363,7 +363,7 @@ def test_agent_rejects_missing_required_tool_arguments():
     class RecordingMCP(MCPAsyncBridge):
         def __init__(self) -> None:
             self.ensure_calls = 0
-            self.call_calls = 0
+            self.call_args: list[tuple[str, Mapping[str, Any]]] = []
 
         def check_tools(self):
             return {"ok": True, "error": None}
@@ -372,32 +372,35 @@ def test_agent_rejects_missing_required_tool_arguments():
             self.ensure_calls += 1
 
         def call_tool(self, name, arguments):
-            self.call_calls += 1
-            raise AssertionError("should not be invoked when arguments are invalid")
+            self.call_args.append((name, dict(arguments)))
+            exc = ToolValidationError("Invalid arguments from MCP: rid is required")
+            exc.error_payload = {
+                "code": ErrorCode.VALIDATION_ERROR,
+                "message": "Invalid arguments from MCP: rid is required",
+                "details": {"type": "ToolValidationError"},
+            }
+            raise exc
 
+    mcp = RecordingMCP()
     agent = LocalAgent(
         llm=MissingRidLLM(),
-        mcp=RecordingMCP(),
+        mcp=mcp,
         max_consecutive_tool_errors=1,
     )
 
     result = agent.run_command("translate demo requirements")
 
+    assert mcp.ensure_calls == 1
+    assert len(mcp.call_args) == 1
+    name, arguments = mcp.call_args[0]
+    assert name == "update_requirement_field"
+    assert "rid" not in arguments
     assert result["ok"] is False
     error = result["error"]
     assert error["code"] == ErrorCode.VALIDATION_ERROR
+    assert error["message"] == "Invalid arguments from MCP: rid is required"
     details = error.get("details") or {}
     assert details.get("type") == "ToolValidationError"
-    llm_calls = details.get("llm_tool_calls")
-    assert isinstance(llm_calls, list) and llm_calls
-    first_call = llm_calls[0]
-    assert first_call["function"]["name"] == "update_requirement_field"
-    arguments = json.loads(first_call["function"]["arguments"])
-    assert arguments["field"] == "title"
-    assert arguments["value"] == "Новый заголовок"
-    assert "rid" not in arguments
-    assert agent._mcp.ensure_calls == 0  # type: ignore[attr-defined]
-    assert agent._mcp.call_calls == 0  # type: ignore[attr-defined]
 
 
 def test_run_command_propagates_mcp_exception():

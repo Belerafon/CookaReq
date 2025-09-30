@@ -637,16 +637,13 @@ def test_parse_command_reports_tool_validation_details(
 
     client = LLMClient(settings.llm)
 
-    with pytest.raises(ToolValidationError) as excinfo:
-        client.parse_command("Write the text of the first requirement")
+    response = client.parse_command("Write the text of the first requirement")
 
-    exc = excinfo.value
-    assert hasattr(exc, "llm_tool_calls")
-    assert exc.llm_tool_calls
-    first_call = exc.llm_tool_calls[0]
-    assert first_call["function"]["name"] == "create_requirement"
-    arguments = json.loads(first_call["function"]["arguments"])
-    assert arguments["data"]["title"] == "Req-1"
+    assert isinstance(response, LLMResponse)
+    assert response.tool_calls
+    call = response.tool_calls[0]
+    assert call.name == "create_requirement"
+    assert call.arguments["data"]["title"] == "Req-1"
 
 
 def test_parse_command_streaming_message(tmp_path: Path, monkeypatch) -> None:

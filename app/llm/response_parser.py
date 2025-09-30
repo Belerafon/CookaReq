@@ -15,7 +15,7 @@ from .reasoning import (
 )
 from .types import LLMReasoningSegment, LLMToolCall
 from .utils import extract_mapping
-from .validation import ToolValidationError, validate_tool_call
+from .validation import ToolValidationError
 
 __all__ = [
     "LLMResponseParser",
@@ -613,9 +613,13 @@ class LLMResponseParser:
                 call_id=call_id_str,
                 tool_name=str(name),
             )
-            validated_arguments = validate_tool_call(name, arguments)
+            if arguments is None or not isinstance(arguments, Mapping):
+                raise ToolValidationError(
+                    "Tool arguments must be a JSON object",
+                )
+            prepared_arguments = dict(arguments)
             parsed.append(
-                LLMToolCall(id=call_id_str, name=name, arguments=validated_arguments)
+                LLMToolCall(id=call_id_str, name=name, arguments=prepared_arguments)
             )
         return tuple(parsed)
 
@@ -847,27 +851,25 @@ class LLMResponseParser:
         ]
         if not mapping_fragments:
             return None
-        selected_index: int | None = None
-        selected_fragment: Mapping[str, Any] | None = None
-        for index, fragment in reversed(mapping_fragments):
-            if fragment:
-                selected_index = index
-                selected_fragment = fragment
-                break
-        if selected_fragment is None:
-            selected_index, selected_fragment = mapping_fragments[-1]
-        if selected_fragment is None:
-            return None
         empty_mappings = sum(
             1
-            for fragment in fragments
-            if isinstance(fragment, Mapping) and not fragment
+            for fragment in mapping_fragments
+            if not fragment[1]
         )
+        combined: dict[str, Any] = {}
+        last_contributing_index = 0
+        for index, fragment in mapping_fragments:
+            if fragment:
+                last_contributing_index = index
+            for key, value in fragment.items():
+                combined[key] = value
+        if not combined:
+            return None
         return _ToolArgumentRecovery(
-            arguments=dict(selected_fragment),
+            arguments=combined,
             classification="concatenated_json",
             fragments=len(fragments),
-            recovered_fragment_index=selected_index or 0,
+            recovered_fragment_index=last_contributing_index,
             empty_fragment_count=empty_mappings,
         )
 

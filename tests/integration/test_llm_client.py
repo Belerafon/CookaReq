@@ -770,6 +770,11 @@ def test_streaming_truncation_returns_partial_message(tmp_path: Path, monkeypatc
     settings.llm.stream = True
 
     class FakeStream:
+        # This fake stream emits a single partial chunk and then simulates a dropped
+        # connection.  The scenario documents why the client must surface the text
+        # that already arrived: downstream agents rely on the partial statement to
+        # decide whether a retry is necessary, and regressions in this behaviour
+        # manifest exactly as the "empty message" errors observed in the field.
         def __init__(self) -> None:
             self.closed = False
             self.iteration = 0

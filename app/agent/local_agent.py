@@ -169,8 +169,8 @@ class LocalAgent:
             ]
         log_event("AGENT_STEP", payload)
 
-    @staticmethod
-    def _summarize_result(result: Mapping[str, Any]) -> dict[str, Any]:
+    @classmethod
+    def _summarize_result(cls, result: Mapping[str, Any]) -> dict[str, Any]:
         """Return compact metadata about final agent outcome."""
 
         payload: dict[str, Any] = {}
@@ -181,6 +181,8 @@ class LocalAgent:
             payload["error"] = result["error"]
         if "result" in result and result["result"]:
             payload["result_type"] = type(result["result"]).__name__
+            if isinstance(result["result"], str) and result["result"].strip():
+                payload["result_preview"] = cls._preview(result["result"])
         if "tool_results" in result:
             try:
                 payload["tool_results"] = len(result["tool_results"])
@@ -189,6 +191,31 @@ class LocalAgent:
         stop_reason = result.get("agent_stop_reason")
         if isinstance(stop_reason, Mapping):
             payload["agent_stop_reason"] = dict(stop_reason)
+        reasoning_segments = result.get("reasoning")
+        if isinstance(reasoning_segments, Sequence) and not isinstance(
+            reasoning_segments, (str, bytes, bytearray)
+        ):
+            reasoning_preview: list[dict[str, str]] = []
+            for segment in reasoning_segments:
+                if isinstance(segment, Mapping):
+                    type_value = segment.get("type")
+                    text_value = segment.get("text")
+                else:
+                    type_value = getattr(segment, "type", None)
+                    text_value = getattr(segment, "text", None)
+                if not text_value:
+                    continue
+                text_str = str(text_value).strip()
+                if not text_str:
+                    continue
+                reasoning_preview.append(
+                    {
+                        "type": str(type_value or "reasoning"),
+                        "preview": cls._preview(text_str, limit=200),
+                    }
+                )
+            if reasoning_preview:
+                payload["reasoning"] = reasoning_preview
         return payload
 
     @staticmethod
@@ -924,6 +951,8 @@ class LocalAgent:
         self,
         payload: Mapping[str, Any] | None,
         consecutive_errors: int,
+        *,
+        reasoning_segments: Sequence[LLMReasoningSegment] | None = None,
     ) -> dict[str, Any]:
         """Return final result payload when tool failures exceed the cap."""
 
@@ -946,22 +975,58 @@ class LocalAgent:
                 self._max_consecutive_tool_errors
             )
         prepared["agent_stop_reason"] = stop_reason
+        reasoning_payload: list[dict[str, str]] = []
+        if reasoning_segments:
+            for segment in reasoning_segments:
+                text = getattr(segment, "text", "")
+                if not text:
+                    continue
+                text_str = str(text).strip()
+                if not text_str:
+                    continue
+                reasoning_payload.append(
+                    {
+                        "type": getattr(segment, "type", "reasoning"),
+                        "text": text_str,
+                    }
+                )
+        if reasoning_payload:
+            prepared.setdefault("reasoning", reasoning_payload)
         return prepared
 
-    @staticmethod
     def _success_result(
-        response: LLMResponse, tool_results: Sequence[Mapping[str, Any]] | None
+        self,
+        response: LLMResponse,
+        tool_results: Sequence[Mapping[str, Any]] | None,
+        *,
+        reasoning_segments: Sequence[LLMReasoningSegment] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "ok": True,
             "error": None,
             "result": response.content.strip(),
         }
-        if response.reasoning:
-            payload["reasoning"] = [
-                {"type": segment.type, "text": segment.text}
-                for segment in response.reasoning
-            ]
+        segments: Sequence[LLMReasoningSegment]
+        if reasoning_segments:
+            segments = reasoning_segments
+        else:
+            segments = response.reasoning
+        prepared_reasoning: list[dict[str, str]] = []
+        for segment in segments:
+            text_value = getattr(segment, "text", "")
+            if not text_value:
+                continue
+            text = str(text_value).strip()
+            if not text:
+                continue
+            prepared_reasoning.append(
+                {
+                    "type": getattr(segment, "type", "reasoning"),
+                    "text": text,
+                }
+            )
+        if prepared_reasoning:
+            payload["reasoning"] = prepared_reasoning
         if tool_results:
             payload["tool_results"] = [dict(result) for result in tool_results]
         return payload
@@ -1067,6 +1132,7 @@ class AgentLoopRunner:
         self._last_response: LLMResponse | None = None
         self._step = 0
         self._consecutive_tool_errors = 0
+        self._reasoning_trace: list[LLMReasoningSegment] = []
 
     async def run(self) -> dict[str, Any]:
         """Execute the main loop until completion or enforced abort."""
@@ -1105,6 +1171,7 @@ class AgentLoopRunner:
                 final_result=self._agent._success_result(
                     response,
                     self._accumulated_results,
+                    reasoning_segments=self._reasoning_trace,
                 ),
             )
         (
@@ -1150,6 +1217,8 @@ class AgentLoopRunner:
     def _register_response(self, response: LLMResponse) -> None:
         self._last_response = response
         self._agent._record_request_messages(response)
+        if response.reasoning:
+            self._reasoning_trace.extend(response.reasoning)
 
     def _advance_step(self, response: LLMResponse) -> None:
         self._step += 1
@@ -1193,6 +1262,7 @@ class AgentLoopRunner:
         return self._agent._prepare_consecutive_tool_error_result(
             payload,
             self._consecutive_tool_errors,
+            reasoning_segments=self._reasoning_trace,
         )
 
     def _abort_due_to_step_limit(self) -> dict[str, Any]:

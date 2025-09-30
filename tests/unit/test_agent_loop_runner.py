@@ -4,7 +4,7 @@ from typing import Any
 from collections.abc import Mapping
 
 from app.agent.local_agent import AgentLoopRunner, LocalAgent
-from app.llm.types import LLMResponse, LLMToolCall
+from app.llm.types import LLMReasoningSegment, LLMResponse, LLMToolCall
 from app.llm.validation import ToolValidationError
 
 
@@ -147,6 +147,77 @@ def test_runner_aborts_after_consecutive_tool_errors(monkeypatch):
         "max_consecutive_tool_errors": 2,
     }
     assert runner._consecutive_tool_errors == 2
+
+
+def test_reasoning_segments_survive_tool_roundtrip(monkeypatch):
+    class ToolReasoningLLM(DummyLLM):
+        def __init__(self) -> None:
+            self._call_index = 0
+
+        async def respond_async(self, conversation, *, cancellation=None) -> LLMResponse:
+            if self._call_index == 0:
+                self._call_index += 1
+                return LLMResponse(
+                    "",
+                    (
+                        LLMToolCall(
+                            id="call-1",
+                            name="demo_tool",
+                            arguments={},
+                        ),
+                    ),
+                    reasoning=(
+                        LLMReasoningSegment(
+                            type="analysis",
+                            text="gathering data",
+                        ),
+                    ),
+                )
+            self._call_index += 1
+            return LLMResponse("final reply", ())
+
+    agent = LocalAgent(llm=ToolReasoningLLM(), mcp=DummyMCP())
+
+    async def fake_execute(
+        self,
+        tool_calls,
+        *,
+        cancellation=None,
+        on_tool_result=None,
+    ):
+        return (
+            [
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_calls[0].id,
+                    "name": tool_calls[0].name,
+                    "content": "{}",
+                }
+            ],
+            None,
+            [
+                {
+                    "ok": True,
+                    "tool_name": tool_calls[0].name,
+                }
+            ],
+        )
+
+    monkeypatch.setattr(LocalAgent, "_execute_tool_calls_core", fake_execute)
+
+    runner = AgentLoopRunner(
+        agent=agent,
+        conversation=[],
+        cancellation=None,
+        on_tool_result=None,
+    )
+
+    result = asyncio.run(runner.run())
+
+    assert result["result"] == "final reply"
+    assert result["reasoning"] == [
+        {"type": "analysis", "text": "gathering data"}
+    ]
 
 
 def test_validation_error_payloads_mirror_tool_execution():

@@ -9,11 +9,11 @@ testing and keeps the LLM contract consistent across components.
 from __future__ import annotations
 
 from textwrap import dedent
-from typing import Any
+from typing import Any, Mapping
 
 from ..core.model import Priority, RequirementType, Status, Verification
 
-__all__ = ["SYSTEM_PROMPT", "TOOLS"]
+__all__ = ["SYSTEM_PROMPT", "TOOLS", "TOOL_REQUIRED_ARGUMENTS"]
 
 
 _STATUS_VALUES = [status.value for status in Status]
@@ -539,3 +539,36 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
 ]
+
+
+def _extract_required_arguments(
+    tools: list[Mapping[str, Any]]
+) -> dict[str, tuple[str, ...]]:
+    """Return mapping of tool names to the required top-level arguments."""
+
+    required_arguments: dict[str, tuple[str, ...]] = {}
+    for tool in tools:
+        if not isinstance(tool, Mapping):
+            continue
+        function = tool.get("function")
+        if not isinstance(function, Mapping):
+            continue
+        name = function.get("name")
+        if not name:
+            continue
+        parameters = function.get("parameters")
+        if not isinstance(parameters, Mapping):
+            continue
+        required = parameters.get("required")
+        if not isinstance(required, list):
+            continue
+        collected: list[str] = []
+        for field in required:
+            if isinstance(field, str) and field:
+                collected.append(field)
+        if collected:
+            required_arguments[str(name)] = tuple(collected)
+    return required_arguments
+
+
+TOOL_REQUIRED_ARGUMENTS: dict[str, tuple[str, ...]] = _extract_required_arguments(TOOLS)

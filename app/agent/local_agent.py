@@ -18,6 +18,7 @@ from ..services.requirements import parse_rid
 from ..llm.context import extract_selected_rids_from_text
 from ..llm.client import LLMClient
 from ..llm.reasoning import normalise_reasoning_segments
+from ..llm.spec import TOOL_REQUIRED_ARGUMENTS
 from ..llm.types import LLMReasoningSegment, LLMResponse, LLMToolCall
 from ..llm.validation import ToolValidationError
 from ..mcp.client import MCPClient
@@ -70,6 +71,20 @@ class LocalAgent:
     DEFAULT_MAX_CONSECUTIVE_TOOL_ERRORS: int | None = 5
     _MESSAGE_PREVIEW_LIMIT = 400
     _REQUIREMENT_SUMMARY_FIELDS: tuple[str, str] = ("title", "statement")
+    _NON_EMPTY_ARGUMENT_KEYS: frozenset[str] = frozenset(
+        {
+            "rid",
+            "field",
+            "source_rid",
+            "derived_rid",
+            "link_type",
+            "prefix",
+        }
+    )
+    _TOOL_REQUIRED_ARGUMENTS: Mapping[str, tuple[str, ...]] = {
+        name: tuple(required)
+        for name, required in TOOL_REQUIRED_ARGUMENTS.items()
+    }
 
     def __init__(
         self,
@@ -724,6 +739,7 @@ class LocalAgent:
                         "arguments": self._normalise_tool_arguments(call),
                     },
                 )
+                self._validate_tool_arguments(call)
                 await self._mcp.ensure_ready_async()
                 result = await self._mcp.call_tool_async(call.name, call.arguments)
             except Exception as exc:
@@ -819,6 +835,79 @@ class LocalAgent:
             successful.append(result_dict)
             self._raise_if_cancelled(cancellation)
         return messages, None, successful
+
+    def _validate_tool_arguments(self, call: LLMToolCall) -> None:
+        """Raise :class:`ToolValidationError` when required arguments are missing."""
+
+        arguments = call.arguments
+        if not isinstance(arguments, Mapping):
+            message = (
+                f"Invalid arguments for {call.name}: expected a JSON object"
+            )
+            raise self._make_tool_validation_error(call, message, arguments=arguments)
+
+        required_fields = self._TOOL_REQUIRED_ARGUMENTS.get(call.name)
+        if not required_fields:
+            return
+
+        missing: list[str] = []
+        for field in required_fields:
+            if field not in arguments:
+                missing.append(field)
+                continue
+            if field in self._NON_EMPTY_ARGUMENT_KEYS:
+                value = arguments.get(field)
+                if value is None:
+                    missing.append(field)
+                    continue
+                if isinstance(value, str) and not value.strip():
+                    missing.append(field)
+                    continue
+        if not missing:
+            return
+
+        if len(missing) == 1:
+            requirement_text = f"{missing[0]} is required"
+        else:
+            requirement_text = f"{', '.join(missing)} are required"
+        message = f"Invalid arguments for {call.name}: {requirement_text}"
+        raise self._make_tool_validation_error(call, message, arguments=arguments)
+
+    def _make_tool_validation_error(
+        self,
+        call: LLMToolCall,
+        message: str,
+        *,
+        arguments: Any = None,
+    ) -> ToolValidationError:
+        """Return :class:`ToolValidationError` enriched with diagnostic details."""
+
+        error = ToolValidationError(message)
+        error.llm_message = f"{message} (type: ToolValidationError)"
+
+        if arguments is None:
+            payload = call.arguments
+        else:
+            payload = arguments
+
+        if isinstance(payload, Mapping):
+            arguments_text = self._format_tool_arguments(payload)
+        else:
+            try:
+                arguments_text = json.dumps(payload, ensure_ascii=False, default=str)
+            except (TypeError, ValueError):
+                arguments_text = "{}"
+
+        error.llm_tool_calls = [
+            {
+                "id": call.id,
+                "function": {
+                    "name": call.name,
+                    "arguments": arguments_text or "{}",
+                },
+            }
+        ]
+        return error
 
     def _handle_tool_validation_error(
         self,

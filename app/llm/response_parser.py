@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -378,11 +379,22 @@ class LLMResponseParser:
                                         message_parts.append(nested_text)
                                     continue
                         else:
-                            text_delta = getattr(content_delta, "text", None)
-                            if text_delta is None and isinstance(content_delta, Mapping):
-                                text_delta = content_delta.get("text")
-                            if text_delta:
-                                message_parts.append(str(text_delta))
+                            if isinstance(content_delta, (str, bytes, bytearray)):
+                                message_parts.append(str(content_delta))
+                            else:
+                                text_delta = getattr(content_delta, "text", None)
+                                if text_delta is None and isinstance(
+                                    content_delta, Mapping
+                                ):
+                                    text_delta = content_delta.get("text")
+                                if text_delta:
+                                    message_parts.append(str(text_delta))
+                                else:
+                                    fallback_text = self._stringify_content(
+                                        content_delta
+                                    )
+                                    if fallback_text:
+                                        message_parts.append(fallback_text)
                     tool_calls = delta_map.get("tool_calls")
                     if tool_calls:
                         for idx, tool_call in enumerate(tool_calls):
@@ -475,6 +487,28 @@ class LLMResponseParser:
                     closer()
         message = _finalize_message()
         if not message:
+            info_payload: dict[str, Any] = {
+                "chunks_seen": chunk_count,
+            }
+            if recorded_chunks:
+                previews = [
+                    chunk.get("preview")
+                    for chunk in recorded_chunks
+                    if isinstance(chunk, Mapping)
+                    and isinstance(chunk.get("preview"), str)
+                ]
+                if previews:
+                    info_payload["chunk_previews"] = previews[:5]
+            if reasoning_segments:
+                info_payload["reasoning_fragments"] = len(reasoning_segments)
+            if tool_chunks:
+                info_payload["tool_chunks"] = len(tool_chunks)
+            log_event(
+                "LLM_STREAM_EMPTY_MESSAGE",
+                info_payload,
+                level=logging.INFO,
+            )
+
             debug_payload: dict[str, Any] = {
                 "chunks_seen": chunk_count,
                 "recorded_chunks": recorded_chunks,

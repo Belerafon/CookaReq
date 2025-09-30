@@ -134,3 +134,31 @@ def test_consume_stream_collects_output_text_delta_segments():
     assert message == "First part"
     assert tool_calls == []
     assert reasoning == []
+
+
+def test_consume_stream_collects_plain_string_chunks():
+    parser = _parser()
+    stream = [
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": "Hello"},
+                }
+            ]
+        },
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": " world"},
+                }
+            ]
+        },
+    ]
+
+    message, tool_calls, reasoning = parser.consume_stream(stream, cancellation=None)
+
+    assert message == "Hello world"
+    assert tool_calls == []
+    assert reasoning == []

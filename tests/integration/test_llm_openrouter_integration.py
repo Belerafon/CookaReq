@@ -20,23 +20,25 @@ def _load_openrouter_key() -> str | None:
     return secret.get_secret_value() if secret else None
 
 
-def test_openrouter_check_llm(tmp_path):
+@pytest.mark.parametrize("stream", [False, True], ids=["non_stream", "stream"])
+def test_openrouter_check_llm(tmp_path, stream):
     require_real_llm_tests_flag()
     key = _load_openrouter_key()
     if not key:
         pytest.skip("OPEN_ROUTER key not available")
-    settings = settings_with_llm(tmp_path, api_key=key)
+    settings = settings_with_llm(tmp_path, api_key=key, stream=stream)
     client = LLMClient(settings.llm)
     result = client.check_llm()
     assert result["ok"] is True
 
 
-def test_openrouter_handles_context_prompt(tmp_path):
+@pytest.mark.parametrize("stream", [False, True], ids=["non_stream", "stream"])
+def test_openrouter_handles_context_prompt(tmp_path, stream):
     require_real_llm_tests_flag()
     key = _load_openrouter_key()
     if not key:
         pytest.skip("OPEN_ROUTER key not available")
-    settings = settings_with_llm(tmp_path, api_key=key)
+    settings = settings_with_llm(tmp_path, api_key=key, stream=stream)
     client = LLMClient(settings.llm)
     conversation = [
         {
@@ -66,12 +68,13 @@ def _select_reasoning_model() -> str:
     return DEFAULT_FREE_REASONING_MODEL
 
 
-def test_openrouter_reasoning_segments(tmp_path):
+@pytest.mark.parametrize("stream", [False, True], ids=["non_stream", "stream"])
+def test_openrouter_reasoning_segments(tmp_path, stream):
     require_real_llm_tests_flag()
     key = _load_openrouter_key()
     if not key:
         pytest.skip("OPEN_ROUTER key not available")
-    settings = settings_with_llm(tmp_path, api_key=key)
+    settings = settings_with_llm(tmp_path, api_key=key, stream=stream)
     settings.llm.model = _select_reasoning_model()
     client = LLMClient(settings.llm)
     conversation = [

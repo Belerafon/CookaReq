@@ -16,7 +16,7 @@ from ...util.cancellation import CancellationEvent, OperationCancelledError
 from ...util.time import utc_now_iso
 from ..chat_entry import ChatConversation, ChatEntry
 from .execution import AgentCommandExecutor, _AgentRunHandle
-from .history_utils import clone_streamed_tool_results
+from .history_utils import clone_streamed_tool_results, history_json_safe
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,9 @@ class AgentRunCallbacks:
     finalize_prompt: Callable[[str, Any, _AgentRunHandle], None]
     handle_streamed_tool_results: Callable[[
         _AgentRunHandle, Sequence[Mapping[str, Any]] | None
+    ], None]
+    handle_llm_step: Callable[[
+        _AgentRunHandle, Mapping[str, Any] | None
     ], None]
 
 
@@ -226,6 +229,23 @@ class AgentRunController:
                         snapshot,
                     )
 
+                def on_llm_step(payload: Mapping[str, Any]) -> None:
+                    if handle.is_cancelled:
+                        return
+                    if not isinstance(payload, Mapping):
+                        return
+                    safe_payload_raw = history_json_safe(payload)
+                    if isinstance(safe_payload_raw, Mapping):
+                        safe_payload = dict(safe_payload_raw)
+                    else:
+                        safe_payload = {"step": payload.get("step"), "payload": safe_payload_raw}
+                    handle.llm_steps.append(safe_payload)
+                    wx.CallAfter(
+                        self._callbacks.handle_llm_step,
+                        handle,
+                        safe_payload,
+                    )
+
                 history_arg: tuple[dict[str, Any], ...] | None
                 history_arg = history_payload or None
 
@@ -235,6 +255,7 @@ class AgentRunController:
                     context=context_payload,
                     cancellation=handle.cancel_event,
                     on_tool_result=on_tool_result,
+                    on_llm_step=on_llm_step,
                 )
             except OperationCancelledError:
                 raise

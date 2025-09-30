@@ -283,6 +283,9 @@ def test_run_command_reports_llm_tool_validation_details(
     assert first_request["messages"][-1]["content"].startswith(
         "Write the text of the first requirement"
     )
+    steps = diagnostic.get("llm_steps")
+    assert isinstance(steps, list) and steps
+    assert steps[0]["step"] == 1
     assert mcp.call_calls == 1
     assert mcp.ensure_calls == 1
 
@@ -1086,14 +1089,26 @@ def test_run_command_returns_message_without_mcp_call():
     agent = LocalAgent(llm=llm, mcp=mcp)
 
     result = agent.run_command("hi")
-    assert result == {"ok": True, "error": None, "result": "Hello!"}
+    assert result["ok"] is True
+    assert result["error"] is None
+    assert result["result"] == "Hello!"
+    diagnostic = result.get("diagnostic")
+    assert isinstance(diagnostic, dict)
+    steps = diagnostic.get("llm_steps")
+    assert isinstance(steps, list) and steps
     assert mcp.called is False
     assert llm.conversations[0][-1] == {"role": "user", "content": "hi"}
     assert "tool_results" not in result
 
     async def exercise() -> None:
         async_result = await agent.run_command_async("more")
-        assert async_result == {"ok": True, "error": None, "result": "Hello!"}
+        assert async_result["ok"] is True
+        assert async_result["error"] is None
+        assert async_result["result"] == "Hello!"
+        diag_async = async_result.get("diagnostic")
+        assert isinstance(diag_async, dict)
+        async_steps = diag_async.get("llm_steps")
+        assert isinstance(async_steps, list) and async_steps
         assert "tool_results" not in async_result
 
     asyncio.run(exercise())

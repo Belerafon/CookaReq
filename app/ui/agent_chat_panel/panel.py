@@ -408,6 +408,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             confirm_override_kwargs=self._confirm_override_kwargs,
             finalize_prompt=self._finalize_prompt,
             handle_streamed_tool_results=self._handle_streamed_tool_results,
+            handle_llm_step=self._handle_llm_step,
         )
         self._controller = AgentRunController(
             agent_supplier=self._agent_supplier,
@@ -1420,6 +1421,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if conversation is None:
             handle.pending_entry = None
             handle.streamed_tool_results.clear()
+            handle.llm_steps.clear()
             self._render_transcript()
             batch_section = self._batch_section
             if batch_section is not None:
@@ -1434,6 +1436,26 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         token_info = combine_token_counts([handle.prompt_tokens])
         tool_results_payload = handle.prepare_tool_results_payload()
         tool_results = list(tool_results_payload) if tool_results_payload else None
+        last_step_payload: Mapping[str, Any] | None = None
+        if handle.llm_steps:
+            candidate = handle.llm_steps[-1]
+            if isinstance(candidate, Mapping):
+                last_step_payload = candidate
+        response_text = ""
+        reasoning_segments: tuple[dict[str, str], ...] | None = None
+        if isinstance(last_step_payload, Mapping):
+            response_payload = last_step_payload.get("response")
+            if isinstance(response_payload, Mapping):
+                content_value = response_payload.get("content")
+                if isinstance(content_value, str):
+                    response_text = content_value
+                reasoning_segments = self._normalise_reasoning_segments(
+                    response_payload.get("reasoning")
+                )
+        combined_display = cancellation_message
+        if response_text:
+            combined_display = f"{response_text}\n\n{cancellation_message}"
+
         raw_result = {
             "ok": False,
             "error": {
@@ -1442,13 +1464,15 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 "details": {"reason": "user_cancelled"},
             },
         }
+        if handle.llm_steps:
+            raw_result["diagnostic"] = {"llm_steps": list(handle.llm_steps)}
 
         self._complete_pending_entry(
             conversation,
             entry,
             prompt=handle.prompt,
-            response="",
-            display_response=cancellation_message,
+            response=response_text,
+            display_response=combined_display,
             raw_result=raw_result,
             tool_results=tool_results,
             token_info=token_info,
@@ -1456,9 +1480,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             response_at=response_at,
             context_messages=handle.context_messages,
             history_snapshot=handle.history_snapshot,
+            reasoning_segments=reasoning_segments,
         )
         handle.pending_entry = None
         handle.streamed_tool_results.clear()
+        handle.llm_steps.clear()
         batch_section = self._batch_section
         if batch_section is not None:
             batch_section.notify_cancellation(
@@ -1603,6 +1629,18 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if isinstance(requests_raw, Sequence):
                 llm_request_sequence = cls._sanitize_llm_requests(requests_raw)
 
+        llm_step_details: list[dict[str, Any]] | None = None
+        if isinstance(diagnostic_raw, Mapping):
+            steps_raw = diagnostic_raw.get("llm_steps")
+            if isinstance(steps_raw, Sequence):
+                sanitized_steps: list[dict[str, Any]] = []
+                for step in steps_raw:
+                    safe_step = history_json_safe(step)
+                    if isinstance(safe_step, Mapping):
+                        sanitized_steps.append(dict(safe_step))
+                if sanitized_steps:
+                    llm_step_details = sanitized_steps
+
         if llm_request_sequence:
             llm_request_messages = llm_request_sequence[-1]["messages"]
         else:
@@ -1669,6 +1707,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             "error_payload": error_payload,
             "llm_request_messages_sequence": llm_request_sequence,
             "llm_requests": llm_request_sequence,
+            "llm_steps": llm_step_details,
             "custom_system_prompt": normalize_for_display(custom_system_prompt)
             if custom_system_prompt
             else None,
@@ -1698,6 +1737,40 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         cloned_results = list(clone_streamed_tool_results(tool_results))
         entry.tool_results = cloned_results
         self._render_transcript()
+
+    def _handle_llm_step(
+        self,
+        handle: _AgentRunHandle,
+        payload: Mapping[str, Any] | None,
+    ) -> None:
+        """Update pending entry with the latest LLM step details."""
+
+        if handle.is_cancelled:
+            return
+        if handle is not self._active_handle():
+            return
+        entry = handle.pending_entry
+        if entry is None:
+            return
+        if not isinstance(payload, Mapping):
+            return
+        response_payload = payload.get("response")
+        updated = False
+        if isinstance(response_payload, Mapping):
+            content_value = response_payload.get("content")
+            if isinstance(content_value, str):
+                text = normalize_for_display(content_value)
+                if text and text != entry.display_response:
+                    entry.response = text
+                    entry.display_response = text
+                    updated = True
+            reasoning_payload = response_payload.get("reasoning")
+            reasoning_segments = self._normalise_reasoning_segments(reasoning_payload)
+            if reasoning_segments:
+                entry.reasoning = reasoning_segments
+                updated = True
+        if updated:
+            self._render_transcript()
 
     def _compose_transcript_text(self) -> str:
         conversation = self._get_active_conversation()

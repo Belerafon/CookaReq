@@ -117,6 +117,7 @@ class LocalAgent:
         self._llm: SupportsAgentLLM = llm
         self._mcp: SupportsAgentMCP = mcp
         self._llm_requests: list[list[dict[str, Any]]] = []
+        self._llm_steps: list[dict[str, Any]] = []
         self._max_thought_steps: int | None = self._normalise_max_thought_steps(
             max_thought_steps
         )
@@ -202,7 +203,7 @@ class LocalAgent:
                 prepared.append(dict(message))
         return prepared
 
-    def _log_step(self, step: int, response: LLMResponse) -> None:
+    def _log_step(self, step: int, response: LLMResponse) -> dict[str, Any]:
         """Record intermediate agent step for diagnostics."""
 
         payload = {
@@ -218,24 +219,24 @@ class LocalAgent:
                 }
                 for segment in response.reasoning
             ]
-        log_event("AGENT_STEP", payload)
-        log_debug_payload(
-            "AGENT_STEP_DETAIL",
-            {
-                "step": step,
-                "response": {
-                    "content": response.content,
-                    "tool_calls": [
-                        self._tool_call_debug_payload(call)
-                        for call in response.tool_calls
-                    ],
-                    "reasoning": self._prepare_reasoning_segments(response.reasoning),
-                },
-                "request_messages": self._normalise_request_messages(
-                    response.request_messages
-                ),
+        detail_payload = {
+            "step": step,
+            "response": {
+                "content": response.content,
+                "tool_calls": [
+                    self._tool_call_debug_payload(call)
+                    for call in response.tool_calls
+                ],
+                "reasoning": self._prepare_reasoning_segments(response.reasoning),
             },
-        )
+            "request_messages": self._normalise_request_messages(
+                response.request_messages
+            ),
+        }
+        log_event("AGENT_STEP", payload)
+        log_debug_payload("AGENT_STEP_DETAIL", detail_payload)
+        self._llm_steps.append(detail_payload)
+        return detail_payload
 
     @classmethod
     def _summarize_result(cls, result: Mapping[str, Any]) -> dict[str, Any]:
@@ -337,6 +338,10 @@ class LocalAgent:
         """Attach captured LLM request messages to ``result`` when available."""
 
         prepared = dict(result)
+        diagnostic_payload: dict[str, Any] = {}
+        existing = prepared.get("diagnostic")
+        if isinstance(existing, Mapping):
+            diagnostic_payload.update(existing)
         if self._llm_requests:
             requests_payload = [
                 {
@@ -345,7 +350,16 @@ class LocalAgent:
                 }
                 for index, messages in enumerate(self._llm_requests)
             ]
-            prepared["diagnostic"] = {"llm_requests": requests_payload}
+            diagnostic_payload["llm_requests"] = requests_payload
+        if self._llm_steps:
+            step_payloads: list[dict[str, Any]] = []
+            for entry in self._llm_steps:
+                if isinstance(entry, Mapping):
+                    step_payloads.append(dict(entry))
+            if step_payloads:
+                diagnostic_payload["llm_steps"] = step_payloads
+        if diagnostic_payload:
+            prepared["diagnostic"] = diagnostic_payload
         return prepared
 
     @staticmethod
@@ -615,6 +629,7 @@ class LocalAgent:
         context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
         cancellation: CancellationEvent | None = None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Drive an agent loop that may invoke MCP tools before replying."""
 
@@ -629,12 +644,14 @@ class LocalAgent:
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},
         )
         self._llm_requests = []
+        self._llm_steps = []
         try:
             result = self._run_sync(
                 self._run_loop_core(
                     conversation,
                     cancellation=cancellation,
                     on_tool_result=on_tool_result,
+                    on_llm_step=on_llm_step,
                 )
             )
         except OperationCancelledError:
@@ -655,6 +672,7 @@ class LocalAgent:
         context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
         cancellation: CancellationEvent | None = None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Asynchronous variant of :meth:`run_command`."""
 
@@ -669,11 +687,13 @@ class LocalAgent:
             {"history_count": len(history or []), "prompt": self._preview(text, 200)},
         )
         self._llm_requests = []
+        self._llm_steps = []
         try:
             result = await self._run_loop_core(
                 conversation,
                 cancellation=cancellation,
                 on_tool_result=on_tool_result,
+                on_llm_step=on_llm_step,
             )
         except OperationCancelledError:
             log_event("AGENT_CANCELLED", {"reason": "user-request"})
@@ -692,12 +712,14 @@ class LocalAgent:
         *,
         cancellation: CancellationEvent | None = None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         runner = AgentLoopRunner(
             agent=self,
             conversation=conversation,
             cancellation=cancellation,
             on_tool_result=on_tool_result,
+            on_llm_step=on_llm_step,
         )
         return await runner.run()
 
@@ -1231,11 +1253,13 @@ class AgentLoopRunner:
         conversation: list[Mapping[str, Any]],
         cancellation: CancellationEvent | None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None,
     ) -> None:
         self._agent = agent
         self._conversation = conversation
         self._cancellation = cancellation
         self._on_tool_result = on_tool_result
+        self._on_llm_step = on_llm_step
         self._accumulated_results: list[Mapping[str, Any]] = []
         self._last_response: LLMResponse | None = None
         self._step = 0
@@ -1330,7 +1354,20 @@ class AgentLoopRunner:
 
     def _advance_step(self, response: LLMResponse) -> None:
         self._step += 1
-        self._agent._log_step(self._step, response)
+        detail_payload = self._agent._log_step(self._step, response)
+        if self._on_llm_step is not None and isinstance(detail_payload, Mapping):
+            try:
+                self._on_llm_step(detail_payload)
+            except Exception as exc:  # pragma: no cover - defensive
+                log_event(
+                    "AGENT_STEP_STREAM_ERROR",
+                    {
+                        "error": {
+                            "type": type(exc).__name__,
+                            "message": str(exc),
+                        }
+                    },
+                )
 
     def _finalise_step(self, outcome: _AgentLoopStep) -> dict[str, Any] | None:
         self._accumulated_results.extend(outcome.batch_results)

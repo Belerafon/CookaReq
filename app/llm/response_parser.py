@@ -19,8 +19,26 @@ from .validation import ToolValidationError, validate_tool_call
 
 __all__ = [
     "LLMResponseParser",
+    "StreamConsumptionError",
     "normalise_tool_calls",
 ]
+
+
+class StreamConsumptionError(RuntimeError):
+    """Signal that streaming aborted after partial output was received."""
+
+    __slots__ = ("message_text", "raw_tool_calls_payload", "reasoning_segments")
+
+    def __init__(
+        self,
+        message_text: str,
+        raw_tool_calls_payload: list[dict[str, Any]],
+        reasoning_segments: list[dict[str, str]],
+    ) -> None:
+        super().__init__("LLM stream ended prematurely")
+        self.message_text = message_text
+        self.raw_tool_calls_payload = raw_tool_calls_payload
+        self.reasoning_segments = reasoning_segments
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +225,8 @@ class LLMResponseParser:
         reasoning_segments: list[dict[str, str]] = []
         fallback_candidates: list[tuple[str, str]] = []
         fallback_samples: list[tuple[str, str]] = []
+        fallback_primary: dict[str, str] | None = None
+        fallback_secondary: list[dict[str, str]] | None = None
 
         def _collect_candidate(label: str, value: Any) -> None:
             text = self._stringify_content(value)
@@ -228,6 +248,25 @@ class LLMResponseParser:
                 raise OperationCancelledError()
 
         from contextlib import suppress
+
+        def _finalize_message() -> str:
+            nonlocal fallback_primary, fallback_secondary
+            message = "".join(message_parts)
+            if message:
+                return message
+            if fallback_candidates:
+                source, text = fallback_candidates[0]
+                fallback_primary = {
+                    "source": source,
+                    "preview": text.strip()[:160],
+                }
+                return text
+            if fallback_samples:
+                fallback_secondary = [
+                    {"source": source, "preview": sample.strip()[:160]}
+                    for source, sample in fallback_samples
+                ]
+            return ""
 
         try:
             ensure_not_cancelled()
@@ -332,27 +371,60 @@ class LLMResponseParser:
                                 chunk_map.get(key),
                             )
             ensure_not_cancelled()
+        except Exception as exc:
+            if cancel_event is not None and (
+                cancel_event.wait(timeout=0) or cancel_event.is_set()
+            ):
+                raise OperationCancelledError() from exc
+            message = _finalize_message()
+            if fallback_primary is not None:
+                log_debug_payload(
+                    "llm.response_parser.stream_message_fallback",
+                    fallback_primary,
+                )
+            elif fallback_secondary is not None:
+                log_debug_payload(
+                    "llm.response_parser.stream_empty_message_candidates",
+                    fallback_secondary,
+                )
+            tool_calls = [
+                tool_chunks[key]
+                for key in order
+                if tool_chunks[key]["function"]["name"]
+            ]
+            log_debug_payload(
+                "llm.response_parser.stream_truncated",
+                {
+                    "error_type": type(exc).__name__,
+                    "message_preview": message.strip()[:160],
+                    "tool_calls": len(tool_calls),
+                },
+            )
+            raise StreamConsumptionError(
+                message,
+                tool_calls,
+                reasoning_segments,
+            ) from exc
         finally:
             if callable(closer):
                 with suppress(Exception):  # pragma: no cover - defensive
                     closer()
-        message = "".join(message_parts)
-        if not message and fallback_candidates:
-            source, text = fallback_candidates[0]
-            message = text
+        message = _finalize_message()
+        if fallback_primary is not None:
             log_debug_payload(
                 "llm.response_parser.stream_message_fallback",
-                {"source": source, "preview": text.strip()[:160]},
+                fallback_primary,
             )
-        elif not message and fallback_samples:
+        elif fallback_secondary is not None:
             log_debug_payload(
                 "llm.response_parser.stream_empty_message_candidates",
-                [
-                    {"source": source, "preview": sample.strip()[:160]}
-                    for source, sample in fallback_samples
-                ],
+                fallback_secondary,
             )
-        tool_calls = [tool_chunks[key] for key in order if tool_chunks[key]["function"]["name"]]
+        tool_calls = [
+            tool_chunks[key]
+            for key in order
+            if tool_chunks[key]["function"]["name"]
+        ]
         return message, tool_calls, reasoning_segments
 
     # ------------------------------------------------------------------

@@ -17,6 +17,7 @@ from ..confirm import (
     confirm_requirement_update as global_confirm_requirement_update,
 )
 from ..i18n import _
+from ..llm.validation import KNOWN_TOOLS, ToolValidationError, validate_tool_call
 from ..settings import MCPSettings
 from ..telemetry import log_debug_payload, log_event
 from .events import notify_tool_success
@@ -138,6 +139,40 @@ class MCPClient:
             )
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to broadcast MCP tool result")
+
+    def _prepare_tool_arguments(
+        self, name: str, arguments: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Validate MCP tool arguments when the schema is known."""
+
+        if name not in KNOWN_TOOLS:
+            return dict(arguments)
+        try:
+            return validate_tool_call(name, arguments)
+        except ToolValidationError as exc:
+            self._attach_tool_validation_context(exc, name, arguments)
+            raise
+
+    @staticmethod
+    def _attach_tool_validation_context(
+        exc: ToolValidationError, name: str, arguments: Mapping[str, Any]
+    ) -> None:
+        """Populate *exc* with MCP-specific context for diagnostics."""
+
+        if getattr(exc, "llm_tool_calls", None):
+            return
+        try:
+            arguments_text = json.dumps(arguments, ensure_ascii=False, default=str)
+        except Exception:  # pragma: no cover - defensive
+            arguments_text = "{}"
+        exc.llm_tool_calls = [
+            {
+                "function": {
+                    "name": name,
+                    "arguments": arguments_text,
+                }
+            }
+        ]
 
     @staticmethod
     def _build_requirement_update_prompt(
@@ -399,8 +434,10 @@ class MCPClient:
             optional ``result`` key contains the payload returned by the server.
         """
 
+        prepared_arguments = self._prepare_tool_arguments(name, arguments)
+
         if name == "delete_requirement" or name in self._UPDATE_TOOLS:
-            confirmed = self._confirm_sensitive_tool(name, arguments)
+            confirmed = self._confirm_sensitive_tool(name, prepared_arguments)
             if not confirmed:
                 err = mcp_error("CANCELLED", _("Cancelled by user"))["error"]
                 log_event("CANCELLED", {"tool": name})
@@ -409,9 +446,9 @@ class MCPClient:
         # ``log_event`` performs its own sanitisation of sensitive fields.
         log_event(
             "TOOL_CALL",
-            {"tool": name, "params": dict(arguments)},
+            {"tool": name, "params": dict(prepared_arguments)},
         )
-        request_body = {"name": name, "arguments": dict(arguments)}
+        request_body = {"name": name, "arguments": dict(prepared_arguments)}
         headers = self._headers(json_body=True)
         start = time.monotonic()
         log_debug_payload(
@@ -458,7 +495,7 @@ class MCPClient:
                 log_event("TOOL_RESULT", {"result": data}, start_time=start)
                 log_event("DONE")
                 self._update_ready_state(True, None)
-                self._broadcast_tool_result(name, arguments, data)
+                self._broadcast_tool_result(name, prepared_arguments, data)
                 return {"ok": True, "error": None, "result": data}
             err = data.get("error")
             if not err:
@@ -477,8 +514,10 @@ class MCPClient:
     ) -> dict[str, Any]:
         """Asynchronous counterpart to :meth:`call_tool`."""
 
+        prepared_arguments = self._prepare_tool_arguments(name, arguments)
+
         if name == "delete_requirement" or name in self._UPDATE_TOOLS:
-            confirmed = self._confirm_sensitive_tool(name, arguments)
+            confirmed = self._confirm_sensitive_tool(name, prepared_arguments)
             if not confirmed:
                 err = mcp_error("CANCELLED", _("Cancelled by user"))["error"]
                 log_event("CANCELLED", {"tool": name})
@@ -486,10 +525,10 @@ class MCPClient:
 
         log_event(
             "TOOL_CALL",
-            {"tool": name, "params": dict(arguments)},
+            {"tool": name, "params": dict(prepared_arguments)},
         )
         headers = self._headers(json_body=True)
-        request_body = {"name": name, "arguments": dict(arguments)}
+        request_body = {"name": name, "arguments": dict(prepared_arguments)}
         start = time.monotonic()
         log_debug_payload(
             "MCP_REQUEST",
@@ -537,7 +576,7 @@ class MCPClient:
             log_event("TOOL_RESULT", {"result": data}, start_time=start)
             log_event("DONE")
             self._update_ready_state(True, None)
-            self._broadcast_tool_result(name, arguments, data)
+            self._broadcast_tool_result(name, prepared_arguments, data)
             return {"ok": True, "error": None, "result": data}
         err = data.get("error")
         if not err:

@@ -40,6 +40,11 @@
 - [ ] Explain `LocalAgent`, the operation scheduler, and LLM usage.
 - [ ] Detail how the agent interacts with MCP and the document store.
 - [ ] Collect risks and TODOs (e.g. threading limits, long-running operations).
+- [x] `MCPClient` validates tool calls against the JSON Schemas before sending
+      requests to the server. Invalid payloads raise `ToolValidationError`
+      enriched with the original tool fragment, keeping the agent free from
+      MCP-specific validation logic while preserving diagnostic context for the
+      UI and telemetry.
 
 ### Agent context enrichment hints
 

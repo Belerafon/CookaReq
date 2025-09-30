@@ -2310,7 +2310,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _on_history_row_activated(self, index: int) -> None:
         self._activate_conversation_by_index(
-            index, persist=True, refresh_history=False, source="history_row"
+            index, persist=True, refresh_history=False, _source="history_row"
         )
 
     def _activate_conversation_by_index(

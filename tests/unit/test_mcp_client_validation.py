@@ -1,10 +1,10 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from app.llm.validation import ToolValidationError
 from app.mcp.client import MCPClient
 from app.settings import MCPSettings
 
@@ -16,42 +16,63 @@ def _make_client(tmp_path: Path) -> MCPClient:
     return MCPClient(settings, confirm=lambda _: True)
 
 
-def test_call_tool_validates_known_tool_arguments(
+def test_call_tool_forwards_arguments_without_validation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = _make_client(tmp_path)
-    monkeypatch.setattr(
-        client,
-        "_request_sync",
-        lambda *a, **k: pytest.fail("unexpected HTTP request"),
-    )
+    captured: dict[str, Any] = {}
 
-    with pytest.raises(ToolValidationError) as exc:
-        client.call_tool("create_requirement", {"prefix": "SYS"})
+    def _respond(*_, json_body=None, **__):
+        captured["json_body"] = json_body
 
-    calls = getattr(exc.value, "llm_tool_calls", None)
-    assert calls
-    first_call = calls[0]
-    assert first_call["function"]["name"] == "create_requirement"
-    arguments = json.loads(first_call["function"]["arguments"])
-    assert arguments["prefix"] == "SYS"
+        class _Response:
+            status_code = 400
+            headers: dict[str, str] = {}
+            text = json.dumps(
+                {"error": {"code": "VALIDATION_ERROR", "message": "invalid"}}
+            )
+
+        return _Response()
+
+    monkeypatch.setattr(client, "_request_sync", _respond)
+
+    result = client.call_tool("create_requirement", {"prefix": "SYS"})
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "VALIDATION_ERROR"
+    body = captured.get("json_body")
+    assert body is not None
+    assert body["name"] == "create_requirement"
+    assert body["arguments"] == {"prefix": "SYS"}
 
 
-def test_call_tool_async_validates_before_request(
+def test_call_tool_async_forwards_arguments_without_validation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = _make_client(tmp_path)
+    captured: dict[str, Any] = {}
 
-    async def _fail(*a, **k):
-        pytest.fail("unexpected async HTTP request")
+    async def _respond(*_, json_body=None, **__):
+        captured["json_body"] = json_body
 
-    monkeypatch.setattr(client, "_request_async", _fail)
+        class _Response:
+            status_code = 400
+            headers: dict[str, str] = {}
+            text = json.dumps(
+                {"error": {"code": "VALIDATION_ERROR", "message": "invalid"}}
+            )
+
+        return _Response()
+
+    monkeypatch.setattr(client, "_request_async", _respond)
 
     async def _invoke() -> None:
-        with pytest.raises(ToolValidationError) as exc:
-            await client.call_tool_async("create_requirement", {"prefix": "SYS"})
-        calls = getattr(exc.value, "llm_tool_calls", None)
-        assert calls
-        assert calls[0]["function"]["name"] == "create_requirement"
+        result = await client.call_tool_async("create_requirement", {"prefix": "SYS"})
+        assert result["ok"] is False
 
     asyncio.run(_invoke())
+
+    body = captured.get("json_body")
+    assert body is not None
+    assert body["name"] == "create_requirement"
+    assert body["arguments"] == {"prefix": "SYS"}

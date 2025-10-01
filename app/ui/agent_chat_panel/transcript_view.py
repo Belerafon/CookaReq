@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Iterable
 
@@ -13,7 +13,7 @@ from ...i18n import _
 from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import dip
 from .components.transcript_entry import TranscriptEntryPanel
-from .view_model import EntryTimeline, build_conversation_timeline
+from .view_model import build_conversation_timeline
 
 
 class TranscriptCallbacks:
@@ -192,7 +192,7 @@ class TranscriptView:
             entry = entry_timeline.entry
             conversation_id = conversation.conversation_id
             on_regenerate: Callable[[], None] | None = None
-            if entry_timeline.can_regenerate and entry_timeline.response is not None:
+            if entry_timeline.can_regenerate:
 
                 def callback(entry_ref: ChatEntry = entry) -> None:
                     self._callbacks.on_regenerate(conversation_id, entry_ref)
@@ -220,9 +220,7 @@ class TranscriptView:
                     self._panel,
                     timeline=entry_timeline,
                     layout_hints=sanitized_hints,
-                    on_layout_hint=lambda hint_key, width, entry_ref=entry: entry_ref.layout_hints.__setitem__(  # type: ignore[attr-defined]
-                        hint_key, int(width)
-                    ),
+                    on_layout_hint=self._make_hint_recorder(entry),
                     on_regenerate=on_regenerate,
                     regenerate_enabled=not self._callbacks.is_running(),
                 )
@@ -232,6 +230,7 @@ class TranscriptView:
                 panel.update(
                     timeline=entry_timeline,
                     layout_hints=sanitized_hints,
+                    on_layout_hint=self._make_hint_recorder(entry),
                     on_regenerate=on_regenerate,
                     regenerate_enabled=not self._callbacks.is_running(),
                 )
@@ -275,6 +274,26 @@ class TranscriptView:
             self._sizer.Detach(window)
             if self._is_window_alive(window):
                 window.Hide()
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _make_hint_recorder(entry: ChatEntry) -> Callable[[str, int], None]:
+        def _record_hint(hint_key: str, width: int) -> None:
+            try:
+                numeric_width = int(width)
+            except (TypeError, ValueError):
+                return
+            if numeric_width <= 0:
+                return
+            hints = entry.layout_hints
+            if isinstance(hints, Mapping):
+                updated = dict(hints)
+            else:
+                updated = {}
+            updated[hint_key] = numeric_width
+            entry.layout_hints = updated
+
+        return _record_hint
 
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------

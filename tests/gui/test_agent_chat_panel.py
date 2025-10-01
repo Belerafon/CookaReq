@@ -10,7 +10,8 @@ from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel.token_usage import summarize_token_usage
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.agent_chat_panel.components.transcript_entry import TranscriptEntryPanel
-from app.ui.agent_chat_panel.view_model import EntryTimeline, build_conversation_timeline
+from app.ui.agent_chat_panel.view_model import TranscriptEntry, build_conversation_timeline
+from app.ui.agent_chat_panel.time_formatting import format_entry_timestamp
 from app.ui.chat_entry import ChatConversation, ChatEntry
 from app.ui.widgets.chat_message import MessageBubble
 from app import i18n
@@ -53,7 +54,7 @@ def build_entry_timeline(
     tool_results: Sequence[dict[str, Any]] | None = None,
     raw_payload: Any | None = None,
     regenerated: bool = False,
-) -> EntryTimeline:
+) -> TranscriptEntry:
     entry = ChatEntry(
         prompt=prompt,
         response=response,
@@ -816,13 +817,11 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
 
         log_text = panel.get_transcript_log_text()
         assert "demo_tool" in log_text
-        assert "Agent → MCP call 1" in log_text
-        assert "MCP → Agent response 1" in log_text
+        assert "Tool call 1: demo_tool" in log_text
+        assert "\"tool_arguments\"" in log_text
         assert "query" in log_text
-        assert "LLM system prompt" in log_text
-        assert "LLM tool specification" in log_text
-        assert "Agent → LLM request" in log_text
-        assert "LLM → Agent message" in log_text
+        assert "LLM request:" in log_text
+        assert "Raw LLM payload:" in log_text
     finally:
         destroy_panel(frame, panel)
 
@@ -1021,7 +1020,7 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
         conversation = panel._get_active_conversation()
         assert conversation is not None
         timeline = build_conversation_timeline(conversation)
-        tool_events = timeline.entries[-1].tool_calls
+        tool_events = timeline.entries[-1].agent_turn.tool_calls
         has_request_payload = any(event.llm_request for event in tool_events)
         has_response_payload = any(
             isinstance(event.llm_request, Mapping)
@@ -1029,11 +1028,12 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
             for event in tool_events
         )
 
+        entry_key = timeline.entries[-1].entry_id
         tool_pane = next(
             (
                 pane
                 for pane in collect_collapsible_panes(agent_panel)
-                if pane.GetName().startswith("tool:demo_tool")
+                if pane.GetName().startswith(f"tool:{entry_key}:")
             ),
             None,
         )
@@ -1056,6 +1056,125 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
             assert any(name.endswith(":llm-response") for name in nested_names)
     finally:
         destroy_panel(frame, panel)
+
+
+def test_transcript_entry_panel_wraps_tool_only_entries(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    try:
+        entry_timeline = build_entry_timeline(
+            response="",
+            response_at=None,
+            tool_results=[
+                {
+                    "tool_name": "demo_tool",
+                    "status": "completed",
+                    "arguments": {"field": "value"},
+                    "result": {"ok": True},
+                }
+            ],
+        )
+        panel = TranscriptEntryPanel(
+            frame,
+            timeline=entry_timeline,
+            layout_hints=entry_timeline.layout_hints,
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+
+        agent_panel = panel.FindWindow("agent-entry")
+        assert agent_panel is not None, "agent panel should exist"
+
+        agent_bubbles = [
+            bubble
+            for bubble in collect_message_bubbles(agent_panel)
+            if "Agent" in bubble_header_text(bubble)
+        ]
+        assert len(agent_bubbles) == 1, "expected a placeholder agent bubble"
+        agent_bubble = agent_bubbles[0]
+
+        header = bubble_header_text(agent_bubble)
+        prompt_ts = entry_timeline.prompt.timestamp.raw
+        assert prompt_ts is not None
+        assert format_entry_timestamp(prompt_ts) in header
+        body = bubble_body_text(agent_bubble)
+        assert "demo_tool" in body or "Ran" in body
+
+        tool_pane = find_collapsible_by_name(
+            agent_bubble, f"tool:{entry_timeline.entry_id}:1"
+        )
+        assert tool_pane is not None, "tool collapsible should be attached to the bubble"
+    finally:
+        panel.Destroy()
+        frame.Destroy()
+
+
+def test_transcript_entry_panel_attaches_tools_to_stream_only_response(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    try:
+        response_ts = "2025-01-01T10:01:00+00:00"
+        entry_timeline = build_entry_timeline(
+            response="",
+            response_at=None,
+            tool_results=[
+                {
+                    "tool_name": "demo_tool",
+                    "status": "completed",
+                    "completed_at": "2025-01-01T10:01:05+00:00",
+                    "result": {"ok": True},
+                }
+            ],
+            raw_payload={
+                "diagnostic": {
+                    "llm_steps": [
+                        {
+                            "step": 1,
+                            "response": {
+                                "content": "Streamed answer",
+                                "timestamp": response_ts,
+                            },
+                        }
+                    ]
+                }
+            },
+        )
+        panel = TranscriptEntryPanel(
+            frame,
+            timeline=entry_timeline,
+            layout_hints=entry_timeline.layout_hints,
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+
+        agent_panel = panel.FindWindow("agent-entry")
+        assert agent_panel is not None, "agent panel should exist"
+
+        agent_bubbles = [
+            bubble
+            for bubble in collect_message_bubbles(agent_panel)
+            if "Agent" in bubble_header_text(bubble)
+        ]
+        assert len(agent_bubbles) == 1, "expected a single agent bubble"
+        agent_bubble = agent_bubbles[0]
+
+        header = bubble_header_text(agent_bubble)
+        expected_timestamp = format_entry_timestamp(response_ts)
+        assert expected_timestamp in header
+        body = bubble_body_text(agent_bubble)
+        assert "Streamed answer" in body
+
+        tool_pane = find_collapsible_by_name(
+            agent_bubble, f"tool:{entry_timeline.entry_id}:1"
+        )
+        assert tool_pane is not None, "tool collapsible should attach to the bubble"
+    finally:
+        panel.Destroy()
+        frame.Destroy()
 
 
 def test_transcript_entry_panel_shows_reasoning(wx_app):
@@ -1176,7 +1295,7 @@ def test_transcript_entry_panel_orders_sections(wx_app):
             (
                 pane
                 for pane in collect_collapsible_panes(agent_panel)
-                if pane.GetName().startswith("tool:demo_tool")
+                if pane.GetName().startswith(f"tool:{entry_timeline.entry_id}:")
             ),
             None,
         )
@@ -1286,12 +1405,12 @@ def test_tool_sections_follow_agent_response(wx_app):
     frame = wx.Frame(None)
     panel = None
     try:
-        timeline = build_entry_timeline(
-            response="Agent answer",
-            response_at="2025-01-01T10:01:00+00:00",
-            tool_results=[
-                {
-                    "tool_name": "update_requirement_field",
+            entry_timeline = build_entry_timeline(
+                response="Agent answer",
+                response_at="2025-01-01T10:01:00+00:00",
+                tool_results=[
+                    {
+                        "tool_name": "update_requirement_field",
                     "tool_call_id": "call-1",
                     "started_at": "2025-01-01T09:59:30+00:00",
                     "completed_at": "2025-01-01T09:59:45+00:00",
@@ -1324,50 +1443,50 @@ def test_tool_sections_follow_agent_response(wx_app):
                     ]
                 }
             },
-        )
+            )
 
-        panel = TranscriptEntryPanel(
-            frame,
-            timeline=timeline,
-            layout_hints={},
-            on_layout_hint=None,
-            on_regenerate=None,
-            regenerate_enabled=True,
-        )
-        if frame.GetSizer() is None:
-            frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
-        frame.GetSizer().Add(panel, 1, wx.EXPAND)
-        wx.GetApp().Yield()
+            panel = TranscriptEntryPanel(
+                frame,
+                timeline=entry_timeline,
+                layout_hints={},
+                on_layout_hint=None,
+                on_regenerate=None,
+                regenerate_enabled=True,
+            )
+            if frame.GetSizer() is None:
+                frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
+            frame.GetSizer().Add(panel, 1, wx.EXPAND)
+            wx.GetApp().Yield()
 
-        agent_panel = panel.FindWindow("agent-entry")
-        assert agent_panel is not None
+            agent_panel = panel.FindWindow("agent-entry")
+            assert agent_panel is not None
 
-        frame.Layout()
-        wx.GetApp().Yield()
+            frame.Layout()
+            wx.GetApp().Yield()
 
-        bubble = next(
-            (
-                bubble
-                for bubble in collect_message_bubbles(agent_panel)
-                if "Agent" in bubble_header_text(bubble)
-            ),
-            None,
-        )
-        assert bubble is not None, "agent bubble should be present"
+            bubble = next(
+                (
+                    bubble
+                    for bubble in collect_message_bubbles(agent_panel)
+                    if "Agent" in bubble_header_text(bubble)
+                ),
+                None,
+            )
+            assert bubble is not None, "agent bubble should be present"
 
-        tool_pane = next(
-            (
-                pane
-                for pane in collect_collapsible_panes(agent_panel)
-                if pane.GetName().startswith("tool:")
-            ),
-            None,
-        )
-        assert tool_pane is not None, "tool pane should be present"
+            tool_pane = next(
+                (
+                    pane
+                    for pane in collect_collapsible_panes(agent_panel)
+                    if pane.GetName().startswith("tool:")
+                ),
+                None,
+            )
+            assert tool_pane is not None, "tool pane should be present"
 
-        bubble_y = bubble.GetScreenPosition()[1]
-        pane_y = tool_pane.GetScreenPosition()[1]
-        assert bubble_y <= pane_y, "tool pane should appear below the agent bubble"
+            bubble_y = bubble.GetScreenPosition()[1]
+            pane_y = tool_pane.GetScreenPosition()[1]
+            assert bubble_y <= pane_y, "tool pane should appear below the agent bubble"
     finally:
         if panel is not None:
             panel.Destroy()
@@ -1380,7 +1499,7 @@ def test_tool_summary_includes_llm_exchange(wx_app):
     frame = wx.Frame(None)
     panel = None
     try:
-        timeline = build_entry_timeline(
+        entry_timeline = build_entry_timeline(
             response="Agent answer",
             response_at="2025-01-01T10:01:00+00:00",
             tool_results=[
@@ -1422,7 +1541,7 @@ def test_tool_summary_includes_llm_exchange(wx_app):
 
         panel = TranscriptEntryPanel(
             frame,
-            timeline=timeline,
+            timeline=entry_timeline,
             layout_hints={},
             on_layout_hint=None,
             on_regenerate=None,
@@ -1463,15 +1582,18 @@ def test_tool_summary_includes_llm_exchange(wx_app):
         ]
         assert len(agent_bubbles) == 2
         step_bubble, final_bubble = agent_bubbles
-        assert "Step" in bubble_header_text(step_bubble)
+        step_index = entry_timeline.agent_turn.streamed_responses[0].step_index
+        expected_label = i18n.gettext("Step {index}").format(index=step_index)
+        assert expected_label in bubble_header_text(step_bubble)
         assert "Applying updates" in bubble_body_text(step_bubble)
         assert "Agent answer" in bubble_body_text(final_bubble)
 
         children = agent_panel.GetChildren()
         step_index = children.index(step_bubble)
-        tool_index = children.index(tool_pane)
         final_index = children.index(final_bubble)
-        assert step_index < final_index < tool_index
+        assert step_index < final_index
+        assert tool_pane not in children
+        assert tool_pane in collect_collapsible_panes(final_bubble)
     finally:
         if panel is not None:
             panel.Destroy()
@@ -1499,17 +1621,11 @@ def test_agent_transcript_log_orders_sections_for_errors(tmp_path, wx_app):
         log_text = panel.get_transcript_log_text()
         assert "VALIDATION_ERROR" in log_text
 
-        order = {
-            "agent_llm": log_text.index("Agent → LLM request"),
-            "llm_agent": log_text.index("LLM → Agent message"),
-            "agent_mcp": log_text.index("Agent → MCP calls: (none)"),
-            "mcp_agent": log_text.index("MCP → Agent responses: (none)"),
-            "agent_user": log_text.index("Agent → User response"),
-        }
-
-        assert order["agent_llm"] < order["llm_agent"] < order["agent_mcp"]
-        assert order["agent_mcp"] < order["mcp_agent"] < order["agent_user"]
-        assert "Agent reported error payload" in log_text
+        llm_index = log_text.index("LLM request:")
+        raw_index = log_text.index("Raw LLM payload:")
+        agent_index = log_text.index("Agent:")
+        assert agent_index < llm_index < raw_index
+        assert "\"error\"" in log_text
     finally:
         destroy_panel(frame, panel)
 
@@ -1547,7 +1663,7 @@ def test_agent_transcript_log_includes_planned_tool_calls(tmp_path, wx_app):
 
     try:
         log_text = panel.get_transcript_log_text()
-        assert "LLM → Agent planned tool calls:" in log_text
+        assert "\"llm_tool_calls\"" in log_text
         assert "create_requirement" in log_text
         assert "\"prefix\": \"SYS\"" in log_text
     finally:
@@ -2101,7 +2217,7 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         entry_index = conversation.entries.index(entry)
         entry_key = f"{conversation.conversation_id}:{entry_index}"
         timeline = build_conversation_timeline(conversation)
-        tool_events = timeline.entries[entry_index].tool_calls
+        tool_events = timeline.entries[entry_index].agent_turn.tool_calls
         assert any(event.llm_request for event in tool_events), "expected llm request payload"
         bubbles = collect_message_bubbles(panel)
         assert len(bubbles) == 3
@@ -2115,7 +2231,11 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         ]
         assert len(agent_bubbles) == 2
         step_bubble, agent_bubble = agent_bubbles
-        assert "Step" in bubble_header_text(step_bubble)
+        step_index = (
+            timeline.entries[entry_index].agent_turn.streamed_responses[0].step_index
+        )
+        expected_step = i18n.gettext("Step {index}").format(index=step_index)
+        assert expected_step in bubble_header_text(step_bubble)
         assert "Now I will translate the selected requirements" in bubble_body_text(
             step_bubble
         )
@@ -2132,7 +2252,7 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
             (
                 pane
                 for pane in collect_collapsible_panes(agent_panel)
-                if pane.GetName().startswith("tool:update_requirement_field")
+                if pane.GetName().startswith(f"tool:{entry_key}:")
             ),
             None,
         )

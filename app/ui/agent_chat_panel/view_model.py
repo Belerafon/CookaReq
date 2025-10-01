@@ -1,104 +1,61 @@
-"""Event-oriented view model for the agent chat transcript."""
+"""Turn-oriented view model for the agent chat transcript."""
 
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import dataclass, field, replace
-from enum import Enum
-import itertools
-from typing import Any, Iterable, Mapping, Sequence
 import datetime as _dt
+from contextlib import suppress
+from dataclasses import dataclass, replace
+from typing import Any, Iterable, Mapping, Sequence
 
 from ...llm.spec import SYSTEM_PROMPT
-
 from ..chat_entry import ChatConversation, ChatEntry
 from .history_utils import history_json_safe, sort_tool_payloads
 from .time_formatting import format_entry_timestamp, parse_iso_timestamp
 from .tool_summaries import ToolCallSummary, summarize_tool_payload
 
 
-class ChatEventKind(str, Enum):
-    """Enumerate supported transcript event categories."""
-
-    PROMPT = "prompt"
-    CONTEXT = "context"
-    REASONING = "reasoning"
-    RESPONSE = "response"
-    LLM_REQUEST = "llm_request"
-    TOOL_CALL = "tool_call"
-    RAW_PAYLOAD = "raw_payload"
-    SYSTEM_MESSAGE = "system_message"
-
-
 @dataclass(slots=True)
-class ChatEvent:
-    """Base class for all transcript events."""
+class TimestampInfo:
+    """A timestamp extracted from chat data."""
 
-    event_id: str
-    entry_id: str
-    entry_index: int
-    sequence_index: int
-    kind: ChatEventKind
+    raw: str | None
     occurred_at: _dt.datetime | None
-    timestamp: str | None
-
-
-def _choose_timestamp(*candidates: str | None) -> str | None:
-    """Return the first usable timestamp text from *candidates*."""
-
-    for value in candidates:
-        if isinstance(value, str):
-            text = value.strip()
-            if text:
-                return text
-    return None
+    formatted: str
+    missing: bool
+    source: str | None = None
 
 
 @dataclass(slots=True)
-class PromptEvent(ChatEvent):
-    """User prompt issued to the agent."""
+class PromptMessage:
+    """User message directed at the agent."""
 
     text: str
-    formatted_timestamp: str
+    timestamp: TimestampInfo
 
 
 @dataclass(slots=True)
-class ContextEvent(ChatEvent):
-    """Contextual messages the agent received."""
-
-    messages: tuple[dict[str, Any], ...]
-
-
-@dataclass(slots=True)
-class ReasoningEvent(ChatEvent):
-    """Reasoning segments returned by the agent."""
-
-    segments: tuple[dict[str, Any], ...]
-
-
-@dataclass(slots=True)
-class ResponseEvent(ChatEvent):
-    """Visible response emitted by the agent."""
+class AgentResponse:
+    """Single textual response emitted by the agent."""
 
     text: str
     display_text: str
-    formatted_timestamp: str
-    regenerated: bool
-    step_index: int | None = None
-    is_final: bool = False
+    timestamp: TimestampInfo
+    step_index: int | None
+    is_final: bool
+    regenerated: bool = False
 
 
 @dataclass(slots=True)
-class LlmRequestEvent(ChatEvent):
-    """Snapshot of LLM request messages for the entry."""
+class LlmRequestSnapshot:
+    """Recorded messages that were sent to the language model."""
 
     messages: tuple[dict[str, Any], ...]
     sequence: tuple[dict[str, Any], ...] | None
 
 
 @dataclass(slots=True)
-class ToolCallEvent(ChatEvent):
-    """Diagnostic information about a single tool call."""
+class ToolCallDetails:
+    """Diagnostic information about an MCP tool invocation."""
 
     summary: ToolCallSummary
     call_identifier: str | None
@@ -107,62 +64,42 @@ class ToolCallEvent(ChatEvent):
 
 
 @dataclass(slots=True)
-class RawPayloadEvent(ChatEvent):
-    """Complete raw LLM payload for the entry."""
+class AgentTurn:
+    """Aggregated information about a single agent turn."""
 
-    payload: Any
+    entry_id: str
+    entry_index: int
+    occurred_at: _dt.datetime | None
+    timestamp: TimestampInfo
+    streamed_responses: tuple[AgentResponse, ...]
+    final_response: AgentResponse | None
+    reasoning: tuple[dict[str, Any], ...]
+    llm_request: LlmRequestSnapshot | None
+    tool_calls: tuple[ToolCallDetails, ...]
+    raw_payload: Any | None
 
 
 @dataclass(slots=True)
-class SystemMessageEvent(ChatEvent):
-    """System-level diagnostic entry."""
+class SystemMessage:
+    """System-level diagnostic entry attached to the transcript."""
 
     message: str
     details: Any | None = None
 
 
 @dataclass(slots=True)
-class EntryTimeline:
-    """Ordered collection of events derived from a single chat entry."""
+class TranscriptEntry:
+    """Combined representation of a prompt and the corresponding agent turn."""
 
     entry_id: str
     entry_index: int
     entry: ChatEntry
-    prompt: PromptEvent
-    response: ResponseEvent | None
-    intermediate_responses: tuple[ResponseEvent, ...]
-    context: ContextEvent | None
-    reasoning: ReasoningEvent | None
-    llm_request: LlmRequestEvent | None
-    tool_calls: tuple[ToolCallEvent, ...]
-    raw_payload: RawPayloadEvent | None
-    system_messages: tuple[SystemMessageEvent, ...]
+    prompt: PromptMessage | None
+    context_messages: tuple[dict[str, Any], ...]
+    agent_turn: AgentTurn | None
+    system_messages: tuple[SystemMessage, ...]
     layout_hints: dict[str, int]
     can_regenerate: bool
-    _events: tuple[ChatEvent, ...] = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        ordered: list[ChatEvent] = [self.prompt]
-        if self.context is not None:
-            ordered.append(self.context)
-        if self.llm_request is not None:
-            ordered.append(self.llm_request)
-        if self.reasoning is not None:
-            ordered.append(self.reasoning)
-        ordered.extend(self.intermediate_responses)
-        if self.response is not None:
-            ordered.append(self.response)
-        ordered.extend(self.tool_calls)
-        if self.raw_payload is not None:
-            ordered.append(self.raw_payload)
-        ordered.extend(self.system_messages)
-        self._events = tuple(ordered)
-
-    @property
-    def events(self) -> tuple[ChatEvent, ...]:
-        """Return all events for the entry preserving chronological order."""
-
-        return self._events
 
 
 @dataclass(slots=True)
@@ -170,150 +107,32 @@ class ConversationTimeline:
     """Timeline representation of a conversation ready for rendering."""
 
     conversation_id: str
-    entries: tuple[EntryTimeline, ...]
-    events: tuple[ChatEvent, ...] = field(init=False)
-
-    def __post_init__(self) -> None:
-        self.events = tuple(
-            event for entry in self.entries for event in entry.events
-        )
+    entries: tuple[TranscriptEntry, ...]
 
 
 def build_conversation_timeline(
     conversation: ChatConversation,
 ) -> ConversationTimeline:
-    """Return structured timeline for *conversation*."""
+    """Return turn-oriented timeline for *conversation*."""
 
-    entries: list[EntryTimeline] = []
-    sequence_counter = itertools.count()
+    entries: list[TranscriptEntry] = []
     total_entries = len(conversation.entries)
-    conversation_created_at = conversation.created_at
-    conversation_updated_at = conversation.updated_at
 
     for entry_index, entry in enumerate(conversation.entries):
         entry_id = f"{conversation.conversation_id}:{entry_index}"
-        prompt_event = _build_prompt_event(
-            entry_id,
-            entry_index,
-            next(sequence_counter),
-            entry,
-            fallback_timestamp=_choose_timestamp(
-                entry.prompt_at,
-                entry.response_at,
-                conversation_created_at,
-                conversation_updated_at,
-            ),
-        )
-        context_event = _build_context_event(
-            entry_id,
-            entry_index,
-            next(sequence_counter),
-            entry,
-            fallback_timestamp=_choose_timestamp(
-                entry.prompt_at,
-                entry.response_at,
-                conversation_created_at,
-                conversation_updated_at,
-            ),
-        )
-        reasoning_event = _build_reasoning_event(
-            entry_id,
-            entry_index,
-            next(sequence_counter),
-            entry,
-            fallback_timestamp=_choose_timestamp(
-                entry.response_at,
-                entry.prompt_at,
-                conversation_updated_at,
-                conversation_created_at,
-            ),
-        )
-        llm_request_event = _build_llm_request_event(
-            entry_id,
-            entry_index,
-            next(sequence_counter),
-            entry,
-            fallback_timestamp=_choose_timestamp(
-                entry.response_at,
-                entry.prompt_at,
-                conversation_updated_at,
-                conversation_created_at,
-            ),
-        )
-        step_events = _build_step_response_events(
-            entry_id,
-            entry_index,
-            sequence_counter,
-            entry,
-            final_response_text=entry.display_response or entry.response,
-            fallback_timestamp=_choose_timestamp(
-                entry.response_at,
-                entry.prompt_at,
-                conversation_updated_at,
-                conversation_created_at,
-            ),
-        )
-        response_event = _build_response_event(
-            entry_id,
-            entry_index,
-            next(sequence_counter),
-            entry,
-            fallback_timestamp=_choose_timestamp(
-                entry.response_at,
-                entry.prompt_at,
-                conversation_updated_at,
-                conversation_created_at,
-            ),
-        )
-        tool_request_map = _collect_llm_tool_requests(entry)
-        tool_call_events = tuple(
-            _build_tool_call_event(
-                entry_id,
-                entry_index,
-                next(sequence_counter),
-                tool_index,
-                payload,
-                tool_request_map,
-                fallback_timestamp=_choose_timestamp(
-                    _extract_tool_timestamp(payload),
-                    entry.response_at,
-                    entry.prompt_at,
-                    conversation_updated_at,
-                    conversation_created_at,
-                ),
-            )
-            for tool_index, payload in enumerate(
-                _iter_tool_payloads(entry.tool_results), start=1
-            )
-        )
-        raw_payload_event = _build_raw_payload_event(
-            entry_id,
-            entry_index,
-            next(sequence_counter),
-            entry,
-            fallback_timestamp=_choose_timestamp(
-                entry.response_at,
-                entry.prompt_at,
-                conversation_updated_at,
-                conversation_created_at,
-            ),
-        )
-        system_messages: tuple[SystemMessageEvent, ...] = ()
+        prompt = _build_prompt(entry)
+        context_messages = _build_context_messages(entry)
+        agent_turn = _build_agent_turn(entry_id, entry_index, entry)
         layout_hints = _sanitize_layout_hints(entry.layout_hints)
         can_regenerate = _can_regenerate_entry(entry_index, total_entries, entry)
-        timeline_entry = EntryTimeline(
+        timeline_entry = TranscriptEntry(
             entry_id=entry_id,
             entry_index=entry_index,
             entry=entry,
-            prompt=prompt_event,
-            response=response_event,
-            intermediate_responses=step_events,
-            context=context_event,
-            reasoning=reasoning_event,
-            llm_request=llm_request_event,
-            tool_calls=tool_call_events,
-            raw_payload=raw_payload_event,
-            system_messages=system_messages,
+            prompt=prompt,
+            context_messages=context_messages,
+            agent_turn=agent_turn,
+            system_messages=(),
             layout_hints=layout_hints,
             can_regenerate=can_regenerate,
         )
@@ -326,121 +145,335 @@ def build_conversation_timeline(
 
 
 # ---------------------------------------------------------------------------
-def _build_prompt_event(
-    entry_id: str,
-    entry_index: int,
-    sequence_index: int,
-    entry: ChatEntry,
-    *,
-    fallback_timestamp: str | None,
-) -> PromptEvent:
-    timestamp_source = entry.prompt_at or entry.response_at or fallback_timestamp
-    occurred_at = parse_iso_timestamp(timestamp_source)
-    formatted_timestamp = format_entry_timestamp(timestamp_source)
-    timestamp = timestamp_source
-    return PromptEvent(
-        event_id=f"{entry_id}:prompt",
-        entry_id=entry_id,
-        entry_index=entry_index,
-        sequence_index=sequence_index,
-        kind=ChatEventKind.PROMPT,
-        occurred_at=occurred_at,
-        timestamp=timestamp,
-        text=entry.prompt,
-        formatted_timestamp=formatted_timestamp,
-    )
+def _build_prompt(entry: ChatEntry) -> PromptMessage | None:
+    text = entry.prompt or ""
+    timestamp = _build_timestamp(entry.prompt_at, source="prompt_at")
+    if not text and not timestamp.raw:
+        # Prompt is empty and no timestamp has been recorded; skip placeholder.
+        return None
+    return PromptMessage(text=text, timestamp=timestamp)
 
 
-# ---------------------------------------------------------------------------
-def _build_context_event(
-    entry_id: str,
-    entry_index: int,
-    sequence_index: int,
-    entry: ChatEntry,
-    *,
-    fallback_timestamp: str | None,
-) -> ContextEvent | None:
+def _build_context_messages(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
     messages_raw = entry.context_messages or _extract_request_context(entry)
     if not messages_raw:
-        return None
+        return ()
     messages: list[dict[str, Any]] = []
     for message in messages_raw:
         if isinstance(message, Mapping):
-            messages.append(dict(message))
-    if not messages:
+            safe_message = history_json_safe(message)
+            if isinstance(safe_message, Mapping):
+                messages.append(dict(safe_message))
+    return tuple(messages)
+
+
+def _build_agent_turn(
+    entry_id: str,
+    entry_index: int,
+    entry: ChatEntry,
+) -> AgentTurn | None:
+    timestamp = _build_timestamp(entry.response_at, source="response_at")
+    final_response = _build_final_response(entry, timestamp)
+    streamed_responses, latest_stream_timestamp = _build_streamed_responses(
+        entry, final_response
+    )
+    reasoning_segments = _sanitize_reasoning_segments(entry.reasoning)
+    llm_request = _build_llm_request_snapshot(entry)
+    tool_calls, latest_tool_timestamp = _build_tool_calls(
+        entry_id, entry_index, entry
+    )
+    raw_payload = history_json_safe(entry.raw_result)
+
+    if final_response is None and streamed_responses:
+        promoted = streamed_responses[-1]
+        promoted_timestamp = promoted.timestamp
+        if promoted_timestamp.missing:
+            promoted_timestamp = latest_stream_timestamp or timestamp
+        final_response = AgentResponse(
+            text=promoted.text,
+            display_text=promoted.display_text,
+            timestamp=promoted_timestamp,
+            step_index=None,
+            is_final=True,
+            regenerated=bool(getattr(entry, "regenerated", False)),
+        )
+        streamed_responses = streamed_responses[:-1]
+        latest_stream_timestamp = promoted_timestamp
+
+    if timestamp.missing:
+        timestamp = _resolve_turn_timestamp(
+            timestamp,
+            final_response=final_response,
+            stream_timestamp=latest_stream_timestamp,
+            tool_timestamp=latest_tool_timestamp,
+            prompt_timestamp=_build_timestamp(entry.prompt_at, source="prompt_at"),
+        )
+        if final_response is not None:
+            final_response.timestamp = timestamp
+
+    has_content = bool(
+        final_response
+        or streamed_responses
+        or reasoning_segments
+        or (llm_request and llm_request.messages)
+        or tool_calls
+        or raw_payload is not None
+    )
+
+    if not has_content and not timestamp.raw:
         return None
-    timestamp = entry.prompt_at or entry.response_at or fallback_timestamp
-    occurred_at = parse_iso_timestamp(timestamp)
-    return ContextEvent(
-        event_id=f"{entry_id}:context",
+
+    return AgentTurn(
         entry_id=entry_id,
         entry_index=entry_index,
-        sequence_index=sequence_index,
-        kind=ChatEventKind.CONTEXT,
-        occurred_at=occurred_at,
+        occurred_at=timestamp.occurred_at,
         timestamp=timestamp,
-        messages=tuple(messages),
+        streamed_responses=streamed_responses,
+        final_response=final_response,
+        reasoning=reasoning_segments,
+        llm_request=llm_request,
+        tool_calls=tool_calls,
+        raw_payload=raw_payload,
+    )
+
+
+def _build_final_response(
+    entry: ChatEntry, timestamp: TimestampInfo
+) -> AgentResponse | None:
+    text = entry.response or ""
+    display_text = entry.display_response or text
+    if not text and not display_text:
+        return None
+    return AgentResponse(
+        text=text,
+        display_text=display_text,
+        timestamp=timestamp,
+        step_index=None,
+        is_final=True,
+        regenerated=bool(getattr(entry, "regenerated", False)),
+    )
+
+
+def _build_streamed_responses(
+    entry: ChatEntry, final_response: AgentResponse | None
+) -> tuple[tuple[AgentResponse, ...], TimestampInfo | None]:
+    payloads = _collect_llm_step_payloads(entry)
+    if not payloads:
+        return (), None
+
+    final_text = _normalise_message_text(
+        final_response.display_text if final_response else None
+    )
+
+    responses: list[AgentResponse] = []
+    fallback_index = 1
+    latest_timestamp: TimestampInfo | None = None
+    for payload in payloads:
+        response = _build_stream_step_response(payload, fallback_index)
+        if response is None:
+            continue
+        fallback_index = (response.step_index or fallback_index) + 1
+        if final_text and _normalise_message_text(response.display_text) == final_text:
+            continue
+        responses.append(response)
+        if not response.timestamp.missing:
+            if latest_timestamp is None:
+                latest_timestamp = response.timestamp
+            elif (
+                response.timestamp.occurred_at
+                and latest_timestamp.occurred_at
+                and response.timestamp.occurred_at
+                >= latest_timestamp.occurred_at
+            ):
+                latest_timestamp = response.timestamp
+    if latest_timestamp is None and responses:
+        candidate = responses[-1].timestamp
+        if not candidate.missing:
+            latest_timestamp = candidate
+    return tuple(responses), latest_timestamp
+
+
+def _build_stream_step_response(
+    payload: Mapping[str, Any], fallback_index: int
+) -> AgentResponse | None:
+    if not isinstance(payload, Mapping):
+        return None
+    response_payload = payload.get("response")
+    if not isinstance(response_payload, Mapping):
+        return None
+    content_value = response_payload.get("content")
+    if not isinstance(content_value, str):
+        return None
+    text = content_value.strip()
+    if not text:
+        return None
+
+    timestamp_raw = response_payload.get("timestamp")
+    timestamp_value = (
+        timestamp_raw.strip()
+        if isinstance(timestamp_raw, str) and timestamp_raw.strip()
+        else None
+    )
+    timestamp = _build_timestamp(timestamp_value, source="llm_step")
+
+    step_index: int | None = None
+    step_value = payload.get("step")
+    if isinstance(step_value, (int, float)):
+        step_index = int(step_value)
+    elif isinstance(step_value, str):
+        with suppress(ValueError):
+            step_index = int(step_value.strip())
+    if step_index is None:
+        step_index = fallback_index
+
+    return AgentResponse(
+        text=text,
+        display_text=text,
+        timestamp=timestamp,
+        step_index=step_index,
+        is_final=False,
+        regenerated=False,
+    )
+
+
+def _sanitize_reasoning_segments(
+    segments_raw: Sequence[dict[str, Any]] | None,
+) -> tuple[dict[str, Any], ...]:
+    if not segments_raw:
+        return ()
+    segments: list[dict[str, Any]] = []
+    for segment in segments_raw:
+        if not isinstance(segment, Mapping):
+            continue
+        safe_segment = history_json_safe(segment)
+        if isinstance(safe_segment, Mapping):
+            segments.append(dict(safe_segment))
+    return tuple(segments)
+
+
+def _build_llm_request_snapshot(
+    entry: ChatEntry,
+) -> LlmRequestSnapshot | None:
+    messages, sequence = _extract_llm_request_details(entry)
+    if not messages:
+        return None
+    return LlmRequestSnapshot(messages=messages, sequence=sequence)
+
+
+def _build_tool_calls(
+    entry_id: str,
+    entry_index: int,
+    entry: ChatEntry,
+) -> tuple[tuple[ToolCallDetails, ...], TimestampInfo | None]:
+    payloads = _iter_tool_payloads(entry.tool_results)
+    if not payloads:
+        return (), None
+
+    requests = _collect_llm_tool_requests(entry)
+    tool_calls: list[ToolCallDetails] = []
+    latest_timestamp: TimestampInfo | None = None
+    for tool_index, payload in enumerate(payloads, start=1):
+        summary = summarize_tool_payload(tool_index, payload)
+        safe_payload = history_json_safe(payload)
+        if summary is None:
+            summary = ToolCallSummary(
+                index=tool_index,
+                tool_name="",
+                status="",
+                bullet_lines=(),
+                raw_payload=safe_payload,
+            )
+        else:
+            summary = replace(summary, raw_payload=safe_payload)
+
+        call_identifier = _extract_tool_identifier(payload)
+        request_payload: Any | None = None
+        if call_identifier is not None:
+            request_payload = requests.get(call_identifier)
+        if request_payload is None:
+            request_payload = requests.get(str(tool_index))
+        if request_payload is None:
+            request_payload = _synthesise_tool_request(payload, summary)
+
+        call_timestamp_raw = _extract_tool_timestamp(payload)
+        if call_timestamp_raw:
+            candidate = _build_timestamp(call_timestamp_raw, source="tool_result")
+            if not candidate.missing:
+                if latest_timestamp is None:
+                    latest_timestamp = candidate
+                elif (
+                    candidate.occurred_at
+                    and latest_timestamp.occurred_at
+                    and candidate.occurred_at >= latest_timestamp.occurred_at
+                ):
+                    latest_timestamp = candidate
+
+        tool_calls.append(
+            ToolCallDetails(
+                summary=summary,
+                call_identifier=call_identifier,
+                raw_payload=safe_payload,
+                llm_request=request_payload,
+            )
+        )
+    return tuple(tool_calls), latest_timestamp
+
+
+def _build_timestamp(value: str | None, *, source: str | None) -> TimestampInfo:
+    if isinstance(value, str):
+        text = value.strip()
+        if text:
+            occurred_at = parse_iso_timestamp(text)
+            formatted = format_entry_timestamp(text)
+            return TimestampInfo(
+                raw=text,
+                occurred_at=occurred_at,
+                formatted=formatted,
+                missing=False,
+                source=source,
+            )
+    return TimestampInfo(
+        raw=None,
+        occurred_at=None,
+        formatted="",
+        missing=True,
+        source=source,
     )
 
 
 # ---------------------------------------------------------------------------
-def _build_reasoning_event(
-    entry_id: str,
-    entry_index: int,
-    sequence_index: int,
-    entry: ChatEntry,
+def _resolve_turn_timestamp(
+    primary: TimestampInfo,
     *,
-    fallback_timestamp: str | None,
-) -> ReasoningEvent | None:
-    segments_raw = entry.reasoning or ()
-    if not segments_raw:
+    final_response: AgentResponse | None,
+    stream_timestamp: TimestampInfo | None,
+    tool_timestamp: TimestampInfo | None,
+    prompt_timestamp: TimestampInfo | None,
+) -> TimestampInfo:
+    if not primary.missing:
+        return primary
+
+    def pick(candidate: TimestampInfo | None) -> TimestampInfo | None:
+        if candidate is None or candidate.missing:
+            return None
+        if candidate.raw:
+            return candidate
         return None
-    segments: list[dict[str, Any]] = []
-    for segment in segments_raw:
-        if isinstance(segment, Mapping):
-            segments.append(dict(segment))
-    if not segments:
-        return None
-    timestamp = entry.response_at or entry.prompt_at or fallback_timestamp
-    occurred_at = parse_iso_timestamp(timestamp)
-    return ReasoningEvent(
-        event_id=f"{entry_id}:reasoning",
-        entry_id=entry_id,
-        entry_index=entry_index,
-        sequence_index=sequence_index,
-        kind=ChatEventKind.REASONING,
-        occurred_at=occurred_at,
-        timestamp=timestamp,
-        segments=tuple(segments),
-    )
+
+    for option in (
+        final_response.timestamp if final_response is not None else None,
+        stream_timestamp,
+        tool_timestamp,
+        prompt_timestamp,
+    ):
+        chosen = pick(option)
+        if chosen is not None:
+            return chosen
+
+    return primary
 
 
-def _build_llm_request_event(
-    entry_id: str,
-    entry_index: int,
-    sequence_index: int,
-    entry: ChatEntry,
-    *,
-    fallback_timestamp: str | None,
-) -> LlmRequestEvent | None:
-    messages, sequence = _extract_llm_request_details(entry)
-    if not messages:
-        return None
-    timestamp = fallback_timestamp
-    occurred_at = parse_iso_timestamp(timestamp)
-    return LlmRequestEvent(
-        event_id=f"{entry_id}:llm-request",
-        entry_id=entry_id,
-        entry_index=entry_index,
-        sequence_index=sequence_index,
-        kind=ChatEventKind.LLM_REQUEST,
-        occurred_at=occurred_at,
-        timestamp=timestamp,
-        messages=messages,
-        sequence=sequence,
-    )
-
-
+# ---------------------------------------------------------------------------
 def _extract_request_context(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
     messages = _extract_messages_from_mapping(
         getattr(entry, "raw_result", None),
@@ -474,6 +507,20 @@ def _extract_messages_from_mapping(
 
 
 # ---------------------------------------------------------------------------
+def _iter_llm_request_sources(entry: ChatEntry) -> Iterable[Mapping[str, Any]]:
+    sources: list[Mapping[str, Any]] = []
+    diagnostic = entry.diagnostic
+    if isinstance(diagnostic, Mapping):
+        sources.append(diagnostic)
+    raw_result = entry.raw_result
+    if isinstance(raw_result, Mapping):
+        sources.append(raw_result)
+        diagnostic_raw = raw_result.get("diagnostic")
+        if isinstance(diagnostic_raw, Mapping):
+            sources.append(diagnostic_raw)
+    return tuple(sources)
+
+
 def _extract_llm_request_details(
     entry: ChatEntry,
 ) -> tuple[tuple[dict[str, Any], ...], tuple[dict[str, Any], ...] | None]:
@@ -490,7 +537,9 @@ def _extract_llm_request_details(
             source.get("llm_request_messages_sequence")
         )
         if candidate_sequence is None:
-            candidate_sequence = _sanitize_request_sequence(source.get("llm_requests"))
+            candidate_sequence = _sanitize_request_sequence(
+                source.get("llm_requests")
+            )
         if candidate_sequence:
             sequence = candidate_sequence
             if not messages:
@@ -522,41 +571,31 @@ def _extract_llm_request_details(
         safe_message = history_json_safe(message)
         if isinstance(safe_message, Mapping):
             prepared_messages.append(dict(safe_message))
-
     prepared_sequence: tuple[dict[str, Any], ...] | None = None
-    if sequence:
-        normalized: list[dict[str, Any]] = []
-        for entry_payload in sequence:
-            safe_entry = history_json_safe(entry_payload)
-            if not isinstance(safe_entry, Mapping):
+    if sequence is not None:
+        sequence_items: list[dict[str, Any]] = []
+        for item in sequence:
+            if not isinstance(item, Mapping):
                 continue
-            record = dict(safe_entry)
+            safe_item = history_json_safe(item)
+            if not isinstance(safe_item, Mapping):
+                continue
+            record = dict(safe_item)
             messages_payload = record.get("messages")
             sanitized_messages = _sanitize_message_list(messages_payload)
             if sanitized_messages:
-                record["messages"] = tuple(dict(item) for item in sanitized_messages)
+                record["messages"] = tuple(dict(msg) for msg in sanitized_messages)
             elif "messages" in record:
                 record["messages"] = ()
-            normalized.append(record)
-        if normalized:
-            prepared_sequence = tuple(normalized)
+            sequence_items.append(record)
+        prepared_sequence = tuple(sequence_items) if sequence_items else None
 
     return tuple(prepared_messages), prepared_sequence
 
 
-def _iter_llm_request_sources(entry: ChatEntry) -> Iterable[Mapping[str, Any]]:
-    diagnostic = entry.diagnostic
-    if isinstance(diagnostic, Mapping):
-        yield diagnostic
-    raw_result = entry.raw_result
-    if isinstance(raw_result, Mapping):
-        yield raw_result
-        diagnostic_raw = raw_result.get("diagnostic")
-        if isinstance(diagnostic_raw, Mapping):
-            yield diagnostic_raw
-
-
-def _sanitize_message_list(value: Any) -> tuple[dict[str, Any], ...]:
+def _sanitize_message_list(
+    value: Any,
+) -> tuple[dict[str, Any], ...]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
         return ()
     sanitized: list[dict[str, Any]] = []
@@ -607,136 +646,6 @@ def _fallback_llm_request_messages(entry: ChatEntry) -> tuple[dict[str, Any], ..
 
 
 # ---------------------------------------------------------------------------
-def _build_response_event(
-    entry_id: str,
-    entry_index: int,
-    sequence_index: int,
-    entry: ChatEntry,
-    *,
-    fallback_timestamp: str | None,
-) -> ResponseEvent | None:
-    text = entry.response or ""
-    display_text = entry.display_response or text
-    if not text and not display_text:
-        return None
-    timestamp = entry.response_at or entry.prompt_at or fallback_timestamp
-    occurred_at = parse_iso_timestamp(timestamp)
-    formatted_timestamp = format_entry_timestamp(timestamp)
-    return ResponseEvent(
-        event_id=f"{entry_id}:response",
-        entry_id=entry_id,
-        entry_index=entry_index,
-        sequence_index=sequence_index,
-        kind=ChatEventKind.RESPONSE,
-        occurred_at=occurred_at,
-        timestamp=timestamp,
-        text=text,
-        display_text=display_text,
-        formatted_timestamp=formatted_timestamp,
-        regenerated=bool(getattr(entry, "regenerated", False)),
-        step_index=None,
-        is_final=True,
-    )
-
-
-# ---------------------------------------------------------------------------
-def _build_step_response_events(
-    entry_id: str,
-    entry_index: int,
-    sequence_counter: itertools.count,
-    entry: ChatEntry,
-    *,
-    final_response_text: str | None,
-    fallback_timestamp: str | None,
-) -> tuple[ResponseEvent, ...]:
-    payloads = _collect_llm_step_payloads(entry)
-    if not payloads:
-        return ()
-
-    final_text = _normalise_message_text(final_response_text)
-    events: list[ResponseEvent] = []
-    for position, payload in enumerate(payloads, start=1):
-        sequence_index = next(sequence_counter)
-        event = _build_step_response_event(
-            entry_id,
-            entry_index,
-            sequence_index,
-            payload,
-            fallback_timestamp=fallback_timestamp,
-            fallback_step_index=position,
-        )
-        if event is None:
-            continue
-        event_text = _normalise_message_text(event.display_text or event.text)
-        if final_text and event_text == final_text:
-            continue
-        events.append(event)
-    return tuple(events)
-
-
-def _build_step_response_event(
-    entry_id: str,
-    entry_index: int,
-    sequence_index: int,
-    payload: Mapping[str, Any],
-    *,
-    fallback_timestamp: str | None,
-    fallback_step_index: int,
-) -> ResponseEvent | None:
-    if not isinstance(payload, Mapping):
-        return None
-    response_payload = payload.get("response")
-    if not isinstance(response_payload, Mapping):
-        return None
-    content_value = response_payload.get("content")
-    if not isinstance(content_value, str):
-        return None
-    text = content_value.strip()
-    if not text:
-        return None
-
-    timestamp_raw = response_payload.get("timestamp")
-    timestamp_str = (
-        timestamp_raw.strip()
-        if isinstance(timestamp_raw, str) and timestamp_raw.strip()
-        else None
-    )
-    occurred_at = parse_iso_timestamp(timestamp_str or fallback_timestamp)
-    formatted_timestamp = (
-        format_entry_timestamp(timestamp_str)
-        if timestamp_str
-        else ""
-    )
-
-    step_raw = payload.get("step")
-    step_index: int | None = None
-    if isinstance(step_raw, (int, float)):
-        step_index = int(step_raw)
-    elif isinstance(step_raw, str):
-        with suppress(ValueError):
-            step_index = int(step_raw.strip())
-    if step_index is None:
-        step_index = fallback_step_index
-
-    event_id = f"{entry_id}:response-step:{sequence_index}"
-    timestamp_value = timestamp_str or fallback_timestamp
-    return ResponseEvent(
-        event_id=event_id,
-        entry_id=entry_id,
-        entry_index=entry_index,
-        sequence_index=sequence_index,
-        kind=ChatEventKind.RESPONSE,
-        occurred_at=occurred_at,
-        timestamp=timestamp_value,
-        text=text,
-        display_text=text,
-        formatted_timestamp=formatted_timestamp,
-        regenerated=False,
-        step_index=step_index,
-        is_final=False,
-    )
-
-
 def _collect_llm_step_payloads(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
     ordered: list[tuple[int, int | None, str, dict[str, Any]]] = []
     index_by_key: dict[str, int] = {}
@@ -801,19 +710,18 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Any]:
 
     requests: dict[str, Any] = {}
 
-    def record(identifier: str | None, payload: Any) -> None:
+    def record(identifier: str, payload: Any) -> None:
         if not identifier:
             return
-        key = str(identifier)
-        if key in requests:
-            existing = requests[key]
+        if identifier in requests:
+            existing = requests[identifier]
             if isinstance(existing, Mapping) and isinstance(payload, Mapping):
                 if "response" in existing and "response" not in payload:
                     return
         safe_payload = history_json_safe(payload)
         if safe_payload is None:
             return
-        requests[key] = safe_payload
+        requests[identifier] = safe_payload
 
     def scan_tool_calls(
         tool_calls: Any,
@@ -841,18 +749,7 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Any]:
                     payload["step"] = step_index
             record(identifier, payload)
 
-    potential_sources: list[Mapping[str, Any]] = []
-    diagnostic = entry.diagnostic
-    if isinstance(diagnostic, Mapping):
-        potential_sources.append(diagnostic)
-    raw_result = entry.raw_result
-    if isinstance(raw_result, Mapping):
-        potential_sources.append(raw_result)
-        diagnostic_raw = raw_result.get("diagnostic")
-        if isinstance(diagnostic_raw, Mapping):
-            potential_sources.append(diagnostic_raw)
-
-    for source in potential_sources:
+    for source in _iter_llm_request_sources(entry):
         steps = source.get("llm_steps")
         if isinstance(steps, Sequence):
             for step_index, step in enumerate(steps, start=1):
@@ -880,7 +777,6 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Any]:
     return requests
 
 
-# ---------------------------------------------------------------------------
 def _iter_tool_payloads(tool_results: Sequence[Any] | None) -> Iterable[Mapping[str, Any]]:
     if not tool_results:
         return ()
@@ -890,97 +786,6 @@ def _iter_tool_payloads(tool_results: Sequence[Any] | None) -> Iterable[Mapping[
         if isinstance(payload, Mapping):
             result.append(payload)
     return tuple(result)
-
-
-def _build_tool_call_event(
-    entry_id: str,
-    entry_index: int,
-    sequence_index: int,
-    tool_index: int,
-    payload: Mapping[str, Any],
-    requests: Mapping[str, Any],
-    *,
-    fallback_timestamp: str | None,
-) -> ToolCallEvent:
-    summary = summarize_tool_payload(tool_index, payload)
-    safe_payload = history_json_safe(payload)
-    timestamp = _extract_tool_timestamp(payload) or fallback_timestamp
-    occurred_at = parse_iso_timestamp(timestamp)
-    call_identifier = _extract_tool_identifier(payload)
-    request_payload: Any | None = None
-    if call_identifier is not None:
-        request_payload = requests.get(call_identifier)
-    if request_payload is None:
-        request_payload = requests.get(str(tool_index))
-    if request_payload is None:
-        request_payload = _synthesise_tool_request(payload, summary)
-    if summary is None:
-        summary = ToolCallSummary(
-            index=tool_index,
-            tool_name="",
-            status="",
-            bullet_lines=(),
-            raw_payload=safe_payload,
-        )
-    else:
-        summary = replace(summary, raw_payload=safe_payload)
-    return ToolCallEvent(
-        event_id=f"{entry_id}:tool:{tool_index}",
-        entry_id=entry_id,
-        entry_index=entry_index,
-        sequence_index=sequence_index,
-        kind=ChatEventKind.TOOL_CALL,
-        occurred_at=occurred_at,
-        timestamp=timestamp,
-        summary=summary,
-        call_identifier=call_identifier,
-        raw_payload=safe_payload,
-        llm_request=request_payload,
-    )
-
-
-def _synthesise_tool_request(
-    payload: Mapping[str, Any], summary: ToolCallSummary | None
-) -> Any | None:
-    """Reconstruct an approximate LLM request when none was recorded."""
-
-    if not isinstance(payload, Mapping):
-        return None
-
-    arguments_source: Any = None
-    for key in ("tool_arguments", "arguments", "args"):
-        candidate = payload.get(key)
-        if isinstance(candidate, Mapping):
-            arguments_source = candidate
-            break
-    if not isinstance(arguments_source, Mapping):
-        return None
-
-    safe_arguments = history_json_safe(arguments_source)
-    if not isinstance(safe_arguments, Mapping):
-        return None
-
-    request: dict[str, Any] = {
-        "tool_call": {
-            "name": (summary.tool_name if summary else ""),
-            "arguments": dict(safe_arguments),
-        }
-    }
-
-    if summary and summary.tool_name:
-        request["tool_call"]["name"] = summary.tool_name
-    else:
-        for key in ("tool_name", "name", "tool"):
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                request["tool_call"]["name"] = value.strip()
-                break
-
-    step_value = payload.get("step")
-    if step_value is not None:
-        request["step"] = step_value
-
-    return history_json_safe(request)
 
 
 def _extract_tool_timestamp(payload: Mapping[str, Any]) -> str | None:
@@ -1009,30 +814,46 @@ def _extract_tool_identifier(payload: Mapping[str, Any]) -> str | None:
     return None
 
 
-# ---------------------------------------------------------------------------
-def _build_raw_payload_event(
-    entry_id: str,
-    entry_index: int,
-    sequence_index: int,
-    entry: ChatEntry,
-    *,
-    fallback_timestamp: str | None,
-) -> RawPayloadEvent | None:
-    if entry.raw_result is None:
+def _synthesise_tool_request(
+    payload: Mapping[str, Any], summary: ToolCallSummary | None
+) -> Any | None:
+    """Reconstruct an approximate LLM request when none was recorded."""
+
+    if not isinstance(payload, Mapping):
         return None
-    timestamp = entry.response_at or entry.prompt_at or fallback_timestamp
-    occurred_at = parse_iso_timestamp(timestamp)
-    safe_payload = history_json_safe(entry.raw_result)
-    return RawPayloadEvent(
-        event_id=f"{entry_id}:raw",
-        entry_id=entry_id,
-        entry_index=entry_index,
-        sequence_index=sequence_index,
-        kind=ChatEventKind.RAW_PAYLOAD,
-        occurred_at=occurred_at,
-        timestamp=timestamp,
-        payload=safe_payload,
-    )
+
+    arguments_source: Any = None
+    for key in ("tool_arguments", "arguments", "args"):
+        candidate = payload.get(key)
+        if isinstance(candidate, Mapping):
+            arguments_source = candidate
+            break
+    if not isinstance(arguments_source, Mapping):
+        return None
+
+    safe_arguments = history_json_safe(arguments_source)
+    if not isinstance(safe_arguments, Mapping):
+        return None
+
+    request: dict[str, Any] = {
+        "tool_call": {
+            "name": summary.tool_name if summary else "",
+            "arguments": dict(safe_arguments),
+        }
+    }
+
+    if not request["tool_call"]["name"]:
+        for key in ("tool_name", "name", "tool"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                request["tool_call"]["name"] = value.strip()
+                break
+
+    step_value = payload.get("step")
+    if step_value is not None:
+        request["step"] = step_value
+
+    return history_json_safe(request)
 
 
 # ---------------------------------------------------------------------------
@@ -1071,17 +892,14 @@ def _coerce_positive_int(value: Any) -> int | None:
 
 
 __all__ = [
-    "ChatEventKind",
-    "ChatEvent",
-    "PromptEvent",
-    "ContextEvent",
-    "ReasoningEvent",
-    "ResponseEvent",
-    "LlmRequestEvent",
-    "ToolCallEvent",
-    "RawPayloadEvent",
-    "SystemMessageEvent",
-    "EntryTimeline",
+    "TimestampInfo",
+    "PromptMessage",
+    "AgentResponse",
+    "LlmRequestSnapshot",
+    "ToolCallDetails",
+    "AgentTurn",
+    "SystemMessage",
+    "TranscriptEntry",
     "ConversationTimeline",
     "build_conversation_timeline",
 ]

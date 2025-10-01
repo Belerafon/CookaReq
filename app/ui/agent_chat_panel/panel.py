@@ -72,17 +72,9 @@ from .tool_summaries import (
     summarize_tool_results,
 )
 from .view_model import (
-    ChatEvent,
-    ChatEventKind,
-    ConversationTimeline,
-    ContextEvent,
-    LlmRequestEvent,
-    PromptEvent,
-    RawPayloadEvent,
-    ReasoningEvent,
-    ResponseEvent,
-    SystemMessageEvent,
-    ToolCallEvent,
+    AgentResponse,
+    TimestampInfo,
+    ToolCallDetails,
     build_conversation_timeline,
 )
 from .transcript_view import TranscriptView
@@ -1983,6 +1975,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             blocks.append(block)
         return "\n\n".join(blocks)
 
+
     def _compose_transcript_log_text(self) -> str:
         conversation = self._get_active_conversation()
         if conversation is None:
@@ -1992,14 +1985,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         timeline = build_conversation_timeline(conversation)
 
-        def format_timestamp(value: str | None, *, event: ChatEvent | None = None) -> str:
-            if value:
-                formatted = format_entry_timestamp(value)
-                return normalize_for_display(formatted or value)
-            if event is not None and event.occurred_at is not None:
-                iso_value = event.occurred_at.isoformat()
-                formatted = format_entry_timestamp(iso_value)
-                return normalize_for_display(formatted or iso_value)
+        def format_timestamp_info(info: TimestampInfo | None) -> str:
+            if info is None:
+                return _("not recorded")
+            if info.formatted:
+                return normalize_for_display(info.formatted)
+            if info.raw:
+                return normalize_for_display(info.raw)
             return _("not recorded")
 
         def _normalise_json_value(value: Any) -> Any:
@@ -2028,519 +2020,135 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 return _("(none)")
             normalised = _normalise_json_value(value)
             if isinstance(normalised, str):
-                text = normalised
+                text_value = normalised
             else:
                 try:
-                    text = json.dumps(
+                    text_value = json.dumps(
                         normalised,
                         ensure_ascii=False,
                         indent=2,
                         sort_keys=True,
                     )
                 except (TypeError, ValueError):
-                    text = str(normalised)
-            return normalize_for_display(text)
+                    text_value = str(normalised)
+            return normalize_for_display(text_value)
 
         def indent_block(value: str, *, prefix: str = "    ") -> str:
             return textwrap.indent(value, prefix)
 
-        def describe_event(event: ChatEvent) -> list[str]:
-            timestamp = format_timestamp(event.timestamp, event=event)
-            header_prefix = _("[{timestamp}] ").format(timestamp=timestamp)
-
-            if isinstance(event, PromptEvent):
-                lines = [header_prefix + _("You:")]
-                text = normalize_for_display(event.text)
-                if text:
-                    lines.append(indent_block(text))
-                return lines
-
-            if isinstance(event, ContextEvent):
-                lines = [header_prefix + _("Context messages:")]
-                lines.append(indent_block(format_json_block(event.messages)))
-                return lines
-
-            if isinstance(event, LlmRequestEvent):
-                lines = [header_prefix + _("Agent → LLM request:")]
-                payload = {"messages": event.messages}
-                if event.sequence is not None:
-                    payload["sequence"] = event.sequence
-                lines.append(indent_block(format_json_block(payload)))
-                return lines
-
-            if isinstance(event, ReasoningEvent):
-                lines = [header_prefix + _("Model reasoning:")]
-                lines.append(indent_block(format_json_block(event.segments)))
-                return lines
-
-            if isinstance(event, ResponseEvent):
-                label = _("Agent response")
-                if event.regenerated:
-                    label = _("Agent response (regenerated)")
-                lines = [header_prefix + label + ":"]
-                text = normalize_for_display(event.display_text or event.text or "")
-                if text:
-                    lines.append(indent_block(text))
-                else:
-                    lines.append(indent_block(_("(empty)")))
-                return lines
-
-            if isinstance(event, ToolCallEvent):
-                summary = event.summary
-                heading = _(
-                    "Agent → MCP call {index}: {tool} — {status}"
-                ).format(
-                    index=summary.index,
-                    tool=normalize_for_display(summary.tool_name or _("Unnamed tool")),
-                    status=normalize_for_display(summary.status or _("returned data")),
-                )
-                lines = [header_prefix + heading]
-                for bullet in summary.bullet_lines:
-                    if bullet:
-                        lines.append(indent_block(normalize_for_display(bullet)))
-                if event.call_identifier:
-                    lines.append(
-                        indent_block(
-                            _("Call identifier: {identifier}").format(
-                                identifier=normalize_for_display(event.call_identifier)
-                            )
-                        )
-                    )
-                if summary.raw_payload is not None:
-                    lines.append(indent_block(_("Raw payload:")))
-                    lines.append(
-                        indent_block(
-                            format_json_block(summary.raw_payload),
-                            prefix="        ",
-                        )
-                    )
-                return lines
-
-            if isinstance(event, RawPayloadEvent):
-                lines = [header_prefix + _("Agent raw payload:")]
-                lines.append(indent_block(format_json_block(event.payload)))
-                return lines
-
-            if isinstance(event, SystemMessageEvent):
-                lines = [header_prefix + _("System message:")]
-                message = normalize_for_display(event.message)
-                if message:
-                    lines.append(indent_block(message))
-                if event.details is not None:
-                    lines.append(indent_block(format_json_block(event.details)))
-                return lines
-
-            return [
-                header_prefix
-                + _("Unhandled event kind: {kind}").format(
-                    kind=normalize_for_display(event.kind.value)
-                )
-            ]
-
-        def describe_message_origin(role: str | None) -> str:
-            normalized = (role or "").strip().lower()
-            if normalized == "system":
-                return _("Agent system prompt")
-            if normalized == "developer":
-                return _("Agent developer message")
-            if normalized == "user":
-                return _("User message (forwarded to LLM)")
-            if normalized == "assistant":
-                return _("LLM response (replayed as context)")
-            if normalized == "tool":
-                return _("Tool result (forwarded to LLM)")
-            if normalized == "function":
-                return _("Function result (forwarded to LLM)")
-            return _("Recorded message role: {role}").format(
-                role=normalize_for_display(role or _("unknown"))
-            )
-
-        def format_llm_request_sequence(
-            request_sequence: Sequence[Mapping[str, Any]] | None,
+        def describe_agent_response(
+            response: AgentResponse,
+            turn_timestamp: TimestampInfo | None,
         ) -> list[str]:
-            if not request_sequence:
-                return [_("Agent → LLM request: (no request payload recorded)")]
-
-            formatted: list[str] = []
-            for request in request_sequence:
-                if not isinstance(request, Mapping):
-                    continue
-                step = request.get("step")
-                try:
-                    step_value = int(step) if step is not None else None
-                except (TypeError, ValueError):
-                    step_value = None
-                if step_value is None:
-                    formatted.append(_("Agent → LLM request:"))
-                else:
-                    formatted.append(
-                        _("Agent → LLM request (step {index}):").format(
-                            index=step_value
-                        )
-                    )
-
-                messages = request.get("messages")
-                if not isinstance(messages, Sequence) or not messages:
-                    formatted.append(indent_block(_("No messages captured.")))
-                    continue
-
-                for idx, message in enumerate(messages, start=1):
-                    if not isinstance(message, Mapping):
-                        continue
-                    role_value = message.get("role") if "role" in message else None
-                    origin_label = describe_message_origin(
-                        str(role_value) if role_value is not None else None
-                    )
-                    formatted.append(
-                        indent_block(
-                            _("Message {index} ({origin}):").format(
-                                index=idx,
-                                origin=origin_label,
-                            )
-                        )
-                    )
-                    formatted.append(
-                        indent_block(
-                            format_json_block(message),
-                            prefix="        ",
-                        )
-                    )
-            return formatted
-
-        def format_planned_tool_calls(
-            planned_calls: Sequence[Any] | None,
-        ) -> list[str]:
-            if not planned_calls:
-                return []
-
-            formatted: list[str] = []
-            formatted.append(_("LLM → Agent planned tool calls:"))
-            for index, call in enumerate(planned_calls, start=1):
-                formatted.append(
-                    indent_block(
-                        _("Call {index}:").format(index=index)
-                    )
-                )
-                formatted.append(
-                    indent_block(
-                        format_json_block(call),
-                        prefix="        ",
-                    )
-                )
-            return formatted
-
-        def format_tool_exchange(index: int, payload: Any) -> list[str]:
-            lines: list[str] = []
-            if not isinstance(payload, Mapping):
-                lines.append(
-                    _("Agent → MCP call {index}: {summary}").format(
-                        index=index,
-                        summary=normalize_for_display(str(payload)),
-                    )
-                )
-                lines.append(
-                    _("MCP → Agent response {index}: (unavailable)").format(
-                        index=index
-                    )
-                )
-                return lines
-
-            raw_name = (
-                payload.get("tool_name")
-                or payload.get("name")
-                or payload.get("tool")
+            response_timestamp = (
+                response.timestamp
+                if not response.timestamp.missing
+                else turn_timestamp
             )
-            name = (
-                normalize_for_display(str(raw_name))
-                if raw_name
-                else _("Unnamed tool")
-            )
-            ok_value = payload.get("ok")
-            if ok_value is True:
-                status = _("Success")
-            elif ok_value is False:
-                status = _("Error")
+            timestamp_label = format_timestamp_info(response_timestamp)
+            if not timestamp_label and turn_timestamp is not None and turn_timestamp.missing:
+                timestamp_label = _("not recorded")
+            if not response.is_final and response.step_index is not None:
+                label = _("Agent (step {index}):").format(index=response.step_index)
             else:
-                status = _("Unknown")
-            lines.append(
-                _("Agent → MCP call {index}: {name}").format(
-                    index=index,
-                    name=name,
-                )
+                label = _("Agent:")
+            header = _("[{timestamp}] {label}").format(
+                timestamp=timestamp_label,
+                label=label,
             )
-            call_id = payload.get("call_id") or payload.get("tool_call_id")
-            if call_id:
-                lines.append(
-                    indent_block(
-                        _("MCP call ID: {value}").format(
-                            value=normalize_for_display(str(call_id))
-                        )
-                    )
-                )
-            arguments = payload.get("tool_arguments")
-            if arguments is not None:
-                lines.append(indent_block(_("Arguments:")))
-                lines.append(
-                    indent_block(
-                        format_json_block(arguments),
-                        prefix="        ",
-                    )
-                )
-            lines.append(
-                _("MCP → Agent response {index}: {status}").format(
-                    index=index,
-                    status=status,
-                )
-            )
-            result_payload = payload.get("result")
-            if result_payload is not None:
-                lines.append(indent_block(_("Result payload:")))
-                lines.append(
-                    indent_block(
-                        format_json_block(result_payload),
-                        prefix="        ",
-                    )
-                )
-            error_payload = payload.get("error")
-            if error_payload is not None:
-                lines.append(indent_block(_("Error payload:")))
-                lines.append(
-                    indent_block(
-                        format_json_block(error_payload),
-                        prefix="        ",
-                    )
-                )
-            started_at = (
-                payload.get("started_at")
-                or payload.get("first_observed_at")
-                or payload.get("observed_at")
-            )
-            completed_at = payload.get("completed_at") or payload.get("last_observed_at")
-            if started_at or completed_at:
-                lines.append(indent_block(_("Timeline:")))
-                if started_at:
-                    formatted_start = format_entry_timestamp(started_at)
-                    if not formatted_start:
-                        formatted_start = normalize_for_display(str(started_at))
-                    lines.append(
-                        indent_block(
-                            _("Started at {timestamp}").format(
-                                timestamp=formatted_start
-                            ),
-                            prefix="        ",
-                        )
-                    )
-                if completed_at:
-                    formatted_end = format_entry_timestamp(completed_at)
-                    if not formatted_end:
-                        formatted_end = normalize_for_display(str(completed_at))
-                    lines.append(
-                        indent_block(
-                            _("Completed at {timestamp}").format(
-                                timestamp=formatted_end
-                            ),
-                            prefix="        ",
-                        )
-                    )
-            extras = {
-                key: value
-                for key, value in payload.items()
-                if key
-                not in {
-                    "tool_name",
-                    "name",
-                    "tool",
-                    "call_id",
-                    "tool_call_id",
-                    "ok",
-                    "tool_arguments",
-                    "result",
-                    "error",
-                    "started_at",
-                    "completed_at",
-                    "first_observed_at",
-                    "last_observed_at",
-                    "observed_at",
-                }
-            }
-            if extras:
-                lines.append(indent_block(_("Additional fields:")))
-                lines.append(
-                    indent_block(
-                        format_json_block(extras),
-                        prefix="        ",
-                    )
-                )
+            lines = [header]
+            text_value = normalize_for_display(response.display_text or response.text or "")
+            if text_value:
+                lines.append(indent_block(text_value))
             return lines
 
-        def ensure_diagnostic(
-            entry: ChatEntry, history_messages: Sequence[Mapping[str, Any]]
-        ) -> Mapping[str, Any]:
-            diagnostic = entry.diagnostic
-            if isinstance(diagnostic, Mapping):
-                return diagnostic
-            diagnostic = self._build_entry_diagnostic(
-                prompt=entry.prompt,
-                prompt_at=entry.prompt_at,
-                response_at=entry.response_at,
-                display_response=entry.display_response or entry.response,
-                stored_response=entry.response,
-                raw_result=entry.raw_result,
-                tool_results=entry.tool_results,
-                history_snapshot=history_messages,
-                context_snapshot=entry.context_messages,
+        blocks: list[str] = []
+        for entry in timeline.entries:
+            prompt = entry.prompt
+            prompt_timestamp = format_timestamp_info(
+                prompt.timestamp if prompt is not None else None
             )
-            if isinstance(diagnostic, Mapping):
-                entry.diagnostic = diagnostic
-                return diagnostic
-            return {}
+            if prompt is not None:
+                header = _("[{timestamp}] You:").format(timestamp=prompt_timestamp)
+                blocks.append(header)
+                text_value = normalize_for_display(prompt.text)
+                if text_value:
+                    blocks.append(indent_block(text_value))
+            if entry.context_messages:
+                header = _("[{timestamp}] Context messages:").format(
+                    timestamp=prompt_timestamp
+                )
+                blocks.append(header)
+                blocks.append(indent_block(format_json_block(entry.context_messages)))
 
-        def format_message_list(
-            messages: Sequence[Mapping[str, Any]] | None,
-        ) -> str:
-            if not messages:
-                return format_json_block(None)
-            prepared: list[dict[str, Any]] = []
-            for message in messages:
-                if isinstance(message, Mapping):
-                    prepared.append(dict(message))
-            if not prepared:
-                return format_json_block(None)
-            safe_value = history_json_safe(prepared)
-            return format_json_block(safe_value)
+            turn = entry.agent_turn
+            if turn is not None:
+                for response in turn.streamed_responses:
+                    blocks.extend(describe_agent_response(response, turn.timestamp))
+                if turn.final_response is not None:
+                    blocks.extend(describe_agent_response(turn.final_response, turn.timestamp))
 
-        def gather_history_messages(limit: int) -> list[dict[str, Any]]:
-            history_messages: list[dict[str, Any]] = []
-            for previous in conversation.entries[:limit]:
-                if previous.prompt:
-                    history_messages.append(
-                        {
-                            "role": "user",
-                            "content": normalize_for_display(previous.prompt),
-                        }
+                if turn.reasoning:
+                    header = _("[{timestamp}] Model reasoning:").format(
+                        timestamp=format_timestamp_info(turn.timestamp)
                     )
-                if previous.response:
-                    history_messages.append(
-                        {
-                            "role": "assistant",
-                            "content": normalize_for_display(previous.response),
-                        }
+                    blocks.append(header)
+                    blocks.append(indent_block(format_json_block(turn.reasoning)))
+
+                if turn.llm_request is not None and turn.llm_request.messages:
+                    payload: dict[str, Any] = {"messages": turn.llm_request.messages}
+                    if turn.llm_request.sequence is not None:
+                        payload["sequence"] = turn.llm_request.sequence
+                    header = _("[{timestamp}] LLM request:").format(
+                        timestamp=format_timestamp_info(turn.timestamp)
                     )
-            return history_messages
+                    blocks.append(header)
+                    blocks.append(indent_block(format_json_block(payload)))
 
-        lines: list[str] = []
-        lines.append(
-            _("Conversation ID: {conversation_id}").format(
-                conversation_id=normalize_for_display(conversation.conversation_id)
-            )
-        )
-        lines.append(
-            _("Created at: {timestamp}").format(
-                timestamp=format_timestamp(conversation.created_at)
-            )
-        )
-        lines.append(
-            _("Updated at: {timestamp}").format(
-                timestamp=format_timestamp(conversation.updated_at)
-            )
-        )
-        lines.append(_("Entries: {count}").format(count=len(conversation.entries)))
-        lines.append("")
-        lines.append(_("Event timeline:"))
-        if not timeline.events:
-            lines.append(indent_block(_("No transcript events recorded.")))
-        else:
-            for event in timeline.events:
-                lines.extend(describe_event(event))
-                lines.append("")
-        lines.append("")
-        lines.append(_("LLM system prompt:"))
-        lines.append(indent_block(normalize_for_display(SYSTEM_PROMPT)))
-        lines.append(_("LLM tool specification:"))
-        lines.append(indent_block(format_message_list(TOOLS)))
-        lines.append("")
-
-        for index, entry in enumerate(conversation.entries, start=1):
-            lines.append(_("=== Interaction {index} ===").format(index=index))
-            lines.append(
-                _("Prompt timestamp: {timestamp}").format(
-                    timestamp=format_timestamp(entry.prompt_at)
-                )
-            )
-            history_messages = gather_history_messages(index - 1)
-            diagnostic = ensure_diagnostic(entry, history_messages)
-            request_sequence = diagnostic.get("llm_request_messages_sequence")
-            lines.extend(
-                format_llm_request_sequence(
-                    request_sequence
-                    if isinstance(request_sequence, Sequence)
-                    else None
-                )
-            )
-            if TOOLS:
-                lines.append(
-                    _(
-                        "Tool specifications are sent as a separate payload and therefore do not appear inside the compiled request messages."
+                for details in turn.tool_calls:
+                    summary = details.summary
+                    tool_name = normalize_for_display(summary.tool_name or _("Unnamed tool"))
+                    status_label = normalize_for_display(summary.status or _("returned data"))
+                    header = _("[{timestamp}] Tool call {index}: {tool} — {status}").format(
+                        timestamp=format_timestamp_info(turn.timestamp),
+                        index=summary.index,
+                        tool=tool_name,
+                        status=status_label,
                     )
+                    blocks.append(header)
+                    if summary.bullet_lines:
+                        for bullet in summary.bullet_lines:
+                            if bullet:
+                                blocks.append(indent_block(normalize_for_display(bullet)))
+                    blocks.append(indent_block(format_json_block(details.raw_payload)))
+                    if details.llm_request is not None:
+                        blocks.append(indent_block(format_json_block(details.llm_request)))
+                    if details.call_identifier:
+                        identifier_line = _("Call identifier: {identifier}").format(
+                            identifier=normalize_for_display(details.call_identifier)
+                        )
+                        blocks.append(indent_block(identifier_line))
+
+                if turn.raw_payload is not None:
+                    header = _("[{timestamp}] Raw LLM payload:").format(
+                        timestamp=format_timestamp_info(turn.timestamp)
+                    )
+                    blocks.append(header)
+                    blocks.append(indent_block(format_json_block(turn.raw_payload)))
+
+            for system_message in entry.system_messages:
+                header = _("[{timestamp}] System message:").format(
+                    timestamp=format_timestamp_info(None)
                 )
-            lines.append(
-                _("Response timestamp: {timestamp}").format(
-                    timestamp=format_timestamp(entry.response_at)
-                )
-            )
+                blocks.append(header)
+                text_value = normalize_for_display(getattr(system_message, "message", ""))
+                if text_value:
+                    blocks.append(indent_block(text_value))
+                details_payload = getattr(system_message, "details", None)
+                if details_payload is not None:
+                    blocks.append(indent_block(format_json_block(details_payload)))
 
-            llm_message_text = diagnostic.get("llm_final_message")
-            lines.append(_("LLM → Agent message:"))
-            if llm_message_text:
-                lines.append(indent_block(normalize_for_display(str(llm_message_text))))
-            else:
-                lines.append(indent_block(_("(none)")))
-
-            planned_calls = diagnostic.get("llm_tool_calls")
-            if isinstance(planned_calls, Sequence):
-                lines.extend(format_planned_tool_calls(planned_calls))
-            elif planned_calls:
-                lines.extend(format_planned_tool_calls([planned_calls]))
-
-            tool_payloads = sort_tool_payloads(diagnostic.get("tool_exchanges") or [])
-            if tool_payloads:
-                for tool_index, payload in enumerate(tool_payloads, start=1):
-                    lines.extend(format_tool_exchange(tool_index, payload))
-            else:
-                lines.append(_("Agent → MCP calls: (none)"))
-                lines.append(_("MCP → Agent responses: (none)"))
-
-            agent_text = diagnostic.get("agent_response_text")
-            if not agent_text:
-                agent_text = entry.display_response or entry.response
-            agent_text = normalize_for_display(agent_text or "")
-            lines.append(_("Agent → User response:"))
-            if agent_text:
-                lines.append(indent_block(agent_text))
-            else:
-                lines.append(indent_block(_("(empty)")))
-            stored_response = diagnostic.get("agent_stored_response")
-            if not stored_response:
-                stored_response = entry.response
-            stored_response = normalize_for_display(stored_response or "")
-            if stored_response and stored_response != agent_text:
-                lines.append(_("Agent stored response payload:"))
-                lines.append(indent_block(stored_response))
-            lines.append(_("Tokens: {count}").format(count=entry.tokens))
-
-            error_payload = diagnostic.get("error_payload")
-            raw_result_payload = diagnostic.get("raw_result")
-            if raw_result_payload is None and entry.raw_result is not None:
-                raw_result_payload = entry.raw_result
-            if raw_result_payload is not None:
-                if error_payload:
-                    lines.append(_("Agent reported error payload:"))
-                    lines.append(indent_block(format_json_block(error_payload)))
-                lines.append(_("Agent raw result payload:"))
-                lines.append(indent_block(format_json_block(raw_result_payload)))
-            lines.append("")
-
-        return "\n".join(line for line in lines if line is not None).strip()
+        return "\n".join(block for block in blocks if block)
 
     def _update_transcript_copy_buttons(self, enabled: bool) -> None:
         for button in (

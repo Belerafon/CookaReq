@@ -651,7 +651,7 @@ class ToolCallPanel(wx.Panel):
             text=text,
             align="left",
             allow_selection=True,
-            palette=tool_bubble_palette(self),
+            palette=tool_bubble_palette(self.GetBackgroundColour(), tool_name),
             width_hint=self._resolve_hint("tool"),
             on_width_change=lambda width: self._emit_layout_hint("tool", width),
         )

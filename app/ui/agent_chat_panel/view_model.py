@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from enum import Enum
 import itertools
@@ -58,6 +59,11 @@ def _event_sort_key(event: ChatEvent) -> tuple[int, Any, int, int]:
     """Sort events primarily by their actual timestamps."""
 
     order = _EVENT_DISPLAY_ORDER.get(event.kind, 99)
+    if isinstance(event, ResponseEvent) and not getattr(event, "is_final", False):
+        pseudo_time = _dt.datetime(1, 1, 1, tzinfo=_dt.timezone.utc) + _dt.timedelta(
+            microseconds=max(1, event.sequence_index + 1)
+        )
+        return (0, pseudo_time, order, event.sequence_index)
     occurred = event.occurred_at
     if occurred is not None:
         return (0, occurred, order, event.sequence_index)
@@ -105,6 +111,8 @@ class ResponseEvent(ChatEvent):
     display_text: str
     formatted_timestamp: str
     regenerated: bool
+    step_index: int | None = None
+    is_final: bool = False
 
 
 @dataclass(slots=True)
@@ -149,6 +157,7 @@ class EntryTimeline:
     entry: ChatEntry
     prompt: PromptEvent
     response: ResponseEvent | None
+    intermediate_responses: tuple[ResponseEvent, ...]
     context: ContextEvent | None
     reasoning: ReasoningEvent | None
     llm_request: LlmRequestEvent | None
@@ -169,6 +178,7 @@ class EntryTimeline:
             ordered.append(self.llm_request)
         if self.reasoning is not None:
             ordered.append(self.reasoning)
+        ordered.extend(self.intermediate_responses)
         ordered.extend(self.tool_calls)
         if self.response is not None:
             ordered.append(self.response)
@@ -254,6 +264,19 @@ def build_conversation_timeline(
                 conversation_created_at,
             ),
         )
+        step_events = _build_step_response_events(
+            entry_id,
+            entry_index,
+            sequence_counter,
+            entry,
+            final_response_text=entry.display_response or entry.response,
+            fallback_timestamp=_choose_timestamp(
+                entry.response_at,
+                entry.prompt_at,
+                conversation_updated_at,
+                conversation_created_at,
+            ),
+        )
         response_event = _build_response_event(
             entry_id,
             entry_index,
@@ -308,6 +331,7 @@ def build_conversation_timeline(
             entry=entry,
             prompt=prompt_event,
             response=response_event,
+            intermediate_responses=step_events,
             context=context_event,
             reasoning=reasoning_event,
             llm_request=llm_request_event,
@@ -634,7 +658,165 @@ def _build_response_event(
         display_text=display_text,
         formatted_timestamp=formatted_timestamp,
         regenerated=bool(getattr(entry, "regenerated", False)),
+        step_index=None,
+        is_final=True,
     )
+
+
+# ---------------------------------------------------------------------------
+def _build_step_response_events(
+    entry_id: str,
+    entry_index: int,
+    sequence_counter: itertools.count,
+    entry: ChatEntry,
+    *,
+    final_response_text: str | None,
+    fallback_timestamp: str | None,
+) -> tuple[ResponseEvent, ...]:
+    payloads = _collect_llm_step_payloads(entry)
+    if not payloads:
+        return ()
+
+    final_text = _normalise_message_text(final_response_text)
+    events: list[ResponseEvent] = []
+    for position, payload in enumerate(payloads, start=1):
+        sequence_index = next(sequence_counter)
+        event = _build_step_response_event(
+            entry_id,
+            entry_index,
+            sequence_index,
+            payload,
+            fallback_timestamp=fallback_timestamp,
+            fallback_step_index=position,
+        )
+        if event is None:
+            continue
+        event_text = _normalise_message_text(event.display_text or event.text)
+        if final_text and event_text == final_text:
+            continue
+        events.append(event)
+    return tuple(events)
+
+
+def _build_step_response_event(
+    entry_id: str,
+    entry_index: int,
+    sequence_index: int,
+    payload: Mapping[str, Any],
+    *,
+    fallback_timestamp: str | None,
+    fallback_step_index: int,
+) -> ResponseEvent | None:
+    if not isinstance(payload, Mapping):
+        return None
+    response_payload = payload.get("response")
+    if not isinstance(response_payload, Mapping):
+        return None
+    content_value = response_payload.get("content")
+    if not isinstance(content_value, str):
+        return None
+    text = content_value.strip()
+    if not text:
+        return None
+
+    timestamp_raw = response_payload.get("timestamp")
+    timestamp_str = (
+        timestamp_raw.strip()
+        if isinstance(timestamp_raw, str) and timestamp_raw.strip()
+        else None
+    )
+    occurred_at = parse_iso_timestamp(timestamp_str or fallback_timestamp)
+    formatted_timestamp = (
+        format_entry_timestamp(timestamp_str)
+        if timestamp_str
+        else ""
+    )
+
+    step_raw = payload.get("step")
+    step_index: int | None = None
+    if isinstance(step_raw, (int, float)):
+        step_index = int(step_raw)
+    elif isinstance(step_raw, str):
+        with suppress(ValueError):
+            step_index = int(step_raw.strip())
+    if step_index is None:
+        step_index = fallback_step_index
+
+    event_id = f"{entry_id}:response-step:{sequence_index}"
+    timestamp_value = timestamp_str or fallback_timestamp
+    return ResponseEvent(
+        event_id=event_id,
+        entry_id=entry_id,
+        entry_index=entry_index,
+        sequence_index=sequence_index,
+        kind=ChatEventKind.RESPONSE,
+        occurred_at=occurred_at,
+        timestamp=timestamp_value,
+        text=text,
+        display_text=text,
+        formatted_timestamp=formatted_timestamp,
+        regenerated=False,
+        step_index=step_index,
+        is_final=False,
+    )
+
+
+def _collect_llm_step_payloads(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
+    ordered: list[tuple[int, int | None, str, dict[str, Any]]] = []
+    index_by_key: dict[str, int] = {}
+    auto_counter = 0
+
+    for source in _iter_llm_request_sources(entry):
+        steps = source.get("llm_steps")
+        if not isinstance(steps, Sequence) or isinstance(steps, (str, bytes, bytearray)):
+            continue
+        for step_payload in steps:
+            safe_step = history_json_safe(step_payload)
+            if not isinstance(safe_step, Mapping):
+                continue
+            record = dict(safe_step)
+            step_value = record.get("step")
+            numeric_index: int | None = None
+            if isinstance(step_value, (int, float)):
+                numeric_index = int(step_value)
+                key = str(numeric_index)
+            elif isinstance(step_value, str) and step_value.strip():
+                key = step_value.strip()
+                if key.isdigit():
+                    try:
+                        numeric_index = int(key)
+                    except ValueError:
+                        numeric_index = None
+            else:
+                auto_counter += 1
+                key = f"auto-{auto_counter}"
+
+            if key in index_by_key:
+                position = index_by_key[key]
+                order_index, _, existing_key, _ = ordered[position]
+                ordered[position] = (order_index, numeric_index, existing_key, record)
+            else:
+                order_index = len(ordered)
+                index_by_key[key] = order_index
+                ordered.append((order_index, numeric_index, key, record))
+
+    if not ordered:
+        return ()
+
+    ordered.sort(
+        key=lambda item: (
+            item[1] if item[1] is not None else item[0],
+            item[0],
+        )
+    )
+    return tuple(record for _, _, _, record in ordered)
+
+
+def _normalise_message_text(value: str | None) -> str:
+    if not value:
+        return ""
+    text = str(value)
+    return " ".join(text.split())
 
 
 # ---------------------------------------------------------------------------

@@ -90,6 +90,10 @@ def bubble_header_text(bubble: MessageBubble) -> str:
     return ""
 
 
+def bubble_body_text(bubble: MessageBubble) -> str:
+    return getattr(bubble, "_text_value", "")
+
+
 def collapsible_label(pane) -> str:
     import wx  # noqa: PLC0415 - GUI helper
 
@@ -1442,6 +1446,23 @@ def test_tool_summary_includes_llm_exchange(wx_app):
         assert "\"rid\": \"REQ-1\"" in summary_text
         assert "LLM response:" in summary_text
         assert "Applying updates" in summary_text
+
+        agent_bubbles = [
+            bubble
+            for bubble in collect_message_bubbles(agent_panel)
+            if "Agent" in bubble_header_text(bubble)
+        ]
+        assert len(agent_bubbles) == 2
+        step_bubble, final_bubble = agent_bubbles
+        assert "Step" in bubble_header_text(step_bubble)
+        assert "Applying updates" in bubble_body_text(step_bubble)
+        assert "Agent answer" in bubble_body_text(final_bubble)
+
+        children = agent_panel.GetChildren()
+        step_index = children.index(step_bubble)
+        tool_index = children.index(tool_pane)
+        final_index = children.index(final_bubble)
+        assert step_index < tool_index < final_index
     finally:
         if panel is not None:
             panel.Destroy()
@@ -2074,14 +2095,20 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         tool_events = timeline.entries[entry_index].tool_calls
         assert any(event.llm_request for event in tool_events), "expected llm request payload"
         bubbles = collect_message_bubbles(panel)
-        assert len(bubbles) == 2
+        assert len(bubbles) == 3
 
         agent_panel = panel.FindWindow("agent-entry")
         assert agent_panel is not None
-        agent_bubble = next(
+        agent_bubbles = [
             bubble
             for bubble in collect_message_bubbles(agent_panel)
             if "Agent" in bubble_header_text(bubble)
+        ]
+        assert len(agent_bubbles) == 2
+        step_bubble, agent_bubble = agent_bubbles
+        assert "Step" in bubble_header_text(step_bubble)
+        assert "Now I will translate the selected requirements" in bubble_body_text(
+            step_bubble
         )
         user_bubble = next(
             bubble for bubble in bubbles if "You" in bubble_header_text(bubble)

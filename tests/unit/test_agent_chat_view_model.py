@@ -196,6 +196,79 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     assert response_payload.get("content") == "Applying updates"
 
 
+def test_step_responses_rendered_as_events() -> None:
+    entry = ChatEntry(
+        prompt="do work",
+        response="Final result",
+        tokens=1,
+        prompt_at="2025-10-01T08:00:00+00:00",
+        response_at="2025-10-01T08:05:00+00:00",
+        tool_results=[
+            {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "call-1",
+                "started_at": "2025-10-01T08:01:00+00:00",
+                "completed_at": "2025-10-01T08:02:00+00:00",
+                "ok": False,
+            }
+        ],
+        raw_result={
+            "diagnostic": {
+                "llm_steps": [
+                    {
+                        "step": 1,
+                        "response": {
+                            "content": "Preparing request",
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "name": "update_requirement_field",
+                                    "arguments": {"rid": "REQ-1"},
+                                }
+                            ],
+                        },
+                    },
+                    {
+                        "step": 2,
+                        "response": {
+                            "content": "Final result",
+                        },
+                    },
+                ]
+            }
+        },
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    entry_timeline = timeline.entries[0]
+
+    assert entry_timeline.intermediate_responses
+    step_event = entry_timeline.intermediate_responses[0]
+    assert step_event.text == "Preparing request"
+    assert step_event.step_index == 1
+    assert step_event.is_final is False
+
+    final_event = entry_timeline.response
+    assert final_event is not None
+    assert final_event.text == "Final result"
+    assert final_event.is_final is True
+
+    response_events = [
+        event
+        for event in entry_timeline.events
+        if event.kind is ChatEventKind.RESPONSE
+    ]
+    assert len(response_events) == 2
+    assert response_events[0] is step_event
+    assert response_events[1] is final_event
+
+    tool_index = entry_timeline.events.index(entry_timeline.tool_calls[0])
+    assert entry_timeline.events.index(step_event) < tool_index < entry_timeline.events.index(
+        final_event
+    )
+
+
 def test_llm_request_event_uses_diagnostic_sequence() -> None:
     entry = ChatEntry(
         prompt="translate",

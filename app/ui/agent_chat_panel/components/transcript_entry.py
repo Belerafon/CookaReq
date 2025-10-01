@@ -251,6 +251,7 @@ class TranscriptEntryPanel(wx.Panel):
 
         agent_sections_present = bool(
             timeline.response
+            or timeline.intermediate_responses
             or timeline.reasoning
             or timeline.raw_payload
             or timeline.llm_request
@@ -542,74 +543,39 @@ class TranscriptEntryPanel(wx.Panel):
         container_sizer = wx.BoxSizer(wx.VERTICAL)
         container.SetSizer(container_sizer)
 
-        before: list[wx.Window] = []
-        after: list[wx.Window] = []
-        response_bubble: MessageBubble | None = None
-        encountered_response = False
+        rendered: list[wx.Window] = []
+        final_bubble: MessageBubble | None = None
 
         for event in events:
             if isinstance(event, ResponseEvent):
-                encountered_response = True
-                response_bubble = MessageBubble(
-                    container,
-                    role_label=_("Agent"),
-                    timestamp=event.formatted_timestamp,
-                    text=event.display_text or event.text or "",
-                    align="left",
-                    allow_selection=True,
-                    render_markdown=True,
-                    width_hint=self._resolve_hint("agent"),
-                    on_width_change=lambda width: self._emit_layout_hint("agent", width),
-                )
-                self._agent_bubble = response_bubble
+                bubble = self._create_agent_message_bubble(container, event)
+                if bubble is None:
+                    continue
+                rendered.append(bubble)
+                if event.is_final:
+                    final_bubble = bubble
                 continue
 
             section = self._create_agent_section(container, event)
             if section is None:
                 continue
-            place_after = isinstance(event, (ToolCallEvent, RawPayloadEvent))
-            if place_after or encountered_response:
-                after.append(section)
-            else:
-                before.append(section)
+            rendered.append(section)
 
-        if response_bubble is None and timeline.response is not None:
-            response_event = timeline.response
-            response_bubble = MessageBubble(
-                container,
-                role_label=_("Agent"),
-                timestamp=response_event.formatted_timestamp,
-                text=response_event.display_text or response_event.text or "",
-                align="left",
-                allow_selection=True,
-                render_markdown=True,
-                width_hint=self._resolve_hint("agent"),
-                on_width_change=lambda width: self._emit_layout_hint("agent", width),
-            )
-            self._agent_bubble = response_bubble
+        if final_bubble is None and timeline.response is not None:
+            bubble = self._create_agent_message_bubble(container, timeline.response)
+            if bubble is not None:
+                rendered.append(bubble)
+                final_bubble = bubble
 
-        for index, widget in enumerate(before):
+        if final_bubble is not None:
+            self._agent_bubble = final_bubble
+
+        for index, widget in enumerate(rendered):
             container_sizer.Add(
                 widget,
                 0,
                 wx.EXPAND | (wx.TOP if index else 0),
                 container.FromDIP(4) if index else 0,
-            )
-
-        if response_bubble is not None:
-            container_sizer.Add(
-                response_bubble,
-                0,
-                wx.EXPAND | (wx.TOP if before else 0),
-                container.FromDIP(4) if before else 0,
-            )
-
-        for widget in after:
-            container_sizer.Add(
-                widget,
-                0,
-                wx.EXPAND | wx.TOP,
-                container.FromDIP(4),
             )
 
         regenerate_button: wx.Button | None = None
@@ -626,11 +592,39 @@ class TranscriptEntryPanel(wx.Panel):
         else:
             self._regenerate_handler = on_regenerate
 
-        if not before and response_bubble is None and not after:
+        if not rendered:
             container.Destroy()
             return None, regenerate_button
 
         return container, regenerate_button
+
+    # ------------------------------------------------------------------
+    def _create_agent_message_bubble(
+        self, parent: wx.Window, event: ResponseEvent
+    ) -> MessageBubble | None:
+        text = event.display_text or event.text or ""
+        if not text and not event.is_final:
+            return None
+
+        timestamp_label = event.formatted_timestamp
+        if not timestamp_label:
+            if event.step_index is not None and not event.is_final:
+                timestamp_label = _("Step {index}").format(index=event.step_index)
+            elif event.timestamp:
+                timestamp_label = normalize_for_display(event.timestamp)
+
+        bubble = MessageBubble(
+            parent,
+            role_label=_("Agent"),
+            timestamp=timestamp_label,
+            text=text,
+            align="left",
+            allow_selection=True,
+            render_markdown=True,
+            width_hint=self._resolve_hint("agent"),
+            on_width_change=lambda width: self._emit_layout_hint("agent", width),
+        )
+        return bubble
 
     # ------------------------------------------------------------------
     def _create_agent_section(

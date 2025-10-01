@@ -1848,6 +1848,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return
         response_payload = payload.get("response")
         updated = False
+        updated |= self._update_entry_llm_steps(entry, payload)
         if isinstance(response_payload, Mapping):
             content_value = response_payload.get("content")
             if isinstance(content_value, str):
@@ -1865,6 +1866,38 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 updated = True
         if updated:
             self._render_transcript()
+
+    def _update_entry_llm_steps(
+        self, entry: ChatEntry, payload: Mapping[str, Any]
+    ) -> bool:
+        safe_payload = history_json_safe(payload)
+        if not isinstance(safe_payload, Mapping):
+            return False
+        record = dict(safe_payload)
+
+        diagnostic = entry.diagnostic
+        if not isinstance(diagnostic, dict):
+            diagnostic = {}
+            entry.diagnostic = diagnostic
+
+        steps = diagnostic.get("llm_steps")
+        if isinstance(steps, list):
+            step_key = record.get("step")
+            key_text = str(step_key) if step_key is not None else None
+            for index, existing in enumerate(steps):
+                if not isinstance(existing, Mapping):
+                    continue
+                existing_key = existing.get("step")
+                if key_text is not None and str(existing_key) == key_text:
+                    if dict(existing) == record:
+                        return False
+                    steps[index] = record
+                    return True
+            steps.append(record)
+            return True
+
+        diagnostic["llm_steps"] = [record]
+        return True
 
     @staticmethod
     def _merge_tool_result_timelines(

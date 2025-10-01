@@ -838,6 +838,7 @@ class TranscriptEntryPanel(wx.Panel):
 
         rendered: list[wx.Window] = []
         final_bubble: MessageBubble | None = None
+        tool_events: list[ToolCallEvent] = []
 
         for event in events:
             if isinstance(event, ResponseEvent):
@@ -847,6 +848,10 @@ class TranscriptEntryPanel(wx.Panel):
                 rendered.append(bubble)
                 if event.is_final:
                     final_bubble = bubble
+                continue
+
+            if isinstance(event, ToolCallEvent):
+                tool_events.append(event)
                 continue
 
             section = self._create_agent_section(container, event)
@@ -862,6 +867,17 @@ class TranscriptEntryPanel(wx.Panel):
 
         if final_bubble is not None:
             self._agent_bubble = final_bubble
+
+        if tool_events:
+            if final_bubble is not None:
+                self._attach_tool_call_footer(final_bubble, tool_events)
+            else:
+                for event in tool_events:
+                    pane = self._create_tool_collapsible(container, event)
+                    if pane is None:
+                        continue
+                    self._register_collapsible(f"tool:{event.event_id}", pane)
+                    rendered.append(pane)
 
         for index, widget in enumerate(rendered):
             container_sizer.Add(
@@ -918,6 +934,34 @@ class TranscriptEntryPanel(wx.Panel):
             on_width_change=lambda width: self._emit_layout_hint("agent", width),
         )
         return bubble
+
+    # ------------------------------------------------------------------
+    def _attach_tool_call_footer(
+        self, bubble: MessageBubble, events: Sequence[ToolCallEvent]
+    ) -> None:
+        if not events:
+            bubble.set_footer(None)
+            return
+
+        def factory(parent: wx.Window) -> wx.Sizer | None:
+            sizer = wx.BoxSizer(wx.VERTICAL)
+            padding = parent.FromDIP(4)
+            added = False
+            for event in events:
+                pane = self._create_tool_collapsible(parent, event)
+                if pane is None:
+                    continue
+                self._register_collapsible(f"tool:{event.event_id}", pane)
+                border = padding if added else 0
+                flag = wx.EXPAND | (wx.TOP if added else 0)
+                sizer.Add(pane, 0, flag, border)
+                added = True
+            if not added:
+                sizer.Clear(delete_windows=True)
+                return None
+            return sizer
+
+        bubble.set_footer(factory)
 
     # ------------------------------------------------------------------
     def _create_agent_section(

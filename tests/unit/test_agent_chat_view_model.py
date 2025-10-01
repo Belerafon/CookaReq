@@ -1,5 +1,7 @@
 from collections.abc import Mapping
 
+import pytest
+
 from app.ui.agent_chat_panel.view_model import build_conversation_timeline
 from app.ui.chat_entry import ChatConversation, ChatEntry
 
@@ -358,6 +360,41 @@ def test_tool_summary_compacts_error_details() -> None:
     assert any("Error VALIDATION_ERROR" in line for line in summary.bullet_lines)
     assert not any(line.startswith("Error message:") for line in summary.bullet_lines)
 
+
+def test_tool_summary_includes_diagnostics_metadata() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="",
+        tokens=1,
+        prompt_at="2025-10-01T08:00:00+00:00",
+        response_at="2025-10-01T08:05:00+00:00",
+        tool_results=[
+            {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "tool-42",
+                "arguments": {"rid": "REQ-9", "field": "title"},
+                "started_at": "2025-10-01T08:01:00+00:00",
+                "completed_at": "2025-10-01T08:01:02+00:00",
+                "duration_ms": 2150,
+                "cost": {"display": "$0.01"},
+                "ok": False,
+                "error": {"message": "validation failed"},
+            }
+        ],
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+    summary = turn.tool_calls[0].summary
+
+    assert summary.duration is not None
+    assert summary.duration == pytest.approx(2.15, rel=1e-6)
+    assert summary.cost == "$0.01"
+    assert summary.error_message == "validation failed"
+    assert isinstance(summary.arguments, Mapping)
+    assert summary.arguments["rid"] == "REQ-9"
 
 def test_llm_request_sequence_preserved() -> None:
     entry = ChatEntry(

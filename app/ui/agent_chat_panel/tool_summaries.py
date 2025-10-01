@@ -10,7 +10,7 @@ import json
 
 from ...i18n import _
 from ..text import normalize_for_display
-from .time_formatting import format_entry_timestamp
+from .time_formatting import format_entry_timestamp, parse_iso_timestamp
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,10 @@ class ToolCallSummary:
     completed_at: str | None = None
     last_observed_at: str | None = None
     raw_payload: Any | None = None
+    duration: float | None = None
+    cost: str | None = None
+    error_message: str | None = None
+    arguments: Any | None = None
 
 
 def summarize_tool_results(
@@ -62,12 +66,151 @@ def _normalise_timestamp(value: Any) -> str | None:
     return None
 
 
+def _coerce_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    return None
+
+
+def _extract_duration_seconds(payload: Mapping[str, Any]) -> float | None:
+    for key in (
+        "duration_seconds",
+        "duration_secs",
+        "duration_sec",
+        "duration_s",
+        "duration",
+    ):
+        candidate = _coerce_float(payload.get(key))
+        if candidate is not None and candidate >= 0:
+            return candidate
+    duration_ms = _coerce_float(payload.get("duration_ms"))
+    if duration_ms is not None and duration_ms >= 0:
+        return duration_ms / 1000.0
+    start_raw = (
+        payload.get("started_at")
+        or payload.get("first_observed_at")
+        or payload.get("observed_at")
+    )
+    end_raw = (
+        payload.get("completed_at")
+        or payload.get("last_observed_at")
+        or payload.get("observed_at")
+    )
+    start = parse_iso_timestamp(start_raw)
+    end = parse_iso_timestamp(end_raw)
+    if start and end:
+        delta = (end - start).total_seconds()
+        if delta >= 0:
+            return delta
+    return None
+
+
+def _format_cost_value(value: Any) -> str | None:
+    if isinstance(value, (int, float)):
+        return normalize_for_display(f"{value}")
+    if isinstance(value, str):
+        text = value.strip()
+        if text:
+            return normalize_for_display(text)
+    return None
+
+
+def _coerce_cost_text(value: Any) -> str | None:
+    if isinstance(value, Mapping):
+        for key in (
+            "display",
+            "formatted",
+            "text",
+            "label",
+            "value",
+            "total",
+            "amount",
+            "usd",
+        ):
+            text = _coerce_cost_text(value.get(key))
+            if text:
+                return text
+        return None
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        for item in value:
+            text = _coerce_cost_text(item)
+            if text:
+                return text
+        return None
+    text = _format_cost_value(value)
+    if text:
+        return text
+    if value is not None:
+        try:
+            return format_value_snippet(value)
+        except Exception:  # pragma: no cover - defensive
+            return None
+    return None
+
+
+def _extract_cost_text(payload: Mapping[str, Any]) -> str | None:
+    for key in ("cost", "usage_cost", "price", "total_cost"):
+        if key in payload:
+            text = _coerce_cost_text(payload.get(key))
+            if text:
+                return text
+    return None
+
+
+def _extract_arguments(payload: Mapping[str, Any]) -> Any | None:
+    for key in ("tool_arguments", "arguments", "args"):
+        if key not in payload:
+            continue
+        candidate = payload.get(key)
+        if candidate is None:
+            continue
+        from .history_utils import history_json_safe  # local import to avoid cycle
+
+        return history_json_safe(candidate)
+    return None
+
+
+def _derive_error_message(payload: Mapping[str, Any]) -> str | None:
+    message = extract_error_message(payload.get("error"))
+    if not message:
+        extra_message = payload.get("error_message") or payload.get("message")
+        if isinstance(extra_message, str):
+            text = extra_message.strip()
+            if text:
+                message = shorten_text(normalize_for_display(text))
+    if not message:
+        agent_status = payload.get("agent_status")
+        if isinstance(agent_status, str):
+            status_text = agent_status.strip()
+            if status_text:
+                prefix, _, remainder = status_text.partition(":")
+                if prefix.strip().lower() == "failed":
+                    candidate = remainder.strip() or prefix.strip()
+                    if candidate:
+                        message = shorten_text(normalize_for_display(candidate))
+    return message or None
+
+
 def summarize_tool_payload(
     index: int, payload: Mapping[str, Any]
 ) -> ToolCallSummary | None:
     tool_name = extract_tool_name(payload)
     status = format_tool_status(payload)
     bullet_lines = list(summarize_tool_details(payload))
+    duration_seconds = _extract_duration_seconds(payload)
+    cost_text = _extract_cost_text(payload)
+    error_text = _derive_error_message(payload)
+    arguments = _extract_arguments(payload)
     started_at = _normalise_timestamp(
         payload.get("started_at") or payload.get("first_observed_at")
     )
@@ -100,6 +243,10 @@ def summarize_tool_payload(
         started_at=started_at,
         completed_at=completed_at,
         last_observed_at=last_observed,
+        duration=duration_seconds,
+        cost=cost_text,
+        error_message=error_text,
+        arguments=arguments,
     )
 
 

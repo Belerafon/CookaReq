@@ -15,7 +15,7 @@ from ..splitter_utils import refresh_splitter_highlight, style_splitter
 from .batch_ui import BatchControls
 from .confirm_preferences import RequirementConfirmPreference
 from .history_view import HistoryView
-from .transcript_view import TranscriptCallbacks, TranscriptView
+from .segment_view import SegmentListView, SegmentViewCallbacks
 
 if TYPE_CHECKING:  # pragma: no cover - type hints only
     from .panel import AgentChatPanel
@@ -38,7 +38,7 @@ class AgentChatLayout:
     transcript_container: wx.Panel
     transcript_scroller: ScrolledPanel
     transcript_sizer: wx.BoxSizer
-    transcript_view: TranscriptView
+    transcript_view: SegmentListView
     bottom_panel: wx.Panel
     input_control: wx.TextCtrl
     stop_button: wx.Button
@@ -152,11 +152,11 @@ class AgentChatLayoutBuilder:
         transcript_box = wx.BoxSizer(wx.VERTICAL)
         transcript_scroller.SetSizer(transcript_box)
 
-        transcript_view = TranscriptView(
+        transcript_view = SegmentListView(
             panel,
             transcript_scroller,
             transcript_box,
-            callbacks=TranscriptCallbacks(
+            callbacks=SegmentViewCallbacks(
                 get_conversation=panel._get_active_conversation,
                 is_running=lambda: panel.is_running,
                 on_regenerate=panel._handle_regenerate_request,

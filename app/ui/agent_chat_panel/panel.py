@@ -77,7 +77,7 @@ from .view_model import (
     ToolCallDetails,
     build_conversation_timeline,
 )
-from .transcript_view import TranscriptView
+from .segment_view import SegmentListView
 
 
 logger = logging.getLogger("cookareq.ui.agent_chat_panel")
@@ -169,7 +169,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._bottom_panel: wx.Panel | None = None
         self._copy_conversation_btn: wx.Window | None = None
         self._history_view: HistoryView | None = None
-        self._transcript_view: TranscriptView | None = None
+        self._transcript_view: SegmentListView | None = None
         self._history_last_sash = 0
         self._vertical_sash_goal: int | None = None
         self._vertical_last_sash = 0

@@ -949,7 +949,10 @@ class TranscriptMessagePanel(wx.Panel):
         self._agent_bubble: MessageBubble | None = None
         self._tool_bubbles: list[tuple[ToolCallSummary, MessageBubble]] = []
         self._tool_section = wx.BoxSizer(wx.VERTICAL)
+        self._reasoning_slot = wx.BoxSizer(wx.VERTICAL)
+        self._raw_data_slot = wx.BoxSizer(wx.VERTICAL)
         self._reasoning_pane: wx.CollapsiblePane | None = None
+        self._raw_data_pane: wx.CollapsiblePane | None = None
         self._context_signature = ""
         self._reasoning_signature = ""
         self._raw_signature = ""
@@ -990,6 +993,8 @@ class TranscriptMessagePanel(wx.Panel):
         self._user_bubble = user_bubble
         self._context_signature = self._context_messages_signature(context_messages)
 
+        outer.Add(self._reasoning_slot, 0, wx.EXPAND)
+
         agent_bubble = MessageBubble(
             self,
             role_label=_("Agent"),
@@ -999,7 +1004,7 @@ class TranscriptMessagePanel(wx.Panel):
             allow_selection=True,
             render_markdown=True,
             footer_factory=self._agent_footer_factory(
-                on_regenerate, regenerate_enabled, raw_payload
+                on_regenerate, regenerate_enabled
             ),
             width_hint=self._resolve_hint("agent"),
             on_width_change=lambda width: self._emit_layout_hint("agent", width),
@@ -1023,9 +1028,10 @@ class TranscriptMessagePanel(wx.Panel):
         outer.Add(self._tool_section, 0, wx.EXPAND)
         self._build_tool_bubbles(tool_summaries)
 
-        self._update_reasoning(reasoning_segments)
+        outer.Add(self._raw_data_slot, 0, wx.EXPAND)
 
-        self._raw_signature = self._raw_payload_signature(raw_payload)
+        self._update_reasoning(reasoning_segments)
+        self._update_raw_data(raw_payload)
 
         self._state = _TranscriptPanelState(
             prompt=prompt,
@@ -1101,15 +1107,14 @@ class TranscriptMessagePanel(wx.Panel):
                 agent_bubble.update_header(_("Agent"), response_timestamp)
             agent_bubble.set_explicit_width_hint(self._resolve_hint("agent"))
             self._update_agent_footer(
-                on_regenerate, regenerate_enabled, raw_payload
+                on_regenerate, regenerate_enabled
             )
         probe = getattr(self, "_selection_probe", None)
         if isinstance(probe, wx.TextCtrl):
             probe.SetValue(normalize_for_display(response))
 
         self._update_reasoning(reasoning_segments)
-
-        self._raw_signature = self._raw_payload_signature(raw_payload)
+        self._update_raw_data(raw_payload)
 
         self._state = _TranscriptPanelState(
             prompt=prompt,
@@ -1400,11 +1405,8 @@ class TranscriptMessagePanel(wx.Panel):
         self,
         on_regenerate: Callable[[], None] | None,
         enabled: bool,
-        raw_payload: Any | None,
     ) -> FooterFactory | None:
-        signature = self._raw_payload_signature(raw_payload)
-        has_raw = bool(signature)
-        if on_regenerate is None and not has_raw:
+        if on_regenerate is None:
             self._regenerate_button = None
             self._regenerate_handler = None
             return None
@@ -1414,7 +1416,6 @@ class TranscriptMessagePanel(wx.Panel):
                 container,
                 on_regenerate=on_regenerate,
                 enabled=enabled,
-                raw_payload=raw_payload,
             )
             if isinstance(footer, wx.Sizer) and not footer.GetChildren():
                 return None
@@ -1428,17 +1429,8 @@ class TranscriptMessagePanel(wx.Panel):
         *,
         on_regenerate: Callable[[], None] | None,
         enabled: bool,
-        raw_payload: Any | None,
     ) -> wx.Sizer:
         sizer = wx.BoxSizer(wx.VERTICAL)
-        added = False
-
-        raw_panel = self._create_raw_data_panel(container, raw_payload)
-        if raw_panel is not None:
-            sizer.Add(raw_panel, 0, wx.EXPAND)
-            added = True
-        else:
-            self._raw_signature = ""
 
         if on_regenerate is not None:
             self._regenerate_handler = on_regenerate
@@ -1448,37 +1440,29 @@ class TranscriptMessagePanel(wx.Panel):
                 enabled=enabled,
             )
             sizer.Add(button_sizer, 0, wx.EXPAND | wx.TOP, self._padding)
-            added = True
         else:
             self._regenerate_button = None
             self._regenerate_handler = None
 
-        if not added:
-            return wx.BoxSizer(wx.VERTICAL)
         return sizer
 
     def _update_agent_footer(
         self,
         on_regenerate: Callable[[], None] | None,
         enabled: bool,
-        raw_payload: Any | None,
     ) -> None:
-        signature = self._raw_payload_signature(raw_payload)
         regenerate_available = on_regenerate is not None
         if (
-            signature != self._state.raw_signature
-            or regenerate_available != self._state.regenerate_available
+            regenerate_available != self._state.regenerate_available
             or (
                 regenerate_available
                 and (self._regenerate_button is None or not _is_window_usable(self._regenerate_button))
             )
         ):
             self._agent_bubble.set_footer(
-                self._agent_footer_factory(on_regenerate, enabled, raw_payload)
+                self._agent_footer_factory(on_regenerate, enabled)
             )
-            self._raw_signature = signature
         else:
-            self._raw_signature = signature
             self._regenerate_handler = on_regenerate
             if self._regenerate_button is not None and _is_window_usable(
                 self._regenerate_button
@@ -1500,7 +1484,8 @@ class TranscriptMessagePanel(wx.Panel):
         )
         if section is None:
             return None
-        pane, _text_ctrl = section
+        pane, text_ctrl = section
+        setattr(pane, "_transcript_raw_data_text_ctrl", text_ctrl)
         return pane
 
     def _raw_payload_signature(self, raw_payload: Any | None) -> str:
@@ -1564,7 +1549,6 @@ class TranscriptMessagePanel(wx.Panel):
     def _update_reasoning(
         self, reasoning_segments: Sequence[Mapping[str, Any]] | None
     ) -> None:
-        container = self.GetSizer()
         signature = self._format_reasoning_segments(reasoning_segments).strip()
         if signature == self._reasoning_signature:
             if self._reasoning_pane is not None and _is_window_usable(
@@ -1578,24 +1562,22 @@ class TranscriptMessagePanel(wx.Panel):
                 if isinstance(text_ctrl, wx.TextCtrl):
                     text_ctrl.ChangeValue(normalize_for_display(signature))
             return
-        if self._reasoning_pane is not None and _is_window_usable(
-            self._reasoning_pane
-        ):
+        slot = getattr(self, "_reasoning_slot", None)
+        container = self.GetSizer()
+        if isinstance(slot, wx.Sizer):
             try:
-                if isinstance(container, wx.Sizer):
-                    container.Detach(self._reasoning_pane)
+                slot.Clear(delete_windows=True)
             except Exception:
                 pass
-            self._reasoning_pane.Destroy()
-            self._reasoning_pane = None
+        self._reasoning_pane = None
         if not signature:
             self._reasoning_signature = ""
             if isinstance(container, wx.Sizer):
                 container.Layout()
             return
         pane = self._create_reasoning_panel(reasoning_segments)
-        if pane is not None and isinstance(container, wx.Sizer):
-            container.Add(
+        if pane is not None and isinstance(slot, wx.Sizer):
+            slot.Add(
                 pane,
                 0,
                 wx.EXPAND | wx.ALL,
@@ -1603,6 +1585,51 @@ class TranscriptMessagePanel(wx.Panel):
             )
             self._reasoning_pane = pane
             self._reasoning_signature = signature
+        else:
+            self._reasoning_signature = ""
+        if isinstance(container, wx.Sizer):
+            container.Layout()
+
+    def _update_raw_data(self, raw_payload: Any | None) -> None:
+        signature = self._raw_payload_signature(raw_payload)
+        if signature == self._raw_signature:
+            if self._raw_data_pane is not None and _is_window_usable(
+                self._raw_data_pane
+            ):
+                text_ctrl = getattr(
+                    self._raw_data_pane,
+                    "_transcript_raw_data_text_ctrl",
+                    None,
+                )
+                if isinstance(text_ctrl, wx.TextCtrl):
+                    text_ctrl.ChangeValue(normalize_for_display(signature))
+            return
+
+        slot = getattr(self, "_raw_data_slot", None)
+        container = self.GetSizer()
+        if isinstance(slot, wx.Sizer):
+            try:
+                slot.Clear(delete_windows=True)
+            except Exception:
+                pass
+        self._raw_data_pane = None
+        self._raw_signature = signature
+
+        if not signature:
+            if isinstance(container, wx.Sizer):
+                container.Layout()
+            return
+
+        pane = self._create_raw_data_panel(self, raw_payload)
+        if pane is not None and isinstance(slot, wx.Sizer):
+            slot.Add(
+                pane,
+                0,
+                wx.EXPAND | wx.ALL,
+                self._padding,
+            )
+            self._raw_data_pane = pane
+        if isinstance(container, wx.Sizer):
             container.Layout()
 
 

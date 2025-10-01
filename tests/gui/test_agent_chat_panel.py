@@ -688,6 +688,10 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
         raw_pane = raw_panes[0]
         assert raw_pane.IsCollapsed()
 
+        assert isinstance(
+            raw_pane.GetParent(), TranscriptMessagePanel
+        ), "raw data pane should be attached to the transcript entry"
+
         raw_pane.Collapse(False)
         flush_wx_events(wx)
 
@@ -971,12 +975,29 @@ def test_transcript_message_panel_shows_reasoning(wx_app):
 
 def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
     wx = pytest.importorskip("wx")
+    from app.ui.agent_chat_panel.tool_summaries import ToolCallSummary
     from app.ui.widgets.chat_message import MessageBubble
+    from app.i18n import _
 
     frame = wx.Frame(None)
     try:
         prompt_ts = "2024-06-11 18:41:03"
         response_ts = "2024-06-11 18:42:07"
+        raw_payload = {
+            "llm_message": {
+                "id": "msg-1",
+                "content": "assistant reply",
+                "role": "assistant",
+            }
+        }
+        tool_summary = ToolCallSummary(
+            index=1,
+            tool_name="demo_tool",
+            status="completed",
+            bullet_lines=("processed input",),
+            started_at="2025-09-30T20:50:10+00:00",
+            completed_at="2025-09-30T20:50:11+00:00",
+        )
         panel = TranscriptMessagePanel(
             frame,
             prompt="user",
@@ -985,50 +1006,10 @@ def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
             response_timestamp=response_ts,
             context_messages=[{"role": "system", "content": "ctx"}],
             reasoning_segments=[{"type": "analysis", "text": "think"}],
+            tool_summaries=[tool_summary],
+            raw_payload=raw_payload,
         )
         wx.GetApp().Yield()
-
-        child_windows = [
-            item.GetWindow()
-            for item in panel.GetSizer().GetChildren()
-            if item.IsWindow()
-        ]
-        assert child_windows, "expected child windows"
-
-        # Reasoning pane is still rendered after the agent bubble on the top level
-        top_level_collapsible = [
-            window
-            for window in child_windows
-            if isinstance(window, wx.CollapsiblePane)
-        ]
-        assert len(top_level_collapsible) == 1, "expected only reasoning pane on top level"
-
-        def collect_all_panes(window):
-            panes: list[wx.CollapsiblePane] = []
-            for child in window.GetChildren():
-                if isinstance(child, wx.CollapsiblePane):
-                    panes.append(child)
-                panes.extend(collect_all_panes(child))
-            return panes
-
-        all_panes = collect_all_panes(panel)
-        assert len(all_panes) == 2, "expected reasoning and context panes in total"
-
-        context_panes = [
-            pane
-            for pane in all_panes
-            if pane.GetLabel() in {"", "Context", i18n.gettext("Context")}
-        ]
-        assert context_panes, "missing context pane"
-
-        context_parent = context_panes[0].GetParent()
-        while context_parent is not None and not isinstance(context_parent, MessageBubble):
-            context_parent = context_parent.GetParent()
-        assert isinstance(
-            context_parent, MessageBubble
-        ), "context pane should be nested under the user message bubble"
-
-        reasoning_pane = top_level_collapsible[0]
 
         def collect_labels(window: wx.Window) -> list[str]:
             labels: list[str] = []
@@ -1040,24 +1021,64 @@ def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
                 stack.extend(current.GetChildren())
             return labels
 
-        user_bubble = None
-        agent_bubble = None
-        for window in child_windows:
-            if not isinstance(window, MessageBubble):
-                continue
-            labels = collect_labels(window)
-            if any("Agent" in label for label in labels):
-                agent_bubble = window
-            elif any("You" in label for label in labels):
-                user_bubble = window
+        def find_bubble(label_fragment: str) -> MessageBubble | None:
+            for child in panel.GetChildren():
+                if not isinstance(child, MessageBubble):
+                    continue
+                labels = collect_labels(child)
+                if any(label_fragment in label for label in labels):
+                    return child
+            return None
+
+        user_bubble = find_bubble("You")
+        agent_bubble = find_bubble("Agent")
+        tool_bubble = find_bubble("demo_tool")
+        reasoning_items = panel._reasoning_slot.GetChildren()
+        assert reasoning_items, "reasoning slot should contain collapsible pane"
+        reasoning_window = reasoning_items[0].GetWindow()
+        assert isinstance(
+            reasoning_window, wx.CollapsiblePane
+        ), "reasoning slot should host collapsible pane"
+        reasoning_pane = reasoning_window
+
+        raw_items = panel._raw_data_slot.GetChildren()
+        assert raw_items, "raw slot should contain collapsible pane"
+        raw_window = raw_items[0].GetWindow()
+        assert isinstance(
+            raw_window, wx.CollapsiblePane
+        ), "raw slot should host collapsible pane"
+        raw_pane = raw_window
 
         assert user_bubble is not None, "user bubble missing"
         assert agent_bubble is not None, "agent bubble missing"
+        assert tool_bubble is not None, "tool bubble missing"
+        assert reasoning_pane is not None, "reasoning pane missing"
+        assert raw_pane is not None, "raw data pane missing"
 
         assert prompt_ts in "\n".join(collect_labels(user_bubble))
         assert response_ts in "\n".join(collect_labels(agent_bubble))
 
-        assert child_windows.index(agent_bubble) < child_windows.index(reasoning_pane)
+        panel.Layout()
+        wx.GetApp().Yield()
+
+        def top_position(window: wx.Window) -> int:
+            return window.GetScreenPosition()[1]
+
+        positions = [
+            ("user", top_position(user_bubble)),
+            ("reasoning", top_position(reasoning_pane)),
+            ("agent", top_position(agent_bubble)),
+            ("tool", top_position(tool_bubble)),
+            ("raw", top_position(raw_pane)),
+        ]
+        sorted_positions = sorted(positions, key=lambda item: item[1])
+        assert [name for name, _ in sorted_positions] == [
+            "user",
+            "reasoning",
+            "agent",
+            "tool",
+            "raw",
+        ], "supplement sections should follow user → reasoning → agent → tool → raw order"
     finally:
         panel.Destroy()
         frame.Destroy()
@@ -1766,12 +1787,26 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         cache = panel._transcript_view._conversation_cache[conversation.conversation_id]
         message_panel = cache.panels_by_entry[id(entry)]
         children = message_panel.GetSizer().GetChildren()
+        assert len(children) >= 5, "expected user, reasoning slot, agent, tool, and raw sections"
+
         assert children[0].IsWindow()
         assert children[0].GetWindow() is message_panel._user_bubble
-        assert children[1].IsWindow()
-        assert children[1].GetWindow() is message_panel._agent_bubble
-        assert children[2].IsSizer()
-        assert children[2].GetSizer() is message_panel._tool_section
+
+        assert children[1].IsSizer()
+        assert children[1].GetSizer() is message_panel._reasoning_slot
+        reasoning_children = children[1].GetSizer().GetChildren()
+        assert reasoning_children, "reasoning slot should host collapsible pane"
+
+        assert children[2].IsWindow()
+        assert children[2].GetWindow() is message_panel._agent_bubble
+
+        assert children[3].IsSizer()
+        assert children[3].GetSizer() is message_panel._tool_section
+
+        assert children[4].IsSizer()
+        assert children[4].GetSizer() is message_panel._raw_data_slot
+        raw_children = children[4].GetSizer().GetChildren()
+        assert raw_children, "raw data slot should host collapsible pane"
 
         assert message_panel._tool_bubbles
         _, tool_bubble = message_panel._tool_bubbles[0]

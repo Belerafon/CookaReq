@@ -1058,6 +1058,57 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
         destroy_panel(frame, panel)
 
 
+def test_transcript_entry_panel_wraps_tool_only_entries(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    try:
+        entry_timeline = build_entry_timeline(
+            response="",
+            response_at=None,
+            tool_results=[
+                {
+                    "tool_name": "demo_tool",
+                    "status": "completed",
+                    "arguments": {"field": "value"},
+                    "result": {"ok": True},
+                }
+            ],
+        )
+        panel = TranscriptEntryPanel(
+            frame,
+            timeline=entry_timeline,
+            layout_hints=entry_timeline.layout_hints,
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+
+        agent_panel = panel.FindWindow("agent-entry")
+        assert agent_panel is not None, "agent panel should exist"
+
+        agent_bubbles = [
+            bubble
+            for bubble in collect_message_bubbles(agent_panel)
+            if "Agent" in bubble_header_text(bubble)
+        ]
+        assert len(agent_bubbles) == 1, "expected a placeholder agent bubble"
+        agent_bubble = agent_bubbles[0]
+
+        header = bubble_header_text(agent_bubble)
+        expected_timestamp = entry_timeline.prompt.formatted_timestamp
+        if expected_timestamp:
+            assert expected_timestamp in header
+        body = bubble_body_text(agent_bubble)
+        assert "demo_tool" in body or "Ran" in body
+
+        tool_pane = find_collapsible_by_name(agent_bubble, "tool:demo_tool:1")
+        assert tool_pane is not None, "tool collapsible should be attached to the bubble"
+    finally:
+        panel.Destroy()
+        frame.Destroy()
+
+
 def test_transcript_entry_panel_shows_reasoning(wx_app):
     wx = pytest.importorskip("wx")
     from app.i18n import _
@@ -1469,9 +1520,10 @@ def test_tool_summary_includes_llm_exchange(wx_app):
 
         children = agent_panel.GetChildren()
         step_index = children.index(step_bubble)
-        tool_index = children.index(tool_pane)
         final_index = children.index(final_bubble)
-        assert step_index < final_index < tool_index
+        assert step_index < final_index
+        assert tool_pane not in children
+        assert tool_pane in collect_collapsible_panes(final_bubble)
     finally:
         if panel is not None:
             panel.Destroy()

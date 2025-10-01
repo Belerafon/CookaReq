@@ -12,6 +12,7 @@ import wx
 from ....i18n import _
 from ...widgets.chat_message import MessageBubble
 from ...text import normalize_for_display
+from ..time_formatting import format_entry_timestamp
 from ..history_utils import format_value_snippet, history_json_safe
 from ..tool_summaries import ToolCallSummary, extract_error_message
 from ..view_model import (
@@ -820,6 +821,7 @@ class TranscriptEntryPanel(wx.Panel):
             ChatEventKind.TOOL_CALL,
             ChatEventKind.RAW_PAYLOAD,
         }
+        agent_timestamp = self._resolve_agent_timestamp(timeline)
         events = [
             event
             for event in timeline.events
@@ -842,7 +844,11 @@ class TranscriptEntryPanel(wx.Panel):
 
         for event in events:
             if isinstance(event, ResponseEvent):
-                bubble = self._create_agent_message_bubble(container, event)
+                bubble = self._create_agent_message_bubble(
+                    container,
+                    event,
+                    fallback_timestamp=agent_timestamp,
+                )
                 if bubble is None:
                     continue
                 rendered.append(bubble)
@@ -860,10 +866,24 @@ class TranscriptEntryPanel(wx.Panel):
             rendered.append(section)
 
         if final_bubble is None and timeline.response is not None:
-            bubble = self._create_agent_message_bubble(container, timeline.response)
+            bubble = self._create_agent_message_bubble(
+                container,
+                timeline.response,
+                fallback_timestamp=agent_timestamp,
+            )
             if bubble is not None:
                 rendered.append(bubble)
                 final_bubble = bubble
+
+        if final_bubble is None and tool_events:
+            placeholder = self._create_tool_summary_bubble(
+                container,
+                tool_events,
+                timestamp=agent_timestamp,
+            )
+            if placeholder is not None:
+                rendered.append(placeholder)
+                final_bubble = placeholder
 
         if final_bubble is not None:
             self._agent_bubble = final_bubble
@@ -909,7 +929,11 @@ class TranscriptEntryPanel(wx.Panel):
 
     # ------------------------------------------------------------------
     def _create_agent_message_bubble(
-        self, parent: wx.Window, event: ResponseEvent
+        self,
+        parent: wx.Window,
+        event: ResponseEvent,
+        *,
+        fallback_timestamp: str,
     ) -> MessageBubble | None:
         text = event.display_text or event.text or ""
         if not text and not event.is_final:
@@ -918,7 +942,16 @@ class TranscriptEntryPanel(wx.Panel):
         timestamp_label = event.formatted_timestamp
         if not timestamp_label:
             if event.step_index is not None and not event.is_final:
-                timestamp_label = _("Step {index}").format(index=event.step_index)
+                step_label = _("Step {index}").format(index=event.step_index)
+                if fallback_timestamp:
+                    timestamp_label = _("{step} • {timestamp}").format(
+                        step=step_label,
+                        timestamp=fallback_timestamp,
+                    )
+                else:
+                    timestamp_label = step_label
+            elif fallback_timestamp:
+                timestamp_label = fallback_timestamp
             elif event.timestamp:
                 timestamp_label = normalize_for_display(event.timestamp)
 
@@ -1044,6 +1077,79 @@ class TranscriptEntryPanel(wx.Panel):
             content=combined,
             minimum_height=140,
         )
+
+    # ------------------------------------------------------------------
+    def _create_tool_summary_bubble(
+        self,
+        parent: wx.Window,
+        events: Sequence[ToolCallEvent],
+        *,
+        timestamp: str,
+    ) -> MessageBubble | None:
+        summary_lines: list[str] = []
+        for event in events:
+            tool_name = event.summary.tool_name or _("Unnamed tool")
+            status_label = event.summary.status or _("returned data")
+            summary_lines.append(
+                _("Ran {tool} — {status}").format(
+                    tool=normalize_for_display(tool_name),
+                    status=normalize_for_display(status_label),
+                )
+            )
+        if not summary_lines:
+            return None
+        summary_lines.append(_("Details are available below."))
+        text = "\n".join(summary_lines)
+        bubble = MessageBubble(
+            parent,
+            role_label=_("Agent"),
+            timestamp=timestamp,
+            text=text,
+            align="left",
+            allow_selection=True,
+            width_hint=self._resolve_hint("agent"),
+            on_width_change=lambda width: self._emit_layout_hint("agent", width),
+        )
+        return bubble
+
+    # ------------------------------------------------------------------
+    def _resolve_agent_timestamp(self, timeline: EntryTimeline) -> str:
+        def _format_candidate(candidate: str | None) -> str:
+            if not isinstance(candidate, str) or not candidate.strip():
+                return ""
+            formatted = format_entry_timestamp(candidate)
+            if formatted:
+                return formatted
+            return normalize_for_display(candidate)
+
+        response = timeline.response
+        if response is not None and response.formatted_timestamp:
+            return response.formatted_timestamp
+
+        prompt = timeline.prompt
+        if prompt.formatted_timestamp:
+            return prompt.formatted_timestamp
+
+        candidates: list[str | None] = []
+        if response is not None:
+            candidates.append(response.timestamp)
+        candidates.append(prompt.timestamp)
+        candidates.extend(event.timestamp for event in timeline.intermediate_responses)
+        candidates.extend(event.timestamp for event in timeline.tool_calls)
+        if timeline.llm_request is not None:
+            candidates.append(timeline.llm_request.timestamp)
+        if timeline.raw_payload is not None:
+            candidates.append(timeline.raw_payload.timestamp)
+        entry = timeline.entry
+        candidates.append(getattr(entry, "response_at", None))
+        candidates.append(getattr(entry, "prompt_at", None))
+
+        for candidate in candidates:
+            formatted = _format_candidate(candidate)
+            if formatted:
+                return formatted
+
+        return ""
 
     # ------------------------------------------------------------------
     def _resolve_hint(self, key: str) -> int | None:

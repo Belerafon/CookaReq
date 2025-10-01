@@ -12,8 +12,8 @@ import wx
 from ....i18n import _
 from ...widgets.chat_message import MessageBubble
 from ...text import normalize_for_display
-from ..history_utils import history_json_safe
-from ..tool_summaries import ToolCallSummary
+from ..history_utils import format_value_snippet, history_json_safe
+from ..tool_summaries import ToolCallSummary, extract_error_message
 from ..view_model import (
     ChatEvent,
     ChatEventKind,
@@ -175,6 +175,243 @@ def _build_collapsible_section(
     return pane
 
 
+def _normalise_text_lines(text: str | None) -> list[str]:
+    if not text:
+        return []
+    result: list[str] = []
+    for fragment in text.splitlines():
+        normalised = normalize_for_display(fragment).strip()
+        if normalised:
+            result.append(normalised)
+    return result
+
+
+def _summarize_request_arguments(arguments: Any) -> list[str]:
+    if isinstance(arguments, Mapping):
+        lines: list[str] = []
+        for key, value in arguments.items():
+            key_text = normalize_for_display(str(key).strip())
+            value_text = format_value_snippet(value)
+            if key_text and value_text:
+                lines.append(f"{key_text}: {value_text}")
+            elif key_text:
+                lines.append(key_text)
+            elif value_text:
+                lines.append(value_text)
+        return lines
+    if arguments is not None:
+        value_text = format_value_snippet(arguments)
+        if value_text:
+            return [value_text]
+    return []
+
+
+def _coerce_mapping(value: Any) -> Mapping[str, Any] | None:
+    if isinstance(value, Mapping):
+        return value
+    return None
+
+
+def _extract_tool_arguments(event: ToolCallEvent) -> Mapping[str, Any] | None:
+    request_payload = _coerce_mapping(event.llm_request)
+    if request_payload:
+        call_payload = _coerce_mapping(request_payload.get("tool_call"))
+        if call_payload:
+            for key in ("arguments", "tool_arguments", "args"):
+                candidate = _coerce_mapping(call_payload.get(key))
+                if candidate:
+                    return candidate
+        for key in ("arguments", "tool_arguments", "args"):
+            candidate = _coerce_mapping(request_payload.get(key))
+            if candidate:
+                return candidate
+
+    payload_mapping = _coerce_mapping(event.raw_payload)
+    if payload_mapping:
+        for key in ("tool_arguments", "arguments", "args"):
+            candidate = _coerce_mapping(payload_mapping.get(key))
+            if candidate:
+                return candidate
+    return None
+
+
+def _summarize_tool_arguments(event: ToolCallEvent) -> list[str]:
+    arguments = _extract_tool_arguments(event)
+    if not arguments:
+        return []
+    lines: list[str] = []
+    for index, (key, value) in enumerate(arguments.items(), start=1):
+        key_text = normalize_for_display(str(key).strip())
+        if not key_text:
+            key_text = f"arg{index}"
+        value_text = format_value_snippet(value)
+        if value_text:
+            lines.append(f"{key_text}: {value_text}")
+        else:
+            lines.append(key_text)
+        if len(lines) >= 6:
+            lines.append("…")
+            break
+    return lines
+
+
+def _extract_tool_result(event: ToolCallEvent) -> Any:
+    payload_mapping = _coerce_mapping(event.raw_payload)
+    if not payload_mapping:
+        return None
+    for key in ("result", "response", "data"):
+        if key in payload_mapping:
+            return payload_mapping.get(key)
+    return None
+
+
+def _summarize_tool_result(event: ToolCallEvent) -> list[str]:
+    result_payload = _extract_tool_result(event)
+    if result_payload is None:
+        return []
+    if isinstance(result_payload, Mapping):
+        lines: list[str] = []
+        for index, (key, value) in enumerate(result_payload.items(), start=1):
+            key_text = normalize_for_display(str(key).strip())
+            if not key_text:
+                key_text = f"field{index}"
+            value_text = format_value_snippet(value)
+            if value_text:
+                lines.append(f"{key_text}: {value_text}")
+            else:
+                lines.append(key_text)
+            if len(lines) >= 6:
+                lines.append("…")
+                break
+        return lines
+    if isinstance(result_payload, Sequence) and not isinstance(
+        result_payload, (str, bytes, bytearray)
+    ):
+        items: list[str] = []
+        for index, item in enumerate(result_payload, start=1):
+            items.append(format_value_snippet(item))
+            if index >= 5:
+                if len(result_payload) > index:
+                    items.append("…")
+                break
+        return items
+    snippet = format_value_snippet(result_payload)
+    return [snippet] if snippet else []
+
+
+def _extract_tool_error(event: ToolCallEvent) -> str | None:
+    payload_mapping = _coerce_mapping(event.raw_payload)
+    if not payload_mapping:
+        return None
+    error_payload = payload_mapping.get("error")
+    message = extract_error_message(error_payload)
+    if message:
+        if isinstance(error_payload, Mapping):
+            code_value = error_payload.get("code")
+            if isinstance(code_value, str) and code_value.strip():
+                code_text = normalize_for_display(code_value.strip())
+                if code_text and code_text not in message:
+                    message = _("[{code}] {message}").format(
+                        code=code_text, message=message
+                    )
+        return message
+    if payload_mapping.get("ok") is False:
+        return _("Tool call failed")
+    return None
+
+
+def _summarize_tool_call_request(payload: Any) -> list[str]:
+    if isinstance(payload, Mapping):
+        call_payload = payload.get("tool_call")
+        if isinstance(call_payload, Mapping):
+            return _summarize_tool_call_request(call_payload)
+        lines: list[str] = []
+        name_value = payload.get("name") or payload.get("tool_name")
+        if isinstance(name_value, str) and name_value.strip():
+            lines.append(normalize_for_display(name_value.strip()))
+        argument_payload = (
+            payload.get("arguments")
+            or payload.get("tool_arguments")
+            or payload.get("args")
+        )
+        lines.extend(_summarize_request_arguments(argument_payload))
+        if lines:
+            return lines
+    fallback = _format_raw_payload(payload)
+    return _normalise_text_lines(fallback)
+
+
+def _summarize_reasoning(reasoning: Any) -> list[str]:
+    if not isinstance(reasoning, Sequence) or isinstance(
+        reasoning, (str, bytes, bytearray)
+    ):
+        return []
+    lines: list[str] = []
+    for segment in reasoning:
+        if isinstance(segment, Mapping):
+            text_value = segment.get("text")
+            type_value = segment.get("type")
+            text_lines = _normalise_text_lines(str(text_value)) if text_value else []
+            if not text_lines:
+                continue
+            if isinstance(type_value, str) and type_value.strip():
+                heading = normalize_for_display(type_value.strip())
+                for index, line in enumerate(text_lines):
+                    if index == 0:
+                        lines.append(f"{heading}: {line}")
+                    else:
+                        lines.append(line)
+            else:
+                lines.extend(text_lines)
+        elif isinstance(segment, str):
+            lines.extend(_normalise_text_lines(segment))
+    return lines
+
+
+def _summarize_llm_response(payload: Any) -> list[str]:
+    if isinstance(payload, Mapping):
+        lines: list[str] = []
+        content_lines: list[str] = []
+        content_value = payload.get("content")
+        if isinstance(content_value, str):
+            content_lines.extend(_normalise_text_lines(content_value))
+        elif isinstance(content_value, Sequence) and not isinstance(
+            content_value, (str, bytes, bytearray)
+        ):
+            for fragment in content_value:
+                if isinstance(fragment, Mapping):
+                    text_value = fragment.get("text")
+                    content_lines.extend(_normalise_text_lines(str(text_value)))
+                elif isinstance(fragment, str):
+                    content_lines.extend(_normalise_text_lines(fragment))
+                elif fragment is not None:
+                    content_lines.append(format_value_snippet(fragment))
+        elif content_value is not None:
+            content_lines.append(format_value_snippet(content_value))
+        lines.extend(content_lines)
+        lines.extend(_summarize_reasoning(payload.get("reasoning")))
+        if not lines:
+            tool_calls = payload.get("tool_calls")
+            if isinstance(tool_calls, Sequence) and not isinstance(
+                tool_calls, (str, bytes, bytearray)
+            ):
+                for call in tool_calls:
+                    lines.extend(_summarize_tool_call_request(call))
+        if lines:
+            unique: list[str] = []
+            seen: set[str] = set()
+            for line in lines:
+                normalised = normalize_for_display(str(line)).strip()
+                if not normalised or normalised in seen:
+                    continue
+                seen.add(normalised)
+                unique.append(normalised)
+            if unique:
+                return unique
+    fallback = _format_raw_payload(payload)
+    return _normalise_text_lines(fallback)
+
+
 class TranscriptEntryPanel(wx.Panel):
     """Render a single timeline entry using message and diagnostic widgets."""
 
@@ -251,6 +488,7 @@ class TranscriptEntryPanel(wx.Panel):
 
         agent_sections_present = bool(
             timeline.response
+            or timeline.intermediate_responses
             or timeline.reasoning
             or timeline.raw_payload
             or timeline.llm_request
@@ -414,17 +652,6 @@ class TranscriptEntryPanel(wx.Panel):
         inner_sizer.Add(summary_ctrl, 0, wx.EXPAND | wx.TOP, parent.FromDIP(4))
 
         nested_sections: list[tuple[str, str, str, str, int]] = []
-        request_text = _format_raw_payload(event.llm_request)
-        if request_text:
-            nested_sections.append(
-                (
-                    f"tool-request:{event.event_id}",
-                    f"raw:tool-request:{summary.tool_name or ''}:{summary.index}",
-                    _("LLM request"),
-                    request_text,
-                    150,
-                )
-            )
         raw_text = _format_raw_payload(event.raw_payload)
         if raw_text:
             nested_sections.append(
@@ -433,6 +660,35 @@ class TranscriptEntryPanel(wx.Panel):
                     f"raw:tool:{summary.tool_name or ''}:{summary.index}",
                     _("Raw data"),
                     raw_text,
+                    150,
+                )
+            )
+
+        llm_payload = event.llm_request
+        request_payload: Any = llm_payload
+        response_payload: Any | None = None
+        if isinstance(llm_payload, Mapping):
+            response_payload = llm_payload.get("response")
+            request_payload = llm_payload.get("tool_call") or llm_payload
+        request_raw = _format_raw_payload(request_payload)
+        if request_raw:
+            nested_sections.append(
+                (
+                    f"tool:{event.event_id}:llm-request",
+                    f"raw:tool:{summary.tool_name or ''}:{summary.index}:llm-request",
+                    _("Raw LLM request"),
+                    request_raw,
+                    150,
+                )
+            )
+        response_raw = _format_raw_payload(response_payload)
+        if response_raw:
+            nested_sections.append(
+                (
+                    f"tool:{event.event_id}:llm-response",
+                    f"raw:tool:{summary.tool_name or ''}:{summary.index}:llm-response",
+                    _("Raw LLM response"),
+                    response_raw,
                     150,
                 )
             )
@@ -463,20 +719,90 @@ class TranscriptEntryPanel(wx.Panel):
                 name=summary.tool_name or _("Unnamed tool")
             )
         )
-        if summary.status:
-            lines.append(_("Status: {status}").format(status=summary.status))
-        for bullet in summary.bullet_lines:
-            if bullet:
-                lines.append("• " + bullet)
+        status_label = summary.status or _("returned data")
+        lines.append(_("Status: {status}").format(status=status_label))
+
+        argument_lines = _summarize_tool_arguments(event)
+        if argument_lines:
+            lines.append(_("Arguments:"))
+            lines.extend("• " + line for line in argument_lines)
+
+        error_text = _extract_tool_error(event)
+        result_lines = [] if error_text else _summarize_tool_result(event)
+        if error_text:
+            lines.append(_("Error: {message}").format(message=error_text))
+        elif result_lines:
+            lines.append(_("Result:"))
+            lines.extend("• " + line for line in result_lines)
+
+        lines.extend(self._render_tool_exchange(event))
         if event.call_identifier:
             lines.append(
                 _("Call identifier: {identifier}").format(
                     identifier=event.call_identifier
                 )
             )
-        if event.timestamp:
-            lines.append(_("Recorded at: {timestamp}").format(timestamp=event.timestamp))
         return "\n".join(lines)
+
+    def _render_tool_exchange(self, event: ToolCallEvent) -> list[str]:
+        payload = event.llm_request
+
+        lines: list[str] = []
+        response_payload: Any | None = None
+        step_label: str | None = None
+
+        request_source: Any = payload
+        if isinstance(payload, Mapping):
+            response_payload = payload.get("response")
+            step_value = payload.get("step")
+            if isinstance(step_value, (int, float)):
+                step_label = str(int(step_value))
+            elif isinstance(step_value, str) and step_value.strip():
+                step_label = step_value.strip()
+        else:
+            request_source = None
+
+        request_lines = _summarize_tool_call_request(request_source)
+        if not request_lines:
+            argument_lines = _summarize_tool_arguments(event)
+            if argument_lines:
+                request_lines = argument_lines
+        if request_lines:
+            if step_label is not None:
+                lines.append(
+                    _("LLM request (step {step}):").format(
+                        step=normalize_for_display(step_label)
+                    )
+                )
+            else:
+                lines.append(_("LLM request:"))
+            if step_label is not None:
+                lines.extend(
+                    self._indent_for_summary(
+                        _("Step {step}").format(
+                            step=normalize_for_display(step_label)
+                        )
+                    )
+                )
+            lines.extend(
+                self._indent_for_summary("\n".join(request_lines))
+            )
+        else:
+            lines.append(_("LLM request: (not recorded)"))
+
+        response_lines = _summarize_llm_response(response_payload)
+        if response_lines:
+            lines.append(_("LLM response:"))
+            lines.extend(self._indent_for_summary("\n".join(response_lines)))
+
+        return lines
+
+    @staticmethod
+    def _indent_for_summary(text: str) -> list[str]:
+        lines = text.splitlines()
+        if not lines:
+            return ["    "]
+        return ["    " + segment if segment else "    " for segment in lines]
 
 
     # ------------------------------------------------------------------
@@ -510,73 +836,39 @@ class TranscriptEntryPanel(wx.Panel):
         container_sizer = wx.BoxSizer(wx.VERTICAL)
         container.SetSizer(container_sizer)
 
-        before: list[wx.Window] = []
-        after: list[wx.Window] = []
-        response_bubble: MessageBubble | None = None
-        encountered_response = False
+        rendered: list[wx.Window] = []
+        final_bubble: MessageBubble | None = None
 
         for event in events:
             if isinstance(event, ResponseEvent):
-                encountered_response = True
-                response_bubble = MessageBubble(
-                    container,
-                    role_label=_("Agent"),
-                    timestamp=event.formatted_timestamp,
-                    text=event.display_text or event.text or "",
-                    align="left",
-                    allow_selection=True,
-                    render_markdown=True,
-                    width_hint=self._resolve_hint("agent"),
-                    on_width_change=lambda width: self._emit_layout_hint("agent", width),
-                )
-                self._agent_bubble = response_bubble
+                bubble = self._create_agent_message_bubble(container, event)
+                if bubble is None:
+                    continue
+                rendered.append(bubble)
+                if event.is_final:
+                    final_bubble = bubble
                 continue
 
             section = self._create_agent_section(container, event)
             if section is None:
                 continue
-            if encountered_response:
-                after.append(section)
-            else:
-                before.append(section)
+            rendered.append(section)
 
-        if response_bubble is None and timeline.response is not None:
-            response_event = timeline.response
-            response_bubble = MessageBubble(
-                container,
-                role_label=_("Agent"),
-                timestamp=response_event.formatted_timestamp,
-                text=response_event.display_text or response_event.text or "",
-                align="left",
-                allow_selection=True,
-                render_markdown=True,
-                width_hint=self._resolve_hint("agent"),
-                on_width_change=lambda width: self._emit_layout_hint("agent", width),
-            )
-            self._agent_bubble = response_bubble
+        if final_bubble is None and timeline.response is not None:
+            bubble = self._create_agent_message_bubble(container, timeline.response)
+            if bubble is not None:
+                rendered.append(bubble)
+                final_bubble = bubble
 
-        for index, widget in enumerate(before):
+        if final_bubble is not None:
+            self._agent_bubble = final_bubble
+
+        for index, widget in enumerate(rendered):
             container_sizer.Add(
                 widget,
                 0,
                 wx.EXPAND | (wx.TOP if index else 0),
                 container.FromDIP(4) if index else 0,
-            )
-
-        if response_bubble is not None:
-            container_sizer.Add(
-                response_bubble,
-                0,
-                wx.EXPAND | (wx.TOP if before else 0),
-                container.FromDIP(4) if before else 0,
-            )
-
-        for widget in after:
-            container_sizer.Add(
-                widget,
-                0,
-                wx.EXPAND | wx.TOP,
-                container.FromDIP(4),
             )
 
         regenerate_button: wx.Button | None = None
@@ -593,11 +885,39 @@ class TranscriptEntryPanel(wx.Panel):
         else:
             self._regenerate_handler = on_regenerate
 
-        if not before and response_bubble is None and not after:
+        if not rendered:
             container.Destroy()
             return None, regenerate_button
 
         return container, regenerate_button
+
+    # ------------------------------------------------------------------
+    def _create_agent_message_bubble(
+        self, parent: wx.Window, event: ResponseEvent
+    ) -> MessageBubble | None:
+        text = event.display_text or event.text or ""
+        if not text and not event.is_final:
+            return None
+
+        timestamp_label = event.formatted_timestamp
+        if not timestamp_label:
+            if event.step_index is not None and not event.is_final:
+                timestamp_label = _("Step {index}").format(index=event.step_index)
+            elif event.timestamp:
+                timestamp_label = normalize_for_display(event.timestamp)
+
+        bubble = MessageBubble(
+            parent,
+            role_label=_("Agent"),
+            timestamp=timestamp_label,
+            text=text,
+            align="left",
+            allow_selection=True,
+            render_markdown=True,
+            width_hint=self._resolve_hint("agent"),
+            on_width_change=lambda width: self._emit_layout_hint("agent", width),
+        )
+        return bubble
 
     # ------------------------------------------------------------------
     def _create_agent_section(

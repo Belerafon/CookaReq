@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from enum import Enum
 import itertools
@@ -29,18 +30,6 @@ class ChatEventKind(str, Enum):
     SYSTEM_MESSAGE = "system_message"
 
 
-_EVENT_DISPLAY_ORDER: dict[ChatEventKind, int] = {
-    ChatEventKind.PROMPT: 0,
-    ChatEventKind.CONTEXT: 1,
-    ChatEventKind.LLM_REQUEST: 2,
-    ChatEventKind.REASONING: 3,
-    ChatEventKind.RESPONSE: 4,
-    ChatEventKind.TOOL_CALL: 5,
-    ChatEventKind.RAW_PAYLOAD: 6,
-    ChatEventKind.SYSTEM_MESSAGE: 7,
-}
-
-
 @dataclass(slots=True)
 class ChatEvent:
     """Base class for all transcript events."""
@@ -52,16 +41,6 @@ class ChatEvent:
     kind: ChatEventKind
     occurred_at: _dt.datetime | None
     timestamp: str | None
-
-
-def _event_sort_key(event: ChatEvent) -> tuple[int, Any, int, int]:
-    """Sort events primarily by their actual timestamps."""
-
-    order = _EVENT_DISPLAY_ORDER.get(event.kind, 99)
-    occurred = event.occurred_at
-    if occurred is not None:
-        return (0, occurred, order, event.sequence_index)
-    return (1, event.sequence_index, order, 0)
 
 
 def _choose_timestamp(*candidates: str | None) -> str | None:
@@ -105,6 +84,8 @@ class ResponseEvent(ChatEvent):
     display_text: str
     formatted_timestamp: str
     regenerated: bool
+    step_index: int | None = None
+    is_final: bool = False
 
 
 @dataclass(slots=True)
@@ -149,6 +130,7 @@ class EntryTimeline:
     entry: ChatEntry
     prompt: PromptEvent
     response: ResponseEvent | None
+    intermediate_responses: tuple[ResponseEvent, ...]
     context: ContextEvent | None
     reasoning: ReasoningEvent | None
     llm_request: LlmRequestEvent | None
@@ -157,11 +139,9 @@ class EntryTimeline:
     system_messages: tuple[SystemMessageEvent, ...]
     layout_hints: dict[str, int]
     can_regenerate: bool
+    _events: tuple[ChatEvent, ...] = field(init=False, repr=False)
 
-    @property
-    def events(self) -> tuple[ChatEvent, ...]:
-        """Return all events for the entry preserving chronological order."""
-
+    def __post_init__(self) -> None:
         ordered: list[ChatEvent] = [self.prompt]
         if self.context is not None:
             ordered.append(self.context)
@@ -169,14 +149,20 @@ class EntryTimeline:
             ordered.append(self.llm_request)
         if self.reasoning is not None:
             ordered.append(self.reasoning)
-        ordered.extend(self.tool_calls)
+        ordered.extend(self.intermediate_responses)
         if self.response is not None:
             ordered.append(self.response)
+        ordered.extend(self.tool_calls)
         if self.raw_payload is not None:
             ordered.append(self.raw_payload)
         ordered.extend(self.system_messages)
-        ordered.sort(key=_event_sort_key)
-        return tuple(ordered)
+        self._events = tuple(ordered)
+
+    @property
+    def events(self) -> tuple[ChatEvent, ...]:
+        """Return all events for the entry preserving chronological order."""
+
+        return self._events
 
 
 @dataclass(slots=True)
@@ -254,6 +240,19 @@ def build_conversation_timeline(
                 conversation_created_at,
             ),
         )
+        step_events = _build_step_response_events(
+            entry_id,
+            entry_index,
+            sequence_counter,
+            entry,
+            final_response_text=entry.display_response or entry.response,
+            fallback_timestamp=_choose_timestamp(
+                entry.response_at,
+                entry.prompt_at,
+                conversation_updated_at,
+                conversation_created_at,
+            ),
+        )
         response_event = _build_response_event(
             entry_id,
             entry_index,
@@ -308,6 +307,7 @@ def build_conversation_timeline(
             entry=entry,
             prompt=prompt_event,
             response=response_event,
+            intermediate_responses=step_events,
             context=context_event,
             reasoning=reasoning_event,
             llm_request=llm_request_event,
@@ -634,7 +634,165 @@ def _build_response_event(
         display_text=display_text,
         formatted_timestamp=formatted_timestamp,
         regenerated=bool(getattr(entry, "regenerated", False)),
+        step_index=None,
+        is_final=True,
     )
+
+
+# ---------------------------------------------------------------------------
+def _build_step_response_events(
+    entry_id: str,
+    entry_index: int,
+    sequence_counter: itertools.count,
+    entry: ChatEntry,
+    *,
+    final_response_text: str | None,
+    fallback_timestamp: str | None,
+) -> tuple[ResponseEvent, ...]:
+    payloads = _collect_llm_step_payloads(entry)
+    if not payloads:
+        return ()
+
+    final_text = _normalise_message_text(final_response_text)
+    events: list[ResponseEvent] = []
+    for position, payload in enumerate(payloads, start=1):
+        sequence_index = next(sequence_counter)
+        event = _build_step_response_event(
+            entry_id,
+            entry_index,
+            sequence_index,
+            payload,
+            fallback_timestamp=fallback_timestamp,
+            fallback_step_index=position,
+        )
+        if event is None:
+            continue
+        event_text = _normalise_message_text(event.display_text or event.text)
+        if final_text and event_text == final_text:
+            continue
+        events.append(event)
+    return tuple(events)
+
+
+def _build_step_response_event(
+    entry_id: str,
+    entry_index: int,
+    sequence_index: int,
+    payload: Mapping[str, Any],
+    *,
+    fallback_timestamp: str | None,
+    fallback_step_index: int,
+) -> ResponseEvent | None:
+    if not isinstance(payload, Mapping):
+        return None
+    response_payload = payload.get("response")
+    if not isinstance(response_payload, Mapping):
+        return None
+    content_value = response_payload.get("content")
+    if not isinstance(content_value, str):
+        return None
+    text = content_value.strip()
+    if not text:
+        return None
+
+    timestamp_raw = response_payload.get("timestamp")
+    timestamp_str = (
+        timestamp_raw.strip()
+        if isinstance(timestamp_raw, str) and timestamp_raw.strip()
+        else None
+    )
+    occurred_at = parse_iso_timestamp(timestamp_str or fallback_timestamp)
+    formatted_timestamp = (
+        format_entry_timestamp(timestamp_str)
+        if timestamp_str
+        else ""
+    )
+
+    step_raw = payload.get("step")
+    step_index: int | None = None
+    if isinstance(step_raw, (int, float)):
+        step_index = int(step_raw)
+    elif isinstance(step_raw, str):
+        with suppress(ValueError):
+            step_index = int(step_raw.strip())
+    if step_index is None:
+        step_index = fallback_step_index
+
+    event_id = f"{entry_id}:response-step:{sequence_index}"
+    timestamp_value = timestamp_str or fallback_timestamp
+    return ResponseEvent(
+        event_id=event_id,
+        entry_id=entry_id,
+        entry_index=entry_index,
+        sequence_index=sequence_index,
+        kind=ChatEventKind.RESPONSE,
+        occurred_at=occurred_at,
+        timestamp=timestamp_value,
+        text=text,
+        display_text=text,
+        formatted_timestamp=formatted_timestamp,
+        regenerated=False,
+        step_index=step_index,
+        is_final=False,
+    )
+
+
+def _collect_llm_step_payloads(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
+    ordered: list[tuple[int, int | None, str, dict[str, Any]]] = []
+    index_by_key: dict[str, int] = {}
+    auto_counter = 0
+
+    for source in _iter_llm_request_sources(entry):
+        steps = source.get("llm_steps")
+        if not isinstance(steps, Sequence) or isinstance(steps, (str, bytes, bytearray)):
+            continue
+        for step_payload in steps:
+            safe_step = history_json_safe(step_payload)
+            if not isinstance(safe_step, Mapping):
+                continue
+            record = dict(safe_step)
+            step_value = record.get("step")
+            numeric_index: int | None = None
+            if isinstance(step_value, (int, float)):
+                numeric_index = int(step_value)
+                key = str(numeric_index)
+            elif isinstance(step_value, str) and step_value.strip():
+                key = step_value.strip()
+                if key.isdigit():
+                    try:
+                        numeric_index = int(key)
+                    except ValueError:
+                        numeric_index = None
+            else:
+                auto_counter += 1
+                key = f"auto-{auto_counter}"
+
+            if key in index_by_key:
+                position = index_by_key[key]
+                order_index, _, existing_key, _ = ordered[position]
+                ordered[position] = (order_index, numeric_index, existing_key, record)
+            else:
+                order_index = len(ordered)
+                index_by_key[key] = order_index
+                ordered.append((order_index, numeric_index, key, record))
+
+    if not ordered:
+        return ()
+
+    ordered.sort(
+        key=lambda item: (
+            item[1] if item[1] is not None else item[0],
+            item[0],
+        )
+    )
+    return tuple(record for _, _, _, record in ordered)
+
+
+def _normalise_message_text(value: str | None) -> str:
+    if not value:
+        return ""
+    text = str(value)
+    return " ".join(text.split())
 
 
 # ---------------------------------------------------------------------------
@@ -754,6 +912,8 @@ def _build_tool_call_event(
         request_payload = requests.get(call_identifier)
     if request_payload is None:
         request_payload = requests.get(str(tool_index))
+    if request_payload is None:
+        request_payload = _synthesise_tool_request(payload, summary)
     if summary is None:
         summary = ToolCallSummary(
             index=tool_index,
@@ -779,6 +939,50 @@ def _build_tool_call_event(
     )
 
 
+def _synthesise_tool_request(
+    payload: Mapping[str, Any], summary: ToolCallSummary | None
+) -> Any | None:
+    """Reconstruct an approximate LLM request when none was recorded."""
+
+    if not isinstance(payload, Mapping):
+        return None
+
+    arguments_source: Any = None
+    for key in ("tool_arguments", "arguments", "args"):
+        candidate = payload.get(key)
+        if isinstance(candidate, Mapping):
+            arguments_source = candidate
+            break
+    if not isinstance(arguments_source, Mapping):
+        return None
+
+    safe_arguments = history_json_safe(arguments_source)
+    if not isinstance(safe_arguments, Mapping):
+        return None
+
+    request: dict[str, Any] = {
+        "tool_call": {
+            "name": (summary.tool_name if summary else ""),
+            "arguments": dict(safe_arguments),
+        }
+    }
+
+    if summary and summary.tool_name:
+        request["tool_call"]["name"] = summary.tool_name
+    else:
+        for key in ("tool_name", "name", "tool"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                request["tool_call"]["name"] = value.strip()
+                break
+
+    step_value = payload.get("step")
+    if step_value is not None:
+        request["step"] = step_value
+
+    return history_json_safe(request)
+
+
 def _extract_tool_timestamp(payload: Mapping[str, Any]) -> str | None:
     for key in (
         "first_observed_at",
@@ -796,7 +1000,7 @@ def _extract_tool_timestamp(payload: Mapping[str, Any]) -> str | None:
 
 
 def _extract_tool_identifier(payload: Mapping[str, Any]) -> str | None:
-    for key in ("tool_call_id", "call_id", "id"):
+    for key in ("tool_call_id", "call_id", "id", "call_identifier"):
         value = payload.get(key)
         if isinstance(value, str):
             text = value.strip()

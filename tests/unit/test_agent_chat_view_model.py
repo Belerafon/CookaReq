@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from app.ui.agent_chat_panel.view_model import (
     ChatEventKind,
     build_conversation_timeline,
@@ -78,10 +80,10 @@ def test_build_conversation_timeline_compiles_events() -> None:
     assert kinds == [
         ChatEventKind.PROMPT,
         ChatEventKind.CONTEXT,
-        ChatEventKind.TOOL_CALL,
         ChatEventKind.LLM_REQUEST,
         ChatEventKind.REASONING,
         ChatEventKind.RESPONSE,
+        ChatEventKind.TOOL_CALL,
         ChatEventKind.RAW_PAYLOAD,
     ]
     assert tool_event.llm_request is None
@@ -194,6 +196,153 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     response_payload = request_payload.get("response")
     assert isinstance(response_payload, dict)
     assert response_payload.get("content") == "Applying updates"
+
+
+def test_tool_call_event_synthesises_request_when_missing() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="",
+        tokens=1,
+        prompt_at="2025-10-01T09:00:00+00:00",
+        response_at="2025-10-01T09:00:05+00:00",
+        tool_results=[
+            {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "call-42",
+                "tool_arguments": {
+                    "rid": "REQ-9",
+                    "field": "title",
+                    "value": "Updated title",
+                },
+                "ok": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "missing rid",
+                },
+            }
+        ],
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    tool_event = timeline.entries[0].tool_calls[0]
+
+    request_payload = tool_event.llm_request
+    assert isinstance(request_payload, Mapping)
+    tool_call = request_payload.get("tool_call")
+    assert isinstance(tool_call, Mapping)
+    arguments = tool_call.get("arguments")
+    assert isinstance(arguments, Mapping)
+    assert arguments.get("rid") == "REQ-9"
+    assert arguments.get("field") == "title"
+    assert arguments.get("value") == "Updated title"
+
+
+def test_step_responses_rendered_as_events() -> None:
+    entry = ChatEntry(
+        prompt="do work",
+        response="Final result",
+        tokens=1,
+        prompt_at="2025-10-01T08:00:00+00:00",
+        response_at="2025-10-01T08:05:00+00:00",
+        tool_results=[
+            {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "call-1",
+                "started_at": "2025-10-01T08:01:00+00:00",
+                "completed_at": "2025-10-01T08:02:00+00:00",
+                "ok": False,
+            }
+        ],
+        raw_result={
+            "diagnostic": {
+                "llm_steps": [
+                    {
+                        "step": 1,
+                        "response": {
+                            "content": "Preparing request",
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "name": "update_requirement_field",
+                                    "arguments": {"rid": "REQ-1"},
+                                }
+                            ],
+                        },
+                    },
+                    {
+                        "step": 2,
+                        "response": {
+                            "content": "Final result",
+                        },
+                    },
+                ]
+            }
+        },
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    entry_timeline = timeline.entries[0]
+
+    assert entry_timeline.intermediate_responses
+    step_event = entry_timeline.intermediate_responses[0]
+    assert step_event.text == "Preparing request"
+    assert step_event.step_index == 1
+    assert step_event.is_final is False
+
+    final_event = entry_timeline.response
+    assert final_event is not None
+    assert final_event.text == "Final result"
+    assert final_event.is_final is True
+
+    response_events = [
+        event
+        for event in entry_timeline.events
+        if event.kind is ChatEventKind.RESPONSE
+    ]
+    assert len(response_events) == 2
+    assert response_events[0] is step_event
+    assert response_events[1] is final_event
+
+    tool_index = entry_timeline.events.index(entry_timeline.tool_calls[0])
+    assert (
+        entry_timeline.events.index(step_event)
+        < entry_timeline.events.index(final_event)
+        < tool_index
+    )
+
+
+def test_tool_summary_compacts_error_details() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="",
+        tokens=1,
+        prompt_at="2025-10-01T08:00:00+00:00",
+        response_at="2025-10-01T08:05:00+00:00",
+        tool_results=[
+            {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "tool-1",
+                "agent_status": "failed: update_requirement_field() missing rid",
+                "started_at": "2025-10-01T08:01:00+00:00",
+                "completed_at": "2025-10-01T08:01:05+00:00",
+                "ok": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "update_requirement_field() missing 1 required positional argument: 'rid'",
+                },
+            }
+        ],
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    summary = timeline.entries[0].tool_calls[0].summary
+
+    assert summary.status == "failed"
+    assert any("Error VALIDATION_ERROR" in line for line in summary.bullet_lines)
+    assert not any(line.startswith("Error message:") for line in summary.bullet_lines)
 
 
 def test_llm_request_event_uses_diagnostic_sequence() -> None:

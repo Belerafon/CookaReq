@@ -10,6 +10,7 @@ import json
 
 from ...i18n import _
 from ..text import normalize_for_display
+from .time_formatting import format_entry_timestamp
 
 
 @dataclass(frozen=True)
@@ -52,8 +53,12 @@ def summarize_tool_results(
 def _normalise_timestamp(value: Any) -> str | None:
     if isinstance(value, str):
         text = value.strip()
-        if text:
-            return normalize_for_display(text)
+        if not text:
+            return None
+        formatted = format_entry_timestamp(text)
+        if formatted:
+            return normalize_for_display(formatted)
+        return normalize_for_display(text)
     return None
 
 
@@ -70,15 +75,20 @@ def summarize_tool_payload(
     last_observed = _normalise_timestamp(
         payload.get("last_observed_at") or payload.get("observed_at")
     )
-    if started_at:
-        bullet_lines.append(
-            _("Started at {timestamp}").format(timestamp=started_at)
-        )
-    if completed_at:
+    if started_at and completed_at and started_at == completed_at:
         bullet_lines.append(
             _("Completed at {timestamp}").format(timestamp=completed_at)
         )
-    elif last_observed and last_observed != started_at:
+    else:
+        if started_at:
+            bullet_lines.append(
+                _("Started at {timestamp}").format(timestamp=started_at)
+            )
+        if completed_at:
+            bullet_lines.append(
+                _("Completed at {timestamp}").format(timestamp=completed_at)
+            )
+    if not completed_at and last_observed and last_observed != started_at:
         bullet_lines.append(
             _("Last updated at {timestamp}").format(timestamp=last_observed)
         )
@@ -156,22 +166,30 @@ def extract_tool_name(payload: Mapping[str, Any]) -> str:
 def format_tool_status(payload: Mapping[str, Any]) -> str:
     agent_status = payload.get("agent_status")
     if isinstance(agent_status, str):
-        normalized = agent_status.strip().lower()
-        if normalized == "running":
-            return normalize_for_display(_("in progress…"))
-        if normalized == "completed" and payload.get("ok") not in (True, False):
-            return normalize_for_display(_("completed"))
-        if normalized == "failed" and payload.get("ok") not in (True, False):
-            return normalize_for_display(_("failed"))
+        status_text = agent_status.strip()
+        if not status_text:
+            pass
+        else:
+            prefix, separator, remainder = status_text.partition(":")
+            normalized_prefix = prefix.strip().lower()
+            if normalized_prefix == "running":
+                return normalize_for_display(_("in progress…"))
+            if normalized_prefix == "completed":
+                return normalize_for_display(_("completed"))
+            if normalized_prefix == "failed":
+                return normalize_for_display(_("failed"))
+            normalized_full = status_text.lower()
+            if normalized_full == "running":
+                return normalize_for_display(_("in progress…"))
+            if normalized_full == "completed":
+                return normalize_for_display(_("completed"))
+            if normalized_full == "failed":
+                return normalize_for_display(_("failed"))
+            return normalize_for_display(shorten_text(status_text))
     ok_value = payload.get("ok")
     if ok_value is True:
         return normalize_for_display(_("completed successfully"))
     if ok_value is False:
-        message = extract_error_message(payload.get("error"))
-        if message:
-            return normalize_for_display(
-                _("failed: {message}").format(message=message)
-            )
         return normalize_for_display(_("failed"))
     return normalize_for_display(_("returned data"))
 
@@ -237,20 +255,30 @@ def summarize_error_details(error: Any) -> list[str]:
         return []
     if isinstance(error, Mapping):
         lines: list[str] = []
-        code = error.get("code")
-        if isinstance(code, str) and code.strip():
-            lines.append(
-                _("Error code: {code}").format(
-                    code=normalize_for_display(code.strip())
-                )
-            )
+        code_raw = error.get("code")
+        code_text: str | None = None
+        if isinstance(code_raw, str) and code_raw.strip():
+            code_text = normalize_for_display(code_raw.strip())
         message = error.get("message")
+        message_text: str | None = None
         if isinstance(message, str) and message.strip():
+            message_text = shorten_text(normalize_for_display(message.strip()))
+        if code_text and message_text:
             lines.append(
-                _("Error message: {message}").format(
-                    message=shorten_text(normalize_for_display(message.strip()))
+                _("Error {code}: {message}").format(
+                    code=code_text,
+                    message=message_text,
                 )
             )
+        else:
+            if code_text:
+                lines.append(
+                    _("Error code: {code}").format(code=code_text)
+                )
+            if message_text:
+                lines.append(
+                    _("Error message: {message}").format(message=message_text)
+                )
         details = error.get("details")
         if details:
             lines.append(

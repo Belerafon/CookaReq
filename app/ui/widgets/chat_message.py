@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import json
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from collections.abc import Callable
 import wx
 
 from ...i18n import _
+from ..agent_chat_panel.history_utils import history_json_safe
 from ..agent_chat_panel.tool_summaries import (
     ToolCallSummary,
     render_tool_summary_markdown,
@@ -911,6 +913,7 @@ class _TranscriptPanelState:
     reasoning_signature: str
     regenerated: bool
     layout_hints: tuple[tuple[str, int], ...]
+    raw_signature: str
 
 
 class TranscriptMessagePanel(wx.Panel):
@@ -932,6 +935,7 @@ class TranscriptMessagePanel(wx.Panel):
         regenerated: bool = False,
         layout_hints: Mapping[str, int] | None = None,
         on_layout_hint: Callable[[str, int], None] | None = None,
+        raw_payload: Any | None = None,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
@@ -948,6 +952,7 @@ class TranscriptMessagePanel(wx.Panel):
         self._reasoning_pane: wx.CollapsiblePane | None = None
         self._context_signature = ""
         self._reasoning_signature = ""
+        self._raw_signature = ""
         self._layout_hints = self._sanitize_layout_hints(layout_hints)
         self._state = _TranscriptPanelState(
             prompt="",
@@ -961,6 +966,7 @@ class TranscriptMessagePanel(wx.Panel):
             reasoning_signature="",
             regenerated=False,
             layout_hints=tuple(sorted(self._layout_hints.items())),
+            raw_signature="",
         )
 
         outer = wx.BoxSizer(wx.VERTICAL)
@@ -992,8 +998,8 @@ class TranscriptMessagePanel(wx.Panel):
             align="left",
             allow_selection=True,
             render_markdown=True,
-            footer_factory=self._regenerate_footer_factory(
-                on_regenerate, regenerate_enabled
+            footer_factory=self._agent_footer_factory(
+                on_regenerate, regenerate_enabled, raw_payload
             ),
             width_hint=self._resolve_hint("agent"),
             on_width_change=lambda width: self._emit_layout_hint("agent", width),
@@ -1019,6 +1025,8 @@ class TranscriptMessagePanel(wx.Panel):
 
         self._update_reasoning(reasoning_segments)
 
+        self._raw_signature = self._raw_payload_signature(raw_payload)
+
         self._state = _TranscriptPanelState(
             prompt=prompt,
             prompt_timestamp=prompt_timestamp,
@@ -1031,6 +1039,7 @@ class TranscriptMessagePanel(wx.Panel):
             reasoning_signature=self._reasoning_signature,
             regenerated=regenerated,
             layout_hints=tuple(sorted(self._layout_hints.items())),
+            raw_signature=self._raw_signature,
         )
 
     @staticmethod
@@ -1051,6 +1060,7 @@ class TranscriptMessagePanel(wx.Panel):
         reasoning_segments: Sequence[Mapping[str, Any]] | None = None,
         regenerated: bool = False,
         layout_hints: Mapping[str, int] | None = None,
+        raw_payload: Any | None = None,
     ) -> None:
         self._layout_hints = self._sanitize_layout_hints(layout_hints)
         layout_hint_state = tuple(sorted(self._layout_hints.items()))
@@ -1090,12 +1100,16 @@ class TranscriptMessagePanel(wx.Panel):
             if response_timestamp != self._state.response_timestamp:
                 agent_bubble.update_header(_("Agent"), response_timestamp)
             agent_bubble.set_explicit_width_hint(self._resolve_hint("agent"))
-            self._update_regenerate_footer(on_regenerate, regenerate_enabled)
+            self._update_agent_footer(
+                on_regenerate, regenerate_enabled, raw_payload
+            )
         probe = getattr(self, "_selection_probe", None)
         if isinstance(probe, wx.TextCtrl):
             probe.SetValue(normalize_for_display(response))
 
         self._update_reasoning(reasoning_segments)
+
+        self._raw_signature = self._raw_payload_signature(raw_payload)
 
         self._state = _TranscriptPanelState(
             prompt=prompt,
@@ -1109,6 +1123,7 @@ class TranscriptMessagePanel(wx.Panel):
             reasoning_signature=self._reasoning_signature,
             regenerated=regenerated,
             layout_hints=layout_hint_state,
+            raw_signature=self._raw_signature,
         )
 
     def _sanitize_layout_hints(
@@ -1250,30 +1265,32 @@ class TranscriptMessagePanel(wx.Panel):
         except Exception:  # pragma: no cover - defensive
             pass
 
-    def _create_context_panel(
+    def _build_collapsible_text_section(
         self,
-        container: wx.Window,
-        context_messages: Sequence[Mapping[str, Any]] | None,
-    ) -> wx.CollapsiblePane | None:
-        if not context_messages:
-            return None
-
-        context_text = self._format_context_messages(context_messages).strip()
-        if not context_text:
+        parent: wx.Window,
+        *,
+        label: str,
+        content: str,
+        minimum_height: int,
+        collapse: bool = True,
+    ) -> tuple[wx.CollapsiblePane, wx.TextCtrl] | None:
+        display_text = normalize_for_display(content).strip()
+        if not display_text:
             return None
 
         pane = wx.CollapsiblePane(
-            container,
-            label=_("Context"),
+            parent,
+            label=label,
             style=wx.CP_DEFAULT_STYLE | wx.CP_NO_TLW_RESIZE,
         )
-        pane.Collapse(True)
+        if collapse:
+            pane.Collapse(True)
 
-        pane_background = container.GetBackgroundColour()
+        pane_background = parent.GetBackgroundColour()
         if not pane_background.IsOk():
             pane_background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
         pane.SetBackgroundColour(pane_background)
-        pane_foreground = container.GetForegroundColour()
+        pane_foreground = parent.GetForegroundColour()
         if pane_foreground.IsOk():
             pane.SetForegroundColour(pane_foreground)
             try:
@@ -1291,7 +1308,7 @@ class TranscriptMessagePanel(wx.Panel):
         content_sizer = wx.BoxSizer(wx.VERTICAL)
         text_ctrl = wx.TextCtrl(
             inner,
-            value=normalize_for_display(context_text),
+            value=display_text,
             style=(
                 wx.TE_MULTILINE
                 | wx.TE_READONLY
@@ -1307,9 +1324,32 @@ class TranscriptMessagePanel(wx.Panel):
                 wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT),
             )
         )
-        text_ctrl.SetMinSize((-1, self.FromDIP(120)))
+        text_ctrl.SetMinSize((-1, self.FromDIP(minimum_height)))
         content_sizer.Add(text_ctrl, 1, wx.EXPAND | wx.TOP, self.FromDIP(4))
         inner.SetSizer(content_sizer)
+        return pane, text_ctrl
+
+    def _create_context_panel(
+        self,
+        container: wx.Window,
+        context_messages: Sequence[Mapping[str, Any]] | None,
+    ) -> wx.CollapsiblePane | None:
+        if not context_messages:
+            return None
+
+        context_text = self._format_context_messages(context_messages).strip()
+        if not context_text:
+            return None
+
+        section = self._build_collapsible_text_section(
+            container,
+            label=_("Context"),
+            content=context_text,
+            minimum_height=120,
+        )
+        if section is None:
+            return None
+        pane, _text_ctrl = section
         return pane
 
     @staticmethod
@@ -1356,46 +1396,133 @@ class TranscriptMessagePanel(wx.Panel):
 
         return "\n\n".join(block for block in blocks if block)
 
-    def _regenerate_footer_factory(
+    def _agent_footer_factory(
         self,
         on_regenerate: Callable[[], None] | None,
         enabled: bool,
+        raw_payload: Any | None,
     ) -> FooterFactory | None:
-        if on_regenerate is None:
+        signature = self._raw_payload_signature(raw_payload)
+        has_raw = bool(signature)
+        if on_regenerate is None and not has_raw:
             self._regenerate_button = None
             self._regenerate_handler = None
             return None
-        self._regenerate_handler = on_regenerate
 
-        def factory(container: wx.Window) -> wx.Sizer:
-            return self._create_regenerate_footer(
+        def factory(container: wx.Window) -> wx.Sizer | None:
+            footer = self._create_agent_footer(
+                container,
+                on_regenerate=on_regenerate,
+                enabled=enabled,
+                raw_payload=raw_payload,
+            )
+            if isinstance(footer, wx.Sizer) and not footer.GetChildren():
+                return None
+            return footer
+
+        return factory
+
+    def _create_agent_footer(
+        self,
+        container: wx.Window,
+        *,
+        on_regenerate: Callable[[], None] | None,
+        enabled: bool,
+        raw_payload: Any | None,
+    ) -> wx.Sizer:
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        added = False
+
+        raw_panel = self._create_raw_data_panel(container, raw_payload)
+        if raw_panel is not None:
+            sizer.Add(raw_panel, 0, wx.EXPAND)
+            added = True
+        else:
+            self._raw_signature = ""
+
+        if on_regenerate is not None:
+            self._regenerate_handler = on_regenerate
+            button_sizer = self._create_regenerate_footer(
                 container,
                 on_regenerate=on_regenerate,
                 enabled=enabled,
             )
+            sizer.Add(button_sizer, 0, wx.EXPAND | wx.TOP, self._padding)
+            added = True
+        else:
+            self._regenerate_button = None
+            self._regenerate_handler = None
 
-        return factory
+        if not added:
+            return wx.BoxSizer(wx.VERTICAL)
+        return sizer
 
-    def _update_regenerate_footer(
+    def _update_agent_footer(
         self,
         on_regenerate: Callable[[], None] | None,
         enabled: bool,
+        raw_payload: Any | None,
     ) -> None:
-        if on_regenerate is None:
-            if self._regenerate_button is not None:
-                self._agent_bubble.set_footer(None)
-                self._regenerate_button = None
-            self._regenerate_handler = None
-            return
-        if self._regenerate_button is None or not _is_window_usable(
-            self._regenerate_button
+        signature = self._raw_payload_signature(raw_payload)
+        regenerate_available = on_regenerate is not None
+        if (
+            signature != self._state.raw_signature
+            or regenerate_available != self._state.regenerate_available
+            or (
+                regenerate_available
+                and (self._regenerate_button is None or not _is_window_usable(self._regenerate_button))
+            )
         ):
             self._agent_bubble.set_footer(
-                self._regenerate_footer_factory(on_regenerate, enabled)
+                self._agent_footer_factory(on_regenerate, enabled, raw_payload)
             )
+            self._raw_signature = signature
         else:
+            self._raw_signature = signature
             self._regenerate_handler = on_regenerate
-            self._regenerate_button.Enable(enabled)
+            if self._regenerate_button is not None and _is_window_usable(
+                self._regenerate_button
+            ):
+                self._regenerate_button.Enable(enabled)
+
+    def _create_raw_data_panel(
+        self, container: wx.Window, raw_payload: Any | None
+    ) -> wx.CollapsiblePane | None:
+        text = self._format_raw_payload(raw_payload).strip()
+        if not text:
+            return None
+
+        section = self._build_collapsible_text_section(
+            container,
+            label=_("Raw data"),
+            content=text,
+            minimum_height=160,
+        )
+        if section is None:
+            return None
+        pane, _text_ctrl = section
+        return pane
+
+    def _raw_payload_signature(self, raw_payload: Any | None) -> str:
+        return self._format_raw_payload(raw_payload).strip()
+
+    def _format_raw_payload(self, raw_payload: Any | None) -> str:
+        if raw_payload is None:
+            return ""
+        safe_payload = history_json_safe(raw_payload)
+        if isinstance(safe_payload, str):
+            text = safe_payload
+        else:
+            try:
+                text = json.dumps(
+                    safe_payload,
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+            except (TypeError, ValueError):  # pragma: no cover - defensive
+                text = str(safe_payload)
+        return normalize_for_display(text)
 
     def _create_regenerated_notice(self, outer: wx.Sizer) -> wx.StaticText:
         notice = wx.StaticText(
@@ -1422,42 +1549,15 @@ class TranscriptMessagePanel(wx.Panel):
         if not reasoning_text:
             return None
 
-        pane = wx.CollapsiblePane(
+        section = self._build_collapsible_text_section(
             self,
             label=_("Model reasoning"),
-            style=wx.CP_DEFAULT_STYLE | wx.CP_NO_TLW_RESIZE,
+            content=reasoning_text,
+            minimum_height=100,
         )
-        pane.Collapse(True)
-
-        pane_background = self.GetBackgroundColour()
-        if not pane_background.IsOk():
-            pane_background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
-        pane.SetBackgroundColour(pane_background)
-        inner = pane.GetPane()
-        inner.SetBackgroundColour(pane_background)
-
-        content_sizer = wx.BoxSizer(wx.VERTICAL)
-        text_ctrl = wx.TextCtrl(
-            inner,
-            value=normalize_for_display(reasoning_text),
-            style=(
-                wx.TE_MULTILINE
-                | wx.TE_READONLY
-                | wx.TE_BESTWRAP
-                | wx.BORDER_NONE
-            ),
-        )
-        text_ctrl.SetBackgroundColour(pane_background)
-        text_ctrl.SetForegroundColour(
-            _pick_best_contrast(
-                pane_background,
-                wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT),
-                wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT),
-            )
-        )
-        text_ctrl.SetMinSize((-1, self.FromDIP(100)))
-        content_sizer.Add(text_ctrl, 1, wx.EXPAND | wx.TOP, self.FromDIP(4))
-        inner.SetSizer(content_sizer)
+        if section is None:
+            return None
+        pane, text_ctrl = section
         setattr(pane, "_transcript_reasoning_text_ctrl", text_ctrl)
         return pane
 

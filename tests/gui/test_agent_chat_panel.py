@@ -679,7 +679,29 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
                 panes.extend(collect_collapsible(child))
             return panes
 
-        assert not collect_collapsible(panel.transcript_panel)
+        panes = collect_collapsible(panel.transcript_panel)
+        assert panes, "expected collapsible transcript panes"
+
+        raw_labels = {i18n.gettext("Raw data"), "Raw data", ""}
+        raw_panes = [pane for pane in panes if pane.GetLabel() in raw_labels]
+        assert raw_panes, "expected raw data collapsible pane"
+        raw_pane = raw_panes[0]
+        assert raw_pane.IsCollapsed()
+
+        raw_pane.Collapse(False)
+        flush_wx_events(wx)
+
+        def collect_text_controls(window):
+            controls: list[wx.TextCtrl] = []
+            for child in window.GetChildren():
+                if isinstance(child, wx.TextCtrl):
+                    controls.append(child)
+                controls.extend(collect_text_controls(child))
+            return controls
+
+        raw_controls = collect_text_controls(raw_pane.GetPane())
+        assert raw_controls, "expected raw data text control"
+        assert any("tool_results" in ctrl.GetValue() for ctrl in raw_controls)
 
         transcript_text = panel.get_transcript_text()
         assert "demo_tool" in transcript_text
@@ -771,6 +793,61 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
         assert isinstance(
             bubble_ancestor, MessageBubble
         ), "context pane expected inside the user bubble"
+    finally:
+        destroy_panel(frame, panel)
+
+
+def test_agent_chat_panel_sorts_tool_results_chronologically(tmp_path, wx_app):
+    class ChronoAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            return {
+                "ok": True,
+                "result": text,
+                "tool_results": [
+                    {
+                        "tool_name": "later_tool",
+                        "ok": True,
+                        "tool_arguments": {"query": "later"},
+                        "result": {"status": "ok"},
+                        "started_at": "2025-09-30T10:00:00+00:00",
+                        "completed_at": "2025-09-30T10:00:30+00:00",
+                    },
+                    {
+                        "tool_name": "earlier_tool",
+                        "ok": True,
+                        "tool_arguments": {"query": "earlier"},
+                        "result": {"status": "ok"},
+                        "started_at": "2025-09-30T09:00:00+00:00",
+                        "completed_at": "2025-09-30T09:00:20+00:00",
+                    },
+                ],
+            }
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, ChronoAgent())
+
+    panel.input.SetValue("inspect")
+    panel._on_send(None)
+    flush_wx_events(wx)
+
+    try:
+        transcript_text = panel.get_transcript_text()
+        earlier_index = transcript_text.index("earlier_tool")
+        later_index = transcript_text.index("later_tool")
+        assert earlier_index < later_index, transcript_text
+
+        log_text = panel.get_transcript_log_text()
+        first_timestamp = log_text.index("2025-09-30T09:00:00+00:00")
+        second_timestamp = log_text.index("2025-09-30T10:00:00+00:00")
+        assert first_timestamp < second_timestamp, log_text
     finally:
         destroy_panel(frame, panel)
 

@@ -12,6 +12,7 @@ from ...i18n import _
 from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import dip
 from ..widgets.chat_message import TranscriptMessagePanel
+from .history_utils import history_json_safe
 from .time_formatting import format_entry_timestamp
 from .tool_summaries import summarize_tool_results
 
@@ -283,6 +284,7 @@ class TranscriptView:
             "reasoning_segments": entry.reasoning,
             "regenerated": getattr(entry, "regenerated", False),
             "layout_hints": entry.layout_hints,
+            "raw_payload": history_json_safe(entry.raw_result),
         }
 
     # ------------------------------------------------------------------
@@ -304,6 +306,7 @@ class TranscriptView:
             reasoning_segments=data["reasoning_segments"],
             regenerated=data["regenerated"],
             layout_hints=data["layout_hints"],
+            raw_payload=data["raw_payload"],
             on_layout_hint=lambda key, width, entry_ref=entry: entry_ref.layout_hints.__setitem__(
                 key, int(width)
             ),
@@ -329,6 +332,7 @@ class TranscriptView:
             reasoning_segments=data["reasoning_segments"],
             regenerated=data["regenerated"],
             layout_hints=data["layout_hints"],
+            raw_payload=data["raw_payload"],
         )
 
     # ------------------------------------------------------------------

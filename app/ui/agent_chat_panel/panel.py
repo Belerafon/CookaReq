@@ -45,6 +45,7 @@ from .history_utils import (
     clone_streamed_tool_results,
     history_json_safe,
     looks_like_tool_payload,
+    sort_tool_payloads,
     stringify_payload,
 )
 from .paths import (
@@ -1025,14 +1026,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 tool_results = list(
                     clone_streamed_tool_results(handle.streamed_tool_results)
                 )
+            if tool_results:
+                tool_results = sort_tool_payloads(tool_results)
             merged_tool_results = self._merge_tool_result_timelines(
                 tool_results, handle.streamed_tool_results
             )
             if merged_tool_results is not None:
-                tool_results = merged_tool_results
+                tool_results = sort_tool_payloads(merged_tool_results)
                 if isinstance(raw_result, Mapping):
                     raw_result = dict(raw_result)
-                    raw_result["tool_results"] = merged_tool_results
+                    raw_result["tool_results"] = tool_results
             response_tokens = count_text_tokens(
                 conversation_text,
                 model=self._token_model(),
@@ -1762,6 +1765,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 tool_payloads.append(history_json_safe(payload))
         elif raw_result_mapping and looks_like_tool_payload(raw_result_mapping):
             tool_payloads.append(raw_result_mapping)
+        tool_payloads = sort_tool_payloads(tool_payloads)
 
         diagnostic_payload = {
             "prompt_text": prompt_text,
@@ -1893,7 +1897,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 if last_seen and not combined.get("observed_at"):
                     combined["observed_at"] = last_seen
             merged.append(combined)
-        return merged if merged else None
+        if not merged:
+            return None
+        sorted_payloads = sort_tool_payloads(merged)
+        return [
+            dict(payload) if isinstance(payload, Mapping) else payload
+            for payload in sorted_payloads
+        ]
 
     def _compose_transcript_text(self) -> str:
         conversation = self._get_active_conversation()
@@ -2331,7 +2341,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             elif planned_calls:
                 lines.extend(format_planned_tool_calls([planned_calls]))
 
-            tool_payloads = diagnostic.get("tool_exchanges") or []
+            tool_payloads = sort_tool_payloads(diagnostic.get("tool_exchanges") or [])
             if tool_payloads:
                 for tool_index, payload in enumerate(tool_payloads, start=1):
                     lines.extend(format_tool_exchange(tool_index, payload))

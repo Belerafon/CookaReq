@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -23,6 +23,7 @@ class ToolCallSummary:
     started_at: str | None = None
     completed_at: str | None = None
     last_observed_at: str | None = None
+    raw_payload: Any | None = None
 
 
 def summarize_tool_results(
@@ -30,15 +31,21 @@ def summarize_tool_results(
 ) -> tuple[ToolCallSummary, ...]:
     """Generate summaries for tool payloads returned by the agent."""
 
+    from .history_utils import history_json_safe, sort_tool_payloads
+
     summaries: list[ToolCallSummary] = []
     if not tool_results:
         return tuple(summaries)
-    for index, payload in enumerate(tool_results, start=1):
+
+    ordered_payloads = sort_tool_payloads(tool_results)
+    for index, payload in enumerate(ordered_payloads, start=1):
         if not isinstance(payload, Mapping):
             continue
         summary = summarize_tool_payload(index, payload)
-        if summary is not None:
-            summaries.append(summary)
+        if summary is None:
+            continue
+        safe_payload = history_json_safe(payload)
+        summaries.append(replace(summary, raw_payload=safe_payload))
     return tuple(summaries)
 
 

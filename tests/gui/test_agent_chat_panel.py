@@ -684,15 +684,19 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
 
         raw_labels = {i18n.gettext("Raw data"), "Raw data", ""}
         raw_panes = [pane for pane in panes if pane.GetLabel() in raw_labels]
-        assert raw_panes, "expected raw data collapsible pane"
-        raw_pane = raw_panes[0]
-        assert raw_pane.IsCollapsed()
+        assert len(raw_panes) >= 2, "expected raw data panes for agent and tool"
 
-        assert isinstance(
-            raw_pane.GetParent(), TranscriptMessagePanel
-        ), "raw data pane should be attached to the transcript entry"
+        for pane in raw_panes:
+            parent = pane.GetParent()
+            assert parent is not None
+            owner = parent.GetParent() if hasattr(parent, "GetParent") else None
+            assert isinstance(
+                owner, MessageBubble
+            ), "raw data pane should be attached to a message bubble"
 
-        raw_pane.Collapse(False)
+        for pane in raw_panes:
+            if pane.IsCollapsed():
+                pane.Collapse(False)
         flush_wx_events(wx)
 
         def collect_text_controls(window):
@@ -703,9 +707,14 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
                 controls.extend(collect_text_controls(child))
             return controls
 
-        raw_controls = collect_text_controls(raw_pane.GetPane())
-        assert raw_controls, "expected raw data text control"
-        assert any("tool_results" in ctrl.GetValue() for ctrl in raw_controls)
+        raw_texts = []
+        for pane in raw_panes:
+            raw_controls = collect_text_controls(pane.GetPane())
+            assert raw_controls, "expected raw data text control"
+            raw_texts.append("\n".join(ctrl.GetValue() for ctrl in raw_controls))
+
+        assert any("tool_results" in text for text in raw_texts)
+        assert any("tool_arguments" in text for text in raw_texts)
 
         transcript_text = panel.get_transcript_text()
         assert "demo_tool" in transcript_text
@@ -997,6 +1006,12 @@ def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
             bullet_lines=("processed input",),
             started_at="2025-09-30T20:50:10+00:00",
             completed_at="2025-09-30T20:50:11+00:00",
+            raw_payload={
+                "tool_name": "demo_tool",
+                "started_at": "2025-09-30T20:50:10+00:00",
+                "completed_at": "2025-09-30T20:50:11+00:00",
+                "result": {"status": "ok"},
+            },
         )
         panel = TranscriptMessagePanel(
             frame,
@@ -1041,13 +1056,10 @@ def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
         ), "reasoning slot should host collapsible pane"
         reasoning_pane = reasoning_window
 
-        raw_items = panel._raw_data_slot.GetChildren()
-        assert raw_items, "raw slot should contain collapsible pane"
-        raw_window = raw_items[0].GetWindow()
+        raw_pane = getattr(agent_bubble, "_transcript_agent_raw_pane", None)
         assert isinstance(
-            raw_window, wx.CollapsiblePane
-        ), "raw slot should host collapsible pane"
-        raw_pane = raw_window
+            raw_pane, wx.CollapsiblePane
+        ), "agent bubble should expose raw data pane"
 
         assert user_bubble is not None, "user bubble missing"
         assert agent_bubble is not None, "agent bubble missing"
@@ -1061,24 +1073,12 @@ def test_transcript_message_panel_orders_supplements_after_messages(wx_app):
         panel.Layout()
         wx.GetApp().Yield()
 
-        def top_position(window: wx.Window) -> int:
-            return window.GetScreenPosition()[1]
-
-        positions = [
-            ("user", top_position(user_bubble)),
-            ("reasoning", top_position(reasoning_pane)),
-            ("agent", top_position(agent_bubble)),
-            ("tool", top_position(tool_bubble)),
-            ("raw", top_position(raw_pane)),
-        ]
-        sorted_positions = sorted(positions, key=lambda item: item[1])
-        assert [name for name, _ in sorted_positions] == [
-            "user",
-            "reasoning",
-            "agent",
-            "tool",
-            "raw",
-        ], "supplement sections should follow user → reasoning → agent → tool → raw order"
+        footer = getattr(agent_bubble, "_footer", None)
+        assert isinstance(footer, wx.Sizer)
+        assert any(
+            child.IsWindow() and child.GetWindow() is raw_pane
+            for child in footer.GetChildren()
+        ), "raw data pane should be part of the agent bubble footer"
     finally:
         panel.Destroy()
         frame.Destroy()
@@ -1787,7 +1787,7 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         cache = panel._transcript_view._conversation_cache[conversation.conversation_id]
         message_panel = cache.panels_by_entry[id(entry)]
         children = message_panel.GetSizer().GetChildren()
-        assert len(children) >= 5, "expected user, reasoning slot, agent, tool, and raw sections"
+        assert len(children) >= 4, "expected user, reasoning slot, agent, and tool sections"
 
         assert children[0].IsWindow()
         assert children[0].GetWindow() is message_panel._user_bubble
@@ -1803,14 +1803,13 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         assert children[3].IsSizer()
         assert children[3].GetSizer() is message_panel._tool_section
 
-        assert children[4].IsSizer()
-        assert children[4].GetSizer() is message_panel._raw_data_slot
-        raw_children = children[4].GetSizer().GetChildren()
-        assert raw_children, "raw data slot should host collapsible pane"
+        agent_raw = getattr(message_panel._agent_bubble, "_transcript_agent_raw_pane", None)
+        assert isinstance(agent_raw, wx.CollapsiblePane)
 
         assert message_panel._tool_bubbles
-        _, tool_bubble = message_panel._tool_bubbles[0]
+        summary, tool_bubble, tool_raw_pane = message_panel._tool_bubbles[0]
         assert tool_bubble._timestamp == "2025-01-01T12:00:04Z"
+        assert isinstance(tool_raw_pane, wx.CollapsiblePane)
 
         log_text = panel._compose_transcript_log_text()
         assert "Started at 2025-01-01T12:00:02Z" in log_text

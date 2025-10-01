@@ -947,12 +947,15 @@ class TranscriptMessagePanel(wx.Panel):
         self._regenerate_button: wx.Button | None = None
         self._user_bubble: MessageBubble | None = None
         self._agent_bubble: MessageBubble | None = None
-        self._tool_bubbles: list[tuple[ToolCallSummary, MessageBubble]] = []
+        self._tool_bubbles: list[
+            tuple[ToolCallSummary, MessageBubble, wx.CollapsiblePane | None]
+        ] = []
+        self._tool_raw_collapsed: dict[str, bool] = {}
         self._tool_section = wx.BoxSizer(wx.VERTICAL)
         self._reasoning_slot = wx.BoxSizer(wx.VERTICAL)
-        self._raw_data_slot = wx.BoxSizer(wx.VERTICAL)
         self._reasoning_pane: wx.CollapsiblePane | None = None
         self._raw_data_pane: wx.CollapsiblePane | None = None
+        self._raw_payload: Any | None = raw_payload
         self._context_signature = ""
         self._reasoning_signature = ""
         self._raw_signature = ""
@@ -995,6 +998,8 @@ class TranscriptMessagePanel(wx.Panel):
 
         outer.Add(self._reasoning_slot, 0, wx.EXPAND)
 
+        self._raw_signature = self._raw_payload_signature(raw_payload)
+
         agent_bubble = MessageBubble(
             self,
             role_label=_("Agent"),
@@ -1028,10 +1033,8 @@ class TranscriptMessagePanel(wx.Panel):
         outer.Add(self._tool_section, 0, wx.EXPAND)
         self._build_tool_bubbles(tool_summaries)
 
-        outer.Add(self._raw_data_slot, 0, wx.EXPAND)
-
         self._update_reasoning(reasoning_segments)
-        self._update_raw_data(raw_payload)
+        self._update_raw_data(raw_payload, on_regenerate, regenerate_enabled)
 
         self._state = _TranscriptPanelState(
             prompt=prompt,
@@ -1097,6 +1100,7 @@ class TranscriptMessagePanel(wx.Panel):
                 )
                 self._context_signature = context_signature
 
+        self._raw_payload = raw_payload
         self._update_tool_bubbles(tool_summaries)
 
         agent_bubble = self._agent_bubble
@@ -1114,7 +1118,7 @@ class TranscriptMessagePanel(wx.Panel):
             probe.SetValue(normalize_for_display(response))
 
         self._update_reasoning(reasoning_segments)
-        self._update_raw_data(raw_payload)
+        self._update_raw_data(raw_payload, on_regenerate, regenerate_enabled)
 
         self._state = _TranscriptPanelState(
             prompt=prompt,
@@ -1201,6 +1205,7 @@ class TranscriptMessagePanel(wx.Panel):
                 align="left",
                 allow_selection=True,
                 render_markdown=True,
+                footer_factory=self._tool_footer_factory(summary),
                 palette=_tool_bubble_palette(parent_background, summary.tool_name),
                 width_hint=self._resolve_hint(hint_key),
                 on_width_change=lambda width, key=hint_key: self._emit_layout_hint(
@@ -1213,12 +1218,42 @@ class TranscriptMessagePanel(wx.Panel):
                 wx.EXPAND | wx.ALL,
                 self._padding,
             )
-            self._tool_bubbles.append((summary, bubble))
+            raw_pane = getattr(bubble, "_transcript_tool_raw_pane", None)
+            if isinstance(raw_pane, wx.CollapsiblePane):
+                key = self._tool_collapse_key(summary)
+                collapsed = self._tool_raw_collapsed.get(key)
+                if collapsed is not None:
+                    try:
+                        raw_pane.Collapse(collapsed)
+                    except Exception:
+                        pass
+            else:
+                raw_pane = None
+            self._tool_bubbles.append((summary, bubble, raw_pane))
+
+        active_keys = {
+            self._tool_collapse_key(summary)
+            for summary, _, _ in self._tool_bubbles
+        }
+        self._tool_raw_collapsed = {
+            key: state
+            for key, state in self._tool_raw_collapsed.items()
+            if key in active_keys
+        }
 
     def _clear_tool_bubbles(self) -> None:
         if not self._tool_bubbles:
             return
-        for _, bubble in self._tool_bubbles:
+        for summary, bubble, raw_pane in self._tool_bubbles:
+            if isinstance(raw_pane, wx.CollapsiblePane) and _is_window_usable(
+                raw_pane
+            ):
+                try:
+                    self._tool_raw_collapsed[
+                        self._tool_collapse_key(summary)
+                    ] = raw_pane.IsCollapsed()
+                except Exception:
+                    pass
             if not _is_window_usable(bubble):
                 continue
             try:
@@ -1228,13 +1263,56 @@ class TranscriptMessagePanel(wx.Panel):
             bubble.Destroy()
         self._tool_bubbles.clear()
 
+    def _tool_collapse_key(self, summary: ToolCallSummary) -> str:
+        parts = [summary.tool_name.strip().lower() or "tool", str(summary.index)]
+        if summary.started_at:
+            parts.append(summary.started_at)
+        if summary.completed_at:
+            parts.append(summary.completed_at)
+        elif summary.last_observed_at:
+            parts.append(summary.last_observed_at)
+        return "|".join(parts)
+
+    def _tool_footer_factory(
+        self, summary: ToolCallSummary
+    ) -> FooterFactory | None:
+        text = self._format_raw_payload(getattr(summary, "raw_payload", None)).strip()
+        if not text:
+            return None
+
+        key = self._tool_collapse_key(summary)
+
+        def factory(container: wx.Window) -> wx.CollapsiblePane | None:
+            section = self._build_collapsible_text_section(
+                container,
+                label=_("Raw data"),
+                content=text,
+                minimum_height=140,
+            )
+            if section is None:
+                return None
+            pane, text_ctrl = section
+            setattr(pane, "_transcript_raw_data_text_ctrl", text_ctrl)
+            owner = container.GetParent()
+            if isinstance(owner, MessageBubble):
+                setattr(owner, "_transcript_tool_raw_pane", pane)
+            collapsed = self._tool_raw_collapsed.get(key)
+            if collapsed is not None:
+                try:
+                    pane.Collapse(collapsed)
+                except Exception:
+                    pass
+            return pane
+
+        return factory
+
     def _update_tool_bubbles(
         self, tool_summaries: Sequence[ToolCallSummary] | None
     ) -> None:
-        current = tuple(summary for summary, _ in self._tool_bubbles)
+        current = tuple(summary for summary, _, _ in self._tool_bubbles)
         desired = tuple(tool_summaries or ())
         if current == desired:
-            for summary, bubble in self._tool_bubbles:
+            for summary, bubble, _ in self._tool_bubbles:
                 bubble.set_explicit_width_hint(
                     self._resolve_hint(self.tool_layout_hint_key(summary))
                 )
@@ -1406,11 +1484,6 @@ class TranscriptMessagePanel(wx.Panel):
         on_regenerate: Callable[[], None] | None,
         enabled: bool,
     ) -> FooterFactory | None:
-        if on_regenerate is None:
-            self._regenerate_button = None
-            self._regenerate_handler = None
-            return None
-
         def factory(container: wx.Window) -> wx.Sizer | None:
             footer = self._create_agent_footer(
                 container,
@@ -1431,6 +1504,19 @@ class TranscriptMessagePanel(wx.Panel):
         enabled: bool,
     ) -> wx.Sizer:
         sizer = wx.BoxSizer(wx.VERTICAL)
+
+        raw_pane = self._create_raw_data_panel(container, self._raw_payload)
+        if raw_pane is not None:
+            self._raw_data_pane = raw_pane
+            sizer.Add(raw_pane, 0, wx.EXPAND | wx.TOP, self._padding)
+            owner = container.GetParent()
+            if isinstance(owner, MessageBubble):
+                setattr(owner, "_transcript_agent_raw_pane", raw_pane)
+        else:
+            self._raw_data_pane = None
+            owner = container.GetParent()
+            if isinstance(owner, MessageBubble):
+                setattr(owner, "_transcript_agent_raw_pane", None)
 
         if on_regenerate is not None:
             self._regenerate_handler = on_regenerate
@@ -1590,47 +1676,56 @@ class TranscriptMessagePanel(wx.Panel):
         if isinstance(container, wx.Sizer):
             container.Layout()
 
-    def _update_raw_data(self, raw_payload: Any | None) -> None:
+    def _update_raw_data(
+        self,
+        raw_payload: Any | None,
+        on_regenerate: Callable[[], None] | None,
+        enabled: bool,
+    ) -> None:
         signature = self._raw_payload_signature(raw_payload)
-        if signature == self._raw_signature:
-            if self._raw_data_pane is not None and _is_window_usable(
-                self._raw_data_pane
-            ):
-                text_ctrl = getattr(
-                    self._raw_data_pane,
-                    "_transcript_raw_data_text_ctrl",
-                    None,
-                )
-                if isinstance(text_ctrl, wx.TextCtrl):
-                    text_ctrl.ChangeValue(normalize_for_display(signature))
+        pane = self._raw_data_pane
+        if (
+            signature == self._raw_signature
+            and isinstance(pane, wx.CollapsiblePane)
+            and _is_window_usable(pane)
+        ):
+            text_ctrl = getattr(pane, "_transcript_raw_data_text_ctrl", None)
+            if isinstance(text_ctrl, wx.TextCtrl):
+                text_ctrl.ChangeValue(normalize_for_display(signature))
             return
 
-        slot = getattr(self, "_raw_data_slot", None)
-        container = self.GetSizer()
-        if isinstance(slot, wx.Sizer):
+        was_collapsed = True
+        if isinstance(pane, wx.CollapsiblePane) and _is_window_usable(pane):
             try:
-                slot.Clear(delete_windows=True)
+                was_collapsed = pane.IsCollapsed()
             except Exception:
-                pass
-        self._raw_data_pane = None
+                was_collapsed = True
+
+        self._raw_payload = raw_payload
         self._raw_signature = signature
 
-        if not signature:
-            if isinstance(container, wx.Sizer):
-                container.Layout()
+        agent_bubble = self._agent_bubble
+        if agent_bubble is None or not _is_window_usable(agent_bubble):
+            self._raw_data_pane = None
             return
 
-        pane = self._create_raw_data_panel(self, raw_payload)
-        if pane is not None and isinstance(slot, wx.Sizer):
-            slot.Add(
-                pane,
-                0,
-                wx.EXPAND | wx.ALL,
-                self._padding,
-            )
-            self._raw_data_pane = pane
-        if isinstance(container, wx.Sizer):
-            container.Layout()
+        agent_bubble.set_footer(
+            self._agent_footer_factory(on_regenerate, enabled)
+        )
+
+        pane = self._raw_data_pane
+        if not isinstance(pane, wx.CollapsiblePane) or not _is_window_usable(pane):
+            if not signature:
+                self._raw_data_pane = None
+            return
+
+        try:
+            pane.Collapse(was_collapsed if signature else True)
+        except Exception:
+            pass
+        text_ctrl = getattr(pane, "_transcript_raw_data_text_ctrl", None)
+        if isinstance(text_ctrl, wx.TextCtrl):
+            text_ctrl.ChangeValue(normalize_for_display(signature))
 
 
     @staticmethod

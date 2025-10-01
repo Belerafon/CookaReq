@@ -174,11 +174,42 @@ def _build_agent_turn(
 ) -> AgentTurn | None:
     timestamp = _build_timestamp(entry.response_at, source="response_at")
     final_response = _build_final_response(entry, timestamp)
-    streamed_responses = _build_streamed_responses(entry, final_response)
+    streamed_responses, latest_stream_timestamp = _build_streamed_responses(
+        entry, final_response
+    )
     reasoning_segments = _sanitize_reasoning_segments(entry.reasoning)
     llm_request = _build_llm_request_snapshot(entry)
-    tool_calls = _build_tool_calls(entry_id, entry_index, entry)
+    tool_calls, latest_tool_timestamp = _build_tool_calls(
+        entry_id, entry_index, entry
+    )
     raw_payload = history_json_safe(entry.raw_result)
+
+    if final_response is None and streamed_responses:
+        promoted = streamed_responses[-1]
+        promoted_timestamp = promoted.timestamp
+        if promoted_timestamp.missing:
+            promoted_timestamp = latest_stream_timestamp or timestamp
+        final_response = AgentResponse(
+            text=promoted.text,
+            display_text=promoted.display_text,
+            timestamp=promoted_timestamp,
+            step_index=None,
+            is_final=True,
+            regenerated=bool(getattr(entry, "regenerated", False)),
+        )
+        streamed_responses = streamed_responses[:-1]
+        latest_stream_timestamp = promoted_timestamp
+
+    if timestamp.missing:
+        timestamp = _resolve_turn_timestamp(
+            timestamp,
+            final_response=final_response,
+            stream_timestamp=latest_stream_timestamp,
+            tool_timestamp=latest_tool_timestamp,
+            prompt_timestamp=_build_timestamp(entry.prompt_at, source="prompt_at"),
+        )
+        if final_response is not None:
+            final_response.timestamp = timestamp
 
     has_content = bool(
         final_response
@@ -225,10 +256,10 @@ def _build_final_response(
 
 def _build_streamed_responses(
     entry: ChatEntry, final_response: AgentResponse | None
-) -> tuple[AgentResponse, ...]:
+) -> tuple[tuple[AgentResponse, ...], TimestampInfo | None]:
     payloads = _collect_llm_step_payloads(entry)
     if not payloads:
-        return ()
+        return (), None
 
     final_text = _normalise_message_text(
         final_response.display_text if final_response else None
@@ -236,6 +267,7 @@ def _build_streamed_responses(
 
     responses: list[AgentResponse] = []
     fallback_index = 1
+    latest_timestamp: TimestampInfo | None = None
     for payload in payloads:
         response = _build_stream_step_response(payload, fallback_index)
         if response is None:
@@ -244,7 +276,21 @@ def _build_streamed_responses(
         if final_text and _normalise_message_text(response.display_text) == final_text:
             continue
         responses.append(response)
-    return tuple(responses)
+        if not response.timestamp.missing:
+            if latest_timestamp is None:
+                latest_timestamp = response.timestamp
+            elif (
+                response.timestamp.occurred_at
+                and latest_timestamp.occurred_at
+                and response.timestamp.occurred_at
+                >= latest_timestamp.occurred_at
+            ):
+                latest_timestamp = response.timestamp
+    if latest_timestamp is None and responses:
+        candidate = responses[-1].timestamp
+        if not candidate.missing:
+            latest_timestamp = candidate
+    return tuple(responses), latest_timestamp
 
 
 def _build_stream_step_response(
@@ -318,13 +364,14 @@ def _build_tool_calls(
     entry_id: str,
     entry_index: int,
     entry: ChatEntry,
-) -> tuple[ToolCallDetails, ...]:
+) -> tuple[tuple[ToolCallDetails, ...], TimestampInfo | None]:
     payloads = _iter_tool_payloads(entry.tool_results)
     if not payloads:
-        return ()
+        return (), None
 
     requests = _collect_llm_tool_requests(entry)
     tool_calls: list[ToolCallDetails] = []
+    latest_timestamp: TimestampInfo | None = None
     for tool_index, payload in enumerate(payloads, start=1):
         summary = summarize_tool_payload(tool_index, payload)
         safe_payload = history_json_safe(payload)
@@ -348,6 +395,19 @@ def _build_tool_calls(
         if request_payload is None:
             request_payload = _synthesise_tool_request(payload, summary)
 
+        call_timestamp_raw = _extract_tool_timestamp(payload)
+        if call_timestamp_raw:
+            candidate = _build_timestamp(call_timestamp_raw, source="tool_result")
+            if not candidate.missing:
+                if latest_timestamp is None:
+                    latest_timestamp = candidate
+                elif (
+                    candidate.occurred_at
+                    and latest_timestamp.occurred_at
+                    and candidate.occurred_at >= latest_timestamp.occurred_at
+                ):
+                    latest_timestamp = candidate
+
         tool_calls.append(
             ToolCallDetails(
                 summary=summary,
@@ -356,7 +416,7 @@ def _build_tool_calls(
                 llm_request=request_payload,
             )
         )
-    return tuple(tool_calls)
+    return tuple(tool_calls), latest_timestamp
 
 
 def _build_timestamp(value: str | None, *, source: str | None) -> TimestampInfo:
@@ -379,6 +439,38 @@ def _build_timestamp(value: str | None, *, source: str | None) -> TimestampInfo:
         missing=True,
         source=source,
     )
+
+
+# ---------------------------------------------------------------------------
+def _resolve_turn_timestamp(
+    primary: TimestampInfo,
+    *,
+    final_response: AgentResponse | None,
+    stream_timestamp: TimestampInfo | None,
+    tool_timestamp: TimestampInfo | None,
+    prompt_timestamp: TimestampInfo | None,
+) -> TimestampInfo:
+    if not primary.missing:
+        return primary
+
+    def pick(candidate: TimestampInfo | None) -> TimestampInfo | None:
+        if candidate is None or candidate.missing:
+            return None
+        if candidate.raw:
+            return candidate
+        return None
+
+    for option in (
+        final_response.timestamp if final_response is not None else None,
+        stream_timestamp,
+        tool_timestamp,
+        prompt_timestamp,
+    ):
+        chosen = pick(option)
+        if chosen is not None:
+            return chosen
+
+    return primary
 
 
 # ---------------------------------------------------------------------------

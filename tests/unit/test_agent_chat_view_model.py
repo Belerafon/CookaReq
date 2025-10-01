@@ -284,6 +284,47 @@ def test_streamed_responses_in_turn() -> None:
     assert all(resp.text != final_event.text for resp in turn.streamed_responses)
 
 
+def test_promotes_last_stream_when_final_missing() -> None:
+    entry = ChatEntry(
+        prompt="draft",
+        response="",
+        tokens=1,
+        prompt_at="2025-10-01T08:00:00+00:00",
+        response_at=None,
+        raw_result={
+            "diagnostic": {
+                "llm_steps": [
+                    {
+                        "step": 1,
+                        "response": {
+                            "content": "Streamed answer",
+                            "timestamp": "2025-10-01T08:00:07+00:00",
+                        },
+                    }
+                ]
+            }
+        },
+        tool_results=[
+            {
+                "tool_name": "demo_tool",
+                "completed_at": "2025-10-01T08:00:09+00:00",
+            }
+        ],
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+
+    assert turn.final_response is not None
+    assert turn.final_response.text == "Streamed answer"
+    assert turn.final_response.is_final is True
+    assert not turn.streamed_responses
+    assert turn.timestamp.raw == "2025-10-01T08:00:07+00:00"
+    assert turn.timestamp.source == "llm_step"
+
+
 def test_tool_summary_compacts_error_details() -> None:
     entry = ChatEntry(
         prompt="",

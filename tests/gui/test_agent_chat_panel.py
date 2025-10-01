@@ -11,6 +11,7 @@ from app.ui.agent_chat_panel.token_usage import summarize_token_usage
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.agent_chat_panel.components.transcript_entry import TranscriptEntryPanel
 from app.ui.agent_chat_panel.view_model import TranscriptEntry, build_conversation_timeline
+from app.ui.agent_chat_panel.time_formatting import format_entry_timestamp
 from app.ui.chat_entry import ChatConversation, ChatEntry
 from app.ui.widgets.chat_message import MessageBubble
 from app import i18n
@@ -1095,7 +1096,9 @@ def test_transcript_entry_panel_wraps_tool_only_entries(wx_app):
         agent_bubble = agent_bubbles[0]
 
         header = bubble_header_text(agent_bubble)
-        assert i18n.gettext("Timestamp unavailable") in header
+        prompt_ts = entry_timeline.prompt.timestamp.raw
+        assert prompt_ts is not None
+        assert format_entry_timestamp(prompt_ts) in header
         body = bubble_body_text(agent_bubble)
         assert "demo_tool" in body or "Ran" in body
 
@@ -1103,6 +1106,72 @@ def test_transcript_entry_panel_wraps_tool_only_entries(wx_app):
             agent_bubble, f"tool:{entry_timeline.entry_id}:1"
         )
         assert tool_pane is not None, "tool collapsible should be attached to the bubble"
+    finally:
+        panel.Destroy()
+        frame.Destroy()
+
+
+def test_transcript_entry_panel_attaches_tools_to_stream_only_response(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    try:
+        response_ts = "2025-01-01T10:01:00+00:00"
+        entry_timeline = build_entry_timeline(
+            response="",
+            response_at=None,
+            tool_results=[
+                {
+                    "tool_name": "demo_tool",
+                    "status": "completed",
+                    "completed_at": "2025-01-01T10:01:05+00:00",
+                    "result": {"ok": True},
+                }
+            ],
+            raw_payload={
+                "diagnostic": {
+                    "llm_steps": [
+                        {
+                            "step": 1,
+                            "response": {
+                                "content": "Streamed answer",
+                                "timestamp": response_ts,
+                            },
+                        }
+                    ]
+                }
+            },
+        )
+        panel = TranscriptEntryPanel(
+            frame,
+            timeline=entry_timeline,
+            layout_hints=entry_timeline.layout_hints,
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+
+        agent_panel = panel.FindWindow("agent-entry")
+        assert agent_panel is not None, "agent panel should exist"
+
+        agent_bubbles = [
+            bubble
+            for bubble in collect_message_bubbles(agent_panel)
+            if "Agent" in bubble_header_text(bubble)
+        ]
+        assert len(agent_bubbles) == 1, "expected a single agent bubble"
+        agent_bubble = agent_bubbles[0]
+
+        header = bubble_header_text(agent_bubble)
+        expected_timestamp = format_entry_timestamp(response_ts)
+        assert expected_timestamp in header
+        body = bubble_body_text(agent_bubble)
+        assert "Streamed answer" in body
+
+        tool_pane = find_collapsible_by_name(
+            agent_bubble, f"tool:{entry_timeline.entry_id}:1"
+        )
+        assert tool_pane is not None, "tool collapsible should attach to the bubble"
     finally:
         panel.Destroy()
         frame.Destroy()

@@ -877,6 +877,12 @@ class TranscriptEntryPanel(wx.Panel):
                     rendered.append(bubble)
                     final_bubble = bubble
 
+        if final_bubble is None:
+            for widget in reversed(rendered):
+                if isinstance(widget, MessageBubble):
+                    final_bubble = widget
+                    break
+
         if final_bubble is None and tool_calls:
             placeholder = self._create_tool_summary_bubble(
                 container,

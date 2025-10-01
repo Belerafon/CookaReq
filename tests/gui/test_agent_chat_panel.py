@@ -1030,11 +1030,16 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
         )
         assert tool_pane is not None, "tool collapsible should be attached to the agent entry"
 
+        summary_texts: list[str] = []
+        for child in tool_pane.GetPane().GetChildren():
+            if isinstance(child, wx.TextCtrl):
+                summary_texts.append(child.GetValue())
+        summary_text = "\n".join(summary_texts)
+        if has_request_payload:
+            assert "LLM request:" in summary_text
         nested_names = {
             pane.GetName() for pane in collect_collapsible_panes(tool_pane)
         }
-        if has_request_payload:
-            assert any(name.startswith("raw:tool-request:demo_tool") for name in nested_names)
         assert any(name.startswith("raw:tool:demo_tool") for name in nested_names)
     finally:
         destroy_panel(frame, panel)
@@ -1356,7 +1361,7 @@ def test_tool_sections_follow_agent_response(wx_app):
         frame.Destroy()
 
 
-def test_tool_summary_includes_request_preview(wx_app):
+def test_tool_summary_includes_llm_exchange(wx_app):
     wx = pytest.importorskip("wx")
 
     frame = wx.Frame(None)
@@ -1432,8 +1437,11 @@ def test_tool_summary_includes_request_preview(wx_app):
             if isinstance(child, wx.TextCtrl):
                 summary_texts.append(child.GetValue())
         summary_text = "\n".join(summary_texts)
-        assert "update_requirement_field(" in summary_text
-        assert "rid=" in summary_text
+        assert "LLM request:" in summary_text
+        assert "\"name\": \"update_requirement_field\"" in summary_text
+        assert "\"rid\": \"REQ-1\"" in summary_text
+        assert "LLM response:" in summary_text
+        assert "Applying updates" in summary_text
     finally:
         if panel is not None:
             panel.Destroy()
@@ -2084,7 +2092,6 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         agent_raw_pane = find_collapsible_by_name(agent_panel, "raw:agent")
         llm_request_pane = find_collapsible_by_name(agent_panel, "raw:llm-request")
         tool_raw_pane = None
-        tool_request_pane = None
         tool_pane = next(
             (
                 pane
@@ -2096,8 +2103,6 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         assert tool_pane is not None
         for pane in collect_collapsible_panes(tool_pane):
             name = pane.GetName()
-            if name.startswith("raw:tool-request:") and tool_request_pane is None:
-                tool_request_pane = pane
             if name.startswith("raw:tool:") and tool_raw_pane is None:
                 tool_raw_pane = pane
 
@@ -2106,16 +2111,13 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         assert agent_raw_pane is not None
         assert llm_request_pane is not None
         assert tool_raw_pane is not None
-        assert tool_request_pane is not None
 
         context_label = collapsible_label(context_pane)
         assert context_label.lower() in {"", i18n._("Context").lower()}
         assert "reason" in collapsible_label(reasoning_pane).lower()
         assert "raw" in collapsible_label(agent_raw_pane).lower()
         assert "raw" in collapsible_label(tool_raw_pane).lower()
-        assert "request" in collapsible_label(tool_request_pane).lower()
 
-        tool_request_pane.Collapse(False)
         tool_raw_pane.Collapse(False)
         flush_wx_events(wx)
 
@@ -2126,9 +2128,15 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
                     lines.append(child.GetValue())
             return "\n".join(lines)
 
-        request_text = pane_text(tool_request_pane)
+        summary_texts: list[str] = []
+        for child in tool_pane.GetPane().GetChildren():
+            if isinstance(child, wx.TextCtrl):
+                summary_texts.append(child.GetValue())
+        summary_text = "\n".join(summary_texts)
         raw_text = pane_text(tool_raw_pane)
-        assert "tool_calls" in request_text or "tool_call" in request_text or "content" in request_text
+        assert "LLM request:" in summary_text
+        assert "LLM response:" in summary_text
+        assert "tool_calls" in summary_text or "tool_call" in summary_text or "content" in summary_text
         assert "VALIDATION_ERROR" in raw_text
 
         log_text = panel._compose_transcript_log_text()

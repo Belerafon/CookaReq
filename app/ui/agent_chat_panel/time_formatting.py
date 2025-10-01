@@ -17,6 +17,8 @@ def _coerce_datetime(value: Any) -> datetime.datetime | None:
         text = value.strip()
         if not text:
             return None
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
         try:
             moment = datetime.datetime.fromisoformat(text)
         except ValueError:
@@ -34,12 +36,9 @@ def format_last_activity(timestamp: str | None) -> str:
 
     if not timestamp:
         return _("No activity yet")
-    try:
-        moment = datetime.datetime.fromisoformat(timestamp)
-    except ValueError:
+    moment = _coerce_datetime(timestamp)
+    if moment is None:
         return timestamp
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=datetime.UTC)
     local_moment = moment.astimezone()
     now = datetime.datetime.now(local_moment.tzinfo)
     today = now.date()
@@ -58,14 +57,11 @@ def format_entry_timestamp(timestamp: str | None) -> str:
 
     if not timestamp:
         return ""
-    try:
-        moment = datetime.datetime.fromisoformat(timestamp)
-    except ValueError:
+    moment = _coerce_datetime(timestamp)
+    if moment is None:
         return timestamp
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=datetime.UTC)
     local_moment = moment.astimezone()
-    return local_moment.strftime("%Y-%m-%d %H:%M:%S")
+    return local_moment.strftime("%d %b %Y %H:%M:%S")
 
 
 def parse_iso_timestamp(value: Any) -> datetime.datetime | None:

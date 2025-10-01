@@ -10,6 +10,7 @@ import json
 
 from ...i18n import _
 from ..text import normalize_for_display
+from .time_formatting import format_entry_timestamp
 
 
 @dataclass(frozen=True)
@@ -52,8 +53,12 @@ def summarize_tool_results(
 def _normalise_timestamp(value: Any) -> str | None:
     if isinstance(value, str):
         text = value.strip()
-        if text:
-            return normalize_for_display(text)
+        if not text:
+            return None
+        formatted = format_entry_timestamp(text)
+        if formatted:
+            return normalize_for_display(formatted)
+        return normalize_for_display(text)
     return None
 
 

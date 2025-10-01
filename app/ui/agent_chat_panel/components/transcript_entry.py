@@ -12,7 +12,8 @@ import wx
 from ....i18n import _
 from ...widgets.chat_message import MessageBubble
 from ...text import normalize_for_display
-from ..history_utils import history_json_safe
+from ..history_utils import format_value_snippet, history_json_safe
+from ..time_formatting import format_entry_timestamp
 from ..tool_summaries import ToolCallSummary
 from ..view_model import (
     ChatEvent,
@@ -468,6 +469,13 @@ class TranscriptEntryPanel(wx.Panel):
         for bullet in summary.bullet_lines:
             if bullet:
                 lines.append("• " + bullet)
+        request_preview = self._render_tool_request_preview(event)
+        if request_preview:
+            lines.append(
+                _("LLM request: {request}").format(
+                    request=normalize_for_display(request_preview)
+                )
+            )
         if event.call_identifier:
             lines.append(
                 _("Call identifier: {identifier}").format(
@@ -475,8 +483,104 @@ class TranscriptEntryPanel(wx.Panel):
                 )
             )
         if event.timestamp:
-            lines.append(_("Recorded at: {timestamp}").format(timestamp=event.timestamp))
+            display_timestamp = format_entry_timestamp(event.timestamp) or event.timestamp
+            lines.append(
+                _("Recorded at: {timestamp}").format(
+                    timestamp=normalize_for_display(display_timestamp)
+                )
+            )
         return "\n".join(lines)
+
+    def _render_tool_request_preview(self, event: ToolCallEvent) -> str | None:
+        summary = event.summary
+        payload_candidates: list[Mapping[str, Any]] = []
+        request_payload = event.llm_request
+        if isinstance(request_payload, Mapping):
+            payload_candidates.append(request_payload)
+        summary_payload = getattr(summary, "raw_payload", None)
+        if isinstance(summary_payload, Mapping):
+            payload_candidates.append(summary_payload)
+
+        for payload in payload_candidates:
+            components = self._extract_request_components(payload)
+            if components is None:
+                continue
+            name, arguments = components
+            formatted = self._stringify_request(name or summary.tool_name, arguments)
+            if formatted:
+                return formatted
+        return None
+
+    def _extract_request_components(
+        self, payload: Mapping[str, Any]
+    ) -> tuple[str | None, Any] | None:
+        call_payload: Mapping[str, Any] = payload
+        if isinstance(payload.get("tool_call"), Mapping):
+            call_payload = payload["tool_call"]  # type: ignore[index]
+        elif isinstance(payload.get("function"), Mapping):
+            call_payload = payload["function"]  # type: ignore[index]
+
+        name: str | None = None
+        for key in ("name", "tool_name", "tool"):
+            value = call_payload.get(key)
+            if isinstance(value, str) and value.strip():
+                name = value.strip()
+                break
+
+        arguments: Any = call_payload.get("arguments")
+        if arguments is None:
+            arguments = call_payload.get("tool_arguments")
+        if arguments is None and isinstance(payload.get("function"), Mapping):
+            arguments = payload["function"].get("arguments")  # type: ignore[index]
+        if arguments is None and "arguments" in payload:
+            arguments = payload.get("arguments")
+        if arguments is None and "tool_arguments" in payload:
+            arguments = payload.get("tool_arguments")
+
+        if isinstance(arguments, str):
+            stripped = arguments.strip()
+            if stripped:
+                if stripped.startswith(("{", "[")):
+                    try:
+                        decoded = json.loads(stripped)
+                    except (TypeError, ValueError):
+                        arguments = stripped
+                    else:
+                        arguments = decoded
+                else:
+                    arguments = stripped
+
+        if arguments is None:
+            return None
+        return name, arguments
+
+    def _stringify_request(self, name: str | None, arguments: Any) -> str | None:
+        args_repr = self._stringify_request_arguments(arguments)
+        if not name:
+            name = _("Tool")
+        name_text = normalize_for_display(str(name))
+        if not args_repr:
+            return name_text
+        return f"{name_text}({args_repr})"
+
+    def _stringify_request_arguments(self, arguments: Any) -> str | None:
+        if isinstance(arguments, Mapping):
+            parts: list[str] = []
+            for key in sorted(arguments):
+                snippet = format_value_snippet(arguments[key])
+                if not snippet:
+                    snippet = ""
+                parts.append(f"{key}={snippet}")
+            return ", ".join(parts) if parts else None
+        if isinstance(arguments, Sequence) and not isinstance(
+            arguments, (str, bytes, bytearray)
+        ):
+            parts = [format_value_snippet(value) for value in arguments]
+            filtered = [part for part in parts if part]
+            return ", ".join(filtered) if filtered else None
+        if arguments in (None, ""):
+            return None
+        return format_value_snippet(arguments)
 
 
     # ------------------------------------------------------------------
@@ -535,7 +639,8 @@ class TranscriptEntryPanel(wx.Panel):
             section = self._create_agent_section(container, event)
             if section is None:
                 continue
-            if encountered_response:
+            place_after = isinstance(event, (ToolCallEvent, RawPayloadEvent))
+            if place_after or encountered_response:
                 after.append(section)
             else:
                 before.append(section)

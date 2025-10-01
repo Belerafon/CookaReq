@@ -1262,6 +1262,184 @@ def test_transcript_entry_panel_reuses_layout_hints(wx_app):
         frame.Destroy()
 
 
+def test_tool_sections_follow_agent_response(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    panel = None
+    try:
+        timeline = build_entry_timeline(
+            response="Agent answer",
+            response_at="2025-01-01T10:01:00+00:00",
+            tool_results=[
+                {
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "call-1",
+                    "started_at": "2025-01-01T09:59:30+00:00",
+                    "completed_at": "2025-01-01T09:59:45+00:00",
+                    "ok": False,
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Missing rid",
+                    },
+                }
+            ],
+            raw_payload={
+                "diagnostic": {
+                    "llm_steps": [
+                        {
+                            "response": {
+                                "content": "Applying updates",
+                                "tool_calls": [
+                                    {
+                                        "id": "call-1",
+                                        "name": "update_requirement_field",
+                                        "arguments": {
+                                            "rid": "REQ-1",
+                                            "field": "title",
+                                            "value": "Новое имя",
+                                        },
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                }
+            },
+        )
+
+        panel = TranscriptEntryPanel(
+            frame,
+            timeline=timeline,
+            layout_hints={},
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+        if frame.GetSizer() is None:
+            frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
+        frame.GetSizer().Add(panel, 1, wx.EXPAND)
+        wx.GetApp().Yield()
+
+        agent_panel = panel.FindWindow("agent-entry")
+        assert agent_panel is not None
+
+        frame.Layout()
+        wx.GetApp().Yield()
+
+        bubble = next(
+            (
+                bubble
+                for bubble in collect_message_bubbles(agent_panel)
+                if "Agent" in bubble_header_text(bubble)
+            ),
+            None,
+        )
+        assert bubble is not None, "agent bubble should be present"
+
+        tool_pane = next(
+            (
+                pane
+                for pane in collect_collapsible_panes(agent_panel)
+                if pane.GetName().startswith("tool:")
+            ),
+            None,
+        )
+        assert tool_pane is not None, "tool pane should be present"
+
+        bubble_y = bubble.GetScreenPosition()[1]
+        pane_y = tool_pane.GetScreenPosition()[1]
+        assert bubble_y <= pane_y, "tool pane should appear below the agent bubble"
+    finally:
+        if panel is not None:
+            panel.Destroy()
+        frame.Destroy()
+
+
+def test_tool_summary_includes_request_preview(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    panel = None
+    try:
+        timeline = build_entry_timeline(
+            response="Agent answer",
+            response_at="2025-01-01T10:01:00+00:00",
+            tool_results=[
+                {
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "call-1",
+                    "started_at": "2025-01-01T09:59:30+00:00",
+                    "completed_at": "2025-01-01T09:59:45+00:00",
+                    "ok": False,
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Missing rid",
+                    },
+                }
+            ],
+            raw_payload={
+                "diagnostic": {
+                    "llm_steps": [
+                        {
+                            "response": {
+                                "content": "Applying updates",
+                                "tool_calls": [
+                                    {
+                                        "id": "call-1",
+                                        "name": "update_requirement_field",
+                                        "arguments": {
+                                            "rid": "REQ-1",
+                                            "field": "title",
+                                            "value": "Новое имя",
+                                        },
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                }
+            },
+        )
+
+        panel = TranscriptEntryPanel(
+            frame,
+            timeline=timeline,
+            layout_hints={},
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+        if frame.GetSizer() is None:
+            frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
+        frame.GetSizer().Add(panel, 1, wx.EXPAND)
+        wx.GetApp().Yield()
+
+        agent_panel = panel.FindWindow("agent-entry")
+        assert agent_panel is not None
+        tool_pane = next(
+            (
+                pane
+                for pane in collect_collapsible_panes(agent_panel)
+                if pane.GetName().startswith("tool:")
+            ),
+            None,
+        )
+        assert tool_pane is not None
+
+        summary_texts: list[str] = []
+        for child in tool_pane.GetPane().GetChildren():
+            if isinstance(child, wx.TextCtrl):
+                summary_texts.append(child.GetValue())
+        summary_text = "\n".join(summary_texts)
+        assert "update_requirement_field(" in summary_text
+        assert "rid=" in summary_text
+    finally:
+        if panel is not None:
+            panel.Destroy()
+        frame.Destroy()
+
+
 def test_agent_transcript_log_orders_sections_for_errors(tmp_path, wx_app):
     class ErrorAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
@@ -1954,8 +2132,20 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         assert "VALIDATION_ERROR" in raw_text
 
         log_text = panel._compose_transcript_log_text()
-        assert "Started at 2025-01-01T12:00:02Z" in log_text
-        assert "Completed at 2025-01-01T12:00:04Z" in log_text
+        started_line = next(
+            (line for line in log_text.splitlines() if line.strip().startswith("Started at ")),
+            "",
+        )
+        completed_line = next(
+            (line for line in log_text.splitlines() if line.strip().startswith("Completed at ")),
+            "",
+        )
+        assert started_line
+        assert completed_line
+        assert "T" not in started_line.strip()
+        assert "T" not in completed_line.strip()
+        assert "12:00:02" in started_line
+        assert "12:00:04" in completed_line
         assert "Now I will translate the selected requirements into Russian." in log_text
     finally:
         destroy_panel(frame, panel)

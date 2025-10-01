@@ -2319,19 +2319,25 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if started_at or completed_at:
                 lines.append(indent_block(_("Timeline:")))
                 if started_at:
+                    formatted_start = format_entry_timestamp(started_at)
+                    if not formatted_start:
+                        formatted_start = normalize_for_display(str(started_at))
                     lines.append(
                         indent_block(
                             _("Started at {timestamp}").format(
-                                timestamp=normalize_for_display(str(started_at))
+                                timestamp=formatted_start
                             ),
                             prefix="        ",
                         )
                     )
                 if completed_at:
+                    formatted_end = format_entry_timestamp(completed_at)
+                    if not formatted_end:
+                        formatted_end = normalize_for_display(str(completed_at))
                     lines.append(
                         indent_block(
                             _("Completed at {timestamp}").format(
-                                timestamp=normalize_for_display(str(completed_at))
+                                timestamp=formatted_end
                             ),
                             prefix="        ",
                         )

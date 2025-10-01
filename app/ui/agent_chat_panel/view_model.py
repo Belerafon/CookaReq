@@ -150,9 +150,9 @@ class EntryTimeline:
         if self.reasoning is not None:
             ordered.append(self.reasoning)
         ordered.extend(self.intermediate_responses)
-        ordered.extend(self.tool_calls)
         if self.response is not None:
             ordered.append(self.response)
+        ordered.extend(self.tool_calls)
         if self.raw_payload is not None:
             ordered.append(self.raw_payload)
         ordered.extend(self.system_messages)
@@ -912,6 +912,8 @@ def _build_tool_call_event(
         request_payload = requests.get(call_identifier)
     if request_payload is None:
         request_payload = requests.get(str(tool_index))
+    if request_payload is None:
+        request_payload = _synthesise_tool_request(payload, summary)
     if summary is None:
         summary = ToolCallSummary(
             index=tool_index,
@@ -935,6 +937,50 @@ def _build_tool_call_event(
         raw_payload=safe_payload,
         llm_request=request_payload,
     )
+
+
+def _synthesise_tool_request(
+    payload: Mapping[str, Any], summary: ToolCallSummary | None
+) -> Any | None:
+    """Reconstruct an approximate LLM request when none was recorded."""
+
+    if not isinstance(payload, Mapping):
+        return None
+
+    arguments_source: Any = None
+    for key in ("tool_arguments", "arguments", "args"):
+        candidate = payload.get(key)
+        if isinstance(candidate, Mapping):
+            arguments_source = candidate
+            break
+    if not isinstance(arguments_source, Mapping):
+        return None
+
+    safe_arguments = history_json_safe(arguments_source)
+    if not isinstance(safe_arguments, Mapping):
+        return None
+
+    request: dict[str, Any] = {
+        "tool_call": {
+            "name": (summary.tool_name if summary else ""),
+            "arguments": dict(safe_arguments),
+        }
+    }
+
+    if summary and summary.tool_name:
+        request["tool_call"]["name"] = summary.tool_name
+    else:
+        for key in ("tool_name", "name", "tool"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                request["tool_call"]["name"] = value.strip()
+                break
+
+    step_value = payload.get("step")
+    if step_value is not None:
+        request["step"] = step_value
+
+    return history_json_safe(request)
 
 
 def _extract_tool_timestamp(payload: Mapping[str, Any]) -> str | None:

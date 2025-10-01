@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from app.ui.agent_chat_panel.view_model import (
     ChatEventKind,
     build_conversation_timeline,
@@ -80,8 +82,8 @@ def test_build_conversation_timeline_compiles_events() -> None:
         ChatEventKind.CONTEXT,
         ChatEventKind.LLM_REQUEST,
         ChatEventKind.REASONING,
-        ChatEventKind.TOOL_CALL,
         ChatEventKind.RESPONSE,
+        ChatEventKind.TOOL_CALL,
         ChatEventKind.RAW_PAYLOAD,
     ]
     assert tool_event.llm_request is None
@@ -196,6 +198,46 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     assert response_payload.get("content") == "Applying updates"
 
 
+def test_tool_call_event_synthesises_request_when_missing() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="",
+        tokens=1,
+        prompt_at="2025-10-01T09:00:00+00:00",
+        response_at="2025-10-01T09:00:05+00:00",
+        tool_results=[
+            {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "call-42",
+                "tool_arguments": {
+                    "rid": "REQ-9",
+                    "field": "title",
+                    "value": "Updated title",
+                },
+                "ok": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "missing rid",
+                },
+            }
+        ],
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    tool_event = timeline.entries[0].tool_calls[0]
+
+    request_payload = tool_event.llm_request
+    assert isinstance(request_payload, Mapping)
+    tool_call = request_payload.get("tool_call")
+    assert isinstance(tool_call, Mapping)
+    arguments = tool_call.get("arguments")
+    assert isinstance(arguments, Mapping)
+    assert arguments.get("rid") == "REQ-9"
+    assert arguments.get("field") == "title"
+    assert arguments.get("value") == "Updated title"
+
+
 def test_step_responses_rendered_as_events() -> None:
     entry = ChatEntry(
         prompt="do work",
@@ -264,8 +306,10 @@ def test_step_responses_rendered_as_events() -> None:
     assert response_events[1] is final_event
 
     tool_index = entry_timeline.events.index(entry_timeline.tool_calls[0])
-    assert entry_timeline.events.index(step_event) < tool_index < entry_timeline.events.index(
-        final_event
+    assert (
+        entry_timeline.events.index(step_event)
+        < entry_timeline.events.index(final_event)
+        < tool_index
     )
 
 

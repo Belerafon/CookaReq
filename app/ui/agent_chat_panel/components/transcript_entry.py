@@ -13,7 +13,7 @@ from ....i18n import _
 from ...widgets.chat_message import MessageBubble
 from ...text import normalize_for_display
 from ..history_utils import format_value_snippet, history_json_safe
-from ..tool_summaries import ToolCallSummary
+from ..tool_summaries import ToolCallSummary, extract_error_message
 from ..view_model import (
     ChatEvent,
     ChatEventKind,
@@ -204,6 +204,120 @@ def _summarize_request_arguments(arguments: Any) -> list[str]:
         if value_text:
             return [value_text]
     return []
+
+
+def _coerce_mapping(value: Any) -> Mapping[str, Any] | None:
+    if isinstance(value, Mapping):
+        return value
+    return None
+
+
+def _extract_tool_arguments(event: ToolCallEvent) -> Mapping[str, Any] | None:
+    request_payload = _coerce_mapping(event.llm_request)
+    if request_payload:
+        call_payload = _coerce_mapping(request_payload.get("tool_call"))
+        if call_payload:
+            for key in ("arguments", "tool_arguments", "args"):
+                candidate = _coerce_mapping(call_payload.get(key))
+                if candidate:
+                    return candidate
+        for key in ("arguments", "tool_arguments", "args"):
+            candidate = _coerce_mapping(request_payload.get(key))
+            if candidate:
+                return candidate
+
+    payload_mapping = _coerce_mapping(event.raw_payload)
+    if payload_mapping:
+        for key in ("tool_arguments", "arguments", "args"):
+            candidate = _coerce_mapping(payload_mapping.get(key))
+            if candidate:
+                return candidate
+    return None
+
+
+def _summarize_tool_arguments(event: ToolCallEvent) -> list[str]:
+    arguments = _extract_tool_arguments(event)
+    if not arguments:
+        return []
+    lines: list[str] = []
+    for index, (key, value) in enumerate(arguments.items(), start=1):
+        key_text = normalize_for_display(str(key).strip())
+        if not key_text:
+            key_text = f"arg{index}"
+        value_text = format_value_snippet(value)
+        if value_text:
+            lines.append(f"{key_text}: {value_text}")
+        else:
+            lines.append(key_text)
+        if len(lines) >= 6:
+            lines.append("…")
+            break
+    return lines
+
+
+def _extract_tool_result(event: ToolCallEvent) -> Any:
+    payload_mapping = _coerce_mapping(event.raw_payload)
+    if not payload_mapping:
+        return None
+    for key in ("result", "response", "data"):
+        if key in payload_mapping:
+            return payload_mapping.get(key)
+    return None
+
+
+def _summarize_tool_result(event: ToolCallEvent) -> list[str]:
+    result_payload = _extract_tool_result(event)
+    if result_payload is None:
+        return []
+    if isinstance(result_payload, Mapping):
+        lines: list[str] = []
+        for index, (key, value) in enumerate(result_payload.items(), start=1):
+            key_text = normalize_for_display(str(key).strip())
+            if not key_text:
+                key_text = f"field{index}"
+            value_text = format_value_snippet(value)
+            if value_text:
+                lines.append(f"{key_text}: {value_text}")
+            else:
+                lines.append(key_text)
+            if len(lines) >= 6:
+                lines.append("…")
+                break
+        return lines
+    if isinstance(result_payload, Sequence) and not isinstance(
+        result_payload, (str, bytes, bytearray)
+    ):
+        items: list[str] = []
+        for index, item in enumerate(result_payload, start=1):
+            items.append(format_value_snippet(item))
+            if index >= 5:
+                if len(result_payload) > index:
+                    items.append("…")
+                break
+        return items
+    snippet = format_value_snippet(result_payload)
+    return [snippet] if snippet else []
+
+
+def _extract_tool_error(event: ToolCallEvent) -> str | None:
+    payload_mapping = _coerce_mapping(event.raw_payload)
+    if not payload_mapping:
+        return None
+    error_payload = payload_mapping.get("error")
+    message = extract_error_message(error_payload)
+    if message:
+        if isinstance(error_payload, Mapping):
+            code_value = error_payload.get("code")
+            if isinstance(code_value, str) and code_value.strip():
+                code_text = normalize_for_display(code_value.strip())
+                if code_text and code_text not in message:
+                    message = _("[{code}] {message}").format(
+                        code=code_text, message=message
+                    )
+        return message
+    if payload_mapping.get("ok") is False:
+        return _("Tool call failed")
+    return None
 
 
 def _summarize_tool_call_request(payload: Any) -> list[str]:
@@ -605,11 +719,22 @@ class TranscriptEntryPanel(wx.Panel):
                 name=summary.tool_name or _("Unnamed tool")
             )
         )
-        if summary.status:
-            lines.append(_("Status: {status}").format(status=summary.status))
-        for bullet in summary.bullet_lines:
-            if bullet:
-                lines.append("• " + bullet)
+        status_label = summary.status or _("returned data")
+        lines.append(_("Status: {status}").format(status=status_label))
+
+        argument_lines = _summarize_tool_arguments(event)
+        if argument_lines:
+            lines.append(_("Arguments:"))
+            lines.extend("• " + line for line in argument_lines)
+
+        error_text = _extract_tool_error(event)
+        result_lines = [] if error_text else _summarize_tool_result(event)
+        if error_text:
+            lines.append(_("Error: {message}").format(message=error_text))
+        elif result_lines:
+            lines.append(_("Result:"))
+            lines.extend("• " + line for line in result_lines)
+
         lines.extend(self._render_tool_exchange(event))
         if event.call_identifier:
             lines.append(
@@ -621,13 +746,12 @@ class TranscriptEntryPanel(wx.Panel):
 
     def _render_tool_exchange(self, event: ToolCallEvent) -> list[str]:
         payload = event.llm_request
-        if not payload:
-            return []
 
         lines: list[str] = []
         response_payload: Any | None = None
         step_label: str | None = None
 
+        request_source: Any = payload
         if isinstance(payload, Mapping):
             response_payload = payload.get("response")
             step_value = payload.get("step")
@@ -635,17 +759,36 @@ class TranscriptEntryPanel(wx.Panel):
                 step_label = str(int(step_value))
             elif isinstance(step_value, str) and step_value.strip():
                 step_label = step_value.strip()
+        else:
+            request_source = None
 
-        request_lines = _summarize_tool_call_request(payload)
+        request_lines = _summarize_tool_call_request(request_source)
+        if not request_lines:
+            argument_lines = _summarize_tool_arguments(event)
+            if argument_lines:
+                request_lines = argument_lines
         if request_lines:
-            lines.append(_("LLM request:"))
             if step_label is not None:
                 lines.append(
-                    _("  • Step {step}").format(
+                    _("LLM request (step {step}):").format(
                         step=normalize_for_display(step_label)
                     )
                 )
-            lines.extend(self._indent_for_summary("\n".join(request_lines)))
+            else:
+                lines.append(_("LLM request:"))
+            if step_label is not None:
+                lines.extend(
+                    self._indent_for_summary(
+                        _("Step {step}").format(
+                            step=normalize_for_display(step_label)
+                        )
+                    )
+                )
+            lines.extend(
+                self._indent_for_summary("\n".join(request_lines))
+            )
+        else:
+            lines.append(_("LLM request: (not recorded)"))
 
         response_lines = _summarize_llm_response(response_payload)
         if response_lines:

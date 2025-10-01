@@ -1023,6 +1023,11 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
         timeline = build_conversation_timeline(conversation)
         tool_events = timeline.entries[-1].tool_calls
         has_request_payload = any(event.llm_request for event in tool_events)
+        has_response_payload = any(
+            isinstance(event.llm_request, Mapping)
+            and isinstance(event.llm_request.get("response"), Mapping)
+            for event in tool_events
+        )
 
         tool_pane = next(
             (
@@ -1040,13 +1045,14 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
                 summary_texts.append(child.GetValue())
         summary_text = "\n".join(summary_texts)
         if has_request_payload:
-            assert "LLM request:" in summary_text
+            assert "LLM request" in summary_text
         nested_names = {
             pane.GetName() for pane in collect_collapsible_panes(tool_pane)
         }
         assert any(name.startswith("raw:tool:demo_tool") for name in nested_names)
         if has_request_payload:
             assert any(name.endswith(":llm-request") for name in nested_names)
+        if has_response_payload:
             assert any(name.endswith(":llm-response") for name in nested_names)
     finally:
         destroy_panel(frame, panel)
@@ -1444,7 +1450,7 @@ def test_tool_summary_includes_llm_exchange(wx_app):
             if isinstance(child, wx.TextCtrl):
                 summary_texts.append(child.GetValue())
         summary_text = "\n".join(summary_texts)
-        assert "LLM request:" in summary_text
+        assert "LLM request" in summary_text
         assert "update_requirement_field" in summary_text
         assert "rid: `REQ-1`" in summary_text or "rid: REQ-1" in summary_text
         assert "LLM response:" in summary_text
@@ -1465,7 +1471,7 @@ def test_tool_summary_includes_llm_exchange(wx_app):
         step_index = children.index(step_bubble)
         tool_index = children.index(tool_pane)
         final_index = children.index(final_bubble)
-        assert step_index < tool_index < final_index
+        assert step_index < final_index < tool_index
     finally:
         if panel is not None:
             panel.Destroy()
@@ -2164,14 +2170,18 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
                 summary_texts.append(child.GetValue())
         summary_text = "\n".join(summary_texts)
         raw_text = pane_text(tool_raw_pane)
-        assert "LLM request:" in summary_text
+        assert "LLM request" in summary_text
         assert "LLM response:" in summary_text
         assert "update_requirement_field" in summary_text
+        assert "Arguments:" in summary_text
+        assert "rid" in summary_text
+        assert "[VALIDATION_ERROR]" in summary_text
+        assert "Started at" not in summary_text
         assert "VALIDATION_ERROR" in raw_text
 
         log_text = panel._compose_transcript_log_text()
         started_line = next(
-            (line for line in log_text.splitlines() if line.strip().startswith("Started at ")),
+            (line for line in log_text.splitlines() if line.strip().startswith("Started at ")), 
             "",
         )
         completed_line = next(

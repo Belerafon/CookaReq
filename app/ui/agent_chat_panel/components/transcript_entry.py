@@ -15,6 +15,7 @@ from ...text import normalize_for_display
 from ..history_utils import history_json_safe
 from ..tool_summaries import ToolCallSummary
 from ..view_model import (
+    ChatEvent,
     ChatEventKind,
     ContextEvent,
     EntryTimeline,
@@ -201,6 +202,7 @@ class TranscriptEntryPanel(wx.Panel):
         self._regenerated_notice: wx.StaticText | None = None
         self._user_bubble: MessageBubble | None = None
         self._agent_bubble: MessageBubble | None = None
+        self._agent_panel: wx.Window | None = None
 
         self.SetSizer(wx.BoxSizer(wx.VERTICAL))
         self.rebuild(
@@ -229,6 +231,7 @@ class TranscriptEntryPanel(wx.Panel):
         self._regenerated_notice = None
         self._user_bubble = None
         self._agent_bubble = None
+        self._agent_panel = None
         self._regenerate_button = None
 
         if (
@@ -254,18 +257,14 @@ class TranscriptEntryPanel(wx.Panel):
             or timeline.tool_calls
         )
         if agent_sections_present or timeline.can_regenerate:
-            bubble, button = self._create_response_section(
-                timeline.response,
+            panel, button = self._create_agent_panel(
                 timeline,
-                timeline.reasoning,
-                timeline.llm_request,
-                timeline.raw_payload,
-                timeline.tool_calls,
-                on_regenerate,
-                regenerate_enabled,
+                on_regenerate=on_regenerate,
+                regenerate_enabled=regenerate_enabled,
             )
-            sizer.Add(bubble, 0, wx.EXPAND | wx.ALL, self._padding)
-            self._agent_bubble = bubble
+            if panel is not None:
+                sizer.Add(panel, 0, wx.EXPAND | wx.ALL, self._padding)
+                self._agent_panel = panel
             if button is not None:
                 sizer.Add(
                     button,
@@ -325,29 +324,6 @@ class TranscriptEntryPanel(wx.Panel):
             pass
 
     # ------------------------------------------------------------------
-    def _create_collapsible_footer(
-        self,
-        bubble: wx.Window,
-        *,
-        key: str,
-        name: str,
-        label: str,
-        text: str,
-        minimum_height: int,
-    ) -> wx.CollapsiblePane | None:
-        pane = _build_collapsible_section(
-            bubble,
-            label=label,
-            content=text,
-            minimum_height=minimum_height,
-            collapsed=self._collapsed_state.get(key, True),
-            name=name,
-        )
-        if pane is not None:
-            self._register_collapsible(key, pane)
-        return pane
-
-    # ------------------------------------------------------------------
     def _create_prompt_bubble(
         self, event: PromptEvent, *, context_event: ContextEvent | None
     ) -> MessageBubble:
@@ -355,14 +331,16 @@ class TranscriptEntryPanel(wx.Panel):
             if context_event is None:
                 return None
             text = _format_context_messages(context_event.messages)
-            pane = self._create_collapsible_footer(
+            pane = _build_collapsible_section(
                 bubble,
-                key="context",
-                name="context",
                 label=_("Context"),
-                text=text,
+                content=text,
                 minimum_height=140,
+                collapsed=self._collapsed_state.get("context", True),
+                name="context",
             )
+            if pane is not None:
+                self._register_collapsible("context", pane)
             if pane is None:
                 return None
             sizer = wx.BoxSizer(wx.VERTICAL)
@@ -381,23 +359,8 @@ class TranscriptEntryPanel(wx.Panel):
             footer_factory=footer_factory,
         )
 
-    def _build_tool_sections(
-        self, bubble: wx.Window, tool_events: Sequence[ToolCallEvent]
-    ) -> wx.Sizer | None:
-        if not tool_events:
-            return None
-        container = wx.BoxSizer(wx.VERTICAL)
-        added = False
-        for event in tool_events:
-            pane = self._create_tool_collapsible(bubble, event)
-            if pane is not None:
-                container.Add(pane, 0, wx.EXPAND | wx.TOP, bubble.FromDIP(4))
-                added = True
-        return container if added else None
-
-    # ------------------------------------------------------------------
     def _create_tool_collapsible(
-        self, bubble: wx.Window, event: ToolCallEvent
+        self, parent: wx.Window, event: ToolCallEvent
     ) -> wx.CollapsiblePane | None:
         summary = event.summary
         tool_name = summary.tool_name or _("Tool")
@@ -407,18 +370,18 @@ class TranscriptEntryPanel(wx.Panel):
             status=summary.status or _("returned data"),
         )
         pane = wx.CollapsiblePane(
-            bubble,
+            parent,
             label=label,
             style=wx.CP_DEFAULT_STYLE | wx.CP_NO_TLW_RESIZE,
         )
         pane.SetName(
             f"tool:{summary.tool_name.strip().lower() if summary.tool_name else ''}:{summary.index}"
         )
-        pane_background = bubble.GetBackgroundColour()
+        pane_background = parent.GetBackgroundColour()
         if not pane_background.IsOk():
             pane_background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
         pane.SetBackgroundColour(pane_background)
-        pane_foreground = bubble.GetForegroundColour()
+        pane_foreground = parent.GetForegroundColour()
         if pane_foreground.IsOk():
             pane.SetForegroundColour(pane_foreground)
             with suppress(Exception):
@@ -430,8 +393,6 @@ class TranscriptEntryPanel(wx.Panel):
         inner.SetBackgroundColour(pane_background)
         if pane_foreground.IsOk():
             inner.SetForegroundColour(pane_foreground)
-
-        self._register_collapsible(f"tool:{event.event_id}", pane)
 
         inner_sizer = wx.BoxSizer(wx.VERTICAL)
         summary_text = self._format_tool_summary_text(event)
@@ -449,8 +410,8 @@ class TranscriptEntryPanel(wx.Panel):
         summary_ctrl.SetForegroundColour(
             wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT)
         )
-        summary_ctrl.SetMinSize((-1, bubble.FromDIP(100)))
-        inner_sizer.Add(summary_ctrl, 0, wx.EXPAND | wx.TOP, bubble.FromDIP(4))
+        summary_ctrl.SetMinSize((-1, parent.FromDIP(100)))
+        inner_sizer.Add(summary_ctrl, 0, wx.EXPAND | wx.TOP, parent.FromDIP(4))
 
         nested_sections: list[tuple[str, str, str, str, int]] = []
         request_text = _format_raw_payload(event.llm_request)
@@ -488,7 +449,7 @@ class TranscriptEntryPanel(wx.Panel):
             )
             if nested is not None:
                 self._register_collapsible(pane_key, nested)
-                inner_sizer.Add(nested, 0, wx.EXPAND | wx.TOP, bubble.FromDIP(4))
+                inner_sizer.Add(nested, 0, wx.EXPAND | wx.TOP, parent.FromDIP(4))
 
         inner.SetSizer(inner_sizer)
         return pane
@@ -519,111 +480,190 @@ class TranscriptEntryPanel(wx.Panel):
 
 
     # ------------------------------------------------------------------
-    def _create_response_section(
+    def _create_agent_panel(
         self,
-        event: ResponseEvent | None,
         timeline: EntryTimeline,
-        reasoning_event: ReasoningEvent | None,
-        llm_request_event: LlmRequestEvent | None,
-        raw_event: RawPayloadEvent | None,
-        tool_events: Sequence[ToolCallEvent],
+        *,
         on_regenerate: Callable[[], None] | None,
         regenerate_enabled: bool,
-    ) -> tuple[MessageBubble, wx.Button | None]:
-        text = ""
-        timestamp = ""
-        if event is not None:
-            text = event.display_text or event.text or ""
-            timestamp = event.formatted_timestamp
-        elif timeline.prompt is not None:
-            timestamp = timeline.prompt.formatted_timestamp
+    ) -> tuple[wx.Window | None, wx.Button | None]:
+        relevant_kinds = {
+            ChatEventKind.REASONING,
+            ChatEventKind.LLM_REQUEST,
+            ChatEventKind.RESPONSE,
+            ChatEventKind.TOOL_CALL,
+            ChatEventKind.RAW_PAYLOAD,
+        }
+        events = [
+            event
+            for event in timeline.events
+            if event.kind in relevant_kinds and event.entry_id == timeline.entry_id
+        ]
+        if not events and not timeline.can_regenerate:
+            return None, None
 
-        sections: list[tuple[str, str, str, str, int]] = []
-        if reasoning_event is not None:
-            reasoning_text = _format_reasoning_segments(reasoning_event.segments)
-            if reasoning_text:
-                sections.append(
-                    (
-                        "reasoning",
-                        "reasoning",
-                        _("Model reasoning"),
-                        reasoning_text,
-                        160,
-                    )
-                )
-        if llm_request_event is not None:
-            request_payload: dict[str, Any] = {
-                "messages": llm_request_event.messages,
-            }
-            if llm_request_event.sequence is not None:
-                request_payload["sequence"] = llm_request_event.sequence
-            request_text = _format_raw_payload(request_payload)
-            if request_text:
-                sections.append(
-                    (
-                        "llm-request",
-                        "raw:llm-request",
-                        _("LLM request"),
-                        request_text,
-                        160,
-                    )
-                )
-        if raw_event is not None:
-            raw_text = _format_raw_payload(raw_event.payload)
-            if raw_text:
-                sections.append(
-                    (
-                        "raw",
-                        "raw:agent",
-                        _("Raw data"),
-                        raw_text,
-                        160,
-                    )
-                )
+        container = wx.Panel(self)
+        container.SetBackgroundColour(self.GetBackgroundColour())
+        container.SetForegroundColour(self.GetForegroundColour())
+        container.SetDoubleBuffered(True)
+        container.SetName("agent-entry")
+        container_sizer = wx.BoxSizer(wx.VERTICAL)
+        container.SetSizer(container_sizer)
 
-        def footer_factory(bubble: wx.Window) -> wx.Sizer | None:
-            sizer = wx.BoxSizer(wx.VERTICAL)
-            added = False
-            for key, name, label, value, minimum_height in sections:
-                pane = self._create_collapsible_footer(
-                    bubble,
-                    key=key,
-                    name=name,
-                    label=label,
-                    text=value,
-                    minimum_height=minimum_height,
-                )
-                if pane is not None:
-                    sizer.Add(pane, 0, wx.EXPAND | wx.TOP, bubble.FromDIP(4))
-                    added = True
-            tool_sizer = self._build_tool_sections(bubble, tool_events)
-            if tool_sizer is not None:
-                sizer.Add(tool_sizer, 0, wx.EXPAND | wx.TOP, bubble.FromDIP(4))
-                added = True
-            return sizer if added else None
+        before: list[wx.Window] = []
+        after: list[wx.Window] = []
+        response_bubble: MessageBubble | None = None
+        encountered_response = False
 
-        bubble = MessageBubble(
-            self,
-            role_label=_("Agent"),
-            timestamp=timestamp,
-            text=text,
-            align="left",
-            allow_selection=True,
-            render_markdown=True,
-            width_hint=self._resolve_hint("agent"),
-            on_width_change=lambda width: self._emit_layout_hint("agent", width),
-            footer_factory=footer_factory,
-        )
-        button: wx.Button | None = None
+        for event in events:
+            if isinstance(event, ResponseEvent):
+                encountered_response = True
+                response_bubble = MessageBubble(
+                    container,
+                    role_label=_("Agent"),
+                    timestamp=event.formatted_timestamp,
+                    text=event.display_text or event.text or "",
+                    align="left",
+                    allow_selection=True,
+                    render_markdown=True,
+                    width_hint=self._resolve_hint("agent"),
+                    on_width_change=lambda width: self._emit_layout_hint("agent", width),
+                )
+                self._agent_bubble = response_bubble
+                continue
+
+            section = self._create_agent_section(container, event)
+            if section is None:
+                continue
+            if encountered_response:
+                after.append(section)
+            else:
+                before.append(section)
+
+        if response_bubble is None and timeline.response is not None:
+            response_event = timeline.response
+            response_bubble = MessageBubble(
+                container,
+                role_label=_("Agent"),
+                timestamp=response_event.formatted_timestamp,
+                text=response_event.display_text or response_event.text or "",
+                align="left",
+                allow_selection=True,
+                render_markdown=True,
+                width_hint=self._resolve_hint("agent"),
+                on_width_change=lambda width: self._emit_layout_hint("agent", width),
+            )
+            self._agent_bubble = response_bubble
+
+        for index, widget in enumerate(before):
+            container_sizer.Add(
+                widget,
+                0,
+                wx.EXPAND | (wx.TOP if index else 0),
+                container.FromDIP(4) if index else 0,
+            )
+
+        if response_bubble is not None:
+            container_sizer.Add(
+                response_bubble,
+                0,
+                wx.EXPAND | (wx.TOP if before else 0),
+                container.FromDIP(4) if before else 0,
+            )
+
+        for widget in after:
+            container_sizer.Add(
+                widget,
+                0,
+                wx.EXPAND | wx.TOP,
+                container.FromDIP(4),
+            )
+
+        regenerate_button: wx.Button | None = None
         if timeline.can_regenerate and on_regenerate is not None:
-            button = wx.Button(self, label=_("Regenerate"), style=wx.BU_EXACTFIT)
-            button.SetToolTip(_("Restart response generation"))
-            button.Bind(wx.EVT_BUTTON, self._on_regenerate_clicked)
-            button.Enable(regenerate_enabled)
+            regenerate_button = wx.Button(
+                self,
+                label=_("Regenerate"),
+                style=wx.BU_EXACTFIT,
+            )
+            regenerate_button.SetToolTip(_("Restart response generation"))
+            regenerate_button.Bind(wx.EVT_BUTTON, self._on_regenerate_clicked)
+            regenerate_button.Enable(regenerate_enabled)
             self._regenerate_handler = on_regenerate
         else:
             self._regenerate_handler = on_regenerate
-        return bubble, button
+
+        if not before and response_bubble is None and not after:
+            container.Destroy()
+            return None, regenerate_button
+
+        return container, regenerate_button
+
+    # ------------------------------------------------------------------
+    def _create_agent_section(
+        self, parent: wx.Window, event: ChatEvent
+    ) -> wx.Window | None:
+        if isinstance(event, ReasoningEvent):
+            text = _format_reasoning_segments(event.segments)
+            if not text:
+                return None
+            key = f"reasoning:{event.event_id}"
+            pane = _build_collapsible_section(
+                parent,
+                label=_("Model reasoning"),
+                content=text,
+                minimum_height=160,
+                collapsed=self._collapsed_state.get(key, True),
+                name="reasoning",
+            )
+            if pane is not None:
+                self._register_collapsible(key, pane)
+            return pane
+
+        if isinstance(event, LlmRequestEvent):
+            payload: dict[str, Any] = {"messages": event.messages}
+            if event.sequence is not None:
+                payload["sequence"] = event.sequence
+            text = _format_raw_payload(payload)
+            if not text:
+                return None
+            key = f"llm-request:{event.event_id}"
+            pane = _build_collapsible_section(
+                parent,
+                label=_("LLM request"),
+                content=text,
+                minimum_height=160,
+                collapsed=self._collapsed_state.get(key, True),
+                name="raw:llm-request",
+            )
+            if pane is not None:
+                self._register_collapsible(key, pane)
+            return pane
+
+        if isinstance(event, ToolCallEvent):
+            pane = self._create_tool_collapsible(parent, event)
+            if pane is not None:
+                self._register_collapsible(f"tool:{event.event_id}", pane)
+            return pane
+
+        if isinstance(event, RawPayloadEvent):
+            text = _format_raw_payload(event.payload)
+            if not text:
+                return None
+            key = f"raw:{event.event_id}"
+            pane = _build_collapsible_section(
+                parent,
+                label=_("Raw data"),
+                content=text,
+                minimum_height=160,
+                collapsed=self._collapsed_state.get(key, True),
+                name="raw:agent",
+            )
+            if pane is not None:
+                self._register_collapsible(key, pane)
+            return pane
+
+        return None
 
     # ------------------------------------------------------------------
     def _create_system_section(

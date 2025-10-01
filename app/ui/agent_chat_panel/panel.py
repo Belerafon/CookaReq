@@ -61,7 +61,7 @@ from .project_settings import (
 from .layout import AgentChatLayoutBuilder
 from .session import AgentChatSession
 from .settings_dialog import AgentProjectSettingsDialog
-from .time_formatting import format_last_activity
+from .time_formatting import format_entry_timestamp, format_last_activity
 from .token_usage import (
     ContextTokenBreakdown,
     TOKEN_UNAVAILABLE_LABEL,
@@ -1959,10 +1959,15 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         timeline = build_conversation_timeline(conversation)
 
-        def format_timestamp(value: str | None) -> str:
-            if not value:
-                return _("not recorded")
-            return normalize_for_display(value)
+        def format_timestamp(value: str | None, *, event: ChatEvent | None = None) -> str:
+            if value:
+                formatted = format_entry_timestamp(value)
+                return normalize_for_display(formatted or value)
+            if event is not None and event.occurred_at is not None:
+                iso_value = event.occurred_at.isoformat()
+                formatted = format_entry_timestamp(iso_value)
+                return normalize_for_display(formatted or iso_value)
+            return _("not recorded")
 
         def _normalise_json_value(value: Any) -> Any:
             if isinstance(value, str):
@@ -2007,7 +2012,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return textwrap.indent(value, prefix)
 
         def describe_event(event: ChatEvent) -> list[str]:
-            timestamp = format_timestamp(event.timestamp)
+            timestamp = format_timestamp(event.timestamp, event=event)
             header_prefix = _("[{timestamp}] ").format(timestamp=timestamp)
 
             if isinstance(event, PromptEvent):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as _dt
 from contextlib import suppress
 from dataclasses import dataclass, replace
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Literal, Mapping, Sequence
 
 from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation, ChatEntry
@@ -110,6 +110,44 @@ class ConversationTimeline:
     entries: tuple[TranscriptEntry, ...]
 
 
+@dataclass(slots=True)
+class PromptSegment:
+    """Prompt-related payload rendered as a message segment."""
+
+    prompt: PromptMessage | None
+    context_messages: tuple[dict[str, Any], ...]
+    layout_hints: dict[str, int]
+
+
+@dataclass(slots=True)
+class AgentSegment:
+    """Agent turn payload rendered as a message segment."""
+
+    turn: AgentTurn | None
+    layout_hints: dict[str, int]
+    can_regenerate: bool
+
+
+@dataclass(slots=True)
+class TranscriptSegment:
+    """Flattened representation of transcript data."""
+
+    segment_id: str
+    entry_id: str
+    entry_index: int
+    kind: Literal["user", "agent", "tool", "system"]
+    payload: PromptSegment | AgentSegment | ToolCallDetails | SystemMessage
+
+
+@dataclass(slots=True)
+class TranscriptSegments:
+    """Ordered segment list for a conversation."""
+
+    conversation_id: str
+    entry_order: tuple[str, ...]
+    segments: tuple[TranscriptSegment, ...]
+
+
 def build_conversation_timeline(
     conversation: ChatConversation,
 ) -> ConversationTimeline:
@@ -141,6 +179,93 @@ def build_conversation_timeline(
     return ConversationTimeline(
         conversation_id=conversation.conversation_id,
         entries=tuple(entries),
+    )
+
+
+def build_transcript_segments(conversation: ChatConversation) -> TranscriptSegments:
+    """Flatten *conversation* into ordered transcript segments."""
+
+    timeline = build_conversation_timeline(conversation)
+    segments: list[TranscriptSegment] = []
+    entry_order: list[str] = []
+
+    for timeline_entry in timeline.entries:
+        entry_id = timeline_entry.entry_id
+        entry_index = timeline_entry.entry_index
+        entry_order.append(entry_id)
+        layout_hints = dict(timeline_entry.layout_hints)
+
+        if timeline_entry.prompt is not None or timeline_entry.context_messages:
+            payload = PromptSegment(
+                prompt=timeline_entry.prompt,
+                context_messages=timeline_entry.context_messages,
+                layout_hints=dict(layout_hints),
+            )
+            segments.append(
+                TranscriptSegment(
+                    segment_id=f"{entry_id}:user",
+                    entry_id=entry_id,
+                    entry_index=entry_index,
+                    kind="user",
+                    payload=payload,
+                )
+            )
+
+        if (
+            timeline_entry.agent_turn is not None
+            or timeline_entry.can_regenerate
+            or (timeline_entry.system_messages)
+        ):
+            payload = AgentSegment(
+                turn=timeline_entry.agent_turn,
+                layout_hints=dict(layout_hints),
+                can_regenerate=timeline_entry.can_regenerate,
+            )
+            segments.append(
+                TranscriptSegment(
+                    segment_id=f"{entry_id}:agent",
+                    entry_id=entry_id,
+                    entry_index=entry_index,
+                    kind="agent",
+                    payload=payload,
+                )
+            )
+
+        agent_turn = timeline_entry.agent_turn
+        if agent_turn is not None:
+            seen_indexes: set[int] = set()
+            for position, tool_call in enumerate(agent_turn.tool_calls, start=1):
+                summary_index = tool_call.summary.index or position
+                if summary_index in seen_indexes:
+                    segment_key = f"{entry_id}:tool:{position}"
+                else:
+                    segment_key = f"{entry_id}:tool:{summary_index}"
+                    seen_indexes.add(summary_index)
+                segments.append(
+                    TranscriptSegment(
+                        segment_id=segment_key,
+                        entry_id=entry_id,
+                        entry_index=entry_index,
+                        kind="tool",
+                        payload=tool_call,
+                    )
+                )
+
+        for index, system_event in enumerate(timeline_entry.system_messages, start=1):
+            segments.append(
+                TranscriptSegment(
+                    segment_id=f"{entry_id}:system:{index}",
+                    entry_id=entry_id,
+                    entry_index=entry_index,
+                    kind="system",
+                    payload=system_event,
+                )
+            )
+
+    return TranscriptSegments(
+        conversation_id=timeline.conversation_id,
+        entry_order=tuple(entry_order),
+        segments=tuple(segments),
     )
 
 
@@ -901,5 +1026,10 @@ __all__ = [
     "SystemMessage",
     "TranscriptEntry",
     "ConversationTimeline",
+    "PromptSegment",
+    "AgentSegment",
+    "TranscriptSegment",
+    "TranscriptSegments",
     "build_conversation_timeline",
+    "build_transcript_segments",
 ]

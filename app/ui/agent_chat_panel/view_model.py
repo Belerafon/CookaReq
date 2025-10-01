@@ -26,6 +26,17 @@ class ChatEventKind(str, Enum):
     SYSTEM_MESSAGE = "system_message"
 
 
+_EVENT_DISPLAY_ORDER: dict[ChatEventKind, int] = {
+    ChatEventKind.PROMPT: 0,
+    ChatEventKind.CONTEXT: 1,
+    ChatEventKind.REASONING: 2,
+    ChatEventKind.RESPONSE: 3,
+    ChatEventKind.TOOL_CALL: 4,
+    ChatEventKind.RAW_PAYLOAD: 5,
+    ChatEventKind.SYSTEM_MESSAGE: 6,
+}
+
+
 @dataclass(slots=True)
 class ChatEvent:
     """Base class for all transcript events."""
@@ -37,6 +48,14 @@ class ChatEvent:
     kind: ChatEventKind
     occurred_at: _dt.datetime | None
     timestamp: str | None
+
+
+def _event_sort_key(event: ChatEvent) -> tuple[int, int, Any, int]:
+    order = _EVENT_DISPLAY_ORDER.get(event.kind, 99)
+    occurred = event.occurred_at
+    if occurred is None:
+        return (order, 1, event.sequence_index, 0)
+    return (order, 0, occurred, event.sequence_index)
 
 
 @dataclass(slots=True)
@@ -121,12 +140,13 @@ class EntryTimeline:
             ordered.append(self.context)
         if self.reasoning is not None:
             ordered.append(self.reasoning)
+        ordered.extend(self.tool_calls)
         if self.response is not None:
             ordered.append(self.response)
-        ordered.extend(self.tool_calls)
         if self.raw_payload is not None:
             ordered.append(self.raw_payload)
         ordered.extend(self.system_messages)
+        ordered.sort(key=_event_sort_key)
         return tuple(ordered)
 
 
@@ -240,7 +260,7 @@ def _build_context_event(
     sequence_index: int,
     entry: ChatEntry,
 ) -> ContextEvent | None:
-    messages_raw = entry.context_messages or ()
+    messages_raw = entry.context_messages or _extract_request_context(entry)
     if not messages_raw:
         return None
     messages: list[dict[str, Any]] = []
@@ -279,7 +299,7 @@ def _build_reasoning_event(
             segments.append(dict(segment))
     if not segments:
         return None
-    timestamp = entry.response_at or entry.prompt_at
+    timestamp = entry.prompt_at or entry.response_at
     occurred_at = parse_iso_timestamp(timestamp)
     return ReasoningEvent(
         event_id=f"{entry_id}:reasoning",
@@ -291,6 +311,38 @@ def _build_reasoning_event(
         timestamp=timestamp,
         segments=tuple(segments),
     )
+
+
+def _extract_request_context(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
+    messages = _extract_messages_from_mapping(
+        getattr(entry, "raw_result", None),
+        keys=("diagnostic", "llm_request", "messages"),
+    )
+    if not messages:
+        messages = _extract_messages_from_mapping(
+            getattr(entry, "diagnostic", None),
+            keys=("llm_request_messages",),
+        )
+    if not isinstance(messages, Sequence) or isinstance(messages, (str, bytes, bytearray)):
+        return ()
+    collected: list[dict[str, Any]] = []
+    for message in messages:
+        if isinstance(message, Mapping):
+            collected.append(dict(message))
+    return tuple(collected)
+
+
+def _extract_messages_from_mapping(
+    source: Any, *, keys: tuple[str, ...]
+) -> Any:
+    if not isinstance(source, Mapping):
+        return ()
+    current: Any = source
+    for key in keys:
+        if not isinstance(current, Mapping):
+            return ()
+        current = current.get(key)
+    return current
 
 
 # ---------------------------------------------------------------------------

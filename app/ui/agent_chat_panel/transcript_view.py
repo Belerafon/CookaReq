@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Iterable
 
 import wx
 from wx.lib.scrolledpanel import ScrolledPanel
@@ -12,7 +12,7 @@ from wx.lib.scrolledpanel import ScrolledPanel
 from ...i18n import _
 from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import dip
-from ..widgets.chat_message import TranscriptMessagePanel
+from .components.transcript_entry import TranscriptEntryPanel
 from .view_model import EntryTimeline, build_conversation_timeline
 
 
@@ -37,7 +37,7 @@ class TranscriptCallbacks:
 
 @dataclass(slots=True)
 class _ConversationRenderCache:
-    panels_by_entry: dict[str, TranscriptMessagePanel] = field(default_factory=dict)
+    panels_by_entry: dict[str, TranscriptEntryPanel] = field(default_factory=dict)
     order: list[str] = field(default_factory=list)
     placeholder: wx.Window | None = None
 
@@ -185,16 +185,60 @@ class TranscriptView:
         cache = self._get_cache(conversation_id)
         self._active_conversation_id = conversation_id
         timeline = build_conversation_timeline(conversation)
-        ordered: list[tuple[str, TranscriptMessagePanel]] = []
+        ordered: list[tuple[str, TranscriptEntryPanel]] = []
         for entry_timeline in timeline.entries:
             key = entry_timeline.entry_id
             panel = cache.panels_by_entry.get(key)
-            data = self._prepare_entry_render_data(conversation, entry_timeline)
+            entry = entry_timeline.entry
+            conversation_id = conversation.conversation_id
+            on_regenerate: Callable[[], None] | None = None
+            if entry_timeline.can_regenerate and entry_timeline.response is not None:
+
+                def callback(entry_ref: ChatEntry = entry) -> None:
+                    self._callbacks.on_regenerate(conversation_id, entry_ref)
+
+                on_regenerate = callback
+
+            valid_hint_keys = {"user", "agent"}
+            for tool_event in entry_timeline.tool_calls:
+                valid_hint_keys.add(
+                    TranscriptEntryPanel.tool_layout_hint_key(tool_event.summary)
+                )
+
+            sanitized_hints: dict[str, int] = {}
+            for hint_key, hint_value in entry_timeline.layout_hints.items():
+                if hint_key not in valid_hint_keys:
+                    continue
+                try:
+                    width = int(hint_value)
+                except (TypeError, ValueError):
+                    continue
+                if width <= 0:
+                    continue
+                sanitized_hints[hint_key] = width
+
+            entry.layout_hints = dict(sanitized_hints)
+
             if panel is None or not self._is_window_alive(panel):
-                panel = self._create_entry_panel(entry_timeline, data)
+                panel = TranscriptEntryPanel(
+                    self._panel,
+                    timeline=entry_timeline,
+                    layout_hints=sanitized_hints,
+                    on_layout_hint=lambda hint_key, width, entry_ref=entry: entry_ref.layout_hints.__setitem__(  # type: ignore[attr-defined]
+                        hint_key, int(width)
+                    ),
+                    on_regenerate=on_regenerate,
+                    regenerate_enabled=not self._callbacks.is_running(),
+                )
+                panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_pane_toggled)
                 cache.panels_by_entry[key] = panel
             else:
-                self._update_entry_panel(panel, data)
+                panel.update(
+                    timeline=entry_timeline,
+                    layout_hints=sanitized_hints,
+                    on_regenerate=on_regenerate,
+                    regenerate_enabled=not self._callbacks.is_running(),
+                )
             ordered.append((key, panel))
         keep_keys = {key for key, _ in ordered}
         for stale_key in list(cache.panels_by_entry.keys()):
@@ -212,7 +256,7 @@ class TranscriptView:
 
     # ------------------------------------------------------------------
     def _attach_panels_in_order(
-        self, panels: Sequence[TranscriptMessagePanel]
+        self, panels: Sequence[TranscriptEntryPanel]
     ) -> None:
         existing_children = [child.GetWindow() for child in self._sizer.GetChildren()]
         for index, panel in enumerate(panels):
@@ -237,123 +281,6 @@ class TranscriptView:
                 window.Hide()
 
     # ------------------------------------------------------------------
-    def _prepare_entry_render_data(
-        self,
-        conversation: ChatConversation,
-        entry_timeline: EntryTimeline,
-    ) -> dict[str, Any]:
-        prompt_event = entry_timeline.prompt
-        response_event = entry_timeline.response
-        context_event = entry_timeline.context
-        reasoning_event = entry_timeline.reasoning
-        tool_events = entry_timeline.tool_calls
-        raw_event = entry_timeline.raw_payload
-        entry = entry_timeline.entry
-
-        conversation_id = conversation.conversation_id
-        on_regenerate: Callable[[], None] | None = None
-        if entry_timeline.can_regenerate and response_event is not None:
-
-            def callback(entry_ref: ChatEntry = entry) -> None:
-                self._callbacks.on_regenerate(conversation_id, entry_ref)
-
-            on_regenerate = callback
-
-        tool_summaries = tuple(event.summary for event in tool_events if event.summary)
-        valid_hint_keys = {"user", "agent"}
-        for summary in tool_summaries:
-            valid_hint_keys.add(TranscriptMessagePanel.tool_layout_hint_key(summary))
-
-        sanitized_hints: dict[str, int] = {}
-        for key, value in entry_timeline.layout_hints.items():
-            if key not in valid_hint_keys:
-                continue
-            try:
-                width = int(value)
-            except (TypeError, ValueError):
-                continue
-            if width <= 0:
-                continue
-            sanitized_hints[key] = width
-
-        entry.layout_hints = dict(sanitized_hints)
-
-        return {
-            "prompt": prompt_event.text,
-            "response": (
-                response_event.display_text
-                if response_event is not None
-                else ""
-            )
-            or (response_event.text if response_event is not None else ""),
-            "prompt_timestamp": prompt_event.formatted_timestamp,
-            "response_timestamp": (
-                response_event.formatted_timestamp if response_event is not None else ""
-            ),
-            "on_regenerate": on_regenerate,
-            "regenerate_enabled": not self._callbacks.is_running(),
-            "tool_summaries": tool_summaries,
-            "context_messages": (
-                context_event.messages if context_event is not None else ()
-            ),
-            "reasoning_segments": (
-                reasoning_event.segments if reasoning_event is not None else ()
-            ),
-            "regenerated": (
-                response_event.regenerated if response_event is not None else False
-            ),
-            "layout_hints": sanitized_hints,
-            "raw_payload": raw_event.payload if raw_event is not None else None,
-        }
-
-    # ------------------------------------------------------------------
-    def _create_entry_panel(
-        self,
-        entry_timeline: EntryTimeline,
-        data: dict[str, Any],
-    ) -> TranscriptMessagePanel:
-        panel = TranscriptMessagePanel(
-            self._panel,
-            prompt=data["prompt"],
-            response=data["response"],
-            prompt_timestamp=data["prompt_timestamp"],
-            response_timestamp=data["response_timestamp"],
-            on_regenerate=data["on_regenerate"],
-            regenerate_enabled=data["regenerate_enabled"],
-            tool_summaries=data["tool_summaries"],
-            context_messages=data["context_messages"],
-            reasoning_segments=data["reasoning_segments"],
-            regenerated=data["regenerated"],
-            layout_hints=data["layout_hints"],
-            raw_payload=data["raw_payload"],
-            on_layout_hint=lambda key, width, entry_ref=entry_timeline.entry: entry_ref.layout_hints.__setitem__(
-                key, int(width)
-            ),
-        )
-        panel.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_pane_toggled)
-        return panel
-
-    # ------------------------------------------------------------------
-    def _update_entry_panel(
-        self,
-        panel: TranscriptMessagePanel,
-        data: dict[str, Any],
-    ) -> None:
-        panel.update_from_entry(
-            prompt=data["prompt"],
-            response=data["response"],
-            prompt_timestamp=data["prompt_timestamp"],
-            response_timestamp=data["response_timestamp"],
-            on_regenerate=data["on_regenerate"],
-            regenerate_enabled=data["regenerate_enabled"],
-            tool_summaries=data["tool_summaries"],
-            context_messages=data["context_messages"],
-            reasoning_segments=data["reasoning_segments"],
-            regenerated=data["regenerated"],
-            layout_hints=data["layout_hints"],
-            raw_payload=data["raw_payload"],
-        )
-
     # ------------------------------------------------------------------
     def _clear_current_placeholder(self) -> None:
         placeholder = self._current_placeholder

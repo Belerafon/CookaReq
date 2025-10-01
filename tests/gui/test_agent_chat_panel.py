@@ -1045,6 +1045,9 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
             pane.GetName() for pane in collect_collapsible_panes(tool_pane)
         }
         assert any(name.startswith("raw:tool:demo_tool") for name in nested_names)
+        if has_request_payload:
+            assert any(name.endswith(":llm-request") for name in nested_names)
+            assert any(name.endswith(":llm-response") for name in nested_names)
     finally:
         destroy_panel(frame, panel)
 
@@ -1442,8 +1445,8 @@ def test_tool_summary_includes_llm_exchange(wx_app):
                 summary_texts.append(child.GetValue())
         summary_text = "\n".join(summary_texts)
         assert "LLM request:" in summary_text
-        assert "\"name\": \"update_requirement_field\"" in summary_text
-        assert "\"rid\": \"REQ-1\"" in summary_text
+        assert "update_requirement_field" in summary_text
+        assert "rid: `REQ-1`" in summary_text or "rid: REQ-1" in summary_text
         assert "LLM response:" in summary_text
         assert "Applying updates" in summary_text
 
@@ -2163,7 +2166,7 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         raw_text = pane_text(tool_raw_pane)
         assert "LLM request:" in summary_text
         assert "LLM response:" in summary_text
-        assert "tool_calls" in summary_text or "tool_call" in summary_text or "content" in summary_text
+        assert "update_requirement_field" in summary_text
         assert "VALIDATION_ERROR" in raw_text
 
         log_text = panel._compose_transcript_log_text()

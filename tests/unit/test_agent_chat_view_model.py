@@ -78,9 +78,9 @@ def test_build_conversation_timeline_compiles_events() -> None:
     assert kinds == [
         ChatEventKind.PROMPT,
         ChatEventKind.CONTEXT,
-        ChatEventKind.TOOL_CALL,
         ChatEventKind.LLM_REQUEST,
         ChatEventKind.REASONING,
+        ChatEventKind.TOOL_CALL,
         ChatEventKind.RESPONSE,
         ChatEventKind.RAW_PAYLOAD,
     ]
@@ -267,6 +267,38 @@ def test_step_responses_rendered_as_events() -> None:
     assert entry_timeline.events.index(step_event) < tool_index < entry_timeline.events.index(
         final_event
     )
+
+
+def test_tool_summary_compacts_error_details() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="",
+        tokens=1,
+        prompt_at="2025-10-01T08:00:00+00:00",
+        response_at="2025-10-01T08:05:00+00:00",
+        tool_results=[
+            {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "tool-1",
+                "agent_status": "failed: update_requirement_field() missing rid",
+                "started_at": "2025-10-01T08:01:00+00:00",
+                "completed_at": "2025-10-01T08:01:05+00:00",
+                "ok": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "update_requirement_field() missing 1 required positional argument: 'rid'",
+                },
+            }
+        ],
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    summary = timeline.entries[0].tool_calls[0].summary
+
+    assert summary.status == "failed"
+    assert any("Error VALIDATION_ERROR" in line for line in summary.bullet_lines)
+    assert not any(line.startswith("Error message:") for line in summary.bullet_lines)
 
 
 def test_llm_request_event_uses_diagnostic_sequence() -> None:

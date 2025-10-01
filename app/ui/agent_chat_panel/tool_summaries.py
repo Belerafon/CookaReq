@@ -166,13 +166,26 @@ def extract_tool_name(payload: Mapping[str, Any]) -> str:
 def format_tool_status(payload: Mapping[str, Any]) -> str:
     agent_status = payload.get("agent_status")
     if isinstance(agent_status, str):
-        normalized = agent_status.strip().lower()
-        if normalized == "running":
-            return normalize_for_display(_("in progress…"))
-        if normalized == "completed" and payload.get("ok") not in (True, False):
-            return normalize_for_display(_("completed"))
-        if normalized == "failed" and payload.get("ok") not in (True, False):
-            return normalize_for_display(_("failed"))
+        status_text = agent_status.strip()
+        if not status_text:
+            pass
+        else:
+            prefix, separator, remainder = status_text.partition(":")
+            normalized_prefix = prefix.strip().lower()
+            if normalized_prefix == "running":
+                return normalize_for_display(_("in progress…"))
+            if normalized_prefix == "completed":
+                return normalize_for_display(_("completed"))
+            if normalized_prefix == "failed":
+                return normalize_for_display(_("failed"))
+            normalized_full = status_text.lower()
+            if normalized_full == "running":
+                return normalize_for_display(_("in progress…"))
+            if normalized_full == "completed":
+                return normalize_for_display(_("completed"))
+            if normalized_full == "failed":
+                return normalize_for_display(_("failed"))
+            return normalize_for_display(shorten_text(status_text))
     ok_value = payload.get("ok")
     if ok_value is True:
         return normalize_for_display(_("completed successfully"))
@@ -242,20 +255,30 @@ def summarize_error_details(error: Any) -> list[str]:
         return []
     if isinstance(error, Mapping):
         lines: list[str] = []
-        code = error.get("code")
-        if isinstance(code, str) and code.strip():
-            lines.append(
-                _("Error code: {code}").format(
-                    code=normalize_for_display(code.strip())
-                )
-            )
+        code_raw = error.get("code")
+        code_text: str | None = None
+        if isinstance(code_raw, str) and code_raw.strip():
+            code_text = normalize_for_display(code_raw.strip())
         message = error.get("message")
+        message_text: str | None = None
         if isinstance(message, str) and message.strip():
+            message_text = shorten_text(normalize_for_display(message.strip()))
+        if code_text and message_text:
             lines.append(
-                _("Error message: {message}").format(
-                    message=shorten_text(normalize_for_display(message.strip()))
+                _("Error {code}: {message}").format(
+                    code=code_text,
+                    message=message_text,
                 )
             )
+        else:
+            if code_text:
+                lines.append(
+                    _("Error code: {code}").format(code=code_text)
+                )
+            if message_text:
+                lines.append(
+                    _("Error message: {message}").format(message=message_text)
+                )
         details = error.get("details")
         if details:
             lines.append(

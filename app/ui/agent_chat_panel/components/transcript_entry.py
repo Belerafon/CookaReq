@@ -12,7 +12,7 @@ import wx
 from ....i18n import _
 from ...widgets.chat_message import MessageBubble
 from ...text import normalize_for_display
-from ..history_utils import history_json_safe
+from ..history_utils import format_value_snippet, history_json_safe
 from ..tool_summaries import ToolCallSummary
 from ..view_model import (
     ChatEvent,
@@ -173,6 +173,129 @@ def _build_collapsible_section(
     content_sizer.Add(text_ctrl, 1, wx.EXPAND | wx.TOP, parent.FromDIP(4))
     inner.SetSizer(content_sizer)
     return pane
+
+
+def _normalise_text_lines(text: str | None) -> list[str]:
+    if not text:
+        return []
+    result: list[str] = []
+    for fragment in text.splitlines():
+        normalised = normalize_for_display(fragment).strip()
+        if normalised:
+            result.append(normalised)
+    return result
+
+
+def _summarize_request_arguments(arguments: Any) -> list[str]:
+    if isinstance(arguments, Mapping):
+        lines: list[str] = []
+        for key, value in arguments.items():
+            key_text = normalize_for_display(str(key).strip())
+            value_text = format_value_snippet(value)
+            if key_text and value_text:
+                lines.append(f"{key_text}: {value_text}")
+            elif key_text:
+                lines.append(key_text)
+            elif value_text:
+                lines.append(value_text)
+        return lines
+    if arguments is not None:
+        value_text = format_value_snippet(arguments)
+        if value_text:
+            return [value_text]
+    return []
+
+
+def _summarize_tool_call_request(payload: Any) -> list[str]:
+    if isinstance(payload, Mapping):
+        call_payload = payload.get("tool_call")
+        if isinstance(call_payload, Mapping):
+            return _summarize_tool_call_request(call_payload)
+        lines: list[str] = []
+        name_value = payload.get("name") or payload.get("tool_name")
+        if isinstance(name_value, str) and name_value.strip():
+            lines.append(normalize_for_display(name_value.strip()))
+        argument_payload = (
+            payload.get("arguments")
+            or payload.get("tool_arguments")
+            or payload.get("args")
+        )
+        lines.extend(_summarize_request_arguments(argument_payload))
+        if lines:
+            return lines
+    fallback = _format_raw_payload(payload)
+    return _normalise_text_lines(fallback)
+
+
+def _summarize_reasoning(reasoning: Any) -> list[str]:
+    if not isinstance(reasoning, Sequence) or isinstance(
+        reasoning, (str, bytes, bytearray)
+    ):
+        return []
+    lines: list[str] = []
+    for segment in reasoning:
+        if isinstance(segment, Mapping):
+            text_value = segment.get("text")
+            type_value = segment.get("type")
+            text_lines = _normalise_text_lines(str(text_value)) if text_value else []
+            if not text_lines:
+                continue
+            if isinstance(type_value, str) and type_value.strip():
+                heading = normalize_for_display(type_value.strip())
+                for index, line in enumerate(text_lines):
+                    if index == 0:
+                        lines.append(f"{heading}: {line}")
+                    else:
+                        lines.append(line)
+            else:
+                lines.extend(text_lines)
+        elif isinstance(segment, str):
+            lines.extend(_normalise_text_lines(segment))
+    return lines
+
+
+def _summarize_llm_response(payload: Any) -> list[str]:
+    if isinstance(payload, Mapping):
+        lines: list[str] = []
+        content_lines: list[str] = []
+        content_value = payload.get("content")
+        if isinstance(content_value, str):
+            content_lines.extend(_normalise_text_lines(content_value))
+        elif isinstance(content_value, Sequence) and not isinstance(
+            content_value, (str, bytes, bytearray)
+        ):
+            for fragment in content_value:
+                if isinstance(fragment, Mapping):
+                    text_value = fragment.get("text")
+                    content_lines.extend(_normalise_text_lines(str(text_value)))
+                elif isinstance(fragment, str):
+                    content_lines.extend(_normalise_text_lines(fragment))
+                elif fragment is not None:
+                    content_lines.append(format_value_snippet(fragment))
+        elif content_value is not None:
+            content_lines.append(format_value_snippet(content_value))
+        lines.extend(content_lines)
+        lines.extend(_summarize_reasoning(payload.get("reasoning")))
+        if not lines:
+            tool_calls = payload.get("tool_calls")
+            if isinstance(tool_calls, Sequence) and not isinstance(
+                tool_calls, (str, bytes, bytearray)
+            ):
+                for call in tool_calls:
+                    lines.extend(_summarize_tool_call_request(call))
+        if lines:
+            unique: list[str] = []
+            seen: set[str] = set()
+            for line in lines:
+                normalised = normalize_for_display(str(line)).strip()
+                if not normalised or normalised in seen:
+                    continue
+                seen.add(normalised)
+                unique.append(normalised)
+            if unique:
+                return unique
+    fallback = _format_raw_payload(payload)
+    return _normalise_text_lines(fallback)
 
 
 class TranscriptEntryPanel(wx.Panel):
@@ -427,6 +550,35 @@ class TranscriptEntryPanel(wx.Panel):
                 )
             )
 
+        llm_payload = event.llm_request
+        request_payload: Any = llm_payload
+        response_payload: Any | None = None
+        if isinstance(llm_payload, Mapping):
+            response_payload = llm_payload.get("response")
+            request_payload = llm_payload.get("tool_call") or llm_payload
+        request_raw = _format_raw_payload(request_payload)
+        if request_raw:
+            nested_sections.append(
+                (
+                    f"tool:{event.event_id}:llm-request",
+                    f"raw:tool:{summary.tool_name or ''}:{summary.index}:llm-request",
+                    _("Raw LLM request"),
+                    request_raw,
+                    150,
+                )
+            )
+        response_raw = _format_raw_payload(response_payload)
+        if response_raw:
+            nested_sections.append(
+                (
+                    f"tool:{event.event_id}:llm-response",
+                    f"raw:tool:{summary.tool_name or ''}:{summary.index}:llm-response",
+                    _("Raw LLM response"),
+                    response_raw,
+                    150,
+                )
+            )
+
         for key, name, label_text, value, minimum_height in nested_sections:
             pane_key = key
             nested = _build_collapsible_section(
@@ -473,34 +625,32 @@ class TranscriptEntryPanel(wx.Panel):
             return []
 
         lines: list[str] = []
-        request_payload: Any = payload
         response_payload: Any | None = None
         step_label: str | None = None
 
         if isinstance(payload, Mapping):
             response_payload = payload.get("response")
-            tool_call_payload = payload.get("tool_call")
-            if tool_call_payload is not None:
-                request_payload = tool_call_payload
             step_value = payload.get("step")
-            if isinstance(step_value, (int, str)):
-                step_text = str(step_value).strip()
-                if step_text:
-                    step_label = step_text
+            if isinstance(step_value, (int, float)):
+                step_label = str(int(step_value))
+            elif isinstance(step_value, str) and step_value.strip():
+                step_label = step_value.strip()
 
-        request_text = _format_raw_payload(request_payload)
-        if request_text:
+        request_lines = _summarize_tool_call_request(payload)
+        if request_lines:
             lines.append(_("LLM request:"))
             if step_label is not None:
                 lines.append(
-                    _("  • Step {step}").format(step=normalize_for_display(step_label))
+                    _("  • Step {step}").format(
+                        step=normalize_for_display(step_label)
+                    )
                 )
-            lines.extend(self._indent_for_summary(request_text))
+            lines.extend(self._indent_for_summary("\n".join(request_lines)))
 
-        response_text = _format_raw_payload(response_payload)
-        if response_text:
+        response_lines = _summarize_llm_response(response_payload)
+        if response_lines:
             lines.append(_("LLM response:"))
-            lines.extend(self._indent_for_summary(response_text))
+            lines.extend(self._indent_for_summary("\n".join(response_lines)))
 
         return lines
 

@@ -30,18 +30,6 @@ class ChatEventKind(str, Enum):
     SYSTEM_MESSAGE = "system_message"
 
 
-_EVENT_DISPLAY_ORDER: dict[ChatEventKind, int] = {
-    ChatEventKind.PROMPT: 0,
-    ChatEventKind.CONTEXT: 1,
-    ChatEventKind.LLM_REQUEST: 2,
-    ChatEventKind.REASONING: 3,
-    ChatEventKind.RESPONSE: 4,
-    ChatEventKind.TOOL_CALL: 5,
-    ChatEventKind.RAW_PAYLOAD: 6,
-    ChatEventKind.SYSTEM_MESSAGE: 7,
-}
-
-
 @dataclass(slots=True)
 class ChatEvent:
     """Base class for all transcript events."""
@@ -53,21 +41,6 @@ class ChatEvent:
     kind: ChatEventKind
     occurred_at: _dt.datetime | None
     timestamp: str | None
-
-
-def _event_sort_key(event: ChatEvent) -> tuple[int, Any, int, int]:
-    """Sort events primarily by their actual timestamps."""
-
-    order = _EVENT_DISPLAY_ORDER.get(event.kind, 99)
-    if isinstance(event, ResponseEvent) and not getattr(event, "is_final", False):
-        pseudo_time = _dt.datetime(1, 1, 1, tzinfo=_dt.timezone.utc) + _dt.timedelta(
-            microseconds=max(1, event.sequence_index + 1)
-        )
-        return (0, pseudo_time, order, event.sequence_index)
-    occurred = event.occurred_at
-    if occurred is not None:
-        return (0, occurred, order, event.sequence_index)
-    return (1, event.sequence_index, order, 0)
 
 
 def _choose_timestamp(*candidates: str | None) -> str | None:
@@ -166,11 +139,9 @@ class EntryTimeline:
     system_messages: tuple[SystemMessageEvent, ...]
     layout_hints: dict[str, int]
     can_regenerate: bool
+    _events: tuple[ChatEvent, ...] = field(init=False, repr=False)
 
-    @property
-    def events(self) -> tuple[ChatEvent, ...]:
-        """Return all events for the entry preserving chronological order."""
-
+    def __post_init__(self) -> None:
         ordered: list[ChatEvent] = [self.prompt]
         if self.context is not None:
             ordered.append(self.context)
@@ -185,8 +156,13 @@ class EntryTimeline:
         if self.raw_payload is not None:
             ordered.append(self.raw_payload)
         ordered.extend(self.system_messages)
-        ordered.sort(key=_event_sort_key)
-        return tuple(ordered)
+        self._events = tuple(ordered)
+
+    @property
+    def events(self) -> tuple[ChatEvent, ...]:
+        """Return all events for the entry preserving chronological order."""
+
+        return self._events
 
 
 @dataclass(slots=True)
@@ -978,7 +954,7 @@ def _extract_tool_timestamp(payload: Mapping[str, Any]) -> str | None:
 
 
 def _extract_tool_identifier(payload: Mapping[str, Any]) -> str | None:
-    for key in ("tool_call_id", "call_id", "id"):
+    for key in ("tool_call_id", "call_id", "id", "call_identifier"):
         value = payload.get(key)
         if isinstance(value, str):
             text = value.strip()

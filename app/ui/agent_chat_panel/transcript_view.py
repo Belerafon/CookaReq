@@ -200,10 +200,6 @@ class TranscriptView:
                 on_regenerate = callback
 
             valid_hint_keys = {"user", "agent"}
-            for tool_event in entry_timeline.tool_calls:
-                valid_hint_keys.add(
-                    TranscriptEntryPanel.tool_layout_hint_key(tool_event.summary)
-                )
 
             sanitized_hints: dict[str, int] = {}
             for hint_key, hint_value in entry_timeline.layout_hints.items():

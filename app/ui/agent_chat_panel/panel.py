@@ -76,6 +76,7 @@ from .view_model import (
     ChatEventKind,
     ConversationTimeline,
     ContextEvent,
+    LlmRequestEvent,
     PromptEvent,
     RawPayloadEvent,
     ReasoningEvent,
@@ -2019,6 +2020,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if isinstance(event, ContextEvent):
                 lines = [header_prefix + _("Context messages:")]
                 lines.append(indent_block(format_json_block(event.messages)))
+                return lines
+
+            if isinstance(event, LlmRequestEvent):
+                lines = [header_prefix + _("Agent → LLM request:")]
+                payload = {"messages": event.messages}
+                if event.sequence is not None:
+                    payload["sequence"] = event.sequence
+                lines.append(indent_block(format_json_block(payload)))
                 return lines
 
             if isinstance(event, ReasoningEvent):

@@ -3,7 +3,7 @@ import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 from app.confirm import ConfirmDecision, reset_requirement_update_preference, set_confirm, set_requirement_update_confirm
 from app.llm.tokenizer import TokenCountResult
@@ -757,28 +757,17 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
         assert len(raw_panes) >= 2, "expected raw data panes for agent and tool"
 
         header_map: dict[str, int] = {}
+
+        def find_bubble(window: wx.Window) -> MessageBubble | None:
+            current = window
+            while current is not None and not isinstance(current, MessageBubble):
+                current = current.GetParent()
+            return current if isinstance(current, MessageBubble) else None
+
         for pane in raw_panes:
-            parent = pane.GetParent()
-            assert isinstance(parent, TranscriptEntryPanel)
-            children = parent.GetSizer().GetChildren()
-            bubble_label = None
-            for idx, item in enumerate(children):
-                if not item.IsWindow():
-                    continue
-                window = item.GetWindow()
-                if window is pane:
-                    for back in range(idx - 1, -1, -1):
-                        previous = children[back]
-                        if not previous.IsWindow():
-                            continue
-                        candidate = previous.GetWindow()
-                        if isinstance(candidate, wx.Button):
-                            continue
-                        if isinstance(candidate, MessageBubble):
-                            bubble_label = bubble_header_text(candidate)
-                            break
-                    break
-            assert bubble_label is not None, "raw pane should follow a message bubble"
+            bubble = find_bubble(pane)
+            assert bubble is not None, "raw pane should live inside a message bubble"
+            bubble_label = bubble_header_text(bubble)
             header_map[bubble_label or ""] = header_map.get(bubble_label or "", 0) + 1
 
         for pane in raw_panes:
@@ -864,8 +853,11 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
         panes = collect_collapsible(panel.transcript_panel)
         assert panes, "expected collapsible context pane"
 
-        expected_labels = {"", "Context", i18n.gettext("Context")}
-        context_panes = [pane for pane in panes if collapsible_label(pane) in expected_labels]
+        context_panes = [
+            pane
+            for pane in panes
+            if pane.GetName() == "context" or collapsible_label(pane) == i18n.gettext("Context")
+        ]
         assert context_panes, "context pane should be present"
         context_pane = context_panes[0]
         assert context_pane.IsCollapsed()
@@ -947,7 +939,7 @@ def test_agent_chat_panel_sorts_tool_results_chronologically(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
-def test_agent_chat_panel_orders_tool_bubbles_after_agent_reply(tmp_path, wx_app):
+def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_app):
     class ToolAgent:
         def run_command(
             self,
@@ -987,37 +979,61 @@ def test_agent_chat_panel_orders_tool_bubbles_after_agent_reply(tmp_path, wx_app
         assert entry_panels, "expected transcript entry"
         entry = entry_panels[0]
 
-        def bubble_headers(message_panel):
-            headers: list[str] = []
-            for child in message_panel.GetChildren():
-                if not isinstance(child, MessageBubble):
-                    continue
-                bubble_panel = None
-                for candidate in child.GetChildren():
-                    if isinstance(candidate, wx.Panel):
-                        bubble_panel = candidate
-                        break
-                if bubble_panel is None:
-                    continue
-                header_label = None
-                for candidate in bubble_panel.GetChildren():
-                    if isinstance(candidate, wx.StaticText):
-                        header_label = candidate.GetLabel()
-                        break
-                if header_label is not None:
-                    headers.append(header_label)
-            return headers
+        message_bubbles = [
+            child
+            for child in entry.GetChildren()
+            if isinstance(child, MessageBubble)
+        ]
+        assert len(message_bubbles) == 2, "expected user and agent bubbles"
 
-        headers = bubble_headers(entry)
-        assert headers, "expected at least one bubble"
+        agent_bubble = next(
+            (bubble for bubble in message_bubbles if "Agent" in bubble_header_text(bubble)),
+            None,
+        )
+        assert agent_bubble is not None, "agent bubble missing"
 
-        agent_indexes = [idx for idx, label in enumerate(headers) if "Agent" in label]
-        assert agent_indexes, "agent bubble missing"
-        agent_index = agent_indexes[-1]
-        tool_indexes = [idx for idx, label in enumerate(headers) if "demo_tool" in label]
-        assert tool_indexes, "tool bubble missing"
-        assert tool_indexes[0] > agent_index
-        assert tool_indexes[-1] == len(headers) - 1
+        user_bubble = next(
+            (bubble for bubble in message_bubbles if "You" in bubble_header_text(bubble)),
+            None,
+        )
+        assert user_bubble is not None, "user bubble missing"
+
+        assert all(
+            "demo_tool" not in bubble_header_text(bubble)
+            for bubble in message_bubbles
+            if bubble is not agent_bubble
+        ), "tool calls should be rendered inside the agent bubble"
+
+        def collect_panes(window: wx.Window) -> list[wx.CollapsiblePane]:
+            panes: list[wx.CollapsiblePane] = []
+            for child in window.GetChildren():
+                if isinstance(child, wx.CollapsiblePane):
+                    panes.append(child)
+                panes.extend(collect_panes(child))
+            return panes
+
+        conversation = panel._get_active_conversation()
+        assert conversation is not None
+        timeline = build_conversation_timeline(conversation)
+        tool_events = timeline.entries[-1].tool_calls
+        has_request_payload = any(event.llm_request for event in tool_events)
+
+        tool_pane = next(
+            (
+                pane
+                for pane in collect_panes(agent_bubble)
+                if pane.GetName().startswith("tool:demo_tool")
+            ),
+            None,
+        )
+        assert tool_pane is not None, "tool collapsible should be attached to the agent bubble"
+
+        nested_names = {
+            pane.GetName() for pane in collect_panes(tool_pane)
+        }
+        if has_request_payload:
+            assert any(name.startswith("raw:tool-request:demo_tool") for name in nested_names)
+        assert any(name.startswith("raw:tool:demo_tool") for name in nested_names)
     finally:
         destroy_panel(frame, panel)
 
@@ -1043,16 +1059,34 @@ def test_transcript_entry_panel_shows_reasoning(wx_app):
             regenerate_enabled=True,
         )
         reasoning_label = _("Model reasoning")
-        panes = [
-            child
-            for child in panel.GetChildren()
-            if isinstance(child, wx.CollapsiblePane)
+
+        bubbles = [
+            item.GetWindow()
+            for item in panel.GetSizer().GetChildren()
+            if item.IsWindow() and isinstance(item.GetWindow(), MessageBubble)
         ]
-        assert panes, "reasoning pane should be created"
-        reasoning_pane = panes[0]
+        agent_bubble = next(
+            (bubble for bubble in bubbles if "Agent" in bubble_header_text(bubble)),
+            None,
+        )
+        assert agent_bubble is not None, "agent bubble should be present"
+
+        def collect_panes(window: wx.Window) -> list[wx.CollapsiblePane]:
+            panes: list[wx.CollapsiblePane] = []
+            for child in window.GetChildren():
+                if isinstance(child, wx.CollapsiblePane):
+                    panes.append(child)
+                panes.extend(collect_panes(child))
+            return panes
+
+        reasoning_pane = next(
+            (pane for pane in collect_panes(agent_bubble) if pane.GetName() == "reasoning"),
+            None,
+        )
+        assert reasoning_pane is not None, "reasoning pane should be created"
         label_value = collapsible_label(reasoning_pane)
         if label_value:
-            assert label_value == reasoning_label
+            assert "reason" in label_value.lower()
         reasoning_pane.Expand()
         wx.GetApp().Yield()
         text_controls = [
@@ -1112,38 +1146,59 @@ def test_transcript_entry_panel_orders_sections(wx_app):
         )
         wx.GetApp().Yield()
 
-        order: dict[str, int] = {}
-        sizer_items = panel.GetSizer().GetChildren()
-        for idx, item in enumerate(sizer_items):
-            if not item.IsWindow():
-                continue
-            window = item.GetWindow()
-            if isinstance(window, MessageBubble):
-                header = bubble_header_text(window)
-                if "You" in header and "user" not in order:
-                    order["user"] = idx
-                elif "Agent" in header and "agent" not in order:
-                    order["agent"] = idx
-                elif "demo_tool" in header and "tool" not in order:
-                    order["tool"] = idx
-            elif isinstance(window, wx.CollapsiblePane):
-                name = window.GetName() if hasattr(window, "GetName") else ""
-                if name.startswith("raw:"):
-                    if name.startswith("raw:tool:") and "tool_raw" not in order:
-                        order["tool_raw"] = idx
-                    elif name == "raw:agent" and "agent_raw" not in order:
-                        order["agent_raw"] = idx
-                    continue
-                label = collapsible_label(window)
-                if label == _("Context") and "context" not in order:
-                    order["context"] = idx
-                elif label == _("Model reasoning") and "reasoning" not in order:
-                    order["reasoning"] = idx
+        bubbles = [
+            item.GetWindow()
+            for item in panel.GetSizer().GetChildren()
+            if item.IsWindow() and isinstance(item.GetWindow(), MessageBubble)
+        ]
+        assert len(bubbles) == 2
 
-        assert {"context", "user", "reasoning", "tool", "agent", "tool_raw", "agent_raw"}.issubset(order.keys())
-        assert order["user"] < order["reasoning"] < order["agent"] < order["tool"]
-        assert order["tool_raw"] > order["tool"]
-        assert order["agent_raw"] > order["agent"]
+        def collect_panes(window: wx.Window) -> list[wx.CollapsiblePane]:
+            panes: list[wx.CollapsiblePane] = []
+            for child in window.GetChildren():
+                if isinstance(child, wx.CollapsiblePane):
+                    panes.append(child)
+                panes.extend(collect_panes(child))
+            return panes
+
+        def find_pane_by_name(bubble: MessageBubble, name: str) -> wx.CollapsiblePane | None:
+            for pane in collect_panes(bubble):
+                if pane.GetName() == name:
+                    return pane
+            return None
+
+        user_bubble = next(b for b in bubbles if "You" in bubble_header_text(b))
+        agent_bubble = next(b for b in bubbles if "Agent" in bubble_header_text(b))
+
+        context_pane = find_pane_by_name(user_bubble, "context")
+        assert context_pane is not None
+        reasoning_pane = find_pane_by_name(agent_bubble, "reasoning")
+        assert reasoning_pane is not None
+        llm_request_pane = find_pane_by_name(agent_bubble, "raw:llm-request")
+        assert llm_request_pane is not None
+        agent_raw_pane = find_pane_by_name(agent_bubble, "raw:agent")
+        assert agent_raw_pane is not None
+        tool_pane = next(
+            (
+                pane
+                for pane in collect_panes(agent_bubble)
+                if pane.GetName().startswith("tool:demo_tool")
+            ),
+            None,
+        )
+        assert tool_pane is not None
+        tool_raw_pane = None
+        for pane in collect_panes(tool_pane):
+            if pane.GetName().startswith("raw:tool:"):
+                tool_raw_pane = pane
+                break
+        assert tool_raw_pane is not None
+
+        context_label = collapsible_label(context_pane)
+        assert context_label.lower() in {"", _("Context").lower()}
+        assert "reason" in collapsible_label(reasoning_pane).lower()
+        assert "request" in collapsible_label(llm_request_pane).lower()
+        assert "raw" in collapsible_label(agent_raw_pane).lower()
     finally:
         panel.Destroy()
         frame.Destroy()
@@ -1857,90 +1912,95 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         entry_index = conversation.entries.index(entry)
         entry_key = f"{conversation.conversation_id}:{entry_index}"
         message_panel = cache.panels_by_entry[entry_key]
+        timeline = build_conversation_timeline(conversation)
+        tool_events = timeline.entries[entry_index].tool_calls
+        assert any(event.llm_request for event in tool_events), "expected llm request payload"
         windows = [
             item.GetWindow()
             for item in message_panel.GetSizer().GetChildren()
             if item.IsWindow()
         ]
-        labels = [
-            (bubble_header_text(window), window)
+        bubbles = [
+            window
             for window in windows
             if isinstance(window, MessageBubble)
         ]
-        label_names = [text for text, _ in labels]
-        assert any("You" in text for text in label_names)
-        assert any("Agent" in text for text in label_names)
-        assert any("update_requirement_field" in text for text in label_names)
+        assert len(bubbles) == 2
 
-        def find_window(predicate: Callable[[wx.Window], bool]) -> wx.Window:
-            for window in windows:
-                if predicate(window):
-                    return window
-            raise AssertionError("expected matching window not found")
+        def collect_panes(window: wx.Window) -> list[wx.CollapsiblePane]:
+            panes: list[wx.CollapsiblePane] = []
+            for child in window.GetChildren():
+                if isinstance(child, wx.CollapsiblePane):
+                    panes.append(child)
+                panes.extend(collect_panes(child))
+            return panes
 
-        context_label = i18n._("Context")
-        reasoning_label = i18n._("Model reasoning")
-        raw_label = i18n._("Raw data")
+        def find_pane(bubble: MessageBubble, name: str) -> wx.CollapsiblePane | None:
+            for pane in collect_panes(bubble):
+                if pane.GetName() == name:
+                    return pane
+            return None
 
-        context_pane = find_window(
-            lambda window, label=context_label: isinstance(window, wx.CollapsiblePane)
-            and collapsible_label(window) == label
+        agent_bubble = next(
+            bubble
+            for bubble in bubbles
+            if "Agent" in bubble_header_text(bubble)
         )
-        reasoning_pane = find_window(
-            lambda window, label=reasoning_label: isinstance(window, wx.CollapsiblePane)
-            and collapsible_label(window) == label
-        )
-        tool_bubble = find_window(
-            lambda window: isinstance(window, MessageBubble)
-            and "update_requirement_field" in bubble_header_text(window)
-        )
-        agent_bubble = find_window(
-            lambda window: isinstance(window, MessageBubble)
-            and "Agent" in bubble_header_text(window)
+        user_bubble = next(
+            bubble for bubble in bubbles if "You" in bubble_header_text(bubble)
         )
 
-        assert getattr(tool_bubble, "_timestamp") == "2025-01-01T12:00:04Z"
-
-        def following_raw(window: MessageBubble) -> wx.CollapsiblePane:
-            sizer_items = message_panel.GetSizer().GetChildren()
-            for idx, item in enumerate(sizer_items):
-                if not item.IsWindow():
-                    continue
-                if item.GetWindow() is window:
-                    for forward in range(idx + 1, len(sizer_items)):
-                        candidate = sizer_items[forward]
-                        if not candidate.IsWindow():
-                            continue
-                        next_window = candidate.GetWindow()
-                        if isinstance(next_window, wx.Button):
-                            continue
-                        if isinstance(next_window, wx.CollapsiblePane):
-                            name = next_window.GetName()
-                            if name.startswith("raw:"):
-                                return next_window
-                        if isinstance(next_window, MessageBubble):
-                            break
-            raise AssertionError("expected raw pane after bubble")
-
-        tool_raw_pane = following_raw(tool_bubble)
-        agent_raw_pane = next(
+        context_pane = find_pane(user_bubble, "context")
+        reasoning_pane = find_pane(agent_bubble, "reasoning")
+        agent_raw_pane = find_pane(agent_bubble, "raw:agent")
+        llm_request_pane = find_pane(agent_bubble, "raw:llm-request")
+        tool_raw_pane = None
+        tool_request_pane = None
+        tool_pane = next(
             (
-                window
-                for window in windows
-                if isinstance(window, wx.CollapsiblePane)
-                and window.GetName() == "raw:agent"
+                pane
+                for pane in collect_panes(agent_bubble)
+                if pane.GetName().startswith("tool:update_requirement_field")
             ),
             None,
         )
-        if agent_raw_pane is None:
-            raise AssertionError("expected agent raw pane")
+        assert tool_pane is not None
+        for pane in collect_panes(tool_pane):
+            name = pane.GetName()
+            if name.startswith("raw:tool-request:") and tool_request_pane is None:
+                tool_request_pane = pane
+            if name.startswith("raw:tool:") and tool_raw_pane is None:
+                tool_raw_pane = pane
 
-        assert isinstance(context_pane, wx.CollapsiblePane)
-        assert isinstance(reasoning_pane, wx.CollapsiblePane)
-        assert isinstance(tool_raw_pane, wx.CollapsiblePane)
-        assert isinstance(agent_raw_pane, wx.CollapsiblePane)
-        assert tool_raw_pane.GetName().startswith("raw:tool:")
-        assert agent_raw_pane.GetName() == "raw:agent"
+        assert context_pane is not None
+        assert reasoning_pane is not None
+        assert agent_raw_pane is not None
+        assert llm_request_pane is not None
+        assert tool_raw_pane is not None
+        assert tool_request_pane is not None
+
+        context_label = collapsible_label(context_pane)
+        assert context_label.lower() in {"", i18n._("Context").lower()}
+        assert "reason" in collapsible_label(reasoning_pane).lower()
+        assert "raw" in collapsible_label(agent_raw_pane).lower()
+        assert "raw" in collapsible_label(tool_raw_pane).lower()
+        assert "request" in collapsible_label(tool_request_pane).lower()
+
+        tool_request_pane.Collapse(False)
+        tool_raw_pane.Collapse(False)
+        flush_wx_events(wx)
+
+        def pane_text(pane: wx.CollapsiblePane) -> str:
+            lines: list[str] = []
+            for child in pane.GetPane().GetChildren():
+                if isinstance(child, wx.TextCtrl):
+                    lines.append(child.GetValue())
+            return "\n".join(lines)
+
+        request_text = pane_text(tool_request_pane)
+        raw_text = pane_text(tool_raw_pane)
+        assert "tool_calls" in request_text or "tool_call" in request_text or "content" in request_text
+        assert "VALIDATION_ERROR" in raw_text
 
         log_text = panel._compose_transcript_log_text()
         assert "Started at 2025-01-01T12:00:02Z" in log_text

@@ -621,7 +621,7 @@ def _build_response_event(
         return None
     timestamp = entry.response_at or entry.prompt_at or fallback_timestamp
     occurred_at = parse_iso_timestamp(timestamp)
-    formatted_timestamp = format_entry_timestamp(entry.response_at or entry.prompt_at)
+    formatted_timestamp = format_entry_timestamp(timestamp)
     return ResponseEvent(
         event_id=f"{entry_id}:response",
         entry_id=entry_id,

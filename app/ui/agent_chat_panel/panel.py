@@ -45,6 +45,7 @@ from .history_utils import (
     clone_streamed_tool_results,
     history_json_safe,
     looks_like_tool_payload,
+    sort_tool_payloads,
     stringify_payload,
 )
 from .paths import (
@@ -60,7 +61,7 @@ from .project_settings import (
 from .layout import AgentChatLayoutBuilder
 from .session import AgentChatSession
 from .settings_dialog import AgentProjectSettingsDialog
-from .time_formatting import format_last_activity
+from .time_formatting import format_entry_timestamp, format_last_activity
 from .token_usage import (
     ContextTokenBreakdown,
     TOKEN_UNAVAILABLE_LABEL,
@@ -69,6 +70,20 @@ from .token_usage import (
 from .tool_summaries import (
     render_tool_summaries_plain,
     summarize_tool_results,
+)
+from .view_model import (
+    ChatEvent,
+    ChatEventKind,
+    ConversationTimeline,
+    ContextEvent,
+    LlmRequestEvent,
+    PromptEvent,
+    RawPayloadEvent,
+    ReasoningEvent,
+    ResponseEvent,
+    SystemMessageEvent,
+    ToolCallEvent,
+    build_conversation_timeline,
 )
 from .transcript_view import TranscriptView
 
@@ -1025,14 +1040,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 tool_results = list(
                     clone_streamed_tool_results(handle.streamed_tool_results)
                 )
+            if tool_results:
+                tool_results = sort_tool_payloads(tool_results)
             merged_tool_results = self._merge_tool_result_timelines(
                 tool_results, handle.streamed_tool_results
             )
             if merged_tool_results is not None:
-                tool_results = merged_tool_results
+                tool_results = sort_tool_payloads(merged_tool_results)
                 if isinstance(raw_result, Mapping):
                     raw_result = dict(raw_result)
-                    raw_result["tool_results"] = merged_tool_results
+                    raw_result["tool_results"] = tool_results
             response_tokens = count_text_tokens(
                 conversation_text,
                 model=self._token_model(),
@@ -1762,6 +1779,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 tool_payloads.append(history_json_safe(payload))
         elif raw_result_mapping and looks_like_tool_payload(raw_result_mapping):
             tool_payloads.append(raw_result_mapping)
+        tool_payloads = sort_tool_payloads(tool_payloads)
 
         diagnostic_payload = {
             "prompt_text": prompt_text,
@@ -1893,7 +1911,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 if last_seen and not combined.get("observed_at"):
                     combined["observed_at"] = last_seen
             merged.append(combined)
-        return merged if merged else None
+        if not merged:
+            return None
+        sorted_payloads = sort_tool_payloads(merged)
+        return [
+            dict(payload) if isinstance(payload, Mapping) else payload
+            for payload in sorted_payloads
+        ]
 
     def _compose_transcript_text(self) -> str:
         conversation = self._get_active_conversation()
@@ -1933,10 +1957,17 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if not conversation.entries:
             return _("This chat does not have any messages yet. Send one to get started.")
 
-        def format_timestamp(value: str | None) -> str:
-            if not value:
-                return _("not recorded")
-            return normalize_for_display(value)
+        timeline = build_conversation_timeline(conversation)
+
+        def format_timestamp(value: str | None, *, event: ChatEvent | None = None) -> str:
+            if value:
+                formatted = format_entry_timestamp(value)
+                return normalize_for_display(formatted or value)
+            if event is not None and event.occurred_at is not None:
+                iso_value = event.occurred_at.isoformat()
+                formatted = format_entry_timestamp(iso_value)
+                return normalize_for_display(formatted or iso_value)
+            return _("not recorded")
 
         def _normalise_json_value(value: Any) -> Any:
             if isinstance(value, str):
@@ -1979,6 +2010,99 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         def indent_block(value: str, *, prefix: str = "    ") -> str:
             return textwrap.indent(value, prefix)
+
+        def describe_event(event: ChatEvent) -> list[str]:
+            timestamp = format_timestamp(event.timestamp, event=event)
+            header_prefix = _("[{timestamp}] ").format(timestamp=timestamp)
+
+            if isinstance(event, PromptEvent):
+                lines = [header_prefix + _("You:")]
+                text = normalize_for_display(event.text)
+                if text:
+                    lines.append(indent_block(text))
+                return lines
+
+            if isinstance(event, ContextEvent):
+                lines = [header_prefix + _("Context messages:")]
+                lines.append(indent_block(format_json_block(event.messages)))
+                return lines
+
+            if isinstance(event, LlmRequestEvent):
+                lines = [header_prefix + _("Agent → LLM request:")]
+                payload = {"messages": event.messages}
+                if event.sequence is not None:
+                    payload["sequence"] = event.sequence
+                lines.append(indent_block(format_json_block(payload)))
+                return lines
+
+            if isinstance(event, ReasoningEvent):
+                lines = [header_prefix + _("Model reasoning:")]
+                lines.append(indent_block(format_json_block(event.segments)))
+                return lines
+
+            if isinstance(event, ResponseEvent):
+                label = _("Agent response")
+                if event.regenerated:
+                    label = _("Agent response (regenerated)")
+                lines = [header_prefix + label + ":"]
+                text = normalize_for_display(event.display_text or event.text or "")
+                if text:
+                    lines.append(indent_block(text))
+                else:
+                    lines.append(indent_block(_("(empty)")))
+                return lines
+
+            if isinstance(event, ToolCallEvent):
+                summary = event.summary
+                heading = _(
+                    "Agent → MCP call {index}: {tool} — {status}"
+                ).format(
+                    index=summary.index,
+                    tool=normalize_for_display(summary.tool_name or _("Unnamed tool")),
+                    status=normalize_for_display(summary.status or _("returned data")),
+                )
+                lines = [header_prefix + heading]
+                for bullet in summary.bullet_lines:
+                    if bullet:
+                        lines.append(indent_block(normalize_for_display(bullet)))
+                if event.call_identifier:
+                    lines.append(
+                        indent_block(
+                            _("Call identifier: {identifier}").format(
+                                identifier=normalize_for_display(event.call_identifier)
+                            )
+                        )
+                    )
+                if summary.raw_payload is not None:
+                    lines.append(indent_block(_("Raw payload:")))
+                    lines.append(
+                        indent_block(
+                            format_json_block(summary.raw_payload),
+                            prefix="        ",
+                        )
+                    )
+                return lines
+
+            if isinstance(event, RawPayloadEvent):
+                lines = [header_prefix + _("Agent raw payload:")]
+                lines.append(indent_block(format_json_block(event.payload)))
+                return lines
+
+            if isinstance(event, SystemMessageEvent):
+                lines = [header_prefix + _("System message:")]
+                message = normalize_for_display(event.message)
+                if message:
+                    lines.append(indent_block(message))
+                if event.details is not None:
+                    lines.append(indent_block(format_json_block(event.details)))
+                return lines
+
+            return [
+                header_prefix
+                + _("Unhandled event kind: {kind}").format(
+                    kind=normalize_for_display(event.kind.value)
+                )
+            ]
 
         def describe_message_origin(role: str | None) -> str:
             normalized = (role or "").strip().lower()
@@ -2283,6 +2407,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         lines.append(_("Entries: {count}").format(count=len(conversation.entries)))
         lines.append("")
+        lines.append(_("Event timeline:"))
+        if not timeline.events:
+            lines.append(indent_block(_("No transcript events recorded.")))
+        else:
+            for event in timeline.events:
+                lines.extend(describe_event(event))
+                lines.append("")
+        lines.append("")
         lines.append(_("LLM system prompt:"))
         lines.append(indent_block(normalize_for_display(SYSTEM_PROMPT)))
         lines.append(_("LLM tool specification:"))
@@ -2331,7 +2463,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             elif planned_calls:
                 lines.extend(format_planned_tool_calls([planned_calls]))
 
-            tool_payloads = diagnostic.get("tool_exchanges") or []
+            tool_payloads = sort_tool_payloads(diagnostic.get("tool_exchanges") or [])
             if tool_payloads:
                 for tool_index, payload in enumerate(tool_payloads, start=1):
                     lines.extend(format_tool_exchange(tool_index, payload))

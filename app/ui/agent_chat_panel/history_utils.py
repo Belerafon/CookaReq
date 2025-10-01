@@ -9,6 +9,7 @@ import json
 
 from ...util.json import make_json_safe
 from ..text import normalize_for_display
+from .time_formatting import parse_iso_timestamp
 
 
 def history_json_safe(value: Any) -> Any:
@@ -63,6 +64,38 @@ def clone_streamed_tool_results(
     return tuple(clones)
 
 
+def sort_tool_payloads(
+    payloads: Sequence[Any] | None,
+) -> list[Any]:
+    """Return payloads ordered by their earliest recorded timestamp."""
+
+    if not payloads:
+        return []
+
+    ranked: list[tuple[tuple[Any, ...], Any]] = []
+    for index, payload in enumerate(payloads):
+        if isinstance(payload, Mapping):
+            timestamps = (
+                payload.get("first_observed_at"),
+                payload.get("started_at"),
+                payload.get("observed_at"),
+                payload.get("last_observed_at"),
+                payload.get("completed_at"),
+            )
+            moment = None
+            for candidate in timestamps:
+                moment = parse_iso_timestamp(candidate)
+                if moment is not None:
+                    break
+            if moment is not None:
+                ranked.append(((0, moment, index), payload))
+                continue
+        ranked.append(((1, index), payload))
+
+    ranked.sort(key=lambda item: item[0])
+    return [payload for _, payload in ranked]
+
+
 def format_value_snippet(value: Any) -> str:
     """Produce a human-friendly snippet for diagnostic payloads."""
 
@@ -95,6 +128,7 @@ __all__ = [
     "stringify_payload",
     "looks_like_tool_payload",
     "clone_streamed_tool_results",
+    "sort_tool_payloads",
     "format_value_snippet",
     "shorten_text",
     "describe_error",

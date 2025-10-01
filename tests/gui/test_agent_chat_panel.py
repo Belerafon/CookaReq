@@ -1785,7 +1785,9 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         conversation = panel._get_active_conversation()
         assert conversation is not None
         cache = panel._transcript_view._conversation_cache[conversation.conversation_id]
-        message_panel = cache.panels_by_entry[id(entry)]
+        entry_index = conversation.entries.index(entry)
+        entry_key = f"{conversation.conversation_id}:{entry_index}"
+        message_panel = cache.panels_by_entry[entry_key]
         children = message_panel.GetSizer().GetChildren()
         assert len(children) >= 4, "expected user, reasoning slot, agent, and tool sections"
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 import itertools
 from typing import Any, Iterable, Mapping, Sequence
@@ -101,6 +101,7 @@ class EntryTimeline:
 
     entry_id: str
     entry_index: int
+    entry: ChatEntry
     prompt: PromptEvent
     response: ResponseEvent | None
     context: ContextEvent | None
@@ -190,6 +191,7 @@ def build_conversation_timeline(
         timeline_entry = EntryTimeline(
             entry_id=entry_id,
             entry_index=entry_index,
+            entry=entry,
             prompt=prompt_event,
             response=response_event,
             context=context_event,
@@ -350,7 +352,10 @@ def _build_tool_call_event(
             tool_name="",
             status="",
             bullet_lines=(),
+            raw_payload=safe_payload,
         )
+    else:
+        summary = replace(summary, raw_payload=safe_payload)
     return ToolCallEvent(
         event_id=f"{entry_id}:tool:{tool_index}",
         entry_id=entry_id,

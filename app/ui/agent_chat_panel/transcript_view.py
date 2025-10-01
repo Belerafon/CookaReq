@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from typing import Any, Iterable
 
 import wx
 from wx.lib.scrolledpanel import ScrolledPanel
@@ -12,11 +13,7 @@ from ...i18n import _
 from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import dip
 from ..widgets.chat_message import TranscriptMessagePanel
-from .history_utils import history_json_safe
-from .time_formatting import format_entry_timestamp
-from .tool_summaries import summarize_tool_results
-
-from typing import Any, Iterable
+from .view_model import EntryTimeline, build_conversation_timeline
 
 
 class TranscriptCallbacks:
@@ -40,8 +37,8 @@ class TranscriptCallbacks:
 
 @dataclass(slots=True)
 class _ConversationRenderCache:
-    panels_by_entry: dict[int, TranscriptMessagePanel] = field(default_factory=dict)
-    order: list[int] = field(default_factory=list)
+    panels_by_entry: dict[str, TranscriptMessagePanel] = field(default_factory=dict)
+    order: list[str] = field(default_factory=list)
     placeholder: wx.Window | None = None
 
 
@@ -187,13 +184,14 @@ class TranscriptView:
         conversation_id = conversation.conversation_id
         cache = self._get_cache(conversation_id)
         self._active_conversation_id = conversation_id
-        ordered: list[tuple[int, TranscriptMessagePanel]] = []
-        for entry in conversation.entries:
-            key = id(entry)
+        timeline = build_conversation_timeline(conversation)
+        ordered: list[tuple[str, TranscriptMessagePanel]] = []
+        for entry_timeline in timeline.entries:
+            key = entry_timeline.entry_id
             panel = cache.panels_by_entry.get(key)
-            data = self._prepare_entry_render_data(conversation, entry)
+            data = self._prepare_entry_render_data(conversation, entry_timeline)
             if panel is None or not self._is_window_alive(panel):
-                panel = self._create_entry_panel(entry, data)
+                panel = self._create_entry_panel(entry_timeline, data)
                 cache.panels_by_entry[key] = panel
             else:
                 self._update_entry_panel(panel, data)
@@ -240,16 +238,34 @@ class TranscriptView:
 
     # ------------------------------------------------------------------
     def _prepare_entry_render_data(
-        self, conversation: ChatConversation, entry: ChatEntry
+        self,
+        conversation: ChatConversation,
+        entry_timeline: EntryTimeline,
     ) -> dict[str, Any]:
-        response_source = entry.display_response or entry.response
-        tool_summaries = summarize_tool_results(entry.tool_results)
+        prompt_event = entry_timeline.prompt
+        response_event = entry_timeline.response
+        context_event = entry_timeline.context
+        reasoning_event = entry_timeline.reasoning
+        tool_events = entry_timeline.tool_calls
+        raw_event = entry_timeline.raw_payload
+        entry = entry_timeline.entry
+
+        conversation_id = conversation.conversation_id
+        on_regenerate: Callable[[], None] | None = None
+        if entry_timeline.can_regenerate and response_event is not None:
+
+            def callback(entry_ref: ChatEntry = entry) -> None:
+                self._callbacks.on_regenerate(conversation_id, entry_ref)
+
+            on_regenerate = callback
+
+        tool_summaries = tuple(event.summary for event in tool_events if event.summary)
         valid_hint_keys = {"user", "agent"}
         for summary in tool_summaries:
             valid_hint_keys.add(TranscriptMessagePanel.tool_layout_hint_key(summary))
-        hints = entry.layout_hints if isinstance(entry.layout_hints, dict) else {}
-        sanitized: dict[str, int] = {}
-        for key, value in hints.items():
+
+        sanitized_hints: dict[str, int] = {}
+        for key, value in entry_timeline.layout_hints.items():
             if key not in valid_hint_keys:
                 continue
             try:
@@ -258,39 +274,42 @@ class TranscriptView:
                 continue
             if width <= 0:
                 continue
-            sanitized[str(key)] = width
-        entry.layout_hints = sanitized
-        can_regenerate = (
-            entry is conversation.entries[-1]
-            and entry.response_at is not None
-        )
-        on_regenerate: Callable[[], None] | None = None
-        if can_regenerate:
-            conversation_id = conversation.conversation_id
+            sanitized_hints[key] = width
 
-            def callback(entry_ref: ChatEntry = entry) -> None:
-                self._callbacks.on_regenerate(conversation_id, entry_ref)
+        entry.layout_hints = dict(sanitized_hints)
 
-            on_regenerate = callback
         return {
-            "prompt": entry.prompt,
-            "response": response_source or entry.response,
-            "prompt_timestamp": format_entry_timestamp(entry.prompt_at),
-            "response_timestamp": format_entry_timestamp(entry.response_at),
+            "prompt": prompt_event.text,
+            "response": (
+                response_event.display_text
+                if response_event is not None
+                else ""
+            )
+            or (response_event.text if response_event is not None else ""),
+            "prompt_timestamp": prompt_event.formatted_timestamp,
+            "response_timestamp": (
+                response_event.formatted_timestamp if response_event is not None else ""
+            ),
             "on_regenerate": on_regenerate,
             "regenerate_enabled": not self._callbacks.is_running(),
             "tool_summaries": tool_summaries,
-            "context_messages": entry.context_messages,
-            "reasoning_segments": entry.reasoning,
-            "regenerated": getattr(entry, "regenerated", False),
-            "layout_hints": entry.layout_hints,
-            "raw_payload": history_json_safe(entry.raw_result),
+            "context_messages": (
+                context_event.messages if context_event is not None else ()
+            ),
+            "reasoning_segments": (
+                reasoning_event.segments if reasoning_event is not None else ()
+            ),
+            "regenerated": (
+                response_event.regenerated if response_event is not None else False
+            ),
+            "layout_hints": sanitized_hints,
+            "raw_payload": raw_event.payload if raw_event is not None else None,
         }
 
     # ------------------------------------------------------------------
     def _create_entry_panel(
         self,
-        entry: ChatEntry,
+        entry_timeline: EntryTimeline,
         data: dict[str, Any],
     ) -> TranscriptMessagePanel:
         panel = TranscriptMessagePanel(
@@ -307,7 +326,7 @@ class TranscriptView:
             regenerated=data["regenerated"],
             layout_hints=data["layout_hints"],
             raw_payload=data["raw_payload"],
-            on_layout_hint=lambda key, width, entry_ref=entry: entry_ref.layout_hints.__setitem__(
+            on_layout_hint=lambda key, width, entry_ref=entry_timeline.entry: entry_ref.layout_hints.__setitem__(
                 key, int(width)
             ),
         )

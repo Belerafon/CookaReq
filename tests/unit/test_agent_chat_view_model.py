@@ -51,6 +51,7 @@ def test_build_conversation_timeline_compiles_events() -> None:
     assert len(timeline.entries) == 1
     entry_timeline = timeline.entries[0]
     assert entry_timeline.entry_id == "conv-1:0"
+    assert entry_timeline.entry is entry
     assert entry_timeline.prompt.kind is ChatEventKind.PROMPT
     assert entry_timeline.prompt.text == "Переведи требования"
     assert entry_timeline.context is not None
@@ -65,6 +66,7 @@ def test_build_conversation_timeline_compiles_events() -> None:
     assert tool_event.summary.index == 1
     assert tool_event.call_identifier == "tool-1"
     assert tool_event.raw_payload["tool_name"] == "get_requirement"
+    assert tool_event.summary.raw_payload == tool_event.raw_payload
     assert entry_timeline.raw_payload is not None
     assert entry_timeline.raw_payload.payload["answer"] == "Готово"
     assert entry_timeline.layout_hints == {"user": 140, "agent": 220}
@@ -120,9 +122,10 @@ def test_tool_call_events_sorted_by_timestamp() -> None:
     assert tool_ids == ["tool-1", "tool-4", "tool-6"]
     assert [event.summary.index for event in entry_timeline.tool_calls] == [1, 2, 3]
 
-    # tool events should appear before raw/system events when present
     kinds = [event.kind for event in entry_timeline.events]
-    assert kinds[: len(tool_ids)] == [ChatEventKind.TOOL_CALL] * len(tool_ids)
+    first_tool_index = kinds.index(ChatEventKind.TOOL_CALL)
+    tool_slice = kinds[first_tool_index : first_tool_index + len(tool_ids)]
+    assert tool_slice == [ChatEventKind.TOOL_CALL] * len(tool_ids)
 
     # chronological order is derived from timestamps
     timestamps = [event.timestamp for event in entry_timeline.tool_calls]

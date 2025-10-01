@@ -71,6 +71,19 @@ from .tool_summaries import (
     render_tool_summaries_plain,
     summarize_tool_results,
 )
+from .view_model import (
+    ChatEvent,
+    ChatEventKind,
+    ConversationTimeline,
+    ContextEvent,
+    PromptEvent,
+    RawPayloadEvent,
+    ReasoningEvent,
+    ResponseEvent,
+    SystemMessageEvent,
+    ToolCallEvent,
+    build_conversation_timeline,
+)
 from .transcript_view import TranscriptView
 
 
@@ -1943,6 +1956,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if not conversation.entries:
             return _("This chat does not have any messages yet. Send one to get started.")
 
+        timeline = build_conversation_timeline(conversation)
+
         def format_timestamp(value: str | None) -> str:
             if not value:
                 return _("not recorded")
@@ -1989,6 +2004,91 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         def indent_block(value: str, *, prefix: str = "    ") -> str:
             return textwrap.indent(value, prefix)
+
+        def describe_event(event: ChatEvent) -> list[str]:
+            timestamp = format_timestamp(event.timestamp)
+            header_prefix = _("[{timestamp}] ").format(timestamp=timestamp)
+
+            if isinstance(event, PromptEvent):
+                lines = [header_prefix + _("You:")]
+                text = normalize_for_display(event.text)
+                if text:
+                    lines.append(indent_block(text))
+                return lines
+
+            if isinstance(event, ContextEvent):
+                lines = [header_prefix + _("Context messages:")]
+                lines.append(indent_block(format_json_block(event.messages)))
+                return lines
+
+            if isinstance(event, ReasoningEvent):
+                lines = [header_prefix + _("Model reasoning:")]
+                lines.append(indent_block(format_json_block(event.segments)))
+                return lines
+
+            if isinstance(event, ResponseEvent):
+                label = _("Agent response")
+                if event.regenerated:
+                    label = _("Agent response (regenerated)")
+                lines = [header_prefix + label + ":"]
+                text = normalize_for_display(event.display_text or event.text or "")
+                if text:
+                    lines.append(indent_block(text))
+                else:
+                    lines.append(indent_block(_("(empty)")))
+                return lines
+
+            if isinstance(event, ToolCallEvent):
+                summary = event.summary
+                heading = _(
+                    "Agent → MCP call {index}: {tool} — {status}"
+                ).format(
+                    index=summary.index,
+                    tool=normalize_for_display(summary.tool_name or _("Unnamed tool")),
+                    status=normalize_for_display(summary.status or _("returned data")),
+                )
+                lines = [header_prefix + heading]
+                for bullet in summary.bullet_lines:
+                    if bullet:
+                        lines.append(indent_block(normalize_for_display(bullet)))
+                if event.call_identifier:
+                    lines.append(
+                        indent_block(
+                            _("Call identifier: {identifier}").format(
+                                identifier=normalize_for_display(event.call_identifier)
+                            )
+                        )
+                    )
+                if summary.raw_payload is not None:
+                    lines.append(indent_block(_("Raw payload:")))
+                    lines.append(
+                        indent_block(
+                            format_json_block(summary.raw_payload),
+                            prefix="        ",
+                        )
+                    )
+                return lines
+
+            if isinstance(event, RawPayloadEvent):
+                lines = [header_prefix + _("Agent raw payload:")]
+                lines.append(indent_block(format_json_block(event.payload)))
+                return lines
+
+            if isinstance(event, SystemMessageEvent):
+                lines = [header_prefix + _("System message:")]
+                message = normalize_for_display(event.message)
+                if message:
+                    lines.append(indent_block(message))
+                if event.details is not None:
+                    lines.append(indent_block(format_json_block(event.details)))
+                return lines
+
+            return [
+                header_prefix
+                + _("Unhandled event kind: {kind}").format(
+                    kind=normalize_for_display(event.kind.value)
+                )
+            ]
 
         def describe_message_origin(role: str | None) -> str:
             normalized = (role or "").strip().lower()
@@ -2292,6 +2392,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             )
         )
         lines.append(_("Entries: {count}").format(count=len(conversation.entries)))
+        lines.append("")
+        lines.append(_("Event timeline:"))
+        if not timeline.events:
+            lines.append(indent_block(_("No transcript events recorded.")))
+        else:
+            for event in timeline.events:
+                lines.extend(describe_event(event))
+                lines.append("")
         lines.append("")
         lines.append(_("LLM system prompt:"))
         lines.append(indent_block(normalize_for_display(SYSTEM_PROMPT)))

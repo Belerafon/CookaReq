@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping, Sequence
+from functools import lru_cache
 from contextlib import suppress
 import json
 from typing import Any, Literal
@@ -225,6 +226,36 @@ def _format_argument_line(key: Any, value: Any) -> str:
     if not label:
         return value_text
     return _("{label}: {value}").format(label=label, value=value_text)
+
+
+_PATTERN_MARKER = "\uffff"
+
+
+@lru_cache(maxsize=1)
+def _completed_timestamp_pattern() -> tuple[str, str, bool]:
+    pattern = normalize_for_display(
+        _("Completed at {timestamp}").format(timestamp=_PATTERN_MARKER)
+    )
+    prefix, mark, suffix = pattern.partition(_PATTERN_MARKER)
+    return prefix, suffix, bool(mark)
+
+
+def _is_completed_timestamp_line(text: str) -> bool:
+    prefix, suffix, has_marker = _completed_timestamp_pattern()
+    if not has_marker:
+        return False
+    normalized = normalize_for_display(text).strip()
+    if not normalized:
+        return False
+    if prefix and not normalized.startswith(prefix):
+        return False
+    if suffix and not normalized.endswith(suffix):
+        return False
+    if suffix:
+        middle = normalized[len(prefix) : len(normalized) - len(suffix)]
+    else:
+        middle = normalized[len(prefix) :]
+    return bool(middle.strip())
 
 
 def _summarize_request_arguments(
@@ -742,6 +773,8 @@ class ToolCallPanel(wx.Panel):
                 return
             normalized = normalize_for_display(text).strip()
             if not normalized:
+                return
+            if _is_completed_timestamp_line(normalized):
                 return
             key = normalized.casefold()
             if key in seen_lines:

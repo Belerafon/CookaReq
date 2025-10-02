@@ -14,6 +14,7 @@ from .reasoning import (
     collect_reasoning_fragments,
     extract_reasoning_entries,
     is_reasoning_type,
+    merge_reasoning_fragments,
 )
 from .types import LLMReasoningSegment, LLMToolCall
 from .utils import extract_mapping
@@ -789,51 +790,33 @@ class LLMResponseParser:
         finalized: list[LLMReasoningSegment] = []
         seen: set[tuple[str, str, str, str]] = set()
 
-        def flush(active: dict[str, str] | None) -> None:
-            if not active:
-                return
-            text_with_edges = active["text"]
+        fragments = merge_reasoning_fragments(collect_reasoning_fragments(segments))
+        for fragment in fragments:
+            text_with_edges = (
+                f"{fragment.leading_whitespace}{fragment.text}{fragment.trailing_whitespace}"
+            )
             if not text_with_edges:
-                return
-            stripped = text_with_edges.strip()
+                continue
+            stripped = fragment.text.strip()
             if not stripped:
-                return
-            leading_length = len(text_with_edges) - len(text_with_edges.lstrip())
-            trailing_length = len(text_with_edges) - len(text_with_edges.rstrip())
-            leading = text_with_edges[:leading_length]
-            trailing = text_with_edges[len(text_with_edges) - trailing_length :]
-            key = (active["type"], stripped, leading, trailing)
+                continue
+            key = (
+                fragment.type,
+                stripped,
+                fragment.leading_whitespace,
+                fragment.trailing_whitespace,
+            )
             if key in seen:
-                return
+                continue
             seen.add(key)
             finalized.append(
                 LLMReasoningSegment(
-                    type=active["type"],
+                    type=fragment.type,
                     text=stripped,
-                    leading_whitespace=leading,
-                    trailing_whitespace=trailing,
+                    leading_whitespace=fragment.leading_whitespace,
+                    trailing_whitespace=fragment.trailing_whitespace,
                 )
             )
-
-        current: dict[str, str] | None = None
-        for segment in segments:
-            seg_type = str(segment.get("type") or "reasoning")
-            text_value = segment.get("text")
-            if text_value is None:
-                continue
-            text = str(text_value)
-            if not text:
-                continue
-            leading_ws = str(segment.get("leading_whitespace") or "")
-            trailing_ws = str(segment.get("trailing_whitespace") or "")
-            key_type = "reasoning" if seg_type == "reasoning.text" else seg_type
-            piece = f"{leading_ws}{text}{trailing_ws}"
-            if current and current["type"] == key_type:
-                current["text"] += piece
-            else:
-                flush(current)
-                current = {"type": key_type, "text": piece}
-        flush(current)
         return tuple(finalized)
 
     # ------------------------------------------------------------------

@@ -11,6 +11,7 @@ __all__ = [
     "REASONING_TYPE_ALIASES",
     "REASONING_KEYWORDS",
     "ReasoningFragment",
+    "merge_reasoning_fragments",
     "is_reasoning_type",
     "extract_reasoning_entries",
     "collect_reasoning_fragments",
@@ -83,7 +84,13 @@ def collect_reasoning_fragments(payload: Any) -> list[ReasoningFragment]:
     if not payload:
         return fragments
 
-    def add_fragment(raw_type: Any, text: Any) -> None:
+    def add_fragment(
+        raw_type: Any,
+        text: Any,
+        *,
+        leading_override: str | None = None,
+        trailing_override: str | None = None,
+    ) -> None:
         if not text:
             return
         fragment_text = str(text)
@@ -97,6 +104,11 @@ def collect_reasoning_fragments(payload: Any) -> list[ReasoningFragment]:
         trailing_length = len(fragment_text) - len(fragment_text.rstrip())
         leading = fragment_text[:leading_length]
         trailing = fragment_text[len(fragment_text) - trailing_length :]
+        if fragment_text == stripped_text:
+            if leading_override is not None:
+                leading = str(leading_override or "")
+            if trailing_override is not None:
+                trailing = str(trailing_override or "")
         fragments.append(
             ReasoningFragment(
                 type=fragment_type,
@@ -127,7 +139,14 @@ def collect_reasoning_fragments(payload: Any) -> list[ReasoningFragment]:
             text_value = payload.get("summary")
         if text_value is None and isinstance(payload.get("content"), str):
             text_value = payload.get("content")
-        add_fragment(item_type or "reasoning", text_value)
+        leading_override = payload.get("leading_whitespace")
+        trailing_override = payload.get("trailing_whitespace")
+        add_fragment(
+            item_type or "reasoning",
+            text_value,
+            leading_override=leading_override,
+            trailing_override=trailing_override,
+        )
         for key in (
             "reasoning_content",
             "reasoning",
@@ -152,6 +171,76 @@ def collect_reasoning_fragments(payload: Any) -> list[ReasoningFragment]:
     return fragments
 
 
+def merge_reasoning_fragments(
+    fragments: Sequence[ReasoningFragment],
+) -> list[ReasoningFragment]:
+    """Collapse adjacent fragments of the same type preserving edge whitespace."""
+
+    merged: list[ReasoningFragment] = []
+    if not fragments:
+        return merged
+
+    def normalise_type(raw_type: Any) -> str:
+        text = str(raw_type or "reasoning").strip() or "reasoning"
+        if text == "reasoning.text":
+            return "reasoning"
+        return text
+
+    current_type: str | None = None
+    current_text: str = ""
+
+    def flush() -> None:
+        nonlocal current_type, current_text
+        if current_type is None:
+            return
+        text_with_edges = current_text
+        if not text_with_edges:
+            current_type = None
+            current_text = ""
+            return
+        stripped = text_with_edges.strip()
+        if not stripped:
+            current_type = None
+            current_text = ""
+            return
+        leading_length = len(text_with_edges) - len(text_with_edges.lstrip())
+        trailing_length = len(text_with_edges) - len(text_with_edges.rstrip())
+        leading = text_with_edges[:leading_length]
+        trailing = text_with_edges[len(text_with_edges) - trailing_length :]
+        merged.append(
+            ReasoningFragment(
+                type=current_type,
+                text=stripped,
+                leading_whitespace=leading,
+                trailing_whitespace=trailing,
+            )
+        )
+        current_type = None
+        current_text = ""
+
+    for fragment in fragments:
+        text = fragment.text
+        if not text:
+            continue
+        seg_type = normalise_type(fragment.type)
+        piece = f"{fragment.leading_whitespace}{text}{fragment.trailing_whitespace}"
+        if not piece.strip():
+            continue
+        if current_type is None:
+            current_type = seg_type
+            current_text = piece
+            continue
+        if seg_type == current_type:
+            current_text += piece
+            continue
+        flush()
+        current_type = seg_type
+        current_text = piece
+
+    flush()
+    return merged
+
+
 def normalise_reasoning_segments(payload: Any) -> list[dict[str, Any]]:
     """Return sanitized reasoning segments suitable for JSON payloads."""
 
@@ -159,7 +248,8 @@ def normalise_reasoning_segments(payload: Any) -> list[dict[str, Any]]:
     if not payload:
         return normalized
 
-    for fragment in collect_reasoning_fragments(payload):
+    fragments = merge_reasoning_fragments(collect_reasoning_fragments(payload))
+    for fragment in fragments:
         text_str = fragment.text
         if not text_str:
             continue

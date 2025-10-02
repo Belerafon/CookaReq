@@ -76,3 +76,22 @@ def test_normalise_reasoning_segments_from_nested_payload() -> None:
         },
         {"type": "reasoning", "text": "Assume default type"},
     ]
+
+
+def test_normalise_reasoning_segments_merges_adjacent_fragments() -> None:
+    payload = [
+        {"type": "reasoning", "text": "Х"},
+        {"type": "reasoning", "text": "оро"},
+        {"type": "reasoning", "text": "шо"},
+        {"type": "reasoning", "text": ","},
+        {"type": "reasoning", "text": " давайте разберёмся."},
+    ]
+
+    result = normalise_reasoning_segments(payload)
+
+    assert result == [
+        {
+            "type": "reasoning",
+            "text": "Хорошо, давайте разберёмся.",
+        }
+    ]

@@ -55,9 +55,13 @@ def _compose_agent_plain_text(entry: TranscriptEntry) -> str:
     turn = entry.agent_turn
     parts: list[str] = []
 
-    response_text = _select_agent_response_text(turn, entry)
-    if response_text:
-        parts.append(response_text)
+    response_lines = _collect_agent_response_texts(entry)
+    if response_lines:
+        parts.append("\n\n".join(response_lines))
+    else:
+        response_text = _select_agent_response_text(entry)
+        if response_text:
+            parts.append(response_text)
 
     tool_summary = _compose_tool_summary_text(entry)
     if tool_summary:
@@ -66,29 +70,51 @@ def _compose_agent_plain_text(entry: TranscriptEntry) -> str:
     return "\n\n".join(part for part in parts if part)
 
 
-def _select_agent_response_text(
-    turn: AgentTurn | None, entry: TranscriptEntry
-) -> str:
-    if turn is not None:
-        candidate = _extract_response_from_turn(turn)
-        if candidate:
-            return normalize_for_display(candidate)
+def _collect_agent_response_texts(entry: TranscriptEntry) -> list[str]:
+    """Return ordered agent responses rendered for *entry*."""
 
+    turn = entry.agent_turn
+    if turn is None:
+        return []
+
+    responses: list[str] = []
+
+    fallback_response = normalize_for_display(entry.entry.response or "")
+    fallback_display = normalize_for_display(entry.entry.display_response or "")
+
+    def append_response(candidate: AgentResponse | None) -> None:
+        if candidate is None:
+            return
+        text = candidate.text or ""
+        display_text = candidate.display_text or ""
+        normalised_text = normalize_for_display(text) if text else ""
+        normalised_display = (
+            normalize_for_display(display_text) if display_text else ""
+        )
+        content = normalised_text or normalised_display
+        if not content:
+            return
+        if (
+            not normalised_text
+            and not fallback_response
+            and content == fallback_display
+        ):
+            return
+        if responses and responses[-1] == content:
+            return
+        responses.append(content)
+
+    for streamed in turn.streamed_responses:
+        append_response(streamed)
+
+    append_response(turn.final_response)
+
+    return responses
+
+
+def _select_agent_response_text(entry: TranscriptEntry) -> str:
     fallback = entry.entry.response or entry.entry.display_response
     return normalize_for_display(fallback or "")
-
-
-def _extract_response_from_turn(turn: AgentTurn) -> str:
-    if turn.final_response is not None:
-        candidate = turn.final_response.text or turn.final_response.display_text or ""
-        if candidate:
-            return candidate
-
-    for response in reversed(turn.streamed_responses):
-        candidate = response.text or response.display_text
-        if candidate:
-            return candidate
-    return ""
 
 
 def _compose_tool_summary_text(entry: TranscriptEntry) -> str:
@@ -104,14 +130,12 @@ def _compose_tool_summary_text(entry: TranscriptEntry) -> str:
 
 
 def _omit_repeated_system_prompt(
-    payload: Mapping[str, Any], *, seen_prompt: bool = False
-) -> tuple[dict[str, Any], bool]:
+    value: Any, *, seen_prompt: bool = False
+) -> tuple[Any, bool]:
     sanitized, updated = _strip_repeated_system_prompt(
-        dict(payload), seen_prompt=seen_prompt
+        value, seen_prompt=seen_prompt
     )
-    if isinstance(sanitized, Mapping):
-        return dict(sanitized), updated
-    return dict(payload), updated
+    return sanitized, updated
 
 
 def _strip_repeated_system_prompt(
@@ -309,9 +333,15 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
                     for bullet in summary.bullet_lines:
                         if bullet:
                             blocks.append(indent_block(normalize_for_display(bullet)))
-                blocks.append(indent_block(format_json_block(details.raw_payload)))
+                payload, seen_system_prompt = _omit_repeated_system_prompt(
+                    details.raw_payload, seen_prompt=seen_system_prompt
+                )
+                blocks.append(indent_block(format_json_block(payload)))
                 if details.llm_request is not None:
-                    blocks.append(indent_block(format_json_block(details.llm_request)))
+                    request_payload, seen_system_prompt = _omit_repeated_system_prompt(
+                        details.llm_request, seen_prompt=seen_system_prompt
+                    )
+                    blocks.append(indent_block(format_json_block(request_payload)))
                 if details.call_identifier:
                     identifier_line = _("Call identifier: {identifier}").format(
                         identifier=normalize_for_display(details.call_identifier)
@@ -323,7 +353,10 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
                     timestamp=format_timestamp_info(turn.timestamp)
                 )
                 blocks.append(header)
-                blocks.append(indent_block(format_json_block(turn.raw_payload)))
+                raw_payload, seen_system_prompt = _omit_repeated_system_prompt(
+                    turn.raw_payload, seen_prompt=seen_system_prompt
+                )
+                blocks.append(indent_block(format_json_block(raw_payload)))
 
         for system_message in entry.system_messages:
             header = _("[{timestamp}] System message:").format(

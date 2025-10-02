@@ -109,6 +109,39 @@ def _conversation_with_failed_updates() -> ChatConversation:
     return conversation
 
 
+def _conversation_with_streamed_responses() -> ChatConversation:
+    conversation = ChatConversation.new()
+    prompt_text = "Привет"
+    entry = ChatEntry(
+        prompt=prompt_text,
+        response="",
+        display_response="Waiting for agent response…",
+        tokens=0,
+        prompt_at=_iso("2025-10-02T11:00:00+00:00"),
+        response_at=_iso("2025-10-02T11:00:05+00:00"),
+        diagnostic={
+            "llm_steps": [
+                {
+                    "step": 1,
+                    "response": {
+                        "content": "Обрабатываю запрос",
+                        "timestamp": "2025-10-02T11:00:03+00:00",
+                    },
+                },
+                {
+                    "step": 2,
+                    "response": {
+                        "content": "Готово: итоговое сообщение",
+                        "timestamp": "2025-10-02T11:00:05+00:00",
+                    },
+                },
+            ]
+        },
+    )
+    conversation.append_entry(entry)
+    return conversation
+
+
 def test_plain_transcript_uses_agent_turn_text_and_tool_summaries():
     conversation = _conversation_with_failed_updates()
 
@@ -121,8 +154,57 @@ def test_plain_transcript_uses_agent_turn_text_and_tool_summaries():
     assert "Error message: update_requirement_field() missing 1 required positional argument: 'rid'" in plain_text
 
 
+def test_plain_transcript_includes_streamed_responses():
+    conversation = _conversation_with_streamed_responses()
+
+    plain_text = compose_transcript_text(conversation)
+
+    assert "Обрабатываю запрос" in plain_text
+    assert "Готово: итоговое сообщение" in plain_text
+    assert "Waiting for agent response" not in plain_text
+
+
 def test_transcript_log_replaces_repeated_system_prompt():
     conversation = _conversation_with_failed_updates()
+
+    log_text = compose_transcript_log_text(conversation)
+    encoded_prompt = json.dumps(_SYSTEM_PROMPT_TEXT, ensure_ascii=False)
+
+    assert log_text.count(encoded_prompt) == 1
+    assert log_text.count(SYSTEM_PROMPT_PLACEHOLDER) >= 1
+
+
+def test_transcript_log_sanitises_raw_payload_prompts():
+    conversation = ChatConversation.new()
+    entry = ChatEntry(
+        prompt="Запрос",
+        response="Ответ",
+        tokens=0,
+        prompt_at=_iso("2025-10-02T09:00:00+00:00"),
+        response_at=_iso("2025-10-02T09:00:01+00:00"),
+        raw_result={
+            "llm_requests": [
+                {"messages": [{"role": "system", "content": _SYSTEM_PROMPT_TEXT}]}
+            ],
+            "diagnostic": {
+                "llm_steps": [
+                    {
+                        "step": 1,
+                        "response": {
+                            "content": "",
+                            "messages": [
+                                {
+                                    "role": "system",
+                                    "content": _SYSTEM_PROMPT_TEXT,
+                                }
+                            ],
+                        },
+                    }
+                ]
+            },
+        },
+    )
+    conversation.append_entry(entry)
 
     log_text = compose_transcript_log_text(conversation)
     encoded_prompt = json.dumps(_SYSTEM_PROMPT_TEXT, ensure_ascii=False)

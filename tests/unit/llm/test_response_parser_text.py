@@ -49,3 +49,48 @@ def test_consume_stream_recovers_message_assistant_text() -> None:
     assert message == "Stream result"
     assert tool_calls == []
     assert reasoning == []
+
+
+def test_parse_chat_completion_extracts_think_blocks() -> None:
+    parser = _parser()
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message={
+                    "role": "assistant",
+                    "content": "<think>Plan first.</think>Final answer.",
+                }
+            )
+        ]
+    )
+
+    message, tool_calls, reasoning = parser.parse_chat_completion(completion)
+
+    assert message == "Final answer."
+    assert tool_calls == []
+    assert reasoning == [
+        {"type": "reasoning", "text": "Plan first."}
+    ]
+
+
+def test_parse_chat_completion_handles_multiple_think_blocks() -> None:
+    parser = _parser()
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message={
+                    "role": "assistant",
+                    "content": "<think>First step.</think>\n<think>Second step.</think>Done",
+                }
+            )
+        ]
+    )
+
+    message, tool_calls, reasoning = parser.parse_chat_completion(completion)
+
+    assert message.strip() == "Done"
+    assert tool_calls == []
+    assert reasoning == [
+        {"type": "reasoning", "text": "First step."},
+        {"type": "reasoning", "text": "Second step."},
+    ]

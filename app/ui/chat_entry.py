@@ -221,16 +221,29 @@ class ChatEntry:
                 if isinstance(item, Mapping):
                     type_value = item.get("type")
                     text_value = item.get("text")
+                    leading_value = item.get("leading_whitespace")
+                    trailing_value = item.get("trailing_whitespace")
                 else:
                     type_value = getattr(item, "type", None)
                     text_value = getattr(item, "text", None)
+                    leading_value = getattr(item, "leading_whitespace", "")
+                    trailing_value = getattr(item, "trailing_whitespace", "")
                 if text_value is None:
                     continue
                 text_str = str(text_value).strip()
                 if not text_str:
                     continue
                 type_str = str(type_value) if type_value is not None else ""
-                normalised_segments.append({"type": type_str, "text": text_str})
+                segment: dict[str, str] = {"type": type_str, "text": text_str}
+                if leading_value is not None:
+                    leading_str = str(leading_value)
+                    if leading_str:
+                        segment["leading_whitespace"] = leading_str
+                if trailing_value is not None:
+                    trailing_str = str(trailing_value)
+                    if trailing_str:
+                        segment["trailing_whitespace"] = trailing_str
+                normalised_segments.append(segment)
             self.reasoning = tuple(normalised_segments) if normalised_segments else None
         else:
             self.reasoning = None
@@ -394,7 +407,18 @@ class ChatEntry:
                     continue
                 type_value = item.get("type")
                 type_str = str(type_value) if type_value is not None else ""
-                prepared_reasoning.append({"type": type_str, "text": text_str})
+                segment: dict[str, str] = {"type": type_str, "text": text_str}
+                leading_value = item.get("leading_whitespace")
+                if leading_value is not None:
+                    leading_str = str(leading_value)
+                    if leading_str:
+                        segment["leading_whitespace"] = leading_str
+                trailing_value = item.get("trailing_whitespace")
+                if trailing_value is not None:
+                    trailing_str = str(trailing_value)
+                    if trailing_str:
+                        segment["trailing_whitespace"] = trailing_str
+                prepared_reasoning.append(segment)
             if prepared_reasoning:
                 reasoning = tuple(prepared_reasoning)
 

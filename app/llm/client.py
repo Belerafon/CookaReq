@@ -200,6 +200,7 @@ class LLMClient:
             stream=use_stream,
             temperature=temperature,
         )
+        self._apply_reasoning_defaults(prepared.request_args)
         start = time.monotonic()
         log_request(prepared.request_args)
 
@@ -271,7 +272,7 @@ class LLMClient:
                 log_payload["tool_calls"] = normalized_tool_calls
             if reasoning_segments:
                 log_payload["reasoning"] = [
-                    {"type": segment.type, "preview": segment.text[:160]}
+                    {"type": segment.type, "preview": segment.preview()}
                     for segment in reasoning_segments
                 ]
             log_response(log_payload, start_time=start)
@@ -283,7 +284,10 @@ class LLMClient:
                 exc.llm_request_messages = prepared.snapshot
             if reasoning_segments and not hasattr(exc, "llm_reasoning"):
                 exc.llm_reasoning = [
-                    {"type": segment.type, "text": segment.text}
+                    {
+                        "type": segment.type,
+                        "text": segment.text_with_whitespace,
+                    }
                     for segment in reasoning_segments
                 ]
             raise
@@ -306,7 +310,7 @@ class LLMClient:
                 ]
             if response.reasoning:
                 log_payload["reasoning"] = [
-                    {"type": segment.type, "preview": segment.text[:160]}
+                    {"type": segment.type, "preview": segment.preview()}
                     for segment in response.reasoning
                 ]
             log_response(log_payload, start_time=start)
@@ -316,6 +320,26 @@ class LLMClient:
                 request_messages=prepared.snapshot,
                 reasoning=response.reasoning,
             )
+
+    def _apply_reasoning_defaults(self, request_args: dict[str, Any]) -> None:
+        """Inject reasoning flags so compatible models emit their thoughts."""
+
+        request_args.pop("reasoning_effort", None)
+        raw_extra = request_args.get("extra_body")
+        if isinstance(raw_extra, Mapping):
+            extra_body: dict[str, Any] = dict(raw_extra)
+        else:
+            extra_body = {}
+        reasoning_block = extra_body.get("reasoning")
+        if isinstance(reasoning_block, Mapping):
+            reasoning_payload: dict[str, Any] = dict(reasoning_block)
+        else:
+            reasoning_payload = {}
+        reasoning_payload.setdefault("enabled", True)
+        reasoning_payload.setdefault("effort", "medium")
+        extra_body["reasoning"] = reasoning_payload
+        extra_body.setdefault("include_reasoning", True)
+        request_args["extra_body"] = extra_body
 
     def _respond_harmony(
         self,
@@ -393,7 +417,7 @@ class LLMClient:
                 log_payload["tool_calls"] = normalized_tool_calls
             if reasoning_segments:
                 log_payload["reasoning"] = [
-                    {"type": segment.type, "preview": segment.text[:160]}
+                    {"type": segment.type, "preview": segment.preview()}
                     for segment in reasoning_segments
                 ]
             log_response(log_payload, start_time=start)
@@ -405,7 +429,10 @@ class LLMClient:
                 exc.llm_request_messages = request_snapshot
             if reasoning_segments and not hasattr(exc, "llm_reasoning"):
                 exc.llm_reasoning = [
-                    {"type": segment.type, "text": segment.text}
+                    {
+                        "type": segment.type,
+                        "text": segment.text_with_whitespace,
+                    }
                     for segment in reasoning_segments
                 ]
             raise

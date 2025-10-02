@@ -453,3 +453,31 @@ def test_missing_timestamps_reported_as_missing() -> None:
 
     raw_section = turn.raw_payload
     assert raw_section is None or isinstance(raw_section, Mapping)
+
+
+def test_chat_entry_from_dict_preserves_reasoning_whitespace() -> None:
+    payload = {
+        "prompt": "",
+        "response": "",
+        "tokens": 0,
+        "token_info": {"tokens": 0, "approximate": False},
+        "reasoning": [
+            {
+                "type": "analysis",
+                "text": "План",
+                "leading_whitespace": " ",
+                "trailing_whitespace": " \n",
+            }
+        ],
+    }
+
+    entry = ChatEntry.from_dict(payload)
+
+    assert entry.reasoning == (
+        {
+            "type": "analysis",
+            "text": "План",
+            "leading_whitespace": " ",
+            "trailing_whitespace": " \n",
+        },
+    )

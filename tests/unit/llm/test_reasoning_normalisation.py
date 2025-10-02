@@ -18,6 +18,19 @@ def test_extract_mapping_handles_dataclass_with_slots() -> None:
     }
 
 
+def test_reasoning_segment_preview_preserves_whitespace() -> None:
+    segment = LLMReasoningSegment(
+        type="analysis",
+        text="value",
+        leading_whitespace=" ",
+        trailing_whitespace="  ",
+    )
+
+    assert segment.text_with_whitespace == " value  "
+    assert segment.preview() == " value  "
+    assert segment.preview(3) == " va"
+
+
 def test_normalise_reasoning_segments_from_dataclasses() -> None:
     segments = (
         LLMReasoningSegment(type="analysis", text="  Evaluate path  "),

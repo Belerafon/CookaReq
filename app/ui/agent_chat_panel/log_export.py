@@ -105,17 +105,10 @@ def _collect_agent_plain_events(entry: TranscriptEntry) -> list[_PlainEvent]:
 
     if turn is not None:
         timestamp_fallback = turn.timestamp
-
-        def response_timestamp(response: AgentResponse) -> str:
-            info = response.timestamp
-            if info is not None and not info.missing and (info.formatted or info.raw):
-                return _format_timestamp_label(info)
-            return _format_timestamp_label(timestamp_fallback)
-
         fallback_response = normalize_for_display(entry.entry.response or "")
         fallback_display = normalize_for_display(entry.entry.display_response or "")
 
-        def append_response(response: AgentResponse, label: str) -> None:
+        def append_response_event(response: AgentResponse, label: str, info: TimestampInfo) -> None:
             raw_text = response.text or ""
             raw_display = response.display_text or ""
             normalized_text = normalize_for_display(raw_text) if raw_text else ""
@@ -131,30 +124,63 @@ def _collect_agent_plain_events(entry: TranscriptEntry) -> list[_PlainEvent]:
                 and content == fallback_display
             ):
                 return
-            append_event(label, content, response_timestamp(response))
+            append_event(label, content, _format_timestamp_label(info))
 
-        for response in turn.streamed_responses:
-            label = (
-                _("Agent (step {index}):").format(index=response.step_index)
-                if response.step_index is not None
-                else _("Agent:")
-            )
-            append_response(response, label)
+        def response_label(response: AgentResponse) -> str:
+            if response.is_final:
+                return _("Agent:")
+            if response.step_index is not None:
+                return _("Agent (step {index}):").format(index=response.step_index)
+            return _("Agent:")
 
-        if turn.final_response is not None:
-            append_response(turn.final_response, _("Agent:"))
-
-        if not events:
-            fallback = normalize_for_display(entry.entry.response or entry.entry.display_response or "")
-            if fallback:
+        for event in turn.events:
+            if event.kind == "response" and event.response is not None:
+                info = event.timestamp or timestamp_fallback
+                append_response_event(
+                    event.response,
+                    response_label(event.response),
+                    info,
+                )
+            elif event.kind == "tool" and event.tool_call is not None:
+                summary = event.tool_call.summary
+                label = _(
+                    "Agent: tool call {index}: {tool} — {status}"
+                ).format(
+                    index=summary.index,
+                    tool=summary.tool_name,
+                    status=summary.status,
+                )
+                bullet_lines = [
+                    "• " + normalize_for_display(line)
+                    for line in getattr(summary, "bullet_lines", ())
+                    if line
+                ]
+                text = "\n".join(bullet_lines)
+                timestamp_label = _format_timestamp_label(event.timestamp or timestamp_fallback)
                 append_event(
-                    _("Agent:"),
-                    fallback,
-                    _format_iso_timestamp(entry.entry.response_at, timestamp_fallback),
+                    label,
+                    text,
+                    timestamp_label,
+                    track_duplicate=False,
+                    allow_empty=True,
                 )
 
-        for details in turn.tool_calls:
-            summary = details.summary
+        if events:
+            return events
+
+        fallback = normalize_for_display(
+            entry.entry.response or entry.entry.display_response or ""
+        )
+        if fallback:
+            append_event(
+                _("Agent:"),
+                fallback,
+                _format_iso_timestamp(entry.entry.response_at, timestamp_fallback),
+            )
+            return events
+
+        for detail in turn.tool_calls:
+            summary = detail.summary
             label = _(
                 "Agent: tool call {index}: {tool} — {status}"
             ).format(
@@ -176,7 +202,8 @@ def _collect_agent_plain_events(entry: TranscriptEntry) -> list[_PlainEvent]:
                 allow_empty=True,
             )
 
-        return events
+        if events:
+            return events
 
     # Fallback when the turn payload is missing but legacy data exists.
     fallback_timestamp = _format_iso_timestamp(
@@ -420,10 +447,54 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
 
         turn = entry.agent_turn
         if turn is not None:
-            for response in turn.streamed_responses:
-                blocks.extend(describe_agent_response(response, turn.timestamp))
-            if turn.final_response is not None:
-                blocks.extend(describe_agent_response(turn.final_response, turn.timestamp))
+            for event in turn.events:
+                if event.kind == "response" and event.response is not None:
+                    blocks.extend(
+                        describe_agent_response(event.response, turn.timestamp)
+                    )
+                elif event.kind == "tool" and event.tool_call is not None:
+                    details = event.tool_call
+                    summary = details.summary
+                    tool_name = normalize_for_display(
+                        summary.tool_name or _("Unnamed tool")
+                    )
+                    status_label = normalize_for_display(
+                        summary.status or _("returned data")
+                    )
+                    header = _(
+                        "[{timestamp}] Tool call {index}: {tool} — {status}"
+                    ).format(
+                        timestamp=format_timestamp_info(event.timestamp),
+                        index=summary.index,
+                        tool=tool_name,
+                        status=status_label,
+                    )
+                    blocks.append(header)
+                    if summary.bullet_lines:
+                        for bullet in summary.bullet_lines:
+                            if bullet:
+                                blocks.append(
+                                    indent_block(normalize_for_display(bullet))
+                                )
+                    payload, seen_system_prompt = _omit_repeated_system_prompt(
+                        details.raw_payload, seen_prompt=seen_system_prompt
+                    )
+                    blocks.append(indent_block(format_json_block(payload)))
+                    if details.llm_request is not None:
+                        request_payload, seen_system_prompt = (
+                            _omit_repeated_system_prompt(
+                                details.llm_request,
+                                seen_prompt=seen_system_prompt,
+                            )
+                        )
+                        blocks.append(indent_block(format_json_block(request_payload)))
+                    if details.call_identifier:
+                        identifier_line = _(
+                            "Call identifier: {identifier}"
+                        ).format(
+                            identifier=normalize_for_display(details.call_identifier)
+                        )
+                        blocks.append(indent_block(identifier_line))
 
             if turn.reasoning:
                 header = _("[{timestamp}] Model reasoning:").format(
@@ -444,36 +515,6 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
                 )
                 blocks.append(header)
                 blocks.append(indent_block(format_json_block(payload)))
-
-            for details in turn.tool_calls:
-                summary = details.summary
-                tool_name = normalize_for_display(summary.tool_name or _("Unnamed tool"))
-                status_label = normalize_for_display(summary.status or _("returned data"))
-                header = _("[{timestamp}] Tool call {index}: {tool} — {status}").format(
-                    timestamp=format_timestamp_info(turn.timestamp),
-                    index=summary.index,
-                    tool=tool_name,
-                    status=status_label,
-                )
-                blocks.append(header)
-                if summary.bullet_lines:
-                    for bullet in summary.bullet_lines:
-                        if bullet:
-                            blocks.append(indent_block(normalize_for_display(bullet)))
-                payload, seen_system_prompt = _omit_repeated_system_prompt(
-                    details.raw_payload, seen_prompt=seen_system_prompt
-                )
-                blocks.append(indent_block(format_json_block(payload)))
-                if details.llm_request is not None:
-                    request_payload, seen_system_prompt = _omit_repeated_system_prompt(
-                        details.llm_request, seen_prompt=seen_system_prompt
-                    )
-                    blocks.append(indent_block(format_json_block(request_payload)))
-                if details.call_identifier:
-                    identifier_line = _("Call identifier: {identifier}").format(
-                        identifier=normalize_for_display(details.call_identifier)
-                    )
-                    blocks.append(indent_block(identifier_line))
 
             if turn.raw_payload is not None:
                 header = _("[{timestamp}] Raw LLM payload:").format(

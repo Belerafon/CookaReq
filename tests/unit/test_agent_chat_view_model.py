@@ -74,6 +74,13 @@ def test_build_conversation_timeline_compiles_turn() -> None:
     assert tool_event.call_identifier == "tool-1"
     assert isinstance(tool_event.raw_payload, Mapping)
     assert tool_event.summary.raw_payload == tool_event.raw_payload
+    assert tool_event.timestamp.raw == "2025-09-30T20:50:10+00:00"
+    assert not tool_event.timestamp.missing
+
+    assert turn.events
+    assert turn.events[0].kind == "response"
+    assert turn.events[-1].kind == "tool"
+    assert turn.events[-1].tool_call is tool_event
 
     assert turn.raw_payload is not None
     assert turn.raw_payload["answer"] == "Готово"
@@ -121,6 +128,13 @@ def test_tool_calls_sorted_by_timestamp() -> None:
     tool_ids = [details.call_identifier for details in turn.tool_calls]
     assert tool_ids == ["tool-1", "tool-4", "tool-6"]
     assert [details.summary.index for details in turn.tool_calls] == [1, 2, 3]
+
+    event_ids = [
+        event.tool_call.call_identifier
+        for event in turn.events
+        if event.kind == "tool" and event.tool_call is not None
+    ]
+    assert event_ids == tool_ids
 
 
 def test_tool_call_event_includes_llm_request_payload() -> None:
@@ -221,6 +235,9 @@ def test_tool_call_event_synthesises_request_when_missing() -> None:
     assert arguments.get("rid") == "REQ-9"
     assert arguments.get("field") == "title"
     assert arguments.get("value") == "Updated title"
+
+    events = [event for event in turn.events if event.kind == "tool"]
+    assert events and events[0].tool_call is tool_event
 
 
 def test_streamed_responses_in_turn() -> None:

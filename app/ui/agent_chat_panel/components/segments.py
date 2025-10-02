@@ -292,6 +292,8 @@ class MessageSegmentPanel(wx.Panel):
         self._collapsed_state: dict[str, bool] = {}
         self._regenerate_button: wx.Button | None = None
         self._regenerate_handler: Callable[[], None] | None = None
+        self._tool_panels: dict[str, ToolCallPanel] = {}
+        self._tool_collapsed_state: dict[str, dict[str, bool]] = {}
 
     # ------------------------------------------------------------------
     def update(
@@ -303,10 +305,12 @@ class MessageSegmentPanel(wx.Panel):
     ) -> None:
         self._capture_collapsed_state()
         self._collapsible.clear()
+        self._capture_tool_panel_state()
         sizer = self.GetSizer()
         sizer.Clear(delete_windows=True)
         self._regenerate_button = None
         self._regenerate_handler = on_regenerate
+        self._tool_panels.clear()
 
         if self._segment_kind == "user":
             assert isinstance(payload, PromptSegment)
@@ -380,19 +384,40 @@ class MessageSegmentPanel(wx.Panel):
 
         rendered: list[wx.Window] = []
         timestamp_info = turn.timestamp if turn is not None else None
+        active_tool_ids: list[str] = []
         if turn is not None:
-            for response in turn.streamed_responses:
-                bubble = self._create_agent_message_bubble(
-                    container, response, timestamp_info
-                )
-                if bubble is not None:
-                    rendered.append(bubble)
-            if turn.final_response is not None:
-                bubble = self._create_agent_message_bubble(
-                    container, turn.final_response, timestamp_info
-                )
-                if bubble is not None:
-                    rendered.append(bubble)
+            for event in turn.events:
+                if event.kind == "response" and event.response is not None:
+                    bubble = self._create_agent_message_bubble(
+                        container, event.response, timestamp_info
+                    )
+                    if bubble is not None:
+                        rendered.append(bubble)
+                elif event.kind == "tool" and event.tool_call is not None:
+                    details = event.tool_call
+                    identifier = self._make_tool_identifier(details, event.order_index)
+                    panel = ToolCallPanel(
+                        container,
+                        entry_id=self._entry_id,
+                        on_layout_hint=self._on_layout_hint,
+                    )
+                    saved_state = self._tool_collapsed_state.get(identifier)
+                    if saved_state:
+                        panel._collapsed_state.update(saved_state)
+                    panel.update(details)
+                    rendered.append(panel)
+                    self._tool_panels[identifier] = panel
+                    active_tool_ids.append(identifier)
+                    self._tool_collapsed_state[identifier] = dict(
+                        getattr(panel, "_collapsed_state", {})
+                    )
+
+        active_tool_keys = set(active_tool_ids)
+        stale = [
+            key for key in self._tool_collapsed_state if key not in active_tool_keys
+        ]
+        for key in stale:
+            self._tool_collapsed_state.pop(key, None)
 
         if turn is not None:
             reasoning_section = self._create_reasoning_section(
@@ -565,6 +590,27 @@ class MessageSegmentPanel(wx.Panel):
             self._collapsible[key] = pane
 
     # ------------------------------------------------------------------
+    def _capture_tool_panel_state(self) -> None:
+        for identifier, panel in list(self._tool_panels.items()):
+            if not isinstance(panel, ToolCallPanel):
+                continue
+            state = getattr(panel, "_collapsed_state", {})
+            try:
+                self._tool_collapsed_state[identifier] = dict(state)
+            except Exception:
+                self._tool_collapsed_state[identifier] = {}
+        self._tool_panels.clear()
+
+    # ------------------------------------------------------------------
+    def _make_tool_identifier(
+        self, details: ToolCallDetails, order_index: int
+    ) -> str:
+        summary_index = details.summary.index
+        if summary_index:
+            return f"{self._entry_id}:tool:{summary_index}"
+        return f"{self._entry_id}:tool:{order_index}"
+
+    # ------------------------------------------------------------------
     def _resolve_hint(self, key: str) -> int | None:
         value = self._layout_hints.get(key)
         if value is None:
@@ -672,10 +718,14 @@ class ToolCallPanel(wx.Panel):
         if not text:
             return None
 
+        timestamp_label = self._format_timestamp(details.timestamp)
+        if not timestamp_label:
+            timestamp_label = None
+
         bubble = MessageBubble(
             self,
             role_label=_("Tool"),
-            timestamp=None,
+            timestamp=timestamp_label,
             text=text,
             align="left",
             allow_selection=True,
@@ -797,6 +847,18 @@ class ToolCallPanel(wx.Panel):
             self._collapsible[key] = pane
 
     # ------------------------------------------------------------------
+    def _format_timestamp(self, timestamp: TimestampInfo | None) -> str:
+        if timestamp is None:
+            return ""
+        if timestamp.formatted:
+            return normalize_for_display(timestamp.formatted)
+        if timestamp.raw:
+            return normalize_for_display(timestamp.raw)
+        if timestamp.missing:
+            return _("Timestamp unavailable")
+        return ""
+
+    # ------------------------------------------------------------------
     def _resolve_hint(self, key: str) -> int | None:
         value = self._layout_hints.get(key)
         if value is None:
@@ -849,7 +911,6 @@ class TurnCard(wx.Panel):
             segment_kind="agent",
             on_layout_hint=on_layout_hint,
         )
-        self._tool_panels: dict[str, ToolCallPanel] = {}
         self._system_sections: dict[str, wx.CollapsiblePane] = {}
         self._collapsed_state: dict[str, bool] = {}
         self._regenerated_notice: wx.StaticText | None = None
@@ -881,9 +942,6 @@ class TurnCard(wx.Panel):
             (segment for segment in segments if segment.kind == "agent"),
             None,
         )
-        tool_segments = [
-            segment for segment in segments if segment.kind == "tool"
-        ]
         system_segments = [
             segment for segment in segments if segment.kind == "system"
         ]
@@ -921,36 +979,6 @@ class TurnCard(wx.Panel):
             sizer.Add(self._agent_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
         else:
             self._agent_panel.Hide()
-
-        seen_tool_ids: set[str] = set()
-        for tool_segment in tool_segments:
-            details: ToolCallDetails = tool_segment.payload
-            summary = details.summary
-            identifier = (
-                f"{tool_segment.entry_id}:{summary.index}"
-                if summary.index is not None
-                else f"{tool_segment.entry_id}:{id(details)}"
-            )
-            panel = self._tool_panels.get(identifier)
-            if panel is None or not panel.IsShownOnScreen():
-                panel = ToolCallPanel(
-                    self,
-                    entry_id=tool_segment.entry_id,
-                    on_layout_hint=self._on_layout_hint,
-                )
-                self._tool_panels[identifier] = panel
-            panel.update(details)
-            panel.Show()
-            sizer.Add(panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(4))
-            seen_tool_ids.add(identifier)
-
-        for stale_id in list(self._tool_panels.keys()):
-            if stale_id in seen_tool_ids:
-                continue
-            panel = self._tool_panels.pop(stale_id)
-            if panel.GetContainingSizer() is sizer:
-                sizer.Detach(panel)
-            panel.Destroy()
 
         for index, system_segment in enumerate(system_segments, start=1):
             text = _summarize_system_message(system_segment.payload)

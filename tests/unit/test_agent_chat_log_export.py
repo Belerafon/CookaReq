@@ -152,7 +152,7 @@ def test_plain_transcript_uses_agent_turn_text_and_tool_summaries():
     assert "[02 Oct 2025 11:19:15] You:" in plain_text
     assert "[02 Oct 2025 11:38:04] Agent:" in plain_text
     assert (
-        "[02 Oct 2025 11:19:16] Agent: tool call 1: get_requirement"
+        "[02 Oct 2025 11:19:15] Agent: tool call 1: get_requirement"
         in plain_text
     )
     assert (

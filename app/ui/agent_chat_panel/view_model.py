@@ -46,6 +46,17 @@ class AgentResponse:
 
 
 @dataclass(slots=True)
+class AgentTimelineEvent:
+    """An item in the agent turn timeline."""
+
+    kind: Literal["response", "tool"]
+    timestamp: TimestampInfo
+    order_index: int
+    response: AgentResponse | None = None
+    tool_call: "ToolCallDetails" | None = None
+
+
+@dataclass(slots=True)
 class LlmRequestSnapshot:
     """Recorded messages that were sent to the language model."""
 
@@ -61,6 +72,7 @@ class ToolCallDetails:
     call_identifier: str | None
     raw_payload: Any
     llm_request: Any | None
+    timestamp: TimestampInfo
 
 
 @dataclass(slots=True)
@@ -77,6 +89,7 @@ class AgentTurn:
     llm_request: LlmRequestSnapshot | None
     tool_calls: tuple[ToolCallDetails, ...]
     raw_payload: Any | None
+    events: tuple[AgentTimelineEvent, ...]
 
 
 @dataclass(slots=True)
@@ -135,8 +148,8 @@ class TranscriptSegment:
     segment_id: str
     entry_id: str
     entry_index: int
-    kind: Literal["user", "agent", "tool", "system"]
-    payload: PromptSegment | AgentSegment | ToolCallDetails | SystemMessage
+    kind: Literal["user", "agent", "system"]
+    payload: PromptSegment | AgentSegment | SystemMessage
 
 
 @dataclass(slots=True)
@@ -230,26 +243,6 @@ def build_transcript_segments(conversation: ChatConversation) -> TranscriptSegme
                     payload=payload,
                 )
             )
-
-        agent_turn = timeline_entry.agent_turn
-        if agent_turn is not None:
-            seen_indexes: set[int] = set()
-            for position, tool_call in enumerate(agent_turn.tool_calls, start=1):
-                summary_index = tool_call.summary.index or position
-                if summary_index in seen_indexes:
-                    segment_key = f"{entry_id}:tool:{position}"
-                else:
-                    segment_key = f"{entry_id}:tool:{summary_index}"
-                    seen_indexes.add(summary_index)
-                segments.append(
-                    TranscriptSegment(
-                        segment_id=segment_key,
-                        entry_id=entry_id,
-                        entry_index=entry_index,
-                        kind="tool",
-                        payload=tool_call,
-                    )
-                )
 
         for index, system_event in enumerate(timeline_entry.system_messages, start=1):
             segments.append(
@@ -348,6 +341,13 @@ def _build_agent_turn(
     if not has_content and not timestamp.raw:
         return None
 
+    events = _build_agent_events(
+        timestamp,
+        streamed_responses,
+        final_response,
+        tool_calls,
+    )
+
     return AgentTurn(
         entry_id=entry_id,
         entry_index=entry_index,
@@ -359,6 +359,7 @@ def _build_agent_turn(
         llm_request=llm_request,
         tool_calls=tool_calls,
         raw_payload=raw_payload,
+        events=events,
     )
 
 
@@ -532,6 +533,9 @@ def _build_tool_calls(
                     and candidate.occurred_at >= latest_timestamp.occurred_at
                 ):
                     latest_timestamp = candidate
+            timestamp_info = candidate
+        else:
+            timestamp_info = _build_timestamp(None, source="tool_result")
 
         tool_calls.append(
             ToolCallDetails(
@@ -539,9 +543,126 @@ def _build_tool_calls(
                 call_identifier=call_identifier,
                 raw_payload=safe_payload,
                 llm_request=request_payload,
+                timestamp=timestamp_info,
             )
         )
     return tuple(tool_calls), latest_timestamp
+
+
+def _build_agent_events(
+    turn_timestamp: TimestampInfo,
+    streamed_responses: tuple[AgentResponse, ...],
+    final_response: AgentResponse | None,
+    tool_calls: tuple[ToolCallDetails, ...],
+) -> tuple[AgentTimelineEvent, ...]:
+    events: list[AgentTimelineEvent] = []
+    order_index = 0
+
+    def next_index() -> int:
+        nonlocal order_index
+        order_index += 1
+        return order_index
+
+    def normalise_timestamp(info: TimestampInfo | None) -> TimestampInfo:
+        if info is None:
+            return turn_timestamp
+        if info.missing and not info.raw and not info.formatted and not info.occurred_at:
+            return turn_timestamp
+        return info
+
+    def append_response(response: AgentResponse) -> None:
+        events.append(
+            AgentTimelineEvent(
+                kind="response",
+                timestamp=normalise_timestamp(response.timestamp),
+                order_index=next_index(),
+                response=response,
+            )
+        )
+
+    def append_tool(detail: ToolCallDetails) -> None:
+        timestamp = detail.timestamp
+        if timestamp.missing and not timestamp.raw and not timestamp.formatted:
+            timestamp = turn_timestamp
+        events.append(
+            AgentTimelineEvent(
+                kind="tool",
+                timestamp=timestamp,
+                order_index=next_index(),
+                tool_call=detail,
+            )
+        )
+
+    tools_by_step: dict[int | None, list[ToolCallDetails]] = {}
+    for detail in tool_calls:
+        step_index = _extract_tool_step_index(detail)
+        bucket = tools_by_step.setdefault(step_index, [])
+        bucket.append(detail)
+
+    def consume_tools(step_key: int | None) -> None:
+        details = tools_by_step.pop(step_key, [])
+        for detail in sorted(details, key=_tool_detail_sort_key):
+            append_tool(detail)
+
+    for response in streamed_responses:
+        append_response(response)
+        if response.step_index is not None:
+            consume_tools(response.step_index)
+
+    if final_response is not None:
+        append_response(final_response)
+
+    consume_tools(None)
+
+    if tools_by_step:
+        leftover: list[tuple[int | None, ToolCallDetails]] = []
+        for step_key, details in tools_by_step.items():
+            for detail in details:
+                leftover.append((step_key, detail))
+        leftover.sort(
+            key=lambda item: (
+                _tool_timestamp_sort_key(item[1]),
+                -1 if item[0] is None else item[0],
+            )
+        )
+        for _, detail in leftover:
+            append_tool(detail)
+
+    return tuple(events)
+
+
+def _tool_detail_sort_key(detail: ToolCallDetails) -> tuple[int, _dt.datetime | None, int]:
+    timestamp = detail.timestamp.occurred_at
+    return (
+        0 if timestamp is not None else 1,
+        timestamp,
+        detail.summary.index or 0,
+    )
+
+
+def _tool_timestamp_sort_key(detail: ToolCallDetails) -> tuple[int, _dt.datetime | None, int]:
+    timestamp = detail.timestamp.occurred_at
+    return (
+        0 if timestamp is not None else 1,
+        timestamp,
+        detail.summary.index or 0,
+    )
+
+
+def _extract_tool_step_index(detail: ToolCallDetails) -> int | None:
+    for payload in (detail.llm_request, detail.raw_payload):
+        if not isinstance(payload, Mapping):
+            continue
+        candidate = payload.get("step")
+        if candidate is None:
+            continue
+        try:
+            value = int(candidate)
+        except (TypeError, ValueError):
+            continue
+        if value >= 0:
+            return value
+    return None
 
 
 def _build_timestamp(value: str | None, *, source: str | None) -> TimestampInfo:
@@ -1020,6 +1141,7 @@ __all__ = [
     "TimestampInfo",
     "PromptMessage",
     "AgentResponse",
+    "AgentTimelineEvent",
     "LlmRequestSnapshot",
     "ToolCallDetails",
     "AgentTurn",

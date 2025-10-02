@@ -10,7 +10,12 @@ from app.llm.utils import extract_mapping
 def test_extract_mapping_handles_dataclass_with_slots() -> None:
     segment = LLMReasoningSegment(type="analysis", text="value")
     mapping = extract_mapping(segment)
-    assert mapping == {"type": "analysis", "text": "value"}
+    assert mapping == {
+        "type": "analysis",
+        "text": "value",
+        "leading_whitespace": "",
+        "trailing_whitespace": "",
+    }
 
 
 def test_normalise_reasoning_segments_from_dataclasses() -> None:
@@ -23,7 +28,12 @@ def test_normalise_reasoning_segments_from_dataclasses() -> None:
     result = normalise_reasoning_segments(segments)
 
     assert result == [
-        {"type": "analysis", "text": "Evaluate path"},
+        {
+            "type": "analysis",
+            "text": "Evaluate path",
+            "leading_whitespace": "  ",
+            "trailing_whitespace": "  ",
+        },
         {"type": "thinking", "text": "Consider next step"},
     ]
 
@@ -45,6 +55,11 @@ def test_normalise_reasoning_segments_from_nested_payload() -> None:
 
     assert result == [
         {"type": "analysis", "text": "First stage"},
-        {"type": "thought", "text": "Trim me"},
+        {
+            "type": "thought",
+            "text": "Trim me",
+            "leading_whitespace": "   ",
+            "trailing_whitespace": "   ",
+        },
         {"type": "reasoning", "text": "Assume default type"},
     ]

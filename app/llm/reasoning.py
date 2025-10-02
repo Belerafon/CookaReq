@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from .utils import extract_mapping
@@ -9,11 +10,22 @@ from .utils import extract_mapping
 __all__ = [
     "REASONING_TYPE_ALIASES",
     "REASONING_KEYWORDS",
+    "ReasoningFragment",
     "is_reasoning_type",
     "extract_reasoning_entries",
     "collect_reasoning_fragments",
     "normalise_reasoning_segments",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class ReasoningFragment:
+    """Piece of reasoning text with edge whitespace preserved."""
+
+    type: str
+    text: str
+    leading_whitespace: str
+    trailing_whitespace: str
 
 REASONING_TYPE_ALIASES = frozenset(
     {
@@ -64,10 +76,10 @@ def extract_reasoning_entries(payload: Any) -> list[Mapping[str, Any]]:
     return segments
 
 
-def collect_reasoning_fragments(payload: Any) -> list[tuple[str, str]]:
-    """Return ``(type, text)`` tuples extracted from reasoning payload."""
+def collect_reasoning_fragments(payload: Any) -> list[ReasoningFragment]:
+    """Return reasoning fragments with preserved edge whitespace."""
 
-    fragments: list[tuple[str, str]] = []
+    fragments: list[ReasoningFragment] = []
     if not payload:
         return fragments
 
@@ -77,8 +89,22 @@ def collect_reasoning_fragments(payload: Any) -> list[tuple[str, str]]:
         fragment_text = str(text)
         if not fragment_text:
             return
+        stripped_text = fragment_text.strip()
+        if not stripped_text:
+            return
         fragment_type = str(raw_type or "reasoning")
-        fragments.append((fragment_type, fragment_text))
+        leading_length = len(fragment_text) - len(fragment_text.lstrip())
+        trailing_length = len(fragment_text) - len(fragment_text.rstrip())
+        leading = fragment_text[:leading_length]
+        trailing = fragment_text[len(fragment_text) - trailing_length :]
+        fragments.append(
+            ReasoningFragment(
+                type=fragment_type,
+                text=stripped_text,
+                leading_whitespace=leading,
+                trailing_whitespace=trailing,
+            )
+        )
 
     if isinstance(payload, (bytes, bytearray)):
         try:
@@ -126,19 +152,25 @@ def collect_reasoning_fragments(payload: Any) -> list[tuple[str, str]]:
     return fragments
 
 
-def normalise_reasoning_segments(payload: Any) -> list[dict[str, str]]:
+def normalise_reasoning_segments(payload: Any) -> list[dict[str, Any]]:
     """Return sanitized reasoning segments suitable for JSON payloads."""
 
-    normalized: list[dict[str, str]] = []
+    normalized: list[dict[str, Any]] = []
     if not payload:
         return normalized
 
-    for segment_type, text in collect_reasoning_fragments(payload):
-        text_str = str(text).strip()
+    for fragment in collect_reasoning_fragments(payload):
+        text_str = fragment.text
         if not text_str:
             continue
-        type_str = str(segment_type).strip() if segment_type is not None else ""
+        type_candidate = fragment.type if fragment.type is not None else ""
+        type_str = str(type_candidate).strip()
         if not type_str:
             type_str = "reasoning"
-        normalized.append({"type": type_str, "text": text_str})
+        entry: dict[str, Any] = {"type": type_str, "text": text_str}
+        if fragment.leading_whitespace:
+            entry["leading_whitespace"] = fragment.leading_whitespace
+        if fragment.trailing_whitespace:
+            entry["trailing_whitespace"] = fragment.trailing_whitespace
+        normalized.append(entry)
     return normalized

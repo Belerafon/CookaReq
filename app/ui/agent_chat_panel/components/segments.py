@@ -86,12 +86,21 @@ def _format_reasoning_segments(
         if isinstance(segment, Mapping):
             type_value = segment.get("type")
             text_value = segment.get("text")
+            leading_value = segment.get("leading_whitespace")
+            trailing_value = segment.get("trailing_whitespace")
         else:
             type_value = getattr(segment, "type", None)
             text_value = getattr(segment, "text", None)
+            leading_value = getattr(segment, "leading_whitespace", "")
+            trailing_value = getattr(segment, "trailing_whitespace", "")
         if text_value is None:
             continue
-        raw_text = str(text_value)
+        text = str(text_value)
+        if not text.strip():
+            continue
+        leading = str(leading_value or "")
+        trailing = str(trailing_value or "")
+        raw_text = f"{leading}{text}{trailing}"
         if not raw_text.strip():
             continue
         type_label = str(type_value).strip() if type_value is not None else ""

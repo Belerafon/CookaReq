@@ -7,8 +7,8 @@ from app.ui.agent_chat_panel.components.segments import _format_reasoning_segmen
 
 def test_format_reasoning_segments_merges_consecutive_chunks() -> None:
     segments = [
-        {"type": "reasoning", "text": "User"},
-        {"type": "reasoning", "text": " request"},
+        {"type": "reasoning", "text": "User", "trailing_whitespace": " "},
+        {"type": "reasoning", "text": "request"},
         {"type": "analysis", "text": "Next step"},
     ]
 
@@ -22,12 +22,23 @@ def test_format_reasoning_segments_merges_consecutive_chunks() -> None:
 def test_format_reasoning_segments_preserves_in_word_streaming() -> None:
     segments = [
         {"type": "reasoning", "text": "пользоват"},
-        {"type": "reasoning", "text": "ель "},
+        {"type": "reasoning", "text": "ель", "trailing_whitespace": " "},
         {"type": "reasoning", "text": "прос"},
         {"type": "reasoning", "text": "ит"},
-        {"type": "reasoning", "text": " перевести"},
+        {"type": "reasoning", "text": "перевести", "leading_whitespace": " "},
     ]
 
     value = _format_reasoning_segments(segments)
 
     assert "reasoning\nпользователь просит перевести" in value
+
+
+def test_format_reasoning_segments_reinstates_leading_space() -> None:
+    segments = [
+        {"type": "reasoning", "text": "First"},
+        {"type": "reasoning", "text": "second", "leading_whitespace": " "},
+    ]
+
+    value = _format_reasoning_segments(segments)
+
+    assert "First second" in value

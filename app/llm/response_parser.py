@@ -9,6 +9,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
 from .reasoning import (
+    ReasoningFragment,
     collect_reasoning_fragments,
     extract_reasoning_entries,
     is_reasoning_type,
@@ -694,27 +695,43 @@ class LLMResponseParser:
 
     @staticmethod
     def _append_reasoning_fragments(
-        aggregated: list[dict[str, str]], fragments: Sequence[tuple[str, str]]
+        aggregated: list[dict[str, Any]],
+        fragments: Sequence[ReasoningFragment],
     ) -> None:
-        for raw_type, raw_text in fragments:
-            if not raw_text:
-                continue
-            text = str(raw_text)
+        for fragment in fragments:
+            text = fragment.text
             if not text:
                 continue
-            seg_type = str(raw_type or "reasoning")
-            aggregated.append({"type": seg_type, "text": text})
+            seg_type = str(fragment.type or "reasoning")
+            entry: dict[str, Any] = {"type": seg_type, "text": text}
+            if fragment.leading_whitespace:
+                entry["leading_whitespace"] = fragment.leading_whitespace
+            if fragment.trailing_whitespace:
+                entry["trailing_whitespace"] = fragment.trailing_whitespace
+            aggregated.append(entry)
 
     def finalize_reasoning_segments(
-        self, segments: Sequence[Mapping[str, str]]
+        self, segments: Sequence[Mapping[str, Any]]
     ) -> tuple[LLMReasoningSegment, ...]:
         finalized: list[LLMReasoningSegment] = []
         for segment in segments:
             seg_type = str(segment.get("type") or "reasoning")
-            text = str(segment.get("text") or "").strip()
+            text_value = segment.get("text")
+            if text_value is None:
+                continue
+            text = str(text_value)
             if not text:
                 continue
-            finalized.append(LLMReasoningSegment(type=seg_type, text=text))
+            leading_ws = segment.get("leading_whitespace")
+            trailing_ws = segment.get("trailing_whitespace")
+            finalized.append(
+                LLMReasoningSegment(
+                    type=seg_type,
+                    text=text,
+                    leading_whitespace=str(leading_ws or ""),
+                    trailing_whitespace=str(trailing_ws or ""),
+                )
+            )
         return tuple(finalized)
 
     # ------------------------------------------------------------------

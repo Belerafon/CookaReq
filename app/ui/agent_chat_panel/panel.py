@@ -1216,16 +1216,30 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if isinstance(item, Mapping):
                 type_value = item.get("type")
                 text_value = item.get("text")
+                leading_value = item.get("leading_whitespace")
+                trailing_value = item.get("trailing_whitespace")
             else:
                 type_value = getattr(item, "type", None)
                 text_value = getattr(item, "text", None)
+                leading_value = getattr(item, "leading_whitespace", "")
+                trailing_value = getattr(item, "trailing_whitespace", "")
             if text_value is None:
                 continue
-            text = str(text_value).strip()
+            text_candidate = str(text_value)
+            if not text_candidate:
+                continue
+            text = text_candidate.strip()
             if not text:
                 continue
             type_str = str(type_value) if type_value is not None else ""
-            segments.append({"type": type_str, "text": text})
+            segment: dict[str, str] = {"type": type_str, "text": text}
+            leading = str(leading_value or "")
+            trailing = str(trailing_value or "")
+            if leading:
+                segment["leading_whitespace"] = leading
+            if trailing:
+                segment["trailing_whitespace"] = trailing
+            segments.append(segment)
         return tuple(segments)
 
     # ------------------------------------------------------------------

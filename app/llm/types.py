@@ -28,6 +28,8 @@ class LLMReasoningSegment:
 
     type: str
     text: str
+    leading_whitespace: str = ""
+    trailing_whitespace: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -81,8 +81,8 @@ def _format_reasoning_segments(
     if not segments:
         return ""
 
-    blocks: list[str] = []
-    for index, segment in enumerate(segments, start=1):
+    merged: list[tuple[str, str]] = []
+    for segment in segments:
         if isinstance(segment, Mapping):
             type_value = segment.get("type")
             text_value = segment.get("text")
@@ -91,13 +91,32 @@ def _format_reasoning_segments(
             text_value = getattr(segment, "text", None)
         if text_value is None:
             continue
-        text = str(text_value).strip()
-        if not text:
+        raw_text = str(text_value)
+        if not raw_text.strip():
             continue
         type_label = str(type_value).strip() if type_value is not None else ""
+        if merged and merged[-1][0] == type_label:
+            merged[-1] = (type_label, _merge_reasoning_text(merged[-1][1], raw_text))
+        else:
+            merged.append((type_label, raw_text))
+
+    blocks: list[str] = []
+    for index, (type_label, text) in enumerate(merged, start=1):
         heading = type_label or _("Thought {index}").format(index=index)
         blocks.append(f"{heading}\n{text}")
     return "\n\n".join(blocks)
+
+
+def _merge_reasoning_text(existing: str, addition: str) -> str:
+    if not existing:
+        return addition
+    if not addition:
+        return existing
+    if existing.endswith(("\n", "\r")) or addition.startswith("\n"):
+        return existing + addition
+    if existing.endswith(" ") or addition.startswith(" "):
+        return existing + addition
+    return f"{existing}{addition}"
 
 
 def _format_raw_payload(raw_payload: Any) -> str:

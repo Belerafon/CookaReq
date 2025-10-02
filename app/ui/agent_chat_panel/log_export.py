@@ -11,7 +11,6 @@ from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation
 from ..text import normalize_for_display
 from .time_formatting import format_entry_timestamp
-from .tool_summaries import summarize_tool_results
 from .view_model import (
     AgentResponse,
     TimestampInfo,
@@ -201,41 +200,6 @@ def _collect_agent_plain_events(entry: TranscriptEntry) -> list[_PlainEvent]:
                 track_duplicate=False,
                 allow_empty=True,
             )
-
-        if events:
-            return events
-
-    # Fallback when the turn payload is missing but legacy data exists.
-    fallback_timestamp = _format_iso_timestamp(
-        getattr(entry.entry, "response_at", None), None
-    )
-    fallback_text = normalize_for_display(
-        entry.entry.response or entry.entry.display_response or ""
-    )
-    if fallback_text:
-        append_event(_("Agent:"), fallback_text, fallback_timestamp)
-
-    for summary in summarize_tool_results(entry.entry.tool_results):
-        label = _(
-            "Agent: tool call {index}: {tool} — {status}"
-        ).format(
-            index=summary.index,
-            tool=summary.tool_name,
-            status=summary.status,
-        )
-        bullet_lines = [
-            "• " + normalize_for_display(line)
-            for line in getattr(summary, "bullet_lines", ())
-            if line
-        ]
-        text = "\n".join(bullet_lines)
-        append_event(
-            label,
-            text,
-            _format_tool_timestamp(summary, None),
-            track_duplicate=False,
-            allow_empty=True,
-        )
 
     return events
 

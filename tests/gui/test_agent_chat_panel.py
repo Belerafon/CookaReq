@@ -2089,16 +2089,16 @@ def test_agent_chat_panel_streams_tool_results(tmp_path, wx_app):
         assert "Agent: tool call" in transcript
         assert "update_requirement_field" in transcript
         assert _("in progress…") in transcript
-        assert panel._is_running
+        assert panel.is_running
 
         agent.release.set()
         deadline = time.time() + 2.0
-        while panel._is_running and time.time() < deadline:
+        while panel.is_running and time.time() < deadline:
             wx_app.Yield()
             time.sleep(0.05)
         flush_wx_events(wx, count=4)
 
-        assert not panel._is_running
+        assert not panel.is_running
     finally:
         agent.release.set()
         destroy_panel(frame, panel)
@@ -2898,7 +2898,7 @@ def test_agent_chat_panel_updates_status_with_token_count(
             tokens=tokens_text,
         )
         assert label == expected
-        tokens = panel._current_tokens
+        tokens = panel.tokens
         assert tokens.tokens is not None and 990 <= tokens.tokens <= 1010
         assert tokens.approximate
     finally:

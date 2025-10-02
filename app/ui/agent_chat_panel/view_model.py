@@ -654,7 +654,7 @@ def _build_agent_events(
                 leftover.append((step_key, detail))
         leftover.sort(
             key=lambda item: (
-                _tool_timestamp_sort_key(item[1]),
+                _tool_detail_sort_key(item[1]),
                 -1 if item[0] is None else item[0],
             )
         )
@@ -665,15 +665,6 @@ def _build_agent_events(
 
 
 def _tool_detail_sort_key(detail: ToolCallDetails) -> tuple[int, _dt.datetime | None, int]:
-    timestamp = detail.timestamp.occurred_at
-    return (
-        0 if timestamp is not None else 1,
-        timestamp,
-        detail.summary.index or 0,
-    )
-
-
-def _tool_timestamp_sort_key(detail: ToolCallDetails) -> tuple[int, _dt.datetime | None, int]:
     timestamp = detail.timestamp.occurred_at
     return (
         0 if timestamp is not None else 1,

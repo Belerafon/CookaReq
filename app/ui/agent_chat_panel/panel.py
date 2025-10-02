@@ -315,14 +315,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         return self._session.is_running
 
     @property
-    def _is_running(self) -> bool:
-        """Compat shim for legacy callers expecting a private flag."""
-
-        return self._session.is_running
-
-    @property
-    def _current_tokens(self) -> TokenCountResult:
-        """Compat shim exposing the latest token accounting."""
+    def tokens(self) -> TokenCountResult:
+        """Expose the latest token accounting snapshot."""
 
         return self._session.tokens
 

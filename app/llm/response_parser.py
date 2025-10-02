@@ -788,6 +788,34 @@ class LLMResponseParser:
     ) -> tuple[LLMReasoningSegment, ...]:
         finalized: list[LLMReasoningSegment] = []
         seen: set[tuple[str, str, str, str]] = set()
+
+        def flush(active: dict[str, str] | None) -> None:
+            if not active:
+                return
+            text_with_edges = active["text"]
+            if not text_with_edges:
+                return
+            stripped = text_with_edges.strip()
+            if not stripped:
+                return
+            leading_length = len(text_with_edges) - len(text_with_edges.lstrip())
+            trailing_length = len(text_with_edges) - len(text_with_edges.rstrip())
+            leading = text_with_edges[:leading_length]
+            trailing = text_with_edges[len(text_with_edges) - trailing_length :]
+            key = (active["type"], stripped, leading, trailing)
+            if key in seen:
+                return
+            seen.add(key)
+            finalized.append(
+                LLMReasoningSegment(
+                    type=active["type"],
+                    text=stripped,
+                    leading_whitespace=leading,
+                    trailing_whitespace=trailing,
+                )
+            )
+
+        current: dict[str, str] | None = None
         for segment in segments:
             seg_type = str(segment.get("type") or "reasoning")
             text_value = segment.get("text")
@@ -796,26 +824,16 @@ class LLMResponseParser:
             text = str(text_value)
             if not text:
                 continue
-            leading_ws = segment.get("leading_whitespace")
-            trailing_ws = segment.get("trailing_whitespace")
+            leading_ws = str(segment.get("leading_whitespace") or "")
+            trailing_ws = str(segment.get("trailing_whitespace") or "")
             key_type = "reasoning" if seg_type == "reasoning.text" else seg_type
-            key = (
-                key_type,
-                text,
-                str(leading_ws or ""),
-                str(trailing_ws or ""),
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            finalized.append(
-                LLMReasoningSegment(
-                    type=key_type,
-                    text=text,
-                    leading_whitespace=str(leading_ws or ""),
-                    trailing_whitespace=str(trailing_ws or ""),
-                )
-            )
+            piece = f"{leading_ws}{text}{trailing_ws}"
+            if current and current["type"] == key_type:
+                current["text"] += piece
+            else:
+                flush(current)
+                current = {"type": key_type, "text": piece}
+        flush(current)
         return tuple(finalized)
 
     # ------------------------------------------------------------------

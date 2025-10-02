@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping, Sequence
-from functools import lru_cache
 from contextlib import suppress
 import json
 from typing import Any, Literal
@@ -226,36 +225,6 @@ def _format_argument_line(key: Any, value: Any) -> str:
     if not label:
         return value_text
     return _("{label}: {value}").format(label=label, value=value_text)
-
-
-_PATTERN_MARKER = "\uffff"
-
-
-@lru_cache(maxsize=1)
-def _completed_timestamp_pattern() -> tuple[str, str, bool]:
-    pattern = normalize_for_display(
-        _("Completed at {timestamp}").format(timestamp=_PATTERN_MARKER)
-    )
-    prefix, mark, suffix = pattern.partition(_PATTERN_MARKER)
-    return prefix, suffix, bool(mark)
-
-
-def _is_completed_timestamp_line(text: str) -> bool:
-    prefix, suffix, has_marker = _completed_timestamp_pattern()
-    if not has_marker:
-        return False
-    normalized = normalize_for_display(text).strip()
-    if not normalized:
-        return False
-    if prefix and not normalized.startswith(prefix):
-        return False
-    if suffix and not normalized.endswith(suffix):
-        return False
-    if suffix:
-        middle = normalized[len(prefix) : len(normalized) - len(suffix)]
-    else:
-        middle = normalized[len(prefix) :]
-    return bool(middle.strip())
 
 
 def _summarize_request_arguments(
@@ -757,9 +726,9 @@ class ToolCallPanel(wx.Panel):
     # ------------------------------------------------------------------
     def _create_summary_bubble(self, details: ToolCallDetails) -> MessageBubble | None:
         summary = details.summary
-        tool_name = summary.tool_name or _("Tool")
-        status = summary.status or _("returned data")
-        heading = _("Tool call {tool} — {status}").format(
+        tool_name = summary.tool_name or "Tool"
+        status = summary.status or "returned data"
+        heading = "Tool call {tool} — {status}".format(
             tool=normalize_for_display(tool_name),
             status=normalize_for_display(status),
         )
@@ -774,8 +743,6 @@ class ToolCallPanel(wx.Panel):
             normalized = normalize_for_display(text).strip()
             if not normalized:
                 return
-            if _is_completed_timestamp_line(normalized):
-                return
             key = normalized.casefold()
             if key in seen_lines:
                 return
@@ -787,13 +754,13 @@ class ToolCallPanel(wx.Panel):
 
         if summary.cost:
             add_bullet_line(
-                _("Cost: {cost}").format(
+                "Cost: {cost}".format(
                     cost=normalize_for_display(summary.cost)
                 )
             )
         if summary.error_message:
             add_bullet_line(
-                _("Error: {message}").format(
+                "Error: {message}".format(
                     message=normalize_for_display(summary.error_message)
                 )
             )
@@ -818,7 +785,7 @@ class ToolCallPanel(wx.Panel):
 
         bubble = MessageBubble(
             self,
-            role_label=_("Tool"),
+            role_label="Tool",
             timestamp=timestamp_label,
             text=text,
             align="left",

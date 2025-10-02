@@ -1086,13 +1086,6 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
         timeline = build_conversation_timeline(conversation)
         tool_events = timeline.entries[-1].agent_turn.tool_calls
         assert tool_events, "tool events missing from timeline"
-        has_request_payload = any(event.llm_request for event in tool_events)
-        has_response_payload = any(
-            isinstance(event.llm_request, Mapping)
-            and isinstance(event.llm_request.get("response"), Mapping)
-            for event in tool_events
-        )
-
         event = tool_events[0]
         entry_id = timeline.entries[-1].entry_id
         entry_key = (
@@ -1103,19 +1096,8 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
 
         pane_names = {pane.GetName() for pane in collect_collapsible_panes(tool_panel)}
         assert any(
-            name == f"tool:summary:{entry_key}" for name in pane_names
-        ), "summary pane missing"
-        assert any(
             name == f"tool:raw:{entry_key}" for name in pane_names
         ), "raw payload pane missing"
-        if has_request_payload:
-            assert any(
-                name == f"tool:llm-request:{entry_key}" for name in pane_names
-            ), "LLM request pane missing"
-        if has_response_payload:
-            assert any(
-                name == f"tool:llm-response:{entry_key}" for name in pane_names
-            ), "LLM response pane missing"
     finally:
         destroy_panel(frame, panel)
 
@@ -1180,9 +1162,9 @@ def test_turn_card_renders_tool_only_entries(wx_app):
             else entry_timeline.entry_id
         )
         pane_names = {pane.GetName() for pane in collect_collapsible_panes(tool_panel)}
-        assert any(
-            name == f"tool:summary:{entry_key}" for name in pane_names
-        ), "summary collapsible missing"
+        assert all(
+            name != f"tool:summary:{entry_key}" for name in pane_names
+        ), "unexpected summary collapsible present"
     finally:
         panel.Destroy()
         frame.Destroy()
@@ -1249,9 +1231,9 @@ def test_turn_card_attaches_tools_to_stream_only_response(wx_app):
         tool_panel = tool_panels[0]
         pane_names = {pane.GetName() for pane in collect_collapsible_panes(tool_panel)}
         entry_key = f"tool:{entry_timeline.entry_id}:1"
-        assert any(
-            name == f"tool:summary:{entry_key}" for name in pane_names
-        ), "tool collapsible should attach to the turn"
+        assert all(
+            name != f"tool:summary:{entry_key}" for name in pane_names
+        ), "unexpected summary collapsible present"
     finally:
         panel.Destroy()
         frame.Destroy()
@@ -1375,7 +1357,7 @@ def test_turn_card_orders_sections(wx_app):
         tool_panes = collect_collapsible_panes(tool_panel)
         names = {pane.GetName() for pane in tool_panes}
         entry_key = f"tool:{entry_timeline.entry_id}:1"
-        assert f"tool:summary:{entry_key}" in names
+        assert f"tool:summary:{entry_key}" not in names
         assert f"tool:raw:{entry_key}" in names
 
         context_label = collapsible_label(context_pane)
@@ -1630,36 +1612,27 @@ def test_tool_summary_includes_llm_exchange(wx_app):
         panes_by_name = {
             pane.GetName(): pane for pane in collect_collapsible_panes(tool_panel)
         }
-        summary_pane = panes_by_name.get(f"tool:summary:{entry_key}")
-        assert summary_pane is not None
-        summary_texts: list[str] = []
-        for child in summary_pane.GetPane().GetChildren():
-            if isinstance(child, wx.TextCtrl):
-                summary_texts.append(child.GetValue())
-        summary_text = "\n".join(summary_texts)
-        assert "update_requirement_field" in summary_text
-        assert "VALIDATION_ERROR" in summary_text
-        request_pane = panes_by_name.get(f"tool:llm-request:{entry_key}")
-        assert request_pane is not None
-        response_pane = panes_by_name.get(f"tool:llm-response:{entry_key}")
-        assert response_pane is not None
+        tool_bubbles = [
+            bubble
+            for bubble in collect_message_bubbles(tool_panel)
+            if "Tool" in bubble_header_text(bubble)
+        ]
+        assert tool_bubbles, "tool summary bubble missing"
+        bubble_text = "\n".join(bubble_body_text(bubble) for bubble in tool_bubbles)
+        assert "update_requirement_field" in bubble_text
+        assert "VALIDATION_ERROR" in bubble_text
 
-        request_texts = [
+        raw_pane = panes_by_name.get(f"tool:raw:{entry_key}")
+        assert raw_pane is not None
+        raw_texts = [
             child.GetValue()
-            for child in request_pane.GetPane().GetChildren()
+            for child in raw_pane.GetPane().GetChildren()
             if isinstance(child, wx.TextCtrl)
         ]
-        request_text = "\n".join(request_texts)
-        assert "update_requirement_field" in request_text
-        assert "rid" in request_text
-
-        response_texts = [
-            child.GetValue()
-            for child in response_pane.GetPane().GetChildren()
-            if isinstance(child, wx.TextCtrl)
-        ]
-        response_text = "\n".join(response_texts)
-        assert "Applying updates" in response_text
+        raw_text = "\n".join(raw_texts)
+        assert "llm_request" in raw_text
+        assert "llm_response" in raw_text
+        assert "update_requirement_field" in raw_text
 
         agent_bubbles = [
             bubble
@@ -2344,19 +2317,14 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
             if tool_events[0].summary.index
             else entry_key
         )
-        tool_summary_pane = panes_by_name.get(f"tool:summary:{tool_entry_key}")
         tool_raw_pane = panes_by_name.get(f"tool:raw:{tool_entry_key}")
-        tool_request_pane = panes_by_name.get(f"tool:llm-request:{tool_entry_key}")
-        tool_response_pane = panes_by_name.get(f"tool:llm-response:{tool_entry_key}")
 
         assert context_pane is not None
         assert reasoning_pane is not None
         assert agent_raw_pane is not None
         assert llm_request_pane is not None
-        assert tool_summary_pane is not None
         assert tool_raw_pane is not None
-        assert tool_request_pane is not None
-        assert tool_response_pane is not None
+        assert panes_by_name.get(f"tool:summary:{tool_entry_key}") is None
 
         context_label = collapsible_label(context_pane)
         assert context_label.lower() in {"", i18n._("Context").lower()}
@@ -2381,15 +2349,14 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         ]
         summary_text = "\n".join(bubble_body_text(b) for b in tool_summary_bubbles)
         raw_text = pane_text(tool_raw_pane)
-        request_text = pane_text(tool_request_pane)
-        response_text = pane_text(tool_response_pane)
         assert "update_requirement_field" in summary_text
         assert "[VALIDATION_ERROR]" in summary_text
-        assert "rid" in request_text
-        assert "update_requirement_field" in request_text
-        assert "Applying updates" in response_text
         assert "Started at" not in summary_text
-        assert "VALIDATION_ERROR" in raw_text
+        assert "llm_request" in raw_text
+        assert "llm_response" in raw_text
+        assert "rid" in raw_text
+        assert "update_requirement_field" in raw_text
+        assert "Applying updates" in raw_text
 
         log_text = panel._compose_transcript_log_text()
         started_line = next(

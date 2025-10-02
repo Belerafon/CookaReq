@@ -70,8 +70,7 @@ class ToolCallDetails:
 
     summary: ToolCallSummary
     call_identifier: str | None
-    raw_payload: Any
-    llm_request: Any | None
+    raw_data: Any | None
     timestamp: TimestampInfo
 
 
@@ -541,12 +540,46 @@ def _build_tool_calls(
             ToolCallDetails(
                 summary=summary,
                 call_identifier=call_identifier,
-                raw_payload=safe_payload,
-                llm_request=request_payload,
+                raw_data=_compose_tool_raw_data(request_payload),
                 timestamp=timestamp_info,
             )
         )
     return tuple(tool_calls), latest_timestamp
+
+
+def _compose_tool_raw_data(request_payload: Any) -> Any | None:
+    """Return a condensed raw data payload for tool diagnostics."""
+
+    if request_payload is None:
+        return None
+
+    safe_payload = history_json_safe(request_payload)
+
+    if isinstance(safe_payload, Mapping):
+        sections: dict[str, Any] = {}
+
+        request_body = safe_payload.get("tool_call") or safe_payload.get("request")
+        if request_body is None and "response" not in safe_payload:
+            request_body = safe_payload
+        if request_body is not None:
+            sections["llm_request"] = history_json_safe(request_body)
+
+        response_body = safe_payload.get("response")
+        if response_body is not None:
+            sections["llm_response"] = history_json_safe(response_body)
+
+        step_value = safe_payload.get("step")
+        if step_value is not None and step_value != "":
+            sections["step"] = history_json_safe(step_value)
+
+        return history_json_safe(sections) if sections else None
+
+    if isinstance(safe_payload, Sequence) and not isinstance(
+        safe_payload, (str, bytes, bytearray)
+    ):
+        return history_json_safe({"llm_request": list(safe_payload)})
+
+    return history_json_safe({"llm_request": safe_payload})
 
 
 def _build_agent_events(
@@ -650,7 +683,11 @@ def _tool_timestamp_sort_key(detail: ToolCallDetails) -> tuple[int, _dt.datetime
 
 
 def _extract_tool_step_index(detail: ToolCallDetails) -> int | None:
-    for payload in (detail.llm_request, detail.raw_payload):
+    payloads: tuple[Any, ...] = (
+        detail.raw_data,
+        detail.summary.raw_payload,
+    )
+    for payload in payloads:
         if not isinstance(payload, Mapping):
             continue
         candidate = payload.get("step")

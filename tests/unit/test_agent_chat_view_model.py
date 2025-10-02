@@ -72,8 +72,8 @@ def test_build_conversation_timeline_compiles_turn() -> None:
     tool_event = turn.tool_calls[0]
     assert tool_event.summary.index == 1
     assert tool_event.call_identifier == "tool-1"
-    assert isinstance(tool_event.raw_payload, Mapping)
-    assert tool_event.summary.raw_payload == tool_event.raw_payload
+    assert tool_event.raw_data is None
+    assert isinstance(tool_event.summary.raw_payload, Mapping)
     assert tool_event.timestamp.raw == "2025-09-30T20:50:10+00:00"
     assert not tool_event.timestamp.missing
 
@@ -184,15 +184,15 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     assert turn is not None
     tool_event = turn.tool_calls[0]
 
-    request_payload = tool_event.llm_request
-    assert isinstance(request_payload, Mapping)
-    assert "tool_call" in request_payload
-    call_payload = request_payload["tool_call"]
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+    call_payload = raw_data.get("llm_request")
     assert isinstance(call_payload, Mapping)
     assert call_payload.get("arguments", {}).get("rid") == "DEMO16"
-    response_payload = request_payload.get("response")
+    response_payload = raw_data.get("llm_response")
     assert isinstance(response_payload, Mapping)
     assert response_payload.get("content") == "Applying updates"
+    assert raw_data.get("step") in (1, "1")
 
 
 def test_tool_call_event_synthesises_request_when_missing() -> None:
@@ -226,11 +226,9 @@ def test_tool_call_event_synthesises_request_when_missing() -> None:
     assert turn is not None
     tool_event = turn.tool_calls[0]
 
-    request_payload = tool_event.llm_request
-    assert isinstance(request_payload, Mapping)
-    tool_call = request_payload.get("tool_call")
-    assert isinstance(tool_call, Mapping)
-    arguments = tool_call.get("arguments")
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+    arguments = raw_data.get("llm_request", {}).get("arguments")
     assert isinstance(arguments, Mapping)
     assert arguments.get("rid") == "REQ-9"
     assert arguments.get("field") == "title"

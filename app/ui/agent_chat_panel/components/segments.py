@@ -220,18 +220,6 @@ def _summarize_request_arguments(arguments: Any) -> list[str]:
     return []
 
 
-def _summarize_tool_payload(payload: Any) -> list[str]:
-    if isinstance(payload, Mapping):
-        description = payload.get("description")
-        if isinstance(description, str):
-            text = normalize_for_display(description).strip()
-            if text:
-                return [text]
-        arguments = payload.get("arguments")
-        return _summarize_request_arguments(arguments)
-    return _summarize_request_arguments(payload)
-
-
 def _summarize_llm_request(snapshot: LlmRequestSnapshot | None) -> list[str]:
     if snapshot is None or not snapshot.messages:
         return []
@@ -704,18 +692,41 @@ class ToolCallPanel(wx.Panel):
         summary = details.summary
         tool_name = summary.tool_name or _("Tool")
         status = summary.status or _("returned data")
-        lines: list[str] = [
-            _("Ran {tool} — {status}").format(
-                tool=normalize_for_display(tool_name),
-                status=normalize_for_display(status),
+        heading = _("Ran {tool} — {status}").format(
+            tool=normalize_for_display(tool_name),
+            status=normalize_for_display(status),
+        )
+
+        bullet_lines: list[str] = []
+
+        if summary.duration is not None:
+            bullet_lines.append(
+                _("Duration: {seconds:.2f} s").format(seconds=summary.duration)
             )
-        ]
+        if summary.cost:
+            bullet_lines.append(
+                _("Cost: {cost}").format(cost=normalize_for_display(summary.cost))
+            )
+        if summary.error_message:
+            bullet_lines.append(
+                _("Error: {message}").format(
+                    message=normalize_for_display(summary.error_message)
+                )
+            )
 
-        arguments = _summarize_tool_payload(details.raw_payload)
-        lines.extend(arguments)
+        for bullet in summary.bullet_lines:
+            bullet_text = normalize_for_display(bullet)
+            if bullet_text:
+                bullet_lines.append(bullet_text)
 
-        text = "\n".join(line for line in lines if line)
-        if not text:
+        for argument in _summarize_request_arguments(summary.arguments):
+            if argument:
+                bullet_lines.append(argument)
+
+        text_lines = [heading]
+        text_lines.extend(f"• {line}" for line in bullet_lines if line)
+        text = "\n".join(text_lines)
+        if not text.strip():
             return None
 
         timestamp_label = self._format_timestamp(details.timestamp)
@@ -741,21 +752,7 @@ class ToolCallPanel(wx.Panel):
         summary = details.summary
         entry_key = f"tool:{self._entry_id}:{summary.index}" if summary.index else self._entry_id
 
-        summary_text = self._format_tool_summary_text(details)
-        if summary_text:
-            pane = _build_collapsible_section(
-                self,
-                label=_("Summary"),
-                content=summary_text,
-                minimum_height=120,
-                collapsed=self._collapsed_state.get(f"summary:{entry_key}", True),
-                name=f"tool:summary:{entry_key}",
-            )
-            if pane is not None:
-                self._register_collapsible(f"summary:{entry_key}", pane)
-                sections.append(pane)
-
-        raw_text = _format_raw_payload(details.raw_payload)
+        raw_text = _format_raw_payload(details.raw_data)
         if raw_text:
             pane = _build_collapsible_section(
                 self,
@@ -769,71 +766,7 @@ class ToolCallPanel(wx.Panel):
                 self._register_collapsible(f"raw:{entry_key}", pane)
                 sections.append(pane)
 
-        llm_payload = details.llm_request
-        if isinstance(llm_payload, Mapping):
-            request_payload = llm_payload.get("tool_call") or llm_payload
-            response_payload = llm_payload.get("response")
-        else:
-            request_payload = llm_payload
-            response_payload = None
-
-        request_text = _format_raw_payload(request_payload)
-        if request_text:
-            pane = _build_collapsible_section(
-                self,
-                label=_("LLM request"),
-                content=request_text,
-                minimum_height=160,
-                collapsed=self._collapsed_state.get(f"llm-request:{entry_key}", True),
-                name=f"tool:llm-request:{entry_key}",
-            )
-            if pane is not None:
-                self._register_collapsible(f"llm-request:{entry_key}", pane)
-                sections.append(pane)
-
-        response_text = _format_raw_payload(response_payload)
-        if response_text:
-            pane = _build_collapsible_section(
-                self,
-                label=_("LLM response"),
-                content=response_text,
-                minimum_height=160,
-                collapsed=self._collapsed_state.get(f"llm-response:{entry_key}", True),
-                name=f"tool:llm-response:{entry_key}",
-            )
-            if pane is not None:
-                self._register_collapsible(f"llm-response:{entry_key}", pane)
-                sections.append(pane)
-
         return sections
-
-    # ------------------------------------------------------------------
-    def _format_tool_summary_text(self, details: ToolCallDetails) -> str:
-        summary = details.summary
-        summary_lines: list[str] = []
-        tool_name = summary.tool_name or _("Tool")
-        summary_lines.append(_("Tool name: {tool}").format(tool=tool_name))
-        if summary.status:
-            summary_lines.append(
-                _("Status: {status}").format(
-                    status=normalize_for_display(summary.status)
-                )
-            )
-        if summary.duration:
-            summary_lines.append(
-                _("Duration: {seconds:.2f} s").format(seconds=summary.duration)
-            )
-        if summary.cost is not None:
-            summary_lines.append(_("Cost: {cost}").format(cost=summary.cost))
-        if summary.error_message:
-            summary_lines.append(
-                _("Error: {message}").format(
-                    message=normalize_for_display(summary.error_message)
-                )
-            )
-        additional = _summarize_request_arguments(summary.arguments)
-        summary_lines.extend(additional)
-        return "\n".join(line for line in summary_lines if line)
 
     # ------------------------------------------------------------------
     def _capture_collapsed_state(self) -> None:

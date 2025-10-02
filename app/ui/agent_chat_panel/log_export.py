@@ -477,17 +477,9 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
                                     indent_block(normalize_for_display(bullet))
                                 )
                     payload, seen_system_prompt = _omit_repeated_system_prompt(
-                        details.raw_payload, seen_prompt=seen_system_prompt
+                        details.raw_data, seen_prompt=seen_system_prompt
                     )
                     blocks.append(indent_block(format_json_block(payload)))
-                    if details.llm_request is not None:
-                        request_payload, seen_system_prompt = (
-                            _omit_repeated_system_prompt(
-                                details.llm_request,
-                                seen_prompt=seen_system_prompt,
-                            )
-                        )
-                        blocks.append(indent_block(format_json_block(request_payload)))
                     if details.call_identifier:
                         identifier_line = _(
                             "Call identifier: {identifier}"

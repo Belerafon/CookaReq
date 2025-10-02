@@ -3,16 +3,17 @@ from __future__ import annotations
 import json
 import textwrap
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation
 from ..text import normalize_for_display
-from .tool_summaries import render_tool_summaries_plain, summarize_tool_results
+from .time_formatting import format_entry_timestamp
+from .tool_summaries import summarize_tool_results
 from .view_model import (
     AgentResponse,
-    AgentTurn,
     TimestampInfo,
     TranscriptEntry,
     build_conversation_timeline,
@@ -21,6 +22,195 @@ from .view_model import (
 
 _SYSTEM_PROMPT_TEXT = str(SYSTEM_PROMPT).strip()
 SYSTEM_PROMPT_PLACEHOLDER = "<system prompt repeated – omitted>"
+
+
+@dataclass(slots=True)
+class _PlainEvent:
+    """Single entry rendered in the plain transcript timeline."""
+
+    timestamp: str
+    label: str
+    text: str
+
+
+def _format_timestamp_label(info: TimestampInfo | None) -> str:
+    """Return display label for *info* consistent with the transcript UI."""
+
+    if info is None:
+        return _("not recorded")
+    if info.formatted:
+        return normalize_for_display(info.formatted)
+    if info.raw:
+        return normalize_for_display(info.raw)
+    if info.missing:
+        return _("not recorded")
+    return _("not recorded")
+
+
+def _format_iso_timestamp(value: str | None, fallback: TimestampInfo | None) -> str:
+    """Return formatted timestamp derived from ISO *value* or *fallback*."""
+
+    if value:
+        formatted = format_entry_timestamp(value)
+        if formatted:
+            return normalize_for_display(formatted)
+        return normalize_for_display(value)
+    return _format_timestamp_label(fallback)
+
+
+def _format_tool_timestamp(
+    summary: Any, fallback: TimestampInfo | None
+) -> str:
+    """Return formatted timestamp for a tool call *summary*."""
+
+    for candidate in (
+        getattr(summary, "completed_at", None),
+        getattr(summary, "last_observed_at", None),
+        getattr(summary, "started_at", None),
+    ):
+        if isinstance(candidate, str) and candidate.strip():
+            return _format_iso_timestamp(candidate, fallback)
+    return _format_timestamp_label(fallback)
+
+
+def _collect_agent_plain_events(entry: TranscriptEntry) -> list[_PlainEvent]:
+    """Return ordered plain-text events describing the agent turn."""
+
+    turn = entry.agent_turn
+    events: list[_PlainEvent] = []
+    last_text: str | None = None
+
+    def append_event(
+        label: str,
+        text: str,
+        timestamp: str,
+        *,
+        track_duplicate: bool = True,
+        allow_empty: bool = False,
+    ) -> None:
+        nonlocal last_text
+        if not text and not allow_empty:
+            return
+        if track_duplicate and text == last_text:
+            return
+        events.append(
+            _PlainEvent(
+                timestamp=timestamp,
+                label=normalize_for_display(label),
+                text=text,
+            )
+        )
+        if track_duplicate and text:
+            last_text = text
+
+    if turn is not None:
+        timestamp_fallback = turn.timestamp
+
+        def response_timestamp(response: AgentResponse) -> str:
+            info = response.timestamp
+            if info is not None and not info.missing and (info.formatted or info.raw):
+                return _format_timestamp_label(info)
+            return _format_timestamp_label(timestamp_fallback)
+
+        fallback_response = normalize_for_display(entry.entry.response or "")
+        fallback_display = normalize_for_display(entry.entry.display_response or "")
+
+        def append_response(response: AgentResponse, label: str) -> None:
+            raw_text = response.text or ""
+            raw_display = response.display_text or ""
+            normalized_text = normalize_for_display(raw_text) if raw_text else ""
+            normalized_display = (
+                normalize_for_display(raw_display) if raw_display else ""
+            )
+            content = normalized_text or normalized_display
+            if not content:
+                return
+            if (
+                not normalized_text
+                and not fallback_response
+                and content == fallback_display
+            ):
+                return
+            append_event(label, content, response_timestamp(response))
+
+        for response in turn.streamed_responses:
+            label = (
+                _("Agent (step {index}):").format(index=response.step_index)
+                if response.step_index is not None
+                else _("Agent:")
+            )
+            append_response(response, label)
+
+        if turn.final_response is not None:
+            append_response(turn.final_response, _("Agent:"))
+
+        if not events:
+            fallback = normalize_for_display(entry.entry.response or entry.entry.display_response or "")
+            if fallback:
+                append_event(
+                    _("Agent:"),
+                    fallback,
+                    _format_iso_timestamp(entry.entry.response_at, timestamp_fallback),
+                )
+
+        for details in turn.tool_calls:
+            summary = details.summary
+            label = _(
+                "Agent: tool call {index}: {tool} — {status}"
+            ).format(
+                index=summary.index,
+                tool=summary.tool_name,
+                status=summary.status,
+            )
+            bullet_lines = [
+                "• " + normalize_for_display(line)
+                for line in getattr(summary, "bullet_lines", ())
+                if line
+            ]
+            text = "\n".join(bullet_lines)
+            append_event(
+                label,
+                text,
+                _format_tool_timestamp(summary, timestamp_fallback),
+                track_duplicate=False,
+                allow_empty=True,
+            )
+
+        return events
+
+    # Fallback when the turn payload is missing but legacy data exists.
+    fallback_timestamp = _format_iso_timestamp(
+        getattr(entry.entry, "response_at", None), None
+    )
+    fallback_text = normalize_for_display(
+        entry.entry.response or entry.entry.display_response or ""
+    )
+    if fallback_text:
+        append_event(_("Agent:"), fallback_text, fallback_timestamp)
+
+    for summary in summarize_tool_results(entry.entry.tool_results):
+        label = _(
+            "Agent: tool call {index}: {tool} — {status}"
+        ).format(
+            index=summary.index,
+            tool=summary.tool_name,
+            status=summary.status,
+        )
+        bullet_lines = [
+            "• " + normalize_for_display(line)
+            for line in getattr(summary, "bullet_lines", ())
+            if line
+        ]
+        text = "\n".join(bullet_lines)
+        append_event(
+            label,
+            text,
+            _format_tool_timestamp(summary, None),
+            track_duplicate=False,
+            allow_empty=True,
+        )
+
+    return events
 
 
 def compose_transcript_text(conversation: ChatConversation | None) -> str:
@@ -36,97 +226,40 @@ def compose_transcript_text(conversation: ChatConversation | None) -> str:
         return _("This chat does not have any messages yet. Send one to get started.")
 
     blocks: list[str] = []
+    indent = "    "
+
     for idx, entry in enumerate(timeline.entries, start=1):
-        prompt = entry.prompt.text if entry.prompt is not None else entry.entry.prompt
-        prompt_text = normalize_for_display(prompt or "")
-        response_text = _compose_agent_plain_text(entry)
-        block = (
-            f"{idx}. "
-            + _("You:")
-            + f"\n{prompt_text}\n\n"
-            + _("Agent:")
-            + f"\n{response_text}"
+        prompt_message = entry.prompt
+        prompt_text = normalize_for_display(
+            (prompt_message.text if prompt_message is not None else entry.entry.prompt)
+            or ""
         )
-        blocks.append(block)
+        prompt_timestamp = _format_timestamp_label(
+            prompt_message.timestamp if prompt_message is not None else None
+        )
+        lines: list[str] = []
+        header = f"{idx}. [{prompt_timestamp}] " + _("You:")
+        lines.append(header)
+        if prompt_text:
+            lines.append(textwrap.indent(prompt_text, indent))
+
+        events = _collect_agent_plain_events(entry)
+        if events:
+            for event in events:
+                lines.append("")
+                lines.append(f"[{event.timestamp}] {event.label}")
+                if event.text:
+                    lines.append(textwrap.indent(event.text, indent))
+        else:
+            fallback_timestamp = _format_iso_timestamp(
+                getattr(entry.entry, "response_at", None), None
+            )
+            lines.append("")
+            lines.append(f"[{fallback_timestamp}] " + _("Agent:"))
+
+        blocks.append("\n".join(part for part in lines if part is not None))
+
     return "\n\n".join(blocks)
-
-
-def _compose_agent_plain_text(entry: TranscriptEntry) -> str:
-    turn = entry.agent_turn
-    parts: list[str] = []
-
-    response_lines = _collect_agent_response_texts(entry)
-    if response_lines:
-        parts.append("\n\n".join(response_lines))
-    else:
-        response_text = _select_agent_response_text(entry)
-        if response_text:
-            parts.append(response_text)
-
-    tool_summary = _compose_tool_summary_text(entry)
-    if tool_summary:
-        parts.append(tool_summary)
-
-    return "\n\n".join(part for part in parts if part)
-
-
-def _collect_agent_response_texts(entry: TranscriptEntry) -> list[str]:
-    """Return ordered agent responses rendered for *entry*."""
-
-    turn = entry.agent_turn
-    if turn is None:
-        return []
-
-    responses: list[str] = []
-
-    fallback_response = normalize_for_display(entry.entry.response or "")
-    fallback_display = normalize_for_display(entry.entry.display_response or "")
-
-    def append_response(candidate: AgentResponse | None) -> None:
-        if candidate is None:
-            return
-        text = candidate.text or ""
-        display_text = candidate.display_text or ""
-        normalised_text = normalize_for_display(text) if text else ""
-        normalised_display = (
-            normalize_for_display(display_text) if display_text else ""
-        )
-        content = normalised_text or normalised_display
-        if not content:
-            return
-        if (
-            not normalised_text
-            and not fallback_response
-            and content == fallback_display
-        ):
-            return
-        if responses and responses[-1] == content:
-            return
-        responses.append(content)
-
-    for streamed in turn.streamed_responses:
-        append_response(streamed)
-
-    append_response(turn.final_response)
-
-    return responses
-
-
-def _select_agent_response_text(entry: TranscriptEntry) -> str:
-    fallback = entry.entry.response or entry.entry.display_response
-    return normalize_for_display(fallback or "")
-
-
-def _compose_tool_summary_text(entry: TranscriptEntry) -> str:
-    turn = entry.agent_turn
-    if turn is not None and turn.tool_calls:
-        summaries = [details.summary for details in turn.tool_calls if details.summary]
-        if summaries:
-            return render_tool_summaries_plain(summaries)
-
-    return render_tool_summaries_plain(
-        summarize_tool_results(entry.entry.tool_results)
-    )
 
 
 def _omit_repeated_system_prompt(
@@ -192,13 +325,7 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
     timeline = build_conversation_timeline(conversation)
 
     def format_timestamp_info(info: TimestampInfo | None) -> str:
-        if info is None:
-            return _("not recorded")
-        if info.formatted:
-            return normalize_for_display(info.formatted)
-        if info.raw:
-            return normalize_for_display(info.raw)
-        return _("not recorded")
+        return _format_timestamp_label(info)
 
     def _normalise_json_value(value: Any) -> Any:
         if isinstance(value, str):

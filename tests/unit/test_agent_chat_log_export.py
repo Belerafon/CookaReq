@@ -149,9 +149,20 @@ def test_plain_transcript_uses_agent_turn_text_and_tool_summaries():
 
     assert "VALIDATION_ERROR" in plain_text
     assert "Waiting for agent response" not in plain_text
-    assert "Agent: tool call 1: get_requirement" in plain_text
-    assert "Agent: tool call 2: update_requirement_field" in plain_text
-    assert "Error message: update_requirement_field() missing 1 required positional argument: 'rid'" in plain_text
+    assert "[02 Oct 2025 11:19:15] You:" in plain_text
+    assert "[02 Oct 2025 11:38:04] Agent:" in plain_text
+    assert (
+        "[02 Oct 2025 11:19:16] Agent: tool call 1: get_requirement"
+        in plain_text
+    )
+    assert (
+        "[02 Oct 2025 11:27:02] Agent: tool call 2: update_requirement_field"
+        in plain_text
+    )
+    assert (
+        "• Error message: update_requirement_field() missing 1 required positional argument: 'rid'"
+        in plain_text
+    )
 
 
 def test_plain_transcript_includes_streamed_responses():
@@ -159,7 +170,9 @@ def test_plain_transcript_includes_streamed_responses():
 
     plain_text = compose_transcript_text(conversation)
 
+    assert "[02 Oct 2025 11:00:03] Agent (step 1):" in plain_text
     assert "Обрабатываю запрос" in plain_text
+    assert "[02 Oct 2025 11:00:05] Agent (step 2):" in plain_text
     assert "Готово: итоговое сообщение" in plain_text
     assert "Waiting for agent response" not in plain_text
 

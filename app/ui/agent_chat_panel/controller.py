@@ -170,6 +170,34 @@ class AgentRunController:
         )
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _capture_llm_step_payload(
+        handle: _AgentRunHandle,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        safe_payload_raw = history_json_safe(payload)
+        if isinstance(safe_payload_raw, Mapping):
+            safe_payload: dict[str, Any] = dict(safe_payload_raw)
+        else:
+            safe_payload = {
+                "step": payload.get("step"),
+                "payload": safe_payload_raw,
+            }
+        handle.llm_steps.append(safe_payload)
+        response_payload = payload.get("response")
+        if isinstance(response_payload, Mapping):
+            content_value = response_payload.get("content")
+            if isinstance(content_value, str):
+                handle.latest_llm_response = content_value
+            reasoning_payload = response_payload.get("reasoning")
+            reasoning_segments = normalise_reasoning_segments(reasoning_payload)
+            if reasoning_segments:
+                handle.latest_reasoning_segments = tuple(
+                    dict(segment) for segment in reasoning_segments
+                )
+        return safe_payload
+
+    # ------------------------------------------------------------------
     def _start_prompt(
         self,
         *,
@@ -309,26 +337,7 @@ class AgentRunController:
                         return
                     if not isinstance(payload, Mapping):
                         return
-                    safe_payload_raw = history_json_safe(payload)
-                    if isinstance(safe_payload_raw, Mapping):
-                        safe_payload = dict(safe_payload_raw)
-                    else:
-                        safe_payload = {"step": payload.get("step"), "payload": safe_payload_raw}
-                    handle.llm_steps.append(safe_payload)
-                    response_payload = payload.get("response")
-                    if isinstance(response_payload, Mapping):
-                        content_value = response_payload.get("content")
-                        if isinstance(content_value, str):
-                            handle.latest_llm_response = content_value
-                        reasoning_payload = response_payload.get("reasoning")
-                        reasoning_segments = normalise_reasoning_segments(
-                            reasoning_payload
-                        )
-                        if reasoning_segments:
-                            handle.latest_reasoning_segments = tuple(
-                                {"type": segment["type"], "text": segment["text"]}
-                                for segment in reasoning_segments
-                            )
+                    safe_payload = self._capture_llm_step_payload(handle, payload)
                     wx.CallAfter(
                         self._callbacks.handle_llm_step,
                         handle,

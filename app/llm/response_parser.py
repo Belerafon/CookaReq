@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
 from .reasoning import (
+    ReasoningFragment,
     collect_reasoning_fragments,
     extract_reasoning_entries,
     is_reasoning_type,
+    merge_reasoning_fragments,
 )
 from .types import LLMReasoningSegment, LLMToolCall
 from .utils import extract_mapping
@@ -441,7 +444,9 @@ class LLMResponseParser:
         if not content:
             return ""
         if isinstance(content, str):
-            return content
+            return self._strip_think_blocks(
+                content, reasoning_accumulator=reasoning_accumulator
+            )
         if isinstance(content, Sequence) and not isinstance(content, (bytes, bytearray)):
             parts: list[str] = []
             for element in content:
@@ -504,6 +509,76 @@ class LLMResponseParser:
                 return str(text_candidate)
             return str(text_candidate or "")
         return str(content or "")
+
+    _THINK_OPEN_RE = re.compile(r"<think(>|\s[^>]*>)", re.IGNORECASE)
+    _THINK_CLOSE_RE = re.compile(r"</think>", re.IGNORECASE)
+
+    def _strip_think_blocks(
+        self,
+        text: str,
+        *,
+        reasoning_accumulator: list[dict[str, str]] | None,
+    ) -> str:
+        if not text:
+            return text
+        lowered = text.lower()
+        if "<think" not in lowered:
+            return text
+
+        parts: list[str] = []
+        cursor = 0
+        length = len(text)
+        while True:
+            open_match = self._THINK_OPEN_RE.search(text, cursor)
+            if not open_match:
+                break
+            start = open_match.start()
+            parts.append(text[cursor:start])
+            tag_end = open_match.end()
+            content_start = tag_end
+            close_match = self._THINK_CLOSE_RE.search(text, tag_end)
+            if close_match:
+                content_end = close_match.start()
+                cursor = close_match.end()
+            else:
+                content_end = length
+                cursor = length
+            inner = text[content_start:content_end]
+            fragments = collect_reasoning_fragments(inner)
+            if reasoning_accumulator is not None and fragments:
+                normalized = [
+                    ReasoningFragment(
+                        type="reasoning",
+                        text=fragment.text,
+                        leading_whitespace=fragment.leading_whitespace,
+                        trailing_whitespace=fragment.trailing_whitespace,
+                    )
+                    for fragment in fragments
+                ]
+                self._append_reasoning_fragments(reasoning_accumulator, normalized)
+        if cursor < length:
+            parts.append(text[cursor:])
+        stripped = "".join(parts)
+        if reasoning_accumulator is not None:
+            residual_match = self._THINK_OPEN_RE.search(stripped)
+            if residual_match:
+                remainder = stripped[residual_match.end() :]
+                fragments = collect_reasoning_fragments(remainder)
+                if fragments:
+                    normalized = [
+                        ReasoningFragment(
+                            type="reasoning",
+                            text=fragment.text,
+                            leading_whitespace=fragment.leading_whitespace,
+                            trailing_whitespace=fragment.trailing_whitespace,
+                        )
+                        for fragment in fragments
+                    ]
+                    self._append_reasoning_fragments(
+                        reasoning_accumulator, normalized
+                    )
+                stripped = stripped[: residual_match.start()]
+        return stripped
 
     # ------------------------------------------------------------------
     def parse_harmony_output(
@@ -694,27 +769,54 @@ class LLMResponseParser:
 
     @staticmethod
     def _append_reasoning_fragments(
-        aggregated: list[dict[str, str]], fragments: Sequence[tuple[str, str]]
+        aggregated: list[dict[str, Any]],
+        fragments: Sequence[ReasoningFragment],
     ) -> None:
-        for raw_type, raw_text in fragments:
-            if not raw_text:
-                continue
-            text = str(raw_text)
+        for fragment in fragments:
+            text = fragment.text
             if not text:
                 continue
-            seg_type = str(raw_type or "reasoning")
-            aggregated.append({"type": seg_type, "text": text})
+            seg_type = str(fragment.type or "reasoning")
+            entry: dict[str, Any] = {"type": seg_type, "text": text}
+            if fragment.leading_whitespace:
+                entry["leading_whitespace"] = fragment.leading_whitespace
+            if fragment.trailing_whitespace:
+                entry["trailing_whitespace"] = fragment.trailing_whitespace
+            aggregated.append(entry)
 
     def finalize_reasoning_segments(
-        self, segments: Sequence[Mapping[str, str]]
+        self, segments: Sequence[Mapping[str, Any]]
     ) -> tuple[LLMReasoningSegment, ...]:
         finalized: list[LLMReasoningSegment] = []
-        for segment in segments:
-            seg_type = str(segment.get("type") or "reasoning")
-            text = str(segment.get("text") or "").strip()
-            if not text:
+        seen: set[tuple[str, str, str, str]] = set()
+
+        fragments = merge_reasoning_fragments(collect_reasoning_fragments(segments))
+        for fragment in fragments:
+            text_with_edges = (
+                f"{fragment.leading_whitespace}{fragment.text}{fragment.trailing_whitespace}"
+            )
+            if not text_with_edges:
                 continue
-            finalized.append(LLMReasoningSegment(type=seg_type, text=text))
+            stripped = fragment.text.strip()
+            if not stripped:
+                continue
+            key = (
+                fragment.type,
+                stripped,
+                fragment.leading_whitespace,
+                fragment.trailing_whitespace,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            finalized.append(
+                LLMReasoningSegment(
+                    type=fragment.type,
+                    text=stripped,
+                    leading_whitespace=fragment.leading_whitespace,
+                    trailing_whitespace=fragment.trailing_whitespace,
+                )
+            )
         return tuple(finalized)
 
     # ------------------------------------------------------------------

@@ -86,12 +86,21 @@ def _format_reasoning_segments(
         if isinstance(segment, Mapping):
             type_value = segment.get("type")
             text_value = segment.get("text")
+            leading_value = segment.get("leading_whitespace")
+            trailing_value = segment.get("trailing_whitespace")
         else:
             type_value = getattr(segment, "type", None)
             text_value = getattr(segment, "text", None)
+            leading_value = getattr(segment, "leading_whitespace", "")
+            trailing_value = getattr(segment, "trailing_whitespace", "")
         if text_value is None:
             continue
-        raw_text = str(text_value)
+        text = str(text_value)
+        if not text.strip():
+            continue
+        leading = str(leading_value or "")
+        trailing = str(trailing_value or "")
+        raw_text = f"{leading}{text}{trailing}"
         if not raw_text.strip():
             continue
         type_label = str(type_value).strip() if type_value is not None else ""
@@ -211,18 +220,6 @@ def _summarize_request_arguments(arguments: Any) -> list[str]:
     return []
 
 
-def _summarize_tool_payload(payload: Any) -> list[str]:
-    if isinstance(payload, Mapping):
-        description = payload.get("description")
-        if isinstance(description, str):
-            text = normalize_for_display(description).strip()
-            if text:
-                return [text]
-        arguments = payload.get("arguments")
-        return _summarize_request_arguments(arguments)
-    return _summarize_request_arguments(payload)
-
-
 def _summarize_llm_request(snapshot: LlmRequestSnapshot | None) -> list[str]:
     if snapshot is None or not snapshot.messages:
         return []
@@ -283,6 +280,8 @@ class MessageSegmentPanel(wx.Panel):
         self._collapsed_state: dict[str, bool] = {}
         self._regenerate_button: wx.Button | None = None
         self._regenerate_handler: Callable[[], None] | None = None
+        self._tool_panels: dict[str, ToolCallPanel] = {}
+        self._tool_collapsed_state: dict[str, dict[str, bool]] = {}
 
     # ------------------------------------------------------------------
     def update(
@@ -294,10 +293,12 @@ class MessageSegmentPanel(wx.Panel):
     ) -> None:
         self._capture_collapsed_state()
         self._collapsible.clear()
+        self._capture_tool_panel_state()
         sizer = self.GetSizer()
         sizer.Clear(delete_windows=True)
         self._regenerate_button = None
         self._regenerate_handler = on_regenerate
+        self._tool_panels.clear()
 
         if self._segment_kind == "user":
             assert isinstance(payload, PromptSegment)
@@ -371,19 +372,40 @@ class MessageSegmentPanel(wx.Panel):
 
         rendered: list[wx.Window] = []
         timestamp_info = turn.timestamp if turn is not None else None
+        active_tool_ids: list[str] = []
         if turn is not None:
-            for response in turn.streamed_responses:
-                bubble = self._create_agent_message_bubble(
-                    container, response, timestamp_info
-                )
-                if bubble is not None:
-                    rendered.append(bubble)
-            if turn.final_response is not None:
-                bubble = self._create_agent_message_bubble(
-                    container, turn.final_response, timestamp_info
-                )
-                if bubble is not None:
-                    rendered.append(bubble)
+            for event in turn.events:
+                if event.kind == "response" and event.response is not None:
+                    bubble = self._create_agent_message_bubble(
+                        container, event.response, timestamp_info
+                    )
+                    if bubble is not None:
+                        rendered.append(bubble)
+                elif event.kind == "tool" and event.tool_call is not None:
+                    details = event.tool_call
+                    identifier = self._make_tool_identifier(details, event.order_index)
+                    panel = ToolCallPanel(
+                        container,
+                        entry_id=self._entry_id,
+                        on_layout_hint=self._on_layout_hint,
+                    )
+                    saved_state = self._tool_collapsed_state.get(identifier)
+                    if saved_state:
+                        panel._collapsed_state.update(saved_state)
+                    panel.update(details)
+                    rendered.append(panel)
+                    self._tool_panels[identifier] = panel
+                    active_tool_ids.append(identifier)
+                    self._tool_collapsed_state[identifier] = dict(
+                        getattr(panel, "_collapsed_state", {})
+                    )
+
+        active_tool_keys = set(active_tool_ids)
+        stale = [
+            key for key in self._tool_collapsed_state if key not in active_tool_keys
+        ]
+        for key in stale:
+            self._tool_collapsed_state.pop(key, None)
 
         if turn is not None:
             reasoning_section = self._create_reasoning_section(
@@ -556,6 +578,27 @@ class MessageSegmentPanel(wx.Panel):
             self._collapsible[key] = pane
 
     # ------------------------------------------------------------------
+    def _capture_tool_panel_state(self) -> None:
+        for identifier, panel in list(self._tool_panels.items()):
+            if not isinstance(panel, ToolCallPanel):
+                continue
+            state = getattr(panel, "_collapsed_state", {})
+            try:
+                self._tool_collapsed_state[identifier] = dict(state)
+            except Exception:
+                self._tool_collapsed_state[identifier] = {}
+        self._tool_panels.clear()
+
+    # ------------------------------------------------------------------
+    def _make_tool_identifier(
+        self, details: ToolCallDetails, order_index: int
+    ) -> str:
+        summary_index = details.summary.index
+        if summary_index:
+            return f"{self._entry_id}:tool:{summary_index}"
+        return f"{self._entry_id}:tool:{order_index}"
+
+    # ------------------------------------------------------------------
     def _resolve_hint(self, key: str) -> int | None:
         value = self._layout_hints.get(key)
         if value is None:
@@ -649,24 +692,51 @@ class ToolCallPanel(wx.Panel):
         summary = details.summary
         tool_name = summary.tool_name or _("Tool")
         status = summary.status or _("returned data")
-        lines: list[str] = [
-            _("Ran {tool} — {status}").format(
-                tool=normalize_for_display(tool_name),
-                status=normalize_for_display(status),
+        heading = _("Ran {tool} — {status}").format(
+            tool=normalize_for_display(tool_name),
+            status=normalize_for_display(status),
+        )
+
+        bullet_lines: list[str] = []
+
+        if summary.duration is not None:
+            bullet_lines.append(
+                _("Duration: {seconds:.2f} s").format(seconds=summary.duration)
             )
-        ]
+        if summary.cost:
+            bullet_lines.append(
+                _("Cost: {cost}").format(cost=normalize_for_display(summary.cost))
+            )
+        if summary.error_message:
+            bullet_lines.append(
+                _("Error: {message}").format(
+                    message=normalize_for_display(summary.error_message)
+                )
+            )
 
-        arguments = _summarize_tool_payload(details.raw_payload)
-        lines.extend(arguments)
+        for bullet in summary.bullet_lines:
+            bullet_text = normalize_for_display(bullet)
+            if bullet_text:
+                bullet_lines.append(bullet_text)
 
-        text = "\n".join(line for line in lines if line)
-        if not text:
+        for argument in _summarize_request_arguments(summary.arguments):
+            if argument:
+                bullet_lines.append(argument)
+
+        text_lines = [heading]
+        text_lines.extend(f"• {line}" for line in bullet_lines if line)
+        text = "\n".join(text_lines)
+        if not text.strip():
             return None
+
+        timestamp_label = self._format_timestamp(details.timestamp)
+        if not timestamp_label:
+            timestamp_label = None
 
         bubble = MessageBubble(
             self,
             role_label=_("Tool"),
-            timestamp=None,
+            timestamp=timestamp_label,
             text=text,
             align="left",
             allow_selection=True,
@@ -682,21 +752,7 @@ class ToolCallPanel(wx.Panel):
         summary = details.summary
         entry_key = f"tool:{self._entry_id}:{summary.index}" if summary.index else self._entry_id
 
-        summary_text = self._format_tool_summary_text(details)
-        if summary_text:
-            pane = _build_collapsible_section(
-                self,
-                label=_("Summary"),
-                content=summary_text,
-                minimum_height=120,
-                collapsed=self._collapsed_state.get(f"summary:{entry_key}", True),
-                name=f"tool:summary:{entry_key}",
-            )
-            if pane is not None:
-                self._register_collapsible(f"summary:{entry_key}", pane)
-                sections.append(pane)
-
-        raw_text = _format_raw_payload(details.raw_payload)
+        raw_text = _format_raw_payload(details.raw_data)
         if raw_text:
             pane = _build_collapsible_section(
                 self,
@@ -710,71 +766,7 @@ class ToolCallPanel(wx.Panel):
                 self._register_collapsible(f"raw:{entry_key}", pane)
                 sections.append(pane)
 
-        llm_payload = details.llm_request
-        if isinstance(llm_payload, Mapping):
-            request_payload = llm_payload.get("tool_call") or llm_payload
-            response_payload = llm_payload.get("response")
-        else:
-            request_payload = llm_payload
-            response_payload = None
-
-        request_text = _format_raw_payload(request_payload)
-        if request_text:
-            pane = _build_collapsible_section(
-                self,
-                label=_("LLM request"),
-                content=request_text,
-                minimum_height=160,
-                collapsed=self._collapsed_state.get(f"llm-request:{entry_key}", True),
-                name=f"tool:llm-request:{entry_key}",
-            )
-            if pane is not None:
-                self._register_collapsible(f"llm-request:{entry_key}", pane)
-                sections.append(pane)
-
-        response_text = _format_raw_payload(response_payload)
-        if response_text:
-            pane = _build_collapsible_section(
-                self,
-                label=_("LLM response"),
-                content=response_text,
-                minimum_height=160,
-                collapsed=self._collapsed_state.get(f"llm-response:{entry_key}", True),
-                name=f"tool:llm-response:{entry_key}",
-            )
-            if pane is not None:
-                self._register_collapsible(f"llm-response:{entry_key}", pane)
-                sections.append(pane)
-
         return sections
-
-    # ------------------------------------------------------------------
-    def _format_tool_summary_text(self, details: ToolCallDetails) -> str:
-        summary = details.summary
-        summary_lines: list[str] = []
-        tool_name = summary.tool_name or _("Tool")
-        summary_lines.append(_("Tool name: {tool}").format(tool=tool_name))
-        if summary.status:
-            summary_lines.append(
-                _("Status: {status}").format(
-                    status=normalize_for_display(summary.status)
-                )
-            )
-        if summary.duration:
-            summary_lines.append(
-                _("Duration: {seconds:.2f} s").format(seconds=summary.duration)
-            )
-        if summary.cost is not None:
-            summary_lines.append(_("Cost: {cost}").format(cost=summary.cost))
-        if summary.error_message:
-            summary_lines.append(
-                _("Error: {message}").format(
-                    message=normalize_for_display(summary.error_message)
-                )
-            )
-        additional = _summarize_request_arguments(summary.arguments)
-        summary_lines.extend(additional)
-        return "\n".join(line for line in summary_lines if line)
 
     # ------------------------------------------------------------------
     def _capture_collapsed_state(self) -> None:
@@ -786,6 +778,18 @@ class ToolCallPanel(wx.Panel):
     def _register_collapsible(self, key: str, pane: wx.CollapsiblePane) -> None:
         if key:
             self._collapsible[key] = pane
+
+    # ------------------------------------------------------------------
+    def _format_timestamp(self, timestamp: TimestampInfo | None) -> str:
+        if timestamp is None:
+            return ""
+        if timestamp.formatted:
+            return normalize_for_display(timestamp.formatted)
+        if timestamp.raw:
+            return normalize_for_display(timestamp.raw)
+        if timestamp.missing:
+            return _("Timestamp unavailable")
+        return ""
 
     # ------------------------------------------------------------------
     def _resolve_hint(self, key: str) -> int | None:
@@ -840,7 +844,6 @@ class TurnCard(wx.Panel):
             segment_kind="agent",
             on_layout_hint=on_layout_hint,
         )
-        self._tool_panels: dict[str, ToolCallPanel] = {}
         self._system_sections: dict[str, wx.CollapsiblePane] = {}
         self._collapsed_state: dict[str, bool] = {}
         self._regenerated_notice: wx.StaticText | None = None
@@ -872,9 +875,6 @@ class TurnCard(wx.Panel):
             (segment for segment in segments if segment.kind == "agent"),
             None,
         )
-        tool_segments = [
-            segment for segment in segments if segment.kind == "tool"
-        ]
         system_segments = [
             segment for segment in segments if segment.kind == "system"
         ]
@@ -912,36 +912,6 @@ class TurnCard(wx.Panel):
             sizer.Add(self._agent_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
         else:
             self._agent_panel.Hide()
-
-        seen_tool_ids: set[str] = set()
-        for tool_segment in tool_segments:
-            details: ToolCallDetails = tool_segment.payload
-            summary = details.summary
-            identifier = (
-                f"{tool_segment.entry_id}:{summary.index}"
-                if summary.index is not None
-                else f"{tool_segment.entry_id}:{id(details)}"
-            )
-            panel = self._tool_panels.get(identifier)
-            if panel is None or not panel.IsShownOnScreen():
-                panel = ToolCallPanel(
-                    self,
-                    entry_id=tool_segment.entry_id,
-                    on_layout_hint=self._on_layout_hint,
-                )
-                self._tool_panels[identifier] = panel
-            panel.update(details)
-            panel.Show()
-            sizer.Add(panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(4))
-            seen_tool_ids.add(identifier)
-
-        for stale_id in list(self._tool_panels.keys()):
-            if stale_id in seen_tool_ids:
-                continue
-            panel = self._tool_panels.pop(stale_id)
-            if panel.GetContainingSizer() is sizer:
-                sizer.Detach(panel)
-            panel.Destroy()
 
         for index, system_segment in enumerate(system_segments, start=1):
             text = _summarize_system_message(system_segment.payload)

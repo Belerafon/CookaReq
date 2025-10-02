@@ -348,10 +348,10 @@ def test_parse_command_captures_reasoning_segments(tmp_path: Path, monkeypatch) 
     client = LLMClient(settings.llm)
     response = client.parse_command("hello")
     assert response.content == "final answer"
-    assert [segment.text for segment in response.reasoning] == [
-        "step one",
-        "step two",
-    ]
+    assert len(response.reasoning) == 1
+    combined = response.reasoning[0].text
+    assert "step one" in combined
+    assert "step two" in combined
 
 
 def test_parse_command_collects_reasoning_text_and_summary(

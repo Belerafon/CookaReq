@@ -72,8 +72,15 @@ def test_build_conversation_timeline_compiles_turn() -> None:
     tool_event = turn.tool_calls[0]
     assert tool_event.summary.index == 1
     assert tool_event.call_identifier == "tool-1"
-    assert isinstance(tool_event.raw_payload, Mapping)
-    assert tool_event.summary.raw_payload == tool_event.raw_payload
+    assert tool_event.raw_data is None
+    assert isinstance(tool_event.summary.raw_payload, Mapping)
+    assert tool_event.timestamp.raw == "2025-09-30T20:50:10+00:00"
+    assert not tool_event.timestamp.missing
+
+    assert turn.events
+    assert turn.events[0].kind == "response"
+    assert turn.events[-1].kind == "tool"
+    assert turn.events[-1].tool_call is tool_event
 
     assert turn.raw_payload is not None
     assert turn.raw_payload["answer"] == "Готово"
@@ -121,6 +128,13 @@ def test_tool_calls_sorted_by_timestamp() -> None:
     tool_ids = [details.call_identifier for details in turn.tool_calls]
     assert tool_ids == ["tool-1", "tool-4", "tool-6"]
     assert [details.summary.index for details in turn.tool_calls] == [1, 2, 3]
+
+    event_ids = [
+        event.tool_call.call_identifier
+        for event in turn.events
+        if event.kind == "tool" and event.tool_call is not None
+    ]
+    assert event_ids == tool_ids
 
 
 def test_tool_call_event_includes_llm_request_payload() -> None:
@@ -170,15 +184,15 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     assert turn is not None
     tool_event = turn.tool_calls[0]
 
-    request_payload = tool_event.llm_request
-    assert isinstance(request_payload, Mapping)
-    assert "tool_call" in request_payload
-    call_payload = request_payload["tool_call"]
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+    call_payload = raw_data.get("llm_request")
     assert isinstance(call_payload, Mapping)
     assert call_payload.get("arguments", {}).get("rid") == "DEMO16"
-    response_payload = request_payload.get("response")
+    response_payload = raw_data.get("llm_response")
     assert isinstance(response_payload, Mapping)
     assert response_payload.get("content") == "Applying updates"
+    assert raw_data.get("step") in (1, "1")
 
 
 def test_tool_call_event_synthesises_request_when_missing() -> None:
@@ -212,15 +226,16 @@ def test_tool_call_event_synthesises_request_when_missing() -> None:
     assert turn is not None
     tool_event = turn.tool_calls[0]
 
-    request_payload = tool_event.llm_request
-    assert isinstance(request_payload, Mapping)
-    tool_call = request_payload.get("tool_call")
-    assert isinstance(tool_call, Mapping)
-    arguments = tool_call.get("arguments")
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+    arguments = raw_data.get("llm_request", {}).get("arguments")
     assert isinstance(arguments, Mapping)
     assert arguments.get("rid") == "REQ-9"
     assert arguments.get("field") == "title"
     assert arguments.get("value") == "Updated title"
+
+    events = [event for event in turn.events if event.kind == "tool"]
+    assert events and events[0].tool_call is tool_event
 
 
 def test_streamed_responses_in_turn() -> None:
@@ -453,3 +468,31 @@ def test_missing_timestamps_reported_as_missing() -> None:
 
     raw_section = turn.raw_payload
     assert raw_section is None or isinstance(raw_section, Mapping)
+
+
+def test_chat_entry_from_dict_preserves_reasoning_whitespace() -> None:
+    payload = {
+        "prompt": "",
+        "response": "",
+        "tokens": 0,
+        "token_info": {"tokens": 0, "approximate": False},
+        "reasoning": [
+            {
+                "type": "analysis",
+                "text": "План",
+                "leading_whitespace": " ",
+                "trailing_whitespace": " \n",
+            }
+        ],
+    }
+
+    entry = ChatEntry.from_dict(payload)
+
+    assert entry.reasoning == (
+        {
+            "type": "analysis",
+            "text": "План",
+            "leading_whitespace": " ",
+            "trailing_whitespace": " \n",
+        },
+    )

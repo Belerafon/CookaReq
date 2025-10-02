@@ -33,9 +33,19 @@ def test_reasoning_segment_preview_preserves_whitespace() -> None:
 
 def test_normalise_reasoning_segments_from_dataclasses() -> None:
     segments = (
-        LLMReasoningSegment(type="analysis", text="  Evaluate path  "),
+        LLMReasoningSegment(
+            type="analysis",
+            text="Evaluate path",
+            leading_whitespace="  ",
+            trailing_whitespace="  ",
+        ),
         LLMReasoningSegment(type="reasoning", text=""),
-        LLMReasoningSegment(type="thinking", text="Consider next step"),
+        LLMReasoningSegment(
+            type="thinking",
+            text="Consider next step",
+            leading_whitespace="",
+            trailing_whitespace=" ",
+        ),
     )
 
     result = normalise_reasoning_segments(segments)
@@ -47,7 +57,11 @@ def test_normalise_reasoning_segments_from_dataclasses() -> None:
             "leading_whitespace": "  ",
             "trailing_whitespace": "  ",
         },
-        {"type": "thinking", "text": "Consider next step"},
+        {
+            "type": "thinking",
+            "text": "Consider next step",
+            "trailing_whitespace": " ",
+        },
     ]
 
 
@@ -57,8 +71,16 @@ def test_normalise_reasoning_segments_from_nested_payload() -> None:
         {
             "type": "analysis",
             "content": [
-                {"type": "thought", "text": "   Trim me   "},
-                {"text": "Assume default type"},
+                {
+                    "type": "thought",
+                    "text": "Trim me",
+                    "leading_whitespace": "   ",
+                    "trailing_whitespace": "   ",
+                },
+                {
+                    "text": "Assume default type",
+                    "trailing_whitespace": " ",
+                },
             ],
         },
         "",
@@ -74,7 +96,11 @@ def test_normalise_reasoning_segments_from_nested_payload() -> None:
             "leading_whitespace": "   ",
             "trailing_whitespace": "   ",
         },
-        {"type": "reasoning", "text": "Assume default type"},
+        {
+            "type": "reasoning",
+            "text": "Assume default type",
+            "trailing_whitespace": " ",
+        },
     ]
 
 

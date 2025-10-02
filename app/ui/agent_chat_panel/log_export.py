@@ -6,10 +6,21 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ...i18n import _
+from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation
 from ..text import normalize_for_display
 from .tool_summaries import render_tool_summaries_plain, summarize_tool_results
-from .view_model import AgentResponse, TimestampInfo, build_conversation_timeline
+from .view_model import (
+    AgentResponse,
+    AgentTurn,
+    TimestampInfo,
+    TranscriptEntry,
+    build_conversation_timeline,
+)
+
+
+_SYSTEM_PROMPT_TEXT = str(SYSTEM_PROMPT).strip()
+SYSTEM_PROMPT_PLACEHOLDER = "<system prompt repeated – omitted>"
 
 
 def compose_transcript_text(conversation: ChatConversation | None) -> str:
@@ -20,20 +31,15 @@ def compose_transcript_text(conversation: ChatConversation | None) -> str:
     if not conversation.entries:
         return _("This chat does not have any messages yet. Send one to get started.")
 
+    timeline = build_conversation_timeline(conversation)
+    if not timeline.entries:
+        return _("This chat does not have any messages yet. Send one to get started.")
+
     blocks: list[str] = []
-    for idx, entry in enumerate(conversation.entries, start=1):
-        prompt_text = normalize_for_display(entry.prompt)
-        response_source = entry.display_response or entry.response
-        tool_summary_plain = render_tool_summaries_plain(
-            summarize_tool_results(entry.tool_results)
-        )
-        if tool_summary_plain:
-            base_response = (response_source or "").strip()
-            if base_response:
-                response_source = f"{base_response}\n\n{tool_summary_plain}"
-            else:
-                response_source = tool_summary_plain
-        response_text = normalize_for_display(response_source)
+    for idx, entry in enumerate(timeline.entries, start=1):
+        prompt = entry.prompt.text if entry.prompt is not None else entry.entry.prompt
+        prompt_text = normalize_for_display(prompt or "")
+        response_text = _compose_agent_plain_text(entry)
         block = (
             f"{idx}. "
             + _("You:")
@@ -43,6 +49,112 @@ def compose_transcript_text(conversation: ChatConversation | None) -> str:
         )
         blocks.append(block)
     return "\n\n".join(blocks)
+
+
+def _compose_agent_plain_text(entry: TranscriptEntry) -> str:
+    turn = entry.agent_turn
+    parts: list[str] = []
+
+    response_text = _select_agent_response_text(turn, entry)
+    if response_text:
+        parts.append(response_text)
+
+    tool_summary = _compose_tool_summary_text(entry)
+    if tool_summary:
+        parts.append(tool_summary)
+
+    return "\n\n".join(part for part in parts if part)
+
+
+def _select_agent_response_text(
+    turn: AgentTurn | None, entry: TranscriptEntry
+) -> str:
+    if turn is not None:
+        candidate = _extract_response_from_turn(turn)
+        if candidate:
+            return normalize_for_display(candidate)
+
+    fallback = entry.entry.response or entry.entry.display_response
+    return normalize_for_display(fallback or "")
+
+
+def _extract_response_from_turn(turn: AgentTurn) -> str:
+    if turn.final_response is not None:
+        candidate = turn.final_response.text or turn.final_response.display_text or ""
+        if candidate:
+            return candidate
+
+    for response in reversed(turn.streamed_responses):
+        candidate = response.text or response.display_text
+        if candidate:
+            return candidate
+    return ""
+
+
+def _compose_tool_summary_text(entry: TranscriptEntry) -> str:
+    turn = entry.agent_turn
+    if turn is not None and turn.tool_calls:
+        summaries = [details.summary for details in turn.tool_calls if details.summary]
+        if summaries:
+            return render_tool_summaries_plain(summaries)
+
+    return render_tool_summaries_plain(
+        summarize_tool_results(entry.entry.tool_results)
+    )
+
+
+def _omit_repeated_system_prompt(
+    payload: Mapping[str, Any], *, seen_prompt: bool = False
+) -> tuple[dict[str, Any], bool]:
+    sanitized, updated = _strip_repeated_system_prompt(
+        dict(payload), seen_prompt=seen_prompt
+    )
+    if isinstance(sanitized, Mapping):
+        return dict(sanitized), updated
+    return dict(payload), updated
+
+
+def _strip_repeated_system_prompt(
+    value: Any, *, seen_prompt: bool
+) -> tuple[Any, bool]:
+    if not _SYSTEM_PROMPT_TEXT:
+        return value, seen_prompt
+
+    if isinstance(value, str):
+        if value.strip() == _SYSTEM_PROMPT_TEXT:
+            if seen_prompt:
+                return SYSTEM_PROMPT_PLACEHOLDER, True
+            return value, True
+        return value, seen_prompt
+
+    if isinstance(value, Mapping):
+        current_seen = seen_prompt
+        sanitized: dict[Any, Any] = {}
+        for key, item in value.items():
+            cleaned, current_seen = _strip_repeated_system_prompt(
+                item, seen_prompt=current_seen
+            )
+            sanitized[key] = cleaned
+        return sanitized, current_seen
+
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        current_seen = seen_prompt
+        items: list[Any] = []
+        for item in value:
+            cleaned, current_seen = _strip_repeated_system_prompt(
+                item, seen_prompt=current_seen
+            )
+            items.append(cleaned)
+        if isinstance(value, tuple):
+            return tuple(items), current_seen
+        if isinstance(value, list):
+            return items, current_seen
+        try:
+            return type(value)(items), current_seen
+        except Exception:  # pragma: no cover - defensive
+            return items, current_seen
+
+    return value, seen_prompt
 
 
 def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
@@ -132,6 +244,7 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
             lines.append(indent_block(text_value))
         return lines
 
+    seen_system_prompt = False
     blocks: list[str] = []
     for entry in timeline.entries:
         prompt = entry.prompt
@@ -149,7 +262,10 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
                 timestamp=prompt_timestamp
             )
             blocks.append(header)
-            blocks.append(indent_block(format_json_block(entry.context_messages)))
+            sanitized_context, seen_system_prompt = _strip_repeated_system_prompt(
+                entry.context_messages, seen_prompt=seen_system_prompt
+            )
+            blocks.append(indent_block(format_json_block(sanitized_context)))
 
         turn = entry.agent_turn
         if turn is not None:
@@ -169,6 +285,9 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
                 payload: dict[str, Any] = {"messages": turn.llm_request.messages}
                 if turn.llm_request.sequence is not None:
                     payload["sequence"] = turn.llm_request.sequence
+                payload, seen_system_prompt = _omit_repeated_system_prompt(
+                    payload, seen_prompt=seen_system_prompt
+                )
                 header = _("[{timestamp}] LLM request:").format(
                     timestamp=format_timestamp_info(turn.timestamp)
                 )
@@ -224,4 +343,5 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
 __all__ = [
     "compose_transcript_log_text",
     "compose_transcript_text",
+    "SYSTEM_PROMPT_PLACEHOLDER",
 ]

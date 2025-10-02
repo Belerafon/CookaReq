@@ -218,23 +218,6 @@ def summarize_tool_payload(
     last_observed = _normalise_timestamp(
         payload.get("last_observed_at") or payload.get("observed_at")
     )
-    if started_at and completed_at and started_at == completed_at:
-        bullet_lines.append(
-            _("Completed at {timestamp}").format(timestamp=completed_at)
-        )
-    else:
-        if started_at:
-            bullet_lines.append(
-                _("Started at {timestamp}").format(timestamp=started_at)
-            )
-        if completed_at:
-            bullet_lines.append(
-                _("Completed at {timestamp}").format(timestamp=completed_at)
-            )
-    if not completed_at and last_observed and last_observed != started_at:
-        bullet_lines.append(
-            _("Last updated at {timestamp}").format(timestamp=last_observed)
-        )
     return ToolCallSummary(
         index=index,
         tool_name=tool_name,

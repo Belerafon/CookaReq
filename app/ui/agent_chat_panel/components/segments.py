@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import suppress
 import json
 from typing import Any, Literal
@@ -13,6 +13,7 @@ from ....i18n import _
 from ...text import normalize_for_display
 from ...widgets.chat_message import MessageBubble, tool_bubble_palette
 from ..history_utils import format_value_snippet, history_json_safe
+from ..tool_summaries import prettify_key
 from ..view_model import (
     AgentResponse,
     AgentSegment,
@@ -200,23 +201,58 @@ def _build_collapsible_section(
     return pane
 
 
-def _summarize_request_arguments(arguments: Any) -> list[str]:
+def _extract_bullet_label(text: str) -> str:
+    label, separator, _ = text.partition(":")
+    if not separator:
+        return ""
+    return normalize_for_display(label).strip().casefold()
+
+
+def _format_argument_line(key: Any, value: Any) -> str:
+    value_text = format_value_snippet(value)
+    if not value_text:
+        return ""
+    if isinstance(key, str):
+        normalized_key = normalize_for_display(key.strip())
+        if not normalized_key:
+            return value_text
+        lowered = normalized_key.casefold()
+        if lowered == "rid":
+            return _("Requirement: {rid}").format(rid=value_text)
+        if lowered == "directory":
+            return ""
+    label = prettify_key(key)
+    if not label:
+        return value_text
+    return _("{label}: {value}").format(label=label, value=value_text)
+
+
+def _summarize_request_arguments(
+    arguments: Any, *, skip_labels: Collection[str] = ()
+) -> list[str]:
+    skip = {label.casefold() for label in skip_labels if label}
     if isinstance(arguments, Mapping):
         lines: list[str] = []
         for key, value in arguments.items():
-            key_text = normalize_for_display(str(key).strip())
-            value_text = format_value_snippet(value)
-            if key_text and value_text:
-                lines.append(f"{key_text}: {value_text}")
-            elif key_text:
-                lines.append(key_text)
-            elif value_text:
-                lines.append(value_text)
+            line = _format_argument_line(key, value)
+            if not line:
+                continue
+            label_key = _extract_bullet_label(line)
+            if label_key:
+                if label_key in skip:
+                    continue
+                skip.add(label_key)
+            if len(lines) >= 5:
+                break
+            lines.append(line)
         return lines
     if arguments is not None:
-        value_text = format_value_snippet(arguments)
-        if value_text:
-            return [value_text]
+        line = _("Arguments: {value}").format(
+            value=format_value_snippet(arguments)
+        )
+        label_key = _extract_bullet_label(line)
+        if not label_key or label_key not in skip:
+            return [line]
     return []
 
 
@@ -692,36 +728,50 @@ class ToolCallPanel(wx.Panel):
         summary = details.summary
         tool_name = summary.tool_name or _("Tool")
         status = summary.status or _("returned data")
-        heading = _("Ran {tool} — {status}").format(
+        heading = _("Tool call {tool} — {status}").format(
             tool=normalize_for_display(tool_name),
             status=normalize_for_display(status),
         )
 
         bullet_lines: list[str] = []
+        seen_lines: set[str] = set()
+        seen_labels: set[str] = set()
 
-        if summary.duration is not None:
-            bullet_lines.append(
-                _("Duration: {seconds:.2f} s").format(seconds=summary.duration)
-            )
+        def add_bullet_line(text: str | None) -> None:
+            if not text:
+                return
+            normalized = normalize_for_display(text).strip()
+            if not normalized:
+                return
+            key = normalized.casefold()
+            if key in seen_lines:
+                return
+            seen_lines.add(key)
+            label_key = _extract_bullet_label(normalized)
+            if label_key:
+                seen_labels.add(label_key)
+            bullet_lines.append(normalized)
+
         if summary.cost:
-            bullet_lines.append(
-                _("Cost: {cost}").format(cost=normalize_for_display(summary.cost))
+            add_bullet_line(
+                _("Cost: {cost}").format(
+                    cost=normalize_for_display(summary.cost)
+                )
             )
         if summary.error_message:
-            bullet_lines.append(
+            add_bullet_line(
                 _("Error: {message}").format(
                     message=normalize_for_display(summary.error_message)
                 )
             )
 
         for bullet in summary.bullet_lines:
-            bullet_text = normalize_for_display(bullet)
-            if bullet_text:
-                bullet_lines.append(bullet_text)
+            add_bullet_line(bullet)
 
-        for argument in _summarize_request_arguments(summary.arguments):
-            if argument:
-                bullet_lines.append(argument)
+        for argument in _summarize_request_arguments(
+            summary.arguments, skip_labels=seen_labels
+        ):
+            add_bullet_line(argument)
 
         text_lines = [heading]
         text_lines.extend(f"• {line}" for line in bullet_lines if line)

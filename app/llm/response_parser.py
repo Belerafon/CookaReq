@@ -10,6 +10,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
 from ..util.json import make_json_safe
+from .logging import log_raw_llm_payload
 from .reasoning import (
     ReasoningFragment,
     collect_reasoning_fragments,
@@ -296,6 +297,11 @@ class LLMResponseParser:
             ensure_not_cancelled()
             for chunk in stream:  # pragma: no cover - network/streaming
                 ensure_not_cancelled()
+                log_raw_llm_payload(
+                    "LLM_STREAM_CHUNK",
+                    stage="chat.stream.chunk",
+                    data=chunk,
+                )
                 chunk_map = extract_mapping(chunk)
                 choices = getattr(chunk, "choices", None)
                 if choices is None and chunk_map is not None:
@@ -399,6 +405,15 @@ class LLMResponseParser:
         if not message and chunk_level_fallback:
             message = chunk_level_fallback
         tool_calls = [tool_chunks[key] for key in order if tool_chunks[key]["function"]["name"]]
+        log_raw_llm_payload(
+            "LLM_STREAM_AGGREGATED",
+            stage="chat.stream.aggregated_tool_calls",
+            data=tool_calls,
+            metadata={
+                "chunk_count": len(order),
+                "message_length": len(message),
+            },
+        )
         if stream_error is not None:
             log_debug_payload(
                 "llm.response_parser.stream_interrupted",
@@ -426,6 +441,12 @@ class LLMResponseParser:
                     completion,
                 )
             )
+        log_raw_llm_payload(
+            "LLM_CHAT_COMPLETION_CHOICES",
+            stage="chat.parser.choices",
+            data=choices,
+            metadata={"choice_count": len(choices)},
+        )
         message = getattr(choices[0], "message", None)
         if message is None:
             raise ToolValidationError(
@@ -440,6 +461,11 @@ class LLMResponseParser:
             [attribute_tool_calls]
             if isinstance(attribute_tool_calls, Mapping)
             else list(attribute_tool_calls)
+        )
+        log_raw_llm_payload(
+            "LLM_CHAT_COMPLETION_TOOL_SECTION",
+            stage="chat.parser.raw_tool_calls",
+            data=raw_tool_calls_payload,
         )
         reasoning_accumulator: list[dict[str, str]] = []
         message_text = self._extract_message_text(

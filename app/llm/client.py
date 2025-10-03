@@ -13,7 +13,7 @@ from ..settings import LLMSettings
 from ..util.cancellation import CancellationEvent, OperationCancelledError
 from .context import extract_selected_rids_from_messages
 from .harmony import convert_tools_for_harmony
-from .logging import log_request, log_response
+from .logging import log_request, log_response, log_raw_llm_payload
 from .request_builder import LLMRequestBuilder
 from .response_parser import LLMResponseParser, normalise_tool_calls
 from .spec import TOOLS
@@ -209,11 +209,21 @@ class LLMClient:
         raw_normalized_tool_calls: list[dict[str, Any]] = []
         normalized_tool_calls_for_log: list[dict[str, Any]] = []
         parsed_tool_calls: tuple[LLMToolCall, ...] = ()
+        parsed_tool_calls_initial: tuple[LLMToolCall, ...] = ()
         reasoning_accumulator: list[dict[str, str]] = []
         reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
 
         try:
             completion = self._chat_completion(**prepared.request_args)
+            log_raw_llm_payload(
+                "LLM_RAW_COMPLETION",
+                stage="chat.completions.create",
+                data=completion,
+                metadata={
+                    "stream_requested": bool(prepared.request_args.get("stream", False)),
+                    "message_format": self._message_format,
+                },
+            )
             if prepared.request_args.get("stream"):
                 (
                     message_text,
@@ -233,15 +243,37 @@ class LLMClient:
                 if reasoning_entries:
                     reasoning_accumulator.extend(reasoning_entries)
             llm_message_text = message_text
+            log_raw_llm_payload(
+                "LLM_TOOL_PAYLOAD",
+                stage="chat.raw_tool_calls",
+                data=raw_tool_calls_payload,
+                metadata={"stream": bool(prepared.request_args.get("stream", False))},
+            )
             raw_normalized_tool_calls = normalise_tool_calls(
                 raw_tool_calls_payload
             )
-            parsed_tool_calls = self._response_parser.parse_tool_calls(
+            log_raw_llm_payload(
+                "LLM_TOOL_PAYLOAD",
+                stage="chat.normalised_tool_calls",
+                data=raw_normalized_tool_calls,
+            )
+            parsed_tool_calls_initial = self._response_parser.parse_tool_calls(
                 raw_tool_calls_payload
             )
+            log_raw_llm_payload(
+                "LLM_TOOL_PAYLOAD",
+                stage="chat.parsed_tool_calls.initial",
+                data=list(parsed_tool_calls_initial),
+            )
             parsed_tool_calls = self._apply_tool_call_defaults(
-                parsed_tool_calls,
+                parsed_tool_calls_initial,
                 request_messages=prepared.snapshot,
+            )
+            log_raw_llm_payload(
+                "LLM_TOOL_PAYLOAD",
+                stage="chat.parsed_tool_calls.final",
+                data=list(parsed_tool_calls),
+                metadata={"defaults_applied": parsed_tool_calls != parsed_tool_calls_initial},
             )
             normalized_tool_calls_for_log = [
                 {
@@ -275,6 +307,17 @@ class LLMClient:
                 reasoning_segments = self._response_parser.finalize_reasoning_segments(
                     reasoning_accumulator
                 )
+            log_raw_llm_payload(
+                "LLM_VALIDATION_ERROR_RAW",
+                stage="chat.validation_error",
+                data={
+                    "message": llm_message_text,
+                    "raw_tool_calls": raw_tool_calls_payload,
+                    "normalised_tool_calls": raw_normalized_tool_calls,
+                    "parsed_tool_calls_initial": list(parsed_tool_calls_initial),
+                    "parsed_tool_calls_final": list(parsed_tool_calls),
+                },
+            )
             log_payload: dict[str, Any] = {
                 "error": {
                     "type": type(exc).__name__,
@@ -319,6 +362,15 @@ class LLMClient:
             )
             raise
         else:
+            log_raw_llm_payload(
+                "LLM_CLIENT_RESPONSE_DETAIL",
+                stage="chat.final_response",
+                data=response,
+                metadata={
+                    "tool_call_count": len(response.tool_calls),
+                    "reasoning_segments": len(response.reasoning),
+                },
+            )
             log_payload: dict[str, Any] = {"message": response.content}
             if response.tool_calls:
                 log_payload["tool_calls"] = [

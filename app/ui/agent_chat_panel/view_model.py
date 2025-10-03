@@ -1165,94 +1165,6 @@ def _extract_error_tool_calls(error_payload: Mapping[str, Any]) -> tuple[Mapping
     return tuple(candidates)
 
 
-def _strip_duplicate_tool_call_sections(
-    value: Any, *, reference_call: Mapping[str, Any]
-) -> Any:
-    """Remove nested tool call sections describing *reference_call*."""
-
-    if not isinstance(reference_call, Mapping) or not reference_call:
-        return value
-
-    if isinstance(value, Mapping):
-        cleaned: dict[str, Any] = {}
-        for key, item in value.items():
-            if key == "tool_call" and _tool_call_matches_reference(item, reference_call):
-                continue
-            cleaned[key] = _strip_duplicate_tool_call_sections(
-                item,
-                reference_call=reference_call,
-            )
-        return cleaned
-
-    if isinstance(value, list):
-        cleaned_list = []
-        for item in value:
-            if isinstance(item, Mapping) and _tool_call_matches_reference(item, reference_call):
-                continue
-            cleaned_list.append(
-                _strip_duplicate_tool_call_sections(
-                    item,
-                    reference_call=reference_call,
-                )
-            )
-        return cleaned_list
-
-    if isinstance(value, tuple):
-        cleaned_tuple = tuple(
-            _strip_duplicate_tool_call_sections(item, reference_call=reference_call)
-            for item in value
-            if not (
-                isinstance(item, Mapping)
-                and _tool_call_matches_reference(item, reference_call)
-            )
-        )
-        return cleaned_tuple
-
-    return value
-
-
-def _tool_call_matches_reference(
-    candidate: Any, reference_call: Mapping[str, Any]
-) -> bool:
-    if not isinstance(candidate, Mapping) or not isinstance(reference_call, Mapping):
-        return False
-
-    candidate_id = _extract_tool_identifier(candidate)
-    reference_id = _extract_tool_identifier(reference_call)
-    if candidate_id and reference_id:
-        return candidate_id == reference_id
-    if candidate_id or reference_id:
-        return False
-
-    candidate_name = _normalise_tool_name(candidate)
-    reference_name = _normalise_tool_name(reference_call)
-    if candidate_name and reference_name and candidate_name == reference_name:
-        candidate_args = _extract_tool_arguments(candidate)
-        reference_args = _extract_tool_arguments(reference_call)
-        if candidate_args is None or reference_args is None:
-            return True
-        return history_json_safe(candidate_args) == history_json_safe(reference_args)
-
-    return history_json_safe(candidate) == history_json_safe(reference_call)
-
-
-def _normalise_tool_name(payload: Mapping[str, Any]) -> str | None:
-    for key in ("name", "tool_name", "tool"):
-        value = payload.get(key)
-        if isinstance(value, str):
-            text = value.strip()
-            if text:
-                return text
-    return None
-
-
-def _extract_tool_arguments(payload: Mapping[str, Any]) -> Any:
-    for key in ("arguments", "tool_arguments"):
-        if key in payload:
-            return payload[key]
-    return None
-
-
 # ---------------------------------------------------------------------------
 def _normalise_raw_section(value: Any) -> Any:
     """Return a JSON-safe representation that can be merged structurally."""
@@ -1376,11 +1288,7 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]
                     base = str(step_value) if step_value is not None else "error"
                     identifier = f"{base}:{position}"
                 call_payload = _normalise_raw_section(call)
-                stripped_error = _strip_duplicate_tool_call_sections(
-                    error_payload,
-                    reference_call=call,
-                )
-                error_section = _normalise_raw_section(stripped_error)
+                error_section = _normalise_raw_section(error_payload)
                 identifier_str = str(identifier)
                 if step_index is not None:
                     sections: dict[str, Any] = {}

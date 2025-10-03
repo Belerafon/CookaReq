@@ -319,7 +319,13 @@ def test_tool_call_event_includes_llm_error_arguments() -> None:
     error_payload = raw_data.get("llm_error")
     assert isinstance(error_payload, Mapping)
     assert error_payload.get("message") == "Tool call failed"
-    assert "tool_call" not in error_payload
+    tool_call_payload = error_payload.get("tool_call")
+    assert isinstance(tool_call_payload, Mapping)
+    tool_call_args = tool_call_payload.get("arguments")
+    assert isinstance(tool_call_args, Mapping)
+    assert tool_call_args["rid"] == "REQ-404"
+    assert tool_call_args["field"] == "title"
+    assert tool_call_args["value"] == "Broken"
     details = error_payload.get("details")
     assert isinstance(details, Mapping)
     assert details.get("hint") == "Double-check the requirement id"

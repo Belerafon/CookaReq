@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping, Sequence
-import inspect
 from contextlib import suppress
 import json
 from typing import Any, Literal
@@ -14,7 +13,7 @@ from ....i18n import _
 from ...text import normalize_for_display
 from ...widgets.chat_message import MessageBubble, tool_bubble_palette
 from ..history_utils import format_value_snippet, history_json_safe
-from ..tool_summaries import prettify_key
+from ..tool_summaries import ToolCallSummary, prettify_key
 from ..view_model import (
     AgentResponse,
     AgentSegment,
@@ -333,9 +332,6 @@ class MessageSegmentPanel(wx.Panel):
         self._alias_collapsibles: list[wx.CollapsiblePane] = []
         self._regenerate_button: wx.Button | None = None
         self._regenerate_handler: Callable[[], None] | None = None
-        self._tool_panels: dict[str, ToolCallPanel] = {}
-        self._tool_collapsed_state: dict[str, dict[str, bool]] = {}
-        self._pending_tool_panels: list[ToolCallPanel] = []
 
     # ------------------------------------------------------------------
     def update(
@@ -347,12 +343,10 @@ class MessageSegmentPanel(wx.Panel):
     ) -> None:
         self._capture_collapsed_state()
         self._collapsible.clear()
-        self._capture_tool_panel_state()
         sizer = self.GetSizer()
         sizer.Clear(delete_windows=True)
         self._regenerate_button = None
         self._regenerate_handler = on_regenerate
-        self._tool_panels.clear()
 
         if self._segment_kind == "user":
             assert isinstance(payload, PromptSegment)
@@ -425,9 +419,7 @@ class MessageSegmentPanel(wx.Panel):
         container.SetSizer(wx.BoxSizer(wx.VERTICAL))
 
         rendered: list[wx.Window] = []
-        tool_widgets: list[ToolCallPanel] = []
         timestamp_info = turn.timestamp if turn is not None else None
-        active_tool_ids: list[str] = []
         if turn is not None:
             for event in turn.events:
                 if event.kind == "response" and event.response is not None:
@@ -437,30 +429,13 @@ class MessageSegmentPanel(wx.Panel):
                     if bubble is not None:
                         rendered.append(bubble)
                 elif event.kind == "tool" and event.tool_call is not None:
-                    details = event.tool_call
-                    identifier = self._make_tool_identifier(details, event.order_index)
-                    panel = ToolCallPanel(
-                        self,
-                        entry_id=self._entry_id,
-                        on_layout_hint=self._on_layout_hint,
+                    bubble, raw_section = self._render_tool_event(
+                        container, event.tool_call, event.order_index
                     )
-                    saved_state = self._tool_collapsed_state.get(identifier)
-                    if saved_state:
-                        panel._collapsed_state.update(saved_state)
-                    panel.update(details)
-                    tool_widgets.append(panel)
-                    self._tool_panels[identifier] = panel
-                    active_tool_ids.append(identifier)
-                    self._tool_collapsed_state[identifier] = dict(
-                        getattr(panel, "_collapsed_state", {})
-                    )
-
-        active_tool_keys = set(active_tool_ids)
-        stale = [
-            key for key in self._tool_collapsed_state if key not in active_tool_keys
-        ]
-        for key in stale:
-            self._tool_collapsed_state.pop(key, None)
+                    if bubble is not None:
+                        rendered.append(bubble)
+                    if raw_section is not None:
+                        rendered.append(raw_section)
 
         if turn is not None:
             reasoning_section = self._create_reasoning_section(
@@ -494,8 +469,6 @@ class MessageSegmentPanel(wx.Panel):
         else:
             container.Destroy()
 
-        self._pending_tool_panels = tool_widgets
-
         if payload.can_regenerate and on_regenerate is not None:
             button = wx.Button(
                 self,
@@ -512,6 +485,119 @@ class MessageSegmentPanel(wx.Panel):
                 self.FromDIP(4),
             )
             self._regenerate_button = button
+
+    # ------------------------------------------------------------------
+    def _render_tool_event(
+        self,
+        parent: wx.Window,
+        details: ToolCallDetails,
+        order_index: int,
+    ) -> tuple[MessageBubble | None, wx.CollapsiblePane | None]:
+        bubble = self._create_tool_summary_bubble(parent, details)
+        raw_section = self._create_tool_raw_section(parent, details, order_index)
+        return bubble, raw_section
+
+    # ------------------------------------------------------------------
+    def _create_tool_summary_bubble(
+        self, parent: wx.Window, details: ToolCallDetails
+    ) -> MessageBubble | None:
+        summary = details.summary
+        tool_name = summary.tool_name or "Tool"
+        status = summary.status or "returned data"
+        heading = "Tool call {tool} — {status}".format(
+            tool=normalize_for_display(tool_name),
+            status=normalize_for_display(status),
+        )
+
+        bullet_lines = self._collect_tool_bullet_lines(summary)
+        text_lines = [heading]
+        text_lines.extend(f"• {line}" for line in bullet_lines if line)
+        text = "\n".join(text_lines)
+        if not text.strip():
+            return None
+
+        timestamp_label = self._format_timestamp(details.timestamp) or None
+        bubble = MessageBubble(
+            parent,
+            role_label="Tool",
+            timestamp=timestamp_label,
+            text=text,
+            align="left",
+            allow_selection=True,
+            palette=tool_bubble_palette(self.GetBackgroundColour(), tool_name),
+            width_hint=self._resolve_hint("tool"),
+            on_width_change=lambda width: self._emit_layout_hint("tool", width),
+        )
+        return bubble
+
+    # ------------------------------------------------------------------
+    def _collect_tool_bullet_lines(self, summary: ToolCallSummary) -> list[str]:
+        bullet_lines: list[str] = []
+        seen_lines: set[str] = set()
+        seen_labels: set[str] = set()
+
+        def add_bullet_line(text: str | None) -> None:
+            if not text:
+                return
+            normalized = normalize_for_display(text).strip()
+            if not normalized:
+                return
+            key = normalized.casefold()
+            if key in seen_lines:
+                return
+            seen_lines.add(key)
+            label_key = _extract_bullet_label(normalized)
+            if label_key:
+                seen_labels.add(label_key)
+            bullet_lines.append(normalized)
+
+        if summary.cost:
+            add_bullet_line(
+                "Cost: {cost}".format(
+                    cost=normalize_for_display(summary.cost)
+                )
+            )
+        if summary.error_message:
+            add_bullet_line(
+                "Error: {message}".format(
+                    message=normalize_for_display(summary.error_message)
+                )
+            )
+
+        for bullet in summary.bullet_lines:
+            add_bullet_line(bullet)
+
+        for argument in _summarize_request_arguments(
+            summary.arguments, skip_labels=seen_labels
+        ):
+            add_bullet_line(argument)
+
+        return bullet_lines
+
+    # ------------------------------------------------------------------
+    def _create_tool_raw_section(
+        self,
+        parent: wx.Window,
+        details: ToolCallDetails,
+        order_index: int,
+    ) -> wx.CollapsiblePane | None:
+        raw_text = _format_raw_payload(details.raw_data)
+        if not raw_text:
+            return None
+
+        identifier = self._make_tool_identifier(details, order_index)
+        state_key = f"tool:raw:{identifier}"
+        pane = _build_collapsible_section(
+            parent,
+            label=_("Raw data"),
+            content=raw_text,
+            minimum_height=160,
+            collapsed=self._collapsed_state.get(state_key, True),
+            name=state_key,
+        )
+        if pane is not None:
+            self._register_collapsible(state_key, pane)
+        return pane
 
     # ------------------------------------------------------------------
     def _create_agent_message_bubble(
@@ -655,40 +741,13 @@ class MessageSegmentPanel(wx.Panel):
             self._collapsible[key] = pane
 
     # ------------------------------------------------------------------
-    def _capture_tool_panel_state(self) -> None:
-        self._pending_tool_panels.clear()
-        for identifier, panel in list(self._tool_panels.items()):
-            if not isinstance(panel, ToolCallPanel):
-                continue
-            state = getattr(panel, "_collapsed_state", {})
-            try:
-                self._tool_collapsed_state[identifier] = dict(state)
-            except Exception:
-                self._tool_collapsed_state[identifier] = {}
-        self._tool_panels.clear()
-
-    # ------------------------------------------------------------------
-    def pop_tool_panels(self) -> list[ToolCallPanel]:
-        parent = self.GetParent()
-        panels: list[ToolCallPanel] = []
-        for panel in self._pending_tool_panels:
-            if not isinstance(panel, ToolCallPanel):
-                continue
-            if isinstance(parent, wx.Window) and panel.GetParent() is not parent:
-                with suppress(RuntimeError):
-                    panel.Reparent(parent)
-            panels.append(panel)
-        self._pending_tool_panels = []
-        return panels
-
-    # ------------------------------------------------------------------
     def _make_tool_identifier(
         self, details: ToolCallDetails, order_index: int
     ) -> str:
         summary_index = details.summary.index
         if summary_index:
-            return f"{self._entry_id}:tool:{summary_index}"
-        return f"{self._entry_id}:tool:{order_index}"
+            return f"tool:{self._entry_id}:{summary_index}"
+        return f"tool:{self._entry_id}:{order_index}"
 
     # ------------------------------------------------------------------
     def _resolve_hint(self, key: str) -> int | None:
@@ -733,240 +792,6 @@ class MessageSegmentPanel(wx.Panel):
             handler()
         except Exception:
             pass
-
-
-class ToolCallPanel(wx.Panel):
-    """Render a single tool call entry."""
-
-    def __init__(
-        self,
-        parent: wx.Window,
-        *,
-        entry_id: str,
-        on_layout_hint: Callable[[str, int], None] | None,
-    ) -> None:
-        super().__init__(parent)
-        self.SetBackgroundColour(parent.GetBackgroundColour())
-        self.SetForegroundColour(parent.GetForegroundColour())
-        self.SetDoubleBuffered(True)
-        self.SetSizer(wx.BoxSizer(wx.VERTICAL))
-        self._entry_id = entry_id
-        self._on_layout_hint = on_layout_hint
-        self._layout_hints: dict[str, int] = {}
-        self._collapsible: dict[str, wx.CollapsiblePane] = {}
-        self._collapsed_state: dict[str, bool] = {}
-        self._alias_collapsibles: list[wx.CollapsiblePane] = []
-
-    # ------------------------------------------------------------------
-    def update(self, details: ToolCallDetails) -> None:
-        self._capture_collapsed_state()
-        self._collapsible.clear()
-        sizer = self.GetSizer()
-        sizer.Clear(delete_windows=True)
-
-        summary = details.summary
-        header = self._create_summary_bubble(details)
-        if header is not None:
-            sizer.Add(header, 0, wx.EXPAND)
-
-        sections = self._build_sections(details)
-        for index, pane in enumerate(sections):
-            sizer.Add(
-                pane,
-                0,
-                wx.EXPAND | wx.TOP,
-                self.FromDIP(4) if index or header is not None else 0,
-            )
-
-        self.Layout()
-
-    # ------------------------------------------------------------------
-    def _create_summary_bubble(self, details: ToolCallDetails) -> MessageBubble | None:
-        summary = details.summary
-        tool_name = summary.tool_name or "Tool"
-        status = summary.status or "returned data"
-        heading = "Tool call {tool} — {status}".format(
-            tool=normalize_for_display(tool_name),
-            status=normalize_for_display(status),
-        )
-
-        bullet_lines: list[str] = []
-        seen_lines: set[str] = set()
-        seen_labels: set[str] = set()
-
-        def add_bullet_line(text: str | None) -> None:
-            if not text:
-                return
-            normalized = normalize_for_display(text).strip()
-            if not normalized:
-                return
-            key = normalized.casefold()
-            if key in seen_lines:
-                return
-            seen_lines.add(key)
-            label_key = _extract_bullet_label(normalized)
-            if label_key:
-                seen_labels.add(label_key)
-            bullet_lines.append(normalized)
-
-        if summary.cost:
-            add_bullet_line(
-                "Cost: {cost}".format(
-                    cost=normalize_for_display(summary.cost)
-                )
-            )
-        if summary.error_message:
-            add_bullet_line(
-                "Error: {message}".format(
-                    message=normalize_for_display(summary.error_message)
-                )
-            )
-
-        for bullet in summary.bullet_lines:
-            add_bullet_line(bullet)
-
-        for argument in _summarize_request_arguments(
-            summary.arguments, skip_labels=seen_labels
-        ):
-            add_bullet_line(argument)
-
-        text_lines = [heading]
-        text_lines.extend(f"• {line}" for line in bullet_lines if line)
-        text = "\n".join(text_lines)
-        if not text.strip():
-            return None
-
-        timestamp_label = self._format_timestamp(details.timestamp)
-        if not timestamp_label:
-            timestamp_label = None
-
-        bubble = MessageBubble(
-            self,
-            role_label="Tool",
-            timestamp=timestamp_label,
-            text=text,
-            align="left",
-            allow_selection=True,
-            palette=tool_bubble_palette(self.GetBackgroundColour(), tool_name),
-            width_hint=self._resolve_hint("tool"),
-            on_width_change=lambda width: self._emit_layout_hint("tool", width),
-        )
-        return bubble
-
-    # ------------------------------------------------------------------
-    def _build_sections(self, details: ToolCallDetails) -> list[wx.CollapsiblePane]:
-        sections: list[wx.CollapsiblePane] = []
-        summary = details.summary
-        entry_key = f"tool:{self._entry_id}:{summary.index}" if summary.index else self._entry_id
-
-        raw_text = _format_raw_payload(details.raw_data)
-        if raw_text:
-            state_key = f"raw:{entry_key}"
-            pane = _build_collapsible_section(
-                self,
-                label=_("Raw data"),
-                content=raw_text,
-                minimum_height=160,
-                collapsed=self._collapsed_state.get(state_key, True),
-                name=f"tool:raw:{entry_key}",
-            )
-            if pane is not None:
-                self._register_collapsible(state_key, pane)
-                sections.append(pane)
-
-                alias_name = f"raw:tool:{entry_key}"
-                if not any(alias.GetName() == alias_name for alias in self._alias_collapsibles):
-                    alias = _build_collapsible_section(
-                        self,
-                        label=_("Raw data"),
-                        content=raw_text,
-                        minimum_height=160,
-                        collapsed=True,
-                        name=alias_name,
-                    )
-                    if alias is not None:
-                        alias.Hide()
-                        self._alias_collapsibles.append(alias)
-
-        return sections
-
-    # ------------------------------------------------------------------
-    def GetChildren(self) -> list[wx.Window]:  # noqa: N802 - wx naming convention
-        children = super().GetChildren()
-        if not children:
-            return children
-        if self._should_filter_tool_summary(children):
-            return [child for child in children if not isinstance(child, MessageBubble)]
-        return children
-
-    # ------------------------------------------------------------------
-    def _should_filter_tool_summary(self, children: list[wx.Window]) -> bool:
-        if not children:
-            return False
-        try:
-            frames = inspect.stack()
-        except Exception:
-            return False
-        count = 0
-        for frame in frames:
-            if frame.function == "collect_message_bubbles":
-                count += 1
-                if count >= 2:
-                    return True
-        return False
-
-    # ------------------------------------------------------------------
-    def _capture_collapsed_state(self) -> None:
-        for alias in self._alias_collapsibles:
-            with suppress(RuntimeError):
-                alias.Destroy()
-        self._alias_collapsibles.clear()
-        for key, pane in list(self._collapsible.items()):
-            if isinstance(pane, wx.CollapsiblePane):
-                try:
-                    self._collapsed_state[key] = pane.IsCollapsed()
-                except RuntimeError:
-                    continue
-
-    # ------------------------------------------------------------------
-    def _register_collapsible(self, key: str, pane: wx.CollapsiblePane) -> None:
-        if key:
-            self._collapsible[key] = pane
-
-    # ------------------------------------------------------------------
-    def _format_timestamp(self, timestamp: TimestampInfo | None) -> str:
-        if timestamp is None:
-            return ""
-        if timestamp.formatted:
-            return normalize_for_display(timestamp.formatted)
-        if timestamp.raw:
-            return normalize_for_display(timestamp.raw)
-        if timestamp.missing:
-            return _("Timestamp unavailable")
-        return ""
-
-    # ------------------------------------------------------------------
-    def _resolve_hint(self, key: str) -> int | None:
-        value = self._layout_hints.get(key)
-        if value is None:
-            return None
-        try:
-            width = int(value)
-        except (TypeError, ValueError):
-            return None
-        return width if width > 0 else None
-
-    # ------------------------------------------------------------------
-    def _emit_layout_hint(self, key: str, width: int) -> None:
-        self._layout_hints[key] = width
-        if self._on_layout_hint is None:
-            return
-        try:
-            self._on_layout_hint(key, width)
-        except Exception:
-            pass
-
-
 class TurnCard(wx.Panel):
     """Container combining message and diagnostic segments for an entry."""
 
@@ -1001,8 +826,6 @@ class TurnCard(wx.Panel):
         self._system_sections: dict[str, wx.CollapsiblePane] = {}
         self._collapsed_state: dict[str, bool] = {}
         self._regenerated_notice: wx.StaticText | None = None
-        self._tool_children: list[ToolCallPanel] = []
-        self._stale_tool_children: list[ToolCallPanel] = []
 
     # ------------------------------------------------------------------
     def update(
@@ -1013,7 +836,6 @@ class TurnCard(wx.Panel):
         regenerate_enabled: bool,
     ) -> None:
         self._capture_system_state()
-        self._prepare_tool_panels_for_update()
         previous_notice = self._regenerated_notice
         sizer = self.GetSizer()
         sizer.Clear(delete_windows=False)
@@ -1067,15 +889,6 @@ class TurnCard(wx.Panel):
             self._agent_panel.enable_regenerate(regenerate_enabled)
             self._agent_panel.Show()
             sizer.Add(self._agent_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
-            for panel in self._agent_panel.pop_tool_panels():
-                panel.Show()
-                self._tool_children.append(panel)
-                sizer.Add(
-                    panel,
-                    0,
-                    wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
-                    self.FromDIP(4),
-                )
         else:
             self._agent_panel.Hide()
 
@@ -1097,7 +910,6 @@ class TurnCard(wx.Panel):
             self._system_sections[key] = pane
             sizer.Add(pane, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(4))
 
-        self._finalize_tool_panels()
         self.Layout()
 
     # ------------------------------------------------------------------
@@ -1112,22 +924,4 @@ class TurnCard(wx.Panel):
         self._system_sections.clear()
 
     # ------------------------------------------------------------------
-    def _prepare_tool_panels_for_update(self) -> None:
-        if self._stale_tool_children:
-            self._finalize_tool_panels()
-        if self._tool_children:
-            self._stale_tool_children.extend(self._tool_children)
-            self._tool_children.clear()
-
-    # ------------------------------------------------------------------
-    def _finalize_tool_panels(self) -> None:
-        for panel in list(self._stale_tool_children):
-            if isinstance(panel, wx.Window):
-                try:
-                    panel.Destroy()
-                except RuntimeError:
-                    pass
-        self._stale_tool_children.clear()
-
-
-__all__ = ["MessageSegmentPanel", "ToolCallPanel", "TurnCard"]
+__all__ = ["MessageSegmentPanel", "TurnCard"]

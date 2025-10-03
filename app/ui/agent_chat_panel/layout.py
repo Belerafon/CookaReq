@@ -11,6 +11,7 @@ from wx.lib.scrolledpanel import ScrolledPanel
 
 from ...i18n import _
 from ..helpers import create_copy_button, dip, inherit_background
+from ..splitter_utils import refresh_splitter_highlight, style_splitter
 from ..widgets.marquee_dataview import MarqueeDataViewListCtrl
 from .batch_ui import BatchControls
 from .confirm_preferences import RequirementConfirmPreference
@@ -66,6 +67,7 @@ class AgentChatLayoutBuilder:
         splitter_style = wx.SP_LIVE_UPDATE | wx.SP_3D
 
         vertical_splitter = wx.SplitterWindow(panel, style=splitter_style)
+        style_splitter(vertical_splitter)
         vertical_splitter.SetMinimumPaneSize(dip(panel, 160))
 
         top_panel = wx.Panel(vertical_splitter)
@@ -74,6 +76,7 @@ class AgentChatLayoutBuilder:
         inherit_background(bottom_panel, panel)
 
         horizontal_splitter = wx.SplitterWindow(top_panel, style=splitter_style)
+        style_splitter(horizontal_splitter)
         history_min_width = dip(panel, 260)
         horizontal_splitter.SetMinimumPaneSize(history_min_width)
 
@@ -292,6 +295,8 @@ class AgentChatLayoutBuilder:
 
         outer.Add(vertical_splitter, 1, wx.EXPAND)
         panel.SetSizer(outer)
+        refresh_splitter_highlight(horizontal_splitter)
+        refresh_splitter_highlight(vertical_splitter)
 
         batch_controls = BatchControls(
             panel=batch_panel,

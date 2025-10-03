@@ -18,6 +18,7 @@ from ...columns import available_columns
 from ...config import ConfigManager
 from ...i18n import _
 from ..requirement_model import RequirementModel
+from ..splitter_utils import refresh_splitter_highlight
 from .agent import MainFrameAgentMixin
 from .documents import MainFrameDocumentsMixin
 from .editor import MainFrameEditorMixin
@@ -116,6 +117,13 @@ class MainFrame(
         sizer.Add(self.main_splitter, 1, wx.EXPAND)
         self.SetSizer(sizer)
         self._load_layout()
+        for splitter in (
+            self.main_splitter,
+            self.doc_splitter,
+            self.agent_splitter,
+            self.splitter,
+        ):
+            refresh_splitter_highlight(splitter)
         self.current_dir: Path | None = None
         self.current_doc_prefix: str | None = None
         self._selected_requirement_id: int | None = None

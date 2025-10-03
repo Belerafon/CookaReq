@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import wx
 
 from ...i18n import _
+from ..splitter_utils import refresh_splitter_highlight, style_splitter
 from ..widgets import SectionContainer
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
@@ -25,6 +26,7 @@ class MainFrameSectionsMixin:
         """Create a splitter with consistent styling and behaviour."""
 
         splitter = wx.SplitterWindow(parent)
+        style_splitter(splitter)
         self._disable_splitter_unsplit(splitter)
         return splitter
 
@@ -94,6 +96,7 @@ class MainFrameSectionsMixin:
                 )
             else:
                 self.doc_splitter.SetSashPosition(target)
+            refresh_splitter_highlight(self.doc_splitter)
             self._doc_tree_last_sash = self.doc_splitter.GetSashPosition()
             if persist:
                 self.config.set_doc_tree_shown(True)
@@ -103,6 +106,7 @@ class MainFrameSectionsMixin:
                 self._doc_tree_last_sash = self.doc_splitter.GetSashPosition()
                 self.doc_splitter.Unsplit(self.doc_tree_container)
             self.doc_tree_container.Hide()
+            refresh_splitter_highlight(self.doc_splitter)
             if persist:
                 self.config.set_doc_tree_shown(False)
                 self.config.set_doc_tree_sash(self._doc_tree_last_sash)
@@ -139,6 +143,7 @@ class MainFrameSectionsMixin:
                 )
             else:
                 self.agent_splitter.SetSashPosition(target)
+            refresh_splitter_highlight(self.agent_splitter)
             self._agent_last_sash = self.agent_splitter.GetSashPosition()
             if persist:
                 self.config.set_agent_chat_shown(True)
@@ -149,6 +154,7 @@ class MainFrameSectionsMixin:
                 self._agent_last_sash = self.agent_splitter.GetSashPosition()
                 self.agent_splitter.Unsplit(self.agent_container)
             self._hide_agent_section()
+            refresh_splitter_highlight(self.agent_splitter)
             if persist:
                 self.config.set_agent_chat_shown(False)
                 self.config.set_agent_chat_sash(self._agent_last_sash)
@@ -175,12 +181,14 @@ class MainFrameSectionsMixin:
         self.editor.Show()
         self.editor_container.Layout()
         self.editor.Layout()
+        refresh_splitter_highlight(self.splitter)
 
     def _hide_editor_panel(self: MainFrame) -> None:
         """Hide the editor section and its container."""
 
         self.editor.Hide()
         self.editor_container.Hide()
+        refresh_splitter_highlight(self.splitter)
 
     def _clear_editor_panel(self: MainFrame) -> None:
         """Reset editor contents and reflect current visibility setting."""
@@ -205,12 +213,14 @@ class MainFrameSectionsMixin:
         self.agent_panel.Show()
         self.agent_container.Layout()
         self.agent_panel.Layout()
+        refresh_splitter_highlight(self.agent_splitter)
 
     def _hide_agent_section(self: MainFrame) -> None:
         """Hide the agent chat widgets to free screen space."""
 
         self.agent_panel.Hide()
         self.agent_container.Hide()
+        refresh_splitter_highlight(self.agent_splitter)
 
     def _update_section_labels(self: MainFrame) -> None:
         """Refresh captions for titled sections according to current locale."""

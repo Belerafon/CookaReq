@@ -226,18 +226,17 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     assert isinstance(tool_section, Mapping)
     assert tool_section.get("call_id") == "call-1"
     assert tool_section.get("name") == "update_requirement_field"
+    response_arguments = first_call.get("arguments")
+    assert isinstance(response_arguments, Mapping)
+    assert response_arguments.get("rid") == "DEMO16"
+    assert response_arguments.get("field") == "title"
+    assert response_arguments.get("value") == "Новое название"
+
     arguments = tool_section.get("arguments")
     if isinstance(arguments, Mapping):
-        assert arguments.get("rid") == "DEMO16"
-        assert arguments.get("field") == "title"
-        assert arguments.get("value") == "Новое название"
-        assert "arguments" not in first_call
+        assert arguments == response_arguments
     else:
-        response_arguments = first_call.get("arguments")
-        assert isinstance(response_arguments, Mapping)
-        assert response_arguments.get("rid") == "DEMO16"
-        assert response_arguments.get("field") == "title"
-        assert response_arguments.get("value") == "Новое название"
+        assert arguments is None
     assert raw_data.get("step") in (1, "1")
     assert raw_data.get("diagnostics") in (None, {})
     timeline = tool_result_section.get("timeline")
@@ -476,7 +475,6 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     first_response_call = response_calls[0]
     assert isinstance(first_response_call, Mapping)
     assert first_response_call.get("name") == "update_requirement_field"
-    assert "arguments" not in first_response_call
 
     diagnostics = raw_data.get("diagnostics")
     if diagnostics is not None:
@@ -498,6 +496,9 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     assert arguments.get("field") == "status"
     assert arguments.get("rid")
     assert arguments.get("value") == "in_last_review"
+    response_arguments = first_response_call.get("arguments")
+    assert isinstance(response_arguments, Mapping)
+    assert response_arguments == arguments
     status_section = tool_result_section.get("status")
     assert isinstance(status_section, Mapping)
     assert status_section.get("state") == snapshot.get("agent_status")

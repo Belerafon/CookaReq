@@ -1,4 +1,6 @@
-from collections.abc import Mapping
+import json
+from pathlib import Path
+from collections.abc import Mapping, Sequence
 
 import pytest
 
@@ -72,7 +74,19 @@ def test_build_conversation_timeline_compiles_turn() -> None:
     tool_event = turn.tool_calls[0]
     assert tool_event.summary.index == 1
     assert tool_event.call_identifier == "tool-1"
-    assert tool_event.raw_data is None
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+    assert raw_data.get("llm_request") is None
+    assert raw_data.get("llm_response") is None
+    tool_result = raw_data.get("tool_result")
+    assert isinstance(tool_result, Mapping)
+    tool_section = tool_result.get("tool")
+    assert isinstance(tool_section, Mapping)
+    assert tool_section.get("call_id") == "tool-1"
+    timeline = tool_result.get("timeline")
+    assert isinstance(timeline, Mapping)
+    assert timeline.get("started_at") == "2025-09-30T20:50:10+00:00"
+    assert timeline.get("completed_at") == "2025-09-30T20:50:11+00:00"
     assert isinstance(tool_event.summary.raw_payload, Mapping)
     assert tool_event.timestamp.raw == "2025-09-30T20:50:10+00:00"
     assert not tool_event.timestamp.missing
@@ -186,16 +200,29 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
 
     raw_data = tool_event.raw_data
     assert isinstance(raw_data, Mapping)
-    call_payload = raw_data.get("llm_request")
-    assert isinstance(call_payload, Mapping)
-    assert call_payload.get("arguments", {}).get("rid") == "DEMO16"
-    response_payload = raw_data.get("llm_response")
-    assert isinstance(response_payload, Mapping)
-    assert response_payload.get("content") == "Applying updates"
+    llm_request = raw_data.get("llm_request")
+    assert isinstance(llm_request, Mapping)
+    assert llm_request.get("arguments", {}).get("rid") == "DEMO16"
+    llm_response = raw_data.get("llm_response")
+    assert isinstance(llm_response, Mapping)
+    assert llm_response.get("content") == "Applying updates"
     assert raw_data.get("step") in (1, "1")
+    assert raw_data.get("diagnostics") in (None, {})
+
+    tool_result_section = raw_data.get("tool_result")
+    assert isinstance(tool_result_section, Mapping)
+    tool_section = tool_result_section.get("tool")
+    assert isinstance(tool_section, Mapping)
+    assert tool_section.get("call_id") == "call-1"
+    assert tool_section.get("name") == "update_requirement_field"
+    timeline = tool_result_section.get("timeline")
+    assert isinstance(timeline, Mapping)
+    assert tuple(timeline.keys()) == ("started_at", "completed_at")
+
+    assert "llm_exchange" not in raw_data
 
 
-def test_tool_call_event_synthesises_request_when_missing() -> None:
+def test_tool_call_event_without_recorded_request_relies_on_tool_result() -> None:
     entry = ChatEntry(
         prompt="",
         response="",
@@ -228,7 +255,13 @@ def test_tool_call_event_synthesises_request_when_missing() -> None:
 
     raw_data = tool_event.raw_data
     assert isinstance(raw_data, Mapping)
-    arguments = raw_data.get("llm_request", {}).get("arguments")
+    assert raw_data.get("llm_request") is None
+    assert raw_data.get("llm_response") is None
+    assert raw_data.get("diagnostics") in (None, {})
+
+    tool_section = raw_data.get("tool_result", {}).get("tool")
+    assert isinstance(tool_section, Mapping)
+    arguments = tool_section.get("arguments")
     assert isinstance(arguments, Mapping)
     assert arguments.get("rid") == "REQ-9"
     assert arguments.get("field") == "title"
@@ -236,6 +269,220 @@ def test_tool_call_event_synthesises_request_when_missing() -> None:
 
     events = [event for event in turn.events if event.kind == "tool"]
     assert events and events[0].tool_call is tool_event
+
+
+def test_tool_call_event_includes_llm_error_arguments() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="",
+        tokens=1,
+        tool_results=[
+            {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "call-error",
+                "agent_status": "failed",
+                "ok": False,
+                "error": {"message": "invalid arguments"},
+            }
+        ],
+        raw_result={
+            "diagnostic": {
+                "llm_steps": [
+                    {
+                        "step": 1,
+                        "error": {
+                            "type": "llm",
+                            "message": "Tool call failed",
+                            "tool_call": {
+                                "id": "call-error",
+                                "name": "update_requirement_field",
+                                "arguments": {
+                                    "rid": "REQ-404",
+                                    "field": "title",
+                                    "value": "Broken",
+                                },
+                            },
+                            "details": {
+                                "hint": "Double-check the requirement id",
+                                "tool_call": {
+                                    "id": "call-error",
+                                    "name": "update_requirement_field",
+                                },
+                            },
+                        },
+                    }
+                ]
+            }
+        },
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+    tool_event = turn.tool_calls[0]
+
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+
+    request_payload = raw_data.get("llm_request")
+    assert isinstance(request_payload, Mapping)
+    arguments = request_payload.get("arguments")
+    assert isinstance(arguments, Mapping)
+    assert arguments["rid"] == "REQ-404"
+    assert arguments["field"] == "title"
+    assert arguments["value"] == "Broken"
+
+    error_payload = raw_data.get("llm_error")
+    assert isinstance(error_payload, Mapping)
+    assert error_payload.get("message") == "Tool call failed"
+    tool_call_payload = error_payload.get("tool_call")
+    assert isinstance(tool_call_payload, Mapping)
+    tool_call_args = tool_call_payload.get("arguments")
+    assert isinstance(tool_call_args, Mapping)
+    assert tool_call_args["rid"] == "REQ-404"
+    assert tool_call_args["field"] == "title"
+    assert tool_call_args["value"] == "Broken"
+    details = error_payload.get("details")
+    assert isinstance(details, Mapping)
+    assert details.get("hint") == "Double-check the requirement id"
+
+    assert raw_data.get("diagnostics") in (None, {})
+
+
+def test_tool_call_event_includes_aggregated_diagnostics() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="",
+        tokens=1,
+        tool_results=[
+            {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "call-diagnostics",
+                "agent_status": "failed",
+                "ok": False,
+            }
+        ],
+        raw_result={
+            "diagnostic": {
+                "tool_calls": [
+                    {
+                        "id": "call-diagnostics",
+                        "name": "update_requirement_field",
+                        "arguments": {
+                            "rid": "REQ-17",
+                            "field": "statement",
+                        },
+                    }
+                ],
+                "agent_status": "failed",
+                "status_updates": ["retrying"],
+            }
+        },
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+    tool_event = turn.tool_calls[0]
+
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+    diagnostics = raw_data.get("diagnostics")
+    assert isinstance(diagnostics, Mapping)
+    tool_call_entries = diagnostics.get("tool_calls")
+    if isinstance(tool_call_entries, Mapping):
+        diagnostic_entry = tool_call_entries
+    else:
+        assert isinstance(tool_call_entries, Sequence)
+        assert tool_call_entries, "expected diagnostic tool call entry"
+        diagnostic_entry = tool_call_entries[0]
+    assert isinstance(diagnostic_entry, Mapping)
+    call_payload = diagnostic_entry.get("call")
+    assert isinstance(call_payload, Mapping)
+    assert call_payload.get("arguments", {}).get("rid") == "REQ-17"
+    context = diagnostic_entry.get("context")
+    assert isinstance(context, Mapping)
+    assert context.get("agent_status") == "failed"
+    assert "status_updates" in context
+
+    assert raw_data.get("llm_request") is None
+    assert raw_data.get("llm_response") is None
+
+
+def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
+    payload_path = Path("tests/data/real_llm_tool_validation_error.json")
+    snapshot = json.loads(payload_path.read_text(encoding="utf-8"))
+
+    diagnostic = snapshot.get("diagnostic") or {}
+    entry = ChatEntry(
+        prompt="Переведи выделенные требования",
+        response="",
+        tokens=0,
+        prompt_at="2025-10-01T08:52:30+00:00",
+        response_at="2025-10-01T08:52:40+00:00",
+        tool_results=[snapshot],
+        raw_result={"diagnostic": diagnostic, "error": snapshot.get("error")},
+    )
+    if isinstance(diagnostic, dict):
+        entry.diagnostic = dict(diagnostic)
+
+    conversation = _conversation_with_entry(entry)
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+    tool_event = turn.tool_calls[0]
+
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+
+    request_payload = raw_data.get("llm_request")
+    assert isinstance(request_payload, Mapping)
+    assert request_payload.get("name") == "update_requirement_field"
+    arguments = request_payload.get("arguments")
+    assert isinstance(arguments, Mapping)
+    assert arguments.get("field") == "statement"
+    assert arguments.get("value")
+
+    response_payload = raw_data.get("llm_response")
+    assert isinstance(response_payload, Mapping)
+    assert response_payload.get("content", "").startswith(
+        "update_requirement_field() missing rid"
+    )
+    response_calls = response_payload.get("tool_calls")
+    assert isinstance(response_calls, Sequence)
+    assert response_calls, "expected llm_response.tool_calls entry"
+    first_response_call = response_calls[0]
+    assert isinstance(first_response_call, Mapping)
+    response_arguments = first_response_call.get("arguments")
+    assert isinstance(response_arguments, Mapping)
+    assert response_arguments.get("field") == "statement"
+    assert response_arguments.get("value")
+
+    diagnostics = raw_data.get("diagnostics")
+    if diagnostics is not None:
+        assert isinstance(diagnostics, Mapping)
+        errors = diagnostics.get("errors")
+        if isinstance(errors, Sequence) and errors:
+            first_error = errors[0]
+            assert isinstance(first_error, Mapping)
+            assert first_error.get("code") == "VALIDATION_ERROR"
+
+    tool_result_section = raw_data.get("tool_result")
+    assert isinstance(tool_result_section, Mapping)
+    tool_section = tool_result_section.get("tool")
+    assert isinstance(tool_section, Mapping)
+    assert tool_section.get("call_id") == snapshot.get("tool_call_id")
+    assert tool_section.get("name") == snapshot.get("tool_name")
+    status_section = tool_result_section.get("status")
+    assert isinstance(status_section, Mapping)
+    assert status_section.get("state") == snapshot.get("agent_status")
+    error_section = tool_result_section.get("error")
+    assert isinstance(error_section, Mapping)
+    assert error_section.get("code") == "VALIDATION_ERROR"
+
+    assert raw_data.get("diagnostics") is diagnostics
 
 
 def test_streamed_responses_in_turn() -> None:

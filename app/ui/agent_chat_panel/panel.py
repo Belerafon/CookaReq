@@ -6,7 +6,7 @@ import json
 import logging
 import textwrap
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -1994,6 +1994,34 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 timeline_by_id[str(call_id)] = entry
 
         merged: list[dict[str, Any]] = []
+
+        def _iter_status_updates(source: Any) -> Iterable[dict[str, Any]]:
+            if isinstance(source, Mapping):
+                yield dict(source)
+                return
+            if isinstance(source, Sequence) and not isinstance(
+                source, (str, bytes, bytearray)
+            ):
+                for entry in source:
+                    if isinstance(entry, Mapping):
+                        yield dict(entry)
+
+        def _deduplicate_status_updates(*sources: Any) -> list[dict[str, Any]]:
+            seen: set[tuple[Any, Any, Any]] = set()
+            combined_updates: list[dict[str, Any]] = []
+            for source in sources:
+                for entry in _iter_status_updates(source):
+                    fingerprint = (
+                        entry.get("raw"),
+                        entry.get("at"),
+                        entry.get("status"),
+                    )
+                    if fingerprint in seen:
+                        continue
+                    seen.add(fingerprint)
+                    combined_updates.append(entry)
+            return combined_updates
+
         for payload in final_results:
             if not isinstance(payload, Mapping):
                 continue
@@ -2005,25 +2033,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if timeline:
                 timeline_updates = timeline.get("status_updates")
                 if timeline_updates:
-                    updates: list[Any] = []
-                    for entry in timeline_updates:
-                        if isinstance(entry, Mapping):
-                            updates.append(dict(entry))
-                        else:
-                            updates.append(entry)
-                    if updates:
-                        existing_updates = combined.get("status_updates")
-                        combined_updates: list[Any] = []
-                        if isinstance(existing_updates, Sequence) and not isinstance(
-                            existing_updates, (str, bytes, bytearray)
-                        ):
-                            for entry in existing_updates:
-                                if isinstance(entry, Mapping):
-                                    combined_updates.append(dict(entry))
-                                else:
-                                    combined_updates.append(entry)
-                        combined_updates.extend(updates)
-                        combined["status_updates"] = combined_updates
+                    existing_updates = combined.get("status_updates")
+                    merged_updates = _deduplicate_status_updates(
+                        existing_updates, timeline_updates
+                    )
+                    if merged_updates:
+                        combined["status_updates"] = merged_updates
+                    elif "status_updates" in combined:
+                        combined.pop("status_updates")
                 start = (
                     timeline.get("started_at")
                     or timeline.get("first_observed_at")

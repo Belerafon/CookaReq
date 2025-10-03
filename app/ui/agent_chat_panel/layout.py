@@ -36,7 +36,7 @@ class AgentChatLayout:
     copy_log_button: wx.Window
     transcript_container: wx.Panel
     transcript_scroller: wx.Panel
-    transcript_list: dv.DataViewListCtrl
+    transcript_view: wx.TextCtrl
     bottom_panel: wx.Panel
     input_control: wx.TextCtrl
     stop_button: wx.Button
@@ -144,29 +144,19 @@ class AgentChatLayoutBuilder:
         inherit_background(transcript_container, panel)
         inherit_background(transcript_scroller, transcript_container)
         transcript_box = wx.BoxSizer(wx.VERTICAL)
-        transcript_list = dv.DataViewListCtrl(
+        transcript_view = wx.TextCtrl(
             transcript_scroller,
-            style=dv.DV_ROW_LINES | dv.DV_VERT_RULES | dv.DV_MULTIPLE,
+            style=
+            wx.TE_MULTILINE
+            | wx.TE_READONLY
+            | wx.TE_RICH2
+            | wx.TE_NOHIDESEL
+            | wx.BORDER_NONE,
         )
-        transcript_list.AppendTextColumn(
-            _("Time"),
-            mode=dv.DATAVIEW_CELL_INERT,
-            width=dip(panel, 120),
-        )
-        transcript_list.AppendTextColumn(
-            _("Source"),
-            mode=dv.DATAVIEW_CELL_INERT,
-            width=dip(panel, 120),
-        )
-        transcript_list.AppendTextColumn(
-            _("Message"),
-            mode=dv.DATAVIEW_CELL_INERT,
-            width=dip(panel, 520),
-        )
-        transcript_list.Bind(dv.EVT_DATAVIEW_ITEM_CONTEXT_MENU, panel._on_transcript_context_menu)
-        transcript_list.Bind(dv.EVT_DATAVIEW_ITEM_ACTIVATED, panel._on_transcript_item_activated)
-        transcript_list.Bind(wx.EVT_KEY_DOWN, panel._on_transcript_key_down)
-        transcript_box.Add(transcript_list, 1, wx.EXPAND)
+        transcript_view.SetFont(panel.GetFont())
+        transcript_view.Bind(wx.EVT_CONTEXT_MENU, panel._on_transcript_context_menu)
+        transcript_view.Bind(wx.EVT_LEFT_DCLICK, panel._on_transcript_double_click)
+        transcript_box.Add(transcript_view, 1, wx.EXPAND)
         transcript_scroller.SetSizer(transcript_box)
 
         transcript_sizer.Add(transcript_header, 0, wx.EXPAND)
@@ -323,7 +313,7 @@ class AgentChatLayoutBuilder:
             copy_log_button=copy_log_btn,
             transcript_container=transcript_container,
             transcript_scroller=transcript_scroller,
-            transcript_list=transcript_list,
+            transcript_view=transcript_view,
             bottom_panel=bottom_panel,
             input_control=input_ctrl,
             stop_button=stop_btn,

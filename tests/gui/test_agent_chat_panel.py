@@ -140,7 +140,10 @@ def test_transcript_rows_populate_after_send(tmp_path, wx_app):
         assert rows, "expected transcript rows after sending"
         assert any("hello world" in row.text for row in rows)
         assert any("response" in row.text for row in rows)
-        assert panel._transcript_list.GetItemCount() == len(rows)
+        assert len(panel._transcript_segments) == len(rows)
+        value = panel._transcript_view.GetValue()
+        assert "hello world" in value
+        assert "response" in value
     finally:
         destroy_panel(frame, panel)
 
@@ -305,7 +308,7 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     assert panel.history_list.GetItemCount() == 1
     assert panel.input.GetValue() == ""
     assert len(panel.history) == 1
-    assert panel._transcript_list.GetItemCount() == len(panel._transcript_rows)
+    assert len(panel._transcript_segments) == len(panel._transcript_rows)
 
     saved = json.loads((tmp_path / "history.json").read_text())
     assert saved["version"] == 2
@@ -472,16 +475,21 @@ def test_copy_selected_rows_uses_clipboard(monkeypatch, tmp_path, wx_app):
         panel._on_send(None)
         flush_wx_events(wx)
 
-        list_ctrl = panel._transcript_list
-        assert list_ctrl.GetItemCount() >= 2
-        list_ctrl.SelectRow(list_ctrl.GetItemCount() - 1)
-        assert panel._copy_selected_transcript_rows()
-        assert "copy rows" in clipboard.get("text", "")
+        text_ctrl = panel._transcript_view
+        assert text_ctrl is not None
+        value = text_ctrl.GetValue()
+        assert "copy rows" in value
+        text_ctrl.SetSelection(0, len(value))
+        selected = text_ctrl.GetStringSelection()
+        assert selected
+        panel._copy_text_to_clipboard(selected)
+        copied = clipboard.get("text", "")
+        assert "copy rows" in copied
     finally:
         destroy_panel(frame, panel)
 
 
-def test_transcript_keydown_copy_triggers_handler(tmp_path, wx_app):
+def test_transcript_segment_lookup_handles_trailing_offset(tmp_path, wx_app):
     class EchoAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
             return f"echo {text}"
@@ -489,39 +497,18 @@ def test_transcript_keydown_copy_triggers_handler(tmp_path, wx_app):
     wx, frame, panel = create_panel(tmp_path, wx_app, EchoAgent())
 
     try:
-        panel.input.SetValue("hotkey")
+        panel.input.SetValue("segment")
         panel._on_send(None)
         flush_wx_events(wx)
 
-        list_ctrl = panel._transcript_list
-        last_row = list_ctrl.GetItemCount() - 1
-        assert last_row >= 0
-        list_ctrl.SelectRow(last_row)
-
-        called: list[bool] = []
-
-        def fake_copy() -> bool:
-            called.append(True)
-            return True
-
-        panel._copy_selected_transcript_rows = fake_copy  # type: ignore[assignment]
-
-        class DummyEvent:
-            def __init__(self) -> None:
-                self.skipped = False
-
-            def ControlDown(self) -> bool:
-                return True
-
-            def GetKeyCode(self) -> int:
-                return ord("C")
-
-            def Skip(self) -> None:
-                self.skipped = True
-
-        event = DummyEvent()
-        panel._on_transcript_key_down(event)
-        assert called, "expected key handler to trigger copy helper"
+        text_value = panel._transcript_view.GetValue()
+        assert text_value
+        offset = len(text_value) + 5
+        segment_info = panel._find_transcript_segment(offset)
+        assert segment_info is not None
+        row_index, row = segment_info
+        assert 0 <= row_index < len(panel._transcript_rows)
+        assert row.source.startswith("Agent")
     finally:
         destroy_panel(frame, panel)
 
@@ -542,7 +529,7 @@ def test_transcript_rows_clear_after_history_removal(tmp_path, wx_app):
         panel._delete_history_rows([0])
         flush_wx_events(wx)
         assert not panel._transcript_rows
-        assert panel._transcript_list.GetItemCount() == 0
+        assert panel._transcript_view.GetValue() == ""
     finally:
         destroy_panel(frame, panel)
 

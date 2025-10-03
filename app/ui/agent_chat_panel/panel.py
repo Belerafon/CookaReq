@@ -14,7 +14,6 @@ from typing import Any, Literal
 from concurrent.futures import ThreadPoolExecutor
 
 import wx
-import wx.dataview as dv
 
 from ...confirm import confirm
 from ...i18n import _
@@ -81,7 +80,7 @@ from .view_model import (
 
 @dataclass(slots=True)
 class _TranscriptRow:
-    """Flattened transcript row stored in the data view."""
+    """Flattened transcript row stored for rendering."""
 
     timestamp: str
     source: str
@@ -98,6 +97,15 @@ class _TranscriptRow:
         "system",
     ]
     can_regenerate: bool = False
+
+
+@dataclass(slots=True)
+class _TranscriptSegment:
+    """Rendered transcript block mapped back to a timeline entry."""
+
+    start: int
+    end: int
+    row_index: int
 
 
 logger = logging.getLogger("cookareq.ui.agent_chat_panel")
@@ -244,8 +252,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._bottom_panel: wx.Panel | None = None
         self._copy_conversation_btn: wx.Window | None = None
         self._history_view: HistoryView | None = None
-        self._transcript_list: dv.DataViewListCtrl | None = None
+        self._transcript_view: wx.TextCtrl | None = None
         self._transcript_rows: list[_TranscriptRow] = []
+        self._transcript_segments: list[_TranscriptSegment] = []
         self._history_last_sash = 0
         self._vertical_sash_goal: int | None = None
         self._vertical_last_sash = 0
@@ -452,7 +461,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._conversation_label = layout.conversation_label
         self._copy_conversation_btn = layout.copy_conversation_button
         self._copy_transcript_log_btn = layout.copy_log_button
-        self._transcript_list = layout.transcript_list
+        self._transcript_view = layout.transcript_view
         self._bottom_panel = layout.bottom_panel
         self.input = layout.input_control
         self._stop_btn = layout.stop_button
@@ -1648,29 +1657,64 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._update_history_controls()
 
     def _render_transcript(self) -> None:
-        list_ctrl = self._transcript_list
-        if list_ctrl is None:
+        text_ctrl = self._transcript_view
+        if text_ctrl is None:
             return
         conversation = self._get_active_conversation()
         if conversation is None:
-            list_ctrl.DeleteAllItems()
+            text_ctrl.ChangeValue("")
             self._transcript_rows = []
+            self._transcript_segments = []
             self._update_transcript_copy_buttons(False)
             self._update_conversation_header()
             return
 
         rows = self._build_transcript_rows(conversation)
-        list_ctrl.DeleteAllItems()
-        for row in rows:
-            list_ctrl.AppendItem([row.timestamp, row.source, row.text])
         self._transcript_rows = rows
+        segments: list[_TranscriptSegment] = []
+        pieces: list[str] = []
+        cursor = 0
+        for index, row in enumerate(rows):
+            header_parts: list[str] = []
+            timestamp = row.timestamp.strip()
+            source = row.source.strip()
+            if timestamp and source:
+                header_parts.append(f"[{timestamp}] {source}")
+            elif timestamp:
+                header_parts.append(f"[{timestamp}]")
+            elif source:
+                header_parts.append(source)
+            block_lines: list[str] = []
+            if header_parts:
+                block_lines.append(" ".join(header_parts))
+            text = row.text.rstrip()
+            if text:
+                block_lines.append(text)
+            block_text = "\n".join(block_lines).rstrip()
+            if not block_text:
+                continue
+            if pieces:
+                pieces.append("\n\n")
+                cursor += 2
+            start = cursor
+            pieces.append(block_text)
+            cursor += len(block_text)
+            segments.append(
+                _TranscriptSegment(
+                    start=start,
+                    end=cursor,
+                    row_index=index,
+                )
+            )
+        transcript_text = "".join(pieces)
+        text_ctrl.ChangeValue(transcript_text)
+        if transcript_text:
+            text_ctrl.ShowPosition(len(transcript_text))
+            text_ctrl.SetInsertionPointEnd()
+        self._transcript_segments = segments
         has_entries = bool(conversation.entries)
         self._update_transcript_copy_buttons(has_entries)
         self._update_conversation_header()
-        if rows:
-            last_item = list_ctrl.RowToItem(len(rows) - 1)
-            if last_item.IsOk():
-                list_ctrl.EnsureVisible(last_item)
 
     def _build_transcript_rows(
         self, conversation: ChatConversation
@@ -1922,53 +1966,81 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return
         self._handle_regenerate_request(conversation.conversation_id, entry)
 
-    def _copy_selected_transcript_rows(self) -> bool:
-        list_ctrl = self._transcript_list
-        if list_ctrl is None:
-            return False
-        selections = list_ctrl.GetSelections()
-        if not selections:
-            return False
-        row_indices = sorted(
-            {
-                list_ctrl.ItemToRow(item)
-                for item in selections
-                if item.IsOk()
-            }
-        )
-        lines: list[str] = []
-        for row_index in row_indices:
-            if not (0 <= row_index < len(self._transcript_rows)):
-                continue
-            row = self._transcript_rows[row_index]
-            text = normalize_for_display(row.text)
-            timestamp = row.timestamp.strip()
-            source = row.source.strip()
-            if timestamp and source:
-                lines.append(f"[{timestamp}] {source}: {text}")
-            elif source:
-                lines.append(f"{source}: {text}")
-            else:
-                lines.append(text)
-        if not lines:
-            return False
-        self._copy_text_to_clipboard("\n".join(lines))
-        return True
+    def _find_transcript_segment(
+        self, event_or_offset: wx.Event | int | None
+    ) -> tuple[int, _TranscriptRow] | None:
+        offset = self._resolve_transcript_offset(event_or_offset)
+        if offset is None:
+            return None
+        segments = self._transcript_segments
+        rows = self._transcript_rows
+        for segment in segments:
+            if segment.start <= offset < segment.end:
+                if 0 <= segment.row_index < len(rows):
+                    return segment.row_index, rows[segment.row_index]
+        if segments and offset >= segments[-1].end:
+            last = segments[-1]
+            if 0 <= last.row_index < len(rows):
+                return last.row_index, rows[last.row_index]
+        return None
 
-    def _on_transcript_context_menu(self, event: dv.DataViewEvent) -> None:
-        list_ctrl = self._transcript_list
-        if list_ctrl is None:
+    def _resolve_transcript_offset(
+        self, event_or_offset: wx.Event | int | None
+    ) -> int | None:
+        if isinstance(event_or_offset, int):
+            return event_or_offset
+        text_ctrl = self._transcript_view
+        if text_ctrl is None:
+            return None
+        if event_or_offset is None:
+            return text_ctrl.GetInsertionPoint()
+        if isinstance(event_or_offset, wx.ContextMenuEvent):
+            point = event_or_offset.GetPosition()
+            if point == wx.DefaultPosition:
+                return text_ctrl.GetInsertionPoint()
+            point = text_ctrl.ScreenToClient(point)
+        elif hasattr(event_or_offset, "GetPosition"):
+            point = event_or_offset.GetPosition()
+        else:
+            return text_ctrl.GetInsertionPoint()
+        return self._hit_test_transcript(point)
+
+    def _hit_test_transcript(self, point: wx.Point) -> int | None:
+        text_ctrl = self._transcript_view
+        if text_ctrl is None:
+            return None
+        position: int | None = None
+        if hasattr(text_ctrl, "HitTestPos"):
+            result = text_ctrl.HitTestPos(point)
+            if isinstance(result, tuple):
+                position = result[0]
+            else:
+                position = result
+        else:
+            try:
+                result = text_ctrl.HitTest(point)
+            except TypeError:
+                result = text_ctrl.HitTestPos(point)
+            if isinstance(result, tuple):
+                position = result[0]
+            else:
+                position = result
+        if position is None:
+            return None
+        try:
+            value = int(position)
+        except (TypeError, ValueError):
+            return None
+        if value < 0 or value == wx.NOT_FOUND:
+            return None
+        return value
+
+    def _on_transcript_context_menu(self, event: wx.ContextMenuEvent) -> None:
+        segment_info = self._find_transcript_segment(event)
+        if segment_info is None:
             event.Skip()
             return
-        item = event.GetItem()
-        if not item.IsOk():
-            event.Skip()
-            return
-        row_index = list_ctrl.ItemToRow(item)
-        if not (0 <= row_index < len(self._transcript_rows)):
-            event.Skip()
-            return
-        row = self._transcript_rows[row_index]
+        row_index, row = segment_info
         menu = wx.Menu()
         added = False
         if self._row_can_regenerate(row):
@@ -1983,26 +2055,18 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             menu.Destroy()
             event.Skip()
             return
-        list_ctrl.PopupMenu(menu)
+        control = self._transcript_view
+        if control is not None:
+            control.PopupMenu(menu)
         menu.Destroy()
 
-    def _on_transcript_item_activated(self, event: dv.DataViewEvent) -> None:
-        list_ctrl = self._transcript_list
-        if list_ctrl is None:
+    def _on_transcript_double_click(self, event: wx.MouseEvent) -> None:
+        segment_info = self._find_transcript_segment(event)
+        if segment_info is None:
             event.Skip()
             return
-        item = event.GetItem()
-        if not item.IsOk():
-            event.Skip()
-            return
-        row_index = list_ctrl.ItemToRow(item)
+        row_index, _row = segment_info
         self._trigger_regenerate_from_row(row_index)
-        event.Skip()
-
-    def _on_transcript_key_down(self, event: wx.KeyEvent) -> None:
-        if event.ControlDown() and event.GetKeyCode() in (ord("C"), ord("c")):
-            if self._copy_selected_transcript_rows():
-                return
         event.Skip()
 
     def _ensure_history_visible(self, index: int) -> None:

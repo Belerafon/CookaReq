@@ -65,6 +65,14 @@ class LlmRequestSnapshot:
 
 
 @dataclass(slots=True)
+class ToolCallRawRecord:
+    """Raw diagnostic sections captured for a tool call."""
+
+    exchange: Mapping[str, Any] | None = None
+    diagnostics: Mapping[str, Any] | None = None
+
+
+@dataclass(slots=True)
 class ToolCallDetails:
     """Diagnostic information about an MCP tool invocation."""
 
@@ -73,6 +81,8 @@ class ToolCallDetails:
     raw_data: Any | None
     timestamp: TimestampInfo
     llm_request: Any | None = None
+    llm_exchange: Mapping[str, Any] | None = None
+    diagnostics: Mapping[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -495,7 +505,7 @@ def _build_tool_calls(
     if not payloads:
         return (), None
 
-    requests = _collect_llm_tool_requests(entry)
+    raw_records = _collect_llm_tool_requests(entry)
     tool_calls: list[ToolCallDetails] = []
     latest_timestamp: TimestampInfo | None = None
     for tool_index, payload in enumerate(payloads, start=1):
@@ -513,16 +523,33 @@ def _build_tool_calls(
             summary = replace(summary, raw_payload=safe_payload)
 
         call_identifier = _extract_tool_identifier(payload)
-        request_payload: Any | None = None
+        raw_record: ToolCallRawRecord | None = None
         if call_identifier is not None:
-            request_payload = requests.get(call_identifier)
-        if request_payload is None:
-            request_payload = requests.get(str(tool_index))
-        if request_payload is None:
-            request_payload = _synthesise_tool_request(payload, summary)
+            raw_record = raw_records.get(call_identifier)
+        if raw_record is None:
+            raw_record = raw_records.get(str(tool_index))
+        if raw_record is None:
+            raw_record = _synthesise_tool_request(payload, summary)
 
-        condensed_raw = _compose_tool_raw_data(request_payload)
-        llm_request_snapshot = _extract_tool_llm_request(request_payload)
+        condensed_raw = _compose_tool_raw_data(raw_record)
+        llm_request_snapshot: Any | None = None
+        llm_exchange_payload: Mapping[str, Any] | None = None
+        diagnostics_payload: Mapping[str, Any] | None = None
+        if isinstance(raw_record, ToolCallRawRecord):
+            if raw_record.exchange is not None:
+                exchange_candidate = history_json_safe(raw_record.exchange)
+                if isinstance(exchange_candidate, Mapping):
+                    llm_exchange_payload = exchange_candidate
+                llm_request_snapshot = _extract_tool_llm_request(
+                    raw_record.exchange
+                )
+            if raw_record.diagnostics is not None:
+                diagnostics_candidate = history_json_safe(raw_record.diagnostics)
+                if isinstance(diagnostics_candidate, Mapping):
+                    diagnostics_payload = diagnostics_candidate
+        else:
+            llm_request_snapshot = _extract_tool_llm_request(raw_record)
+
         if llm_request_snapshot is None and isinstance(condensed_raw, Mapping):
             candidate = condensed_raw.get("llm_request")
             if candidate is not None:
@@ -572,6 +599,8 @@ def _build_tool_calls(
                 raw_data=condensed_raw,
                 timestamp=timestamp_info,
                 llm_request=llm_request_snapshot,
+                llm_exchange=llm_exchange_payload,
+                diagnostics=diagnostics_payload,
             )
         )
     return tuple(tool_calls), latest_timestamp
@@ -582,6 +611,28 @@ def _compose_tool_raw_data(request_payload: Any) -> Any | None:
 
     if request_payload is None:
         return None
+
+    if isinstance(request_payload, ToolCallRawRecord):
+        sections: dict[str, Any] = {}
+        if request_payload.exchange is not None:
+            exchange_payload = history_json_safe(request_payload.exchange)
+            if isinstance(exchange_payload, Mapping):
+                for key in ("llm_request", "llm_response", "llm_error", "step"):
+                    if key not in exchange_payload:
+                        continue
+                    candidate = history_json_safe(exchange_payload.get(key))
+                    if _has_meaningful_payload(candidate):
+                        sections[key] = candidate
+                additional_payload = history_json_safe(
+                    exchange_payload.get("additional")
+                )
+                if _has_meaningful_payload(additional_payload):
+                    sections["additional"] = additional_payload
+        if request_payload.diagnostics is not None:
+            diagnostics_payload = history_json_safe(request_payload.diagnostics)
+            if _has_meaningful_payload(diagnostics_payload):
+                sections["diagnostics"] = diagnostics_payload
+        return history_json_safe(sections) if sections else None
 
     safe_payload = history_json_safe(request_payload)
 
@@ -741,6 +792,9 @@ def _extract_tool_llm_request(request_payload: Any) -> Any | None:
     if request_payload is None:
         return None
 
+    if isinstance(request_payload, ToolCallRawRecord):
+        return _extract_tool_llm_request(request_payload.exchange)
+
     if isinstance(request_payload, Mapping):
         if "tool_call" in request_payload:
             candidate = request_payload.get("tool_call")
@@ -773,6 +827,7 @@ def _tool_detail_sort_key(detail: ToolCallDetails) -> tuple[int, _dt.datetime | 
 
 def _extract_tool_step_index(detail: ToolCallDetails) -> int | None:
     payloads: tuple[Any, ...] = (
+        detail.llm_exchange,
         detail.raw_data,
         detail.summary.raw_payload,
     )
@@ -1199,109 +1254,101 @@ def _extract_tool_arguments(payload: Mapping[str, Any]) -> Any:
 
 
 # ---------------------------------------------------------------------------
-def _is_step_response_payload(payload: Any) -> bool:
-    """Return ``True`` when *payload* looks like a detailed LLM step response."""
+def _normalise_raw_section(value: Any) -> Any:
+    """Return a JSON-safe representation that can be merged structurally."""
 
-    if not isinstance(payload, Mapping):
-        return False
-
-    disqualifying_keys = {
-        "llm_steps",
-        "llm_tool_calls",
-        "llm_request_messages",
-        "llm_request_messages_sequence",
-        "llm_requests",
-        "diagnostic",
-        "raw_result",
-    }
-    if any(key in payload for key in disqualifying_keys):
-        return False
-
-    if any(key in payload for key in ("content", "delta", "text", "role")):
-        return True
-
-    tool_calls = payload.get("tool_calls")
-    if isinstance(tool_calls, Sequence) and not isinstance(
-        tool_calls, (str, bytes, bytearray)
+    safe_value = history_json_safe(value)
+    if isinstance(safe_value, Mapping):
+        return {
+            key: _normalise_raw_section(item)
+            for key, item in safe_value.items()
+        }
+    if isinstance(safe_value, Sequence) and not isinstance(
+        safe_value, (str, bytes, bytearray)
     ):
-        for call in tool_calls:
-            if isinstance(call, Mapping) and any(
-                candidate in call for candidate in ("arguments", "tool_arguments", "function")
-            ):
-                return True
-
-    reasoning_segments = payload.get("reasoning")
-    if isinstance(reasoning_segments, Sequence) and not isinstance(
-        reasoning_segments, (str, bytes, bytearray)
-    ):
-        for segment in reasoning_segments:
-            if isinstance(segment, Mapping) and any(
-                key in segment for key in ("text", "content")
-            ):
-                return True
-
-    return False
+        return [_normalise_raw_section(item) for item in safe_value]
+    return safe_value
 
 
-def _extract_tool_response_summary(payload: Any) -> Any | None:
-    """Return condensed metadata from non-step LLM response payload."""
+def _merge_structured_values(existing: Any, update: Any) -> Any:
+    """Merge *update* into *existing* preserving nested structures."""
 
+    if existing is None:
+        return update
+    if isinstance(existing, dict) and isinstance(update, dict):
+        merged = dict(existing)
+        for key, value in update.items():
+            merged[key] = _merge_structured_values(merged.get(key), value)
+        return merged
+    if isinstance(existing, list) and isinstance(update, list):
+        merged = list(existing)
+        for item in update:
+            if item not in merged:
+                merged.append(item)
+        return merged
+    return update
+
+
+def _merge_structured_mappings(
+    existing: Mapping[str, Any] | None, update: Mapping[str, Any]
+) -> dict[str, Any]:
+    base: dict[str, Any] = dict(existing) if isinstance(existing, Mapping) else {}
+    for key, value in update.items():
+        base[key] = _merge_structured_values(base.get(key), value)
+    return base
+
+
+def _build_diagnostic_context(payload: Any) -> Mapping[str, Any] | None:
     if not isinstance(payload, Mapping):
         return None
-
-    summary_keys = (
-        "message_preview",
+    context_keys = (
         "agent_status",
         "status_updates",
+        "message_preview",
+        "response_snapshot",
         "reasoning",
     )
-    summary: dict[str, Any] = {}
-    for key in summary_keys:
+    context: dict[str, Any] = {}
+    for key in context_keys:
         if key not in payload:
             continue
-        value = history_json_safe(payload.get(key))
-        if _has_meaningful_payload(value):
-            summary[key] = value
+        normalised = _normalise_raw_section(payload.get(key))
+        if _has_meaningful_payload(normalised):
+            context[key] = normalised
+    return context or None
 
-    return summary or None
 
-
-# ---------------------------------------------------------------------------
-def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Any]:
+def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]:
     """Gather raw LLM tool call payloads keyed by their identifiers."""
 
-    requests: dict[str, Any] = {}
+    records: dict[str, ToolCallRawRecord] = {}
 
-    def record(identifier: str, payload: Any) -> None:
-        if not identifier:
+    def ensure_record(identifier: str) -> ToolCallRawRecord:
+        record = records.get(identifier)
+        if record is None:
+            record = ToolCallRawRecord()
+            records[identifier] = record
+        return record
+
+    def merge_exchange(identifier: str, sections: Mapping[str, Any]) -> None:
+        sanitized: dict[str, Any] = {}
+        for key, value in sections.items():
+            normalised = _normalise_raw_section(value)
+            if _has_meaningful_payload(normalised):
+                sanitized[key] = normalised
+        if not sanitized:
             return
-        safe_payload = history_json_safe(payload)
-        if safe_payload is None:
+        record = ensure_record(identifier)
+        record.exchange = _merge_structured_mappings(record.exchange, sanitized)
+
+    def add_diagnostics(identifier: str, section: str, payload: Any) -> None:
+        normalised = _normalise_raw_section(payload)
+        if not _has_meaningful_payload(normalised):
             return
-        if identifier in requests:
-            existing = requests[identifier]
-            if isinstance(existing, Mapping) and isinstance(safe_payload, Mapping):
-                merged: dict[str, Any] = dict(existing)
-                for key, value in safe_payload.items():
-                    if key == "tool_call" and isinstance(value, Mapping):
-                        existing_tool = (
-                            merged.get("tool_call")
-                            if isinstance(merged.get("tool_call"), Mapping)
-                            else None
-                        )
-                        if isinstance(existing_tool, Mapping):
-                            merged_tool = dict(existing_tool)
-                            for tool_key, tool_value in value.items():
-                                merged_tool[tool_key] = tool_value
-                        else:
-                            merged_tool = dict(value)
-                        merged["tool_call"] = merged_tool
-                    else:
-                        merged[key] = value
-                sanitized = history_json_safe(merged)
-                requests[identifier] = sanitized if sanitized is not None else merged
-                return
-        requests[identifier] = safe_payload
+        record = ensure_record(identifier)
+        record.diagnostics = _merge_structured_mappings(
+            record.diagnostics, {section: normalised}
+        )
 
     def record_error_payload(
         error_payload: Mapping[str, Any], *, step_index: int | None
@@ -1315,58 +1362,86 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Any]:
             if candidate_step not in (None, ""):
                 step_value = candidate_step
 
-        response_candidate = error_payload.get("response")
-        request_candidate = error_payload.get("request")
+        response_candidate = _normalise_raw_section(error_payload.get("response"))
+        request_candidate = _normalise_raw_section(error_payload.get("request"))
 
         if tool_calls:
             for position, call in enumerate(tool_calls, start=1):
-                identifier = _extract_tool_identifier(call)
-                if identifier is None:
-                    identifier = call.get("id") or call.get("call_id")
+                identifier = (
+                    _extract_tool_identifier(call)
+                    or call.get("id")
+                    or call.get("call_id")
+                )
                 if identifier is None:
                     base = str(step_value) if step_value is not None else "error"
                     identifier = f"{base}:{position}"
-                call_payload = history_json_safe(call)
-                error_payload_safe = history_json_safe(error_payload)
-                if isinstance(call_payload, Mapping) and isinstance(
-                    error_payload_safe, Mapping
-                ):
-                    error_payload_safe = history_json_safe(
-                        _strip_duplicate_tool_call_sections(
-                            error_payload_safe,
-                            reference_call=call_payload,
-                        )
-                    )
-                payload: dict[str, Any] = {
-                    "tool_call": call_payload,
-                    "error": error_payload_safe,
-                }
-                if step_value is not None:
-                    payload["step"] = history_json_safe(step_value)
-                if response_candidate is not None:
-                    payload["response"] = history_json_safe(response_candidate)
-                if request_candidate is not None:
-                    payload["request"] = history_json_safe(request_candidate)
-                record(str(identifier), payload)
-                recorded = True
+                call_payload = _normalise_raw_section(call)
+                stripped_error = _strip_duplicate_tool_call_sections(
+                    error_payload,
+                    reference_call=call,
+                )
+                error_section = _normalise_raw_section(stripped_error)
+                identifier_str = str(identifier)
+                if step_index is not None:
+                    sections: dict[str, Any] = {}
+                    if request_candidate is not None:
+                        sections["llm_request"] = request_candidate
+                    elif call_payload is not None:
+                        sections["llm_request"] = call_payload
+                    if response_candidate is not None:
+                        sections["llm_response"] = response_candidate
+                    if error_section is not None:
+                        sections["llm_error"] = error_section
+                    if step_value is not None:
+                        sections["step"] = step_value
+                    merge_exchange(identifier_str, sections)
+                    recorded = True
+                else:
+                    diagnostic_entry: dict[str, Any] = {}
+                    if call_payload is not None:
+                        diagnostic_entry["call"] = call_payload
+                    if request_candidate is not None:
+                        diagnostic_entry["request"] = request_candidate
+                    if response_candidate is not None:
+                        diagnostic_entry["response"] = response_candidate
+                    if error_section is not None:
+                        diagnostic_entry["error"] = error_section
+                    if diagnostic_entry:
+                        add_diagnostics(identifier_str, "errors", diagnostic_entry)
         else:
-            payload = {"error": history_json_safe(error_payload)}
-            if step_value is not None:
-                payload["step"] = history_json_safe(step_value)
-            if response_candidate is not None:
-                payload["response"] = history_json_safe(response_candidate)
-            if request_candidate is not None:
-                payload["request"] = history_json_safe(request_candidate)
-            record(str(len(requests) + 1), payload)
-            recorded = True
+            if step_index is not None:
+                identifier = str(step_value) if step_value is not None else str(step_index)
+                sections: dict[str, Any] = {
+                    "llm_error": _normalise_raw_section(error_payload)
+                }
+                if request_candidate is not None:
+                    sections["llm_request"] = request_candidate
+                if response_candidate is not None:
+                    sections["llm_response"] = response_candidate
+                if step_value is not None:
+                    sections["step"] = step_value
+                merge_exchange(identifier, sections)
+                recorded = True
+            else:
+                diagnostic_entry: dict[str, Any] = {
+                    "error": _normalise_raw_section(error_payload)
+                }
+                if request_candidate is not None:
+                    diagnostic_entry["request"] = request_candidate
+                if response_candidate is not None:
+                    diagnostic_entry["response"] = response_candidate
+                add_diagnostics(
+                    f"error:{len(records) + 1}", "errors", diagnostic_entry
+                )
 
         return recorded
 
     def scan_tool_calls(
         tool_calls: Any,
         *,
-        response_payload: Mapping[str, Any] | None = None,
-        step_index: int | None = None,
+        response_payload: Mapping[str, Any] | None,
+        step_index: int | None,
+        origin: str,
     ) -> None:
         if not isinstance(tool_calls, Sequence) or isinstance(
             tool_calls, (str, bytes, bytearray)
@@ -1375,25 +1450,38 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Any]:
         for position, call in enumerate(tool_calls, start=1):
             if not isinstance(call, Mapping):
                 continue
-            identifier = _extract_tool_identifier(call)
+            identifier = (
+                _extract_tool_identifier(call)
+                or call.get("id")
+                or call.get("call_id")
+            )
             if identifier is None:
-                identifier = call.get("id") or str(position)
-            include_response = _is_step_response_payload(response_payload)
-            if include_response:
-                payload: dict[str, Any] = {
-                    "tool_call": history_json_safe(call),
-                    "response": history_json_safe(response_payload),
-                }
+                base = str(step_index) if step_index is not None else str(position)
+                identifier = (
+                    f"{base}:{position}" if step_index is not None else str(position)
+                )
+            identifier = str(identifier)
+            call_payload = _normalise_raw_section(call)
+            if origin == "step":
+                sections: dict[str, Any] = {}
+                if call_payload is not None:
+                    sections["llm_request"] = call_payload
+                if response_payload is not None:
+                    sections["llm_response"] = _normalise_raw_section(
+                        response_payload
+                    )
                 if step_index is not None:
-                    payload["step"] = history_json_safe(step_index)
+                    sections["step"] = step_index
+                merge_exchange(identifier, sections)
             else:
-                payload = dict(call)
-                if step_index is not None:
-                    payload.setdefault("step", history_json_safe(step_index))
-                summary = _extract_tool_response_summary(response_payload)
-                if summary is not None:
-                    payload["response_snapshot"] = summary
-            record(identifier, payload)
+                diagnostic_entry: dict[str, Any] = {}
+                if call_payload is not None:
+                    diagnostic_entry["call"] = call_payload
+                context = _build_diagnostic_context(response_payload)
+                if context:
+                    diagnostic_entry["context"] = context
+                if diagnostic_entry:
+                    add_diagnostics(identifier, origin, diagnostic_entry)
 
     for source in _iter_llm_request_sources(entry):
         recorded_error_for_source = False
@@ -1408,28 +1496,38 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Any]:
                         response_payload.get("tool_calls"),
                         response_payload=response_payload,
                         step_index=step_index,
+                        origin="step",
                     )
                     if not response_payload.get("tool_calls"):
-                        record(
-                            str(len(requests) + 1),
-                            {
-                                "response": history_json_safe(response_payload),
-                                "step": step_index,
-                            },
-                        )
+                        fallback_id = str(len(records) + 1)
+                        sections: dict[str, Any] = {
+                            "llm_response": response_payload,
+                            "step": step_index,
+                        }
+                        merge_exchange(fallback_id, sections)
                 error_payload = step.get("error")
                 if isinstance(error_payload, Mapping):
                     if record_error_payload(error_payload, step_index=step_index):
                         recorded_error_for_source = True
-        scan_tool_calls(source.get("tool_calls"), response_payload=source)
+        scan_tool_calls(
+            source.get("tool_calls"),
+            response_payload=source,
+            step_index=None,
+            origin="tool_calls",
+        )
         planned_calls = source.get("llm_tool_calls")
-        scan_tool_calls(planned_calls, response_payload=source)
+        scan_tool_calls(
+            planned_calls,
+            response_payload=source,
+            step_index=None,
+            origin="llm_tool_calls",
+        )
         if not recorded_error_for_source:
             source_error = source.get("error")
             if isinstance(source_error, Mapping):
                 record_error_payload(source_error, step_index=None)
 
-    return requests
+    return records
 
 
 def _iter_tool_payloads(tool_results: Sequence[Any] | None) -> Iterable[Mapping[str, Any]]:
@@ -1471,7 +1569,7 @@ def _extract_tool_identifier(payload: Mapping[str, Any]) -> str | None:
 
 def _synthesise_tool_request(
     payload: Mapping[str, Any], summary: ToolCallSummary | None
-) -> Any | None:
+) -> ToolCallRawRecord | None:
     """Reconstruct an approximate LLM request when none was recorded."""
 
     if not isinstance(payload, Mapping):
@@ -1508,7 +1606,31 @@ def _synthesise_tool_request(
     if step_value is not None:
         request["step"] = step_value
 
-    return history_json_safe(request)
+    normalised_request = _normalise_raw_section(request)
+    if not isinstance(normalised_request, Mapping):
+        return None
+
+    exchange: dict[str, Any] = {}
+    call_section = normalised_request.get("tool_call")
+    if isinstance(call_section, Mapping) and _has_meaningful_payload(call_section):
+        exchange["llm_request"] = call_section
+    step_section = normalised_request.get("step")
+    if _has_meaningful_payload(step_section):
+        exchange["step"] = step_section
+
+    extras: dict[str, Any] = {}
+    for key, value in normalised_request.items():
+        if key in {"tool_call", "step"}:
+            continue
+        if _has_meaningful_payload(value):
+            extras[key] = value
+    if extras:
+        exchange["additional"] = extras
+
+    if not exchange:
+        return None
+
+    return ToolCallRawRecord(exchange=exchange)
 
 
 # ---------------------------------------------------------------------------

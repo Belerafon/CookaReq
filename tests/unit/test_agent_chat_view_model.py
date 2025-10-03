@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 import pytest
 
@@ -193,6 +193,14 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     assert isinstance(response_payload, Mapping)
     assert response_payload.get("content") == "Applying updates"
     assert raw_data.get("step") in (1, "1")
+    assert raw_data.get("diagnostics") in (None, {})
+
+    llm_exchange = tool_event.llm_exchange
+    assert isinstance(llm_exchange, Mapping)
+    assert llm_exchange.get("llm_request") == call_payload
+    assert llm_exchange.get("llm_response") == response_payload
+    assert llm_exchange.get("step") in (1, "1")
+    assert tool_event.diagnostics is None
 
 
 def test_tool_call_event_synthesises_request_when_missing() -> None:
@@ -233,6 +241,14 @@ def test_tool_call_event_synthesises_request_when_missing() -> None:
     assert arguments.get("rid") == "REQ-9"
     assert arguments.get("field") == "title"
     assert arguments.get("value") == "Updated title"
+    assert raw_data.get("diagnostics") in (None, {})
+
+    exchange = tool_event.llm_exchange
+    assert isinstance(exchange, Mapping)
+    synthesized_request = exchange.get("llm_request")
+    assert isinstance(synthesized_request, Mapping)
+    assert synthesized_request.get("arguments") == arguments
+    assert tool_event.diagnostics is None
 
     events = [event for event in turn.events if event.kind == "tool"]
     assert events and events[0].tool_call is tool_event
@@ -310,6 +326,75 @@ def test_tool_call_event_includes_llm_error_arguments() -> None:
 
     additional = raw_data.get("additional")
     assert additional is None or isinstance(additional, Mapping)
+    assert raw_data.get("diagnostics") in (None, {})
+
+    llm_exchange = tool_event.llm_exchange
+    assert isinstance(llm_exchange, Mapping)
+    assert llm_exchange.get("llm_request") == request_payload
+    assert llm_exchange.get("llm_error") == error_payload
+    assert tool_event.diagnostics is None
+
+
+def test_tool_call_event_includes_aggregated_diagnostics() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="",
+        tokens=1,
+        tool_results=[
+            {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "call-diagnostics",
+                "agent_status": "failed",
+                "ok": False,
+            }
+        ],
+        raw_result={
+            "diagnostic": {
+                "tool_calls": [
+                    {
+                        "id": "call-diagnostics",
+                        "name": "update_requirement_field",
+                        "arguments": {
+                            "rid": "REQ-17",
+                            "field": "statement",
+                        },
+                    }
+                ],
+                "agent_status": "failed",
+                "status_updates": ["retrying"],
+            }
+        },
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+    tool_event = turn.tool_calls[0]
+
+    diagnostics = tool_event.diagnostics
+    assert isinstance(diagnostics, Mapping)
+    tool_call_entries = diagnostics.get("tool_calls")
+    if isinstance(tool_call_entries, Mapping):
+        diagnostic_entry = tool_call_entries
+    else:
+        assert isinstance(tool_call_entries, Sequence)
+        assert tool_call_entries, "expected diagnostic tool call entry"
+        diagnostic_entry = tool_call_entries[0]
+    assert isinstance(diagnostic_entry, Mapping)
+    call_payload = diagnostic_entry.get("call")
+    assert isinstance(call_payload, Mapping)
+    assert call_payload.get("arguments", {}).get("rid") == "REQ-17"
+    context = diagnostic_entry.get("context")
+    assert isinstance(context, Mapping)
+    assert context.get("agent_status") == "failed"
+    assert "status_updates" in context
+
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+    assert raw_data.get("diagnostics") == diagnostics
+    assert raw_data.get("llm_request") is None
+    assert tool_event.llm_exchange is None
 
 
 def test_streamed_responses_in_turn() -> None:

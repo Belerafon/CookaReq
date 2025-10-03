@@ -531,11 +531,7 @@ def _build_tool_calls(
         if tool_result_section is not None:
             raw_sections["tool_result"] = tool_result_section
 
-        if raw_sections:
-            deduplicated_sections = _deduplicate_tool_raw_sections(raw_sections)
-            condensed_raw = history_json_safe(deduplicated_sections)
-        else:
-            condensed_raw = None
+        condensed_raw = history_json_safe(raw_sections) if raw_sections else None
 
         call_timestamp_raw = _extract_tool_timestamp(payload)
         if call_timestamp_raw:
@@ -564,7 +560,7 @@ def _build_tool_calls(
     return tuple(tool_calls), latest_timestamp
 
 
-def _compose_tool_raw_data(raw_snapshot: Any) -> Mapping[str, Any] | None:
+def _compose_tool_raw_data(raw_snapshot: Any) -> Any | None:
     """Prepare JSON-safe raw sections for a tool call."""
 
     if not isinstance(raw_snapshot, Mapping):
@@ -589,7 +585,7 @@ def _compose_tool_raw_data(raw_snapshot: Any) -> Mapping[str, Any] | None:
         if diagnostics_section:
             sections["diagnostics"] = diagnostics_section
 
-    return sections or None
+    return history_json_safe(sections) if sections else None
 
 
 def _compose_tool_result_section(tool_payload: Any) -> Mapping[str, Any] | None:
@@ -674,145 +670,7 @@ def _compose_tool_result_section(tool_payload: Any) -> Mapping[str, Any] | None:
         else:
             sections["timeline"] = {key: value for key, value in timeline}
 
-    return sections or None
-
-
-def _deduplicate_tool_raw_sections(sections: Mapping[str, Any]) -> dict[str, Any]:
-    """Remove repeated tool arguments while keeping the richest snapshot."""
-
-    if not isinstance(sections, Mapping):
-        return {}
-
-    working: dict[str, Any] = dict(sections)
-    primary_location, canonical_arguments = _select_primary_tool_arguments(working)
-    if canonical_arguments is None or primary_location is None:
-        return working
-
-    def _matches(value: Any) -> bool:
-        return value == canonical_arguments
-
-    # Drop duplicate arguments from the LLM request.
-    if primary_location != ("llm_request", "arguments"):
-        request_section = working.get("llm_request")
-        if isinstance(request_section, Mapping) and _matches(request_section.get("arguments")):
-            trimmed = {k: v for k, v in request_section.items() if k != "arguments"}
-            if trimmed:
-                working["llm_request"] = trimmed
-            else:
-                working.pop("llm_request", None)
-
-    # Drop duplicate arguments from the LLM response tool calls.
-    if not (primary_location and primary_location[0] == "llm_response"):
-        response_section = working.get("llm_response")
-        if isinstance(response_section, Mapping):
-            tool_calls = response_section.get("tool_calls")
-            if isinstance(tool_calls, Sequence) and not isinstance(tool_calls, (str, bytes, bytearray)):
-                calls_changed = False
-                processed_calls: list[Any] = []
-                for index, call in enumerate(tool_calls):
-                    if not isinstance(call, Mapping):
-                        processed_calls.append(call)
-                        continue
-                    call_mapping = dict(call)
-                    call_arguments = call_mapping.get("arguments")
-                    if _matches(call_arguments):
-                        call_mapping.pop("arguments", None)
-                        calls_changed = True
-                    if call_mapping:
-                        processed_calls.append(call_mapping)
-                    else:
-                        calls_changed = True
-                if calls_changed:
-                    updated_response = dict(response_section)
-                    updated_response["tool_calls"] = processed_calls
-                    if not processed_calls and len(updated_response) == 1:
-                        working.pop("llm_response", None)
-                    else:
-                        working["llm_response"] = updated_response
-    else:
-        # Keep the canonical response call intact while trimming siblings.
-        response_section = working.get("llm_response")
-        if isinstance(response_section, Mapping):
-            tool_calls = response_section.get("tool_calls")
-            if isinstance(tool_calls, Sequence) and not isinstance(tool_calls, (str, bytes, bytearray)):
-                calls_changed = False
-                processed_calls: list[Any] = []
-                target_index = primary_location[2] if len(primary_location) > 2 else None
-                for index, call in enumerate(tool_calls):
-                    if not isinstance(call, Mapping):
-                        processed_calls.append(call)
-                        continue
-                    call_mapping = dict(call)
-                    if index == target_index:
-                        processed_calls.append(call_mapping)
-                        continue
-                    call_arguments = call_mapping.get("arguments")
-                    if _matches(call_arguments):
-                        call_mapping.pop("arguments", None)
-                        calls_changed = True
-                    if call_mapping:
-                        processed_calls.append(call_mapping)
-                    else:
-                        calls_changed = True
-                if calls_changed:
-                    updated_response = dict(response_section)
-                    updated_response["tool_calls"] = processed_calls
-                    if not processed_calls and len(updated_response) == 1:
-                        working.pop("llm_response", None)
-                    else:
-                        working["llm_response"] = updated_response
-
-    # When the canonical location is not the tool result, drop duplicate data there too.
-    if primary_location != ("tool_result", "tool", "arguments"):
-        tool_result = working.get("tool_result")
-        if isinstance(tool_result, Mapping):
-            tool_section = tool_result.get("tool")
-            if isinstance(tool_section, Mapping) and _matches(tool_section.get("arguments")):
-                trimmed_tool = {k: v for k, v in tool_section.items() if k != "arguments"}
-                updated_result = dict(tool_result)
-                if trimmed_tool:
-                    updated_result["tool"] = trimmed_tool
-                else:
-                    updated_result.pop("tool", None)
-                if updated_result:
-                    working["tool_result"] = updated_result
-                else:
-                    working.pop("tool_result", None)
-
-    return working
-
-
-def _select_primary_tool_arguments(
-    sections: Mapping[str, Any],
-) -> tuple[tuple[Any, ...] | None, Any | None]:
-    """Return the preferred arguments payload and its location."""
-
-    tool_result = sections.get("tool_result") if isinstance(sections, Mapping) else None
-    if isinstance(tool_result, Mapping):
-        tool_section = tool_result.get("tool")
-        if isinstance(tool_section, Mapping):
-            arguments = tool_section.get("arguments")
-            if _has_meaningful_payload(arguments):
-                return ("tool_result", "tool", "arguments"), arguments
-
-    response_section = sections.get("llm_response") if isinstance(sections, Mapping) else None
-    if isinstance(response_section, Mapping):
-        tool_calls = response_section.get("tool_calls")
-        if isinstance(tool_calls, Sequence) and not isinstance(tool_calls, (str, bytes, bytearray)):
-            for index, call in enumerate(tool_calls):
-                if not isinstance(call, Mapping):
-                    continue
-                arguments = call.get("arguments")
-                if _has_meaningful_payload(arguments):
-                    return ("llm_response", "tool_calls", index, "arguments"), arguments
-
-    request_section = sections.get("llm_request") if isinstance(sections, Mapping) else None
-    if isinstance(request_section, Mapping):
-        arguments = request_section.get("arguments")
-        if _has_meaningful_payload(arguments):
-            return ("llm_request", "arguments"), arguments
-
-    return (None, None)
+    return history_json_safe(sections) if sections else None
 
 
 def _collect_unique_timestamps(

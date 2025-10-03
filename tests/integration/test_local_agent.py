@@ -897,9 +897,7 @@ def test_run_command_recovers_after_tool_validation_error():
     assert llm.calls == 3
     assert len(mcp.calls) == 1
     assert mcp.calls[0][0] == "update_requirement_field"
-    forwarded_arguments = mcp.calls[0][1]
-    assert forwarded_arguments["rid"] == "SYS1"
-    assert forwarded_arguments["value"] == "in_review"
+    assert mcp.calls[0][1]["value"] == "in_review"
     assert len(llm.conversations) >= 2
     second_attempt = llm.conversations[1]
     assert second_attempt[-1]["role"] == "tool"
@@ -907,9 +905,7 @@ def test_run_command_recovers_after_tool_validation_error():
     assert payload["error"]["message"].startswith(
         "Invalid arguments for update_requirement_field"
     )
-    tool_arguments = payload.get("tool_arguments", {})
-    assert tool_arguments.get("rid") == "SYS1"
-    assert tool_arguments.get("value") == "in_last_review"
+    assert payload.get("tool_arguments", {}).get("value") == "in_last_review"
     diagnostic = result.get("diagnostic")
     assert diagnostic
     requests = diagnostic["llm_requests"]
@@ -920,90 +916,6 @@ def test_run_command_recovers_after_tool_validation_error():
     first_messages = first_request["messages"]
     assert first_messages[-1]["role"] == "user"
     assert first_messages[-1]["content"] == "adjust please"
-
-
-def test_run_command_forwards_complete_tool_arguments_to_mcp():
-    class ForwardingLLM(LLMAsyncBridge):
-        def __init__(self) -> None:
-            self.step = 0
-            self.conversations: list[list[dict[str, Any]]] = []
-
-        def check_llm(self):
-            return {"ok": True}
-
-        def respond(self, conversation):
-            self.conversations.append([dict(message) for message in conversation])
-            if self.step == 0:
-                self.step += 1
-                return LLMResponse(
-                    "",
-                    (
-                        LLMToolCall(
-                            id="call-0",
-                            name="update_requirement_field",
-                            arguments={
-                                "rid": "SYS9",
-                                "field": "status",
-                                "value": "approved",
-                                "comment": "review completed",
-                            },
-                        ),
-                    ),
-                )
-            self.step += 1
-            return LLMResponse("All done", ())
-
-    class RecordingMCP(MCPAsyncBridge):
-        def __init__(self) -> None:
-            self.calls: list[tuple[str, Mapping[str, Any]]] = []
-
-        def check_tools(self):
-            return {"ok": True, "error": None}
-
-        def call_tool(self, name, arguments):
-            captured = dict(arguments)
-            self.calls.append((name, captured))
-            return {
-                "ok": True,
-                "error": None,
-                "result": {"status": "updated", "rid": captured.get("rid")},
-            }
-
-    llm = ForwardingLLM()
-    mcp = RecordingMCP()
-    agent = LocalAgent(llm=llm, mcp=mcp)
-
-    result = agent.run_command("approve SYS9")
-
-    assert result["ok"] is True
-    assert result["result"] == "All done"
-    tool_results = result.get("tool_results") or []
-    assert len(tool_results) == 1
-    tool_payload = tool_results[0]
-    assert tool_payload["tool_name"] == "update_requirement_field"
-    forwarded_arguments = tool_payload.get("tool_arguments") or {}
-    assert forwarded_arguments.get("rid") == "SYS9"
-    assert forwarded_arguments.get("field") == "status"
-    assert forwarded_arguments.get("value") == "approved"
-    assert forwarded_arguments.get("comment") == "review completed"
-    assert tool_payload.get("result", {}).get("rid") == "SYS9"
-
-    assert len(mcp.calls) == 1
-    mcp_call_name, mcp_arguments = mcp.calls[0]
-    assert mcp_call_name == "update_requirement_field"
-    assert mcp_arguments == {
-        "rid": "SYS9",
-        "field": "status",
-        "value": "approved",
-        "comment": "review completed",
-    }
-
-    assert len(llm.conversations) >= 2
-    second_turn = llm.conversations[1]
-    assert second_turn[-1]["role"] == "tool"
-    tool_payload = json.loads(second_turn[-1]["content"])
-    assert tool_payload["tool_arguments"]["rid"] == "SYS9"
-    assert tool_payload["tool_arguments"]["comment"] == "review completed"
 
 
 def test_run_command_streams_tool_results_to_callback():

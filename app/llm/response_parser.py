@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
-from ..util.json import make_json_safe
 from .reasoning import (
     ReasoningFragment,
     collect_reasoning_fragments,
@@ -38,97 +37,6 @@ class _ToolArgumentRecovery:
     empty_fragment_count: int
 
 
-def _extract_tool_argument_mapping(arguments: Any) -> Mapping[str, Any] | None:
-    """Return a mapping for tool arguments without relying on ``__dict__``."""
-
-    if isinstance(arguments, Mapping):
-        return arguments
-    for attr in ("model_dump", "dict"):
-        method = getattr(arguments, attr, None)
-        if callable(method):
-            try:
-                data = method()
-            except Exception:  # pragma: no cover - defensive
-                continue
-            if isinstance(data, Mapping):
-                return data
-    if is_dataclass(arguments):
-        try:
-            data = asdict(arguments)
-        except Exception:  # pragma: no cover - defensive
-            data = None
-        if isinstance(data, Mapping):
-            return data
-    data = getattr(arguments, "_data", None)
-    if isinstance(data, Mapping):
-        return data
-    return None
-
-
-def _stringify_tool_arguments(arguments: Any) -> str:
-    """Coerce tool arguments into a JSON text payload without dropping data."""
-
-    if isinstance(arguments, str):
-        return arguments or "{}"
-    if isinstance(arguments, bytes):
-        decoded = arguments.decode("utf-8", errors="replace")
-        return decoded or "{}"
-    if arguments is None:
-        return "{}"
-
-    fallback_source = arguments if arguments is not None else "{}"
-    fallback = str(fallback_source).strip()
-
-    def _dump(value: Any) -> str:
-        try:
-            return json.dumps(value, ensure_ascii=False)
-        except (TypeError, ValueError):
-            return ""
-
-    def _prefer(text: str) -> str | None:
-        if not text:
-            return None
-        candidate = text.strip()
-        if not candidate:
-            return None
-        if candidate not in {"{}", "[]"}:
-            return text
-        if fallback and fallback[0] in "[{" and fallback not in {"{}", "[]"}:
-            return fallback
-        return candidate
-
-    mapping = _extract_tool_argument_mapping(arguments)
-    if mapping:
-        safe_mapping = make_json_safe(
-            mapping,
-            stringify_keys=True,
-            coerce_sequences=True,
-            default=str,
-        )
-        preferred = _prefer(_dump(safe_mapping))
-        if preferred is not None:
-            return preferred
-
-    if isinstance(arguments, Sequence) and not isinstance(
-        arguments, (str, bytes, bytearray)
-    ):
-        safe_sequence = make_json_safe(
-            arguments,
-            stringify_keys=True,
-            coerce_sequences=True,
-            default=str,
-        )
-        preferred = _prefer(_dump(safe_sequence))
-        if preferred is not None:
-            return preferred
-
-    preferred = _prefer(_dump(arguments))
-    if preferred is not None:
-        return preferred
-
-    return fallback or "{}"
-
-
 def normalise_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
     """Normalize tool call payloads into the OpenAI function schema."""
 
@@ -143,7 +51,7 @@ def normalise_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
             name = call.name
             arguments: Any = call.arguments
         elif isinstance(call, Mapping):
-            call_id = call.get("id") or call.get("tool_call_id") or call.get("call_id")
+            call_id = call.get("id") or call.get("tool_call_id")
             function = call.get("function")
             if isinstance(function, Mapping):
                 name = function.get("name")
@@ -154,26 +62,26 @@ def normalise_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
         else:  # pragma: no cover - defensive for duck typing
             call_id = getattr(call, "id", None)
             function = getattr(call, "function", None)
-            if function is not None:
-                name = getattr(function, "name", None)
-                arguments = getattr(function, "arguments", None)
-            else:
-                name = getattr(call, "name", None)
-                arguments = getattr(call, "arguments", None)
-            if call_id is None:
-                call_id = getattr(call, "call_id", None)
+            name = getattr(function, "name", None) if function else None
+            arguments = getattr(function, "arguments", None) if function else None
         if not name:
             continue
         if call_id is None:
             call_id = f"tool_call_{idx}"
-        arguments_str = _stringify_tool_arguments(arguments)
+        if isinstance(arguments, str):
+            arguments_str = arguments
+        else:
+            try:
+                arguments_str = json.dumps(arguments or {}, ensure_ascii=False)
+            except (TypeError, ValueError):
+                arguments_str = "{}"
         normalized.append(
             {
                 "id": str(call_id),
                 "type": "function",
                 "function": {
                     "name": str(name),
-                    "arguments": arguments_str,
+                    "arguments": arguments_str or "{}",
                 },
             }
         )
@@ -269,8 +177,8 @@ class LLMResponseParser:
         cancellation: CancellationEvent | None,
     ) -> tuple[str, list[dict[str, Any]], list[dict[str, str]]]:
         message_parts: list[str] = []
-        tool_chunks: dict[tuple[int, object], dict[str, Any]] = {}
-        order: list[tuple[int, object]] = []
+        tool_chunks: dict[tuple[int, int], dict[str, Any]] = {}
+        order: list[tuple[int, int]] = []
         closer = getattr(stream, "close", None)
         cancel_event = cancellation
         closed_by_cancel = False
@@ -737,134 +645,58 @@ class LLMResponseParser:
     def parse_tool_calls(self, tool_calls: Any) -> tuple[LLMToolCall, ...]:
         if not tool_calls:
             return ()
-
         iterable = [tool_calls] if isinstance(tool_calls, Mapping) else list(tool_calls)
         parsed: list[LLMToolCall] = []
-
         for idx, call in enumerate(iterable):
             if isinstance(call, LLMToolCall):
                 parsed.append(call)
                 continue
-
-            call_map = extract_mapping(call)
-            call_id = None
-            function_payload: Any | None = None
-            function_object: Any | None = None
-            if call_map is not None:
-                call_id = (
-                    call_map.get("id")
-                    or call_map.get("tool_call_id")
-                    or call_map.get("call_id")
+            if isinstance(call, Mapping):
+                call_id = call.get("id") or call.get("tool_call_id")
+                function = call.get("function")
+                if not isinstance(function, Mapping):
+                    function = {}
+                name = function.get("name")
+                arguments_payload = function.get("arguments")
+            else:  # pragma: no cover - defensive for duck typing
+                call_id = getattr(call, "id", None)
+                function = getattr(call, "function", None)
+                name = getattr(function, "name", None) if function else None
+                arguments_payload = (
+                    getattr(function, "arguments", None) if function else None
                 )
-                function_payload = call_map.get("function") or call_map.get("call")
-            function_object = getattr(call, "function", None) or getattr(call, "call", None)
-            if function_payload is None and function_object is not None:
-                function_payload = function_object
-            function_map = extract_mapping(function_payload)
-
-            name = None
-            if function_map is not None:
-                name = function_map.get("name") or function_map.get("tool_name")
-            if name is None and function_object is not None:
-                name = getattr(function_object, "name", None)
-            if name is None and call_map is not None:
-                name = call_map.get("name")
-            if name is None:
-                name = getattr(call, "name", None)
             if not name:
                 raise ToolValidationError(
                     "LLM response did not include a tool name",
                 )
-
-            if call_id is None:
-                call_id = (
-                    getattr(call, "id", None)
-                    or getattr(call, "tool_call_id", None)
-                    or getattr(call, "call_id", None)
-                )
-            if call_id is None and call_map is not None:
-                call_id = call_map.get("call_id")
             if call_id is None:
                 call_id = f"tool_call_{idx}"
+            if isinstance(arguments_payload, str):
+                arguments_text = arguments_payload or "{}"
+            else:
+                try:
+                    arguments_text = json.dumps(
+                        arguments_payload or {}, ensure_ascii=False
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise ToolValidationError(
+                        "LLM returned invalid JSON for tool arguments",
+                    ) from exc
             call_id_str = str(call_id)
-
-            arguments_payload = None
-            if function_map is not None and "arguments" in function_map:
-                arguments_payload = function_map.get("arguments")
-            if arguments_payload is None and function_object is not None:
-                arguments_payload = getattr(function_object, "arguments", None)
-            if arguments_payload is None and call_map is not None:
-                arguments_payload = call_map.get("arguments")
-            if arguments_payload is None:
-                arguments_payload = getattr(call, "arguments", None)
-
-            prepared_arguments = self._prepare_tool_arguments(
-                arguments_payload,
+            arguments = self._decode_tool_arguments(
+                arguments_text or "{}",
                 call_id=call_id_str,
                 tool_name=str(name),
             )
-
-            parsed.append(
-                LLMToolCall(
-                    id=call_id_str,
-                    name=str(name),
-                    arguments=prepared_arguments,
+            if arguments is None or not isinstance(arguments, Mapping):
+                raise ToolValidationError(
+                    "Tool arguments must be a JSON object",
                 )
+            prepared_arguments = dict(arguments)
+            parsed.append(
+                LLMToolCall(id=call_id_str, name=name, arguments=prepared_arguments)
             )
-
         return tuple(parsed)
-
-    def _prepare_tool_arguments(
-        self,
-        payload: Any,
-        *,
-        call_id: str,
-        tool_name: str,
-    ) -> Mapping[str, Any]:
-        mapping_candidate = None
-        if isinstance(payload, Mapping):
-            mapping_candidate = payload
-        else:
-            mapping_candidate = _extract_tool_argument_mapping(payload)
-        if mapping_candidate is not None:
-            safe_mapping = make_json_safe(
-                mapping_candidate,
-                stringify_keys=True,
-                coerce_sequences=True,
-                default=str,
-            )
-            if isinstance(safe_mapping, Mapping):
-                return dict(safe_mapping)
-
-        if isinstance(payload, bytes):
-            text = payload.decode("utf-8", errors="replace")
-        elif isinstance(payload, str):
-            text = payload
-        elif payload is None:
-            text = "{}"
-        else:
-            text = _stringify_tool_arguments(payload)
-
-        arguments = self._decode_tool_arguments(
-            text or "{}",
-            call_id=call_id,
-            tool_name=tool_name,
-        )
-        if arguments is None or not isinstance(arguments, Mapping):
-            raise ToolValidationError(
-                "Tool arguments must be a JSON object",
-            )
-        safe_arguments = make_json_safe(
-            arguments,
-            stringify_keys=True,
-            coerce_sequences=True,
-            default=str,
-        )
-        if isinstance(safe_arguments, Mapping):
-            return dict(safe_arguments)
-        raise ToolValidationError(
-            "Tool arguments must be a JSON object",
-        )
 
     # ------------------------------------------------------------------
     def _extract_reasoning_tool_calls(self, payload: Any) -> list[dict[str, Any]]:
@@ -990,32 +822,15 @@ class LLMResponseParser:
     # ------------------------------------------------------------------
     def _append_stream_tool_call(
         self,
-        tool_chunks: dict[tuple[int, object], dict[str, Any]],
-        order: list[tuple[int, object]],
+        tool_chunks: dict[tuple[int, int], dict[str, Any]],
+        order: list[tuple[int, int]],
         tool_call: Any,
         *,
         choice_index: int,
         tool_index: int | None = None,
     ) -> None:
         call_map = extract_mapping(tool_call)
-        call_id = getattr(tool_call, "id", None)
-        if call_map is not None and call_id is None:
-            call_id = (
-                call_map.get("id")
-                or call_map.get("tool_call_id")
-                or call_map.get("call_id")
-            )
-        if call_id is None:
-            call_id = getattr(tool_call, "call_id", None)
-
-        if tool_index is not None:
-            key_token: object = tool_index
-        elif call_id is not None:
-            key_token = call_id
-        else:
-            key_token = ("auto", len(order))
-
-        key = (choice_index, key_token)
+        key = (choice_index, tool_index or len(order))
         if key not in tool_chunks:
             tool_chunks[key] = {
                 "id": None,
@@ -1023,12 +838,12 @@ class LLMResponseParser:
                 "function": {"name": None, "arguments": ""},
             }
             order.append(key)
-
         entry = tool_chunks[key]
-
+        call_id = getattr(tool_call, "id", None)
+        if call_map is not None and call_id is None:
+            call_id = call_map.get("id") or call_map.get("tool_call_id")
         if call_id:
             entry["id"] = call_id
-
         function = call_map.get("function") if call_map else None
         if function is None:
             function = getattr(tool_call, "function", None)
@@ -1036,50 +851,27 @@ class LLMResponseParser:
             func_map = extract_mapping(function)
         else:
             func_map = None
-
         name = getattr(function, "name", None)
         if func_map is not None and name is None:
             name = func_map.get("name")
-        if name is None and call_map is not None:
-            name = call_map.get("name")
-        if name is None:
-            name = getattr(tool_call, "name", None)
         if name:
             entry["function"]["name"] = name
-
         args_fragment = getattr(function, "arguments", None) if function else None
         if func_map is not None:
             args_fragment = func_map.get("arguments", args_fragment)
-        if args_fragment is None and call_map is not None:
-            args_fragment = call_map.get("arguments")
-        if args_fragment is None:
-            args_fragment = getattr(tool_call, "arguments", None)
         if args_fragment:
             entry["function"]["arguments"] += str(args_fragment)
 
     def _append_stream_function_call(
         self,
-        tool_chunks: dict[tuple[int, object], dict[str, Any]],
-        order: list[tuple[int, object]],
+        tool_chunks: dict[tuple[int, int], dict[str, Any]],
+        order: list[tuple[int, int]],
         function_call: Any,
         *,
         choice_index: int,
     ) -> None:
         func_map = extract_mapping(function_call)
-        call_id = None
-        if func_map is not None:
-            call_id = (
-                func_map.get("id")
-                or func_map.get("call_id")
-                or func_map.get("tool_call_id")
-            )
-        if call_id is None:
-            call_id = getattr(function_call, "id", None)
-        if call_id is None:
-            call_id = getattr(function_call, "call_id", None)
-
-        key_token: object = call_id if call_id is not None else -1
-        key = (choice_index, key_token)
+        key = (choice_index, -1)
         if key not in tool_chunks:
             tool_chunks[key] = {
                 "id": None,
@@ -1087,11 +879,7 @@ class LLMResponseParser:
                 "function": {"name": None, "arguments": ""},
             }
             order.append(key)
-
         entry = tool_chunks[key]
-        if call_id is not None:
-            entry["id"] = call_id
-
         name = getattr(function_call, "name", None)
         if func_map is not None and name is None:
             name = func_map.get("name")

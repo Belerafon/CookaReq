@@ -17,11 +17,6 @@ pytestmark = [pytest.mark.integration, pytest.mark.real_llm]
 
 DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 
-VALIDATION_ERROR_MESSAGE = (
-    "Invalid arguments for update_requirement_field: value: 'in_last_review' "
-    "is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']"
-)
-
 
 def _load_openrouter_key() -> str | None:
     secret = load_secret_from_env("OPEN_ROUTER", search_from=Path(__file__).resolve())
@@ -51,11 +46,9 @@ class _ValidationSnapshotLLM:
             if call.name != "update_requirement_field":
                 continue
             arguments = call.arguments if isinstance(call.arguments, dict) else {}
-            rid = arguments.get("rid")
-            value = arguments.get("value")
-            if not rid or value != "in_last_review":
+            if "rid" in arguments:
                 continue
-            exc = ToolValidationError(VALIDATION_ERROR_MESSAGE)
+            exc = ToolValidationError("update_requirement_field() missing rid")
             exc.llm_message = response.content or ""
             exc.llm_request_messages = tuple(dict(message) for message in conversation)
             exc.llm_tool_calls = tuple(
@@ -123,10 +116,9 @@ def test_openrouter_collects_tool_validation_error_snapshot(tmp_path, target_lan
     context = {"role": "system", "content": "\n".join(context_lines)}
 
     prompt = (
-        f"Установи для требования {requirements[0][0]} статус 'in_last_review'. "
+        f"Переведи выделенные требования {rid_list} на {target_language} язык. "
         "Ответ должен быть только в виде вызова инструмента update_requirement_field. "
-        "Вызов обязан содержать поля rid, field и value. "
-        "Используй field 'status' и value 'in_last_review' даже если значение считается недопустимым. "
+        "Вызов должен содержать только поля field и value — поле rid специально опускаем. "
         "Не добавляй пояснения, не меняй формат вызова инструмента."
     )
 

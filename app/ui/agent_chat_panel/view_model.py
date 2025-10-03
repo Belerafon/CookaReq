@@ -691,11 +691,16 @@ def _deduplicate_tool_raw_sections(sections: Mapping[str, Any]) -> dict[str, Any
     def _matches(value: Any) -> bool:
         return value == canonical_arguments
 
-    retain_locations: set[tuple[Any, ...]] = {primary_location}
+    retain_locations: set[tuple[Any, ...]] = set()
+    if primary_location is not None:
+        retain_locations.add(primary_location)
 
     request_location = ("llm_request", "arguments")
-    if primary_location == request_location:
-        retain_locations.add(request_location)
+    request_section = working.get("llm_request")
+    if isinstance(request_section, Mapping):
+        request_arguments = request_section.get("arguments")
+        if _has_meaningful_payload(request_arguments):
+            retain_locations.add(request_location)
 
     response_locations: list[tuple[tuple[Any, ...], Any]] = []
     response_section = working.get("llm_response")
@@ -711,6 +716,7 @@ def _deduplicate_tool_raw_sections(sections: Mapping[str, Any]) -> dict[str, Any
                 if _has_meaningful_payload(call_arguments):
                     location = ("llm_response", "tool_calls", index, "arguments")
                     response_locations.append((location, call_arguments))
+                    retain_locations.add(location)
 
     preferred_response_location: tuple[Any, ...] | None = None
     for location, arguments in response_locations:
@@ -810,26 +816,6 @@ def _deduplicate_tool_raw_sections(sections: Mapping[str, Any]) -> dict[str, Any
                         working.pop("llm_response", None)
                     else:
                         working["llm_response"] = updated_response
-
-    # When the canonical location is not the tool result, drop duplicate data there too.
-    if (
-        tool_result_location not in retain_locations
-        and primary_location != ("tool_result", "tool", "arguments")
-    ):
-        tool_result = working.get("tool_result")
-        if isinstance(tool_result, Mapping):
-            tool_section = tool_result.get("tool")
-            if isinstance(tool_section, Mapping) and _matches(tool_section.get("arguments")):
-                trimmed_tool = {k: v for k, v in tool_section.items() if k != "arguments"}
-                updated_result = dict(tool_result)
-                if trimmed_tool:
-                    updated_result["tool"] = trimmed_tool
-                else:
-                    updated_result.pop("tool", None)
-                if updated_result:
-                    working["tool_result"] = updated_result
-                else:
-                    working.pop("tool_result", None)
 
     return working
 

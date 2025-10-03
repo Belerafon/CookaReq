@@ -209,7 +209,11 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     llm_request = raw_data.get("llm_request")
     assert isinstance(llm_request, Mapping)
     assert llm_request.get("name") == "update_requirement_field"
-    assert "arguments" not in llm_request
+    request_arguments = llm_request.get("arguments")
+    assert isinstance(request_arguments, Mapping)
+    assert request_arguments.get("rid") == "DEMO16"
+    assert request_arguments.get("field") == "title"
+    assert request_arguments.get("value") == "Новое название"
     llm_response = raw_data.get("llm_response")
     assert isinstance(llm_response, Mapping)
     assert llm_response.get("content") == "Applying updates"
@@ -464,7 +468,11 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     request_payload = raw_data.get("llm_request")
     assert isinstance(request_payload, Mapping)
     assert request_payload.get("name") == "update_requirement_field"
-    assert "arguments" not in request_payload
+    request_arguments = request_payload.get("arguments")
+    assert isinstance(request_arguments, Mapping)
+    assert request_arguments.get("field") == "status"
+    assert request_arguments.get("rid") == "DEMO1"
+    assert request_arguments.get("value") == "in_last_review"
 
     response_payload = raw_data.get("llm_response")
     assert isinstance(response_payload, Mapping)

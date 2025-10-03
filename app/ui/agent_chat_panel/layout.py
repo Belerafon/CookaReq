@@ -12,6 +12,7 @@ from wx.lib.scrolledpanel import ScrolledPanel
 from ...i18n import _
 from ..helpers import create_copy_button, dip, inherit_background
 from ..splitter_utils import refresh_splitter_highlight, style_splitter
+from ..widgets.marquee_dataview import MarqueeDataViewListCtrl
 from .batch_ui import BatchControls
 from .confirm_preferences import RequirementConfirmPreference
 from .history_view import HistoryView
@@ -30,7 +31,7 @@ class AgentChatLayout:
     horizontal_splitter: wx.SplitterWindow
     history_panel: wx.Panel
     history_view: HistoryView
-    history_list: dv.DataViewListCtrl
+    history_list: MarqueeDataViewListCtrl
     new_chat_button: wx.Button
     conversation_label: wx.StaticText
     copy_conversation_button: wx.Window
@@ -89,7 +90,7 @@ class AgentChatLayoutBuilder:
         history_header.Add(history_label, 1, wx.ALIGN_CENTER_VERTICAL)
         history_header.Add(new_chat_btn, 0, wx.ALIGN_CENTER_VERTICAL)
         history_style = dv.DV_MULTIPLE | dv.DV_ROW_LINES | dv.DV_VERT_RULES
-        history_list = dv.DataViewListCtrl(history_panel, style=history_style)
+        history_list = MarqueeDataViewListCtrl(history_panel, style=history_style)
         history_list.SetMinSize(wx.Size(dip(panel, 260), -1))
         title_col = history_list.AppendTextColumn(
             _("Title"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 180)

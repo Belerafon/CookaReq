@@ -73,6 +73,7 @@ class ToolCallDetails:
     call_identifier: str | None
     raw_data: Any | None
     timestamp: TimestampInfo
+    llm_request: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -519,7 +520,14 @@ def _build_tool_calls(
         if raw_snapshot is None:
             raw_snapshot = raw_records.get(str(tool_index))
 
-        condensed_raw = _compose_tool_raw_data(raw_snapshot)
+        safe_snapshot: Mapping[str, Any] | None = None
+        if isinstance(raw_snapshot, Mapping):
+            snapshot_candidate = history_json_safe(raw_snapshot)
+            if isinstance(snapshot_candidate, Mapping):
+                safe_snapshot = dict(snapshot_candidate)
+
+        condensed_raw_source = safe_snapshot or raw_snapshot
+        condensed_raw = _compose_tool_raw_data(condensed_raw_source)
 
         raw_sections: dict[str, Any] = {}
         if isinstance(condensed_raw, Mapping):
@@ -533,9 +541,15 @@ def _build_tool_calls(
 
         if raw_sections:
             deduplicated_sections = _deduplicate_tool_raw_sections(raw_sections)
-            condensed_raw = history_json_safe(deduplicated_sections)
+            condensed_candidate = history_json_safe(deduplicated_sections)
+            if isinstance(condensed_candidate, Mapping):
+                condensed_raw = dict(condensed_candidate)
+            else:
+                condensed_raw = None
         else:
             condensed_raw = None
+
+        llm_request = _extract_tool_llm_request(condensed_raw, safe_snapshot)
 
         call_timestamp_raw = _extract_tool_timestamp(payload)
         if call_timestamp_raw:
@@ -559,6 +573,7 @@ def _build_tool_calls(
                 call_identifier=call_identifier,
                 raw_data=condensed_raw,
                 timestamp=timestamp_info,
+                llm_request=llm_request,
             )
         )
     return tuple(tool_calls), latest_timestamp
@@ -590,6 +605,24 @@ def _compose_tool_raw_data(raw_snapshot: Any) -> Mapping[str, Any] | None:
             sections["diagnostics"] = diagnostics_section
 
     return sections or None
+
+
+def _extract_tool_llm_request(
+    sections: Mapping[str, Any] | None,
+    snapshot: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Return a JSON-safe LLM request payload for a tool call."""
+
+    for source in (sections, snapshot):
+        if not isinstance(source, Mapping):
+            continue
+        request_payload = source.get("llm_request")
+        if not isinstance(request_payload, Mapping):
+            continue
+        safe_payload = history_json_safe(request_payload)
+        if isinstance(safe_payload, Mapping) and safe_payload:
+            return dict(safe_payload)
+    return None
 
 
 def _compose_tool_result_section(tool_payload: Any) -> Mapping[str, Any] | None:

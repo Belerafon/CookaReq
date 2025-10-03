@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.ui.agent_chat_panel.components.segments import _format_reasoning_segments
+from app.ui.agent_chat_panel.panel import format_reasoning_segments_plain
 
 
 def test_format_reasoning_segments_merges_consecutive_chunks() -> None:
@@ -12,7 +12,7 @@ def test_format_reasoning_segments_merges_consecutive_chunks() -> None:
         {"type": "analysis", "text": "Next step"},
     ]
 
-    value = _format_reasoning_segments(segments)
+    value = format_reasoning_segments_plain(segments)
 
     assert value.count("reasoning") == 1
     assert "User request" in value
@@ -28,7 +28,7 @@ def test_format_reasoning_segments_preserves_in_word_streaming() -> None:
         {"type": "reasoning", "text": "перевести", "leading_whitespace": " "},
     ]
 
-    value = _format_reasoning_segments(segments)
+    value = format_reasoning_segments_plain(segments)
 
     assert "reasoning\nпользователь просит перевести" in value
 
@@ -39,6 +39,6 @@ def test_format_reasoning_segments_reinstates_leading_space() -> None:
         {"type": "reasoning", "text": "second", "leading_whitespace": " "},
     ]
 
-    value = _format_reasoning_segments(segments)
+    value = format_reasoning_segments_plain(segments)
 
     assert "First second" in value

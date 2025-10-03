@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 import pytest
@@ -401,6 +403,67 @@ def test_tool_call_event_includes_aggregated_diagnostics() -> None:
     assert raw_data.get("diagnostics") == diagnostics
     assert raw_data.get("llm_request") is None
     assert tool_event.llm_exchange is None
+
+
+def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
+    payload_path = Path("tests/data/real_llm_tool_validation_error.json")
+    snapshot = json.loads(payload_path.read_text(encoding="utf-8"))
+
+    diagnostic = snapshot.get("diagnostic") or {}
+    entry = ChatEntry(
+        prompt="Переведи выделенные требования",
+        response="",
+        tokens=0,
+        prompt_at="2025-10-01T08:52:30+00:00",
+        response_at="2025-10-01T08:52:40+00:00",
+        tool_results=[snapshot],
+        raw_result={"diagnostic": diagnostic, "error": snapshot.get("error")},
+    )
+    if isinstance(diagnostic, dict):
+        entry.diagnostic = dict(diagnostic)
+
+    conversation = _conversation_with_entry(entry)
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+    tool_event = turn.tool_calls[0]
+
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+    request_payload = raw_data.get("llm_request")
+    assert isinstance(request_payload, Mapping)
+    assert request_payload.get("name") == "update_requirement_field"
+    arguments = request_payload.get("arguments")
+    assert isinstance(arguments, Mapping)
+    assert arguments.get("field") == "statement"
+    assert "rid" not in arguments
+
+    response_payload = raw_data.get("llm_response")
+    assert isinstance(response_payload, Mapping)
+    assert response_payload.get("content", "").startswith(
+        "update_requirement_field() missing rid"
+    )
+
+    diagnostics = raw_data.get("diagnostics")
+    assert isinstance(diagnostics, Mapping)
+    errors = diagnostics.get("errors")
+    assert isinstance(errors, Mapping)
+    error_payload = errors.get("error")
+    assert isinstance(error_payload, Mapping)
+    assert error_payload.get("code") == "VALIDATION_ERROR"
+    call_payload = errors.get("call")
+    assert isinstance(call_payload, Mapping)
+    assert call_payload.get("function", {}).get("name") == "update_requirement_field"
+
+    llm_exchange = tool_event.llm_exchange
+    assert isinstance(llm_exchange, Mapping)
+    assert llm_exchange.get("llm_request") == request_payload
+    assert llm_exchange.get("llm_response") == response_payload
+    assert "step" in llm_exchange
+
+    diagnostics_section = tool_event.diagnostics
+    assert isinstance(diagnostics_section, Mapping)
+    assert diagnostics_section.get("errors") == errors
 
 
 def test_streamed_responses_in_turn() -> None:

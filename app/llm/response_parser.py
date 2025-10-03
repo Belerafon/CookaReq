@@ -37,6 +37,28 @@ class _ToolArgumentRecovery:
     empty_fragment_count: int
 
 
+def _stringify_tool_arguments(arguments: Any) -> str:
+    """Coerce tool arguments into a JSON text payload without dropping data."""
+
+    if isinstance(arguments, str):
+        return arguments or "{}"
+    if isinstance(arguments, bytes):
+        decoded = arguments.decode("utf-8", errors="replace")
+        return decoded or "{}"
+    if arguments is None:
+        return "{}"
+    if isinstance(arguments, (Mapping, list, tuple)):
+        try:
+            return json.dumps(arguments, ensure_ascii=False)
+        except (TypeError, ValueError):
+            pass
+    try:
+        text = json.dumps(arguments, ensure_ascii=False)
+    except (TypeError, ValueError):
+        text = str(arguments)
+    return text or "{}"
+
+
 def normalise_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
     """Normalize tool call payloads into the OpenAI function schema."""
 
@@ -68,20 +90,14 @@ def normalise_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
             continue
         if call_id is None:
             call_id = f"tool_call_{idx}"
-        if isinstance(arguments, str):
-            arguments_str = arguments
-        else:
-            try:
-                arguments_str = json.dumps(arguments or {}, ensure_ascii=False)
-            except (TypeError, ValueError):
-                arguments_str = "{}"
+        arguments_str = _stringify_tool_arguments(arguments)
         normalized.append(
             {
                 "id": str(call_id),
                 "type": "function",
                 "function": {
                     "name": str(name),
-                    "arguments": arguments_str or "{}",
+                    "arguments": arguments_str,
                 },
             }
         )
@@ -671,17 +687,7 @@ class LLMResponseParser:
                 )
             if call_id is None:
                 call_id = f"tool_call_{idx}"
-            if isinstance(arguments_payload, str):
-                arguments_text = arguments_payload or "{}"
-            else:
-                try:
-                    arguments_text = json.dumps(
-                        arguments_payload or {}, ensure_ascii=False
-                    )
-                except (TypeError, ValueError) as exc:
-                    raise ToolValidationError(
-                        "LLM returned invalid JSON for tool arguments",
-                    ) from exc
+            arguments_text = _stringify_tool_arguments(arguments_payload)
             call_id_str = str(call_id)
             arguments = self._decode_tool_arguments(
                 arguments_text or "{}",

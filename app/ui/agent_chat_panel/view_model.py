@@ -1199,6 +1199,74 @@ def _extract_tool_arguments(payload: Mapping[str, Any]) -> Any:
 
 
 # ---------------------------------------------------------------------------
+def _is_step_response_payload(payload: Any) -> bool:
+    """Return ``True`` when *payload* looks like a detailed LLM step response."""
+
+    if not isinstance(payload, Mapping):
+        return False
+
+    disqualifying_keys = {
+        "llm_steps",
+        "llm_tool_calls",
+        "llm_request_messages",
+        "llm_request_messages_sequence",
+        "llm_requests",
+        "diagnostic",
+        "raw_result",
+    }
+    if any(key in payload for key in disqualifying_keys):
+        return False
+
+    if any(key in payload for key in ("content", "delta", "text", "role")):
+        return True
+
+    tool_calls = payload.get("tool_calls")
+    if isinstance(tool_calls, Sequence) and not isinstance(
+        tool_calls, (str, bytes, bytearray)
+    ):
+        for call in tool_calls:
+            if isinstance(call, Mapping) and any(
+                candidate in call for candidate in ("arguments", "tool_arguments", "function")
+            ):
+                return True
+
+    reasoning_segments = payload.get("reasoning")
+    if isinstance(reasoning_segments, Sequence) and not isinstance(
+        reasoning_segments, (str, bytes, bytearray)
+    ):
+        for segment in reasoning_segments:
+            if isinstance(segment, Mapping) and any(
+                key in segment for key in ("text", "content")
+            ):
+                return True
+
+    return False
+
+
+def _extract_tool_response_summary(payload: Any) -> Any | None:
+    """Return condensed metadata from non-step LLM response payload."""
+
+    if not isinstance(payload, Mapping):
+        return None
+
+    summary_keys = (
+        "message_preview",
+        "agent_status",
+        "status_updates",
+        "reasoning",
+    )
+    summary: dict[str, Any] = {}
+    for key in summary_keys:
+        if key not in payload:
+            continue
+        value = history_json_safe(payload.get(key))
+        if _has_meaningful_payload(value):
+            summary[key] = value
+
+    return summary or None
+
+
+# ---------------------------------------------------------------------------
 def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Any]:
     """Gather raw LLM tool call payloads keyed by their identifiers."""
 
@@ -1310,14 +1378,21 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Any]:
             identifier = _extract_tool_identifier(call)
             if identifier is None:
                 identifier = call.get("id") or str(position)
-            payload: dict[str, Any] = dict(call)
-            if response_payload is not None:
-                payload = {
+            include_response = _is_step_response_payload(response_payload)
+            if include_response:
+                payload: dict[str, Any] = {
                     "tool_call": history_json_safe(call),
                     "response": history_json_safe(response_payload),
                 }
                 if step_index is not None:
-                    payload["step"] = step_index
+                    payload["step"] = history_json_safe(step_index)
+            else:
+                payload = dict(call)
+                if step_index is not None:
+                    payload.setdefault("step", history_json_safe(step_index))
+                summary = _extract_tool_response_summary(response_payload)
+                if summary is not None:
+                    payload["response_snapshot"] = summary
             record(identifier, payload)
 
     for source in _iter_llm_request_sources(entry):

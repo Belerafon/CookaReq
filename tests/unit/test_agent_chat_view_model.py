@@ -8,6 +8,12 @@ from app.ui.agent_chat_panel.view_model import build_conversation_timeline
 from app.ui.chat_entry import ChatConversation, ChatEntry
 
 
+VALIDATION_ERROR_MESSAGE = (
+    "Invalid arguments for update_requirement_field: value: 'in_last_review' "
+    "is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']"
+)
+
+
 def _conversation_with_entry(entry: ChatEntry) -> ChatConversation:
     return ChatConversation(
         conversation_id="conv-1",
@@ -241,7 +247,7 @@ def test_tool_call_event_without_recorded_request_relies_on_tool_result() -> Non
                 "ok": False,
                 "error": {
                     "code": "VALIDATION_ERROR",
-                    "message": "missing rid",
+                    "message": VALIDATION_ERROR_MESSAGE,
                 },
             }
         ],
@@ -442,14 +448,13 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     assert request_payload.get("name") == "update_requirement_field"
     arguments = request_payload.get("arguments")
     assert isinstance(arguments, Mapping)
-    assert arguments.get("field") == "statement"
-    assert arguments.get("value")
+    assert arguments.get("field") == "status"
+    assert arguments.get("rid")
+    assert arguments.get("value") == "in_last_review"
 
     response_payload = raw_data.get("llm_response")
     assert isinstance(response_payload, Mapping)
-    assert response_payload.get("content", "").startswith(
-        "update_requirement_field() missing rid"
-    )
+    assert VALIDATION_ERROR_MESSAGE in response_payload.get("content", "")
     response_calls = response_payload.get("tool_calls")
     assert isinstance(response_calls, Sequence)
     assert response_calls, "expected llm_response.tool_calls entry"
@@ -457,8 +462,9 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     assert isinstance(first_response_call, Mapping)
     response_arguments = first_response_call.get("arguments")
     assert isinstance(response_arguments, Mapping)
-    assert response_arguments.get("field") == "statement"
-    assert response_arguments.get("value")
+    assert response_arguments.get("field") == "status"
+    assert response_arguments.get("rid")
+    assert response_arguments.get("value") == "in_last_review"
 
     diagnostics = raw_data.get("diagnostics")
     if diagnostics is not None:
@@ -600,13 +606,13 @@ def test_tool_summary_compacts_error_details() -> None:
             {
                 "tool_name": "update_requirement_field",
                 "tool_call_id": "tool-1",
-                "agent_status": "failed: update_requirement_field() missing rid",
+                "agent_status": f"failed: {VALIDATION_ERROR_MESSAGE}",
                 "started_at": "2025-10-01T08:01:00+00:00",
                 "completed_at": "2025-10-01T08:01:05+00:00",
                 "ok": False,
                 "error": {
                     "code": "VALIDATION_ERROR",
-                    "message": "update_requirement_field() missing 1 required positional argument: 'rid'",
+                    "message": VALIDATION_ERROR_MESSAGE,
                 },
             }
         ],

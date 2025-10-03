@@ -74,7 +74,18 @@ def test_build_conversation_timeline_compiles_turn() -> None:
     tool_event = turn.tool_calls[0]
     assert tool_event.summary.index == 1
     assert tool_event.call_identifier == "tool-1"
-    assert tool_event.raw_data is None
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+    assert raw_data.get("llm_exchange") is None
+    tool_result = raw_data.get("tool_result")
+    assert isinstance(tool_result, Mapping)
+    tool_section = tool_result.get("tool")
+    assert isinstance(tool_section, Mapping)
+    assert tool_section.get("call_id") == "tool-1"
+    timeline = tool_result.get("timeline")
+    assert isinstance(timeline, Mapping)
+    assert timeline.get("started_at") == "2025-09-30T20:50:10+00:00"
+    assert timeline.get("completed_at") == "2025-09-30T20:50:11+00:00"
     assert isinstance(tool_event.summary.raw_payload, Mapping)
     assert tool_event.timestamp.raw == "2025-09-30T20:50:10+00:00"
     assert not tool_event.timestamp.missing
@@ -188,14 +199,26 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
 
     raw_data = tool_event.raw_data
     assert isinstance(raw_data, Mapping)
-    call_payload = raw_data.get("llm_request")
+    llm_exchange_section = raw_data.get("llm_exchange")
+    assert isinstance(llm_exchange_section, Mapping)
+    call_payload = llm_exchange_section.get("llm_request")
     assert isinstance(call_payload, Mapping)
     assert call_payload.get("arguments", {}).get("rid") == "DEMO16"
-    response_payload = raw_data.get("llm_response")
+    response_payload = llm_exchange_section.get("llm_response")
     assert isinstance(response_payload, Mapping)
     assert response_payload.get("content") == "Applying updates"
-    assert raw_data.get("step") in (1, "1")
+    assert llm_exchange_section.get("step") in (1, "1")
     assert raw_data.get("diagnostics") in (None, {})
+
+    tool_result_section = raw_data.get("tool_result")
+    assert isinstance(tool_result_section, Mapping)
+    tool_section = tool_result_section.get("tool")
+    assert isinstance(tool_section, Mapping)
+    assert tool_section.get("call_id") == "call-1"
+    assert tool_section.get("name") == "update_requirement_field"
+    timeline = tool_result_section.get("timeline")
+    assert isinstance(timeline, Mapping)
+    assert tuple(timeline.keys()) == ("started_at", "completed_at")
 
     llm_exchange = tool_event.llm_exchange
     assert isinstance(llm_exchange, Mapping)
@@ -238,7 +261,9 @@ def test_tool_call_event_synthesises_request_when_missing() -> None:
 
     raw_data = tool_event.raw_data
     assert isinstance(raw_data, Mapping)
-    arguments = raw_data.get("llm_request", {}).get("arguments")
+    llm_exchange_section = raw_data.get("llm_exchange")
+    assert isinstance(llm_exchange_section, Mapping)
+    arguments = llm_exchange_section.get("llm_request", {}).get("arguments")
     assert isinstance(arguments, Mapping)
     assert arguments.get("rid") == "REQ-9"
     assert arguments.get("field") == "title"
@@ -309,8 +334,10 @@ def test_tool_call_event_includes_llm_error_arguments() -> None:
 
     raw_data = tool_event.raw_data
     assert isinstance(raw_data, Mapping)
+    llm_exchange_section = raw_data.get("llm_exchange")
+    assert isinstance(llm_exchange_section, Mapping)
 
-    request_payload = raw_data.get("llm_request")
+    request_payload = llm_exchange_section.get("llm_request")
     assert isinstance(request_payload, Mapping)
     arguments = request_payload.get("arguments")
     assert isinstance(arguments, Mapping)
@@ -318,7 +345,7 @@ def test_tool_call_event_includes_llm_error_arguments() -> None:
     assert arguments["field"] == "title"
     assert arguments["value"] == "Broken"
 
-    error_payload = raw_data.get("llm_error")
+    error_payload = llm_exchange_section.get("llm_error")
     assert isinstance(error_payload, Mapping)
     assert error_payload.get("message") == "Tool call failed"
     tool_call_payload = error_payload.get("tool_call")
@@ -332,7 +359,7 @@ def test_tool_call_event_includes_llm_error_arguments() -> None:
     assert isinstance(details, Mapping)
     assert details.get("hint") == "Double-check the requirement id"
 
-    additional = raw_data.get("additional")
+    additional = llm_exchange_section.get("additional")
     assert additional is None or isinstance(additional, Mapping)
     assert raw_data.get("diagnostics") in (None, {})
 
@@ -401,7 +428,7 @@ def test_tool_call_event_includes_aggregated_diagnostics() -> None:
     raw_data = tool_event.raw_data
     assert isinstance(raw_data, Mapping)
     assert raw_data.get("diagnostics") == diagnostics
-    assert raw_data.get("llm_request") is None
+    assert raw_data.get("llm_exchange") is None
     assert tool_event.llm_exchange is None
 
 
@@ -430,7 +457,9 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
 
     raw_data = tool_event.raw_data
     assert isinstance(raw_data, Mapping)
-    request_payload = raw_data.get("llm_request")
+    llm_exchange_section = raw_data.get("llm_exchange")
+    assert isinstance(llm_exchange_section, Mapping)
+    request_payload = llm_exchange_section.get("llm_request")
     assert isinstance(request_payload, Mapping)
     assert request_payload.get("name") == "update_requirement_field"
     arguments = request_payload.get("arguments")
@@ -438,7 +467,7 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     assert arguments.get("field") == "statement"
     assert "rid" not in arguments
 
-    response_payload = raw_data.get("llm_response")
+    response_payload = llm_exchange_section.get("llm_response")
     assert isinstance(response_payload, Mapping)
     assert response_payload.get("content", "").startswith(
         "update_requirement_field() missing rid"
@@ -460,6 +489,19 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     assert llm_exchange.get("llm_request") == request_payload
     assert llm_exchange.get("llm_response") == response_payload
     assert "step" in llm_exchange
+
+    tool_result_section = raw_data.get("tool_result")
+    assert isinstance(tool_result_section, Mapping)
+    tool_section = tool_result_section.get("tool")
+    assert isinstance(tool_section, Mapping)
+    assert tool_section.get("call_id") == snapshot.get("tool_call_id")
+    assert tool_section.get("name") == snapshot.get("tool_name")
+    status_section = tool_result_section.get("status")
+    assert isinstance(status_section, Mapping)
+    assert status_section.get("state") == snapshot.get("agent_status")
+    error_section = tool_result_section.get("error")
+    assert isinstance(error_section, Mapping)
+    assert error_section.get("code") == "VALIDATION_ERROR"
 
     diagnostics_section = tool_event.diagnostics
     assert isinstance(diagnostics_section, Mapping)

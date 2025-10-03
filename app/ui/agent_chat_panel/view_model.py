@@ -532,49 +532,35 @@ def _build_tool_calls(
             raw_record = _synthesise_tool_request(payload, summary)
 
         condensed_raw = _compose_tool_raw_data(raw_record)
-        llm_request_snapshot: Any | None = None
         llm_exchange_payload: Mapping[str, Any] | None = None
         diagnostics_payload: Mapping[str, Any] | None = None
-        if isinstance(raw_record, ToolCallRawRecord):
-            if raw_record.exchange is not None:
-                exchange_candidate = history_json_safe(raw_record.exchange)
-                if isinstance(exchange_candidate, Mapping):
-                    llm_exchange_payload = exchange_candidate
-                llm_request_snapshot = _extract_tool_llm_request(
-                    raw_record.exchange
-                )
-            if raw_record.diagnostics is not None:
-                diagnostics_candidate = history_json_safe(raw_record.diagnostics)
-                if isinstance(diagnostics_candidate, Mapping):
-                    diagnostics_payload = diagnostics_candidate
-        else:
+        llm_request_snapshot: Any | None = None
+
+        if isinstance(condensed_raw, Mapping):
+            exchange_candidate = condensed_raw.get("llm_exchange")
+            if isinstance(exchange_candidate, Mapping):
+                llm_exchange_payload = exchange_candidate
+                request_candidate = exchange_candidate.get("llm_request")
+                if request_candidate is not None:
+                    llm_request_snapshot = request_candidate
+            diagnostics_candidate = condensed_raw.get("diagnostics")
+            if isinstance(diagnostics_candidate, Mapping):
+                diagnostics_payload = diagnostics_candidate
+
+        if llm_request_snapshot is None:
             llm_request_snapshot = _extract_tool_llm_request(raw_record)
 
-        if llm_request_snapshot is None and isinstance(condensed_raw, Mapping):
-            candidate = condensed_raw.get("llm_request")
-            if candidate is not None:
-                llm_request_snapshot = candidate
-        if condensed_raw is None:
-            include_tool_result = False
-            if isinstance(safe_payload, Mapping):
-                diagnostic_keys = {
-                    "agent_status",
-                    "status_updates",
-                    "error",
-                    "result",
-                    "tool_arguments",
-                    "arguments",
-                    "response",
-                    "details",
-                }
-                include_tool_result = any(key in safe_payload for key in diagnostic_keys)
-            if include_tool_result:
-                condensed_raw = history_json_safe({"tool_result": safe_payload})
-        elif isinstance(condensed_raw, Mapping) and isinstance(safe_payload, Mapping):
-            if "tool_result" not in condensed_raw:
-                enriched = dict(condensed_raw)
-                enriched["tool_result"] = safe_payload
-                condensed_raw = history_json_safe(enriched)
+        raw_sections: dict[str, Any] = {}
+        if isinstance(condensed_raw, Mapping):
+            raw_sections.update(condensed_raw)
+
+        tool_result_section: Mapping[str, Any] | None = None
+        if isinstance(safe_payload, Mapping):
+            tool_result_section = _compose_tool_result_section(safe_payload)
+        if tool_result_section is not None:
+            raw_sections["tool_result"] = tool_result_section
+
+        condensed_raw = history_json_safe(raw_sections) if raw_sections else None
 
         call_timestamp_raw = _extract_tool_timestamp(payload)
         if call_timestamp_raw:
@@ -612,32 +598,57 @@ def _compose_tool_raw_data(request_payload: Any) -> Any | None:
     if request_payload is None:
         return None
 
+    exchange_section: Mapping[str, Any] | None = None
+    diagnostics_section: Mapping[str, Any] | None = None
+
     if isinstance(request_payload, ToolCallRawRecord):
-        sections: dict[str, Any] = {}
         if request_payload.exchange is not None:
             exchange_payload = history_json_safe(request_payload.exchange)
             if isinstance(exchange_payload, Mapping):
-                for key in ("llm_request", "llm_response", "llm_error", "step"):
-                    if key not in exchange_payload:
-                        continue
-                    candidate = history_json_safe(exchange_payload.get(key))
-                    if _has_meaningful_payload(candidate):
-                        sections[key] = candidate
-                additional_payload = history_json_safe(
-                    exchange_payload.get("additional")
-                )
-                if _has_meaningful_payload(additional_payload):
-                    sections["additional"] = additional_payload
+                exchange_section = _build_exchange_section(exchange_payload)
         if request_payload.diagnostics is not None:
             diagnostics_payload = history_json_safe(request_payload.diagnostics)
             if _has_meaningful_payload(diagnostics_payload):
-                sections["diagnostics"] = diagnostics_payload
-        return history_json_safe(sections) if sections else None
+                diagnostics_section = diagnostics_payload
+    else:
+        safe_payload = history_json_safe(request_payload)
+        exchange_section = _build_exchange_section_from_safe_payload(safe_payload)
 
-    safe_payload = history_json_safe(request_payload)
+    sections: dict[str, Any] = {}
+    if exchange_section:
+        sections["llm_exchange"] = exchange_section
+    if diagnostics_section:
+        sections["diagnostics"] = diagnostics_section
 
+    return history_json_safe(sections) if sections else None
+
+
+def _build_exchange_section(
+    exchange_payload: Mapping[str, Any]
+) -> Mapping[str, Any] | None:
+    if not isinstance(exchange_payload, Mapping):
+        return None
+
+    section: dict[str, Any] = {}
+    for key in ("llm_request", "llm_response", "llm_error", "step"):
+        if key not in exchange_payload:
+            continue
+        candidate = history_json_safe(exchange_payload.get(key))
+        if _has_meaningful_payload(candidate):
+            section[key] = candidate
+
+    additional_payload = history_json_safe(exchange_payload.get("additional"))
+    if _has_meaningful_payload(additional_payload):
+        section["additional"] = additional_payload
+
+    return section or None
+
+
+def _build_exchange_section_from_safe_payload(
+    safe_payload: Any,
+) -> Mapping[str, Any] | None:
     if isinstance(safe_payload, Mapping):
-        sections: dict[str, Any] = {}
+        section: dict[str, Any] = {}
 
         request_body = safe_payload.get("tool_call") or safe_payload.get("request")
         if request_body is None and "response" not in safe_payload:
@@ -645,25 +656,25 @@ def _compose_tool_raw_data(request_payload: Any) -> Any | None:
         if request_body is not None:
             request_section = history_json_safe(request_body)
             if _has_meaningful_payload(request_section):
-                sections["llm_request"] = request_section
+                section["llm_request"] = request_section
 
         response_body = safe_payload.get("response")
         if response_body is not None:
             response_section = history_json_safe(response_body)
             if _has_meaningful_payload(response_section):
-                sections["llm_response"] = response_section
+                section["llm_response"] = response_section
 
         error_body = safe_payload.get("error")
         if error_body is not None:
             error_section = history_json_safe(error_body)
             if _has_meaningful_payload(error_section):
-                sections["llm_error"] = error_section
+                section["llm_error"] = error_section
 
         step_value = safe_payload.get("step")
         if step_value is not None and step_value != "":
             step_section = history_json_safe(step_value)
             if _has_meaningful_payload(step_section):
-                sections["step"] = step_section
+                section["step"] = step_section
 
         extras: dict[str, Any] = {}
         for key, value in safe_payload.items():
@@ -673,21 +684,140 @@ def _compose_tool_raw_data(request_payload: Any) -> Any | None:
             if _has_meaningful_payload(sanitized):
                 extras[key] = sanitized
         if extras:
-            sections["additional"] = history_json_safe(extras)
+            section["additional"] = history_json_safe(extras)
 
-        return history_json_safe(sections) if sections else None
+        return section or None
 
     if isinstance(safe_payload, Sequence) and not isinstance(
         safe_payload, (str, bytes, bytearray)
     ):
         request_section = history_json_safe(list(safe_payload))
         if _has_meaningful_payload(request_section):
-            return history_json_safe({"llm_request": request_section})
+            return {"llm_request": request_section}
         return None
 
     if _has_meaningful_payload(safe_payload):
-        return history_json_safe({"llm_request": safe_payload})
+        return {"llm_request": safe_payload}
+
     return None
+
+
+def _compose_tool_result_section(tool_payload: Any) -> Mapping[str, Any] | None:
+    if not isinstance(tool_payload, Mapping):
+        return None
+
+    safe_payload = history_json_safe(tool_payload)
+    if not isinstance(safe_payload, Mapping):
+        return None
+
+    sections: dict[str, Any] = {}
+
+    tool_section: dict[str, Any] = {}
+    name = _normalise_optional_string(
+        safe_payload.get("tool_name")
+        or safe_payload.get("tool")
+        or safe_payload.get("name")
+    )
+    if name:
+        tool_section["name"] = name
+
+    identifiers: list[str] = []
+    for key in ("tool_call_id", "call_id", "call_identifier"):
+        identifier = _normalise_optional_string(safe_payload.get(key))
+        if identifier and identifier not in identifiers:
+            identifiers.append(identifier)
+    if identifiers:
+        if len(identifiers) == 1:
+            tool_section["call_id"] = identifiers[0]
+        else:
+            tool_section["call_ids"] = identifiers
+
+    for key in ("tool_arguments", "arguments", "args"):
+        candidate = history_json_safe(safe_payload.get(key))
+        if isinstance(candidate, Mapping) and _has_meaningful_payload(candidate):
+            tool_section["arguments"] = candidate
+            break
+
+    if tool_section:
+        sections["tool"] = tool_section
+
+    status_section: dict[str, Any] = {}
+    agent_status = _normalise_optional_string(
+        safe_payload.get("agent_status") or safe_payload.get("status")
+    )
+    if agent_status:
+        status_section["state"] = agent_status
+    if "ok" in safe_payload:
+        ok_value = history_json_safe(safe_payload.get("ok"))
+        if _has_meaningful_payload(ok_value) or ok_value is False:
+            status_section["ok"] = ok_value
+    stop_reason = history_json_safe(safe_payload.get("agent_stop_reason"))
+    if _has_meaningful_payload(stop_reason):
+        status_section["stop_reason"] = stop_reason
+    if status_section:
+        sections["status"] = status_section
+
+    status_updates = history_json_safe(safe_payload.get("status_updates"))
+    if _has_meaningful_payload(status_updates):
+        sections["status_updates"] = status_updates
+
+    error_payload = history_json_safe(safe_payload.get("error"))
+    if _has_meaningful_payload(error_payload):
+        sections["error"] = error_payload
+
+    result_payload = history_json_safe(safe_payload.get("result"))
+    if _has_meaningful_payload(result_payload):
+        sections["result"] = result_payload
+
+    context_section: dict[str, Any] = {}
+    for key in ("message_preview", "response_snapshot", "reasoning"):
+        candidate = history_json_safe(safe_payload.get(key))
+        if _has_meaningful_payload(candidate):
+            context_section[key] = candidate
+    if context_section:
+        sections["context"] = context_section
+
+    timeline = _collect_unique_timestamps(safe_payload)
+    if timeline:
+        if len(timeline) == 1:
+            sections["timestamp"] = timeline[0][1]
+        else:
+            sections["timeline"] = {key: value for key, value in timeline}
+
+    return history_json_safe(sections) if sections else None
+
+
+def _collect_unique_timestamps(
+    payload: Mapping[str, Any]
+) -> list[tuple[str, str]]:
+    if not isinstance(payload, Mapping):
+        return []
+
+    seen: set[str] = set()
+    collected: list[tuple[str, str]] = []
+    for key in (
+        "first_observed_at",
+        "started_at",
+        "observed_at",
+        "last_observed_at",
+        "completed_at",
+    ):
+        value = payload.get(key)
+        if not isinstance(value, str):
+            continue
+        text = value.strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        collected.append((key, text))
+    return collected
+
+
+def _normalise_optional_string(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
 
 
 def _has_meaningful_payload(value: Any) -> bool:

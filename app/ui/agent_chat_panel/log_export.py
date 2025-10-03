@@ -434,6 +434,22 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
                         status=status_label,
                     )
                     blocks.append(header)
+                    if summary.started_at:
+                        blocks.append(
+                            indent_block(
+                                _("Started at {timestamp}").format(
+                                    timestamp=summary.started_at
+                                )
+                            )
+                        )
+                    if summary.completed_at:
+                        blocks.append(
+                            indent_block(
+                                _("Completed at {timestamp}").format(
+                                    timestamp=summary.completed_at
+                                )
+                            )
+                        )
                     if summary.bullet_lines:
                         for bullet in summary.bullet_lines:
                             if bullet:

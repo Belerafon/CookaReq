@@ -72,6 +72,7 @@ class ToolCallDetails:
     call_identifier: str | None
     raw_data: Any | None
     timestamp: TimestampInfo
+    llm_request: Any | None = None
 
 
 @dataclass(slots=True)
@@ -520,6 +521,34 @@ def _build_tool_calls(
         if request_payload is None:
             request_payload = _synthesise_tool_request(payload, summary)
 
+        condensed_raw = _compose_tool_raw_data(request_payload)
+        llm_request_snapshot = _extract_tool_llm_request(request_payload)
+        if llm_request_snapshot is None and isinstance(condensed_raw, Mapping):
+            candidate = condensed_raw.get("llm_request")
+            if candidate is not None:
+                llm_request_snapshot = candidate
+        if condensed_raw is None:
+            include_tool_result = False
+            if isinstance(safe_payload, Mapping):
+                diagnostic_keys = {
+                    "agent_status",
+                    "status_updates",
+                    "error",
+                    "result",
+                    "tool_arguments",
+                    "arguments",
+                    "response",
+                    "details",
+                }
+                include_tool_result = any(key in safe_payload for key in diagnostic_keys)
+            if include_tool_result:
+                condensed_raw = history_json_safe({"tool_result": safe_payload})
+        elif isinstance(condensed_raw, Mapping) and isinstance(safe_payload, Mapping):
+            if "tool_result" not in condensed_raw:
+                enriched = dict(condensed_raw)
+                enriched["tool_result"] = safe_payload
+                condensed_raw = history_json_safe(enriched)
+
         call_timestamp_raw = _extract_tool_timestamp(payload)
         if call_timestamp_raw:
             candidate = _build_timestamp(call_timestamp_raw, source="tool_result")
@@ -540,8 +569,9 @@ def _build_tool_calls(
             ToolCallDetails(
                 summary=summary,
                 call_identifier=call_identifier,
-                raw_data=_compose_tool_raw_data(request_payload),
+                raw_data=condensed_raw,
                 timestamp=timestamp_info,
+                llm_request=llm_request_snapshot,
             )
         )
     return tuple(tool_calls), latest_timestamp
@@ -662,6 +692,33 @@ def _build_agent_events(
             append_tool(detail)
 
     return tuple(events)
+
+
+def _extract_tool_llm_request(request_payload: Any) -> Any | None:
+    """Return sanitised tool request payload extracted from *request_payload*."""
+
+    if request_payload is None:
+        return None
+
+    if isinstance(request_payload, Mapping):
+        if "tool_call" in request_payload:
+            candidate = request_payload.get("tool_call")
+        elif "request" in request_payload and "response" in request_payload:
+            candidate = request_payload.get("request")
+        elif "response" not in request_payload:
+            candidate = request_payload
+        else:
+            candidate = None
+        if candidate is None:
+            return None
+        return history_json_safe(candidate)
+
+    if isinstance(request_payload, Sequence) and not isinstance(
+        request_payload, (str, bytes, bytearray)
+    ):
+        return history_json_safe(list(request_payload))
+
+    return history_json_safe(request_payload)
 
 
 def _tool_detail_sort_key(detail: ToolCallDetails) -> tuple[int, _dt.datetime | None, int]:
@@ -987,14 +1044,32 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Any]:
     def record(identifier: str, payload: Any) -> None:
         if not identifier:
             return
-        if identifier in requests:
-            existing = requests[identifier]
-            if isinstance(existing, Mapping) and isinstance(payload, Mapping):
-                if "response" in existing and "response" not in payload:
-                    return
         safe_payload = history_json_safe(payload)
         if safe_payload is None:
             return
+        if identifier in requests:
+            existing = requests[identifier]
+            if isinstance(existing, Mapping) and isinstance(safe_payload, Mapping):
+                merged: dict[str, Any] = dict(existing)
+                for key, value in safe_payload.items():
+                    if key == "tool_call" and isinstance(value, Mapping):
+                        existing_tool = (
+                            merged.get("tool_call")
+                            if isinstance(merged.get("tool_call"), Mapping)
+                            else None
+                        )
+                        if isinstance(existing_tool, Mapping):
+                            merged_tool = dict(existing_tool)
+                            for tool_key, tool_value in value.items():
+                                merged_tool[tool_key] = tool_value
+                        else:
+                            merged_tool = dict(value)
+                        merged["tool_call"] = merged_tool
+                    else:
+                        merged[key] = value
+                sanitized = history_json_safe(merged)
+                requests[identifier] = sanitized if sanitized is not None else merged
+                return
         requests[identifier] = safe_payload
 
     def scan_tool_calls(

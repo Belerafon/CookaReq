@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import wx
 import wx.dataview as dv
-from wx.lib.scrolledpanel import ScrolledPanel
 
 from ...i18n import _
 from ..helpers import create_copy_button, dip, inherit_background
@@ -16,7 +15,6 @@ from ..widgets.marquee_dataview import MarqueeDataViewListCtrl
 from .batch_ui import BatchControls
 from .confirm_preferences import RequirementConfirmPreference
 from .history_view import HistoryView
-from .segment_view import SegmentListView, SegmentViewCallbacks
 
 if TYPE_CHECKING:  # pragma: no cover - type hints only
     from .panel import AgentChatPanel
@@ -37,9 +35,8 @@ class AgentChatLayout:
     copy_conversation_button: wx.Window
     copy_log_button: wx.Window
     transcript_container: wx.Panel
-    transcript_scroller: ScrolledPanel
-    transcript_sizer: wx.BoxSizer
-    transcript_view: SegmentListView
+    transcript_scroller: wx.Panel
+    transcript_list: dv.DataViewListCtrl
     bottom_panel: wx.Panel
     input_control: wx.TextCtrl
     stop_button: wx.Button
@@ -143,28 +140,34 @@ class AgentChatLayoutBuilder:
         copy_log_btn.Enable(False)
         transcript_header.Add(copy_log_btn, 0, wx.ALIGN_CENTER_VERTICAL)
 
-        transcript_scroller = ScrolledPanel(
-            transcript_container,
-            style=wx.TAB_TRAVERSAL,
-        )
+        transcript_scroller = wx.Panel(transcript_container)
         inherit_background(transcript_container, panel)
         inherit_background(transcript_scroller, transcript_container)
-        transcript_scroller.SetupScrolling(scroll_x=False, scroll_y=True)
         transcript_box = wx.BoxSizer(wx.VERTICAL)
-        transcript_scroller.SetSizer(transcript_box)
-
-        transcript_view = SegmentListView(
-            panel,
+        transcript_list = dv.DataViewListCtrl(
             transcript_scroller,
-            transcript_box,
-            callbacks=SegmentViewCallbacks(
-                get_conversation=panel._get_active_conversation,
-                is_running=lambda: panel.is_running,
-                on_regenerate=panel._handle_regenerate_request,
-                update_copy_buttons=panel._update_transcript_copy_buttons,
-                update_header=panel._update_conversation_header,
-            ),
+            style=dv.DV_ROW_LINES | dv.DV_VERT_RULES | dv.DV_MULTIPLE,
         )
+        transcript_list.AppendTextColumn(
+            _("Time"),
+            mode=dv.DATAVIEW_CELL_INERT,
+            width=dip(panel, 120),
+        )
+        transcript_list.AppendTextColumn(
+            _("Source"),
+            mode=dv.DATAVIEW_CELL_INERT,
+            width=dip(panel, 120),
+        )
+        transcript_list.AppendTextColumn(
+            _("Message"),
+            mode=dv.DATAVIEW_CELL_INERT,
+            width=dip(panel, 520),
+        )
+        transcript_list.Bind(dv.EVT_DATAVIEW_ITEM_CONTEXT_MENU, panel._on_transcript_context_menu)
+        transcript_list.Bind(dv.EVT_DATAVIEW_ITEM_ACTIVATED, panel._on_transcript_item_activated)
+        transcript_list.Bind(wx.EVT_KEY_DOWN, panel._on_transcript_key_down)
+        transcript_box.Add(transcript_list, 1, wx.EXPAND)
+        transcript_scroller.SetSizer(transcript_box)
 
         transcript_sizer.Add(transcript_header, 0, wx.EXPAND)
         transcript_sizer.AddSpacer(spacing)
@@ -320,8 +323,7 @@ class AgentChatLayoutBuilder:
             copy_log_button=copy_log_btn,
             transcript_container=transcript_container,
             transcript_scroller=transcript_scroller,
-            transcript_sizer=transcript_box,
-            transcript_view=transcript_view,
+            transcript_list=transcript_list,
             bottom_panel=bottom_panel,
             input_control=input_ctrl,
             stop_button=stop_btn,

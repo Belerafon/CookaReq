@@ -6,13 +6,15 @@ import json
 import logging
 import textwrap
 import time
+from dataclasses import dataclass
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from concurrent.futures import ThreadPoolExecutor
 
 import wx
+import wx.dataview as dv
 
 from ...confirm import confirm
 from ...i18n import _
@@ -24,10 +26,7 @@ from ..chat_entry import (
     ChatEntry,
     count_context_message_tokens,
 )
-from ..helpers import (
-    format_error_message,
-    inherit_background,
-)
+from ..helpers import format_error_message, inherit_background
 from ..text import normalize_for_display
 from .batch_runner import BatchTarget
 from .batch_ui import AgentBatchSection
@@ -78,10 +77,85 @@ from .view_model import (
     ToolCallDetails,
     build_conversation_timeline,
 )
-from .segment_view import SegmentListView
+
+
+@dataclass(slots=True)
+class _TranscriptRow:
+    """Flattened transcript row stored in the data view."""
+
+    timestamp: str
+    source: str
+    text: str
+    conversation_id: str | None
+    entry_index: int | None
+    kind: Literal[
+        "user",
+        "context",
+        "agent_final",
+        "agent_intermediate",
+        "agent_reasoning",
+        "tool",
+        "system",
+    ]
+    can_regenerate: bool = False
 
 
 logger = logging.getLogger("cookareq.ui.agent_chat_panel")
+
+
+def _merge_reasoning_text(existing: str, addition: str) -> str:
+    if not existing:
+        return addition
+    if not addition:
+        return existing
+    if existing.endswith(("\n", "\r")) or addition.startswith("\n"):
+        return existing + addition
+    if existing.endswith(" ") or addition.startswith(" "):
+        return existing + addition
+    return f"{existing}{addition}"
+
+
+def format_reasoning_segments_plain(
+    segments: Sequence[Mapping[str, Any]] | None,
+) -> str:
+    if not segments:
+        return ""
+    merged: list[tuple[str, str]] = []
+    for segment in segments:
+        if isinstance(segment, Mapping):
+            type_value = segment.get("type")
+            text_value = segment.get("text")
+            leading_value = segment.get("leading_whitespace")
+            trailing_value = segment.get("trailing_whitespace")
+        else:
+            type_value = getattr(segment, "type", None)
+            text_value = getattr(segment, "text", None)
+            leading_value = getattr(segment, "leading_whitespace", "")
+            trailing_value = getattr(segment, "trailing_whitespace", "")
+        if text_value is None:
+            continue
+        text = str(text_value)
+        if not text.strip():
+            continue
+        leading = str(leading_value or "")
+        trailing = str(trailing_value or "")
+        raw_text = f"{leading}{text}{trailing}"
+        if not raw_text.strip():
+            continue
+        type_label = normalize_for_display(str(type_value or "")).strip()
+        if merged and merged[-1][0] == type_label:
+            merged[-1] = (
+                type_label,
+                _merge_reasoning_text(merged[-1][1], raw_text),
+            )
+        else:
+            merged.append((type_label, raw_text))
+
+    blocks: list[str] = []
+    for index, (type_label, text) in enumerate(merged, start=1):
+        heading = type_label or _("Thought {index}").format(index=index)
+        blocks.append(f"{heading}\n{normalize_for_display(text)}")
+    return "\n\n".join(blocks)
 
 
 try:  # pragma: no cover - import only used for typing
@@ -170,7 +244,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._bottom_panel: wx.Panel | None = None
         self._copy_conversation_btn: wx.Window | None = None
         self._history_view: HistoryView | None = None
-        self._transcript_view: SegmentListView | None = None
+        self._transcript_list: dv.DataViewListCtrl | None = None
+        self._transcript_rows: list[_TranscriptRow] = []
         self._history_last_sash = 0
         self._vertical_sash_goal: int | None = None
         self._vertical_last_sash = 0
@@ -377,20 +452,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._conversation_label = layout.conversation_label
         self._copy_conversation_btn = layout.copy_conversation_button
         self._copy_transcript_log_btn = layout.copy_log_button
-        self.transcript_panel = layout.transcript_scroller
-        self._transcript_sizer = layout.transcript_sizer
-        self._transcript_view = layout.transcript_view
-        self._transcript_selection_probe = wx.TextCtrl(
-            self,
-            style=(
-                wx.TE_MULTILINE
-                | wx.TE_READONLY
-                | wx.TE_WORDWRAP
-                | wx.TE_NO_VSCROLL
-                | wx.BORDER_NONE
-            ),
-        )
-        self._transcript_selection_probe.Hide()
+        self._transcript_list = layout.transcript_list
         self._bottom_panel = layout.bottom_panel
         self.input = layout.input_control
         self._stop_btn = layout.stop_button
@@ -647,9 +709,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self.active_conversation_id is not None
             and self.active_conversation_id in ids_to_remove
         )
-        view = self._transcript_view
-        if view is not None:
-            view.forget_conversations(ids_to_remove)
         remaining = [
             conv for conv in self.conversations if conv.conversation_id not in ids_to_remove
         ]
@@ -666,6 +725,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self._set_active_conversation_id(None)
         self._save_history_to_store()
         self._notify_history_changed()
+        self._render_transcript()
         if removed_active:
             self.input.SetValue("")
         self.input.SetFocus()
@@ -1586,27 +1646,364 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return
         self._history_view.refresh()
         self._update_history_controls()
-        view = self._transcript_view
-        if view is not None:
-            view.sync_known_conversations(
-                [conversation.conversation_id for conversation in self.conversations]
-            )
 
     def _render_transcript(self) -> None:
-        if self._transcript_view is None:
+        list_ctrl = self._transcript_list
+        if list_ctrl is None:
             return
-        self._transcript_view.render()
-        self._update_transcript_selection_probe(self._compose_transcript_text())
+        conversation = self._get_active_conversation()
+        if conversation is None:
+            list_ctrl.DeleteAllItems()
+            self._transcript_rows = []
+            self._update_transcript_copy_buttons(False)
+            self._update_conversation_header()
+            return
 
-    def _update_transcript_selection_probe(self, text: str | None = None) -> None:
-        probe = getattr(self, "_transcript_selection_probe", None)
-        if not isinstance(probe, wx.TextCtrl):
+        rows = self._build_transcript_rows(conversation)
+        list_ctrl.DeleteAllItems()
+        for row in rows:
+            list_ctrl.AppendItem([row.timestamp, row.source, row.text])
+        self._transcript_rows = rows
+        has_entries = bool(conversation.entries)
+        self._update_transcript_copy_buttons(has_entries)
+        self._update_conversation_header()
+        if rows:
+            last_item = list_ctrl.RowToItem(len(rows) - 1)
+            if last_item.IsOk():
+                list_ctrl.EnsureVisible(last_item)
+
+    def _build_transcript_rows(
+        self, conversation: ChatConversation
+    ) -> list[_TranscriptRow]:
+        timeline = build_conversation_timeline(conversation)
+        rows: list[_TranscriptRow] = []
+        conversation_id = conversation.conversation_id
+
+        for entry in timeline.entries:
+            entry_index = entry.entry_index
+            prompt = entry.prompt
+            if prompt is not None:
+                text = self._normalise_text(prompt.text)
+                rows.append(
+                    _TranscriptRow(
+                        timestamp=self._format_timestamp(prompt.timestamp),
+                        source=_("User"),
+                        text=text,
+                        conversation_id=conversation_id,
+                        entry_index=entry_index,
+                        kind="user",
+                    )
+                )
+            if entry.context_messages:
+                context_text = self._format_context_messages(entry.context_messages)
+                if context_text:
+                    rows.append(
+                        _TranscriptRow(
+                            timestamp="",
+                            source=_("Context"),
+                            text=context_text,
+                            conversation_id=conversation_id,
+                            entry_index=entry_index,
+                            kind="context",
+                        )
+                    )
+
+            turn = entry.agent_turn
+            if turn is not None:
+                reasoning_text = self._format_reasoning_segments(turn.reasoning)
+                for event in turn.events:
+                    if event.kind == "response" and event.response is not None:
+                        response = event.response
+                        text = self._normalise_text(
+                            response.display_text or response.text
+                        )
+                        if not text and not reasoning_text:
+                            continue
+                        source = _("Agent")
+                        kind = "agent_final" if response.is_final else "agent_intermediate"
+                        if not response.is_final:
+                            source = _("Agent (intermediate)")
+                        rows.append(
+                            _TranscriptRow(
+                                timestamp=self._format_timestamp(response.timestamp),
+                                source=source,
+                                text=text,
+                                conversation_id=conversation_id,
+                                entry_index=entry_index,
+                                kind=kind,
+                                can_regenerate=entry.can_regenerate
+                                and response.is_final,
+                            )
+                        )
+                    elif event.kind == "tool" and event.tool_call is not None:
+                        tool_text = self._format_tool_call_details(event.tool_call)
+                        if tool_text:
+                            rows.append(
+                                _TranscriptRow(
+                                    timestamp=self._format_timestamp(
+                                        event.tool_call.timestamp
+                                    ),
+                                    source=_("Tool"),
+                                    text=tool_text,
+                                    conversation_id=conversation_id,
+                                    entry_index=entry_index,
+                                    kind="tool",
+                                )
+                            )
+                if reasoning_text:
+                    rows.append(
+                        _TranscriptRow(
+                            timestamp="",
+                            source=_("Agent reasoning"),
+                            text=reasoning_text,
+                            conversation_id=conversation_id,
+                            entry_index=entry_index,
+                            kind="agent_reasoning",
+                        )
+                    )
+
+            if entry.system_messages:
+                for system_message in entry.system_messages:
+                    message_text = self._format_system_message(system_message)
+                    if not message_text:
+                        continue
+                    rows.append(
+                        _TranscriptRow(
+                            timestamp="",
+                            source=_("System"),
+                            text=message_text,
+                            conversation_id=conversation_id,
+                            entry_index=entry_index,
+                            kind="system",
+                        )
+                    )
+
+        return rows
+
+    @staticmethod
+    def _normalise_text(value: str | None) -> str:
+        return normalize_for_display(value or "").strip()
+
+    def _format_timestamp(self, timestamp: TimestampInfo | None) -> str:
+        if timestamp is None:
+            return ""
+        label = normalize_for_display(timestamp.formatted or "").strip()
+        if label:
+            return label
+        raw = timestamp.raw or ""
+        if raw:
+            formatted = format_entry_timestamp(raw)
+            if formatted:
+                return normalize_for_display(formatted).strip()
+            return normalize_for_display(raw).strip()
+        return ""
+
+    def _format_context_messages(
+        self, messages: Sequence[Mapping[str, Any]] | None
+    ) -> str:
+        if not messages:
+            return ""
+        blocks: list[str] = []
+        for message in messages:
+            if not isinstance(message, Mapping):
+                continue
+            role_value = message.get("role")
+            content_value = message.get("content")
+            fragments: list[str] = []
+            if isinstance(content_value, Sequence) and not isinstance(
+                content_value, (str, bytes, bytearray)
+            ):
+                for fragment in content_value:
+                    if isinstance(fragment, Mapping):
+                        fragment_text = normalize_for_display(
+                            str(fragment.get("text", ""))
+                        )
+                        if fragment_text:
+                            fragments.append(fragment_text)
+                        continue
+                    if fragment is None:
+                        continue
+                    fragments.append(normalize_for_display(str(fragment)))
+            elif content_value is not None:
+                try:
+                    fragments.append(normalize_for_display(stringify_payload(content_value)))
+                except Exception:  # pragma: no cover - defensive
+                    fragments.append(normalize_for_display(str(content_value)))
+
+            text = "\n".join(part for part in fragments if part).strip()
+            role = normalize_for_display(str(role_value or "")).strip()
+            if not text and not role:
+                continue
+            parts: list[str] = []
+            if role:
+                parts.append(f"{role}:")
+            if text:
+                parts.append(text)
+            blocks.append("\n".join(parts).strip())
+        return "\n\n".join(block for block in blocks if block)
+
+    def _format_reasoning_segments(
+        self, segments: Sequence[Mapping[str, Any]] | None
+    ) -> str:
+        return format_reasoning_segments_plain(segments)
+
+    def _format_tool_call_details(self, details: ToolCallDetails) -> str:
+        summary = details.summary
+        summary_text = render_tool_summaries_plain((summary,)).strip()
+        extras: list[str] = []
+        if summary.cost:
+            extras.append(_("Cost: {value}").format(value=normalize_for_display(summary.cost)))
+        if summary.duration is not None:
+            extras.append(
+                _("Duration: {seconds:.2f}s").format(seconds=float(summary.duration))
+            )
+        if summary.error_message:
+            extras.append(
+                _("Error: {message}").format(
+                    message=normalize_for_display(summary.error_message)
+                )
+            )
+        if summary.arguments is not None:
+            extras.append(
+                _("Arguments: {arguments}").format(
+                    arguments=normalize_for_display(
+                        stringify_payload(summary.arguments)
+                    )
+                )
+            )
+        if extras:
+            summary_text = "\n".join(filter(None, [summary_text, "\n".join(extras)]))
+        return summary_text.strip()
+
+    def _format_system_message(self, message: Any) -> str:
+        if message is None:
+            return ""
+        if hasattr(message, "message"):
+            header = normalize_for_display(getattr(message, "message", ""))
+            details = getattr(message, "details", None)
+        elif isinstance(message, Mapping):
+            header = normalize_for_display(str(message.get("message", "")))
+            details = message.get("details")
+        else:
+            header = normalize_for_display(str(message))
+            details = None
+        parts: list[str] = []
+        if header:
+            parts.append(header)
+        if details:
+            try:
+                parts.append(normalize_for_display(stringify_payload(details)))
+            except Exception:  # pragma: no cover - defensive
+                parts.append(normalize_for_display(str(details)))
+        return "\n\n".join(part for part in parts if part)
+
+    def _row_can_regenerate(self, row: _TranscriptRow) -> bool:
+        if not row.can_regenerate or self._session.is_running:
+            return False
+        conversation = self._get_active_conversation()
+        if conversation is None or row.conversation_id != conversation.conversation_id:
+            return False
+        if row.entry_index is None:
+            return False
+        return 0 <= row.entry_index < len(conversation.entries)
+
+    def _trigger_regenerate_from_row(self, row_index: int) -> None:
+        if not (0 <= row_index < len(self._transcript_rows)):
             return
-        if text is None:
-            text = self._compose_transcript_text()
-        normalised = normalize_for_display(text or "")
-        if probe.GetValue() != normalised:
-            probe.ChangeValue(normalised)
+        row = self._transcript_rows[row_index]
+        if not self._row_can_regenerate(row):
+            return
+        conversation = self._get_active_conversation()
+        if conversation is None or row.entry_index is None:
+            return
+        try:
+            entry = conversation.entries[row.entry_index]
+        except IndexError:
+            return
+        self._handle_regenerate_request(conversation.conversation_id, entry)
+
+    def _copy_selected_transcript_rows(self) -> bool:
+        list_ctrl = self._transcript_list
+        if list_ctrl is None:
+            return False
+        selections = list_ctrl.GetSelections()
+        if not selections:
+            return False
+        row_indices = sorted(
+            {
+                list_ctrl.ItemToRow(item)
+                for item in selections
+                if item.IsOk()
+            }
+        )
+        lines: list[str] = []
+        for row_index in row_indices:
+            if not (0 <= row_index < len(self._transcript_rows)):
+                continue
+            row = self._transcript_rows[row_index]
+            text = normalize_for_display(row.text)
+            timestamp = row.timestamp.strip()
+            source = row.source.strip()
+            if timestamp and source:
+                lines.append(f"[{timestamp}] {source}: {text}")
+            elif source:
+                lines.append(f"{source}: {text}")
+            else:
+                lines.append(text)
+        if not lines:
+            return False
+        self._copy_text_to_clipboard("\n".join(lines))
+        return True
+
+    def _on_transcript_context_menu(self, event: dv.DataViewEvent) -> None:
+        list_ctrl = self._transcript_list
+        if list_ctrl is None:
+            event.Skip()
+            return
+        item = event.GetItem()
+        if not item.IsOk():
+            event.Skip()
+            return
+        row_index = list_ctrl.ItemToRow(item)
+        if not (0 <= row_index < len(self._transcript_rows)):
+            event.Skip()
+            return
+        row = self._transcript_rows[row_index]
+        menu = wx.Menu()
+        added = False
+        if self._row_can_regenerate(row):
+            regenerate_item = menu.Append(wx.ID_ANY, _("Regenerate"))
+
+            def _on_regen(_event: wx.CommandEvent, *, target=row_index) -> None:
+                self._trigger_regenerate_from_row(target)
+
+            menu.Bind(wx.EVT_MENU, _on_regen, regenerate_item)
+            added = True
+        if not added:
+            menu.Destroy()
+            event.Skip()
+            return
+        list_ctrl.PopupMenu(menu)
+        menu.Destroy()
+
+    def _on_transcript_item_activated(self, event: dv.DataViewEvent) -> None:
+        list_ctrl = self._transcript_list
+        if list_ctrl is None:
+            event.Skip()
+            return
+        item = event.GetItem()
+        if not item.IsOk():
+            event.Skip()
+            return
+        row_index = list_ctrl.ItemToRow(item)
+        self._trigger_regenerate_from_row(row_index)
+        event.Skip()
+
+    def _on_transcript_key_down(self, event: wx.KeyEvent) -> None:
+        if event.ControlDown() and event.GetKeyCode() in (ord("C"), ord("c")):
+            if self._copy_selected_transcript_rows():
+                return
+        event.Skip()
 
     def _ensure_history_visible(self, index: int) -> None:
         if self._history_view is None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping
 
 from openai.types.responses.response_function_tool_call import (
     ResponseFunctionToolCall,
@@ -49,6 +50,33 @@ class _FakeChoice:
 @dataclass(slots=True)
 class _FakeCompletion:
     choices: list[_FakeChoice]
+
+
+class _ModelDumpFunction:
+    def __init__(self, name: str, arguments: str) -> None:
+        self.name = name
+        self._arguments = arguments
+
+    def model_dump(self) -> Mapping[str, Any]:
+        return {"name": self.name}
+
+    @property
+    def arguments(self) -> str:
+        return self._arguments
+
+
+class _ModelDumpToolCall:
+    def __init__(self, call_id: str, function: _ModelDumpFunction) -> None:
+        self.id = call_id
+        self.function = function
+        self.type = "function"
+
+    def model_dump(self) -> Mapping[str, Any]:
+        return {
+            "id": self.id,
+            "type": self.type,
+            "function": self.function.model_dump(),
+        }
 
 
 def test_llm_client_preserves_arguments_from_stringable_payload(monkeypatch) -> None:
@@ -137,3 +165,37 @@ def test_llm_client_harmony_preserves_response_tool_arguments(monkeypatch) -> No
     assert arguments["rid"] == "DEMO11"
     assert arguments["field"] == "statement"
     assert arguments["value"] == "Готово"
+
+
+def test_llm_client_recovers_arguments_when_model_dump_loses_them(monkeypatch) -> None:
+    settings = LLMSettings()
+    settings.base_url = "http://invalid"
+    settings.api_key = "dummy"
+    client = LLMClient(settings)
+
+    tool_call = _ModelDumpToolCall(
+        "call-3",
+        _ModelDumpFunction(
+            "update_requirement_field",
+            '{"rid":"DEMO15","field":"title","value":"Русификация"}',
+        ),
+    )
+    completion = _FakeCompletion(
+        [
+            _FakeChoice(
+                message=_FakeMessage(
+                    tool_calls=[tool_call],
+                )
+            )
+        ]
+    )
+
+    monkeypatch.setattr(client, "_chat_completion", lambda **_: completion)
+
+    response = client.respond([{"role": "user", "content": "translate DEMO15"}])
+
+    assert response.tool_calls, "LLMClient should expose tool calls from completion"
+    arguments = response.tool_calls[0].arguments
+    assert arguments["rid"] == "DEMO15"
+    assert arguments["field"] == "title"
+    assert arguments["value"] == "Русификация"

@@ -57,6 +57,33 @@ class _OpenAIObjectArguments:
         return f"OpenAIObject(json={json.dumps(self._payload, ensure_ascii=False)})"
 
 
+class _ModelDumpFunction:
+    def __init__(self, name: str, arguments: str) -> None:
+        self.name = name
+        self._arguments = arguments
+
+    def model_dump(self) -> Mapping[str, Any]:
+        return {"name": self.name}
+
+    @property
+    def arguments(self) -> str:
+        return self._arguments
+
+
+class _ModelDumpToolCall:
+    def __init__(self, call_id: str, function: _ModelDumpFunction) -> None:
+        self.id = call_id
+        self.function = function
+        self.type = "function"
+
+    def model_dump(self) -> Mapping[str, Any]:
+        return {
+            "id": self.id,
+            "type": self.type,
+            "function": self.function.model_dump(),
+        }
+
+
 def test_parse_tool_calls_merges_concatenated_json_fragments() -> None:
     parser = _parser()
     arguments_text = (
@@ -237,3 +264,22 @@ def test_consume_stream_collects_response_function_tool_call() -> None:
     function = tool_calls[0]["function"]
     assert function["name"] == "update_requirement_field"
     assert json.loads(function["arguments"])["rid"] == "DEMO12"
+
+
+def test_parse_tool_calls_reads_arguments_from_model_dump_gap() -> None:
+    parser = _parser()
+    tool_call = _ModelDumpToolCall(
+        "call-12",
+        _ModelDumpFunction(
+            "update_requirement_field",
+            '{"rid":"DEMO13","field":"title","value":"Русский"}',
+        ),
+    )
+
+    parsed = parser.parse_tool_calls([tool_call])
+
+    assert len(parsed) == 1
+    arguments = parsed[0].arguments
+    assert arguments["rid"] == "DEMO13"
+    assert arguments["field"] == "title"
+    assert arguments["value"] == "Русский"

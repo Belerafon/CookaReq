@@ -1165,10 +1165,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if extras:
                 safe_extras = history_json_safe(extras)
                 if isinstance(safe_extras, list):
-                    tool_results = safe_extras
+                    normalized_extras = list(safe_extras)
                 else:
-                    tool_results = [safe_extras]
-                extras_text = stringify_payload(safe_extras)
+                    normalized_extras = [safe_extras]
+                sorted_extras = sort_tool_payloads(normalized_extras)
+                tool_results = sorted_extras
+                extras_text = stringify_payload(sorted_extras)
                 if extras_text:
                     conversation_parts.append(extras_text)
             reasoning_segments = self._normalise_reasoning_segments(
@@ -1406,6 +1408,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         entry.context_messages = context_clone
         reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
         entry.reasoning = reasoning_clone or None
+        existing_diagnostic = entry.diagnostic if isinstance(entry.diagnostic, Mapping) else None
         entry.diagnostic = self._build_entry_diagnostic(
             prompt=prompt_text,
             prompt_at=prompt_at,
@@ -1417,6 +1420,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             history_snapshot=history_snapshot,
             context_snapshot=context_clone,
             custom_system_prompt=self._custom_system_prompt(),
+            previous_diagnostic=existing_diagnostic,
         )
         conversation.updated_at = response_at
         conversation.ensure_title()
@@ -1684,6 +1688,69 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             sanitized.append({"step": step_value, "messages": messages})
         return sanitized
 
+    @staticmethod
+    def _sanitize_llm_step_sequence(
+        steps: Sequence[Any] | None,
+    ) -> list[dict[str, Any]]:
+        if not steps or isinstance(steps, (str, bytes, bytearray)):
+            return []
+        sanitized: list[dict[str, Any]] = []
+        for entry in steps:
+            safe_entry = history_json_safe(entry)
+            if isinstance(safe_entry, Mapping):
+                sanitized.append(dict(safe_entry))
+        return sanitized
+
+    @classmethod
+    def _merge_llm_step_sequences(
+        cls,
+        primary: list[dict[str, Any]],
+        fallback: Sequence[Mapping[str, Any]] | None,
+    ) -> None:
+        if not fallback:
+            return
+        fallback_steps = cls._sanitize_llm_step_sequence(fallback)
+        if not fallback_steps:
+            return
+
+        def _step_key(step: Mapping[str, Any]) -> str:
+            raw = step.get("step")
+            return str(raw) if raw is not None else "0"
+
+        fallback_lookup: dict[str, Mapping[str, Any]] = {
+            _step_key(step): step for step in fallback_steps
+        }
+        seen: set[str] = set()
+        for step in primary:
+            key = _step_key(step)
+            seen.add(key)
+            response = step.get("response")
+            if not isinstance(response, Mapping) or response.get("tool_calls"):
+                continue
+            fallback_step = fallback_lookup.get(key)
+            if not isinstance(fallback_step, Mapping):
+                continue
+            fallback_response = fallback_step.get("response")
+            if not isinstance(fallback_response, Mapping):
+                continue
+            tool_calls = fallback_response.get("tool_calls")
+            if not tool_calls:
+                continue
+            safe_calls = history_json_safe(tool_calls)
+            if safe_calls:
+                merged_response = dict(response)
+                merged_response["tool_calls"] = safe_calls
+                step["response"] = merged_response
+
+        for key, fallback_step in fallback_lookup.items():
+            if key in seen:
+                continue
+            safe_step = history_json_safe(fallback_step)
+            if isinstance(safe_step, Mapping):
+                primary.append(dict(safe_step))
+
+        primary.sort(key=lambda step: step.get("step") or 0)
+
     @classmethod
     def _build_entry_diagnostic(
         cls,
@@ -1698,6 +1765,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         history_snapshot: Sequence[Mapping[str, Any]] | None,
         context_snapshot: Sequence[Mapping[str, Any]] | None,
         custom_system_prompt: str | None = None,
+        previous_diagnostic: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         prompt_text = normalize_for_display(prompt)
         display_text = normalize_for_display(display_response)
@@ -1715,6 +1783,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         else:
             diagnostic_raw = None
 
+        previous_steps = cls._sanitize_llm_step_sequence(
+            previous_diagnostic.get("llm_steps")
+            if isinstance(previous_diagnostic, Mapping)
+            else None
+        )
+
         llm_request_sequence: list[dict[str, Any]] = []
         if isinstance(diagnostic_raw, Mapping):
             requests_raw = diagnostic_raw.get("llm_requests")
@@ -1724,14 +1798,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         llm_step_details: list[dict[str, Any]] | None = None
         if isinstance(diagnostic_raw, Mapping):
             steps_raw = diagnostic_raw.get("llm_steps")
-            if isinstance(steps_raw, Sequence):
-                sanitized_steps: list[dict[str, Any]] = []
-                for step in steps_raw:
-                    safe_step = history_json_safe(step)
-                    if isinstance(safe_step, Mapping):
-                        sanitized_steps.append(dict(safe_step))
-                if sanitized_steps:
-                    llm_step_details = sanitized_steps
+            current_steps = cls._sanitize_llm_step_sequence(
+                steps_raw if isinstance(steps_raw, Sequence) else None
+            )
+            if current_steps:
+                llm_step_details = current_steps
+
+        if llm_step_details is None and previous_steps:
+            llm_step_details = list(previous_steps)
+        elif llm_step_details and previous_steps:
+            cls._merge_llm_step_sequences(llm_step_details, previous_steps)
 
         if llm_request_sequence:
             llm_request_messages = llm_request_sequence[-1]["messages"]
@@ -1927,6 +2003,27 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if call_id is not None:
                 timeline = timeline_by_id.get(str(call_id))
             if timeline:
+                timeline_updates = timeline.get("status_updates")
+                if timeline_updates:
+                    updates: list[Any] = []
+                    for entry in timeline_updates:
+                        if isinstance(entry, Mapping):
+                            updates.append(dict(entry))
+                        else:
+                            updates.append(entry)
+                    if updates:
+                        existing_updates = combined.get("status_updates")
+                        combined_updates: list[Any] = []
+                        if isinstance(existing_updates, Sequence) and not isinstance(
+                            existing_updates, (str, bytes, bytearray)
+                        ):
+                            for entry in existing_updates:
+                                if isinstance(entry, Mapping):
+                                    combined_updates.append(dict(entry))
+                                else:
+                                    combined_updates.append(entry)
+                        combined_updates.extend(updates)
+                        combined["status_updates"] = combined_updates
                 start = (
                     timeline.get("started_at")
                     or timeline.get("first_observed_at")

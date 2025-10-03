@@ -244,10 +244,59 @@ class AgentRunController:
                 overrides = self._callbacks.confirm_override_kwargs()
                 agent = self._agent_supplier(**overrides)
 
+                def _normalise_status_update(
+                    payload: Mapping[str, Any],
+                ) -> dict[str, Any] | None:
+                    status_value = payload.get("agent_status")
+                    if not isinstance(status_value, str):
+                        return None
+                    status_text = status_value.strip()
+                    if not status_text:
+                        return None
+
+                    prefix, separator, remainder = status_text.partition(":")
+                    status_label = prefix.strip() if separator else status_text
+                    message: str | None = remainder.strip() if separator else None
+
+                    if not message:
+                        fallback = payload.get("status_message") or payload.get("message")
+                        if isinstance(fallback, str):
+                            candidate = fallback.strip()
+                            if candidate:
+                                message = candidate
+
+                    if not message and status_label.lower() == "running":
+                        message = "Applying updates"
+
+                    timestamp: str | None = None
+                    for key in (
+                        "observed_at",
+                        "last_observed_at",
+                        "completed_at",
+                        "started_at",
+                        "first_observed_at",
+                    ):
+                        candidate = payload.get(key)
+                        if isinstance(candidate, str):
+                            text = candidate.strip()
+                            if text:
+                                timestamp = text
+                                break
+
+                    update: dict[str, Any] = {"raw": status_text, "status": status_label}
+                    if message:
+                        update["message"] = message
+                    if timestamp:
+                        update["at"] = timestamp
+                    return update
+
                 def _merge_streamed_tool_result(payload: dict[str, Any]) -> None:
                     call_id = payload.get("call_id") or payload.get("tool_call_id")
                     if not call_id:
                         handle.streamed_tool_results.append(payload)
+                        update = _normalise_status_update(payload)
+                        if update:
+                            payload.setdefault("status_updates", [update])
                         return
                     for index, existing in enumerate(handle.streamed_tool_results):
                         existing_id = existing.get("call_id") or existing.get("tool_call_id")
@@ -262,6 +311,22 @@ class AgentRunController:
                                 merged.setdefault("first_observed_at", first_seen)
                                 merged.setdefault("started_at", first_seen)
                             merged.update(payload)
+                            update = _normalise_status_update(payload)
+                            if update:
+                                updates = merged.setdefault("status_updates", [])
+                                if isinstance(updates, list):
+                                    duplicate = False
+                                    for entry in updates:
+                                        if (
+                                            isinstance(entry, Mapping)
+                                            and entry.get("raw") == update["raw"]
+                                        ):
+                                            duplicate = True
+                                            break
+                                    if not duplicate:
+                                        updates.append(update)
+                                else:
+                                    merged["status_updates"] = [update]
                             observed = merged.get("observed_at")
                             if isinstance(observed, str) and observed.strip():
                                 merged["last_observed_at"] = observed
@@ -284,6 +349,9 @@ class AgentRunController:
                             "ok"
                         ) in (True, False):
                             payload.setdefault("completed_at", first_seen)
+                    update = _normalise_status_update(payload)
+                    if update:
+                        payload["status_updates"] = [update]
                     handle.streamed_tool_results.append(payload)
 
                 def on_tool_result(payload: Mapping[str, Any]) -> None:

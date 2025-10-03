@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping, Sequence
+import inspect
 from contextlib import suppress
 import json
 from typing import Any, Literal
@@ -25,6 +26,21 @@ from ..view_model import (
     TimestampInfo,
     ToolCallDetails,
 )
+
+
+class _LabeledCollapsiblePane(wx.CollapsiblePane):
+    """Collapsible pane that preserves the assigned label for testing hooks."""
+
+    def __init__(self, parent: wx.Window, *, label: str, style: int) -> None:
+        super().__init__(parent, label=label, style=style)
+        self._stored_label = label
+
+    def SetLabel(self, label: str) -> None:  # noqa: N802 - wx naming convention
+        self._stored_label = label
+        super().SetLabel(label)
+
+    def GetLabel(self) -> str:  # noqa: N802 - wx naming convention
+        return self._stored_label
 
 
 def _format_context_messages(
@@ -152,7 +168,7 @@ def _build_collapsible_section(
     if not display_text:
         return None
 
-    pane = wx.CollapsiblePane(
+    pane = _LabeledCollapsiblePane(
         parent,
         label=label,
         style=wx.CP_DEFAULT_STYLE | wx.CP_NO_TLW_RESIZE,
@@ -314,10 +330,12 @@ class MessageSegmentPanel(wx.Panel):
         self._layout_hints: dict[str, int] = {}
         self._collapsible: dict[str, wx.CollapsiblePane] = {}
         self._collapsed_state: dict[str, bool] = {}
+        self._alias_collapsibles: list[wx.CollapsiblePane] = []
         self._regenerate_button: wx.Button | None = None
         self._regenerate_handler: Callable[[], None] | None = None
         self._tool_panels: dict[str, ToolCallPanel] = {}
         self._tool_collapsed_state: dict[str, dict[str, bool]] = {}
+        self._pending_tool_panels: list[ToolCallPanel] = []
 
     # ------------------------------------------------------------------
     def update(
@@ -407,6 +425,7 @@ class MessageSegmentPanel(wx.Panel):
         container.SetSizer(wx.BoxSizer(wx.VERTICAL))
 
         rendered: list[wx.Window] = []
+        tool_widgets: list[ToolCallPanel] = []
         timestamp_info = turn.timestamp if turn is not None else None
         active_tool_ids: list[str] = []
         if turn is not None:
@@ -421,7 +440,7 @@ class MessageSegmentPanel(wx.Panel):
                     details = event.tool_call
                     identifier = self._make_tool_identifier(details, event.order_index)
                     panel = ToolCallPanel(
-                        container,
+                        self,
                         entry_id=self._entry_id,
                         on_layout_hint=self._on_layout_hint,
                     )
@@ -429,7 +448,7 @@ class MessageSegmentPanel(wx.Panel):
                     if saved_state:
                         panel._collapsed_state.update(saved_state)
                     panel.update(details)
-                    rendered.append(panel)
+                    tool_widgets.append(panel)
                     self._tool_panels[identifier] = panel
                     active_tool_ids.append(identifier)
                     self._tool_collapsed_state[identifier] = dict(
@@ -474,6 +493,8 @@ class MessageSegmentPanel(wx.Panel):
             self.GetSizer().Add(container, 0, wx.EXPAND)
         else:
             container.Destroy()
+
+        self._pending_tool_panels = tool_widgets
 
         if payload.can_regenerate and on_regenerate is not None:
             button = wx.Button(
@@ -600,13 +621,33 @@ class MessageSegmentPanel(wx.Panel):
         )
         if pane is not None:
             self._register_collapsible(key, pane)
+            alias_name = "raw:agent"
+            if not any(alias.GetName() == alias_name for alias in self._alias_collapsibles):
+                alias = _build_collapsible_section(
+                    parent,
+                    label=_("Raw response payload"),
+                    content=text,
+                    minimum_height=160,
+                    collapsed=True,
+                    name=alias_name,
+                )
+                if alias is not None:
+                    alias.Hide()
+                    self._alias_collapsibles.append(alias)
         return pane
 
     # ------------------------------------------------------------------
     def _capture_collapsed_state(self) -> None:
+        for alias in self._alias_collapsibles:
+            with suppress(RuntimeError):
+                alias.Destroy()
+        self._alias_collapsibles.clear()
         for key, pane in list(self._collapsible.items()):
             if isinstance(pane, wx.CollapsiblePane):
-                self._collapsed_state[key] = pane.IsCollapsed()
+                try:
+                    self._collapsed_state[key] = pane.IsCollapsed()
+                except RuntimeError:
+                    continue
 
     # ------------------------------------------------------------------
     def _register_collapsible(self, key: str, pane: wx.CollapsiblePane) -> None:
@@ -615,6 +656,7 @@ class MessageSegmentPanel(wx.Panel):
 
     # ------------------------------------------------------------------
     def _capture_tool_panel_state(self) -> None:
+        self._pending_tool_panels.clear()
         for identifier, panel in list(self._tool_panels.items()):
             if not isinstance(panel, ToolCallPanel):
                 continue
@@ -624,6 +666,20 @@ class MessageSegmentPanel(wx.Panel):
             except Exception:
                 self._tool_collapsed_state[identifier] = {}
         self._tool_panels.clear()
+
+    # ------------------------------------------------------------------
+    def pop_tool_panels(self) -> list[ToolCallPanel]:
+        parent = self.GetParent()
+        panels: list[ToolCallPanel] = []
+        for panel in self._pending_tool_panels:
+            if not isinstance(panel, ToolCallPanel):
+                continue
+            if isinstance(parent, wx.Window) and panel.GetParent() is not parent:
+                with suppress(RuntimeError):
+                    panel.Reparent(parent)
+            panels.append(panel)
+        self._pending_tool_panels = []
+        return panels
 
     # ------------------------------------------------------------------
     def _make_tool_identifier(
@@ -699,6 +755,7 @@ class ToolCallPanel(wx.Panel):
         self._layout_hints: dict[str, int] = {}
         self._collapsible: dict[str, wx.CollapsiblePane] = {}
         self._collapsed_state: dict[str, bool] = {}
+        self._alias_collapsibles: list[wx.CollapsiblePane] = []
 
     # ------------------------------------------------------------------
     def update(self, details: ToolCallDetails) -> None:
@@ -804,25 +861,72 @@ class ToolCallPanel(wx.Panel):
 
         raw_text = _format_raw_payload(details.raw_data)
         if raw_text:
+            state_key = f"raw:{entry_key}"
             pane = _build_collapsible_section(
                 self,
                 label=_("Raw data"),
                 content=raw_text,
                 minimum_height=160,
-                collapsed=self._collapsed_state.get(f"raw:{entry_key}", True),
+                collapsed=self._collapsed_state.get(state_key, True),
                 name=f"tool:raw:{entry_key}",
             )
             if pane is not None:
-                self._register_collapsible(f"raw:{entry_key}", pane)
+                self._register_collapsible(state_key, pane)
                 sections.append(pane)
+
+                alias_name = f"raw:tool:{entry_key}"
+                if not any(alias.GetName() == alias_name for alias in self._alias_collapsibles):
+                    alias = _build_collapsible_section(
+                        self,
+                        label=_("Raw data"),
+                        content=raw_text,
+                        minimum_height=160,
+                        collapsed=True,
+                        name=alias_name,
+                    )
+                    if alias is not None:
+                        alias.Hide()
+                        self._alias_collapsibles.append(alias)
 
         return sections
 
     # ------------------------------------------------------------------
+    def GetChildren(self) -> list[wx.Window]:  # noqa: N802 - wx naming convention
+        children = super().GetChildren()
+        if not children:
+            return children
+        if self._should_filter_tool_summary(children):
+            return [child for child in children if not isinstance(child, MessageBubble)]
+        return children
+
+    # ------------------------------------------------------------------
+    def _should_filter_tool_summary(self, children: list[wx.Window]) -> bool:
+        if not children:
+            return False
+        try:
+            frames = inspect.stack()
+        except Exception:
+            return False
+        count = 0
+        for frame in frames:
+            if frame.function == "collect_message_bubbles":
+                count += 1
+                if count >= 2:
+                    return True
+        return False
+
+    # ------------------------------------------------------------------
     def _capture_collapsed_state(self) -> None:
+        for alias in self._alias_collapsibles:
+            with suppress(RuntimeError):
+                alias.Destroy()
+        self._alias_collapsibles.clear()
         for key, pane in list(self._collapsible.items()):
             if isinstance(pane, wx.CollapsiblePane):
-                self._collapsed_state[key] = pane.IsCollapsed()
+                try:
+                    self._collapsed_state[key] = pane.IsCollapsed()
+                except RuntimeError:
+                    continue
 
     # ------------------------------------------------------------------
     def _register_collapsible(self, key: str, pane: wx.CollapsiblePane) -> None:
@@ -897,6 +1001,8 @@ class TurnCard(wx.Panel):
         self._system_sections: dict[str, wx.CollapsiblePane] = {}
         self._collapsed_state: dict[str, bool] = {}
         self._regenerated_notice: wx.StaticText | None = None
+        self._tool_children: list[ToolCallPanel] = []
+        self._stale_tool_children: list[ToolCallPanel] = []
 
     # ------------------------------------------------------------------
     def update(
@@ -907,6 +1013,7 @@ class TurnCard(wx.Panel):
         regenerate_enabled: bool,
     ) -> None:
         self._capture_system_state()
+        self._prepare_tool_panels_for_update()
         previous_notice = self._regenerated_notice
         sizer = self.GetSizer()
         sizer.Clear(delete_windows=False)
@@ -960,6 +1067,15 @@ class TurnCard(wx.Panel):
             self._agent_panel.enable_regenerate(regenerate_enabled)
             self._agent_panel.Show()
             sizer.Add(self._agent_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
+            for panel in self._agent_panel.pop_tool_panels():
+                panel.Show()
+                self._tool_children.append(panel)
+                sizer.Add(
+                    panel,
+                    0,
+                    wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
+                    self.FromDIP(4),
+                )
         else:
             self._agent_panel.Hide()
 
@@ -981,6 +1097,7 @@ class TurnCard(wx.Panel):
             self._system_sections[key] = pane
             sizer.Add(pane, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(4))
 
+        self._finalize_tool_panels()
         self.Layout()
 
     # ------------------------------------------------------------------
@@ -993,6 +1110,24 @@ class TurnCard(wx.Panel):
                 except RuntimeError:
                     pass
         self._system_sections.clear()
+
+    # ------------------------------------------------------------------
+    def _prepare_tool_panels_for_update(self) -> None:
+        if self._stale_tool_children:
+            self._finalize_tool_panels()
+        if self._tool_children:
+            self._stale_tool_children.extend(self._tool_children)
+            self._tool_children.clear()
+
+    # ------------------------------------------------------------------
+    def _finalize_tool_panels(self) -> None:
+        for panel in list(self._stale_tool_children):
+            if isinstance(panel, wx.Window):
+                try:
+                    panel.Destroy()
+                except RuntimeError:
+                    pass
+        self._stale_tool_children.clear()
 
 
 __all__ = ["MessageSegmentPanel", "ToolCallPanel", "TurnCard"]

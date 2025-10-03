@@ -326,6 +326,8 @@ class SegmentListView:
         panel = self._panel
         if not self._is_window_alive(panel):
             return
+        panel.Layout()
+        panel.FitInside()
         window: wx.Window | None = target if self._is_window_alive(target) else None
         if window is not None and window.GetParent() is not panel:
             window = None
@@ -334,6 +336,17 @@ class SegmentListView:
                 panel.ScrollChildIntoView(window)
             except RuntimeError:
                 window = None
+            else:
+                rect = window.GetRect()
+                client_height = panel.GetClientSize().GetHeight()
+                bottom = rect.GetBottom()
+                if bottom > client_height:
+                    _, ppu_y = panel.GetScrollPixelsPerUnit()
+                    if ppu_y <= 0:
+                        ppu_y = 1
+                    view_x, view_y = panel.GetViewStart()
+                    extra_units = (bottom - client_height + ppu_y - 1) // ppu_y
+                    panel.Scroll(view_x, view_y + extra_units)
         if window is None:
             panel.ScrollChildIntoView(panel)
 

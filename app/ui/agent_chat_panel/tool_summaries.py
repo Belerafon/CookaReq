@@ -395,7 +395,7 @@ def summarize_error_details(error: Any) -> list[str]:
             message_text = shorten_text(normalize_for_display(message.strip()))
         if code_text and message_text:
             lines.append(
-                _("Error {code}: {message}").format(
+                _("Error {code}: [{code}] {message}").format(
                     code=code_text,
                     message=message_text,
                 )
@@ -403,11 +403,11 @@ def summarize_error_details(error: Any) -> list[str]:
         else:
             if code_text:
                 lines.append(
-                    _("Error code: {code}").format(code=code_text)
+                    _("Error {code}: [{code}]").format(code=code_text)
                 )
             if message_text:
                 lines.append(
-                    _("Error message: {message}").format(message=message_text)
+                    _("Error: {message}").format(message=message_text)
                 )
         details = error.get("details")
         if details:

@@ -30,6 +30,12 @@ import pytest
 pytestmark = [pytest.mark.gui, pytest.mark.integration, pytest.mark.gui_smoke]
 
 
+VALIDATION_ERROR_MESSAGE = (
+    "Invalid arguments for update_requirement_field: value: 'in_last_review' "
+    "is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']"
+)
+
+
 class SynchronousAgentCommandExecutor:
     """Executor that runs submitted functions immediately on the caller thread."""
 
@@ -1962,8 +1968,8 @@ def test_agent_chat_panel_cancellation_preserves_llm_step(tmp_path, wx_app):
                                     "name": "update_requirement_field",
                                     "arguments": {
                                         "rid": "DEMO14",
-                                        "field": "title",
-                                        "value": "Настройки агента",
+                                        "field": "status",
+                                        "value": "in_last_review",
                                     },
                                 }
                             ],
@@ -2137,8 +2143,8 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
                                     "name": "update_requirement_field",
                                     "arguments": {
                                         "rid": "DEMO14",
-                                        "field": "title",
-                                        "value": "Настройки агента",
+                                        "field": "status",
+                                        "value": "in_last_review",
                                     },
                                 }
                             ],
@@ -2156,8 +2162,8 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
                         "call_id": "call-123",
                         "tool_arguments": {
                             "rid": "DEMO14",
-                            "field": "title",
-                            "value": "Настройки агента",
+                            "field": "status",
+                            "value": "in_last_review",
                         },
                         "agent_status": "running",
                     }
@@ -2170,12 +2176,12 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
                         "call_id": "call-123",
                         "tool_arguments": {
                             "rid": "DEMO14",
-                            "field": "title",
-                            "value": "Настройки агента",
+                            "field": "status",
+                            "value": "in_last_review",
                         },
                         "error": {
                             "code": "VALIDATION_ERROR",
-                            "message": "update_requirement_field() missing rid",
+                            "message": VALIDATION_ERROR_MESSAGE,
                         },
                         "agent_status": "failed",
                     }
@@ -2184,7 +2190,7 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
                 "ok": False,
                 "error": {
                     "type": "ToolValidationError",
-                    "message": "update_requirement_field() missing rid",
+                    "message": VALIDATION_ERROR_MESSAGE,
                 },
                 "tool_results": [
                     {
@@ -2193,13 +2199,13 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
                         "call_id": "call-123",
                         "tool_arguments": {
                             "rid": "DEMO14",
-                            "field": "title",
-                            "value": "Настройки агента",
+                            "field": "status",
+                            "value": "in_last_review",
                         },
                         "ok": False,
                         "error": {
                             "code": "VALIDATION_ERROR",
-                            "message": "update_requirement_field() missing rid",
+                            "message": VALIDATION_ERROR_MESSAGE,
                         },
                     }
                 ],
@@ -2254,7 +2260,7 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         assert len(history) == 1
         entry = history[0]
         assert "Now I will translate the selected requirements into Russian." in entry.display_response
-        assert "update_requirement_field() missing rid" in entry.display_response
+        assert VALIDATION_ERROR_MESSAGE in entry.display_response
         assert entry.reasoning
         assert entry.reasoning[0]["text"] == "Fetch requirement data"
         assert entry.tool_results and entry.tool_results[0]["started_at"] == "2025-01-01T12:00:02Z"

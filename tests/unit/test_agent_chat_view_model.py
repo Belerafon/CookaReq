@@ -8,6 +8,12 @@ from app.ui.agent_chat_panel.view_model import build_conversation_timeline
 from app.ui.chat_entry import ChatConversation, ChatEntry
 
 
+VALIDATION_ERROR_MESSAGE = (
+    "Invalid arguments for update_requirement_field: value: 'in_last_review' "
+    "is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']"
+)
+
+
 def _conversation_with_entry(entry: ChatEntry) -> ChatConversation:
     return ChatConversation(
         conversation_id="conv-1",
@@ -202,12 +208,17 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     assert isinstance(raw_data, Mapping)
     llm_request = raw_data.get("llm_request")
     assert isinstance(llm_request, Mapping)
-    assert llm_request.get("arguments", {}).get("rid") == "DEMO16"
+    assert llm_request.get("name") == "update_requirement_field"
+    assert "arguments" not in llm_request
     llm_response = raw_data.get("llm_response")
     assert isinstance(llm_response, Mapping)
     assert llm_response.get("content") == "Applying updates"
-    assert raw_data.get("step") in (1, "1")
-    assert raw_data.get("diagnostics") in (None, {})
+    tool_calls = llm_response.get("tool_calls")
+    assert isinstance(tool_calls, Sequence)
+    assert tool_calls, "expected recorded tool call"
+    first_call = tool_calls[0]
+    assert isinstance(first_call, Mapping)
+    assert first_call.get("name") == "update_requirement_field"
 
     tool_result_section = raw_data.get("tool_result")
     assert isinstance(tool_result_section, Mapping)
@@ -215,6 +226,20 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     assert isinstance(tool_section, Mapping)
     assert tool_section.get("call_id") == "call-1"
     assert tool_section.get("name") == "update_requirement_field"
+    arguments = tool_section.get("arguments")
+    if isinstance(arguments, Mapping):
+        assert arguments.get("rid") == "DEMO16"
+        assert arguments.get("field") == "title"
+        assert arguments.get("value") == "Новое название"
+        assert "arguments" not in first_call
+    else:
+        response_arguments = first_call.get("arguments")
+        assert isinstance(response_arguments, Mapping)
+        assert response_arguments.get("rid") == "DEMO16"
+        assert response_arguments.get("field") == "title"
+        assert response_arguments.get("value") == "Новое название"
+    assert raw_data.get("step") in (1, "1")
+    assert raw_data.get("diagnostics") in (None, {})
     timeline = tool_result_section.get("timeline")
     assert isinstance(timeline, Mapping)
     assert tuple(timeline.keys()) == ("started_at", "completed_at")
@@ -241,7 +266,7 @@ def test_tool_call_event_without_recorded_request_relies_on_tool_result() -> Non
                 "ok": False,
                 "error": {
                     "code": "VALIDATION_ERROR",
-                    "message": "missing rid",
+                    "message": VALIDATION_ERROR_MESSAGE,
                 },
             }
         ],
@@ -440,25 +465,18 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     request_payload = raw_data.get("llm_request")
     assert isinstance(request_payload, Mapping)
     assert request_payload.get("name") == "update_requirement_field"
-    arguments = request_payload.get("arguments")
-    assert isinstance(arguments, Mapping)
-    assert arguments.get("field") == "statement"
-    assert arguments.get("value")
+    assert "arguments" not in request_payload
 
     response_payload = raw_data.get("llm_response")
     assert isinstance(response_payload, Mapping)
-    assert response_payload.get("content", "").startswith(
-        "update_requirement_field() missing rid"
-    )
+    assert VALIDATION_ERROR_MESSAGE in response_payload.get("content", "")
     response_calls = response_payload.get("tool_calls")
     assert isinstance(response_calls, Sequence)
     assert response_calls, "expected llm_response.tool_calls entry"
     first_response_call = response_calls[0]
     assert isinstance(first_response_call, Mapping)
-    response_arguments = first_response_call.get("arguments")
-    assert isinstance(response_arguments, Mapping)
-    assert response_arguments.get("field") == "statement"
-    assert response_arguments.get("value")
+    assert first_response_call.get("name") == "update_requirement_field"
+    assert "arguments" not in first_response_call
 
     diagnostics = raw_data.get("diagnostics")
     if diagnostics is not None:
@@ -475,6 +493,11 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     assert isinstance(tool_section, Mapping)
     assert tool_section.get("call_id") == snapshot.get("tool_call_id")
     assert tool_section.get("name") == snapshot.get("tool_name")
+    arguments = tool_section.get("arguments")
+    assert isinstance(arguments, Mapping)
+    assert arguments.get("field") == "status"
+    assert arguments.get("rid")
+    assert arguments.get("value") == "in_last_review"
     status_section = tool_result_section.get("status")
     assert isinstance(status_section, Mapping)
     assert status_section.get("state") == snapshot.get("agent_status")
@@ -600,13 +623,13 @@ def test_tool_summary_compacts_error_details() -> None:
             {
                 "tool_name": "update_requirement_field",
                 "tool_call_id": "tool-1",
-                "agent_status": "failed: update_requirement_field() missing rid",
+                "agent_status": f"failed: {VALIDATION_ERROR_MESSAGE}",
                 "started_at": "2025-10-01T08:01:00+00:00",
                 "completed_at": "2025-10-01T08:01:05+00:00",
                 "ok": False,
                 "error": {
                     "code": "VALIDATION_ERROR",
-                    "message": "update_requirement_field() missing 1 required positional argument: 'rid'",
+                    "message": VALIDATION_ERROR_MESSAGE,
                 },
             }
         ],

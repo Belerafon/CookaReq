@@ -57,3 +57,72 @@ def test_capture_llm_step_payload_preserves_reasoning_whitespace() -> None:
             "trailing_whitespace": " ",
         },
     )
+
+
+def test_merge_streamed_tool_result_deduplicates_status_updates() -> None:
+    handle = _AgentRunHandle(
+        run_id=2,
+        prompt="demo",
+        prompt_tokens=TokenCountResult.exact(0),
+        cancel_event=CancellationEvent(),
+        prompt_at="2025-10-02T00:01:00Z",
+    )
+
+    initial_payload = {
+        "tool_call_id": "tool-1",
+        "agent_status": "running",
+        "observed_at": "2025-10-03T06:58:26+00:00",
+    }
+
+    AgentRunController._merge_streamed_tool_result(handle, dict(initial_payload))
+
+    assert len(handle.streamed_tool_results) == 1
+    first_entry = handle.streamed_tool_results[0]
+    updates = first_entry.get("status_updates")
+    assert isinstance(updates, list)
+    assert len(updates) == 1
+    running_update = updates[0]
+    assert running_update.get("raw") == "running"
+    assert running_update.get("status") == "running"
+    assert running_update.get("message") == "Applying updates"
+
+    follow_up_payload = {
+        "tool_call_id": "tool-1",
+        "agent_status": "failed",
+        "observed_at": "2025-10-03T06:58:26+00:00",
+        "status_updates": [
+            {
+                "raw": "running",
+                "status": "running",
+                "at": "2025-10-03T06:58:26+00:00",
+            },
+            {
+                "raw": "failed",
+                "status": "failed",
+                "at": "2025-10-03T06:58:26+00:00",
+            },
+        ],
+    }
+
+    AgentRunController._merge_streamed_tool_result(handle, dict(follow_up_payload))
+
+    merged_entry = handle.streamed_tool_results[0]
+    merged_updates = merged_entry.get("status_updates")
+    assert isinstance(merged_updates, list)
+    assert [(item.get("raw"), item.get("status")) for item in merged_updates] == [
+        ("running", "running"),
+        ("failed", "failed"),
+    ]
+
+    repeated_payload = {
+        "tool_call_id": "tool-1",
+        "agent_status": "failed",
+        "observed_at": "2025-10-03T06:58:26+00:00",
+    }
+
+    AgentRunController._merge_streamed_tool_result(handle, dict(repeated_payload))
+
+    deduplicated_updates = handle.streamed_tool_results[0].get("status_updates")
+    assert isinstance(deduplicated_updates, list)
+    assert len(deduplicated_updates) == 2
+    assert {item.get("raw") for item in deduplicated_updates} == {"running", "failed"}

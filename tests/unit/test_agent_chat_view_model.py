@@ -472,6 +472,16 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     assert response_payload.get("content", "").startswith(
         "update_requirement_field() missing rid"
     )
+    response_calls = response_payload.get("tool_calls")
+    assert isinstance(response_calls, Sequence)
+    assert response_calls, "expected llm_response.tool_calls entry"
+    first_response_call = response_calls[0]
+    assert isinstance(first_response_call, Mapping)
+    response_arguments = first_response_call.get("arguments")
+    assert isinstance(response_arguments, Mapping)
+    assert response_arguments.get("field") == "statement"
+    assert response_arguments.get("value")
+    assert "rid" not in response_arguments
 
     diagnostics = raw_data.get("diagnostics")
     assert isinstance(diagnostics, Mapping)
@@ -483,6 +493,9 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     call_payload = errors.get("call")
     assert isinstance(call_payload, Mapping)
     assert call_payload.get("function", {}).get("name") == "update_requirement_field"
+    call_arguments = call_payload.get("arguments")
+    assert isinstance(call_arguments, Mapping)
+    assert call_arguments.get("value")
 
     llm_exchange = tool_event.llm_exchange
     assert isinstance(llm_exchange, Mapping)

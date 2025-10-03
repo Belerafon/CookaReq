@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import json
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from typing import Any, Iterable, Literal, Mapping, Sequence
@@ -1360,6 +1361,124 @@ def _build_diagnostic_context(payload: Any) -> Mapping[str, Any] | None:
     return context or None
 
 
+def _decode_json_arguments(value: Any) -> tuple[Any, bool]:
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return value, False
+        try:
+            decoded = json.loads(text)
+        except (TypeError, ValueError):
+            return value, False
+        return decoded, True
+    return value, False
+
+
+def _decode_tool_call_arguments(call: Mapping[str, Any]) -> Mapping[str, Any]:
+    if not isinstance(call, Mapping):
+        return call
+
+    changed = False
+    result: dict[str, Any] = dict(call)
+
+    arguments_value, decoded = _decode_json_arguments(result.get("arguments"))
+    if decoded:
+        result["arguments"] = arguments_value
+        changed = True
+
+    function_section = result.get("function")
+    if isinstance(function_section, Mapping):
+        function_changed = False
+        function_payload: dict[str, Any] = dict(function_section)
+
+        function_arguments, function_arguments_decoded = _decode_json_arguments(
+            function_payload.get("arguments")
+        )
+        if function_arguments_decoded:
+            function_payload["arguments"] = function_arguments
+            function_changed = True
+
+        if (
+            isinstance(function_arguments, Mapping)
+            and (not isinstance(result.get("arguments"), Mapping) or not result["arguments"])
+        ):
+            result["arguments"] = function_arguments
+            changed = True
+
+        name_value = function_payload.get("name")
+        if isinstance(name_value, str) and name_value and not result.get("name"):
+            result["name"] = name_value
+            changed = True
+
+        if function_changed:
+            result["function"] = function_payload
+            changed = True
+
+    return result if changed else call
+
+
+def _decode_tool_call_sequence(value: Any) -> Any:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return value
+
+    changed = False
+    decoded_items: list[Any] = []
+    for item in value:
+        new_item = item
+        if isinstance(item, Mapping):
+            new_item = _decode_tool_calls_in_mapping(item)
+        elif isinstance(item, Sequence) and not isinstance(
+            item, (str, bytes, bytearray)
+        ):
+            new_item = _decode_tool_call_sequence(item)
+        decoded_items.append(new_item)
+        if new_item is not item:
+            changed = True
+    return decoded_items if changed else value
+
+
+def _decode_tool_calls_in_mapping(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    if not isinstance(payload, Mapping):
+        return payload
+
+    changed = False
+    base_payload = _decode_tool_call_arguments(payload)
+    if base_payload is not payload:
+        changed = True
+    result: dict[str, Any] = {}
+
+    for key, value in base_payload.items():
+        new_value = value
+        if key == "arguments":
+            decoded_arguments, decoded = _decode_json_arguments(value)
+            if decoded:
+                new_value = decoded_arguments
+        if key in {"tool_calls", "llm_tool_calls"}:
+            new_value = _decode_tool_call_sequence(new_value)
+        elif key in {"tool_call", "call"} and isinstance(new_value, Mapping):
+            new_value = _decode_tool_calls_in_mapping(new_value)
+        elif isinstance(new_value, Mapping):
+            new_value = _decode_tool_calls_in_mapping(new_value)
+        elif isinstance(new_value, Sequence) and not isinstance(
+            new_value, (str, bytes, bytearray)
+        ):
+            new_value = _decode_tool_call_sequence(new_value)
+
+        result[key] = new_value
+        if new_value is not value:
+            changed = True
+
+    return result if changed else base_payload
+
+
+def _decode_tool_calls_in_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return _decode_tool_calls_in_mapping(value)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return _decode_tool_call_sequence(value)
+    return value
+
+
 def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]:
     """Gather raw LLM tool call payloads keyed by their identifiers."""
 
@@ -1375,7 +1494,7 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]
     def merge_exchange(identifier: str, sections: Mapping[str, Any]) -> None:
         sanitized: dict[str, Any] = {}
         for key, value in sections.items():
-            normalised = _normalise_raw_section(value)
+            normalised = _normalise_raw_section(_decode_tool_calls_in_value(value))
             if _has_meaningful_payload(normalised):
                 sanitized[key] = normalised
         if not sanitized:
@@ -1384,7 +1503,7 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]
         record.exchange = _merge_structured_mappings(record.exchange, sanitized)
 
     def add_diagnostics(identifier: str, section: str, payload: Any) -> None:
-        normalised = _normalise_raw_section(payload)
+        normalised = _normalise_raw_section(_decode_tool_calls_in_value(payload))
         if not _has_meaningful_payload(normalised):
             return
         record = ensure_record(identifier)
@@ -1395,17 +1514,22 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]
     def record_error_payload(
         error_payload: Mapping[str, Any], *, step_index: int | None
     ) -> bool:
-        tool_calls = _extract_error_tool_calls(error_payload)
+        decoded_error = _decode_tool_calls_in_mapping(error_payload)
+        tool_calls = _extract_error_tool_calls(decoded_error)
         recorded = False
 
         step_value: Any | None = step_index
         if step_value is None:
-            candidate_step = error_payload.get("step")
+            candidate_step = decoded_error.get("step")
             if candidate_step not in (None, ""):
                 step_value = candidate_step
 
-        response_candidate = _normalise_raw_section(error_payload.get("response"))
-        request_candidate = _normalise_raw_section(error_payload.get("request"))
+        response_candidate = _normalise_raw_section(
+            _decode_tool_calls_in_value(decoded_error.get("response"))
+        )
+        request_candidate = _normalise_raw_section(
+            _decode_tool_calls_in_value(decoded_error.get("request"))
+        )
 
         if tool_calls:
             for position, call in enumerate(tool_calls, start=1):
@@ -1417,8 +1541,10 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]
                 if identifier is None:
                     base = str(step_value) if step_value is not None else "error"
                     identifier = f"{base}:{position}"
-                call_payload = _normalise_raw_section(call)
-                error_section = _normalise_raw_section(error_payload)
+                call_payload = _normalise_raw_section(
+                    _decode_tool_calls_in_mapping(call)
+                )
+                error_section = _normalise_raw_section(decoded_error)
                 identifier_str = str(identifier)
                 if step_index is not None:
                     sections: dict[str, Any] = {}
@@ -1450,7 +1576,7 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]
             if step_index is not None:
                 identifier = str(step_value) if step_value is not None else str(step_index)
                 sections: dict[str, Any] = {
-                    "llm_error": _normalise_raw_section(error_payload)
+                    "llm_error": _normalise_raw_section(decoded_error)
                 }
                 if request_candidate is not None:
                     sections["llm_request"] = request_candidate
@@ -1462,7 +1588,7 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]
                 recorded = True
             else:
                 diagnostic_entry: dict[str, Any] = {
-                    "error": _normalise_raw_section(error_payload)
+                    "error": _normalise_raw_section(decoded_error)
                 }
                 if request_candidate is not None:
                     diagnostic_entry["request"] = request_candidate
@@ -1488,6 +1614,7 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]
         for position, call in enumerate(tool_calls, start=1):
             if not isinstance(call, Mapping):
                 continue
+            call = _decode_tool_calls_in_mapping(call)
             identifier = (
                 _extract_tool_identifier(call)
                 or call.get("id")
@@ -1528,7 +1655,7 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]
             for step_index, step in enumerate(steps, start=1):
                 if not isinstance(step, Mapping):
                     continue
-                response_payload = step.get("response")
+                response_payload = _decode_tool_calls_in_value(step.get("response"))
                 if isinstance(response_payload, Mapping):
                     scan_tool_calls(
                         response_payload.get("tool_calls"),
@@ -1547,21 +1674,22 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, ToolCallRawRecord]
                 if isinstance(error_payload, Mapping):
                     if record_error_payload(error_payload, step_index=step_index):
                         recorded_error_for_source = True
+        source_payload = _decode_tool_calls_in_mapping(source)
         scan_tool_calls(
-            source.get("tool_calls"),
-            response_payload=source,
+            source_payload.get("tool_calls"),
+            response_payload=source_payload,
             step_index=None,
             origin="tool_calls",
         )
-        planned_calls = source.get("llm_tool_calls")
+        planned_calls = source_payload.get("llm_tool_calls")
         scan_tool_calls(
-            planned_calls,
-            response_payload=source,
+            _decode_tool_calls_in_value(planned_calls),
+            response_payload=source_payload,
             step_index=None,
             origin="llm_tool_calls",
         )
         if not recorded_error_for_source:
-            source_error = source.get("error")
+            source_error = source_payload.get("error")
             if isinstance(source_error, Mapping):
                 record_error_payload(source_error, step_index=None)
 

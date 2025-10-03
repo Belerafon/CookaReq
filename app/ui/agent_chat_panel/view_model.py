@@ -691,8 +691,55 @@ def _deduplicate_tool_raw_sections(sections: Mapping[str, Any]) -> dict[str, Any
     def _matches(value: Any) -> bool:
         return value == canonical_arguments
 
+    retain_locations: set[tuple[Any, ...]] = set()
+    if primary_location is not None:
+        retain_locations.add(primary_location)
+
+    request_location = ("llm_request", "arguments")
+    request_section = working.get("llm_request")
+    if isinstance(request_section, Mapping):
+        request_arguments = request_section.get("arguments")
+        if _has_meaningful_payload(request_arguments):
+            retain_locations.add(request_location)
+
+    response_locations: list[tuple[tuple[Any, ...], Any]] = []
+    response_section = working.get("llm_response")
+    if isinstance(response_section, Mapping):
+        tool_calls = response_section.get("tool_calls")
+        if isinstance(tool_calls, Sequence) and not isinstance(
+            tool_calls, (str, bytes, bytearray)
+        ):
+            for index, call in enumerate(tool_calls):
+                if not isinstance(call, Mapping):
+                    continue
+                call_arguments = call.get("arguments")
+                if _has_meaningful_payload(call_arguments):
+                    location = ("llm_response", "tool_calls", index, "arguments")
+                    response_locations.append((location, call_arguments))
+                    retain_locations.add(location)
+
+    preferred_response_location: tuple[Any, ...] | None = None
+    for location, arguments in response_locations:
+        if _matches(arguments):
+            preferred_response_location = location
+            break
+    if preferred_response_location is None and response_locations:
+        preferred_response_location = response_locations[0][0]
+    if preferred_response_location is not None:
+        retain_locations.add(preferred_response_location)
+
+    tool_result_location: tuple[Any, ...] | None = None
+    tool_result = working.get("tool_result")
+    if isinstance(tool_result, Mapping):
+        tool_section = tool_result.get("tool")
+        if isinstance(tool_section, Mapping):
+            tool_arguments = tool_section.get("arguments")
+            if _has_meaningful_payload(tool_arguments):
+                tool_result_location = ("tool_result", "tool", "arguments")
+                retain_locations.add(tool_result_location)
+
     # Drop duplicate arguments from the LLM request.
-    if primary_location != ("llm_request", "arguments"):
+    if request_location not in retain_locations:
         request_section = working.get("llm_request")
         if isinstance(request_section, Mapping) and _matches(request_section.get("arguments")):
             trimmed = {k: v for k, v in request_section.items() if k != "arguments"}
@@ -715,6 +762,10 @@ def _deduplicate_tool_raw_sections(sections: Mapping[str, Any]) -> dict[str, Any
                         continue
                     call_mapping = dict(call)
                     call_arguments = call_mapping.get("arguments")
+                    location = ("llm_response", "tool_calls", index, "arguments")
+                    if location in retain_locations:
+                        processed_calls.append(call_mapping)
+                        continue
                     if _matches(call_arguments):
                         call_mapping.pop("arguments", None)
                         calls_changed = True
@@ -747,6 +798,10 @@ def _deduplicate_tool_raw_sections(sections: Mapping[str, Any]) -> dict[str, Any
                         processed_calls.append(call_mapping)
                         continue
                     call_arguments = call_mapping.get("arguments")
+                    location = ("llm_response", "tool_calls", index, "arguments")
+                    if location in retain_locations:
+                        processed_calls.append(call_mapping)
+                        continue
                     if _matches(call_arguments):
                         call_mapping.pop("arguments", None)
                         calls_changed = True
@@ -762,23 +817,6 @@ def _deduplicate_tool_raw_sections(sections: Mapping[str, Any]) -> dict[str, Any
                     else:
                         working["llm_response"] = updated_response
 
-    # When the canonical location is not the tool result, drop duplicate data there too.
-    if primary_location != ("tool_result", "tool", "arguments"):
-        tool_result = working.get("tool_result")
-        if isinstance(tool_result, Mapping):
-            tool_section = tool_result.get("tool")
-            if isinstance(tool_section, Mapping) and _matches(tool_section.get("arguments")):
-                trimmed_tool = {k: v for k, v in tool_section.items() if k != "arguments"}
-                updated_result = dict(tool_result)
-                if trimmed_tool:
-                    updated_result["tool"] = trimmed_tool
-                else:
-                    updated_result.pop("tool", None)
-                if updated_result:
-                    working["tool_result"] = updated_result
-                else:
-                    working.pop("tool_result", None)
-
     return working
 
 
@@ -786,14 +824,6 @@ def _select_primary_tool_arguments(
     sections: Mapping[str, Any],
 ) -> tuple[tuple[Any, ...] | None, Any | None]:
     """Return the preferred arguments payload and its location."""
-
-    tool_result = sections.get("tool_result") if isinstance(sections, Mapping) else None
-    if isinstance(tool_result, Mapping):
-        tool_section = tool_result.get("tool")
-        if isinstance(tool_section, Mapping):
-            arguments = tool_section.get("arguments")
-            if _has_meaningful_payload(arguments):
-                return ("tool_result", "tool", "arguments"), arguments
 
     response_section = sections.get("llm_response") if isinstance(sections, Mapping) else None
     if isinstance(response_section, Mapping):
@@ -811,6 +841,14 @@ def _select_primary_tool_arguments(
         arguments = request_section.get("arguments")
         if _has_meaningful_payload(arguments):
             return ("llm_request", "arguments"), arguments
+
+    tool_result = sections.get("tool_result") if isinstance(sections, Mapping) else None
+    if isinstance(tool_result, Mapping):
+        tool_section = tool_result.get("tool")
+        if isinstance(tool_section, Mapping):
+            arguments = tool_section.get("arguments")
+            if _has_meaningful_payload(arguments):
+                return ("tool_result", "tool", "arguments"), arguments
 
     return (None, None)
 

@@ -209,7 +209,11 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     llm_request = raw_data.get("llm_request")
     assert isinstance(llm_request, Mapping)
     assert llm_request.get("name") == "update_requirement_field"
-    assert "arguments" not in llm_request
+    request_arguments = llm_request.get("arguments")
+    assert isinstance(request_arguments, Mapping)
+    assert request_arguments.get("rid") == "DEMO16"
+    assert request_arguments.get("field") == "title"
+    assert request_arguments.get("value") == "Новое название"
     llm_response = raw_data.get("llm_response")
     assert isinstance(llm_response, Mapping)
     assert llm_response.get("content") == "Applying updates"
@@ -226,18 +230,17 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     assert isinstance(tool_section, Mapping)
     assert tool_section.get("call_id") == "call-1"
     assert tool_section.get("name") == "update_requirement_field"
+    response_arguments = first_call.get("arguments")
+    assert isinstance(response_arguments, Mapping)
+    assert response_arguments.get("rid") == "DEMO16"
+    assert response_arguments.get("field") == "title"
+    assert response_arguments.get("value") == "Новое название"
+
     arguments = tool_section.get("arguments")
     if isinstance(arguments, Mapping):
-        assert arguments.get("rid") == "DEMO16"
-        assert arguments.get("field") == "title"
-        assert arguments.get("value") == "Новое название"
-        assert "arguments" not in first_call
+        assert arguments == response_arguments
     else:
-        response_arguments = first_call.get("arguments")
-        assert isinstance(response_arguments, Mapping)
-        assert response_arguments.get("rid") == "DEMO16"
-        assert response_arguments.get("field") == "title"
-        assert response_arguments.get("value") == "Новое название"
+        assert arguments is None
     assert raw_data.get("step") in (1, "1")
     assert raw_data.get("diagnostics") in (None, {})
     timeline = tool_result_section.get("timeline")
@@ -465,7 +468,11 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     request_payload = raw_data.get("llm_request")
     assert isinstance(request_payload, Mapping)
     assert request_payload.get("name") == "update_requirement_field"
-    assert "arguments" not in request_payload
+    request_arguments = request_payload.get("arguments")
+    assert isinstance(request_arguments, Mapping)
+    assert request_arguments.get("field") == "status"
+    assert request_arguments.get("rid") == "DEMO1"
+    assert request_arguments.get("value") == "in_last_review"
 
     response_payload = raw_data.get("llm_response")
     assert isinstance(response_payload, Mapping)
@@ -476,7 +483,6 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     first_response_call = response_calls[0]
     assert isinstance(first_response_call, Mapping)
     assert first_response_call.get("name") == "update_requirement_field"
-    assert "arguments" not in first_response_call
 
     diagnostics = raw_data.get("diagnostics")
     if diagnostics is not None:
@@ -498,6 +504,9 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
     assert arguments.get("field") == "status"
     assert arguments.get("rid")
     assert arguments.get("value") == "in_last_review"
+    response_arguments = first_response_call.get("arguments")
+    assert isinstance(response_arguments, Mapping)
+    assert response_arguments == arguments
     status_section = tool_result_section.get("status")
     assert isinstance(status_section, Mapping)
     assert status_section.get("state") == snapshot.get("agent_status")

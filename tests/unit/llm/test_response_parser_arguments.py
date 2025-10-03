@@ -266,6 +266,95 @@ def test_consume_stream_collects_response_function_tool_call() -> None:
     assert json.loads(function["arguments"])["rid"] == "DEMO12"
 
 
+def test_consume_stream_merges_tool_call_chunks_by_index() -> None:
+    parser = _parser()
+    stream = [
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "chunk-call-1",
+                                "type": "function",
+                                "function": {"name": "update_requirement_field"},
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "chunk-call-1",
+                                "type": "function",
+                                "function": {
+                                    "arguments": '{"rid":"DEMO20"',
+                                },
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "chunk-call-1",
+                                "type": "function",
+                                "function": {
+                                    "arguments": ',"field":"statement"',
+                                },
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "chunk-call-1",
+                                "type": "function",
+                                "function": {
+                                    "arguments": ',"value":"Тест"}'
+                                },
+                            }
+                        ],
+                        "content": [
+                            {"type": "output_text", "text": "Processing"}
+                        ],
+                    },
+                }
+            ]
+        },
+    ]
+
+    message, tool_calls, _ = parser.consume_stream(stream, cancellation=None)
+
+    assert message.strip() == "Processing"
+    assert len(tool_calls) == 1
+    payload = tool_calls[0]["function"]["arguments"]
+    data = json.loads(payload)
+    assert data["rid"] == "DEMO20"
+    assert data["field"] == "statement"
+    assert data["value"] == "Тест"
+
+
 def test_parse_tool_calls_reads_arguments_from_model_dump_gap() -> None:
     parser = _parser()
     tool_call = _ModelDumpToolCall(

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from openai.types.responses.response_function_tool_call import (
     ResponseFunctionToolCall,
@@ -199,3 +200,97 @@ def test_llm_client_recovers_arguments_when_model_dump_loses_them(monkeypatch) -
     assert arguments["rid"] == "DEMO15"
     assert arguments["field"] == "title"
     assert arguments["value"] == "Русификация"
+
+
+def test_llm_client_streaming_combines_tool_call_chunks(monkeypatch) -> None:
+    settings = LLMSettings()
+    settings.base_url = "http://invalid"
+    settings.api_key = "dummy"
+    settings.stream = True
+    client = LLMClient(settings)
+
+    stream_chunks = [
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "chunk-call-42",
+                                "type": "function",
+                                "function": {"name": "update_requirement_field"},
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "chunk-call-42",
+                                "type": "function",
+                                "function": {
+                                    "arguments": '{"rid":"DEMO21"',
+                                },
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "chunk-call-42",
+                                "type": "function",
+                                "function": {
+                                    "arguments": ',"field":"statement"',
+                                },
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "chunk-call-42",
+                                "type": "function",
+                                "function": {
+                                    "arguments": ',"value":"Тест"}'
+                                },
+                            }
+                        ],
+                        "content": [
+                            {"type": "output_text", "text": "Обновляю"}
+                        ],
+                    },
+                }
+            ]
+        },
+    ]
+
+    monkeypatch.setattr(client, "_chat_completion", lambda **_: stream_chunks)
+
+    response = client.respond([{"role": "user", "content": "update DEMO21"}])
+
+    assert response.tool_calls, "Streaming client should produce tool calls"
+    arguments = response.tool_calls[0].arguments
+    assert arguments["rid"] == "DEMO21"
+    assert arguments["field"] == "statement"
+    assert arguments["value"] == "Тест"

@@ -270,8 +270,8 @@ class LLMResponseParser:
         cancellation: CancellationEvent | None,
     ) -> tuple[str, list[dict[str, Any]], list[dict[str, str]]]:
         message_parts: list[str] = []
-        tool_chunks: dict[tuple[int, int], dict[str, Any]] = {}
-        order: list[tuple[int, int]] = []
+        tool_chunks: dict[tuple[int, object], dict[str, Any]] = {}
+        order: list[tuple[int, object]] = []
         closer = getattr(stream, "close", None)
         cancel_event = cancellation
         closed_by_cancel = False
@@ -1016,23 +1016,14 @@ class LLMResponseParser:
     # ------------------------------------------------------------------
     def _append_stream_tool_call(
         self,
-        tool_chunks: dict[tuple[int, int], dict[str, Any]],
-        order: list[tuple[int, int]],
+        tool_chunks: dict[tuple[int, object], dict[str, Any]],
+        order: list[tuple[int, object]],
         tool_call: Any,
         *,
         choice_index: int,
         tool_index: int | None = None,
     ) -> None:
         call_map = extract_mapping(tool_call)
-        key = (choice_index, tool_index or len(order))
-        if key not in tool_chunks:
-            tool_chunks[key] = {
-                "id": None,
-                "type": "function",
-                "function": {"name": None, "arguments": ""},
-            }
-            order.append(key)
-        entry = tool_chunks[key]
         call_id = getattr(tool_call, "id", None)
         if call_map is not None and call_id is None:
             call_id = (
@@ -1042,8 +1033,28 @@ class LLMResponseParser:
             )
         if call_id is None:
             call_id = getattr(tool_call, "call_id", None)
+
+        if tool_index is not None:
+            key_token: object = tool_index
+        elif call_id is not None:
+            key_token = call_id
+        else:
+            key_token = ("auto", len(order))
+
+        key = (choice_index, key_token)
+        if key not in tool_chunks:
+            tool_chunks[key] = {
+                "id": None,
+                "type": "function",
+                "function": {"name": None, "arguments": ""},
+            }
+            order.append(key)
+
+        entry = tool_chunks[key]
+
         if call_id:
             entry["id"] = call_id
+
         function = call_map.get("function") if call_map else None
         if function is None:
             function = getattr(tool_call, "function", None)
@@ -1051,6 +1062,7 @@ class LLMResponseParser:
             func_map = extract_mapping(function)
         else:
             func_map = None
+
         name = getattr(function, "name", None)
         if func_map is not None and name is None:
             name = func_map.get("name")
@@ -1060,6 +1072,7 @@ class LLMResponseParser:
             name = getattr(tool_call, "name", None)
         if name:
             entry["function"]["name"] = name
+
         args_fragment = getattr(function, "arguments", None) if function else None
         if func_map is not None:
             args_fragment = func_map.get("arguments", args_fragment)
@@ -1072,14 +1085,27 @@ class LLMResponseParser:
 
     def _append_stream_function_call(
         self,
-        tool_chunks: dict[tuple[int, int], dict[str, Any]],
-        order: list[tuple[int, int]],
+        tool_chunks: dict[tuple[int, object], dict[str, Any]],
+        order: list[tuple[int, object]],
         function_call: Any,
         *,
         choice_index: int,
     ) -> None:
         func_map = extract_mapping(function_call)
-        key = (choice_index, -1)
+        call_id = None
+        if func_map is not None:
+            call_id = (
+                func_map.get("id")
+                or func_map.get("call_id")
+                or func_map.get("tool_call_id")
+            )
+        if call_id is None:
+            call_id = getattr(function_call, "id", None)
+        if call_id is None:
+            call_id = getattr(function_call, "call_id", None)
+
+        key_token: object = call_id if call_id is not None else -1
+        key = (choice_index, key_token)
         if key not in tool_chunks:
             tool_chunks[key] = {
                 "id": None,
@@ -1087,7 +1113,11 @@ class LLMResponseParser:
                 "function": {"name": None, "arguments": ""},
             }
             order.append(key)
+
         entry = tool_chunks[key]
+        if call_id is not None:
+            entry["id"] = call_id
+
         name = getattr(function_call, "name", None)
         if func_map is not None and name is None:
             name = func_map.get("name")

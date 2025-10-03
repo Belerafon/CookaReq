@@ -238,6 +238,80 @@ def test_tool_call_event_synthesises_request_when_missing() -> None:
     assert events and events[0].tool_call is tool_event
 
 
+def test_tool_call_event_includes_llm_error_arguments() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="",
+        tokens=1,
+        tool_results=[
+            {
+                "tool_name": "update_requirement_field",
+                "tool_call_id": "call-error",
+                "agent_status": "failed",
+                "ok": False,
+                "error": {"message": "invalid arguments"},
+            }
+        ],
+        raw_result={
+            "diagnostic": {
+                "llm_steps": [
+                    {
+                        "step": 1,
+                        "error": {
+                            "type": "llm",
+                            "message": "Tool call failed",
+                            "tool_call": {
+                                "id": "call-error",
+                                "name": "update_requirement_field",
+                                "arguments": {
+                                    "rid": "REQ-404",
+                                    "field": "title",
+                                    "value": "Broken",
+                                },
+                            },
+                            "details": {
+                                "hint": "Double-check the requirement id",
+                                "tool_call": {
+                                    "id": "call-error",
+                                    "name": "update_requirement_field",
+                                },
+                            },
+                        },
+                    }
+                ]
+            }
+        },
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+    tool_event = turn.tool_calls[0]
+
+    raw_data = tool_event.raw_data
+    assert isinstance(raw_data, Mapping)
+
+    request_payload = raw_data.get("llm_request")
+    assert isinstance(request_payload, Mapping)
+    arguments = request_payload.get("arguments")
+    assert isinstance(arguments, Mapping)
+    assert arguments["rid"] == "REQ-404"
+    assert arguments["field"] == "title"
+    assert arguments["value"] == "Broken"
+
+    error_payload = raw_data.get("llm_error")
+    assert isinstance(error_payload, Mapping)
+    assert error_payload.get("message") == "Tool call failed"
+    assert "tool_call" not in error_payload
+    details = error_payload.get("details")
+    assert isinstance(details, Mapping)
+    assert details.get("hint") == "Double-check the requirement id"
+
+    additional = raw_data.get("additional")
+    assert additional is None or isinstance(additional, Mapping)
+
+
 def test_streamed_responses_in_turn() -> None:
     entry = ChatEntry(
         prompt="do work",

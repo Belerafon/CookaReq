@@ -160,7 +160,7 @@ def test_plain_transcript_uses_agent_turn_text_and_tool_summaries():
         in plain_text
     )
     assert (
-        "• Error message: update_requirement_field() missing 1 required positional argument: 'rid'"
+        "• Error: update_requirement_field() missing 1 required positional argument: 'rid'"
         in plain_text
     )
 

@@ -720,6 +720,70 @@ def _has_meaningful_payload(value: Any) -> bool:
     return True
 
 
+def _payload_information(value: Any) -> int:
+    """Return a score approximating how much information *value* carries."""
+
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        return 1 if value.strip() else 0
+    if isinstance(value, Mapping):
+        return sum(_payload_information(item) for item in value.values())
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return sum(_payload_information(item) for item in value)
+    return 1
+
+
+def _merge_prefer_rich_mapping(
+    existing: Mapping[str, Any], candidate: Mapping[str, Any]
+) -> Mapping[str, Any]:
+    """Merge two payloads, preferring keys with meaningful data."""
+
+    if not isinstance(existing, Mapping):
+        return candidate
+    if not isinstance(candidate, Mapping):
+        return existing
+
+    merged: dict[str, Any] = dict(existing)
+    changed = False
+
+    for key, value in candidate.items():
+        if key not in merged:
+            merged[key] = value
+            changed = True
+            continue
+
+        current = merged[key]
+        if isinstance(current, Mapping) and isinstance(value, Mapping):
+            merged_value = _merge_prefer_rich_mapping(current, value)
+            if merged_value is not current:
+                merged[key] = merged_value
+                changed = True
+            continue
+
+        if (
+            isinstance(current, Sequence)
+            and not isinstance(current, (str, bytes, bytearray))
+            and isinstance(value, Sequence)
+            and not isinstance(value, (str, bytes, bytearray))
+        ):
+            if not _has_meaningful_payload(current) and _has_meaningful_payload(value):
+                merged[key] = value
+                changed = True
+            continue
+
+        if not _has_meaningful_payload(current) and _has_meaningful_payload(value):
+            merged[key] = value
+            changed = True
+
+    if changed:
+        return merged
+
+    if _payload_information(candidate) > _payload_information(existing):
+        return candidate
+    return existing
+
+
 def _build_agent_events(
     turn_timestamp: TimestampInfo,
     streamed_responses: tuple[AgentResponse, ...],
@@ -1298,24 +1362,43 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Mapping[str, Any]]
         return snapshot
 
     def store_request(snapshot: dict[str, Any], payload: Mapping[str, Any] | None) -> None:
-        if not isinstance(payload, Mapping) or "llm_request" in snapshot:
+        if not isinstance(payload, Mapping):
             return
         normalised = _normalise_raw_section(_decode_tool_calls_in_mapping(payload))
-        if _has_meaningful_payload(normalised):
+        if not _has_meaningful_payload(normalised):
+            return
+        existing = snapshot.get("llm_request")
+        if isinstance(existing, Mapping) and isinstance(normalised, Mapping):
+            merged = _merge_prefer_rich_mapping(existing, normalised)
+            if merged is not existing:
+                snapshot["llm_request"] = merged
+        elif existing is None or _payload_information(normalised) > _payload_information(existing):
             snapshot["llm_request"] = normalised
 
     def store_response(snapshot: dict[str, Any], payload: Any) -> None:
-        if "llm_response" in snapshot:
-            return
         normalised = _normalise_raw_section(_decode_tool_calls_in_value(payload))
-        if _has_meaningful_payload(normalised):
+        if not _has_meaningful_payload(normalised):
+            return
+        existing = snapshot.get("llm_response")
+        if isinstance(existing, Mapping) and isinstance(normalised, Mapping):
+            merged = _merge_prefer_rich_mapping(existing, normalised)
+            if merged is not existing:
+                snapshot["llm_response"] = merged
+        elif existing is None or _payload_information(normalised) > _payload_information(existing):
             snapshot["llm_response"] = normalised
 
     def store_error(snapshot: dict[str, Any], payload: Mapping[str, Any] | None) -> None:
-        if not isinstance(payload, Mapping) or "llm_error" in snapshot:
+        if not isinstance(payload, Mapping):
             return
         normalised = _normalise_raw_section(_decode_tool_calls_in_mapping(payload))
-        if _has_meaningful_payload(normalised):
+        if not _has_meaningful_payload(normalised):
+            return
+        existing = snapshot.get("llm_error")
+        if isinstance(existing, Mapping) and isinstance(normalised, Mapping):
+            merged = _merge_prefer_rich_mapping(existing, normalised)
+            if merged is not existing:
+                snapshot["llm_error"] = merged
+        elif existing is None or _payload_information(normalised) > _payload_information(existing):
             snapshot["llm_error"] = normalised
 
     def store_step(snapshot: dict[str, Any], step_value: Any) -> None:

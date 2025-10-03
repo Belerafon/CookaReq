@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
+from ..util.json import make_json_safe
 from .reasoning import (
     ReasoningFragment,
     collect_reasoning_fragments,
@@ -37,36 +38,95 @@ class _ToolArgumentRecovery:
     empty_fragment_count: int
 
 
+def _extract_tool_argument_mapping(arguments: Any) -> Mapping[str, Any] | None:
+    """Return a mapping for tool arguments without relying on ``__dict__``."""
+
+    if isinstance(arguments, Mapping):
+        return arguments
+    for attr in ("model_dump", "dict"):
+        method = getattr(arguments, attr, None)
+        if callable(method):
+            try:
+                data = method()
+            except Exception:  # pragma: no cover - defensive
+                continue
+            if isinstance(data, Mapping):
+                return data
+    if is_dataclass(arguments):
+        try:
+            data = asdict(arguments)
+        except Exception:  # pragma: no cover - defensive
+            data = None
+        if isinstance(data, Mapping):
+            return data
+    data = getattr(arguments, "_data", None)
+    if isinstance(data, Mapping):
+        return data
+    return None
+
+
 def _stringify_tool_arguments(arguments: Any) -> str:
     """Coerce tool arguments into a JSON text payload without dropping data."""
 
     if isinstance(arguments, str):
         return arguments or "{}"
-    original_repr = "" if arguments is None else str(arguments)
     if isinstance(arguments, bytes):
         decoded = arguments.decode("utf-8", errors="replace")
         return decoded or "{}"
     if arguments is None:
         return "{}"
-    if isinstance(arguments, (Mapping, list, tuple)):
+
+    fallback_source = arguments if arguments is not None else "{}"
+    fallback = str(fallback_source).strip()
+
+    def _dump(value: Any) -> str:
         try:
-            text = json.dumps(arguments, ensure_ascii=False)
+            return json.dumps(value, ensure_ascii=False)
         except (TypeError, ValueError):
-            text = ""
-    else:
-        try:
-            text = json.dumps(arguments, ensure_ascii=False)
-        except (TypeError, ValueError):
-            text = ""
-    candidate = text.strip() if text else ""
-    if candidate and candidate not in {"{}", "[]"}:
-        return text
-    fallback = original_repr.strip()
-    if fallback and fallback[0] in "[{" and fallback not in {"{}", "[]"}:
-        return fallback
-    if candidate:
+            return ""
+
+    def _prefer(text: str) -> str | None:
+        if not text:
+            return None
+        candidate = text.strip()
+        if not candidate:
+            return None
+        if candidate not in {"{}", "[]"}:
+            return text
+        if fallback and fallback[0] in "[{" and fallback not in {"{}", "[]"}:
+            return fallback
         return candidate
-    return "{}"
+
+    mapping = _extract_tool_argument_mapping(arguments)
+    if mapping:
+        safe_mapping = make_json_safe(
+            mapping,
+            stringify_keys=True,
+            coerce_sequences=True,
+            default=str,
+        )
+        preferred = _prefer(_dump(safe_mapping))
+        if preferred is not None:
+            return preferred
+
+    if isinstance(arguments, Sequence) and not isinstance(
+        arguments, (str, bytes, bytearray)
+    ):
+        safe_sequence = make_json_safe(
+            arguments,
+            stringify_keys=True,
+            coerce_sequences=True,
+            default=str,
+        )
+        preferred = _prefer(_dump(safe_sequence))
+        if preferred is not None:
+            return preferred
+
+    preferred = _prefer(_dump(arguments))
+    if preferred is not None:
+        return preferred
+
+    return fallback or "{}"
 
 
 def normalise_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:

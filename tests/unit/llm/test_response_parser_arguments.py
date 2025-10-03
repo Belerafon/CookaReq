@@ -1,5 +1,7 @@
 """Tests for recovering malformed tool argument payloads."""
 
+import json
+from typing import Any
 from collections.abc import Mapping
 
 from app.llm.response_parser import LLMResponseParser, normalise_tool_calls
@@ -36,6 +38,19 @@ class _ShadowMappingArguments(Mapping[str, str]):
 
     def __str__(self) -> str:
         return self._text
+
+
+class _OpenAIObjectArguments:
+    """Mimic OpenAI SDK tool arguments with a descriptive ``repr``."""
+
+    def __init__(self, payload: Mapping[str, Any]) -> None:
+        self._payload = dict(payload)
+
+    def model_dump(self) -> Mapping[str, Any]:
+        return dict(self._payload)
+
+    def __str__(self) -> str:  # pragma: no cover - representational helper
+        return f"OpenAIObject(json={json.dumps(self._payload, ensure_ascii=False)})"
 
 
 def test_parse_tool_calls_merges_concatenated_json_fragments() -> None:
@@ -132,3 +147,31 @@ def test_normalise_tool_calls_falls_back_to_string_repr_for_shadow_mappings() ->
     assert parsed[0].arguments["rid"] == "DEMO8"
     assert parsed[0].arguments["field"] == "statement"
     assert parsed[0].arguments["value"] == "Перевести"
+
+
+def test_normalise_tool_calls_uses_model_dump_for_openai_objects() -> None:
+    parser = _parser()
+    arguments = _OpenAIObjectArguments(
+        {
+            "rid": "DEMO9",
+            "field": "title",
+            "value": "Русификация",
+        }
+    )
+    tool_calls = [
+        {
+            "id": "call-0",
+            "type": "function",
+            "function": {
+                "name": "update_requirement_field",
+                "arguments": arguments,
+            },
+        }
+    ]
+
+    normalised = normalise_tool_calls(tool_calls)
+    parsed = parser.parse_tool_calls(normalised)
+
+    assert parsed[0].arguments["rid"] == "DEMO9"
+    assert parsed[0].arguments["field"] == "title"
+    assert parsed[0].arguments["value"] == "Русификация"

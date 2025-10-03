@@ -1,5 +1,7 @@
 """Tests for recovering malformed tool argument payloads."""
 
+from collections.abc import Mapping
+
 from app.llm.response_parser import LLMResponseParser, normalise_tool_calls
 from app.settings import LLMSettings
 
@@ -12,6 +14,25 @@ def _parser() -> LLMResponseParser:
 class _StringableArguments:
     def __init__(self, text: str) -> None:
         self._text = text
+
+    def __str__(self) -> str:
+        return self._text
+
+
+class _ShadowMappingArguments(Mapping[str, str]):
+    """Mapping that pretends to be empty but stringifies to JSON."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def __iter__(self):  # pragma: no cover - iterator required by Mapping
+        return iter(())
+
+    def __len__(self) -> int:  # pragma: no cover - simple constant
+        return 0
+
+    def __getitem__(self, key: str) -> str:
+        raise KeyError(key)
 
     def __str__(self) -> str:
         return self._text
@@ -87,3 +108,27 @@ def test_normalise_tool_calls_preserves_stringable_arguments() -> None:
     assert parsed[0].arguments["rid"] == "DEMO7"
     assert parsed[0].arguments["field"] == "title"
     assert parsed[0].arguments["value"] == "Локализация"
+
+
+def test_normalise_tool_calls_falls_back_to_string_repr_for_shadow_mappings() -> None:
+    parser = _parser()
+    arguments = _ShadowMappingArguments(
+        '{"rid":"DEMO8","field":"statement","value":"Перевести"}'
+    )
+    tool_calls = [
+        {
+            "id": "call-0",
+            "type": "function",
+            "function": {
+                "name": "update_requirement_field",
+                "arguments": arguments,
+            },
+        }
+    ]
+
+    normalised = normalise_tool_calls(tool_calls)
+    parsed = parser.parse_tool_calls(normalised)
+
+    assert parsed[0].arguments["rid"] == "DEMO8"
+    assert parsed[0].arguments["field"] == "statement"
+    assert parsed[0].arguments["value"] == "Перевести"

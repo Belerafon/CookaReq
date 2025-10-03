@@ -42,6 +42,7 @@ def _stringify_tool_arguments(arguments: Any) -> str:
 
     if isinstance(arguments, str):
         return arguments or "{}"
+    original_repr = "" if arguments is None else str(arguments)
     if isinstance(arguments, bytes):
         decoded = arguments.decode("utf-8", errors="replace")
         return decoded or "{}"
@@ -49,14 +50,23 @@ def _stringify_tool_arguments(arguments: Any) -> str:
         return "{}"
     if isinstance(arguments, (Mapping, list, tuple)):
         try:
-            return json.dumps(arguments, ensure_ascii=False)
+            text = json.dumps(arguments, ensure_ascii=False)
         except (TypeError, ValueError):
-            pass
-    try:
-        text = json.dumps(arguments, ensure_ascii=False)
-    except (TypeError, ValueError):
-        text = str(arguments)
-    return text or "{}"
+            text = ""
+    else:
+        try:
+            text = json.dumps(arguments, ensure_ascii=False)
+        except (TypeError, ValueError):
+            text = ""
+    candidate = text.strip() if text else ""
+    if candidate and candidate not in {"{}", "[]"}:
+        return text
+    fallback = original_repr.strip()
+    if fallback and fallback[0] in "[{" and fallback not in {"{}", "[]"}:
+        return fallback
+    if candidate:
+        return candidate
+    return "{}"
 
 
 def normalise_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:

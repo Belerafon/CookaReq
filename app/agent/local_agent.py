@@ -221,27 +221,6 @@ class LocalAgent:
         self._llm_steps.append(detail_payload)
         return detail_payload
 
-    def _log_llm_response_debug(self, response: LLMResponse, *, stage: str) -> None:
-        """Emit detailed log entry describing the raw LLM response."""
-
-        tool_payloads = [self._tool_call_debug_payload(call) for call in response.tool_calls]
-        reasoning_payload = [
-            {
-                "type": segment.type,
-                "text": segment.text_with_whitespace,
-            }
-            for segment in response.reasoning
-        ]
-        payload: dict[str, Any] = {
-            "stage": stage,
-            "content": response.content,
-            "tool_calls": tool_payloads,
-            "reasoning": reasoning_payload,
-        }
-        if response.request_messages is not None:
-            payload["request_message_count"] = len(response.request_messages)
-        log_debug_payload("AGENT_LLM_RESPONSE_DETAIL", payload)
-
     @classmethod
     def _summarize_result(cls, result: Mapping[str, Any]) -> dict[str, Any]:
         """Return compact metadata about final agent outcome."""
@@ -856,22 +835,6 @@ class LocalAgent:
         raw_request_messages = getattr(exc, "llm_request_messages", None)
         raw_reasoning = getattr(exc, "llm_reasoning", None)
         prepared_calls = self._prepare_invalid_tool_calls(raw_calls)
-        if prepared_calls:
-            log_debug_payload(
-                "AGENT_LLM_VALIDATION_CALLS",
-                {
-                    "stage": "agent.validation_error.prepare_calls",
-                    "calls": [
-                        {
-                            "id": prepared.call.id,
-                            "name": prepared.call.name,
-                            "arguments": prepared.arguments_for_payload,
-                            "assistant_fragment": prepared.assistant_fragment,
-                        }
-                        for prepared in prepared_calls
-                    ],
-                },
-            )
         request_snapshot: tuple[dict[str, Any], ...] | None = None
         normalized_reasoning = normalise_reasoning_segments(raw_reasoning)
         reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
@@ -1256,10 +1219,6 @@ class AgentLoopRunner:
             )
         except ToolValidationError as exc:
             return self._handle_validation_error(exc)
-        self._agent._log_llm_response_debug(
-            response,
-            stage="agent.step_llm",
-        )
         return await self.handle_tool_batch(response)
 
     async def handle_tool_batch(self, response: LLMResponse) -> _AgentLoopStep:
@@ -1309,10 +1268,6 @@ class AgentLoopRunner:
             exc,
             self._conversation,
             on_tool_result=self._on_tool_result,
-        )
-        self._agent._log_llm_response_debug(
-            response,
-            stage="agent.validation_error",
         )
         self._register_response(response)
         self._advance_step(response)

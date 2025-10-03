@@ -2,20 +2,16 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 from collections.abc import Mapping, Sequence
 
-from ..log import logger
 from ..telemetry import log_debug_payload, log_event
-from ..util.json import make_json_safe
 from .spec import SYSTEM_PROMPT
-from .utils import extract_mapping
 
-__all__ = ["log_request", "log_response", "log_raw_llm_payload"]
+__all__ = ["log_request", "log_response"]
 
 _PROMPT_PLACEHOLDER_TEXT = (
     "System prompt and tool list were elided by the logging system for brevity, "
@@ -110,69 +106,6 @@ def log_response(
     log_event("LLM_RESPONSE", payload, start_time=start_time)
     debug_payload = {"direction": direction, **payload}
     log_debug_payload("LLM_RESPONSE", debug_payload)
-
-
-def _normalise_raw_payload(data: Any) -> Any:
-    """Return a JSON-safe representation of ``data`` preserving structure when possible."""
-
-    mapping = extract_mapping(data)
-    if mapping is not None:
-        return make_json_safe(
-            mapping,
-            stringify_keys=True,
-            coerce_sequences=True,
-            default=str,
-        )
-    if isinstance(data, Sequence) and not isinstance(data, (str, bytes, bytearray)):
-        return [
-            _normalise_raw_payload(item)
-            for item in data
-        ]
-    return make_json_safe(
-        data,
-        stringify_keys=True,
-        coerce_sequences=True,
-        default=str,
-    )
-
-
-def log_raw_llm_payload(
-    event: str,
-    *,
-    stage: str,
-    data: Any,
-    metadata: Mapping[str, Any] | None = None,
-) -> None:
-    """Emit debug-level log entry with raw LLM payload details.
-
-    Parameters
-    ----------
-    event:
-        Short identifier describing the origin, e.g. ``"LLM_RAW_COMPLETION"``.
-    stage:
-        Execution phase within the pipeline (``"chat.parse"``, ``"agent.step"`` and so on).
-    data:
-        Original payload object or collection that should be recorded.
-    metadata:
-        Optional auxiliary information (flags, counters, etc.).
-    """
-
-    if not logger.isEnabledFor(logging.DEBUG):
-        return
-
-    record: dict[str, Any] = {
-        "event": event,
-        "stage": stage,
-        "payload": _normalise_raw_payload(data),
-    }
-    if metadata:
-        record["metadata"] = make_json_safe(
-            metadata,
-            stringify_keys=True,
-            coerce_sequences=True,
-            default=str,
-        )
-    logger.debug(event, extra={"json": record})
 
 
 def _prepare_request_payload(payload: Mapping[str, Any]) -> Mapping[str, Any]:

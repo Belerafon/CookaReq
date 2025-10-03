@@ -15,9 +15,9 @@ from .context import extract_selected_rids_from_messages
 from .harmony import convert_tools_for_harmony
 from .logging import log_request, log_response
 from .request_builder import LLMRequestBuilder
-from .response_parser import LLMResponseParser
+from .response_parser import LLMResponseParser, normalise_tool_calls
 from .spec import TOOLS
-from .types import LLMReasoningSegment, LLMResponse, LLMToolCall
+from .types import LLMReasoningSegment, LLMResponse
 from .validation import ToolValidationError
 
 # When the backend does not require authentication, the official OpenAI client
@@ -207,7 +207,6 @@ class LLMClient:
         llm_message_text = ""
         normalized_tool_calls: list[dict[str, Any]] = []
         raw_tool_calls_payload: list[Any] = []
-        parsed_tool_calls: tuple[LLMToolCall, ...] = ()
         reasoning_accumulator: list[dict[str, str]] = []
         reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
 
@@ -232,34 +231,20 @@ class LLMClient:
                 if reasoning_entries:
                     reasoning_accumulator.extend(reasoning_entries)
             llm_message_text = message_text
-            parsed_tool_calls = self._response_parser.parse_tool_calls(
-                raw_tool_calls_payload
-            )
-            parsed_tool_calls = self._apply_tool_call_defaults(
-                parsed_tool_calls,
+            normalized_tool_calls = normalise_tool_calls(raw_tool_calls_payload)
+            normalized_tool_calls = self._apply_tool_call_defaults(
+                normalized_tool_calls,
                 request_messages=prepared.snapshot,
             )
-            normalized_tool_calls = [
-                {
-                    "id": call.id,
-                    "type": "function",
-                    "function": {
-                        "name": call.name,
-                        "arguments": json.dumps(
-                            call.arguments,
-                            ensure_ascii=False,
-                            default=str,
-                        ),
-                    },
-                }
-                for call in parsed_tool_calls
-            ]
+            tool_calls = self._response_parser.parse_tool_calls(
+                normalized_tool_calls
+            )
             reasoning_segments = self._response_parser.finalize_reasoning_segments(
                 reasoning_accumulator
             )
             response = LLMResponse(
                 content=message_text,
-                tool_calls=parsed_tool_calls,
+                tool_calls=tool_calls,
                 request_messages=prepared.snapshot,
                 reasoning=reasoning_segments,
             )
@@ -385,7 +370,6 @@ class LLMClient:
         llm_message_text = ""
         normalized_tool_calls: list[dict[str, Any]] = []
         raw_tool_calls_payload: list[Any] = []
-        parsed_tool_calls: tuple[LLMToolCall, ...] = ()
         reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
 
         try:
@@ -400,31 +384,17 @@ class LLMClient:
                 completion
             )
             llm_message_text = message_text
-            parsed_tool_calls = self._response_parser.parse_tool_calls(
-                raw_tool_calls_payload
-            )
-            parsed_tool_calls = self._apply_tool_call_defaults(
-                parsed_tool_calls,
+            normalized_tool_calls = normalise_tool_calls(raw_tool_calls_payload)
+            normalized_tool_calls = self._apply_tool_call_defaults(
+                normalized_tool_calls,
                 request_messages=request_snapshot,
             )
-            normalized_tool_calls = [
-                {
-                    "id": call.id,
-                    "type": "function",
-                    "function": {
-                        "name": call.name,
-                        "arguments": json.dumps(
-                            call.arguments,
-                            ensure_ascii=False,
-                            default=str,
-                        ),
-                    },
-                }
-                for call in parsed_tool_calls
-            ]
+            tool_calls = self._response_parser.parse_tool_calls(
+                normalized_tool_calls
+            )
             response = LLMResponse(
                 content=message_text,
-                tool_calls=parsed_tool_calls,
+                tool_calls=tool_calls,
                 request_messages=request_snapshot,
             )
             if not response.tool_calls and not response.content:
@@ -493,28 +463,53 @@ class LLMClient:
 
     def _apply_tool_call_defaults(
         self,
-        tool_calls: Sequence[LLMToolCall],
+        tool_calls: Sequence[Mapping[str, Any]],
         *,
         request_messages: Sequence[Mapping[str, Any]] | None,
-    ) -> tuple[LLMToolCall, ...]:
+    ) -> list[dict[str, Any]]:
         """Fill missing get_requirement arguments using workspace context."""
 
         if not tool_calls:
-            return ()
+            return []
 
         selected_rids = extract_selected_rids_from_messages(request_messages)
         if not selected_rids:
-            return tuple(tool_calls)
+            return [dict(call) for call in tool_calls]
 
-        patched: list[LLMToolCall] = []
+        patched: list[dict[str, Any]] = []
         changed = False
         for call in tool_calls:
-            if str(call.name) != "get_requirement":
-                patched.append(call)
+            call_entry = dict(call)
+            function = call_entry.get("function")
+            if not isinstance(function, Mapping):
+                patched.append(call_entry)
+                continue
+            name = function.get("name")
+            if str(name) != "get_requirement":
+                patched.append(call_entry)
                 continue
 
-            arguments = dict(call.arguments)
-            rid_value = arguments.get("rid")
+            arguments_text = function.get("arguments")
+            if isinstance(arguments_text, str):
+                stripped = arguments_text.strip()
+                if stripped:
+                    try:
+                        payload = json.loads(stripped)
+                    except json.JSONDecodeError:
+                        patched.append(call_entry)
+                        continue
+                else:
+                    payload = {}
+            elif isinstance(arguments_text, Mapping):  # pragma: no cover - defensive
+                payload = dict(arguments_text)
+            else:
+                payload = {}
+
+            if not isinstance(payload, dict):
+                patched.append(call_entry)
+                continue
+
+            rid_value = payload.get("rid")
             should_patch = False
             if isinstance(rid_value, str):
                 should_patch = not rid_value.strip()
@@ -527,28 +522,29 @@ class LLMClient:
                     if str(item).strip()
                 ]
                 if cleaned:
-                    arguments["rid"] = cleaned if len(cleaned) > 1 else cleaned[0]
+                    payload["rid"] = cleaned if len(cleaned) > 1 else cleaned[0]
                 else:
                     should_patch = True
             elif rid_value is None:
                 should_patch = True
 
             if should_patch:
-                arguments["rid"] = (
+                payload["rid"] = (
                     selected_rids
                     if len(selected_rids) > 1
                     else selected_rids[0]
                 )
-                patched.append(
-                    LLMToolCall(id=call.id, name=call.name, arguments=dict(arguments))
-                )
+                function = dict(function)
+                function["arguments"] = json.dumps(payload, ensure_ascii=False)
+                call_entry = dict(call_entry)
+                call_entry["function"] = function
                 changed = True
-            else:
-                patched.append(call)
+
+            patched.append(call_entry)
 
         if not changed:
-            return tuple(tool_calls)
-        return tuple(patched)
+            return [dict(call) for call in tool_calls]
+        return patched
 
     # ------------------------------------------------------------------
     def _chat_completion(self, **request_args: Any) -> Any:

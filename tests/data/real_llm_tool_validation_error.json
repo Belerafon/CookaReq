@@ -2,65 +2,36 @@
   "ok": false,
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+    "message": "update_requirement_field() missing rid",
     "details": {
       "type": "ToolValidationError",
-      "llm_message": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+      "llm_message": "update_requirement_field() missing rid (type: ToolValidationError)",
       "llm_tool_calls": [
         {
-          "id": "chatcmpl-tool-1",
+          "id": "chatcmpl-tool-611391fa5c1846cc9885187a8197f0e9",
           "type": "function",
           "function": {
             "name": "update_requirement_field",
-            "arguments": "{\"rid\": \"DEMO1\", \"field\": \"status\", \"value\": \"in_last_review\"}"
+            "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}"
           }
         }
       ]
     }
   },
   "tool_name": "update_requirement_field",
-  "tool_call_id": "chatcmpl-tool-1",
-  "call_id": "chatcmpl-tool-1",
+  "tool_call_id": "chatcmpl-tool-611391fa5c1846cc9885187a8197f0e9",
+  "call_id": "chatcmpl-tool-611391fa5c1846cc9885187a8197f0e9",
   "tool_arguments": {
-    "rid": "DEMO1",
-    "field": "status",
-    "value": "in_last_review"
+    "field": "statement",
+    "value": "La demo debe mostrar la CLI"
   },
   "agent_status": "failed",
   "agent_stop_reason": {
     "type": "consecutive_tool_errors",
-    "count": 2,
+    "count": 5,
     "max_consecutive_tool_errors": 5
   },
-  "status_updates": [
-    {
-      "status": "running",
-      "message": "Applying updates",
-      "at": "2025-10-03T08:27:30+00:00"
-    },
-    {
-      "status": "failed",
-      "at": "2025-10-03T08:27:30+00:00"
-    }
-  ],
   "diagnostic": {
-    "tool_calls": [
-      {
-        "call": {
-          "id": "chatcmpl-tool-1",
-          "name": "update_requirement_field",
-          "arguments": {
-            "rid": "DEMO1",
-            "field": "status",
-            "value": "in_last_review"
-          }
-        },
-        "context": {
-          "agent_status": "failed",
-          "status_updates": ["retrying"]
-        }
-      }
-    ],
     "llm_requests": [
       {
         "step": 1,
@@ -71,7 +42,7 @@
           },
           {
             "role": "user",
-            "content": "Установи статус требования DEMO1 на 'in_last_review'. Ответ должен быть только в виде вызова инструмента update_requirement_field. Добавь поля rid, field, value."
+            "content": "Переведи выделенные требования на испанский язык. Ответ должен быть только в виде вызова инструмента update_requirement_field. Вызов должен содержать только поля field и value. Поле rid опускаем намеренно. Не добавляй пояснения, не меняй формат вызова инструмента."
           }
         ]
       },
@@ -84,27 +55,246 @@
           },
           {
             "role": "user",
-            "content": "Установи статус требования DEMO1 на 'in_last_review'. Ответ должен быть только в виде вызова инструмента update_requirement_field. Добавь поля rid, field, value."
+            "content": "Переведи выделенные требования на испанский язык. Ответ должен быть только в виде вызова инструмента update_requirement_field. Вызов должен содержать только поля field и value. Поле rid опускаем намеренно. Не добавляй пояснения, не меняй формат вызова инструмента."
           },
           {
             "role": "assistant",
-            "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
             "tool_calls": [
               {
-                "id": "chatcmpl-tool-2",
+                "id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
                 "type": "function",
                 "function": {
                   "name": "update_requirement_field",
-                  "arguments": "{\"rid\": \"DEMO1\", \"field\": \"status\", \"value\": \"in_last_review\"}"
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}"
                 }
               }
             ]
           },
           {
             "role": "tool",
-            "tool_call_id": "chatcmpl-tool-2",
+            "tool_call_id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
             "name": "update_requirement_field",
-            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']\", \"details\": {\"type\": \"ToolValidationError\"}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-2\", \"call_id\": \"chatcmpl-tool-2\", \"tool_arguments\": {\"rid\": \"DEMO1\", \"field\": \"status\", \"value\": \"in_last_review\"}, \"agent_status\": \"failed\"}"
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe proporcionar traducciones\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}, \"agent_status\": \"failed\"}"
+          }
+        ]
+      },
+      {
+        "step": 3,
+        "messages": [
+          {
+            "role": "system",
+            "content": "[Workspace context]\nActive document: DEMO — Demo requirements\nSelected requirement RIDs: DEMO1, DEMO2, DEMO3\nDEMO1 — Demo introduction — The demo shall show the CLI\nDEMO2 — Demo architecture — The demo shall describe architecture\nDEMO3 — Demo translation — The demo shall provide translations"
+          },
+          {
+            "role": "user",
+            "content": "Переведи выделенные требования на испанский язык. Ответ должен быть только в виде вызова инструмента update_requirement_field. Вызов должен содержать только поля field и value. Поле rid опускаем намеренно. Не добавляй пояснения, не меняй формат вызова инструмента."
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe proporcionar traducciones\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe mostrar la CLI\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}, \"agent_status\": \"failed\"}"
+          }
+        ]
+      },
+      {
+        "step": 4,
+        "messages": [
+          {
+            "role": "system",
+            "content": "[Workspace context]\nActive document: DEMO — Demo requirements\nSelected requirement RIDs: DEMO1, DEMO2, DEMO3\nDEMO1 — Demo introduction — The demo shall show the CLI\nDEMO2 — Demo architecture — The demo shall describe architecture\nDEMO3 — Demo translation — The demo shall provide translations"
+          },
+          {
+            "role": "user",
+            "content": "Переведи выделенные требования на испанский язык. Ответ должен быть только в виде вызова инструмента update_requirement_field. Вызов должен содержать только поля field и value. Поле rid опускаем намеренно. Не добавляй пояснения, не меняй формат вызова инструмента."
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe proporcionar traducciones\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe mostrar la CLI\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-107c35414d364fb099172b084ff83f43",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe describir arquitectura\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-107c35414d364fb099172b084ff83f43",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe describir arquitectura\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"call_id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe describir arquitectura\"}, \"agent_status\": \"failed\"}"
+          }
+        ]
+      },
+      {
+        "step": 5,
+        "messages": [
+          {
+            "role": "system",
+            "content": "[Workspace context]\nActive document: DEMO — Demo requirements\nSelected requirement RIDs: DEMO1, DEMO2, DEMO3\nDEMO1 — Demo introduction — The demo shall show the CLI\nDEMO2 — Demo architecture — The demo shall describe architecture\nDEMO3 — Demo translation — The demo shall provide translations"
+          },
+          {
+            "role": "user",
+            "content": "Переведи выделенные требования на испанский язык. Ответ должен быть только в виде вызова инструмента update_requirement_field. Вызов должен содержать только поля field и value. Поле rid опускаем намеренно. Не добавляй пояснения, не меняй формат вызова инструмента."
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe proporcionar traducciones\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe mostrar la CLI\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-107c35414d364fb099172b084ff83f43",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe describir arquitectura\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-107c35414d364fb099172b084ff83f43",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe describir arquitectura\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"call_id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe describir arquitectura\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-a5b4ddc582654db683ae81ed385f34eb",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-a5b4ddc582654db683ae81ed385f34eb",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-a5b4ddc582654db683ae81ed385f34eb\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe proporcionar traducciones\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-a5b4ddc582654db683ae81ed385f34eb\", \"call_id\": \"chatcmpl-tool-a5b4ddc582654db683ae81ed385f34eb\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}, \"agent_status\": \"failed\"}"
           }
         ]
       }
@@ -113,15 +303,14 @@
       {
         "step": 1,
         "response": {
-          "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+          "content": "update_requirement_field() missing rid (type: ToolValidationError)",
           "tool_calls": [
             {
-              "id": "chatcmpl-tool-1",
+              "id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
               "name": "update_requirement_field",
               "arguments": {
-                "rid": "DEMO1",
-                "field": "status",
-                "value": "in_last_review"
+                "field": "statement",
+                "value": "La demo debe proporcionar traducciones"
               }
             }
           ],
@@ -134,22 +323,21 @@
           },
           {
             "role": "user",
-            "content": "Установи статус требования DEMO1 на 'in_last_review'. Ответ должен быть только в виде вызова инструмента update_requirement_field. Добавь поля rid, field, value."
+            "content": "Переведи выделенные требования на испанский язык. Ответ должен быть только в виде вызова инструмента update_requirement_field. Вызов должен содержать только поля field и value. Поле rid опускаем намеренно. Не добавляй пояснения, не меняй формат вызова инструмента."
           }
         ]
       },
       {
         "step": 2,
         "response": {
-          "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+          "content": "update_requirement_field() missing rid (type: ToolValidationError)",
           "tool_calls": [
             {
-              "id": "chatcmpl-tool-2",
+              "id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
               "name": "update_requirement_field",
               "arguments": {
-                "rid": "DEMO1",
-                "field": "status",
-                "value": "in_last_review"
+                "field": "statement",
+                "value": "La demo debe mostrar la CLI"
               }
             }
           ],
@@ -162,22 +350,288 @@
           },
           {
             "role": "user",
-            "content": "Установи статус требования DEMO1 на 'in_last_review'. Ответ должен быть только в виде вызова инструмента update_requirement_field. Добавь поля rid, field, value."
+            "content": "Переведи выделенные требования на испанский язык. Ответ должен быть только в виде вызова инструмента update_requirement_field. Вызов должен содержать только поля field и value. Поле rid опускаем намеренно. Не добавляй пояснения, не меняй формат вызова инструмента."
           },
           {
             "role": "assistant",
-            "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
             "tool_calls": [
               {
-                "id": "chatcmpl-tool-2",
-                "name": "update_requirement_field",
-                "arguments": {
-                  "rid": "DEMO1",
-                  "field": "status",
-                  "value": "in_last_review"
+                "id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}"
                 }
               }
             ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe proporcionar traducciones\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}, \"agent_status\": \"failed\"}"
+          }
+        ]
+      },
+      {
+        "step": 3,
+        "response": {
+          "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+          "tool_calls": [
+            {
+              "id": "chatcmpl-tool-107c35414d364fb099172b084ff83f43",
+              "name": "update_requirement_field",
+              "arguments": {
+                "field": "statement",
+                "value": "La demo debe describir arquitectura"
+              }
+            }
+          ],
+          "reasoning": []
+        },
+        "request_messages": [
+          {
+            "role": "system",
+            "content": "[Workspace context]\nActive document: DEMO — Demo requirements\nSelected requirement RIDs: DEMO1, DEMO2, DEMO3\nDEMO1 — Demo introduction — The demo shall show the CLI\nDEMO2 — Demo architecture — The demo shall describe architecture\nDEMO3 — Demo translation — The demo shall provide translations"
+          },
+          {
+            "role": "user",
+            "content": "Переведи выделенные требования на испанский язык. Ответ должен быть только в виде вызова инструмента update_requirement_field. Вызов должен содержать только поля field и value. Поле rid опускаем намеренно. Не добавляй пояснения, не меняй формат вызова инструмента."
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe proporcionar traducciones\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe mostrar la CLI\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}, \"agent_status\": \"failed\"}"
+          }
+        ]
+      },
+      {
+        "step": 4,
+        "response": {
+          "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+          "tool_calls": [
+            {
+              "id": "chatcmpl-tool-a5b4ddc582654db683ae81ed385f34eb",
+              "name": "update_requirement_field",
+              "arguments": {
+                "field": "statement",
+                "value": "La demo debe proporcionar traducciones"
+              }
+            }
+          ],
+          "reasoning": []
+        },
+        "request_messages": [
+          {
+            "role": "system",
+            "content": "[Workspace context]\nActive document: DEMO — Demo requirements\nSelected requirement RIDs: DEMO1, DEMO2, DEMO3\nDEMO1 — Demo introduction — The demo shall show the CLI\nDEMO2 — Demo architecture — The demo shall describe architecture\nDEMO3 — Demo translation — The demo shall provide translations"
+          },
+          {
+            "role": "user",
+            "content": "Переведи выделенные требования на испанский язык. Ответ должен быть только в виде вызова инструмента update_requirement_field. Вызов должен содержать только поля field и value. Поле rid опускаем намеренно. Не добавляй пояснения, не меняй формат вызова инструмента."
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe proporcionar traducciones\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe mostrar la CLI\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-107c35414d364fb099172b084ff83f43",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe describir arquitectura\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-107c35414d364fb099172b084ff83f43",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe describir arquitectura\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"call_id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe describir arquitectura\"}, \"agent_status\": \"failed\"}"
+          }
+        ]
+      },
+      {
+        "step": 5,
+        "response": {
+          "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+          "tool_calls": [
+            {
+              "id": "chatcmpl-tool-611391fa5c1846cc9885187a8197f0e9",
+              "name": "update_requirement_field",
+              "arguments": {
+                "field": "statement",
+                "value": "La demo debe mostrar la CLI"
+              }
+            }
+          ],
+          "reasoning": []
+        },
+        "request_messages": [
+          {
+            "role": "system",
+            "content": "[Workspace context]\nActive document: DEMO — Demo requirements\nSelected requirement RIDs: DEMO1, DEMO2, DEMO3\nDEMO1 — Demo introduction — The demo shall show the CLI\nDEMO2 — Demo architecture — The demo shall describe architecture\nDEMO3 — Demo translation — The demo shall provide translations"
+          },
+          {
+            "role": "user",
+            "content": "Переведи выделенные требования на испанский язык. Ответ должен быть только в виде вызова инструмента update_requirement_field. Вызов должен содержать только поля field и value. Поле rid опускаем намеренно. Не добавляй пояснения, не меняй формат вызова инструмента."
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe proporcionar traducciones\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"call_id\": \"chatcmpl-tool-f3054a58b4704173b0b7875c2a0d9757\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe mostrar la CLI\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"call_id\": \"chatcmpl-tool-3a5e8d8d18c3434bbb31ae2d0db2096e\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe mostrar la CLI\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-107c35414d364fb099172b084ff83f43",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe describir arquitectura\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-107c35414d364fb099172b084ff83f43",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe describir arquitectura\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"call_id\": \"chatcmpl-tool-107c35414d364fb099172b084ff83f43\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe describir arquitectura\"}, \"agent_status\": \"failed\"}"
+          },
+          {
+            "role": "assistant",
+            "content": "update_requirement_field() missing rid (type: ToolValidationError)",
+            "tool_calls": [
+              {
+                "id": "chatcmpl-tool-a5b4ddc582654db683ae81ed385f34eb",
+                "type": "function",
+                "function": {
+                  "name": "update_requirement_field",
+                  "arguments": "{\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "chatcmpl-tool-a5b4ddc582654db683ae81ed385f34eb",
+            "name": "update_requirement_field",
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"update_requirement_field() missing rid\", \"details\": {\"type\": \"ToolValidationError\", \"llm_message\": \"update_requirement_field() missing rid (type: ToolValidationError)\", \"llm_tool_calls\": [{\"id\": \"chatcmpl-tool-a5b4ddc582654db683ae81ed385f34eb\", \"type\": \"function\", \"function\": {\"name\": \"update_requirement_field\", \"arguments\": \"{\\\"field\\\": \\\"statement\\\", \\\"value\\\": \\\"La demo debe proporcionar traducciones\\\"}\"}}]}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-a5b4ddc582654db683ae81ed385f34eb\", \"call_id\": \"chatcmpl-tool-a5b4ddc582654db683ae81ed385f34eb\", \"tool_arguments\": {\"field\": \"statement\", \"value\": \"La demo debe proporcionar traducciones\"}, \"agent_status\": \"failed\"}"
           }
         ]
       }

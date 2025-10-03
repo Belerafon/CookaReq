@@ -4,6 +4,10 @@ import json
 from typing import Any
 from collections.abc import Mapping
 
+from openai.types.responses.response_function_tool_call import (
+    ResponseFunctionToolCall,
+)
+
 from app.llm.response_parser import LLMResponseParser, normalise_tool_calls
 from app.settings import LLMSettings
 
@@ -175,3 +179,61 @@ def test_normalise_tool_calls_uses_model_dump_for_openai_objects() -> None:
     assert parsed[0].arguments["rid"] == "DEMO9"
     assert parsed[0].arguments["field"] == "title"
     assert parsed[0].arguments["value"] == "Русификация"
+
+
+def test_normalise_tool_calls_handles_response_function_tool_call() -> None:
+    parser = _parser()
+    tool_call = ResponseFunctionToolCall(
+        id="resp-tool-1",
+        call_id="resp-tool-1",
+        name="update_requirement_field",
+        arguments=(
+            '{"rid":"DEMO10","field":"status","value":"approved"}'
+        ),
+        type="function_call",
+    )
+
+    normalised = normalise_tool_calls([tool_call])
+    parsed = parser.parse_tool_calls(normalised)
+
+    assert len(parsed) == 1
+    arguments = parsed[0].arguments
+    assert arguments["rid"] == "DEMO10"
+    assert arguments["field"] == "status"
+    assert arguments["value"] == "approved"
+
+
+def test_consume_stream_collects_response_function_tool_call() -> None:
+    parser = _parser()
+    tool_call = ResponseFunctionToolCall(
+        id="resp-tool-2",
+        call_id="resp-tool-2",
+        name="update_requirement_field",
+        arguments=(
+            '{"rid":"DEMO12","field":"statement","value":"Обновить"}'
+        ),
+        type="function_call",
+    )
+    stream = [
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [tool_call],
+                        "content": [
+                            {"type": "output_text", "text": "Processing"}
+                        ],
+                    },
+                }
+            ]
+        }
+    ]
+
+    message, tool_calls, _reasoning = parser.consume_stream(stream, cancellation=None)
+
+    assert message.strip() == "Processing"
+    assert tool_calls, "Stream parser should recover tool calls from response chunks"
+    function = tool_calls[0]["function"]
+    assert function["name"] == "update_requirement_field"
+    assert json.loads(function["arguments"])["rid"] == "DEMO12"

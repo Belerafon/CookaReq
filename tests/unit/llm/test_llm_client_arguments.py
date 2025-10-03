@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from openai.types.responses.response_function_tool_call import (
+    ResponseFunctionToolCall,
+)
+
 from app.llm.client import LLMClient
 from app.settings import LLMSettings
 
@@ -83,3 +87,53 @@ def test_llm_client_preserves_arguments_from_stringable_payload(monkeypatch) -> 
     assert arguments["rid"] == "DEMO8"
     assert arguments["field"] == "statement"
     assert arguments["value"] == "Перевести"
+
+
+def test_llm_client_harmony_preserves_response_tool_arguments(monkeypatch) -> None:
+    settings = LLMSettings()
+    settings.base_url = "http://invalid"
+    settings.api_key = "dummy"
+    settings.message_format = "harmony"
+    client = LLMClient(settings)
+
+    class _HarmonyResponse:
+        def __init__(self) -> None:
+            self.output = [
+                {
+                    "type": "message",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "Applying updates",
+                        }
+                    ],
+                },
+                ResponseFunctionToolCall(
+                    id="resp-tool-1",
+                    call_id="resp-tool-1",
+                    name="update_requirement_field",
+                    arguments=(
+                        '{"rid":"DEMO11","field":"statement","value":"Готово"}'
+                    ),
+                    type="function_call",
+                ),
+            ]
+
+    harmony_response = _HarmonyResponse()
+
+    monkeypatch.setattr(
+        client._client.responses,
+        "create",
+        lambda **_: harmony_response,
+    )
+
+    response = client.respond([
+        {"role": "system", "content": "[Workspace context]"},
+        {"role": "user", "content": "translate DEMO11"},
+    ])
+
+    assert response.tool_calls, "Harmony responses should expose tool calls"
+    arguments = response.tool_calls[0].arguments
+    assert arguments["rid"] == "DEMO11"
+    assert arguments["field"] == "statement"
+    assert arguments["value"] == "Готово"

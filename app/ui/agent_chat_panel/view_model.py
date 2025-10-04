@@ -10,7 +10,7 @@ from typing import Any, Iterable, Literal, Mapping, Sequence
 
 from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation, ChatEntry
-from .history_utils import history_json_safe, sort_tool_payloads
+from .history_utils import history_json_safe, normalise_tool_payloads
 from .time_formatting import format_entry_timestamp, parse_iso_timestamp
 from .tool_summaries import ToolCallSummary, summarize_tool_payload
 
@@ -492,7 +492,7 @@ def _build_tool_calls(
     entry_index: int,
     entry: ChatEntry,
 ) -> tuple[tuple[ToolCallDetails, ...], TimestampInfo | None]:
-    payloads = _iter_tool_payloads(entry.tool_results)
+    payloads = _iter_tool_payloads(entry.raw_result)
     if not payloads:
         return (), None
 
@@ -1757,12 +1757,12 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Mapping[str, Any]]
     return snapshots
 
 
-def _iter_tool_payloads(tool_results: Sequence[Any] | None) -> Iterable[Mapping[str, Any]]:
-    if not tool_results:
+def _iter_tool_payloads(tool_source: Any) -> Iterable[Mapping[str, Any]]:
+    payloads = normalise_tool_payloads(tool_source)
+    if not payloads:
         return ()
-    ordered = sort_tool_payloads(tool_results)
     result: list[Mapping[str, Any]] = []
-    for payload in ordered:
+    for payload in payloads:
         if isinstance(payload, Mapping):
             result.append(payload)
     return tuple(result)

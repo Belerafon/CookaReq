@@ -96,6 +96,66 @@ def sort_tool_payloads(
     return [payload for _, payload in ranked]
 
 
+def normalise_tool_payloads(tool_results: Any) -> list[Any] | None:
+    """Return sorted tool payloads from *tool_results* or ``None``."""
+
+    if not tool_results:
+        return None
+
+    if isinstance(tool_results, Mapping) and "tool_results" in tool_results:
+        nested = tool_results.get("tool_results")
+        return normalise_tool_payloads(nested)
+
+    if isinstance(tool_results, Sequence) and not isinstance(
+        tool_results, (str, bytes, bytearray)
+    ):
+        candidates = list(tool_results)
+    else:
+        candidates = [tool_results]
+
+    serialised: list[Any] = []
+    for payload in candidates:
+        if payload is None:
+            continue
+        serialised.append(history_json_safe(payload))
+
+    if not serialised:
+        return None
+
+    return sort_tool_payloads(serialised)
+
+
+def extract_tool_results(raw_result: Any) -> list[Any] | None:
+    """Pull tool payloads from *raw_result* if present."""
+
+    if not isinstance(raw_result, Mapping):
+        return None
+    return normalise_tool_payloads(raw_result.get("tool_results"))
+
+
+def update_tool_results(
+    raw_result: Any | None, tool_results: Sequence[Any] | None
+) -> Any | None:
+    """Return ``raw_result`` with the provided ``tool_results`` merged in."""
+
+    normalised = normalise_tool_payloads(tool_results)
+
+    if normalised is None:
+        if isinstance(raw_result, Mapping) and "tool_results" in raw_result:
+            updated = dict(raw_result)
+            updated.pop("tool_results", None)
+            return updated
+        return raw_result
+
+    if isinstance(raw_result, Mapping):
+        updated = dict(raw_result)
+    else:
+        updated = {}
+
+    updated["tool_results"] = normalised
+    return updated
+
+
 def format_value_snippet(value: Any) -> str:
     """Produce a human-friendly snippet for diagnostic payloads."""
 
@@ -129,6 +189,9 @@ __all__ = [
     "looks_like_tool_payload",
     "clone_streamed_tool_results",
     "sort_tool_payloads",
+    "normalise_tool_payloads",
+    "extract_tool_results",
+    "update_tool_results",
     "format_value_snippet",
     "shorten_text",
     "describe_error",

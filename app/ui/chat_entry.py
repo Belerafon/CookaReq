@@ -15,6 +15,7 @@ from ..llm.tokenizer import (
     count_text_tokens,
 )
 from ..util.time import utc_now_iso
+from .agent_chat_panel.history_utils import extract_tool_results, update_tool_results
 
 
 _DEFAULT_TOKEN_MODEL = "cl100k_base"
@@ -167,7 +168,6 @@ class ChatEntry:
     tokens: int
     display_response: str | None = None
     raw_result: Any | None = None
-    tool_results: list[Any] | None = None
     token_info: TokenCountResult | None = None
     prompt_at: str | None = None
     response_at: str | None = None
@@ -186,6 +186,11 @@ class ChatEntry:
         if self.display_response is None:
             self.display_response = self.response
         self.ensure_token_info()
+        if isinstance(self.raw_result, Mapping) and "tool_results" in self.raw_result:
+            self.raw_result = update_tool_results(
+                self.raw_result,
+                self.raw_result.get("tool_results"),
+            )
         hints = self.layout_hints
         if not isinstance(hints, dict):
             self.layout_hints = {}
@@ -248,6 +253,23 @@ class ChatEntry:
         else:
             self.reasoning = None
         self._sanitize_token_cache()
+
+    @property
+    def tool_results(self) -> list[Any] | None:
+        """Return MCP tool payloads associated with this entry."""
+
+        results = extract_tool_results(self.raw_result)
+        if not results:
+            return None
+        if isinstance(self.raw_result, Mapping):
+            normalised = update_tool_results(self.raw_result, results)
+            if normalised is not self.raw_result:
+                self.raw_result = normalised
+        return results
+
+    @tool_results.setter
+    def tool_results(self, value: Sequence[Any] | None) -> None:
+        self.raw_result = update_tool_results(self.raw_result, value)
 
     def _sanitize_token_cache(self) -> None:
         raw_cache = self.token_cache
@@ -359,12 +381,8 @@ class ChatEntry:
             display_response = str(display_response)
         raw_result = payload.get("raw_result")
         tool_results_raw = payload.get("tool_results")
-        if isinstance(tool_results_raw, Sequence) and not isinstance(
-            tool_results_raw, (str, bytes, bytearray)
-        ):
-            tool_results = list(tool_results_raw)
-        else:
-            tool_results = None
+        if tool_results_raw is not None:
+            raw_result = update_tool_results(raw_result, tool_results_raw)
         token_info_raw = payload.get("token_info")
         if not isinstance(token_info_raw, Mapping):
             raise ValueError("token_info field missing from chat entry payload")
@@ -439,7 +457,6 @@ class ChatEntry:
             tokens=tokens,
             display_response=display_response,
             raw_result=raw_result,
-            tool_results=tool_results,
             token_info=token_info,
             prompt_at=prompt_at,
             response_at=response_at,
@@ -459,7 +476,6 @@ class ChatEntry:
             "tokens": self.tokens,
             "display_response": self.display_response,
             "raw_result": self.raw_result,
-            "tool_results": self.tool_results,
             "token_info": self.token_info.to_dict()
             if self.token_info is not None
             else None,

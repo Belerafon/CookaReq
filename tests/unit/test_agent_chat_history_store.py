@@ -13,7 +13,6 @@ def _entry_payload(*, prompt: str, response: str) -> dict[str, object]:
         "tokens": 0,
         "display_response": response,
         "raw_result": None,
-        "tool_results": None,
         "token_info": {"tokens": 1, "approximate": False, "model": "cl100k_base"},
         "prompt_at": "2024-01-01T00:00:00Z",
         "response_at": "2024-01-01T00:01:00Z",

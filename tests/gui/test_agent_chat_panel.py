@@ -68,6 +68,13 @@ def build_entry_timeline(
     raw_payload: Any | None = None,
     regenerated: bool = False,
 ) -> tuple[ChatConversation, TranscriptEntry]:
+    tool_payloads = list(tool_results or ())
+    if tool_payloads:
+        if isinstance(raw_payload, Mapping):
+            raw_payload = {**raw_payload, "tool_results": tool_payloads}
+        else:
+            raw_payload = {"tool_results": tool_payloads}
+
     entry = ChatEntry(
         prompt=prompt,
         response=response,
@@ -77,7 +84,6 @@ def build_entry_timeline(
         response_at=response_at,
         context_messages=tuple(context_messages or ()),
         reasoning=tuple(reasoning_segments or ()),
-        tool_results=list(tool_results or ()),
         raw_result=raw_payload,
         regenerated=regenerated,
     )

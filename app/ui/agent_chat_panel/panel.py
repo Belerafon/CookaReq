@@ -43,10 +43,13 @@ from .history import AgentChatHistory
 from .history_view import HistoryView
 from .history_utils import (
     clone_streamed_tool_results,
+    extract_tool_results,
     history_json_safe,
     looks_like_tool_payload,
+    normalise_tool_payloads,
     sort_tool_payloads,
     stringify_payload,
+    update_tool_results,
 )
 from .log_export import compose_transcript_log_text, compose_transcript_text
 from .paths import (
@@ -1070,20 +1073,18 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     display_text = latest_response
             if not reasoning_segments and handle.latest_reasoning_segments:
                 reasoning_segments = handle.latest_reasoning_segments
-            if not tool_results and handle.streamed_tool_results:
-                tool_results = list(
+            resolved_tool_results = normalise_tool_payloads(tool_results)
+            if not resolved_tool_results and handle.streamed_tool_results:
+                resolved_tool_results = normalise_tool_payloads(
                     clone_streamed_tool_results(handle.streamed_tool_results)
                 )
-            if tool_results:
-                tool_results = sort_tool_payloads(tool_results)
             merged_tool_results = self._merge_tool_result_timelines(
-                tool_results, handle.streamed_tool_results
+                resolved_tool_results, handle.streamed_tool_results
             )
             if merged_tool_results is not None:
-                tool_results = sort_tool_payloads(merged_tool_results)
-                if isinstance(raw_result, Mapping):
-                    raw_result = dict(raw_result)
-                    raw_result["tool_results"] = tool_results
+                resolved_tool_results = normalise_tool_payloads(merged_tool_results)
+            raw_result = update_tool_results(raw_result, resolved_tool_results)
+            tool_results = resolved_tool_results
             response_tokens = count_text_tokens(
                 conversation_text,
                 model=self._token_model(),
@@ -1103,7 +1104,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     response=conversation_text,
                     display_response=display_text,
                     raw_result=raw_result,
-                    tool_results=tool_results,
                     token_info=final_tokens,
                     prompt_at=prompt_at,
                     response_at=response_at,
@@ -1117,7 +1117,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     conversation_text,
                     display_text,
                     raw_result,
-                    tool_results,
                     final_tokens,
                     prompt_at=prompt_at,
                     response_at=response_at,
@@ -1209,15 +1208,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     conversation_parts.append(display_text)
 
             extras = result.get("tool_results")
-            if extras:
-                safe_extras = history_json_safe(extras)
-                if isinstance(safe_extras, list):
-                    normalized_extras = list(safe_extras)
-                else:
-                    normalized_extras = [safe_extras]
-                sorted_extras = sort_tool_payloads(normalized_extras)
-                tool_results = sorted_extras
-                extras_text = stringify_payload(sorted_extras)
+            tool_results = normalise_tool_payloads(extras)
+            if tool_results:
+                raw_payload = update_tool_results(raw_payload, tool_results)
+                extras_text = stringify_payload(tool_results)
                 if extras_text:
                     conversation_parts.append(extras_text)
             reasoning_segments = self._normalise_reasoning_segments(
@@ -1352,7 +1346,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             tokens=0,
             display_response=_("Waiting for agent response…"),
             raw_result=None,
-            tool_results=None,
             token_info=TokenCountResult.exact(0),
             prompt_at=prompt_at,
             response_at=None,
@@ -1367,7 +1360,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         response: str,
         display_response: str,
         raw_result: Any | None,
-        tool_results: list[Any] | None,
         token_info: TokenCountResult | None,
         *,
         prompt_at: str | None = None,
@@ -1392,13 +1384,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
         if not reasoning_clone:
             reasoning_clone = None
+        resolved_tool_results = extract_tool_results(raw_result)
         entry = ChatEntry(
             prompt=prompt_text,
             response=response_text,
             tokens=tokens,
             display_response=display_text,
             raw_result=raw_result,
-            tool_results=tool_results,
             token_info=token_info,
             prompt_at=prompt_at,
             response_at=response_at,
@@ -1411,7 +1403,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 display_response=display_text,
                 stored_response=response_text,
                 raw_result=raw_result,
-                tool_results=tool_results,
+                tool_results=resolved_tool_results,
                 history_snapshot=history_snapshot,
                 context_snapshot=context_clone,
                 custom_system_prompt=self._custom_system_prompt(),
@@ -1430,7 +1422,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         response: str,
         display_response: str,
         raw_result: Any | None,
-        tool_results: list[Any] | None,
         token_info: TokenCountResult | None,
         prompt_at: str,
         response_at: str,
@@ -1445,7 +1436,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         entry.response = response_text
         entry.display_response = display_text
         entry.raw_result = raw_result
-        entry.tool_results = tool_results
         tokens_info = token_info if token_info is not None else TokenCountResult.exact(0)
         entry.token_info = tokens_info
         entry.tokens = tokens_info.tokens or 0
@@ -1455,6 +1445,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         entry.context_messages = context_clone
         reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
         entry.reasoning = reasoning_clone or None
+        resolved_tool_results = extract_tool_results(raw_result)
         existing_diagnostic = entry.diagnostic if isinstance(entry.diagnostic, Mapping) else None
         entry.diagnostic = self._build_entry_diagnostic(
             prompt=prompt_text,
@@ -1463,7 +1454,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             display_response=display_text,
             stored_response=response_text,
             raw_result=raw_result,
-            tool_results=tool_results,
+            tool_results=resolved_tool_results,
             history_snapshot=history_snapshot,
             context_snapshot=context_clone,
             custom_system_prompt=self._custom_system_prompt(),
@@ -1559,7 +1550,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         prompt_at = getattr(handle, "prompt_at", None) or response_at
         token_info = combine_token_counts([handle.prompt_tokens])
         tool_results_payload = handle.prepare_tool_results_payload()
-        tool_results = list(tool_results_payload) if tool_results_payload else None
+        tool_results = (
+            normalise_tool_payloads(tool_results_payload)
+            if tool_results_payload
+            else None
+        )
         response_text = handle.latest_llm_response or ""
         reasoning_segments: tuple[dict[str, str], ...] | None = (
             handle.latest_reasoning_segments
@@ -1597,6 +1592,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if handle.llm_steps:
             raw_result["diagnostic"] = {"llm_steps": list(handle.llm_steps)}
 
+        raw_result = update_tool_results(raw_result, tool_results)
+
         self._complete_pending_entry(
             conversation,
             entry,
@@ -1604,7 +1601,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             response=response_text,
             display_response=combined_display,
             raw_result=raw_result,
-            tool_results=tool_results,
             token_info=token_info,
             prompt_at=prompt_at,
             response_at=response_at,
@@ -1897,13 +1893,18 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                             elif safe_calls is not None:
                                 planned_tool_calls = [safe_calls]
 
-        tool_payloads: list[Any] = []
-        if tool_results:
-            for payload in tool_results:
-                tool_payloads.append(history_json_safe(payload))
-        elif raw_result_mapping and looks_like_tool_payload(raw_result_mapping):
-            tool_payloads.append(raw_result_mapping)
-        tool_payloads = sort_tool_payloads(tool_payloads)
+        tool_payloads = normalise_tool_payloads(tool_results)
+        if not tool_payloads and raw_result_mapping is not None:
+            tool_payloads = extract_tool_results(raw_result_mapping)
+        if (
+            not tool_payloads
+            and raw_result_mapping
+            and looks_like_tool_payload(raw_result_mapping)
+        ):
+            fallback_payloads = normalise_tool_payloads(raw_result_mapping)
+            if fallback_payloads:
+                tool_payloads = fallback_payloads
+        tool_payloads = tool_payloads or []
 
         diagnostic_payload = {
             "prompt_text": prompt_text,

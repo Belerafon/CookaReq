@@ -1,4 +1,6 @@
 import json
+import sqlite3
+from pathlib import Path
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -20,6 +22,7 @@ from app.ui.agent_chat_panel.view_model import (
 )
 from app.ui.agent_chat_panel.time_formatting import format_entry_timestamp
 from app.ui.chat_entry import ChatConversation, ChatEntry
+from app.ui.agent_chat_panel.history_store import HistoryStore
 from app.ui.widgets.chat_message import MessageBubble
 from app import i18n
 
@@ -27,6 +30,48 @@ import pytest
 
 
 pytestmark = [pytest.mark.gui, pytest.mark.integration, pytest.mark.gui_smoke]
+
+
+HISTORY_FILENAME = "agent_chats.sqlite"
+
+
+def history_db_path(tmp_path: Path) -> Path:
+    return tmp_path / HISTORY_FILENAME
+
+
+def read_history_database(path: Path) -> tuple[dict[str, str], list[dict[str, Any]]]:
+    conn = sqlite3.connect(str(path))
+    conn.row_factory = sqlite3.Row
+    try:
+        metadata = {
+            row["key"]: row["value"]
+            for row in conn.execute("SELECT key, value FROM metadata")
+        }
+        conversations: list[dict[str, Any]] = []
+        for row in conn.execute(
+            """
+            SELECT id, position, title, created_at, updated_at, preview
+            FROM conversations
+            ORDER BY position
+            """
+        ):
+            conversation = dict(row)
+            conversation["entries"] = [
+                json.loads(entry_row["payload"])
+                for entry_row in conn.execute(
+                    """
+                    SELECT payload
+                    FROM entries
+                    WHERE conversation_id = ?
+                    ORDER BY position
+                    """,
+                    (row["id"],),
+                )
+            ]
+            conversations.append(conversation)
+        return metadata, conversations
+    finally:
+        conn.close()
 
 
 VALIDATION_ERROR_MESSAGE = (
@@ -243,7 +288,7 @@ def create_panel(
     panel = AgentChatPanel(
         frame,
         agent_supplier=lambda **_overrides: agent,
-        history_path=tmp_path / "history.json",
+        history_path=history_db_path(tmp_path),
         command_executor=command_executor,
         context_provider=context_provider,
         context_window_resolver=lambda: context_window,
@@ -388,10 +433,9 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     assert panel.input.GetValue() == ""
     assert len(panel.history) == 1
 
-    saved = json.loads((tmp_path / "history.json").read_text())
-    assert saved["version"] == 2
-    assert isinstance(saved.get("active_id"), str)
-    conversations = saved["conversations"]
+    metadata, conversations = read_history_database(history_db_path(tmp_path))
+    assert metadata.get("schema_version") == "1"
+    assert isinstance(metadata.get("active_id"), str)
     assert len(conversations) == 1
     entry_payload = conversations[0]["entries"][0]
     assert entry_payload["prompt"] == "run"
@@ -2570,8 +2614,8 @@ def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
     from app.ui.agent_chat_panel import AgentChatPanel
     from app.i18n import _
 
-    bad_file = tmp_path / "history.json"
-    bad_file.write_text("{not json}")
+    bad_file = history_db_path(tmp_path)
+    bad_file.write_text("{not sqlite}")
 
     class DummyAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
@@ -2597,8 +2641,18 @@ def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
     from app.ui.agent_chat_panel import AgentChatPanel
     from app.i18n import _
 
-    legacy_file = tmp_path / "history.json"
-    legacy_file.write_text(json.dumps({"version": 1, "conversations": []}))
+    legacy_file = history_db_path(tmp_path)
+    conn = sqlite3.connect(str(legacy_file))
+    try:
+        conn.execute(
+            "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO metadata (key, value) VALUES ('schema_version', '999')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     class DummyAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
@@ -2626,30 +2680,31 @@ def test_agent_chat_panel_rejects_entries_without_token_info(tmp_path, wx_app):
     from app.ui.agent_chat_panel import AgentChatPanel
     from app.i18n import _
 
-    legacy_file = tmp_path / "history.json"
-    legacy_file.write_text(
-        json.dumps(
-            {
-                "version": 2,
-                "active_id": "conv-1",
-                "conversations": [
-                    {
-                        "id": "conv-1",
-                        "title": "Legacy conversation",
-                        "created_at": "2024-01-01T00:00:00Z",
-                        "updated_at": "2024-01-01T00:00:00Z",
-                        "entries": [
-                            {
-                                "prompt": "old request",
-                                "response": "old response",
-                                "tokens": 2,
-                            }
-                        ],
-                    }
-                ],
-            }
+    legacy_file = history_db_path(tmp_path)
+    store = HistoryStore(legacy_file)
+    conversation = ChatConversation.new()
+    conversation.title = "Legacy conversation"
+    entry = ChatEntry(prompt="old request", response="old response", tokens=2)
+    conversation.replace_entries([entry])
+    store.save([conversation], conversation.conversation_id)
+
+    conn = sqlite3.connect(str(legacy_file))
+    conn.row_factory = sqlite3.Row
+    try:
+        payload_row = conn.execute(
+            "SELECT payload FROM entries WHERE conversation_id = ?",
+            (conversation.conversation_id,),
+        ).fetchone()
+        assert payload_row is not None
+        payload = json.loads(payload_row["payload"])
+        payload.pop("token_info", None)
+        conn.execute(
+            "UPDATE entries SET payload = ? WHERE conversation_id = ?",
+            (json.dumps(payload), conversation.conversation_id),
         )
-    )
+        conn.commit()
+    finally:
+        conn.close()
 
     class DummyAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
@@ -2869,8 +2924,8 @@ def test_agent_chat_panel_new_chat_creates_separate_conversation(tmp_path, wx_ap
     panel._activate_conversation_by_index(1)
     assert "second request" in panel.get_transcript_text()
 
-    saved = json.loads((tmp_path / "history.json").read_text())
-    prompts = [conv["entries"][0]["prompt"] for conv in saved["conversations"]]
+    _, conversations = read_history_database(history_db_path(tmp_path))
+    prompts = [conv["entries"][0]["prompt"] for conv in conversations]
     assert prompts == ["first request", "second request"]
 
     destroy_panel(frame, panel)

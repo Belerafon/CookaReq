@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any
-from collections.abc import Mapping, Sequence
+from typing import Any, Callable
+from collections.abc import Iterable, Mapping, Sequence
 from uuid import uuid4
 
 from ..llm.tokenizer import (
@@ -515,7 +515,12 @@ class ChatConversation:
     title: str | None
     created_at: str
     updated_at: str
-    entries: list[ChatEntry] = field(default_factory=list)
+    preview: str | None = None
+    _entries: list[ChatEntry] = field(default_factory=list, repr=False, compare=False)
+    _entries_loaded: bool = field(default=True, repr=False, compare=False)
+    _entries_loader: Callable[[], Sequence[ChatEntry]] | None = field(
+        default=None, repr=False, compare=False
+    )
 
     @classmethod
     def new(cls) -> ChatConversation:
@@ -527,7 +532,8 @@ class ChatConversation:
             title=None,
             created_at=now,
             updated_at=now,
-            entries=[],
+            preview=None,
+            _entries=[],
         )
 
     @classmethod
@@ -535,7 +541,9 @@ class ChatConversation:
         """Create :class:`ChatConversation` from stored mapping."""
 
         conversation_id_raw = payload.get("id") or payload.get("conversation_id")
-        conversation_id = conversation_id_raw if isinstance(conversation_id_raw, str) else str(uuid4())
+        conversation_id = (
+            conversation_id_raw if isinstance(conversation_id_raw, str) else str(uuid4())
+        )
 
         title_raw = payload.get("title")
         title = str(title_raw) if isinstance(title_raw, str) else None
@@ -563,10 +571,74 @@ class ChatConversation:
             title=title,
             created_at=created_at,
             updated_at=updated_at,
-            entries=entries,
+            preview=payload.get("preview"),
+            _entries=entries,
         )
         conversation.ensure_title()
+        if conversation.preview is None:
+            conversation.preview = conversation._derive_preview(entries)
         return conversation
+
+    @property
+    def entries(self) -> list[ChatEntry]:
+        return self._entries
+
+    @entries.setter
+    def entries(self, value: Iterable[ChatEntry]) -> None:
+        self.replace_entries(value)
+
+    @property
+    def entries_loaded(self) -> bool:
+        return self._entries_loaded
+
+    def mark_entries_unloaded(
+        self, loader: Callable[[], Sequence[ChatEntry]] | None = None
+    ) -> None:
+        self._entries = []
+        self._entries_loaded = False
+        self._entries_loader = loader
+
+    def ensure_entries_loaded(self) -> None:
+        if self._entries_loaded:
+            return
+        loader = self._entries_loader
+        if loader is None:
+            entries: Sequence[ChatEntry] = []
+        else:
+            entries = loader()
+        self._entries = list(entries)
+        self._entries_loaded = True
+        self.preview = self._derive_preview(self._entries)
+        self._entries_loader = None
+
+    def replace_entries(self, entries: Iterable[ChatEntry]) -> None:
+        self._entries = list(entries)
+        self._entries_loaded = True
+        self.preview = self._derive_preview(self._entries)
+        self._entries_loader = None
+
+    @classmethod
+    def _derive_preview(cls, entries: Sequence[ChatEntry]) -> str | None:
+        if not entries:
+            return None
+        for entry in reversed(entries):
+            preview = cls._entry_preview(entry)
+            if preview:
+                return preview
+        return None
+
+    @staticmethod
+    def _entry_preview(entry: ChatEntry) -> str | None:
+        text = entry.prompt.strip()
+        if not text:
+            candidate = entry.display_response or entry.response
+            text = candidate.strip() if isinstance(candidate, str) else ""
+        if not text:
+            return None
+        normalised = " ".join(text.split())
+        if len(normalised) > 80:
+            normalised = normalised[:77] + "…"
+        return normalised
 
     def ensure_title(self) -> None:
         """Populate title from first prompt when unset."""
@@ -580,7 +652,8 @@ class ChatConversation:
     def derive_title(self) -> str:
         """Generate human-friendly title from entries."""
 
-        for entry in self.entries:
+        self.ensure_entries_loaded()
+        for entry in self._entries:
             candidate = entry.prompt.strip()
             if candidate:
                 first_line = candidate.splitlines()[0]
@@ -590,7 +663,10 @@ class ChatConversation:
     def append_entry(self, entry: ChatEntry) -> None:
         """Add ``entry`` to the conversation and refresh metadata."""
 
-        self.entries.append(entry)
+        if not self._entries_loaded:
+            self._entries = []
+            self._entries_loaded = True
+        self._entries.append(entry)
         candidate = entry.response_at or entry.prompt_at
         if candidate:
             self.updated_at = candidate
@@ -598,12 +674,20 @@ class ChatConversation:
             self.updated_at = utc_now_iso()
         if not self.title:
             self.ensure_title()
+        preview = self._entry_preview(entry)
+        if preview:
+            self.preview = preview
+
+    def recalculate_preview(self) -> None:
+        self.ensure_entries_loaded()
+        self.preview = self._derive_preview(self._entries)
 
     def total_token_info(self) -> TokenCountResult:
         """Return aggregated token statistics for the conversation."""
 
+        self.ensure_entries_loaded()
         results: list[TokenCountResult] = []
-        for item in self.entries:
+        for item in self._entries:
             info = item.ensure_token_info()
             if info is not None:
                 results.append(info)
@@ -617,10 +701,12 @@ class ChatConversation:
     def to_dict(self) -> dict[str, Any]:
         """Return representation suitable for JSON storage."""
 
+        self.ensure_entries_loaded()
         return {
             "id": self.conversation_id,
             "title": self.title,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-            "entries": [entry.to_dict() for entry in self.entries],
+            "preview": self.preview,
+            "entries": [entry.to_dict() for entry in self._entries],
         }

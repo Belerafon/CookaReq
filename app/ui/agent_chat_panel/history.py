@@ -37,6 +37,15 @@ class AgentChatHistory:
         return self._conversations
 
     # ------------------------------------------------------------------
+    def get_conversation(self, conversation_id: str) -> ChatConversation | None:
+        """Return conversation matching *conversation_id* when present."""
+
+        for conversation in self._conversations:
+            if conversation.conversation_id == conversation_id:
+                return conversation
+        return None
+
+    # ------------------------------------------------------------------
     @property
     def active_id(self) -> str | None:
         """Return identifier of the currently selected conversation."""
@@ -62,6 +71,10 @@ class AgentChatHistory:
 
         previous = self._active_id
         self._active_id = conversation_id
+        if conversation_id is not None:
+            conversation = self.get_conversation(conversation_id)
+            if conversation is not None:
+                self.ensure_conversation_entries(conversation)
         if (
             self._on_active_changed is not None
             and previous != conversation_id
@@ -88,6 +101,10 @@ class AgentChatHistory:
         conversations, active_id = self._store.load()
         self._conversations = list(conversations)
         self._active_id = active_id
+        if active_id is not None:
+            conversation = self.get_conversation(active_id)
+            if conversation is not None:
+                self.ensure_conversation_entries(conversation)
         if self._on_active_changed is not None and previous != active_id:
             self._on_active_changed(previous, active_id)
         return self._conversations, self._active_id
@@ -121,6 +138,23 @@ class AgentChatHistory:
             conversations=conversations,
             active_id=self._active_id,
         )
+
+    # ------------------------------------------------------------------
+    def ensure_conversation_entries(self, conversation: ChatConversation) -> None:
+        """Ensure entries for *conversation* are available in memory."""
+
+        if conversation.entries_loaded:
+            return
+        try:
+            entries = self._store.load_entries(conversation.conversation_id)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to load entries for agent chat conversation %s",
+                conversation.conversation_id,
+            )
+            conversation.replace_entries(())
+        else:
+            conversation.replace_entries(entries)
 
 
 __all__ = ["AgentChatHistory"]

@@ -850,7 +850,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if handle is not None and handle.context_messages:
             return handle.context_messages
 
-        conversation = self._get_active_conversation()
+        conversation = self._get_active_conversation_loaded()
         if conversation and conversation.entries:
             for entry in reversed(conversation.entries):
                 if entry.context_messages:
@@ -877,7 +877,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self._system_token_cache[system_key] = system_tokens
 
         history_counts: list[TokenCountResult] = []
-        conversation = self._get_active_conversation()
+        conversation = self._get_active_conversation_loaded()
         pending_entry = None
         handle = self._active_handle()
         if handle is not None:
@@ -1243,7 +1243,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     # ------------------------------------------------------------------
     def _conversation_messages(self) -> tuple[dict[str, str], ...]:
-        conversation = self._get_active_conversation()
+        conversation = self._get_active_conversation_loaded()
         if conversation is None:
             return ()
         return self._conversation_messages_for(conversation)
@@ -1251,6 +1251,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _conversation_messages_for(
         self, conversation: ChatConversation
     ) -> tuple[dict[str, str], ...]:
+        self._session.history.ensure_conversation_entries(conversation)
         messages: list[dict[str, str]] = []
         custom_prompt = self._custom_system_prompt()
         if custom_prompt:
@@ -1330,6 +1331,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         reasoning_segments: tuple[dict[str, str], ...] | None = None,
     ) -> None:
         conversation = self._ensure_active_conversation()
+        self._session.history.ensure_conversation_entries(conversation)
         prompt_text = normalize_for_display(prompt)
         response_text = normalize_for_display(response)
         display_text = normalize_for_display(display_response)
@@ -1390,6 +1392,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         history_snapshot: tuple[dict[str, Any], ...] | None = None,
         reasoning_segments: tuple[dict[str, str], ...] | None = None,
     ) -> None:
+        self._session.history.ensure_conversation_entries(conversation)
         prompt_text = normalize_for_display(prompt)
         response_text = normalize_for_display(response)
         display_text = normalize_for_display(display_response or response)
@@ -1423,6 +1426,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         conversation.updated_at = response_at
         conversation.ensure_title()
+        conversation.recalculate_preview()
         self._save_history_to_store()
         self._notify_history_changed()
 
@@ -1431,6 +1435,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         conversation: ChatConversation,
         entry: ChatEntry,
     ) -> RemovedConversationEntry | None:
+        self._session.history.ensure_conversation_entries(conversation)
         try:
             index = conversation.entries.index(entry)
         except ValueError:
@@ -1444,6 +1449,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             )
         else:
             conversation.updated_at = conversation.created_at
+        conversation.recalculate_preview()
         return RemovedConversationEntry(
             index=index,
             entry=removed,
@@ -1464,9 +1470,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _restore_conversation_entry(
         self, conversation: ChatConversation, removal: RemovedConversationEntry
     ) -> None:
+        self._session.history.ensure_conversation_entries(conversation)
         conversation.entries.insert(removal.index, removal.entry)
         conversation.updated_at = removal.previous_updated_at
         conversation.ensure_title()
+        conversation.recalculate_preview()
         self._save_history_to_store()
         self._notify_history_changed()
         self._render_transcript()
@@ -2077,12 +2085,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         ]
 
     def _compose_transcript_text(self) -> str:
-        conversation = self._get_active_conversation()
+        conversation = self._get_active_conversation_loaded()
         return compose_transcript_text(conversation)
 
 
     def _compose_transcript_log_text(self) -> str:
-        conversation = self._get_active_conversation()
+        conversation = self._get_active_conversation_loaded()
         return compose_transcript_log_text(conversation)
 
     def _update_transcript_copy_buttons(self, enabled: bool) -> None:
@@ -2206,6 +2214,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         except IndexError:  # pragma: no cover - defensive
             return None
 
+    def _get_active_conversation_loaded(self) -> ChatConversation | None:
+        conversation = self._get_active_conversation()
+        if conversation is None:
+            return None
+        self._session.history.ensure_conversation_entries(conversation)
+        return conversation
+
     def _create_conversation(self, *, persist: bool) -> ChatConversation:
         conversation = ChatConversation.new()
         self.conversations.append(conversation)
@@ -2224,7 +2239,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _format_conversation_row(
         self, conversation: ChatConversation
     ) -> tuple[str, str]:
-        title = (conversation.title or conversation.derive_title()).strip()
+        title = (conversation.title or "").strip()
+        if not title:
+            if conversation.entries_loaded and conversation.entries:
+                title = conversation.derive_title().strip()
+            elif conversation.preview:
+                title = conversation.preview.strip()
         if not title:
             title = _("New chat")
         if len(title) > 60:
@@ -2235,19 +2255,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
 
     def _conversation_preview(self, conversation: ChatConversation) -> str:
-        if not conversation.entries:
+        preview = conversation.preview
+        if not preview and conversation.entries_loaded and conversation.entries:
+            conversation.recalculate_preview()
+            preview = conversation.preview
+        if not preview:
             return ""
-        last_entry = conversation.entries[-1]
-        text = last_entry.prompt.strip()
-        if not text:
-            candidate = last_entry.display_response or last_entry.response
-            text = candidate.strip() if isinstance(candidate, str) else ""
-        if not text:
-            return ""
-        normalized = " ".join(text.split())
-        if len(normalized) > 80:
-            normalized = normalized[:77] + "…"
-        return normalize_for_display(normalized)
+        return normalize_for_display(preview)
 
     def _on_history_row_activated(self, index: int) -> None:
         self._activate_conversation_by_index(
@@ -2314,7 +2328,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     @property
     def history(self) -> list[ChatEntry]:
-        conversation = self._get_active_conversation()
+        conversation = self._get_active_conversation_loaded()
         if conversation is None:
             return []
         return list(conversation.entries)

@@ -736,7 +736,13 @@ def test_transcript_scrolls_to_bottom_on_new_messages(tmp_path, wx_app):
         base_response = "\n".join(f"entry line {line}" for line in range(30))
         for idx in range(4):
             prompt = f"prompt {idx}"
-            panel._append_history(prompt, base_response, base_response, None, None, None)
+            panel._append_history(
+                prompt,
+                base_response,
+                base_response,
+                raw_result=None,
+                token_info=None,
+            )
             panel._render_transcript()
         flush_wx_events(wx, count=5)
 
@@ -749,7 +755,13 @@ def test_transcript_scrolls_to_bottom_on_new_messages(tmp_path, wx_app):
         assert view_y == 0
 
         long_response = "\n".join(f"final line {line}" for line in range(40))
-        panel._append_history("final prompt", long_response, long_response, None, None, None)
+        panel._append_history(
+            "final prompt",
+            long_response,
+            long_response,
+            raw_result=None,
+            token_info=None,
+        )
         panel._render_transcript()
         flush_wx_events(wx, count=6)
 
@@ -2542,12 +2554,6 @@ def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):
 
     wx, frame2, panel2 = create_panel(tmp_path, wx_app, EchoAgent())
     assert panel2.history == []
-    assert panel2.history_list.GetItemCount() == 1
-    assert panel2._active_index() == 0
-
-    panel2._prepare_history_interaction()
-    flush_wx_events(wx)
-
     assert panel2.history_list.GetItemCount() == 2
     assert panel2._active_index() == 1
 
@@ -2782,9 +2788,8 @@ def test_agent_chat_panel_history_context_menu_handles_multiselect(
                 f"prompt {idx}",
                 f"response {idx}",
                 f"response {idx}",
-                None,
-                None,
-                TokenCountResult.exact(1),
+                raw_result=None,
+                token_info=TokenCountResult.exact(1),
             )
             flush_wx_events(wx)
             if idx < 2:
@@ -2792,9 +2797,6 @@ def test_agent_chat_panel_history_context_menu_handles_multiselect(
                 flush_wx_events(wx)
 
         assert panel.history_list.GetItemCount() == 3
-
-        panel._prepare_history_interaction()
-        flush_wx_events(wx)
 
         panel.history_list.UnselectAll()
         first_item = panel.history_list.RowToItem(0)

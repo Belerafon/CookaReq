@@ -692,8 +692,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         handle = coordinator.cancel_active_run()
         if handle is None:
             return
-        self._finalize_cancelled_run(handle)
         self._set_wait_state(False)
+        self._finalize_cancelled_run(handle)
         self._view.update_status_label(_("Generation cancelled"))
         self.input.SetValue(handle.prompt)
         self.input.SetInsertionPointEnd()

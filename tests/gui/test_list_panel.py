@@ -98,6 +98,27 @@ def test_column_click_after_set_columns_triggers_sort(stubbed_list_panel_env):
     assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
 
+def test_refresh_freezes_list_when_supported(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
+    panel.set_columns(["id", "title"])
+
+    calls: list[str] = []
+
+    def freeze() -> None:
+        calls.append("freeze")
+
+    def thaw() -> None:
+        calls.append("thaw")
+
+    panel.list.Freeze = freeze  # type: ignore[attr-defined]
+    panel.list.Thaw = thaw  # type: ignore[attr-defined]
+
+    panel.set_requirements([_req(1, "A"), _req(2, "B")])
+
+    assert calls == ["freeze", "thaw"]
+
+
 def test_search_and_label_filters(stubbed_list_panel_env):
     env = stubbed_list_panel_env
     panel = env.create_panel()

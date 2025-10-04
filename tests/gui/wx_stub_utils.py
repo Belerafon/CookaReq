@@ -555,6 +555,8 @@ def stub_list_panel_env(monkeypatch: pytest.MonkeyPatch):
     for module_name, module in patched_modules.items():
         monkeypatch.setitem(sys.modules, module_name, module)
 
+    helpers_module = importlib.import_module("app.ui.helpers")
+    importlib.reload(helpers_module)
     list_panel_module = importlib.import_module("app.ui.list_panel")
     importlib.reload(list_panel_module)
     requirement_model_module = importlib.import_module("app.ui.requirement_model")
@@ -575,6 +577,7 @@ def stub_list_panel_env(monkeypatch: pytest.MonkeyPatch):
         yield env
     finally:
         monkeypatch.undo()
+        importlib.reload(importlib.import_module("app.ui.helpers"))
         importlib.reload(importlib.import_module("app.ui.list_panel"))
         importlib.reload(importlib.import_module("app.ui.requirement_model"))
 

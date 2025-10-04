@@ -25,6 +25,7 @@ class HistoryView:
         handle_delete_request: Callable[[Sequence[int]], None],
         is_running: Callable[[], bool],
         splitter: wx.SplitterWindow,
+        prepare_interaction: Callable[[], bool] | None = None,
     ) -> None:
         self._list = list_ctrl
         self._get_conversations = get_conversations
@@ -34,6 +35,7 @@ class HistoryView:
         self._handle_delete_request = handle_delete_request
         self._is_running = is_running
         self._splitter = splitter
+        self._prepare_interaction = prepare_interaction
         self._suppress_selection = False
         self._sash_goal: int | None = None
         self._sash_dirty = False
@@ -46,6 +48,7 @@ class HistoryView:
         self._list.Bind(dv.EVT_DATAVIEW_SELECTION_CHANGED, self._on_select_history)
         self._list.Bind(dv.EVT_DATAVIEW_ITEM_CONTEXT_MENU, self._on_history_item_context_menu)
         self._list.Bind(wx.EVT_CONTEXT_MENU, self._on_history_context_menu)
+        self._list.Bind(wx.EVT_LEFT_DOWN, self._on_mouse_down)
 
     # ------------------------------------------------------------------
     def refresh(self) -> None:
@@ -251,6 +254,7 @@ class HistoryView:
 
     # ------------------------------------------------------------------
     def _show_context_menu(self, row: int | None) -> None:
+        self._prepare_for_interaction()
         if self._is_running():
             return
         rows = self._ensure_row_selected(row)
@@ -278,7 +282,8 @@ class HistoryView:
         if self._suppress_selection:
             event.Skip()
             return
-        index = self._extract_index(event)
+        refreshed = self._prepare_for_interaction()
+        index = self._extract_index(None if refreshed else event)
         if index is not None:
             self._activate_conversation(index)
         event.Skip()
@@ -297,6 +302,41 @@ class HistoryView:
         if 0 <= row < len(conversations):
             return row
         return None
+
+    # ------------------------------------------------------------------
+    def _on_mouse_down(self, event: wx.MouseEvent) -> None:
+        if not self._prepare_for_interaction():
+            event.Skip()
+            return
+        pos = event.GetPosition()
+        item, _column = self._list.HitTest(pos)
+        if not item or not item.IsOk():
+            self._list.UnselectAll()
+            self._list.SetFocus()
+            return
+        row = self._list.ItemToRow(item)
+        if row == wx.NOT_FOUND:
+            self._list.UnselectAll()
+            self._list.SetFocus()
+            return
+        self._suppress_selection = True
+        try:
+            self._list.SelectRow(row)
+            self._list.EnsureVisible(item)
+        finally:
+            self._suppress_selection = False
+        self._activate_conversation(row)
+
+    # ------------------------------------------------------------------
+    def _prepare_for_interaction(self) -> bool:
+        callback = self._prepare_interaction
+        if callback is None:
+            return False
+        try:
+            refreshed = bool(callback())
+        except Exception:  # pragma: no cover - defensive guard
+            return False
+        return refreshed
 
 
 __all__ = ["HistoryView"]

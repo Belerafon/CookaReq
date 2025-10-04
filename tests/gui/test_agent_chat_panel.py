@@ -11,7 +11,6 @@ from app.ui.agent_chat_panel.token_usage import summarize_token_usage
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.agent_chat_panel.components.segments import (
     MessageSegmentPanel,
-    ToolCallPanel,
     TurnCard,
 )
 from app.ui.agent_chat_panel.view_model import (
@@ -127,17 +126,6 @@ def render_turn_card(
         regenerate_enabled=regenerate_enabled,
     )
     return card
-
-
-def collect_tool_panels(window: "wx.Window") -> list[ToolCallPanel]:
-    import wx  # noqa: PLC0415 - GUI helper
-
-    panels: list[ToolCallPanel] = []
-    for child in window.GetChildren():
-        if isinstance(child, ToolCallPanel):
-            panels.append(child)
-        panels.extend(collect_tool_panels(child))
-    return panels
 
 
 def bubble_header_text(bubble: MessageBubble) -> str:
@@ -842,7 +830,11 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
         panes = collect_collapsible_panes(panel.transcript_panel)
         assert panes, "expected collapsible transcript panes"
 
-        raw_panes = [pane for pane in panes if pane.GetName().startswith("raw:")]
+        raw_panes = [
+            pane
+            for pane in panes
+            if pane.GetName().startswith(("raw:", "tool:raw:"))
+        ]
         assert len(raw_panes) >= 2, "expected raw data panes for agent and tool"
 
         for pane in raw_panes:
@@ -868,7 +860,9 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
         assert any("tool_arguments" in text for text in raw_texts)
 
         assert any(name == "raw:agent" for name in (pane.GetName() for pane in raw_panes)), "expected agent raw pane"
-        assert any(name.startswith("raw:tool:") for name in (pane.GetName() for pane in raw_panes)), "expected tool raw pane"
+        assert any(
+            name.startswith("tool:raw:") for name in (pane.GetName() for pane in raw_panes)
+        ), "expected tool raw pane"
 
         transcript_text = panel.get_transcript_text()
         assert "demo_tool" in transcript_text
@@ -1064,28 +1058,29 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
         ]
         assert len(agent_bubbles) == 1, "agent bubble missing"
 
-        children = [
-            item.GetWindow()
-            for item in card.GetSizer().GetChildren()
-            if item.IsWindow()
-        ]
-        tool_indices = [
-            index for index, child in enumerate(children) if isinstance(child, ToolCallPanel)
-        ]
-        assert tool_indices, "tool call panel should follow the agent response"
-        tool_panel = children[tool_indices[0]]
-
-        agent_indices = [
-            index
-            for index, child in enumerate(children)
+        agent_panels = [
+            child
+            for child in card.GetChildren()
             if isinstance(child, MessageSegmentPanel)
             and any(
                 "Agent" in bubble_header_text(bubble)
                 for bubble in collect_message_bubbles(child)
             )
         ]
-        assert agent_indices, "agent segment missing"
-        assert agent_indices[0] < tool_indices[0], "tool call panel should appear after the agent segment"
+        assert agent_panels, "agent segment missing"
+        agent_panel = agent_panels[0]
+
+        panel_bubbles = collect_message_bubbles(agent_panel)
+        headers = [bubble_header_text(bubble) for bubble in panel_bubbles]
+        agent_indices = [
+            index for index, header in enumerate(headers) if "Agent" in header
+        ]
+        tool_indices = [
+            index for index, header in enumerate(headers) if "Tool" in header
+        ]
+        assert tool_indices, "tool summary bubble missing"
+        assert agent_indices, "agent bubble missing inside panel"
+        assert agent_indices[0] < tool_indices[0], "tool bubble should follow the agent response"
 
         conversation = panel._get_active_conversation()
         assert conversation is not None
@@ -1094,16 +1089,14 @@ def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_
         assert tool_events, "tool events missing from timeline"
         event = tool_events[0]
         entry_id = timeline.entries[-1].entry_id
-        entry_key = (
+        identifier = (
             f"tool:{entry_id}:{event.summary.index}"
             if event.summary.index
-            else entry_id
+            else f"tool:{entry_id}:1"
         )
 
-        pane_names = {pane.GetName() for pane in collect_collapsible_panes(tool_panel)}
-        assert any(
-            name == f"tool:raw:{entry_key}" for name in pane_names
-        ), "raw payload pane missing"
+        pane_names = {pane.GetName() for pane in collect_collapsible_panes(agent_panel)}
+        assert f"tool:raw:{identifier}" in pane_names, "raw payload pane missing"
     finally:
         destroy_panel(frame, panel)
 
@@ -1143,13 +1136,21 @@ def test_turn_card_renders_tool_only_entries(wx_app):
         ]
         assert not agent_bubbles, "tool-only turn should not render agent text"
 
-        tool_panels = collect_tool_panels(panel)
-        assert len(tool_panels) == 1, "expected single tool call panel"
-        tool_panel = tool_panels[0]
+        agent_panels = [
+            child
+            for child in panel.GetChildren()
+            if isinstance(child, MessageSegmentPanel)
+            and any(
+                "Tool" in bubble_header_text(bubble)
+                for bubble in collect_message_bubbles(child)
+            )
+        ]
+        assert agent_panels, "agent panel with tool bubble missing"
+        agent_panel = agent_panels[0]
 
         tool_bubbles = [
             bubble
-            for bubble in collect_message_bubbles(tool_panel)
+            for bubble in collect_message_bubbles(agent_panel)
             if "Tool" in bubble_header_text(bubble)
         ]
         assert tool_bubbles, "tool summary bubble missing"
@@ -1162,14 +1163,15 @@ def test_turn_card_renders_tool_only_entries(wx_app):
         timeline = build_conversation_timeline(conversation)
         tool_events = timeline.entries[0].agent_turn.tool_calls
         assert tool_events, "tool events missing"
-        entry_key = (
+        identifier = (
             f"tool:{entry_timeline.entry_id}:{tool_events[0].summary.index}"
             if tool_events[0].summary.index
-            else entry_timeline.entry_id
+            else f"tool:{entry_timeline.entry_id}:1"
         )
-        pane_names = {pane.GetName() for pane in collect_collapsible_panes(tool_panel)}
+        pane_names = {pane.GetName() for pane in collect_collapsible_panes(agent_panel)}
+        assert f"tool:raw:{identifier}" in pane_names
         assert all(
-            name != f"tool:summary:{entry_key}" for name in pane_names
+            name != f"tool:summary:{identifier}" for name in pane_names
         ), "unexpected summary collapsible present"
     finally:
         panel.Destroy()
@@ -1232,13 +1234,22 @@ def test_turn_card_attaches_tools_to_stream_only_response(wx_app):
         body = bubble_body_text(agent_bubble)
         assert "Streamed answer" in body
 
-        tool_panels = collect_tool_panels(panel)
-        assert len(tool_panels) == 1
-        tool_panel = tool_panels[0]
-        pane_names = {pane.GetName() for pane in collect_collapsible_panes(tool_panel)}
-        entry_key = f"tool:{entry_timeline.entry_id}:1"
+        agent_panels = [
+            child
+            for child in panel.GetChildren()
+            if isinstance(child, MessageSegmentPanel)
+            and any(
+                "Tool" in bubble_header_text(bubble)
+                for bubble in collect_message_bubbles(child)
+            )
+        ]
+        assert agent_panels, "tool bubble should be embedded in agent panel"
+        agent_panel = agent_panels[0]
+        pane_names = {pane.GetName() for pane in collect_collapsible_panes(agent_panel)}
+        identifier = f"tool:{entry_timeline.entry_id}:1"
+        assert f"tool:raw:{identifier}" in pane_names
         assert all(
-            name != f"tool:summary:{entry_key}" for name in pane_names
+            name != f"tool:summary:{identifier}" for name in pane_names
         ), "unexpected summary collapsible present"
     finally:
         panel.Destroy()
@@ -1334,12 +1345,18 @@ def test_turn_card_orders_sections(wx_app):
         wx.GetApp().Yield()
 
         bubbles = collect_message_bubbles(panel)
-        assert len(bubbles) == 2
+        assert len(bubbles) == 3
 
         user_bubble = next(b for b in bubbles if "You" in bubble_header_text(b))
         agent_bubble = next(
             b for b in bubbles if "Agent" in bubble_header_text(b)
         )
+        tool_bubble = next(
+            b for b in bubbles if "Tool" in bubble_header_text(b)
+        )
+        tool_text = bubble_body_text(tool_bubble)
+        assert "demo_tool" in tool_text
+        assert "•" in tool_text
 
         context_pane = find_collapsible_by_name(
             panel, f"context:{entry_timeline.entry_id}"
@@ -1357,14 +1374,22 @@ def test_turn_card_orders_sections(wx_app):
             panel, f"raw:{entry_timeline.entry_id}"
         )
         assert agent_raw_pane is not None
-        tool_panels = collect_tool_panels(panel)
-        assert tool_panels, "tool panel missing"
-        tool_panel = tool_panels[0]
-        tool_panes = collect_collapsible_panes(tool_panel)
+        agent_panels = [
+            child
+            for child in panel.GetChildren()
+            if isinstance(child, MessageSegmentPanel)
+            and any(
+                "Tool" in bubble_header_text(bubble)
+                for bubble in collect_message_bubbles(child)
+            )
+        ]
+        assert agent_panels, "tool bubble missing"
+        agent_panel = agent_panels[0]
+        tool_panes = collect_collapsible_panes(agent_panel)
         names = {pane.GetName() for pane in tool_panes}
-        entry_key = f"tool:{entry_timeline.entry_id}:1"
-        assert f"tool:summary:{entry_key}" not in names
-        assert f"tool:raw:{entry_key}" in names
+        identifier = f"tool:{entry_timeline.entry_id}:1"
+        assert f"tool:summary:{identifier}" not in names
+        assert f"tool:raw:{identifier}" in names
 
         context_label = collapsible_label(context_pane)
         assert context_label.lower() in {"", _("Context").lower()}
@@ -1519,31 +1544,31 @@ def test_tool_sections_follow_agent_response(wx_app):
             )
             assert agent_bubble is not None, "agent bubble should be present"
 
-            children = [
-                item.GetWindow()
-                for item in panel.GetSizer().GetChildren()
-                if item.IsWindow()
-            ]
-            agent_index = next(
+            agent_panel = next(
                 (
-                    idx
-                    for idx, child in enumerate(children)
+                    child
+                    for child in panel.GetChildren()
                     if isinstance(child, MessageSegmentPanel)
                     and agent_bubble in collect_message_bubbles(child)
                 ),
                 None,
             )
-            tool_index = next(
-                (
-                    idx
-                    for idx, child in enumerate(children)
-                    if isinstance(child, ToolCallPanel)
-                ),
+            assert agent_panel is not None, "agent segment missing"
+            panel_bubbles = collect_message_bubbles(agent_panel)
+            agent_index = next(
+                (idx for idx, bubble in enumerate(panel_bubbles) if bubble is agent_bubble),
                 None,
             )
-            assert tool_index is not None, "tool panel should be present"
-            assert agent_index is not None, "agent segment missing"
-            assert agent_index < tool_index, "tool panel should follow the agent segment"
+            tool_indices = [
+                idx
+                for idx, header in enumerate(
+                    bubble_header_text(bubble) for bubble in panel_bubbles
+                )
+                if "Tool" in header
+            ]
+            assert tool_indices, "tool bubble should be present"
+            assert agent_index is not None, "agent bubble missing"
+            assert agent_index < tool_indices[0], "tool bubble should follow the agent bubble"
     finally:
         if panel is not None:
             panel.Destroy()
@@ -1610,17 +1635,25 @@ def test_tool_summary_includes_llm_exchange(wx_app):
         frame.GetSizer().Add(panel, 1, wx.EXPAND)
         wx.GetApp().Yield()
 
-        tool_panels = collect_tool_panels(panel)
-        assert tool_panels, "tool panel missing"
-        tool_panel = tool_panels[0]
+        agent_panels = [
+            child
+            for child in panel.GetChildren()
+            if isinstance(child, MessageSegmentPanel)
+            and any(
+                "Tool" in bubble_header_text(bubble)
+                for bubble in collect_message_bubbles(child)
+            )
+        ]
+        assert agent_panels, "tool panel missing"
+        agent_panel = agent_panels[0]
 
         entry_key = f"tool:{entry_timeline.entry_id}:1"
         panes_by_name = {
-            pane.GetName(): pane for pane in collect_collapsible_panes(tool_panel)
+            pane.GetName(): pane for pane in collect_collapsible_panes(agent_panel)
         }
         tool_bubbles = [
             bubble
-            for bubble in collect_message_bubbles(tool_panel)
+            for bubble in collect_message_bubbles(agent_panel)
             if "Tool" in bubble_header_text(bubble)
         ]
         assert tool_bubbles, "tool summary bubble missing"
@@ -1657,7 +1690,6 @@ def test_tool_summary_includes_llm_exchange(wx_app):
         final_y = final_bubble.GetScreenPosition()[1]
         assert step_y <= final_y
 
-        assert tool_panel.GetParent() is panel
     finally:
         if panel is not None:
             panel.Destroy()
@@ -2284,7 +2316,7 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         tool_events = timeline.entries[entry_index].agent_turn.tool_calls
         assert any(event.llm_request for event in tool_events), "expected llm request payload"
         bubbles = collect_message_bubbles(panel)
-        assert len(bubbles) == 3
+        assert len(bubbles) == 4
 
         agent_bubbles = [
             bubble
@@ -2313,15 +2345,25 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         )
         agent_raw_pane = find_collapsible_by_name(panel, f"raw:{entry_key}")
         llm_request_pane = find_collapsible_by_name(panel, f"llm:{entry_key}")
-        tool_panels = collect_tool_panels(panel)
-        assert tool_panels, "expected tool panel"
-        tool_panel = tool_panels[0]
-        tool_panes = collect_collapsible_panes(tool_panel)
+        tool_bubble = next(
+            (
+                bubble
+                for bubble in bubbles
+                if "Tool" in bubble_header_text(bubble)
+            ),
+            None,
+        )
+        assert tool_bubble is not None, "expected tool bubble"
+        agent_panel = tool_bubble.GetParent()
+        while agent_panel is not None and not isinstance(agent_panel, MessageSegmentPanel):
+            agent_panel = agent_panel.GetParent()
+        assert isinstance(agent_panel, MessageSegmentPanel)
+        tool_panes = collect_collapsible_panes(agent_panel)
         panes_by_name = {pane.GetName(): pane for pane in tool_panes}
         tool_entry_key = (
             f"tool:{entry_key}:{tool_events[0].summary.index}"
             if tool_events[0].summary.index
-            else entry_key
+            else f"tool:{entry_key}:1"
         )
         tool_raw_pane = panes_by_name.get(f"tool:raw:{tool_entry_key}")
 
@@ -2350,7 +2392,7 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
 
         tool_summary_bubbles = [
             bubble
-            for bubble in collect_message_bubbles(tool_panel)
+            for bubble in collect_message_bubbles(agent_panel)
             if "Tool" in bubble_header_text(bubble)
         ]
         summary_text = "\n".join(bubble_body_text(b) for b in tool_summary_bubbles)
@@ -2493,6 +2535,19 @@ def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):
     destroy_panel(frame1, panel1)
 
     wx, frame2, panel2 = create_panel(tmp_path, wx_app, EchoAgent())
+    assert panel2.history == []
+    assert panel2.history_list.GetItemCount() == 1
+    assert panel2._active_index() == 0
+
+    panel2._prepare_history_interaction()
+    flush_wx_events(wx)
+
+    assert panel2.history_list.GetItemCount() == 2
+    assert panel2._active_index() == 1
+
+    panel2._on_history_row_activated(0)
+    flush_wx_events(wx)
+
     assert len(panel2.history) == 1
     assert panel2.history[0].prompt == "hello"
     destroy_panel(frame2, panel2)
@@ -2501,6 +2556,7 @@ def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):
 def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
+    from app.i18n import _
 
     bad_file = tmp_path / "history.json"
     bad_file.write_text("{not json}")
@@ -2516,12 +2572,18 @@ def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
         history_path=bad_file,
     )
     assert panel.history == []
+    assert panel.history_list.GetItemCount() == 1
+    assert (
+        panel.get_transcript_text()
+        == _("This chat does not have any messages yet. Send one to get started.")
+    )
     destroy_panel(frame, panel)
 
 
 def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
+    from app.i18n import _
 
     legacy_file = tmp_path / "history.json"
     legacy_file.write_text(json.dumps({"version": 1, "conversations": []}))
@@ -2538,8 +2600,11 @@ def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
     )
 
     assert panel.history == []
-    assert panel.history_list.GetItemCount() == 0
-    assert "Start chatting" in panel.get_transcript_text()
+    assert panel.history_list.GetItemCount() == 1
+    assert (
+        panel.get_transcript_text()
+        == _("This chat does not have any messages yet. Send one to get started.")
+    )
 
     destroy_panel(frame, panel)
 
@@ -2547,6 +2612,7 @@ def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
 def test_agent_chat_panel_rejects_entries_without_token_info(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
+    from app.i18n import _
 
     legacy_file = tmp_path / "history.json"
     legacy_file.write_text(
@@ -2585,8 +2651,11 @@ def test_agent_chat_panel_rejects_entries_without_token_info(tmp_path, wx_app):
     )
 
     assert panel.history == []
-    assert panel.history_list.GetItemCount() == 0
-    assert "Start chatting" in panel.get_transcript_text()
+    assert panel.history_list.GetItemCount() == 1
+    assert (
+        panel.get_transcript_text()
+        == _("This chat does not have any messages yet. Send one to get started.")
+    )
 
     destroy_panel(frame, panel)
 
@@ -2717,6 +2786,9 @@ def test_agent_chat_panel_history_context_menu_handles_multiselect(
                 flush_wx_events(wx)
 
         assert panel.history_list.GetItemCount() == 3
+
+        panel._prepare_history_interaction()
+        flush_wx_events(wx)
 
         panel.history_list.UnselectAll()
         first_item = panel.history_list.RowToItem(0)

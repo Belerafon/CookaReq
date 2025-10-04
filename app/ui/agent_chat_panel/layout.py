@@ -110,6 +110,7 @@ class AgentChatLayoutBuilder:
             handle_delete_request=panel._delete_history_rows,
             is_running=lambda: panel.is_running,
             splitter=horizontal_splitter,
+            prepare_interaction=panel._prepare_history_interaction,
         )
 
         history_sizer.Add(history_header, 0, wx.EXPAND)

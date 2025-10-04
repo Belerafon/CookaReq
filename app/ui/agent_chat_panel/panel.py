@@ -208,8 +208,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._session.events.running_changed.connect(self._on_session_running_changed)
         self._session.events.tokens_changed.connect(self._on_session_tokens_changed)
         self._session.events.history_changed.connect(self._on_session_history_changed)
-        self._session.load_history()
-        self._activate_startup_conversation()
+        self._history_loaded = False
+        self._startup_conversation_id: str | None = None
+        self._reset_history_loading_state()
         self._build_ui()
         self._initialize_controller()
         self._render_transcript()
@@ -255,7 +256,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         if not changed:
             return
-        self._load_history_from_store()
+        self._reset_history_loading_state()
         self._refresh_history_list()
         self._render_transcript()
 
@@ -334,11 +335,55 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     # ------------------------------------------------------------------
     def _load_history_from_store(self) -> None:
-        self._session.load_history()
-        self._activate_startup_conversation()
+        if self._history_loaded:
+            return
+        self._prepare_history_interaction()
 
     def _save_history_to_store(self) -> None:
         self._session.save_history()
+
+    # ------------------------------------------------------------------
+    def _reset_history_loading_state(self) -> None:
+        """Drop cached history payloads and ensure a fresh conversation."""
+
+        history = self._session.history
+        self._history_loaded = False
+        history.set_conversations([])
+        history.set_active_id(None)
+        self._startup_conversation_id = None
+        conversation = self._create_conversation(persist=False)
+        self._startup_conversation_id = conversation.conversation_id
+
+    # ------------------------------------------------------------------
+    def _prepare_history_interaction(self) -> bool:
+        """Lazily load history payloads when the user interacts with the list."""
+
+        if self._history_loaded:
+            return False
+
+        history = self._session.history
+        preexisting = list(history.conversations)
+        active_before = history.active_id
+        history.load()
+        conversations = history.conversations
+        known_ids = {conversation.conversation_id for conversation in conversations}
+        appended = False
+        for conversation in preexisting:
+            if conversation.conversation_id in known_ids:
+                continue
+            conversations.append(conversation)
+            known_ids.add(conversation.conversation_id)
+            appended = True
+        retained_active = active_before
+        if retained_active is None and preexisting:
+            retained_active = preexisting[0].conversation_id
+        if retained_active is not None and retained_active not in known_ids:
+            retained_active = None
+        history.set_active_id(retained_active)
+        self._startup_conversation_id = retained_active
+        self._history_loaded = True
+        self._notify_history_changed()
+        return True
 
     # ------------------------------------------------------------------
     def _token_model(self) -> str | None:
@@ -2214,18 +2259,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return conversation
         return self._create_conversation(persist=False)
 
-    def _activate_startup_conversation(self) -> None:
-        """Ensure the panel starts with a fresh chat instead of a history entry."""
-
-        history = self._session.history
-        history.set_active_id(None)
-        for conversation in reversed(self.conversations):
-            if conversation.entries:
-                continue
-            self._set_active_conversation_id(conversation.conversation_id)
-            return
-        self._create_conversation(persist=False)
-
     def _format_conversation_row(
         self, conversation: ChatConversation
     ) -> tuple[str, str]:
@@ -2267,6 +2300,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         refresh_history: bool = True,
         _source: str = "unknown",
     ) -> None:
+        self._prepare_history_interaction()
         if not (0 <= index < len(self.conversations)):
             return
         conversation = self.conversations[index]

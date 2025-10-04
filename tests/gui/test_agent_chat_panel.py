@@ -2536,6 +2536,12 @@ def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):
 
     wx, frame2, panel2 = create_panel(tmp_path, wx_app, EchoAgent())
     assert panel2.history == []
+    assert panel2.history_list.GetItemCount() == 1
+    assert panel2._active_index() == 0
+
+    panel2._prepare_history_interaction()
+    flush_wx_events(wx)
+
     assert panel2.history_list.GetItemCount() == 2
     assert panel2._active_index() == 1
 
@@ -2780,6 +2786,9 @@ def test_agent_chat_panel_history_context_menu_handles_multiselect(
                 flush_wx_events(wx)
 
         assert panel.history_list.GetItemCount() == 3
+
+        panel._prepare_history_interaction()
+        flush_wx_events(wx)
 
         panel.history_list.UnselectAll()
         first_item = panel.history_list.RowToItem(0)

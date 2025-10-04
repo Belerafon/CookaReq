@@ -137,8 +137,8 @@ def build_entry_timeline(
         title=None,
         created_at=prompt_at,
         updated_at=response_at or prompt_at,
-        entries=[entry],
     )
+    conversation.replace_entries([entry])
     timeline = build_conversation_timeline(conversation)
     return conversation, timeline.entries[0]
 
@@ -2693,6 +2693,80 @@ def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
         panel.get_transcript_text()
         == _("This chat does not have any messages yet. Send one to get started.")
     )
+
+    destroy_panel(frame, panel)
+
+
+def test_handle_streamed_tool_results_coalesces_renders(
+    tmp_path, wx_app, monkeypatch
+):
+    from app.llm.tokenizer import TokenCountResult
+    from app.ui.agent_chat_panel.execution import _AgentRunHandle
+    from app.util.cancellation import CancellationEvent
+
+    class DummyAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
+    conversation = panel._ensure_active_conversation()
+    entry = panel._add_pending_entry(
+        conversation,
+        "hello",
+        prompt_at="2025-01-01T00:00:00+00:00",
+        context_messages=None,
+    )
+    handle = _AgentRunHandle(
+        run_id=1,
+        prompt="hello",
+        prompt_tokens=TokenCountResult.exact(1),
+        cancel_event=CancellationEvent(),
+        prompt_at="2025-01-01T00:00:00+00:00",
+    )
+    handle.conversation_id = conversation.conversation_id
+    handle.pending_entry = entry
+    panel._active_handle = lambda: handle
+
+    calls: list[tuple[Any, Any, list[str] | None, bool]] = []
+
+    def record_schedule_render(
+        *,
+        conversation,
+        timeline,
+        updated_entries,
+        force,
+    ) -> None:
+        calls.append((conversation, timeline, updated_entries, force))
+
+    monkeypatch.setattr(panel._transcript_view, "schedule_render", record_schedule_render)
+
+    payloads = [
+        [{"call_id": "tool-1", "status": "running"}],
+        [{"call_id": "tool-1", "status": "running", "agent_status": "running"}],
+        [{"call_id": "tool-1", "status": "completed", "agent_status": "completed"}],
+    ]
+
+    for payload in payloads:
+        panel._handle_streamed_tool_results(handle, payload)
+
+    flush_wx_events(wx)
+
+    assert len(calls) == 1
+    scheduled_conversation, scheduled_timeline, updated_entries, force = calls[0]
+    assert scheduled_conversation.conversation_id == conversation.conversation_id
+    assert hasattr(scheduled_timeline, "entries")
+    assert not force
+    expected_entry = panel._entry_identifier(conversation, entry)
+    assert updated_entries == [expected_entry]
 
     destroy_panel(frame, panel)
 

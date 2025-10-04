@@ -13,6 +13,7 @@ from ..text import normalize_for_display
 from .time_formatting import format_entry_timestamp
 from .view_model import (
     AgentResponse,
+    ConversationTimeline,
     TimestampInfo,
     TranscriptEntry,
     build_conversation_timeline,
@@ -204,7 +205,11 @@ def _collect_agent_plain_events(entry: TranscriptEntry) -> list[_PlainEvent]:
     return events
 
 
-def compose_transcript_text(conversation: ChatConversation | None) -> str:
+def compose_transcript_text(
+    conversation: ChatConversation | None,
+    *,
+    timeline: ConversationTimeline | None = None,
+) -> str:
     """Return the plain conversation transcript for *conversation*."""
 
     if conversation is None:
@@ -212,7 +217,8 @@ def compose_transcript_text(conversation: ChatConversation | None) -> str:
     if not conversation.entries:
         return _("This chat does not have any messages yet. Send one to get started.")
 
-    timeline = build_conversation_timeline(conversation)
+    if timeline is None:
+        timeline = build_conversation_timeline(conversation)
     if not timeline.entries:
         return _("This chat does not have any messages yet. Send one to get started.")
 
@@ -305,7 +311,11 @@ def _strip_repeated_system_prompt(
     return value, seen_prompt
 
 
-def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
+def compose_transcript_log_text(
+    conversation: ChatConversation | None,
+    *,
+    timeline: ConversationTimeline | None = None,
+) -> str:
     """Return the detailed diagnostic log for *conversation*."""
 
     if conversation is None:
@@ -313,7 +323,8 @@ def compose_transcript_log_text(conversation: ChatConversation | None) -> str:
     if not conversation.entries:
         return _("This chat does not have any messages yet. Send one to get started.")
 
-    timeline = build_conversation_timeline(conversation)
+    if timeline is None:
+        timeline = build_conversation_timeline(conversation)
 
     def format_timestamp_info(info: TimestampInfo | None) -> str:
         return _format_timestamp_label(info)

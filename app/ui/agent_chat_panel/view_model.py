@@ -162,38 +162,220 @@ class TranscriptSegments:
     segments: tuple[TranscriptSegment, ...]
 
 
+@dataclass(slots=True)
+class _CachedTimeline:
+    timeline: ConversationTimeline
+    entry_map: dict[str, TranscriptEntry]
+
+
+def _resolve_entry_index(conversation_id: str, entry_id: str) -> int | None:
+    prefix = f"{conversation_id}:"
+    if not entry_id.startswith(prefix):
+        return None
+    index_raw = entry_id[len(prefix) :]
+    try:
+        return int(index_raw)
+    except (TypeError, ValueError):
+        return None
+
+
+class ConversationTimelineCache:
+    """Incrementally rebuild :class:`ConversationTimeline` instances."""
+
+    def __init__(self) -> None:
+        self._cache: dict[str, _CachedTimeline] = {}
+        self._dirty_entries: dict[str, set[str]] = {}
+        self._full_invalidations: set[str] = set()
+
+    # ------------------------------------------------------------------
+    def invalidate_conversation(self, conversation_id: str | None) -> None:
+        if conversation_id:
+            self._full_invalidations.add(conversation_id)
+
+    # ------------------------------------------------------------------
+    def invalidate_entries(
+        self, conversation_id: str | None, entry_ids: Iterable[str]
+    ) -> None:
+        if not conversation_id:
+            return
+        pending = self._dirty_entries.setdefault(conversation_id, set())
+        for entry_id in entry_ids:
+            if entry_id:
+                pending.add(entry_id)
+
+    # ------------------------------------------------------------------
+    def forget(self, conversation_id: str) -> None:
+        self._cache.pop(conversation_id, None)
+        self._dirty_entries.pop(conversation_id, None)
+        self._full_invalidations.discard(conversation_id)
+
+    # ------------------------------------------------------------------
+    def peek(self, conversation_id: str) -> ConversationTimeline | None:
+        cached = self._cache.get(conversation_id)
+        return cached.timeline if cached is not None else None
+
+    # ------------------------------------------------------------------
+    def timeline_for(self, conversation: ChatConversation) -> ConversationTimeline:
+        conversation_id = conversation.conversation_id
+        cached = self._cache.get(conversation_id)
+        dirty_entries = self._dirty_entries.pop(conversation_id, set())
+        requires_full_refresh = (
+            cached is None
+            or conversation_id in self._full_invalidations
+            or len(cached.timeline.entries) != len(conversation.entries)
+        )
+
+        if requires_full_refresh:
+            timeline = build_conversation_timeline(conversation)
+            self._cache[conversation_id] = _CachedTimeline(
+                timeline=timeline,
+                entry_map={entry.entry_id: entry for entry in timeline.entries},
+            )
+            self._full_invalidations.discard(conversation_id)
+            return timeline
+
+        if not dirty_entries:
+            self._full_invalidations.discard(conversation_id)
+            return cached.timeline
+
+        entries = list(cached.timeline.entries)
+        entry_map = dict(cached.entry_map)
+        updated = False
+        fallback_to_full = False
+
+        for entry_id in dirty_entries:
+            index = _resolve_entry_index(conversation_id, entry_id)
+            if index is None or index >= len(conversation.entries):
+                fallback_to_full = True
+                break
+            entry = conversation.entries[index]
+            rebuilt = _build_transcript_entry(conversation, index, entry)
+            if rebuilt.entry_id != entry_id:
+                fallback_to_full = True
+                break
+            if entry_map.get(entry_id) == rebuilt:
+                continue
+            entries[index] = rebuilt
+            entry_map[entry_id] = rebuilt
+            updated = True
+
+        if fallback_to_full:
+            timeline = build_conversation_timeline(conversation)
+            self._cache[conversation_id] = _CachedTimeline(
+                timeline=timeline,
+                entry_map={entry.entry_id: entry for entry in timeline.entries},
+            )
+            self._full_invalidations.discard(conversation_id)
+            return timeline
+
+        if updated:
+            timeline = ConversationTimeline(
+                conversation_id=conversation_id,
+                entries=tuple(entries),
+            )
+            cached.timeline = timeline
+            cached.entry_map = entry_map
+        else:
+            timeline = cached.timeline
+
+        self._full_invalidations.discard(conversation_id)
+        return timeline
+
+
+def _build_transcript_entry(
+    conversation: ChatConversation,
+    entry_index: int,
+    entry: ChatEntry,
+) -> TranscriptEntry:
+    entry_id = f"{conversation.conversation_id}:{entry_index}"
+    prompt = _build_prompt(entry)
+    context_messages = _build_context_messages(entry)
+    agent_turn = _build_agent_turn(entry_id, entry_index, entry)
+    layout_hints = _sanitize_layout_hints(entry.layout_hints)
+    can_regenerate = _can_regenerate_entry(
+        entry_index, len(conversation.entries), entry
+    )
+    return TranscriptEntry(
+        entry_id=entry_id,
+        entry_index=entry_index,
+        entry=entry,
+        prompt=prompt,
+        context_messages=context_messages,
+        agent_turn=agent_turn,
+        system_messages=(),
+        layout_hints=layout_hints,
+        can_regenerate=can_regenerate,
+    )
+
+
 def build_conversation_timeline(
     conversation: ChatConversation,
 ) -> ConversationTimeline:
     """Return turn-oriented timeline for *conversation*."""
 
     entries: list[TranscriptEntry] = []
-    total_entries = len(conversation.entries)
 
     for entry_index, entry in enumerate(conversation.entries):
-        entry_id = f"{conversation.conversation_id}:{entry_index}"
-        prompt = _build_prompt(entry)
-        context_messages = _build_context_messages(entry)
-        agent_turn = _build_agent_turn(entry_id, entry_index, entry)
-        layout_hints = _sanitize_layout_hints(entry.layout_hints)
-        can_regenerate = _can_regenerate_entry(entry_index, total_entries, entry)
-        timeline_entry = TranscriptEntry(
-            entry_id=entry_id,
-            entry_index=entry_index,
-            entry=entry,
-            prompt=prompt,
-            context_messages=context_messages,
-            agent_turn=agent_turn,
-            system_messages=(),
-            layout_hints=layout_hints,
-            can_regenerate=can_regenerate,
-        )
-        entries.append(timeline_entry)
+        entries.append(_build_transcript_entry(conversation, entry_index, entry))
 
     return ConversationTimeline(
         conversation_id=conversation.conversation_id,
         entries=tuple(entries),
     )
+
+
+def build_entry_segments(entry: TranscriptEntry) -> tuple[TranscriptSegment, ...]:
+    """Return ordered segments for a single *entry*."""
+
+    entry_id = entry.entry_id
+    entry_index = entry.entry_index
+    layout_hints = dict(entry.layout_hints)
+    segments: list[TranscriptSegment] = []
+
+    if entry.prompt is not None or entry.context_messages:
+        payload = PromptSegment(
+            prompt=entry.prompt,
+            context_messages=entry.context_messages,
+            layout_hints=dict(layout_hints),
+        )
+        segments.append(
+            TranscriptSegment(
+                segment_id=f"{entry_id}:user",
+                entry_id=entry_id,
+                entry_index=entry_index,
+                kind="user",
+                payload=payload,
+            )
+        )
+
+    if entry.agent_turn is not None or entry.can_regenerate or entry.system_messages:
+        payload = AgentSegment(
+            turn=entry.agent_turn,
+            layout_hints=dict(layout_hints),
+            can_regenerate=entry.can_regenerate,
+        )
+        segments.append(
+            TranscriptSegment(
+                segment_id=f"{entry_id}:agent",
+                entry_id=entry_id,
+                entry_index=entry_index,
+                kind="agent",
+                payload=payload,
+            )
+        )
+
+    for index, system_event in enumerate(entry.system_messages, start=1):
+        segments.append(
+            TranscriptSegment(
+                segment_id=f"{entry_id}:system:{index}",
+                entry_id=entry_id,
+                entry_index=entry_index,
+                kind="system",
+                payload=system_event,
+            )
+        )
+
+    return tuple(segments)
 
 
 def build_transcript_segments(conversation: ChatConversation) -> TranscriptSegments:
@@ -204,57 +386,8 @@ def build_transcript_segments(conversation: ChatConversation) -> TranscriptSegme
     entry_order: list[str] = []
 
     for timeline_entry in timeline.entries:
-        entry_id = timeline_entry.entry_id
-        entry_index = timeline_entry.entry_index
-        entry_order.append(entry_id)
-        layout_hints = dict(timeline_entry.layout_hints)
-
-        if timeline_entry.prompt is not None or timeline_entry.context_messages:
-            payload = PromptSegment(
-                prompt=timeline_entry.prompt,
-                context_messages=timeline_entry.context_messages,
-                layout_hints=dict(layout_hints),
-            )
-            segments.append(
-                TranscriptSegment(
-                    segment_id=f"{entry_id}:user",
-                    entry_id=entry_id,
-                    entry_index=entry_index,
-                    kind="user",
-                    payload=payload,
-                )
-            )
-
-        if (
-            timeline_entry.agent_turn is not None
-            or timeline_entry.can_regenerate
-            or (timeline_entry.system_messages)
-        ):
-            payload = AgentSegment(
-                turn=timeline_entry.agent_turn,
-                layout_hints=dict(layout_hints),
-                can_regenerate=timeline_entry.can_regenerate,
-            )
-            segments.append(
-                TranscriptSegment(
-                    segment_id=f"{entry_id}:agent",
-                    entry_id=entry_id,
-                    entry_index=entry_index,
-                    kind="agent",
-                    payload=payload,
-                )
-            )
-
-        for index, system_event in enumerate(timeline_entry.system_messages, start=1):
-            segments.append(
-                TranscriptSegment(
-                    segment_id=f"{entry_id}:system:{index}",
-                    entry_id=entry_id,
-                    entry_index=entry_index,
-                    kind="system",
-                    payload=system_event,
-                )
-            )
+        entry_order.append(timeline_entry.entry_id)
+        segments.extend(build_entry_segments(timeline_entry))
 
     return TranscriptSegments(
         conversation_id=timeline.conversation_id,
@@ -1845,6 +1978,8 @@ __all__ = [
     "AgentSegment",
     "TranscriptSegment",
     "TranscriptSegments",
+    "build_entry_segments",
     "build_conversation_timeline",
     "build_transcript_segments",
+    "ConversationTimelineCache",
 ]

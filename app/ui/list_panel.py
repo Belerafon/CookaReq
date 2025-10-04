@@ -756,61 +756,81 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _refresh(self) -> None:
         """Reload list control from the model."""
-        items = self.model.get_visible()
-        self.list.DeleteAllItems()
-        for req in items:
-            index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
-            # Windows ListCtrl may still assign image 0; clear explicitly
-            if hasattr(self.list, "SetItemImage"):
-                with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
-            req_id = getattr(req, "id", 0)
+        list_ctrl = self.list
+        freeze = getattr(list_ctrl, "Freeze", None)
+        thaw = getattr(list_ctrl, "Thaw", None)
+        frozen = False
+        if callable(freeze) and callable(thaw):
             try:
-                self.list.SetItemData(index, int(req_id))
+                freeze()
             except Exception:
-                self.list.SetItemData(index, 0)
-            for col, field in enumerate(self._field_order):
-                if field == "title":
-                    title = getattr(req, "title", "")
-                    derived = bool(getattr(req, "links", []))
-                    display = f"↳ {title}".strip() if derived else title
-                    self.list.SetItem(index, col, display)
-                    continue
-                if field == "labels":
-                    value = getattr(req, "labels", [])
-                    self._set_label_image(index, col, value)
-                    continue
-                if field == "derived_from":
-                    value = self._first_parent_text(req)
-                    self.list.SetItem(index, col, value)
-                    continue
-                if field == "links":
-                    links = getattr(req, "links", [])
-                    formatted: list[str] = []
-                    for link in links:
-                        rid = getattr(link, "rid", str(link))
-                        if getattr(link, "suspect", False):
-                            formatted.append(f"{rid} ⚠")
-                        else:
-                            formatted.append(str(rid))
-                    value = ", ".join(formatted)
-                    self.list.SetItem(index, col, value)
-                    continue
-                if field == "derived_count":
-                    rid = req.rid or str(req.id)
-                    count = len(self.derived_map.get(rid, []))
-                    self.list.SetItem(index, col, str(count))
-                    continue
-                if field == "attachments":
-                    value = ", ".join(
-                        getattr(a, "path", "") for a in getattr(req, "attachments", [])
-                    )
-                    self.list.SetItem(index, col, value)
-                    continue
-                value = getattr(req, field, "")
-                if isinstance(value, Enum):
-                    value = locale.code_to_label(field, value.value)
-                self.list.SetItem(index, col, str(value))
+                logger.exception("Failed to freeze requirements list before refresh")
+            else:
+                frozen = True
+
+        try:
+            items = self.model.get_visible()
+            list_ctrl.DeleteAllItems()
+            for req in items:
+                index = list_ctrl.InsertItem(list_ctrl.GetItemCount(), "", -1)
+                # Windows ListCtrl may still assign image 0; clear explicitly
+                if hasattr(list_ctrl, "SetItemImage"):
+                    with suppress(Exception):
+                        list_ctrl.SetItemImage(index, -1)
+                req_id = getattr(req, "id", 0)
+                try:
+                    list_ctrl.SetItemData(index, int(req_id))
+                except Exception:
+                    list_ctrl.SetItemData(index, 0)
+                for col, field in enumerate(self._field_order):
+                    if field == "title":
+                        title = getattr(req, "title", "")
+                        derived = bool(getattr(req, "links", []))
+                        display = f"↳ {title}".strip() if derived else title
+                        list_ctrl.SetItem(index, col, display)
+                        continue
+                    if field == "labels":
+                        value = getattr(req, "labels", [])
+                        self._set_label_image(index, col, value)
+                        continue
+                    if field == "derived_from":
+                        value = self._first_parent_text(req)
+                        list_ctrl.SetItem(index, col, value)
+                        continue
+                    if field == "links":
+                        links = getattr(req, "links", [])
+                        formatted: list[str] = []
+                        for link in links:
+                            rid = getattr(link, "rid", str(link))
+                            if getattr(link, "suspect", False):
+                                formatted.append(f"{rid} ⚠")
+                            else:
+                                formatted.append(str(rid))
+                        value = ", ".join(formatted)
+                        list_ctrl.SetItem(index, col, value)
+                        continue
+                    if field == "derived_count":
+                        rid = req.rid or str(req.id)
+                        count = len(self.derived_map.get(rid, []))
+                        list_ctrl.SetItem(index, col, str(count))
+                        continue
+                    if field == "attachments":
+                        value = ", ".join(
+                            getattr(a, "path", "")
+                            for a in getattr(req, "attachments", [])
+                        )
+                        list_ctrl.SetItem(index, col, value)
+                        continue
+                    value = getattr(req, field, "")
+                    if isinstance(value, Enum):
+                        value = locale.code_to_label(field, value.value)
+                    list_ctrl.SetItem(index, col, str(value))
+        finally:
+            if frozen:
+                try:
+                    thaw()
+                except Exception:
+                    logger.exception("Failed to thaw requirements list after refresh")
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.

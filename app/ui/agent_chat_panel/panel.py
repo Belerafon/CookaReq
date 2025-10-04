@@ -77,9 +77,10 @@ from .tool_summaries import (
 )
 from .view_model import (
     AgentResponse,
+    ConversationTimeline,
+    ConversationTimelineCache,
     TimestampInfo,
     ToolCallDetails,
-    build_conversation_timeline,
 )
 from .segment_view import SegmentListView
 
@@ -174,6 +175,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._copy_conversation_btn: wx.Window | None = None
         self._history_view: HistoryView | None = None
         self._transcript_view: SegmentListView | None = None
+        self._timeline_cache = ConversationTimelineCache()
+        self._pending_transcript_refresh: dict[str | None, set[str] | None] = {}
+        self._transcript_refresh_scheduled = False
+        self._latest_timeline: ConversationTimeline | None = None
         self._history_last_sash = 0
         self._vertical_sash_goal: int | None = None
         self._vertical_last_sash = 0
@@ -340,10 +345,19 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         history = self._session.history
         history.load()
+        cleaned: list[ChatConversation] = []
+        for conversation in list(history.conversations):
+            history.ensure_conversation_entries(conversation)
+            if conversation.entries:
+                cleaned.append(conversation)
+        history.set_conversations(cleaned)
         conversations = history.conversations
         draft = ChatConversation.new()
         conversations.append(draft)
         history.set_active_id(draft.conversation_id)
+        self._timeline_cache = ConversationTimelineCache()
+        self._pending_transcript_refresh.clear()
+        self._latest_timeline = None
         self._notify_history_changed()
 
     def _save_history_to_store(self) -> None:
@@ -661,6 +675,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         view = self._transcript_view
         if view is not None:
             view.forget_conversations(ids_to_remove)
+        for conversation in conversations:
+            self._timeline_cache.forget(conversation.conversation_id)
         remaining = [
             conv for conv in self.conversations if conv.conversation_id not in ids_to_remove
         ]
@@ -1429,6 +1445,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         conversation.recalculate_preview()
         self._save_history_to_store()
         self._notify_history_changed()
+        entry_id = self._entry_identifier(conversation, entry)
+        self._request_transcript_refresh(
+            conversation=conversation,
+            entry_ids=[entry_id] if entry_id else None,
+            force=entry_id is None,
+            immediate=True,
+        )
 
     def _pop_conversation_entry(
         self,
@@ -1464,7 +1487,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return None
         self._save_history_to_store()
         self._notify_history_changed()
-        self._render_transcript()
+        self._timeline_cache.invalidate_conversation(conversation.conversation_id)
+        self._request_transcript_refresh(
+            conversation=conversation, force=True, immediate=True
+        )
         return removal
 
     def _restore_conversation_entry(
@@ -1477,7 +1503,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         conversation.recalculate_preview()
         self._save_history_to_store()
         self._notify_history_changed()
-        self._render_transcript()
+        self._timeline_cache.invalidate_conversation(conversation.conversation_id)
+        self._request_transcript_refresh(
+            conversation=conversation, force=True, immediate=True
+        )
 
     def _discard_pending_entry(self, handle: _AgentRunHandle) -> None:
         entry = handle.pending_entry
@@ -1499,14 +1528,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         entry = handle.pending_entry
         if entry is None:
-            self._render_transcript()
+            self._request_transcript_refresh(force=True, immediate=True)
             return
         conversation = self._get_conversation_by_id(handle.conversation_id)
         if conversation is None:
             handle.pending_entry = None
             handle.streamed_tool_results.clear()
             handle.llm_steps.clear()
-            self._render_transcript()
+            self._request_transcript_refresh(force=True, immediate=True)
             batch_section = self._batch_section
             if batch_section is not None:
                 batch_section.notify_cancellation(
@@ -1604,11 +1633,106 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 [conversation.conversation_id for conversation in self.conversations]
             )
 
-    def _render_transcript(self) -> None:
-        if self._transcript_view is None:
+    def _request_transcript_refresh(
+        self,
+        *,
+        conversation: ChatConversation | None = None,
+        entry_ids: Iterable[str] | None = None,
+        force: bool = False,
+        immediate: bool = False,
+    ) -> None:
+        if conversation is None:
+            conversation = self._get_active_conversation_loaded()
+        conversation_id = conversation.conversation_id if conversation is not None else None
+
+        if conversation_id is None:
+            self._pending_transcript_refresh[None] = None
+        else:
+            if force:
+                self._timeline_cache.invalidate_conversation(conversation_id)
+                self._pending_transcript_refresh[conversation_id] = None
+            else:
+                entry_set = {entry_id for entry_id in (entry_ids or ()) if entry_id}
+                if not entry_set:
+                    return
+                self._timeline_cache.invalidate_entries(conversation_id, entry_set)
+                existing = self._pending_transcript_refresh.get(conversation_id)
+                if existing is None and conversation_id in self._pending_transcript_refresh:
+                    # full refresh already queued
+                    pass
+                else:
+                    bucket = self._pending_transcript_refresh.setdefault(
+                        conversation_id, set()
+                    )
+                    if bucket is not None:
+                        bucket.update(entry_set)
+
+        if immediate:
+            self._flush_pending_transcript_refresh()
+        elif not self._transcript_refresh_scheduled:
+            self._transcript_refresh_scheduled = True
+            wx.CallAfter(self._flush_pending_transcript_refresh)
+
+    def _flush_pending_transcript_refresh(self) -> None:
+        pending = self._pending_transcript_refresh
+        if not pending:
+            self._transcript_refresh_scheduled = False
             return
-        self._transcript_view.render()
-        self._update_transcript_selection_probe(self._compose_transcript_text())
+        self._pending_transcript_refresh = {}
+        self._transcript_refresh_scheduled = False
+
+        view = self._transcript_view
+        if view is None:
+            return
+
+        active_conversation = self._get_active_conversation_loaded()
+        active_id = active_conversation.conversation_id if active_conversation else None
+
+        for conversation_id, entry_ids in pending.items():
+            force = entry_ids is None
+            if conversation_id is None:
+                view.schedule_render(
+                    conversation=None,
+                    timeline=None,
+                    updated_entries=None,
+                    force=True,
+                )
+                self._latest_timeline = None
+                self._update_transcript_selection_probe(
+                    compose_transcript_text(None)
+                )
+                continue
+
+            conversation = (
+                active_conversation
+                if conversation_id == active_id
+                else self._get_conversation_by_id(conversation_id)
+            )
+            if conversation is None:
+                self._timeline_cache.forget(conversation_id)
+                continue
+
+            timeline = self._timeline_cache.timeline_for(conversation)
+            if conversation_id != active_id:
+                continue
+
+            if not force and not entry_ids:
+                continue
+
+            updated_entries = None if force else sorted(entry_ids)
+            view.schedule_render(
+                conversation=conversation,
+                timeline=timeline,
+                updated_entries=updated_entries,
+                force=force,
+            )
+            self._latest_timeline = timeline
+            self._update_transcript_selection_probe(
+                compose_transcript_text(conversation, timeline=timeline)
+            )
+
+    def _render_transcript(self) -> None:
+        self._request_transcript_refresh(force=True, immediate=True)
 
     def _update_transcript_selection_probe(self, text: str | None = None) -> None:
         probe = getattr(self, "_transcript_selection_probe", None)
@@ -1915,14 +2039,24 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         entry = handle.pending_entry
         if entry is None:
             return
+        conversation = self._get_conversation_by_id(handle.conversation_id)
+        entry_id = self._entry_identifier(conversation, entry)
         if not tool_results:
             entry.tool_results = None
-            self._render_transcript()
+            self._request_transcript_refresh(
+                conversation=conversation,
+                entry_ids=[entry_id] if entry_id else None,
+                force=entry_id is None,
+            )
             return
 
         cloned_results = list(clone_streamed_tool_results(tool_results))
         entry.tool_results = cloned_results
-        self._render_transcript()
+        self._request_transcript_refresh(
+            conversation=conversation,
+            entry_ids=[entry_id] if entry_id else None,
+            force=entry_id is None,
+        )
 
     def _handle_llm_step(
         self,
@@ -1959,7 +2093,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 handle.latest_reasoning_segments = reasoning_segments
                 updated = True
         if updated:
-            self._render_transcript()
+            conversation = self._get_conversation_by_id(handle.conversation_id)
+            entry_id = self._entry_identifier(conversation, entry)
+            self._request_transcript_refresh(
+                conversation=conversation,
+                entry_ids=[entry_id] if entry_id else None,
+                force=entry_id is None,
+            )
 
     def _update_entry_llm_steps(
         self, entry: ChatEntry, payload: Mapping[str, Any]
@@ -2086,12 +2226,39 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _compose_transcript_text(self) -> str:
         conversation = self._get_active_conversation_loaded()
-        return compose_transcript_text(conversation)
+        if conversation is None:
+            return compose_transcript_text(None)
+        if self._transcript_refresh_scheduled:
+            self._flush_pending_transcript_refresh()
+        timeline = self._latest_timeline
+        if timeline is None or timeline.conversation_id != conversation.conversation_id:
+            timeline = self._timeline_cache.timeline_for(conversation)
+        return compose_transcript_text(conversation, timeline=timeline)
 
 
     def _compose_transcript_log_text(self) -> str:
         conversation = self._get_active_conversation_loaded()
-        return compose_transcript_log_text(conversation)
+        if conversation is None:
+            return compose_transcript_log_text(None)
+        if self._transcript_refresh_scheduled:
+            self._flush_pending_transcript_refresh()
+        timeline = self._latest_timeline
+        if timeline is None or timeline.conversation_id != conversation.conversation_id:
+            timeline = self._timeline_cache.timeline_for(conversation)
+        return compose_transcript_log_text(conversation, timeline=timeline)
+
+
+    def _entry_identifier(
+        self, conversation: ChatConversation | None, entry: ChatEntry | None
+    ) -> str | None:
+        if conversation is None or entry is None:
+            return None
+        self._session.history.ensure_conversation_entries(conversation)
+        try:
+            index = conversation.entries.index(entry)
+        except ValueError:
+            return None
+        return f"{conversation.conversation_id}:{index}"
 
     def _update_transcript_copy_buttons(self, enabled: bool) -> None:
         for button in (

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import json
 import shutil
+import sqlite3
+import json
 from pathlib import Path
 
 import pytest
@@ -45,7 +46,7 @@ def test_agent_chat_history_saved_next_to_documents(tmp_path, wx_app, gui_contex
         wx_app.Yield()
 
         panel = frame.agent_panel
-        expected_history = repository / ".cookareq" / "agent_chats.json"
+        expected_history = repository / ".cookareq" / "agent_chats.sqlite"
         expected_settings = repository / ".cookareq" / "agent_settings.json"
         assert panel.history_path == expected_history
         assert panel.project_settings_path == expected_settings
@@ -54,10 +55,18 @@ def test_agent_chat_history_saved_next_to_documents(tmp_path, wx_app, gui_contex
         wx_app.Yield()
 
         assert expected_history.exists()
-        saved = json.loads(expected_history.read_text(encoding="utf-8"))
-        assert saved["conversations"]
-        entry = saved["conversations"][0]["entries"][0]
-        assert entry["prompt"] == "ping"
+        with sqlite3.connect(expected_history) as conn:
+            conn.row_factory = sqlite3.Row
+            conversations = conn.execute("SELECT id FROM conversations").fetchall()
+            assert conversations
+            conversation_id = conversations[0]["id"]
+            row = conn.execute(
+                "SELECT payload FROM entries WHERE conversation_id = ? ORDER BY position",
+                (conversation_id,),
+            ).fetchone()
+            assert row is not None
+            payload = json.loads(row["payload"])
+            assert payload["prompt"] == "ping"
     finally:
         frame.Destroy()
         wx_app.Yield()

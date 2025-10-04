@@ -3,7 +3,7 @@ from app.ui.chat_entry import ChatConversation
 
 
 def test_agent_chat_history_round_trip(tmp_path):
-    history_path = tmp_path / "history.json"
+    history_path = tmp_path / "agent_chats.sqlite"
     events: list[tuple[str | None, str | None]] = []
     history = AgentChatHistory(
         history_path=history_path,
@@ -32,7 +32,7 @@ def test_agent_chat_history_round_trip(tmp_path):
 
 
 def test_agent_chat_history_switch_path_persists_existing(tmp_path):
-    original = tmp_path / "first.json"
+    original = tmp_path / "first.sqlite"
     history = AgentChatHistory(history_path=original, on_active_changed=None)
     initial = ChatConversation.new()
     history.set_conversations([initial])
@@ -40,7 +40,7 @@ def test_agent_chat_history_switch_path_persists_existing(tmp_path):
     history.save()
 
     new_conversation = ChatConversation.new()
-    new_path = tmp_path / "second.json"
+    new_path = tmp_path / "second.sqlite"
     history.set_conversations([new_conversation])
     history.set_active_id(new_conversation.conversation_id)
     changed = history.set_path(new_path, persist_existing=True)

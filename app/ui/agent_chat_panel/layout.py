@@ -158,7 +158,7 @@ class AgentChatLayoutBuilder:
             transcript_scroller,
             transcript_box,
             callbacks=SegmentViewCallbacks(
-                get_conversation=panel._get_active_conversation,
+                get_conversation=panel._get_active_conversation_loaded,
                 is_running=lambda: panel.is_running,
                 on_regenerate=panel._handle_regenerate_request,
                 update_copy_buttons=panel._update_transcript_copy_buttons,

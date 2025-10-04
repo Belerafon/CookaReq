@@ -15,13 +15,14 @@ VALIDATION_ERROR_MESSAGE = (
 
 
 def _conversation_with_entry(entry: ChatEntry) -> ChatConversation:
-    return ChatConversation(
+    conversation = ChatConversation(
         conversation_id="conv-1",
         title="Test",
         created_at="2025-09-30T20:50:00+00:00",
         updated_at="2025-09-30T20:50:00+00:00",
-        entries=[entry],
     )
+    conversation.replace_entries([entry])
+    return conversation
 
 
 def test_build_conversation_timeline_compiles_turn() -> None:

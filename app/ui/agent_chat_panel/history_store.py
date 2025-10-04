@@ -4,24 +4,18 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterable, Mapping, Sequence
+import sqlite3
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any
 
-from ..chat_entry import ChatConversation
+from ..chat_entry import ChatConversation, ChatEntry
 from .paths import _default_history_path, _normalize_history_path
 
 
 logger = logging.getLogger(__name__)
 
 
-def _temporary_path(path: Path) -> Path:
-    """Return a deterministic temporary path next to *path*."""
-
-    suffix = path.suffix
-    if suffix:
-        return path.with_suffix(f"{suffix}.tmp")
-    return path.with_name(f"{path.name}.tmp")
+_SCHEMA_VERSION = 1
 
 
 class HistoryStore:
@@ -29,33 +23,22 @@ class HistoryStore:
 
     def __init__(self, path: Path | str | None = None) -> None:
         self._path = self._normalize(path)
-        self._active_path = self._derive_active_path(self._path)
-        self._cached_payload: dict[str, Any] | None = None
 
+    # ------------------------------------------------------------------
     @staticmethod
     def _normalize(path: Path | str | None) -> Path:
         if path is None:
             return _default_history_path()
         return _normalize_history_path(path)
 
-    @staticmethod
-    def _derive_active_path(path: Path) -> Path:
-        if path.suffix:
-            return path.with_name(f"{path.stem}_active{path.suffix}")
-        return path.with_name(f"{path.name}_active")
-
+    # ------------------------------------------------------------------
     @property
     def path(self) -> Path:
-        """Return the active history path."""
+        """Return the SQLite database path."""
 
         return self._path
 
-    @property
-    def active_path(self) -> Path:
-        """Return the path used to persist the active conversation id."""
-
-        return self._active_path
-
+    # ------------------------------------------------------------------
     def set_path(
         self,
         path: Path | str | None,
@@ -69,7 +52,7 @@ class HistoryStore:
         new_path = self._normalize(path)
         if new_path == self._path:
             return False
-        if persist_existing and conversations:
+        if persist_existing and conversations is not None:
             try:
                 self.save(conversations, active_id)
             except Exception:  # pragma: no cover - defensive logging
@@ -77,79 +60,65 @@ class HistoryStore:
                     "Failed to persist conversations before switching history path"
                 )
         self._path = new_path
-        self._active_path = self._derive_active_path(new_path)
-        self._cached_payload = None
         return True
 
+    # ------------------------------------------------------------------
     def load(self) -> tuple[list[ChatConversation], str | None]:
         """Load conversations and the active conversation id."""
 
         try:
-            raw = json.loads(self._path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            self._cached_payload = None
-            self._remove_active_override()
-            return [], None
-        except Exception:  # pragma: no cover - defensive logging
+            with self._connect() as conn:
+                self._ensure_schema(conn)
+                conversations = self._load_conversations(conn)
+                if not conversations:
+                    return [], None
+                active_id = self._resolve_active_id(conn, conversations)
+                return conversations, active_id
+        except sqlite3.Error:  # pragma: no cover - defensive logging
             logger.exception("Failed to load chat history from %s", self._path)
-            self._cached_payload = None
             return [], None
 
-        if not isinstance(raw, Mapping):
-            self._cached_payload = None
-            return [], None
+    # ------------------------------------------------------------------
+    def load_entries(self, conversation_id: str) -> list[ChatEntry]:
+        """Return entries belonging to *conversation_id*."""
 
-        version = raw.get("version")
-        if not isinstance(version, int) or version != 2:
-            logger.warning(
-                "Unsupported chat history version in %s: %r", self._path, version
+        try:
+            with self._connect() as conn:
+                self._ensure_schema(conn)
+                rows = conn.execute(
+                    """
+                    SELECT payload
+                    FROM entries
+                    WHERE conversation_id = ?
+                    ORDER BY position
+                    """,
+                    (conversation_id,),
+                ).fetchall()
+        except sqlite3.Error:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to load chat entries for %s from %s", conversation_id, self._path
             )
-            self._cached_payload = None
-            return [], None
+            return []
 
-        conversations_raw = raw.get("conversations")
-        if not isinstance(conversations_raw, Sequence):
-            self._cached_payload = None
-            return [], None
-
-        conversations: list[ChatConversation] = []
-        for item in conversations_raw:
-            if not isinstance(item, Mapping):
+        entries: list[ChatEntry] = []
+        for row in rows:
+            payload_raw = row["payload"]
+            if not isinstance(payload_raw, str):
                 continue
             try:
-                conversation = ChatConversation.from_dict(item)
-            except Exception:  # pragma: no cover - defensive
-                logger.exception("Failed to deserialize stored conversation")
+                payload = json.loads(payload_raw)
+            except json.JSONDecodeError:  # pragma: no cover - defensive logging
+                logger.exception("Failed to decode stored chat entry for %s", conversation_id)
                 continue
-            entries_raw = item.get("entries")
-            had_entries = isinstance(entries_raw, Sequence) and bool(entries_raw)
-            if had_entries and not conversation.entries:
-                logger.warning(
-                    "Skipping chat conversation %s with no valid entries",
-                    conversation.conversation_id,
-                )
+            if not isinstance(payload, dict):
                 continue
-            conversations.append(conversation)
+            try:
+                entries.append(ChatEntry.from_dict(payload))
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception("Failed to deserialize chat entry for %s", conversation_id)
+        return entries
 
-        if not conversations:
-            self._cached_payload = None
-            self._remove_active_override()
-            return [], None
-
-        active_id = raw.get("active_id")
-        conversation_ids = {conv.conversation_id for conv in conversations}
-        if isinstance(active_id, str) and active_id in conversation_ids:
-            selected_id = active_id
-        else:
-            selected_id = conversations[-1].conversation_id
-
-        override = self._load_active_override(conversation_ids)
-        if override is not None:
-            selected_id = override
-
-        self._cached_payload = self._serialize_state(conversations, selected_id)
-        return conversations, selected_id
-
+    # ------------------------------------------------------------------
     def save(
         self,
         conversations: Iterable[ChatConversation],
@@ -157,77 +126,207 @@ class HistoryStore:
     ) -> None:
         """Persist *conversations* to the configured history path."""
 
-        payload = self._serialize_state(conversations, active_id)
-        self._write_payload(payload)
-        self._cached_payload = payload
-        self._write_active_override(active_id)
+        try:
+            with self._connect() as conn:
+                self._ensure_schema(conn)
+                with conn:
+                    self._set_active_id(conn, active_id)
+                    self._sync_conversations(conn, list(conversations))
+        except sqlite3.Error:
+            logger.exception("Failed to persist agent chat history to %s", self._path)
+            raise
 
+    # ------------------------------------------------------------------
     def save_active_id(self, active_id: str | None) -> None:
         """Persist only the active conversation id."""
 
-        if self._cached_payload is not None:
-            cached = dict(self._cached_payload)
-            cached["active_id"] = active_id
-            self._cached_payload = cached
-        self._write_active_override(active_id)
+        try:
+            with self._connect() as conn:
+                self._ensure_schema(conn)
+                with conn:
+                    self._set_active_id(conn, active_id)
+        except sqlite3.Error:
+            logger.exception("Failed to persist active chat selection to %s", self._path)
+            raise
 
     # ------------------------------------------------------------------
-    def _serialize_state(
-        self,
-        conversations: Iterable[ChatConversation],
-        active_id: str | None,
-    ) -> dict[str, Any]:
-        return {
-            "version": 2,
-            "active_id": active_id,
-            "conversations": [conv.to_dict() for conv in conversations],
-        }
-
-    def _write_payload(self, payload: Mapping[str, Any]) -> None:
+    def _connect(self) -> sqlite3.Connection:
         path = self._path
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = _temporary_path(path)
-        tmp_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        conn = sqlite3.connect(str(path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+
+    # ------------------------------------------------------------------
+    def _ensure_schema(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
         )
-        tmp_path.replace(path)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversations (
+                id TEXT PRIMARY KEY,
+                position INTEGER NOT NULL,
+                title TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                preview TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS entries (
+                conversation_id TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                payload TEXT NOT NULL,
+                PRIMARY KEY (conversation_id, position),
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+        version = self._get_metadata(conn, "schema_version")
+        if version is None:
+            self._set_metadata(conn, "schema_version", str(_SCHEMA_VERSION))
+        elif version != str(_SCHEMA_VERSION):
+            raise sqlite3.DatabaseError(
+                f"Unsupported chat history schema version: {version!r}"
+            )
 
-    def _load_active_override(self, conversation_ids: set[str]) -> str | None:
-        try:
-            raw = json.loads(self._active_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            return None
-        except Exception:  # pragma: no cover - defensive logging
-            logger.warning("Failed to load active chat id from %s", self._active_path)
-            return None
-        candidate = raw.get("active_id") if isinstance(raw, Mapping) else None
-        if isinstance(candidate, str) and candidate in conversation_ids:
-            return candidate
-        return None
+    # ------------------------------------------------------------------
+    def _load_conversations(
+        self, conn: sqlite3.Connection
+    ) -> list[ChatConversation]:
+        rows = conn.execute(
+            """
+            SELECT id, title, created_at, updated_at, preview
+            FROM conversations
+            ORDER BY position
+            """
+        ).fetchall()
+        conversations: list[ChatConversation] = []
+        for row in rows:
+            conversation = ChatConversation(
+                conversation_id=row["id"],
+                title=row["title"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                preview=row["preview"],
+            )
+            conversation.mark_entries_unloaded(
+                lambda conv_id=row["id"]: self.load_entries(conv_id)
+            )
+            conversations.append(conversation)
+        return conversations
 
-    def _write_active_override(self, active_id: str | None) -> None:
-        path = self._active_path
+    # ------------------------------------------------------------------
+    def _resolve_active_id(
+        self, conn: sqlite3.Connection, conversations: Sequence[ChatConversation]
+    ) -> str | None:
+        ids = [conv.conversation_id for conv in conversations]
+        if not ids:
+            return None
+        active_id = self._get_metadata(conn, "active_id")
+        if active_id in ids:
+            return active_id
+        return ids[-1]
+
+    # ------------------------------------------------------------------
+    def _sync_conversations(
+        self, conn: sqlite3.Connection, conversations: list[ChatConversation]
+    ) -> None:
+        existing_ids = {
+            row["id"] for row in conn.execute("SELECT id FROM conversations").fetchall()
+        }
+        desired_ids = {conv.conversation_id for conv in conversations}
+        removed = existing_ids - desired_ids
+        if removed:
+            conn.executemany(
+                "DELETE FROM conversations WHERE id = ?", ((conversation_id,) for conversation_id in removed)
+            )
+
+        for position, conversation in enumerate(conversations):
+            preview = conversation.preview
+            conn.execute(
+                """
+                INSERT INTO conversations (id, position, title, created_at, updated_at, preview)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    position = excluded.position,
+                    title = excluded.title,
+                    created_at = excluded.created_at,
+                    updated_at = excluded.updated_at,
+                    preview = excluded.preview
+                """,
+                (
+                    conversation.conversation_id,
+                    position,
+                    conversation.title,
+                    conversation.created_at,
+                    conversation.updated_at,
+                    preview,
+                ),
+            )
+            if conversation.entries_loaded:
+                self._replace_entries(conn, conversation)
+
+    # ------------------------------------------------------------------
+    def _replace_entries(
+        self, conn: sqlite3.Connection, conversation: ChatConversation
+    ) -> None:
+        conn.execute(
+            "DELETE FROM entries WHERE conversation_id = ?",
+            (conversation.conversation_id,),
+        )
+        for position, entry in enumerate(conversation.entries):
+            payload = json.dumps(entry.to_dict(), ensure_ascii=False)
+            conn.execute(
+                """
+                INSERT INTO entries (conversation_id, position, payload)
+                VALUES (?, ?, ?)
+                """,
+                (
+                    conversation.conversation_id,
+                    position,
+                    payload,
+                ),
+            )
+
+    # ------------------------------------------------------------------
+    def _get_metadata(self, conn: sqlite3.Connection, key: str) -> str | None:
+        row = conn.execute(
+            "SELECT value FROM metadata WHERE key = ?",
+            (key,),
+        ).fetchone()
+        if row is None:
+            return None
+        value = row["value"]
+        return value if isinstance(value, str) else None
+
+    # ------------------------------------------------------------------
+    def _set_metadata(self, conn: sqlite3.Connection, key: str, value: str) -> None:
+        conn.execute(
+            """
+            INSERT INTO metadata (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (key, value),
+        )
+
+    # ------------------------------------------------------------------
+    def _set_active_id(self, conn: sqlite3.Connection, active_id: str | None) -> None:
         if active_id is None:
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"active_id": active_id}
-        tmp_path = _temporary_path(path)
-        tmp_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        tmp_path.replace(path)
-
-    def _remove_active_override(self) -> None:
-        try:
-            self._active_path.unlink()
-        except FileNotFoundError:
-            pass
+            conn.execute("DELETE FROM metadata WHERE key = ?", ("active_id",))
+        else:
+            self._set_metadata(conn, "active_id", active_id)
 
 
 __all__ = ["HistoryStore"]

@@ -19,7 +19,10 @@ class _StubExecutor:
 
 def _create_session(tmp_path, wx):
     frame = wx.Frame(None)
-    history = AgentChatHistory(history_path=tmp_path / "history.json", on_active_changed=None)
+    history = AgentChatHistory(
+        history_path=tmp_path / "agent_chats.sqlite",
+        on_active_changed=None,
+    )
     session = AgentChatSession(history=history, timer_owner=frame)
     return frame, session
 
@@ -59,7 +62,7 @@ def test_agent_chat_session_history_switch(tmp_path, wx_app):
     history_events: list[AgentChatHistory] = []
     session.events.history_changed.connect(history_events.append)
 
-    new_path = tmp_path / "other.json"
+    new_path = tmp_path / "other.sqlite"
     changed = session.set_history_path(new_path)
     assert changed
     assert history_events

@@ -2015,7 +2015,7 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
 
         assert agent.cancel_seen.wait(1.0)
         assert agent.completed.wait(1.0)
-        wx.Yield()
+        flush_wx_events(wx, count=6)
 
         history = panel.history
         assert len(history) == 1
@@ -2024,6 +2024,28 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
         assert entry.display_response == _("Generation cancelled")
         assert entry.response == ""
         assert entry.response_at is not None
+
+        target_labels = {"Regenerate", i18n.gettext("Regenerate")}
+
+        def find_regenerate_button(window):
+            for child in window.GetChildren():
+                if isinstance(child, wx.Button) and child.GetLabel() in target_labels:
+                    return child
+                found = find_regenerate_button(child)
+                if found is not None:
+                    return found
+            return None
+
+        transcript_children = panel.transcript_panel.GetChildren()
+        assert transcript_children
+        regen_button = None
+        for candidate in reversed(transcript_children):
+            regen_button = find_regenerate_button(candidate)
+            if regen_button is not None:
+                break
+
+        assert regen_button is not None
+        assert regen_button.IsEnabled()
     finally:
         if frame is not None and panel is not None:
             destroy_panel(frame, panel)

@@ -81,7 +81,7 @@ def _conversation_with_failed_updates() -> ChatConversation:
         tokens=0,
         prompt_at=_iso("2025-10-02T11:19:15+00:00"),
         response_at=_iso("2025-10-02T11:38:04+00:00"),
-        tool_results=_build_tool_payloads(),
+        raw_result={"tool_results": _build_tool_payloads()},
         diagnostic={
             "llm_request_messages": (
                 {"role": "system", "content": _SYSTEM_PROMPT_TEXT},

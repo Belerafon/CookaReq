@@ -37,15 +37,17 @@ def test_build_conversation_timeline_compiles_turn() -> None:
         reasoning=(
             {"type": "thought", "text": "Нужно пройтись по каждому требованию"},
         ),
-        tool_results=(
-            {
-                "tool_name": "get_requirement",
-                "started_at": "2025-09-30T20:50:10+00:00",
-                "completed_at": "2025-09-30T20:50:11+00:00",
-                "tool_call_id": "tool-1",
-            },
-        ),
-        raw_result={"answer": "Готово"},
+        raw_result={
+            "answer": "Готово",
+            "tool_results": [
+                {
+                    "tool_name": "get_requirement",
+                    "started_at": "2025-09-30T20:50:10+00:00",
+                    "completed_at": "2025-09-30T20:50:11+00:00",
+                    "tool_call_id": "tool-1",
+                }
+            ],
+        },
         layout_hints={"user": "140", "agent": 220, "invalid": 0},
     )
     conversation = _conversation_with_entry(entry)
@@ -116,28 +118,30 @@ def test_tool_calls_sorted_by_timestamp() -> None:
         tokens=1,
         prompt_at="2025-09-30T20:50:10+00:00",
         response_at="2025-09-30T20:52:58+00:00",
-        tool_results=(
-            {
-                "tool_name": "update_requirement_field",
-                "agent_status": "failed",
-                "started_at": "2025-09-30T20:52:57+00:00",
-                "completed_at": "2025-09-30T20:52:58+00:00",
-                "tool_call_id": "tool-6",
-            },
-            {
-                "tool_name": "get_requirement",
-                "started_at": "2025-09-30T20:50:10+00:00",
-                "completed_at": "2025-09-30T20:50:11+00:00",
-                "tool_call_id": "tool-1",
-            },
-            {
-                "tool_name": "update_requirement_field",
-                "agent_status": "failed",
-                "started_at": "2025-09-30T20:52:05+00:00",
-                "completed_at": "2025-09-30T20:52:05+00:00",
-                "tool_call_id": "tool-4",
-            },
-        ),
+        raw_result={
+            "tool_results": [
+                {
+                    "tool_name": "update_requirement_field",
+                    "agent_status": "failed",
+                    "started_at": "2025-09-30T20:52:57+00:00",
+                    "completed_at": "2025-09-30T20:52:58+00:00",
+                    "tool_call_id": "tool-6",
+                },
+                {
+                    "tool_name": "get_requirement",
+                    "started_at": "2025-09-30T20:50:10+00:00",
+                    "completed_at": "2025-09-30T20:50:11+00:00",
+                    "tool_call_id": "tool-1",
+                },
+                {
+                    "tool_name": "update_requirement_field",
+                    "agent_status": "failed",
+                    "started_at": "2025-09-30T20:52:05+00:00",
+                    "completed_at": "2025-09-30T20:52:05+00:00",
+                    "tool_call_id": "tool-4",
+                },
+            ]
+        },
     )
     conversation = _conversation_with_entry(entry)
 
@@ -164,16 +168,16 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
         tokens=1,
         prompt_at="2025-10-01T08:52:30+00:00",
         response_at="2025-10-01T08:52:40+00:00",
-        tool_results=[
-            {
-                "tool_name": "update_requirement_field",
-                "tool_call_id": "call-1",
-                "started_at": "2025-10-01T08:52:35+00:00",
-                "completed_at": "2025-10-01T08:52:39+00:00",
-                "ok": False,
-            }
-        ],
         raw_result={
+            "tool_results": [
+                {
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "call-1",
+                    "started_at": "2025-10-01T08:52:35+00:00",
+                    "completed_at": "2025-10-01T08:52:39+00:00",
+                    "ok": False,
+                }
+            ],
             "diagnostic": {
                 "llm_steps": [
                     {
@@ -257,22 +261,24 @@ def test_tool_call_event_without_recorded_request_relies_on_tool_result() -> Non
         tokens=1,
         prompt_at="2025-10-01T09:00:00+00:00",
         response_at="2025-10-01T09:00:05+00:00",
-        tool_results=[
-            {
-                "tool_name": "update_requirement_field",
-                "tool_call_id": "call-42",
-                "arguments": {
-                    "rid": "REQ-9",
-                    "field": "title",
-                    "value": "Updated title",
-                },
-                "ok": False,
-                "error": {
-                    "code": "VALIDATION_ERROR",
-                    "message": VALIDATION_ERROR_MESSAGE,
-                },
-            }
-        ],
+        raw_result={
+            "tool_results": [
+                {
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "call-42",
+                    "arguments": {
+                        "rid": "REQ-9",
+                        "field": "title",
+                        "value": "Updated title",
+                    },
+                    "ok": False,
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": VALIDATION_ERROR_MESSAGE,
+                    },
+                }
+            ]
+        },
     )
     conversation = _conversation_with_entry(entry)
 
@@ -304,16 +310,16 @@ def test_tool_call_event_includes_llm_error_arguments() -> None:
         prompt="",
         response="",
         tokens=1,
-        tool_results=[
-            {
-                "tool_name": "update_requirement_field",
-                "tool_call_id": "call-error",
-                "agent_status": "failed",
-                "ok": False,
-                "error": {"message": "invalid arguments"},
-            }
-        ],
         raw_result={
+            "tool_results": [
+                {
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "call-error",
+                    "agent_status": "failed",
+                    "ok": False,
+                    "error": {"message": "invalid arguments"},
+                }
+            ],
             "diagnostic": {
                 "llm_steps": [
                     {
@@ -383,15 +389,15 @@ def test_tool_call_event_includes_aggregated_diagnostics() -> None:
         prompt="",
         response="",
         tokens=1,
-        tool_results=[
-            {
-                "tool_name": "update_requirement_field",
-                "tool_call_id": "call-diagnostics",
-                "agent_status": "failed",
-                "ok": False,
-            }
-        ],
         raw_result={
+            "tool_results": [
+                {
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "call-diagnostics",
+                    "agent_status": "failed",
+                    "ok": False,
+                }
+            ],
             "diagnostic": {
                 "tool_calls": [
                     {
@@ -450,8 +456,11 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
         tokens=0,
         prompt_at="2025-10-01T08:52:30+00:00",
         response_at="2025-10-01T08:52:40+00:00",
-        tool_results=[snapshot],
-        raw_result={"diagnostic": diagnostic, "error": snapshot.get("error")},
+        raw_result={
+            "tool_results": [snapshot],
+            "diagnostic": diagnostic,
+            "error": snapshot.get("error"),
+        },
     )
     if isinstance(diagnostic, dict):
         entry.diagnostic = dict(diagnostic)
@@ -524,16 +533,16 @@ def test_streamed_responses_in_turn() -> None:
         tokens=1,
         prompt_at="2025-10-01T08:00:00+00:00",
         response_at="2025-10-01T08:05:00+00:00",
-        tool_results=[
-            {
-                "tool_name": "update_requirement_field",
-                "tool_call_id": "call-1",
-                "started_at": "2025-10-01T08:01:00+00:00",
-                "completed_at": "2025-10-01T08:02:00+00:00",
-                "ok": False,
-            }
-        ],
         raw_result={
+            "tool_results": [
+                {
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "call-1",
+                    "started_at": "2025-10-01T08:01:00+00:00",
+                    "completed_at": "2025-10-01T08:02:00+00:00",
+                    "ok": False,
+                }
+            ],
             "diagnostic": {
                 "llm_steps": [
                     {
@@ -598,14 +607,14 @@ def test_promotes_last_stream_when_final_missing() -> None:
                         },
                     }
                 ]
-            }
+            },
+            "tool_results": [
+                {
+                    "tool_name": "demo_tool",
+                    "completed_at": "2025-10-01T08:00:09+00:00",
+                }
+            ],
         },
-        tool_results=[
-            {
-                "tool_name": "demo_tool",
-                "completed_at": "2025-10-01T08:00:09+00:00",
-            }
-        ],
     )
     conversation = _conversation_with_entry(entry)
 
@@ -628,20 +637,22 @@ def test_tool_summary_compacts_error_details() -> None:
         tokens=1,
         prompt_at="2025-10-01T08:00:00+00:00",
         response_at="2025-10-01T08:05:00+00:00",
-        tool_results=[
-            {
-                "tool_name": "update_requirement_field",
-                "tool_call_id": "tool-1",
-                "agent_status": f"failed: {VALIDATION_ERROR_MESSAGE}",
-                "started_at": "2025-10-01T08:01:00+00:00",
-                "completed_at": "2025-10-01T08:01:05+00:00",
-                "ok": False,
-                "error": {
-                    "code": "VALIDATION_ERROR",
-                    "message": VALIDATION_ERROR_MESSAGE,
-                },
-            }
-        ],
+        raw_result={
+            "tool_results": [
+                {
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "tool-1",
+                    "agent_status": f"failed: {VALIDATION_ERROR_MESSAGE}",
+                    "started_at": "2025-10-01T08:01:00+00:00",
+                    "completed_at": "2025-10-01T08:01:05+00:00",
+                    "ok": False,
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": VALIDATION_ERROR_MESSAGE,
+                    },
+                }
+            ]
+        },
     )
     conversation = _conversation_with_entry(entry)
 
@@ -662,19 +673,21 @@ def test_tool_summary_includes_diagnostics_metadata() -> None:
         tokens=1,
         prompt_at="2025-10-01T08:00:00+00:00",
         response_at="2025-10-01T08:05:00+00:00",
-        tool_results=[
-            {
-                "tool_name": "update_requirement_field",
-                "tool_call_id": "tool-42",
-                "arguments": {"rid": "REQ-9", "field": "title"},
-                "started_at": "2025-10-01T08:01:00+00:00",
-                "completed_at": "2025-10-01T08:01:02+00:00",
-                "duration_ms": 2150,
-                "cost": {"display": "$0.01"},
-                "ok": False,
-                "error": {"message": "validation failed"},
-            }
-        ],
+        raw_result={
+            "tool_results": [
+                {
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "tool-42",
+                    "arguments": {"rid": "REQ-9", "field": "title"},
+                    "started_at": "2025-10-01T08:01:00+00:00",
+                    "completed_at": "2025-10-01T08:01:02+00:00",
+                    "duration_ms": 2150,
+                    "cost": {"display": "$0.01"},
+                    "ok": False,
+                    "error": {"message": "validation failed"},
+                }
+            ]
+        },
     )
     conversation = _conversation_with_entry(entry)
 
@@ -727,7 +740,7 @@ def test_missing_timestamps_reported_as_missing() -> None:
         prompt="hello",
         response="",
         tokens=1,
-        tool_results=[{"tool_name": "noop"}],
+        raw_result={"tool_results": [{"tool_name": "noop"}]},
     )
     conversation = _conversation_with_entry(entry)
 

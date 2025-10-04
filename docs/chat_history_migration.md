@@ -62,8 +62,9 @@ the backup and rerun the migration after addressing the reported issue.
   used.
 - Severely corrupted files (for instance, entries that are not dictionaries) are
   skipped. If no valid records remain, the utility raises an exception.
-- The script copies `raw_result` and `tool_results` verbatim. If those fields
-  changed between versions, review the output manually.
+- The script copies `raw_result` verbatim (including any embedded
+  `tool_results` payloads). If the structure changes between releases, review
+  the output manually.
 
 ## Testing and maintenance
 

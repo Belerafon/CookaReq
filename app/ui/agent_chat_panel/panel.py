@@ -209,6 +209,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._session.events.tokens_changed.connect(self._on_session_tokens_changed)
         self._session.events.history_changed.connect(self._on_session_history_changed)
         self._session.load_history()
+        self._activate_startup_conversation()
         self._build_ui()
         self._initialize_controller()
         self._render_transcript()
@@ -334,6 +335,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     # ------------------------------------------------------------------
     def _load_history_from_store(self) -> None:
         self._session.load_history()
+        self._activate_startup_conversation()
 
     def _save_history_to_store(self) -> None:
         self._session.save_history()
@@ -2211,6 +2213,18 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if conversation is not None:
             return conversation
         return self._create_conversation(persist=False)
+
+    def _activate_startup_conversation(self) -> None:
+        """Ensure the panel starts with a fresh chat instead of a history entry."""
+
+        history = self._session.history
+        history.set_active_id(None)
+        for conversation in reversed(self.conversations):
+            if conversation.entries:
+                continue
+            self._set_active_conversation_id(conversation.conversation_id)
+            return
+        self._create_conversation(persist=False)
 
     def _format_conversation_row(
         self, conversation: ChatConversation

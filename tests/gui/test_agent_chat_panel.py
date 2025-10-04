@@ -2535,6 +2535,13 @@ def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):
     destroy_panel(frame1, panel1)
 
     wx, frame2, panel2 = create_panel(tmp_path, wx_app, EchoAgent())
+    assert panel2.history == []
+    assert panel2.history_list.GetItemCount() == 2
+    assert panel2._active_index() == 1
+
+    panel2._on_history_row_activated(0)
+    flush_wx_events(wx)
+
     assert len(panel2.history) == 1
     assert panel2.history[0].prompt == "hello"
     destroy_panel(frame2, panel2)
@@ -2543,6 +2550,7 @@ def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):
 def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
+    from app.i18n import _
 
     bad_file = tmp_path / "history.json"
     bad_file.write_text("{not json}")
@@ -2558,12 +2566,18 @@ def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
         history_path=bad_file,
     )
     assert panel.history == []
+    assert panel.history_list.GetItemCount() == 1
+    assert (
+        panel.get_transcript_text()
+        == _("This chat does not have any messages yet. Send one to get started.")
+    )
     destroy_panel(frame, panel)
 
 
 def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
+    from app.i18n import _
 
     legacy_file = tmp_path / "history.json"
     legacy_file.write_text(json.dumps({"version": 1, "conversations": []}))
@@ -2580,8 +2594,11 @@ def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
     )
 
     assert panel.history == []
-    assert panel.history_list.GetItemCount() == 0
-    assert "Start chatting" in panel.get_transcript_text()
+    assert panel.history_list.GetItemCount() == 1
+    assert (
+        panel.get_transcript_text()
+        == _("This chat does not have any messages yet. Send one to get started.")
+    )
 
     destroy_panel(frame, panel)
 
@@ -2589,6 +2606,7 @@ def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
 def test_agent_chat_panel_rejects_entries_without_token_info(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
+    from app.i18n import _
 
     legacy_file = tmp_path / "history.json"
     legacy_file.write_text(
@@ -2627,8 +2645,11 @@ def test_agent_chat_panel_rejects_entries_without_token_info(tmp_path, wx_app):
     )
 
     assert panel.history == []
-    assert panel.history_list.GetItemCount() == 0
-    assert "Start chatting" in panel.get_transcript_text()
+    assert panel.history_list.GetItemCount() == 1
+    assert (
+        panel.get_transcript_text()
+        == _("This chat does not have any messages yet. Send one to get started.")
+    )
 
     destroy_panel(frame, panel)
 

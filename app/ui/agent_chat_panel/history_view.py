@@ -313,11 +313,13 @@ class HistoryView:
         if not item or not item.IsOk():
             self._list.UnselectAll()
             self._list.SetFocus()
+            event.Skip()
             return
         row = self._list.ItemToRow(item)
         if row == wx.NOT_FOUND:
             self._list.UnselectAll()
             self._list.SetFocus()
+            event.Skip()
             return
         self._suppress_selection = True
         try:
@@ -326,6 +328,7 @@ class HistoryView:
         finally:
             self._suppress_selection = False
         self._activate_conversation(row)
+        event.Skip()
 
     # ------------------------------------------------------------------
     def _prepare_for_interaction(self) -> bool:

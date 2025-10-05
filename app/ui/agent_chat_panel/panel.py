@@ -1633,6 +1633,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 [conversation.conversation_id for conversation in self.conversations]
             )
 
+    def _prepare_history_interaction(self) -> bool:
+        """Flush pending transcript updates before history interactions."""
+
+        if self._pending_transcript_refresh:
+            self._flush_pending_transcript_refresh()
+        return False
+
     def _request_transcript_refresh(
         self,
         *,

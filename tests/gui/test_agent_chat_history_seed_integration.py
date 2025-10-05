@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import suppress
 import shutil
 from pathlib import Path
@@ -99,56 +100,89 @@ def _click_history_row(wx, app, list_ctrl, row: int) -> None:
         raise AssertionError("failed to select history row via simulated click")
 
 
-def test_demo_history_archive_activates_on_click(tmp_path, wx_app, gui_context):
+def test_demo_history_archive_activates_on_click(tmp_path, wx_app, gui_context, caplog):
     wx = pytest.importorskip("wx")
     project_dir = _copy_demo_project(tmp_path)
     frame = _create_main_frame(tmp_path, gui_context)
-    try:
-        frame.SetSize((1024, 768))
-        frame.SendSizeEvent()
-        if frame.agent_chat_menu_item and not frame.agent_chat_menu_item.IsChecked():
-            frame.agent_chat_menu_item.Check(True)
-            frame.on_toggle_agent_chat(None)
-            _flush_events(wx_app, 3)
-        _flush_events(wx_app)
-        frame._load_directory(project_dir)
-        _flush_events(wx_app, 10)
+    with caplog.at_level(logging.DEBUG, logger="cookareq.ui.agent_chat_panel"):
+        try:
+            frame.SetSize((1024, 768))
+            frame.SendSizeEvent()
+            if frame.agent_chat_menu_item and not frame.agent_chat_menu_item.IsChecked():
+                frame.agent_chat_menu_item.Check(True)
+                frame.on_toggle_agent_chat(None)
+                _flush_events(wx_app, 3)
+            _flush_events(wx_app)
+            frame._load_directory(project_dir)
+            _flush_events(wx_app, 10)
 
-        panel = frame.agent_panel
-        history_list = panel.history_list
+            panel = frame.agent_panel
+            history_list = panel.history_list
 
-        expected_history_path = project_dir / ".cookareq" / "agent_chats.sqlite"
-        assert expected_history_path.exists(), "seed archive should extract into .cookareq"
-        assert panel.history_path == expected_history_path
+            expected_history_path = project_dir / ".cookareq" / "agent_chats.sqlite"
+            assert expected_history_path.exists(), "seed archive should extract into .cookareq"
+            assert panel.history_path == expected_history_path
 
-        history_model = panel._session.history
-        draft_id = history_model.active_id
-        assert draft_id is not None, "a fresh draft conversation should be active"
+            history_model = panel._session.history
+            draft_id = history_model.active_id
+            assert draft_id is not None, "a fresh draft conversation should be active"
 
-        seeded_index = None
-        for idx, conversation in enumerate(history_model.conversations):
-            if conversation.entries:
-                seeded_index = idx
-                break
-        assert seeded_index is not None, "expected to find a seeded conversation with entries"
+            seeded_index = None
+            for idx, conversation in enumerate(history_model.conversations):
+                if conversation.entries:
+                    seeded_index = idx
+                    break
+            assert seeded_index is not None, "expected to find a seeded conversation with entries"
 
-        history_list.SetFocus()
-        history_list.EnsureVisible(history_list.RowToItem(seeded_index))
-        history_list.Update()
-        frame.SendSizeEvent()
-        _flush_events(wx_app, 4)
-        history_list.UnselectAll()
-        _flush_events(wx_app, 2)
+            history_list.SetFocus()
+            history_list.EnsureVisible(history_list.RowToItem(seeded_index))
+            history_list.Update()
+            frame.SendSizeEvent()
+            _flush_events(wx_app, 4)
+            history_list.UnselectAll()
+            _flush_events(wx_app, 2)
 
-        _click_history_row(wx, wx_app, history_list, seeded_index)
-        _flush_events(wx_app, 5)
-        assert history_list.IsRowSelected(seeded_index)
-        assert panel.active_conversation_id != draft_id
-        seeded_entries = panel.history
-        assert seeded_entries, "seeded conversation entries should load"
-        first_entry = seeded_entries[0]
-        assert first_entry.prompt.startswith("Переведи"), "unexpected prompt in seeded history"
-        assert first_entry.response, "seeded response should not be empty"
-    finally:
-        frame.Destroy()
-        _flush_events(wx_app)
+            caplog.clear()
+            _click_history_row(wx, wx_app, history_list, seeded_index)
+            _flush_events(wx_app, 5)
+            assert history_list.IsRowSelected(seeded_index)
+            assert panel.active_conversation_id != draft_id
+            seeded_entries = panel.history
+            assert seeded_entries, "seeded conversation entries should load"
+            first_entry = seeded_entries[0]
+            assert first_entry.prompt.startswith("Переведи"), "unexpected prompt in seeded history"
+            assert first_entry.response, "seeded response should not be empty"
+
+            history_events = [
+                record.json
+                for record in caplog.records
+                if getattr(record, "json", {}).get("event") == "AGENT_CHAT_HISTORY_TIMING"
+            ]
+            phases = {event["phase"] for event in history_events}
+            assert "panel.activate_conversation.request" in phases
+            assert "panel.activate_conversation.completed" in phases
+            completed = next(
+                event for event in history_events if event["phase"] == "panel.activate_conversation.completed"
+            )
+            assert completed.get("changed") is True
+            assert completed.get("source") == "history_row"
+
+            caplog.clear()
+            _click_history_row(wx, wx_app, history_list, seeded_index)
+            _flush_events(wx_app, 5)
+            repeat_events = [
+                record.json
+                for record in caplog.records
+                if getattr(record, "json", {}).get("event") == "AGENT_CHAT_HISTORY_TIMING"
+            ]
+            repeat_phases = {event["phase"] for event in repeat_events}
+            assert "panel.activate_conversation.request" in repeat_phases
+            assert "panel.activate_conversation.completed" in repeat_phases
+            repeat_completed = next(
+                event for event in repeat_events if event["phase"] == "panel.activate_conversation.completed"
+            )
+            assert repeat_completed.get("changed") is False
+            assert repeat_completed.get("source") == "history_row"
+        finally:
+            frame.Destroy()
+            _flush_events(wx_app)

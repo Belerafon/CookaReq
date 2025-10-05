@@ -1751,56 +1751,163 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         force: bool = False,
         immediate: bool = False,
     ) -> None:
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         if conversation is None:
             conversation = self._get_active_conversation_loaded()
         conversation_id = conversation.conversation_id if conversation is not None else None
 
+        entry_ids_tuple: tuple[str, ...] | None = None
+        if entry_ids is not None:
+            entry_ids_tuple = tuple(entry_ids)
+        entry_count = len(entry_ids_tuple) if entry_ids_tuple is not None else 0
+
+        emit_history_debug(
+            logger,
+            "panel.transcript_refresh.request",
+            conversation_id=conversation_id,
+            entry_count=entry_count,
+            force=force,
+            immediate=immediate,
+            pending_conversations=len(self._pending_transcript_refresh),
+        )
+
         if conversation_id is None:
             self._pending_transcript_refresh[None] = None
+            queue_kind = "no_conversation"
         else:
             if force:
                 self._timeline_cache.invalidate_conversation(conversation_id)
                 self._pending_transcript_refresh[conversation_id] = None
+                queue_kind = "full"
             else:
-                entry_set = {entry_id for entry_id in (entry_ids or ()) if entry_id}
+                entry_set = {entry_id for entry_id in (entry_ids_tuple or ()) if entry_id}
                 if not entry_set:
+                    emit_history_debug(
+                        logger,
+                        "panel.transcript_refresh.request.skipped",
+                        conversation_id=conversation_id,
+                        reason="empty_entries",
+                        force=force,
+                        immediate=immediate,
+                        elapsed_ns=elapsed_ns(debug_start_ns),
+                    )
                     return
                 self._timeline_cache.invalidate_entries(conversation_id, entry_set)
                 existing = self._pending_transcript_refresh.get(conversation_id)
                 if existing is None and conversation_id in self._pending_transcript_refresh:
-                    # full refresh already queued
-                    pass
+                    queue_kind = "full_pending"
                 else:
                     bucket = self._pending_transcript_refresh.setdefault(
                         conversation_id, set()
                     )
                     if bucket is not None:
                         bucket.update(entry_set)
+                    queue_kind = "incremental"
+
+        emit_history_debug(
+            logger,
+            "panel.transcript_refresh.queued",
+            conversation_id=conversation_id,
+            queue_kind=queue_kind,
+            entry_count=entry_count,
+            force=force,
+            immediate=immediate,
+        )
 
         if immediate:
+            flush_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush_requested",
+                conversation_id=conversation_id,
+                queue_kind=queue_kind,
+            )
             self._flush_pending_transcript_refresh()
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush_completed",
+                conversation_id=conversation_id,
+                queue_kind=queue_kind,
+                flush_ns=elapsed_ns(flush_start_ns),
+            )
         elif not self._transcript_refresh_scheduled:
             self._transcript_refresh_scheduled = True
             wx.CallAfter(self._flush_pending_transcript_refresh)
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush_scheduled",
+                conversation_id=conversation_id,
+                queue_kind=queue_kind,
+            )
+
+        emit_history_debug(
+            logger,
+            "panel.transcript_refresh.request.completed",
+            conversation_id=conversation_id,
+            queue_kind=queue_kind,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
 
     def _flush_pending_transcript_refresh(self) -> None:
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         pending = self._pending_transcript_refresh
         if not pending:
             self._transcript_refresh_scheduled = False
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush.empty",
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
             return
         self._pending_transcript_refresh = {}
         self._transcript_refresh_scheduled = False
 
         view = self._transcript_view
         if view is None:
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush.view_missing",
+                conversations=list(pending),
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
             return
+
+        emit_history_debug(
+            logger,
+            "panel.transcript_refresh.flush.start",
+            conversations=list(pending),
+        )
 
         active_conversation = self._get_active_conversation_loaded()
         active_id = active_conversation.conversation_id if active_conversation else None
 
         for conversation_id, entry_ids in pending.items():
+            bucket_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             force = entry_ids is None
+            entry_count = len(entry_ids) if entry_ids else 0
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush.bucket",
+                conversation_id=conversation_id,
+                force=force,
+                entry_count=entry_count,
+                active=conversation_id == active_id,
+            )
+
             if conversation_id is None:
+                compose_start_ns = (
+                    time.perf_counter_ns()
+                    if logger.isEnabledFor(logging.DEBUG)
+                    else None
+                )
                 view.schedule_render(
                     conversation=None,
                     timeline=None,
@@ -1808,8 +1915,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     force=True,
                 )
                 self._latest_timeline = None
-                self._update_transcript_selection_probe(
-                    compose_transcript_text(None)
+                empty_transcript = compose_transcript_text(None)
+                self._update_transcript_selection_probe(empty_transcript)
+                emit_history_debug(
+                    logger,
+                    "panel.transcript_refresh.flush.cleared",
+                    compose_ns=elapsed_ns(compose_start_ns),
+                    elapsed_ns=elapsed_ns(bucket_start_ns),
                 )
                 continue
 
@@ -1820,13 +1932,40 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             )
             if conversation is None:
                 self._timeline_cache.forget(conversation_id)
+                emit_history_debug(
+                    logger,
+                    "panel.transcript_refresh.flush.forget",
+                    conversation_id=conversation_id,
+                    reason="conversation_missing",
+                    elapsed_ns=elapsed_ns(bucket_start_ns),
+                )
                 continue
 
+            timeline_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             timeline = self._timeline_cache.timeline_for(conversation)
+            timeline_elapsed = elapsed_ns(timeline_start_ns)
             if conversation_id != active_id:
+                emit_history_debug(
+                    logger,
+                    "panel.transcript_refresh.flush.deferred",
+                    conversation_id=conversation_id,
+                    entry_count=entry_count,
+                    force=force,
+                    timeline_ns=timeline_elapsed,
+                    reason="inactive",
+                )
                 continue
 
             if not force and not entry_ids:
+                emit_history_debug(
+                    logger,
+                    "panel.transcript_refresh.flush.skipped",
+                    conversation_id=conversation_id,
+                    reason="no_entries",
+                    timeline_ns=timeline_elapsed,
+                )
                 continue
 
             updated_entries = None if force else sorted(entry_ids)
@@ -1836,10 +1975,34 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 updated_entries=updated_entries,
                 force=force,
             )
-            self._latest_timeline = timeline
-            self._update_transcript_selection_probe(
-                compose_transcript_text(conversation, timeline=timeline)
+            compose_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
             )
+            transcript_text = compose_transcript_text(conversation, timeline=timeline)
+            compose_elapsed = elapsed_ns(compose_start_ns)
+            self._latest_timeline = timeline
+            self._update_transcript_selection_probe(transcript_text)
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush.applied",
+                conversation_id=conversation_id,
+                force=force,
+                entry_count=entry_count,
+                updated_entry_count=(
+                    len(updated_entries) if isinstance(updated_entries, list) else None
+                ),
+                timeline_entries=len(getattr(timeline, "entries", ())),
+                timeline_ns=timeline_elapsed,
+                compose_ns=compose_elapsed,
+                elapsed_ns=elapsed_ns(bucket_start_ns),
+            )
+
+        emit_history_debug(
+            logger,
+            "panel.transcript_refresh.flush.completed",
+            conversations=list(pending),
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
 
     def _render_transcript(self) -> None:
         self._request_transcript_refresh(force=True, immediate=True)

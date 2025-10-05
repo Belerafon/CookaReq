@@ -12,7 +12,16 @@ from typing import Any
 from ...util.time import utc_now_iso
 
 
+LOGGER_NAMESPACE = "cookareq.ui.agent_chat_panel"
 _HISTORY_DEBUG_EVENT = "AGENT_CHAT_HISTORY_TIMING"
+
+
+def get_history_logger(component: str | None = None) -> logging.Logger:
+    """Return a logger bound to the agent chat panel namespace."""
+
+    if component:
+        return logging.getLogger(f"{LOGGER_NAMESPACE}.{component}")
+    return logging.getLogger(LOGGER_NAMESPACE)
 
 
 def emit_history_debug(
@@ -76,4 +85,9 @@ def elapsed_ns(start_ns: int | None) -> int | None:
     return time.perf_counter_ns() - start_ns
 
 
-__all__ = ["emit_history_debug", "elapsed_ns"]
+__all__ = [
+    "emit_history_debug",
+    "elapsed_ns",
+    "get_history_logger",
+    "LOGGER_NAMESPACE",
+]

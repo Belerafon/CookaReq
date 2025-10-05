@@ -10,10 +10,10 @@ import time
 
 from ..chat_entry import ChatConversation
 from .history_store import HistoryStore
-from .debug_logging import emit_history_debug, elapsed_ns
+from .debug_logging import emit_history_debug, elapsed_ns, get_history_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_history_logger("history")
 
 
 class AgentChatHistory:

@@ -12,10 +12,10 @@ from pathlib import Path
 from typing import Literal
 import time
 
-from .debug_logging import emit_history_debug, elapsed_ns
+from .debug_logging import emit_history_debug, elapsed_ns, get_history_logger
 from .paths import _normalize_history_path, history_path_for_documents
 
-logger = logging.getLogger(__name__)
+logger = get_history_logger("bootstrap")
 
 
 SeedKind = Literal["archive", "file"]

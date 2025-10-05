@@ -10,11 +10,11 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from ..chat_entry import ChatConversation, ChatEntry
-from .debug_logging import emit_history_debug, elapsed_ns
+from .debug_logging import emit_history_debug, elapsed_ns, get_history_logger
 from .paths import _default_history_path, _normalize_history_path
 
 
-logger = logging.getLogger(__name__)
+logger = get_history_logger("history_store")
 
 
 _SCHEMA_VERSION = 1

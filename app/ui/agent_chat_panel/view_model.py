@@ -12,13 +12,13 @@ from typing import Any, Iterable, Literal, Mapping, Sequence
 
 from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation, ChatEntry
-from .debug_logging import emit_history_debug, elapsed_ns
+from .debug_logging import emit_history_debug, elapsed_ns, get_history_logger
 from .history_utils import history_json_safe, normalise_tool_payloads
 from .time_formatting import format_entry_timestamp, parse_iso_timestamp
 from .tool_summaries import ToolCallSummary, summarize_tool_payload
 
 
-logger = logging.getLogger("cookareq.ui.agent_chat_panel.timeline")
+logger = get_history_logger("timeline")
 
 
 @dataclass(slots=True)

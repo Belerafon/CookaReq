@@ -16,7 +16,7 @@ from ...i18n import _
 from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import dip
 from .components.segments import TurnCard
-from .debug_logging import emit_history_debug, elapsed_ns
+from .debug_logging import emit_history_debug, elapsed_ns, get_history_logger
 from .view_model import (
     AgentSegment,
     ConversationTimeline,
@@ -26,7 +26,7 @@ from .view_model import (
 )
 
 
-logger = logging.getLogger(__name__)
+logger = get_history_logger("segment_view")
 
 
 class SegmentViewCallbacks:

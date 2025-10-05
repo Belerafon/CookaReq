@@ -33,7 +33,7 @@ from ..text import normalize_for_display
 from .batch_runner import BatchTarget
 from .batch_ui import AgentBatchSection
 from .bootstrap import HistoryBootstrapResult, prepare_history_for_directory
-from .debug_logging import emit_history_debug, elapsed_ns
+from .debug_logging import emit_history_debug, elapsed_ns, get_history_logger
 from .components.view import AgentChatView, WaitStateCallbacks
 from .confirm_preferences import (
     ConfirmPreferencesMixin,
@@ -88,7 +88,7 @@ from .view_model import (
 )
 
 
-logger = logging.getLogger("cookareq.ui.agent_chat_panel")
+logger = get_history_logger()
 
 
 try:  # pragma: no cover - import only used for typing

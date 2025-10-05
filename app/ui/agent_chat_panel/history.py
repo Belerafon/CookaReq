@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from collections.abc import Callable
-
 import logging
 
 from ..chat_entry import ChatConversation
 from .history_store import HistoryStore
-
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +72,7 @@ class AgentChatHistory:
             conversation = self.get_conversation(conversation_id)
             if conversation is not None:
                 self.ensure_conversation_entries(conversation)
-        if (
-            self._on_active_changed is not None
-            and previous != conversation_id
-        ):
+        if self._on_active_changed is not None and previous != conversation_id:
             self._on_active_changed(previous, conversation_id)
 
     # ------------------------------------------------------------------
@@ -158,4 +152,3 @@ class AgentChatHistory:
 
 
 __all__ = ["AgentChatHistory"]
-

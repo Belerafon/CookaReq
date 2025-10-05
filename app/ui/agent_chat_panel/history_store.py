@@ -1,4 +1,4 @@
-"""Persistence service for agent chat history collections."""
+"""Persistence helpers for agent chat histories."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from pathlib import Path
 
 from ..chat_entry import ChatConversation, ChatEntry
 from .paths import _default_history_path, _normalize_history_path
-
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +248,8 @@ class HistoryStore:
         removed = existing_ids - desired_ids
         if removed:
             conn.executemany(
-                "DELETE FROM conversations WHERE id = ?", ((conversation_id,) for conversation_id in removed)
+                "DELETE FROM conversations WHERE id = ?",
+                ((conversation_id,) for conversation_id in removed),
             )
 
         for position, conversation in enumerate(conversations):

@@ -20,12 +20,26 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         self._marquee_base: set[int] = set()
         self._marquee_additive = False
 
-        self.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
-        self.Bind(wx.EVT_LEFT_UP, self._on_left_up)
-        self.Bind(wx.EVT_MOTION, self._on_mouse_move)
-        self.Bind(wx.EVT_LEAVE_WINDOW, self._on_mouse_leave)
+        self._marquee_sources = self._determine_event_sources()
+        for window in self._marquee_sources:
+            window.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
+            window.Bind(wx.EVT_LEFT_UP, self._on_left_up)
+            window.Bind(wx.EVT_MOTION, self._on_mouse_move)
+            window.Bind(wx.EVT_LEAVE_WINDOW, self._on_mouse_leave)
         self.Bind(wx.EVT_KILL_FOCUS, self._on_mouse_leave)
         self.Bind(wx.EVT_MOUSE_CAPTURE_LOST, self._on_capture_lost)
+
+    # ------------------------------------------------------------------
+    def _determine_event_sources(self) -> tuple[wx.Window, ...]:
+        sources: list[wx.Window] = [self]
+        get_main = getattr(self, "GetMainWindow", None)
+        main_window: wx.Window | None = None
+        if callable(get_main):
+            with suppress(Exception):
+                main_window = get_main()
+            if isinstance(main_window, wx.Window) and main_window not in sources:
+                sources.append(main_window)
+        return tuple(sources)
 
     # ------------------------------------------------------------------
     @staticmethod

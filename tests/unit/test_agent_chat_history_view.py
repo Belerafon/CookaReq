@@ -16,8 +16,9 @@ class _DummyItem:
 
 
 class _DummyListCtrl:
-    def __init__(self, *, hit_row: int | None = 0) -> None:
+    def __init__(self, *, hit_row: int | None = 0, item_count: int = 1) -> None:
         self._hit_row = hit_row
+        self._item_count = item_count
         self.bound: list[tuple[object, Callable[..., None]]] = []
         self.selected: list[int] = []
         self.unselect_calls = 0
@@ -50,20 +51,49 @@ class _DummyListCtrl:
     def EnsureVisible(self, item: _DummyItem) -> None:
         self.ensure_visible_rows.append(item.row)
 
+    def GetItemCount(self) -> int:
+        return self._item_count
+
 
 class _DummyMarqueeListCtrl(_DummyListCtrl):
-    def __init__(self, *, hit_row: int | None = 0) -> None:
-        super().__init__(hit_row=hit_row)
+    def __init__(self, *, hit_row: int | None = 0, item_count: int = 1) -> None:
+        super().__init__(hit_row=hit_row, item_count=item_count)
         self.after_left_down: list[Callable[[object], None]] = []
+        self.after_left_up: list[Callable[[object], None]] = []
+        self.marquee_begin: list[Callable[[object | None], None]] = []
+        self.marquee_end: list[Callable[[object | None], None]] = []
 
     def bind_after_left_down(self, handler: Callable[[object], None]) -> None:
         self.after_left_down.append(handler)
+
+    def bind_after_left_up(self, handler: Callable[[object], None]) -> None:
+        self.after_left_up.append(handler)
+
+    def bind_on_marquee_begin(self, handler: Callable[[object | None], None]) -> None:
+        self.marquee_begin.append(handler)
+
+    def bind_on_marquee_end(self, handler: Callable[[object | None], None]) -> None:
+        self.marquee_end.append(handler)
 
     def fire_after_left_down(self) -> _DummyMouseEvent:
         event = _DummyMouseEvent()
         for handler in list(self.after_left_down):
             handler(event)
         return event
+
+    def fire_after_left_up(self) -> _DummyMouseEvent:
+        event = _DummyMouseEvent()
+        for handler in list(self.after_left_up):
+            handler(event)
+        return event
+
+    def fire_marquee_begin(self) -> None:
+        for handler in list(self.marquee_begin):
+            handler(None)
+
+    def fire_marquee_end(self) -> None:
+        for handler in list(self.marquee_end):
+            handler(None)
 
 
 class _DummyMouseEvent:
@@ -185,10 +215,17 @@ def test_mouse_down_selects_row_without_prepare_callback() -> None:
     event = _DummyMouseEvent()
     view._on_mouse_down(event)
 
-    assert selected_indices == [0]
-    assert list_ctrl.selected == [0]
-    assert list_ctrl.ensure_visible_rows == [0]
+    assert selected_indices == []
+    assert list_ctrl.selected == []
+    assert list_ctrl.ensure_visible_rows == []
     assert event.skipped
+
+    up_event = _DummyMouseEvent()
+    view._on_mouse_up(up_event)
+
+    assert selected_indices == [0]
+    assert list_ctrl.ensure_visible_rows == [0]
+    assert up_event.skipped
 
 
 @pytest.mark.unit
@@ -212,6 +249,12 @@ def test_mouse_down_aborts_when_not_allowed() -> None:
 
     assert list_ctrl.selected == []
     assert event.skipped
+
+    up_event = _DummyMouseEvent()
+    view._on_mouse_up(up_event)
+
+    assert list_ctrl.selected == []
+    assert up_event.skipped
  
 
 @pytest.mark.unit
@@ -236,7 +279,45 @@ def test_mouse_down_uses_marquee_hook_when_available() -> None:
     )
 
     assert len(list_ctrl.after_left_down) == 1
-    event = list_ctrl.fire_after_left_down()
+    assert len(list_ctrl.after_left_up) == 1
+    assert len(list_ctrl.marquee_begin) == 1
+    assert len(list_ctrl.marquee_end) == 1
+
+    down_event = list_ctrl.fire_after_left_down()
+
+    assert selected_indices == []
+    assert down_event.skipped
+
+    up_event = list_ctrl.fire_after_left_up()
 
     assert selected_indices == [0]
-    assert event.skipped
+    assert up_event.skipped
+
+
+@pytest.mark.unit
+def test_marquee_drag_suppresses_activation() -> None:
+    selected_indices: list[int] = []
+
+    def activate(index: int) -> None:
+        selected_indices.append(index)
+
+    list_ctrl = _DummyMarqueeListCtrl(hit_row=0)
+    factory = _HistoryViewFactory()
+    view = HistoryView(
+        list_ctrl,
+        get_conversations=lambda: factory._conversations,
+        format_row=lambda _conversation: ("demo",),
+        get_active_index=lambda: 0,
+        activate_conversation=activate,
+        handle_delete_request=lambda _rows: None,
+        is_running=lambda: False,
+        splitter=object(),
+        prepare_interaction=None,
+    )
+
+    list_ctrl.fire_after_left_down()
+    list_ctrl.fire_marquee_begin()
+    list_ctrl.fire_marquee_end()
+    list_ctrl.fire_after_left_up()
+
+    assert selected_indices == []

@@ -320,6 +320,87 @@ def destroy_panel(frame, panel):
     frame.Destroy()
 
 
+def _populate_history(panel, conversations: Sequence[ChatConversation]) -> None:
+    panel.conversations.clear()
+    panel.conversations.extend(conversations)
+    active_id = conversations[0].conversation_id if conversations else None
+    panel._set_active_conversation_id(active_id)
+    panel._notify_history_changed()
+    panel._refresh_history_list()
+
+
+def _conversation_stub(index: int) -> ChatConversation:
+    conversation = ChatConversation.new()
+    conversation.title = f"Conversation {index}"
+    conversation.preview = f"Preview {index}"
+    conversation.updated_at = f"2025-01-01T00:0{index}:00Z"
+    return conversation
+
+
+def test_history_list_supports_marquee_selection(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+
+    class IdleAgent:
+        def run_command(self, *args, **kwargs):  # pragma: no cover - interface stub
+            raise AssertionError("Agent should not run during marquee test")
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, IdleAgent())
+
+    try:
+        conversations = [_conversation_stub(i) for i in range(5)]
+        _populate_history(panel, conversations)
+        flush_wx_events(wx, count=6)
+
+        list_ctrl = panel.history_list
+
+        frame.SetSize((720, 480))
+        frame.Show()
+        frame.Layout()
+        flush_wx_events(wx, count=6)
+
+        def _item_rect(row: int) -> "wx.Rect":  # type: ignore[name-defined]
+            raw = list_ctrl.GetItemRect(list_ctrl.RowToItem(row))
+            if isinstance(raw, tuple):
+                success, rect = raw
+                assert success
+                return rect
+            return raw
+
+        first_rect = _item_rect(0)
+        third_rect = _item_rect(2)
+        start = first_rect.GetTopLeft() + wx.Point(8, max(first_rect.GetHeight() // 2, 4))
+        end = third_rect.GetBottomRight() - wx.Point(8, 4)
+
+        class _MouseEvent:
+            def __init__(self, position: wx.Point) -> None:
+                self._position = position
+                self.skipped = False
+
+            def GetPosition(self) -> wx.Point:
+                return self._position
+
+            def Skip(self, _flag: bool = True) -> None:
+                self.skipped = True
+
+        down_event = _MouseEvent(start)
+        panel._history_view._on_mouse_down(down_event)
+        assert down_event.skipped
+
+        list_ctrl.SelectRow(0)
+        list_ctrl._marquee_origin = start
+        list_ctrl._marquee_base = {0}
+        list_ctrl._marquee_additive = False
+        list_ctrl._start_marquee(None)
+        list_ctrl._update_marquee_selection(end)
+        list_ctrl._finish_marquee(None)
+
+        selected_rows = panel._history_view.selected_rows()
+        assert selected_rows == [0, 1, 2]
+        assert panel._active_index() == 0
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_switching_to_previous_chat_after_starting_new_one(tmp_path, wx_app):
     class DummyAgent:
         def run_command(

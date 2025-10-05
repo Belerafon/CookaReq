@@ -26,6 +26,9 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         self._marquee_base: set[int] = set()
         self._marquee_additive = False
         self._after_left_down: list[Callable[[wx.MouseEvent], None]] = []
+        self._after_left_up: list[Callable[[wx.MouseEvent], None]] = []
+        self._marquee_begin: list[Callable[[wx.MouseEvent | None], None]] = []
+        self._marquee_end: list[Callable[[wx.MouseEvent | None], None]] = []
         self.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
         self.Bind(wx.EVT_LEFT_UP, self._on_left_up)
         self.Bind(wx.EVT_MOTION, self._on_mouse_move)
@@ -39,6 +42,34 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         if handler in self._after_left_down:
             return
         self._after_left_down.append(handler)
+
+    # ------------------------------------------------------------------
+    def bind_after_left_up(self, handler: Callable[[wx.MouseEvent], None]) -> None:
+        """Register ``handler`` executed after marquee cleanup."""
+
+        if handler in self._after_left_up:
+            return
+        self._after_left_up.append(handler)
+
+    # ------------------------------------------------------------------
+    def bind_on_marquee_begin(
+        self, handler: Callable[[wx.MouseEvent | None], None]
+    ) -> None:
+        """Register ``handler`` invoked when marquee drag starts."""
+
+        if handler in self._marquee_begin:
+            return
+        self._marquee_begin.append(handler)
+
+    # ------------------------------------------------------------------
+    def bind_on_marquee_end(
+        self, handler: Callable[[wx.MouseEvent | None], None]
+    ) -> None:
+        """Register ``handler`` invoked when marquee drag finishes."""
+
+        if handler in self._marquee_end:
+            return
+        self._marquee_end.append(handler)
 
     # ------------------------------------------------------------------
     def _selected_rows(self) -> set[int]:
@@ -99,7 +130,10 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
             except Exception:
                 continue
             if isinstance(item_rect, tuple):  # pragma: no cover - defensive
-                item_rect = item_rect[0]
+                success, rect = item_rect
+                if not success:
+                    continue
+                item_rect = rect
             if not isinstance(item_rect, wx.Rect):  # pragma: no cover - defensive
                 continue
             if rect.Intersects(item_rect):
@@ -128,7 +162,7 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
                     self.SetCurrentItem(item)
 
     # ------------------------------------------------------------------
-    def _start_marquee(self) -> None:
+    def _start_marquee(self, event: wx.MouseEvent | None) -> None:
         self._marquee_active = True
         if not self._marquee_additive:
             for row in list(self._marquee_base):
@@ -140,9 +174,14 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         if not self.HasCapture():  # pragma: no cover - defensive
             with suppress(Exception):
                 self.CaptureMouse()
+        for handler in tuple(self._marquee_begin):
+            try:
+                handler(event)
+            except Exception:  # pragma: no cover - defensive guard
+                logger.exception("Marquee begin handler failed")
 
     # ------------------------------------------------------------------
-    def _finish_marquee(self) -> None:
+    def _finish_marquee(self, event: wx.MouseEvent | None = None) -> None:
         self._clear_overlay()
         self._marquee_origin = None
         self._marquee_base.clear()
@@ -150,6 +189,11 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         if self.HasCapture():  # pragma: no cover - defensive
             with suppress(Exception):
                 self.ReleaseMouse()
+        for handler in tuple(self._marquee_end):
+            try:
+                handler(event)
+            except Exception:  # pragma: no cover - defensive guard
+                logger.exception("Marquee end handler failed")
 
     # ------------------------------------------------------------------
     def _on_left_down(self, event: wx.MouseEvent) -> None:
@@ -170,13 +214,19 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
     def _on_left_up(self, event: wx.MouseEvent) -> None:
         if self._marquee_origin and self._marquee_active:
             self._update_marquee_selection(event.GetPosition())
-            self._finish_marquee()
-            return
-        self._marquee_origin = None
-        self._marquee_base.clear()
-        self._marquee_active = False
-        self._clear_overlay()
+            self._finish_marquee(event)
+        else:
+            self._marquee_origin = None
+            self._marquee_base.clear()
+            self._marquee_active = False
+            self._clear_overlay()
+        for handler in tuple(self._after_left_up):
+            try:
+                handler(event)
+            except Exception:  # pragma: no cover - defensive guard
+                logger.exception("Marquee post-left-up handler failed")
         event.Skip()
+        return
 
     # ------------------------------------------------------------------
     def _on_mouse_move(self, event: wx.MouseEvent) -> None:
@@ -192,14 +242,14 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
             ):
                 event.Skip()
                 return
-            self._start_marquee()
+            self._start_marquee(event)
         self._update_marquee_selection(event.GetPosition())
         event.Skip(False)
 
     # ------------------------------------------------------------------
     def _on_mouse_leave(self, event: wx.MouseEvent) -> None:
         if self._marquee_origin and not event.LeftIsDown():
-            self._finish_marquee()
+            self._finish_marquee(event)
         event.Skip()
 
 

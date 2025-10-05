@@ -1,18 +1,19 @@
-from __future__ import annotations
-
 from collections.abc import Callable
 
 import pytest
 
-from app.ui.agent_chat_panel.history_view import HistoryInteractionPreparation, HistoryView
+from app.ui.agent_chat_panel.history_view import (
+    HistoryInteractionPreparation,
+    HistoryView,
+)
 
 
 class _DummyItem:
-    def __init__(self, row: int) -> None:
+    def __init__(self, row: int | None) -> None:
         self.row = row
 
     def IsOk(self) -> bool:
-        return True
+        return self.row is not None
 
 
 class _DummyListCtrl:
@@ -24,6 +25,9 @@ class _DummyListCtrl:
         self.unselect_calls = 0
         self.focus_calls = 0
         self.ensure_visible_rows: list[int] = []
+        self.appended_rows: list[tuple[str, ...]] = []
+        self.freeze_calls = 0
+        self.thaw_calls = 0
 
     def Bind(self, event: object, handler: Callable[..., None]) -> None:
         self.bound.append((event, handler))
@@ -35,65 +39,59 @@ class _DummyListCtrl:
 
     def UnselectAll(self) -> None:
         self.unselect_calls += 1
+        self.selected.clear()
 
     def SetFocus(self) -> None:
         self.focus_calls += 1
 
     def ItemToRow(self, item: _DummyItem) -> int:
+        assert item.row is not None
         return item.row
 
     def RowToItem(self, row: int) -> _DummyItem:
         return _DummyItem(row)
 
     def SelectRow(self, row: int) -> None:
-        self.selected.append(row)
+        if row not in self.selected:
+            self.selected.append(row)
+
+    def Select(self, item: _DummyItem) -> None:
+        if item.row is not None:
+            self.SelectRow(item.row)
+
+    def UnselectRow(self, row: int) -> None:
+        if row in self.selected:
+            self.selected.remove(row)
+
+    def IsRowSelected(self, row: int) -> bool:
+        return row in self.selected
 
     def EnsureVisible(self, item: _DummyItem) -> None:
-        self.ensure_visible_rows.append(item.row)
+        if item.row is not None:
+            self.ensure_visible_rows.append(item.row)
 
     def GetItemCount(self) -> int:
         return self._item_count
 
+    def GetSelections(self) -> list[_DummyItem]:
+        return [_DummyItem(row) for row in self.selected]
 
-class _DummyMarqueeListCtrl(_DummyListCtrl):
-    def __init__(self, *, hit_row: int | None = 0, item_count: int = 1) -> None:
-        super().__init__(hit_row=hit_row, item_count=item_count)
-        self.after_left_down: list[Callable[[object], None]] = []
-        self.after_left_up: list[Callable[[object], None]] = []
-        self.marquee_begin: list[Callable[[object | None], None]] = []
-        self.marquee_end: list[Callable[[object | None], None]] = []
+    def GetSelection(self) -> _DummyItem | None:
+        if not self.selected:
+            return None
+        return _DummyItem(self.selected[-1])
 
-    def bind_after_left_down(self, handler: Callable[[object], None]) -> None:
-        self.after_left_down.append(handler)
+    def DeleteAllItems(self) -> None:
+        self.selected.clear()
 
-    def bind_after_left_up(self, handler: Callable[[object], None]) -> None:
-        self.after_left_up.append(handler)
+    def AppendItem(self, row: tuple[str, ...]) -> None:
+        self.appended_rows.append(row)
 
-    def bind_on_marquee_begin(self, handler: Callable[[object | None], None]) -> None:
-        self.marquee_begin.append(handler)
+    def Freeze(self) -> None:
+        self.freeze_calls += 1
 
-    def bind_on_marquee_end(self, handler: Callable[[object | None], None]) -> None:
-        self.marquee_end.append(handler)
-
-    def fire_after_left_down(self) -> _DummyMouseEvent:
-        event = _DummyMouseEvent()
-        for handler in list(self.after_left_down):
-            handler(event)
-        return event
-
-    def fire_after_left_up(self) -> _DummyMouseEvent:
-        event = _DummyMouseEvent()
-        for handler in list(self.after_left_up):
-            handler(event)
-        return event
-
-    def fire_marquee_begin(self) -> None:
-        for handler in list(self.marquee_begin):
-            handler(None)
-
-    def fire_marquee_end(self) -> None:
-        for handler in list(self.marquee_end):
-            handler(None)
+    def Thaw(self) -> None:
+        self.thaw_calls += 1
 
 
 class _DummyMouseEvent:
@@ -107,6 +105,20 @@ class _DummyMouseEvent:
         self.skipped = True
 
 
+class _DummyDataViewEvent:
+    def __init__(self, row: int | None) -> None:
+        self._row = row
+        self.skipped = False
+
+    def GetItem(self) -> _DummyItem | None:
+        if self._row is None:
+            return None
+        return _DummyItem(self._row)
+
+    def Skip(self, _flag: bool = True) -> None:
+        self.skipped = True
+
+
 class _HistoryViewFactory:
     def __init__(self) -> None:
         self._conversations: list[object] = [object()]
@@ -115,6 +127,7 @@ class _HistoryViewFactory:
         self,
         *,
         list_ctrl: _DummyListCtrl,
+        activate: Callable[[int], None] | None = None,
         is_running: Callable[[], bool] | None = None,
         prepare_interaction: Callable[[], bool] | None = None,
     ) -> HistoryView:
@@ -123,7 +136,7 @@ class _HistoryViewFactory:
             get_conversations=lambda: self._conversations,
             format_row=lambda _conversation: ("demo",),
             get_active_index=lambda: 0,
-            activate_conversation=lambda _index: None,
+            activate_conversation=activate or (lambda _index: None),
             handle_delete_request=lambda _rows: None,
             is_running=is_running or (lambda: False),
             splitter=object(),
@@ -192,132 +205,69 @@ def test_prepare_for_interaction_handles_callback_failure() -> None:
 
 
 @pytest.mark.unit
-def test_mouse_down_selects_row_without_prepare_callback() -> None:
-    selected_indices: list[int] = []
-
-    def activate(index: int) -> None:
-        selected_indices.append(index)
-
-    list_ctrl = _DummyListCtrl(hit_row=0)
-    factory = _HistoryViewFactory()
-    view = HistoryView(
-        list_ctrl,
-        get_conversations=lambda: factory._conversations,
-        format_row=lambda _conversation: ("demo",),
-        get_active_index=lambda: 0,
-        activate_conversation=activate,
-        handle_delete_request=lambda _rows: None,
-        is_running=lambda: False,
-        splitter=object(),
-        prepare_interaction=None,
-    )
+def test_mouse_down_clears_selection_on_background_click() -> None:
+    list_ctrl = _DummyListCtrl(hit_row=None)
+    view = _HistoryViewFactory().create(list_ctrl=list_ctrl)
 
     event = _DummyMouseEvent()
     view._on_mouse_down(event)
 
-    assert selected_indices == []
-    assert list_ctrl.selected == []
-    assert list_ctrl.ensure_visible_rows == []
+    assert list_ctrl.unselect_calls == 1
+    assert list_ctrl.focus_calls == 1
     assert event.skipped
-
-    up_event = _DummyMouseEvent()
-    view._on_mouse_up(up_event)
-
-    assert selected_indices == [0]
-    assert list_ctrl.ensure_visible_rows == [0]
-    assert up_event.skipped
 
 
 @pytest.mark.unit
-def test_mouse_down_aborts_when_not_allowed() -> None:
+def test_mouse_down_respects_blocking_state() -> None:
     list_ctrl = _DummyListCtrl(hit_row=0)
-    factory = _HistoryViewFactory()
-    view = HistoryView(
-        list_ctrl,
-        get_conversations=lambda: factory._conversations,
-        format_row=lambda _conversation: ("demo",),
-        get_active_index=lambda: 0,
-        activate_conversation=lambda _index: None,
-        handle_delete_request=lambda _rows: None,
+    view = _HistoryViewFactory().create(
+        list_ctrl=list_ctrl,
         is_running=lambda: True,
-        splitter=object(),
-        prepare_interaction=None,
     )
 
     event = _DummyMouseEvent()
     view._on_mouse_down(event)
 
-    assert list_ctrl.selected == []
+    assert list_ctrl.unselect_calls == 0
+    assert list_ctrl.focus_calls == 0
     assert event.skipped
 
-    up_event = _DummyMouseEvent()
-    view._on_mouse_up(up_event)
-
-    assert list_ctrl.selected == []
-    assert up_event.skipped
- 
 
 @pytest.mark.unit
-def test_mouse_down_uses_marquee_hook_when_available() -> None:
+def test_selection_activation_when_allowed() -> None:
     selected_indices: list[int] = []
 
     def activate(index: int) -> None:
         selected_indices.append(index)
 
-    list_ctrl = _DummyMarqueeListCtrl(hit_row=0)
+    list_ctrl = _DummyListCtrl(hit_row=0)
     factory = _HistoryViewFactory()
-    HistoryView(
-        list_ctrl,
-        get_conversations=lambda: factory._conversations,
-        format_row=lambda _conversation: ("demo",),
-        get_active_index=lambda: 0,
-        activate_conversation=activate,
-        handle_delete_request=lambda _rows: None,
-        is_running=lambda: False,
-        splitter=object(),
-        prepare_interaction=None,
-    )
+    view = factory.create(list_ctrl=list_ctrl, activate=activate)
 
-    assert len(list_ctrl.after_left_down) == 1
-    assert len(list_ctrl.after_left_up) == 1
-    assert len(list_ctrl.marquee_begin) == 1
-    assert len(list_ctrl.marquee_end) == 1
-
-    down_event = list_ctrl.fire_after_left_down()
-
-    assert selected_indices == []
-    assert down_event.skipped
-
-    up_event = list_ctrl.fire_after_left_up()
+    event = _DummyDataViewEvent(0)
+    view._on_select_history(event)
 
     assert selected_indices == [0]
-    assert up_event.skipped
+    assert event.skipped
 
 
 @pytest.mark.unit
-def test_marquee_drag_suppresses_activation() -> None:
+def test_selection_ignored_when_interaction_blocked() -> None:
     selected_indices: list[int] = []
 
     def activate(index: int) -> None:
         selected_indices.append(index)
 
-    list_ctrl = _DummyMarqueeListCtrl(hit_row=0)
+    list_ctrl = _DummyListCtrl(hit_row=0)
     factory = _HistoryViewFactory()
-    view = HistoryView(
-        list_ctrl,
-        get_conversations=lambda: factory._conversations,
-        format_row=lambda _conversation: ("demo",),
-        get_active_index=lambda: 0,
-        activate_conversation=activate,
-        handle_delete_request=lambda _rows: None,
-        is_running=lambda: False,
-        splitter=object(),
-        prepare_interaction=None,
+    view = factory.create(
+        list_ctrl=list_ctrl,
+        activate=activate,
+        is_running=lambda: True,
     )
 
-    list_ctrl.fire_after_left_down()
-    list_ctrl.fire_marquee_begin()
-    list_ctrl.fire_marquee_end()
-    list_ctrl.fire_after_left_up()
+    event = _DummyDataViewEvent(0)
+    view._on_select_history(event)
 
     assert selected_indices == []
+    assert event.skipped

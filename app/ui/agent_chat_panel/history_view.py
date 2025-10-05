@@ -49,10 +49,6 @@ class HistoryView:
         self._sash_dirty = False
         self._last_sash = 0
         self._internal_adjust = 0
-        self._mouse_activation_requested = False
-        self._pending_activation_row: int | None = None
-        self._marquee_dragged = False
-        self._marquee_active = False
         self._bind_events()
 
     # ------------------------------------------------------------------
@@ -60,22 +56,7 @@ class HistoryView:
         self._list.Bind(dv.EVT_DATAVIEW_SELECTION_CHANGED, self._on_select_history)
         self._list.Bind(dv.EVT_DATAVIEW_ITEM_CONTEXT_MENU, self._on_history_item_context_menu)
         self._list.Bind(wx.EVT_CONTEXT_MENU, self._on_history_context_menu)
-        binder = getattr(self._list, "bind_after_left_down", None)
-        if callable(binder):
-            binder(self._on_mouse_down)
-        else:
-            self._list.Bind(wx.EVT_LEFT_DOWN, self._on_mouse_down)
-        up_binder = getattr(self._list, "bind_after_left_up", None)
-        if callable(up_binder):
-            up_binder(self._on_mouse_up)
-        else:
-            self._list.Bind(wx.EVT_LEFT_UP, self._on_mouse_up)
-        marquee_begin = getattr(self._list, "bind_on_marquee_begin", None)
-        if callable(marquee_begin):
-            marquee_begin(self._on_marquee_begin)
-        marquee_end = getattr(self._list, "bind_on_marquee_end", None)
-        if callable(marquee_end):
-            marquee_end(self._on_marquee_end)
+        self._list.Bind(wx.EVT_LEFT_DOWN, self._on_mouse_down)
 
     # ------------------------------------------------------------------
     def refresh(self) -> None:
@@ -313,15 +294,6 @@ class HistoryView:
         if not preparation.allowed:
             event.Skip()
             return
-        if self._mouse_activation_requested:
-            index = self._extract_index(None if preparation.refreshed else event)
-            if index is not None:
-                self._pending_activation_row = index
-            event.Skip()
-            return
-        if self._marquee_active or self._marquee_dragged:
-            event.Skip()
-            return
         index = self._extract_index(None if preparation.refreshed else event)
         if index is not None:
             self._activate_conversation(index)
@@ -344,10 +316,6 @@ class HistoryView:
 
     # ------------------------------------------------------------------
     def _on_mouse_down(self, event: wx.MouseEvent) -> None:
-        self._marquee_dragged = False
-        self._marquee_active = False
-        self._mouse_activation_requested = False
-        self._pending_activation_row = None
         preparation = self._prepare_for_interaction()
         if not preparation.allowed:
             event.Skip()
@@ -373,47 +341,8 @@ class HistoryView:
             self._list.SetFocus()
             event.Skip()
             return
-        self._pending_activation_row = row
-        self._mouse_activation_requested = True
         self._list.SetFocus()
         event.Skip()
-
-    # ------------------------------------------------------------------
-    def _on_mouse_up(self, event: wx.MouseEvent) -> None:
-        try:
-            if not self._mouse_activation_requested:
-                event.Skip()
-                return
-            if self._marquee_dragged:
-                event.Skip()
-                return
-            preparation = self._prepare_for_interaction()
-            if not preparation.allowed:
-                event.Skip()
-                return
-            row = self._pending_activation_row
-            if row is None or not (0 <= row < self._list.GetItemCount()):
-                event.Skip()
-                return
-            item = self._list.RowToItem(row)
-            if item and item.IsOk():
-                self._list.EnsureVisible(item)
-            self._activate_conversation(row)
-        finally:
-            self._mouse_activation_requested = False
-            self._pending_activation_row = None
-        event.Skip()
-
-    # ------------------------------------------------------------------
-    def _on_marquee_begin(self, _event: wx.MouseEvent | None) -> None:
-        self._marquee_dragged = True
-        self._marquee_active = True
-        self._mouse_activation_requested = False
-        self._pending_activation_row = None
-
-    # ------------------------------------------------------------------
-    def _on_marquee_end(self, _event: wx.MouseEvent | None) -> None:
-        self._marquee_active = False
 
     # ------------------------------------------------------------------
     def _prepare_for_interaction(self) -> HistoryInteractionPreparation:

@@ -353,6 +353,12 @@ def test_history_list_supports_marquee_selection(tmp_path, wx_app):
 
         list_ctrl = panel.history_list
 
+        main_window = getattr(list_ctrl, "GetMainWindow", None)
+        if callable(main_window):
+            window = main_window()
+            if window is not None:
+                assert list_ctrl._overlay_target is window
+
         frame.SetSize((720, 480))
         frame.Show()
         frame.Layout()

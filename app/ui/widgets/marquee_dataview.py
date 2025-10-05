@@ -42,6 +42,7 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         self._marquee_origin: wx.Point | None = None
         self._marquee_active = False
         self._marquee_overlay: wx.Overlay | None = None
+        self._overlay_target: wx.Window = self
         self._marquee_base: set[int] = set()
         self._marquee_additive = False
         self._after_left_down: list[Callable[[wx.MouseEvent], None]] = []
@@ -139,6 +140,7 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
                 main_window = get_main_window()
             if isinstance(main_window, wx.Window) and main_window is not self:
                 sources.append(main_window)
+                self._overlay_target = main_window
         self._mouse_sources = tuple(sources)
         for source in self._mouse_sources:
             source.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
@@ -162,7 +164,10 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
     def _clear_overlay(self) -> None:
         if not self._marquee_overlay:
             return
-        dc = wx.ClientDC(self)
+        target = self._overlay_target
+        if not target:
+            target = self
+        dc = wx.ClientDC(target)
         overlay_dc = wx.DCOverlay(self._marquee_overlay, dc)
         overlay_dc.Clear()
         del overlay_dc
@@ -175,14 +180,33 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
             return
         if self._marquee_overlay is None:
             self._marquee_overlay = wx.Overlay()
-        dc = wx.ClientDC(self)
+        target = self._overlay_target
+        if not target:
+            target = self
+        draw_rect = rect
+        if target is not self:
+            top_left_screen = self.ClientToScreen(rect.GetTopLeft())
+            # ``GetBottomRight`` returns an inclusive point; add (1, 1) to keep width/height
+            bottom_right = rect.GetBottomRight()
+            bottom_right_screen = self.ClientToScreen(
+                wx.Point(bottom_right.x + 1, bottom_right.y + 1)
+            )
+            top_left = target.ScreenToClient(top_left_screen)
+            bottom_right = target.ScreenToClient(bottom_right_screen)
+            draw_rect = wx.Rect(
+                top_left.x,
+                top_left.y,
+                max(bottom_right.x - top_left.x, 1),
+                max(bottom_right.y - top_left.y, 1),
+            )
+        dc = wx.ClientDC(target)
         overlay_dc = wx.DCOverlay(self._marquee_overlay, dc)
         overlay_dc.Clear()
         pen = wx.Pen(wx.Colour(0, 120, 215), 1)
         brush = wx.Brush(wx.Colour(0, 120, 215, 40))
         dc.SetPen(pen)
         dc.SetBrush(brush)
-        dc.DrawRectangle(rect)
+        dc.DrawRectangle(draw_rect)
         del overlay_dc
 
     # ------------------------------------------------------------------

@@ -51,6 +51,21 @@ class _DummyListCtrl:
         self.ensure_visible_rows.append(item.row)
 
 
+class _DummyMarqueeListCtrl(_DummyListCtrl):
+    def __init__(self, *, hit_row: int | None = 0) -> None:
+        super().__init__(hit_row=hit_row)
+        self.after_left_down: list[Callable[[object], None]] = []
+
+    def bind_after_left_down(self, handler: Callable[[object], None]) -> None:
+        self.after_left_down.append(handler)
+
+    def fire_after_left_down(self) -> _DummyMouseEvent:
+        event = _DummyMouseEvent()
+        for handler in list(self.after_left_down):
+            handler(event)
+        return event
+
+
 class _DummyMouseEvent:
     def __init__(self) -> None:
         self.skipped = False
@@ -197,4 +212,31 @@ def test_mouse_down_aborts_when_not_allowed() -> None:
 
     assert list_ctrl.selected == []
     assert event.skipped
+ 
 
+@pytest.mark.unit
+def test_mouse_down_uses_marquee_hook_when_available() -> None:
+    selected_indices: list[int] = []
+
+    def activate(index: int) -> None:
+        selected_indices.append(index)
+
+    list_ctrl = _DummyMarqueeListCtrl(hit_row=0)
+    factory = _HistoryViewFactory()
+    HistoryView(
+        list_ctrl,
+        get_conversations=lambda: factory._conversations,
+        format_row=lambda _conversation: ("demo",),
+        get_active_index=lambda: 0,
+        activate_conversation=activate,
+        handle_delete_request=lambda _rows: None,
+        is_running=lambda: False,
+        splitter=object(),
+        prepare_interaction=None,
+    )
+
+    assert len(list_ctrl.after_left_down) == 1
+    event = list_ctrl.fire_after_left_down()
+
+    assert selected_indices == [0]
+    assert event.skipped

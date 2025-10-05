@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import suppress
+import logging
 
 import wx
 import wx.dataview as dv
+
+
+logger = logging.getLogger(__name__)
 
 
 class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
@@ -20,11 +25,20 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         self._marquee_overlay: wx.Overlay | None = None
         self._marquee_base: set[int] = set()
         self._marquee_additive = False
+        self._after_left_down: list[Callable[[wx.MouseEvent], None]] = []
         self.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
         self.Bind(wx.EVT_LEFT_UP, self._on_left_up)
         self.Bind(wx.EVT_MOTION, self._on_mouse_move)
         self.Bind(wx.EVT_LEAVE_WINDOW, self._on_mouse_leave)
         self.Bind(wx.EVT_KILL_FOCUS, self._on_mouse_leave)
+
+    # ------------------------------------------------------------------
+    def bind_after_left_down(self, handler: Callable[[wx.MouseEvent], None]) -> None:
+        """Register ``handler`` executed after marquee pre-processing."""
+
+        if handler in self._after_left_down:
+            return
+        self._after_left_down.append(handler)
 
     # ------------------------------------------------------------------
     def _selected_rows(self) -> set[int]:
@@ -145,6 +159,11 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         self._marquee_additive = bool(modifiers)
         self._marquee_active = False
         self._clear_overlay()
+        for handler in tuple(self._after_left_down):
+            try:
+                handler(event)
+            except Exception:  # pragma: no cover - defensive guard
+                logger.exception("Marquee post-left-down handler failed")
         event.Skip()
 
     # ------------------------------------------------------------------

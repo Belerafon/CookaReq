@@ -56,7 +56,11 @@ class HistoryView:
         self._list.Bind(dv.EVT_DATAVIEW_SELECTION_CHANGED, self._on_select_history)
         self._list.Bind(dv.EVT_DATAVIEW_ITEM_CONTEXT_MENU, self._on_history_item_context_menu)
         self._list.Bind(wx.EVT_CONTEXT_MENU, self._on_history_context_menu)
-        self._list.Bind(wx.EVT_LEFT_DOWN, self._on_mouse_down)
+        binder = getattr(self._list, "bind_after_left_down", None)
+        if callable(binder):
+            binder(self._on_mouse_down)
+        else:
+            self._list.Bind(wx.EVT_LEFT_DOWN, self._on_mouse_down)
 
     # ------------------------------------------------------------------
     def refresh(self) -> None:

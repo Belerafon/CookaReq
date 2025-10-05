@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import suppress
 import logging
 
@@ -11,6 +11,25 @@ import wx.dataview as dv
 
 
 logger = logging.getLogger(__name__)
+
+
+class _NormalizedMouseEvent:
+    """Proxy event that exposes coordinates in the list control space."""
+
+    __slots__ = ("_event", "_owner")
+
+    def __init__(self, event: wx.MouseEvent, owner: "MarqueeDataViewListCtrl") -> None:
+        self._event = event
+        self._owner = owner
+
+    def GetPosition(self) -> wx.Point:
+        return self._owner._translate_event_position(self._event)
+
+    def Skip(self, *args, **kwargs) -> None:
+        self._event.Skip(*args, **kwargs)
+
+    def __getattr__(self, name: str):  # pragma: no cover - thin proxy
+        return getattr(self._event, name)
 
 
 class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
@@ -29,11 +48,8 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         self._after_left_up: list[Callable[[wx.MouseEvent], None]] = []
         self._marquee_begin: list[Callable[[wx.MouseEvent | None], None]] = []
         self._marquee_end: list[Callable[[wx.MouseEvent | None], None]] = []
-        self.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
-        self.Bind(wx.EVT_LEFT_UP, self._on_left_up)
-        self.Bind(wx.EVT_MOTION, self._on_mouse_move)
-        self.Bind(wx.EVT_LEAVE_WINDOW, self._on_mouse_leave)
-        self.Bind(wx.EVT_KILL_FOCUS, self._on_mouse_leave)
+        self._mouse_sources: tuple[wx.Window, ...] = ()
+        self._install_mouse_bindings()
 
     # ------------------------------------------------------------------
     def bind_after_left_down(self, handler: Callable[[wx.MouseEvent], None]) -> None:
@@ -70,6 +86,66 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         if handler in self._marquee_end:
             return
         self._marquee_end.append(handler)
+
+    # ------------------------------------------------------------------
+    def _translate_event_position(self, event: wx.MouseEvent) -> wx.Point:
+        source = event.GetEventObject()
+        if source is self or not isinstance(source, wx.Window):
+            return event.GetPosition()
+        screen = source.ClientToScreen(event.GetPosition())
+        return self.ScreenToClient(screen)
+
+    # ------------------------------------------------------------------
+    def _wrap_mouse_event(self, event: wx.MouseEvent) -> _NormalizedMouseEvent:
+        return _NormalizedMouseEvent(event, self)
+
+    # ------------------------------------------------------------------
+    def _mark_event_handled(self, event: wx.MouseEvent) -> bool:
+        if getattr(event, "_marquee_handled", False):
+            return False
+        setattr(event, "_marquee_handled", True)
+        return True
+
+    # ------------------------------------------------------------------
+    def _dispatch_handlers(
+        self, handlers: Iterable[Callable[[wx.MouseEvent], None]], event: wx.MouseEvent
+    ) -> None:
+        proxy = self._wrap_mouse_event(event)
+        for handler in tuple(handlers):
+            try:
+                handler(proxy)
+            except Exception:  # pragma: no cover - defensive guard
+                logger.exception("Marquee mouse handler failed")
+
+    # ------------------------------------------------------------------
+    def _dispatch_optional_handlers(
+        self,
+        handlers: Iterable[Callable[[wx.MouseEvent | None], None]],
+        event: wx.MouseEvent | None,
+    ) -> None:
+        proxy = self._wrap_mouse_event(event) if event is not None else None
+        for handler in tuple(handlers):
+            try:
+                handler(proxy)
+            except Exception:  # pragma: no cover - defensive guard
+                logger.exception("Marquee mouse handler failed")
+
+    # ------------------------------------------------------------------
+    def _install_mouse_bindings(self) -> None:
+        sources: list[wx.Window] = [self]
+        get_main_window = getattr(self, "GetMainWindow", None)
+        if callable(get_main_window):
+            with suppress(Exception):
+                main_window = get_main_window()
+            if isinstance(main_window, wx.Window) and main_window is not self:
+                sources.append(main_window)
+        self._mouse_sources = tuple(sources)
+        for source in self._mouse_sources:
+            source.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
+            source.Bind(wx.EVT_LEFT_UP, self._on_left_up)
+            source.Bind(wx.EVT_MOTION, self._on_mouse_move)
+            source.Bind(wx.EVT_LEAVE_WINDOW, self._on_mouse_leave)
+        self.Bind(wx.EVT_KILL_FOCUS, self._on_focus_lost)
 
     # ------------------------------------------------------------------
     def _selected_rows(self) -> set[int]:
@@ -174,11 +250,7 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         if not self.HasCapture():  # pragma: no cover - defensive
             with suppress(Exception):
                 self.CaptureMouse()
-        for handler in tuple(self._marquee_begin):
-            try:
-                handler(event)
-            except Exception:  # pragma: no cover - defensive guard
-                logger.exception("Marquee begin handler failed")
+        self._dispatch_optional_handlers(self._marquee_begin, event)
 
     # ------------------------------------------------------------------
     def _finish_marquee(self, event: wx.MouseEvent | None = None) -> None:
@@ -189,53 +261,50 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
         if self.HasCapture():  # pragma: no cover - defensive
             with suppress(Exception):
                 self.ReleaseMouse()
-        for handler in tuple(self._marquee_end):
-            try:
-                handler(event)
-            except Exception:  # pragma: no cover - defensive guard
-                logger.exception("Marquee end handler failed")
+        self._dispatch_optional_handlers(self._marquee_end, event)
 
     # ------------------------------------------------------------------
     def _on_left_down(self, event: wx.MouseEvent) -> None:
-        self._marquee_origin = event.GetPosition()
+        if not self._mark_event_handled(event):
+            event.Skip()
+            return
+        self._marquee_origin = self._translate_event_position(event)
         self._marquee_base = self._selected_rows()
         modifiers = event.ControlDown() or event.CmdDown() or event.ShiftDown()
         self._marquee_additive = bool(modifiers)
         self._marquee_active = False
         self._clear_overlay()
-        for handler in tuple(self._after_left_down):
-            try:
-                handler(event)
-            except Exception:  # pragma: no cover - defensive guard
-                logger.exception("Marquee post-left-down handler failed")
+        self._dispatch_handlers(self._after_left_down, event)
         event.Skip()
 
     # ------------------------------------------------------------------
     def _on_left_up(self, event: wx.MouseEvent) -> None:
+        if not self._mark_event_handled(event):
+            event.Skip()
+            return
         if self._marquee_origin and self._marquee_active:
-            self._update_marquee_selection(event.GetPosition())
+            self._update_marquee_selection(self._translate_event_position(event))
             self._finish_marquee(event)
         else:
             self._marquee_origin = None
             self._marquee_base.clear()
             self._marquee_active = False
             self._clear_overlay()
-        for handler in tuple(self._after_left_up):
-            try:
-                handler(event)
-            except Exception:  # pragma: no cover - defensive guard
-                logger.exception("Marquee post-left-up handler failed")
+        self._dispatch_handlers(self._after_left_up, event)
         event.Skip()
         return
 
     # ------------------------------------------------------------------
     def _on_mouse_move(self, event: wx.MouseEvent) -> None:
+        if not self._mark_event_handled(event):
+            event.Skip()
+            return
         if not self._marquee_origin or not event.LeftIsDown():
             event.Skip()
             return
         if not self._marquee_active:
             origin = self._marquee_origin
-            pos = event.GetPosition()
+            pos = self._translate_event_position(event)
             if (
                 abs(pos.x - origin.x) <= self._MARQUEE_THRESHOLD
                 and abs(pos.y - origin.y) <= self._MARQUEE_THRESHOLD
@@ -243,13 +312,22 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
                 event.Skip()
                 return
             self._start_marquee(event)
-        self._update_marquee_selection(event.GetPosition())
+        self._update_marquee_selection(self._translate_event_position(event))
         event.Skip(False)
 
     # ------------------------------------------------------------------
     def _on_mouse_leave(self, event: wx.MouseEvent) -> None:
+        if not self._mark_event_handled(event):
+            event.Skip()
+            return
         if self._marquee_origin and not event.LeftIsDown():
             self._finish_marquee(event)
+        event.Skip()
+
+    # ------------------------------------------------------------------
+    def _on_focus_lost(self, event: wx.FocusEvent) -> None:
+        if self._marquee_origin:
+            self._finish_marquee(None)
         event.Skip()
 
 

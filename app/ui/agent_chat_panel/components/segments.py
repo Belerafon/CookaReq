@@ -7,6 +7,8 @@ from contextlib import suppress
 import json
 from typing import Any, Literal
 
+from dataclasses import dataclass, field
+
 import wx
 
 from ....i18n import _
@@ -40,6 +42,17 @@ class _LabeledCollapsiblePane(wx.CollapsiblePane):
 
     def GetLabel(self) -> str:  # noqa: N802 - wx naming convention
         return self._stored_label
+
+    def Collapse(self, collapse: bool) -> None:  # noqa: N802 - wx naming convention
+        super().Collapse(collapse)
+        if collapse:
+            return
+        callback = getattr(self, "_cookareq_on_expand", None)
+        if callable(callback):
+            try:
+                callback()
+            except Exception:
+                pass
 
 
 def _format_context_messages(
@@ -216,6 +229,78 @@ def _build_collapsible_section(
     return pane
 
 
+@dataclass(slots=True)
+class _DeferredPayloadState:
+    pane: wx.CollapsiblePane
+    text_ctrl: wx.TextCtrl
+    raw_payload: Any
+    cached_text: str | None = None
+    loading: bool = False
+    handler: Callable[[wx.CollapsiblePaneEvent], None] | None = None
+    mirrors: list[wx.TextCtrl] = field(default_factory=list)
+
+
+def _build_deferred_payload_section(
+    parent: wx.Window,
+    *,
+    label: str,
+    minimum_height: int,
+    collapsed: bool,
+    name: str | None,
+    raw_payload: Any,
+    callback: Callable[[wx.CollapsiblePane, wx.TextCtrl, Any], None],
+) -> wx.CollapsiblePane:
+    pane = _LabeledCollapsiblePane(
+        parent,
+        label=label,
+        style=wx.CP_DEFAULT_STYLE | wx.CP_NO_TLW_RESIZE,
+    )
+    with suppress(Exception):
+        pane.SetLabel(label)
+    pane.SetName(name or label)
+    if collapsed:
+        pane.Collapse(True)
+
+    pane_background = parent.GetBackgroundColour()
+    if not pane_background.IsOk():
+        pane_background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
+    pane.SetBackgroundColour(pane_background)
+    pane_foreground = parent.GetForegroundColour()
+    if pane_foreground.IsOk():
+        pane.SetForegroundColour(pane_foreground)
+        with suppress(Exception):
+            toggle = pane.GetButton()
+            if toggle is not None:
+                toggle.SetForegroundColour(pane_foreground)
+                toggle.SetBackgroundColour(pane_background)
+    inner = pane.GetPane()
+    inner.SetBackgroundColour(pane_background)
+    if pane_foreground.IsOk():
+        inner.SetForegroundColour(pane_foreground)
+
+    content_sizer = wx.BoxSizer(wx.VERTICAL)
+    text_ctrl = wx.TextCtrl(
+        inner,
+        value="",
+        style=(
+            wx.TE_MULTILINE
+            | wx.TE_READONLY
+            | wx.TE_BESTWRAP
+            | wx.BORDER_NONE
+        ),
+    )
+    text_ctrl.SetBackgroundColour(pane_background)
+    text_ctrl.SetForegroundColour(
+        wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT)
+    )
+    text_ctrl.SetMinSize((-1, parent.FromDIP(minimum_height)))
+    content_sizer.Add(text_ctrl, 1, wx.EXPAND | wx.TOP, parent.FromDIP(4))
+    inner.SetSizer(content_sizer)
+
+    callback(pane, text_ctrl, raw_payload)
+    return pane
+
+
 def _extract_bullet_label(text: str) -> str:
     label, separator, _ = text.partition(":")
     if not separator:
@@ -332,6 +417,7 @@ class MessageSegmentPanel(wx.Panel):
         self._alias_collapsibles: list[wx.CollapsiblePane] = []
         self._regenerate_button: wx.Button | None = None
         self._regenerate_handler: Callable[[], None] | None = None
+        self._deferred_payloads: dict[str, _DeferredPayloadState] = {}
 
     # ------------------------------------------------------------------
     def update(
@@ -581,22 +667,29 @@ class MessageSegmentPanel(wx.Panel):
         details: ToolCallDetails,
         order_index: int,
     ) -> wx.CollapsiblePane | None:
-        raw_text = _format_raw_payload(details.raw_data)
-        if not raw_text:
+        if details.raw_data is None:
             return None
 
         identifier = self._make_tool_identifier(details, order_index)
         state_key = f"tool:raw:{identifier}"
-        pane = _build_collapsible_section(
+        pane = _build_deferred_payload_section(
             parent,
             label=_("Raw data"),
-            content=raw_text,
             minimum_height=160,
             collapsed=self._collapsed_state.get(state_key, True),
             name=state_key,
+            raw_payload=details.raw_data,
+            callback=lambda created_pane, text_ctrl, payload: self._register_deferred_payload(
+                state_key, created_pane, text_ctrl, payload
+            ),
         )
-        if pane is not None:
-            self._register_collapsible(state_key, pane)
+        self._register_collapsible(state_key, pane)
+        handler = self._make_deferred_loader(state_key)
+        pane.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, handler)
+        state = self._deferred_payloads.get(state_key)
+        if state is not None:
+            state.handler = handler
+        wx.CallAfter(lambda: self._ensure_deferred_payload_loaded(state_key))
         return pane
 
     # ------------------------------------------------------------------
@@ -693,33 +786,41 @@ class MessageSegmentPanel(wx.Panel):
         payload: AgentSegment,
         raw_payload: Any,
     ) -> wx.CollapsiblePane | None:
-        text = _format_raw_payload(raw_payload)
-        if not text:
+        if raw_payload is None:
             return None
         key = f"raw:{self._entry_id}"
-        pane = _build_collapsible_section(
+        pane = _build_deferred_payload_section(
             parent,
             label=_("Raw response payload"),
-            content=text,
             minimum_height=160,
             collapsed=self._collapsed_state.get(key, True),
             name=key,
+            raw_payload=raw_payload,
+            callback=lambda created_pane, text_ctrl, payload: self._register_deferred_payload(
+                key, created_pane, text_ctrl, payload
+            ),
         )
-        if pane is not None:
-            self._register_collapsible(key, pane)
-            alias_name = "raw:agent"
-            if not any(alias.GetName() == alias_name for alias in self._alias_collapsibles):
-                alias = _build_collapsible_section(
-                    parent,
-                    label=_("Raw response payload"),
-                    content=text,
-                    minimum_height=160,
-                    collapsed=True,
-                    name=alias_name,
-                )
-                if alias is not None:
-                    alias.Hide()
-                    self._alias_collapsibles.append(alias)
+        self._register_collapsible(key, pane)
+        handler = self._make_deferred_loader(key)
+        pane.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, handler)
+        state = self._deferred_payloads.get(key)
+        if state is not None:
+            state.handler = handler
+        alias_name = "raw:agent"
+        if not any(alias.GetName() == alias_name for alias in self._alias_collapsibles):
+            alias = _build_deferred_payload_section(
+                parent,
+                label=_("Raw response payload"),
+                minimum_height=160,
+                collapsed=True,
+                name=alias_name,
+                raw_payload=raw_payload,
+                callback=lambda alias_pane, alias_ctrl, _payload: self._attach_deferred_mirror(
+                    key, alias_pane, alias_ctrl
+                ),
+            )
+            alias.Hide()
+            self._alias_collapsibles.append(alias)
         return pane
 
     # ------------------------------------------------------------------
@@ -727,7 +828,24 @@ class MessageSegmentPanel(wx.Panel):
         for alias in self._alias_collapsibles:
             with suppress(RuntimeError):
                 alias.Destroy()
+            with suppress(AttributeError):
+                delattr(alias, "_cookareq_on_expand")
         self._alias_collapsibles.clear()
+        for key, state in list(self._deferred_payloads.items()):
+            pane = state.pane
+            if isinstance(pane, wx.CollapsiblePane):
+                try:
+                    self._collapsed_state[key] = pane.IsCollapsed()
+                except RuntimeError:
+                    pass
+                handler = state.handler
+                if handler is not None:
+                    with suppress(RuntimeError):
+                        pane.Unbind(wx.EVT_COLLAPSIBLEPANE_CHANGED, handler=handler)
+                with suppress(AttributeError):
+                    delattr(pane, "_cookareq_on_expand")
+            state.mirrors.clear()
+        self._deferred_payloads.clear()
         for key, pane in list(self._collapsible.items()):
             if isinstance(pane, wx.CollapsiblePane):
                 try:
@@ -739,6 +857,108 @@ class MessageSegmentPanel(wx.Panel):
     def _register_collapsible(self, key: str, pane: wx.CollapsiblePane) -> None:
         if key:
             self._collapsible[key] = pane
+
+    # ------------------------------------------------------------------
+    def _register_deferred_payload(
+        self,
+        key: str,
+        pane: wx.CollapsiblePane,
+        text_ctrl: wx.TextCtrl,
+        raw_payload: Any,
+    ) -> None:
+        loader = lambda: self._ensure_deferred_payload_loaded(key)
+        setattr(pane, "_cookareq_on_expand", loader)
+        self._deferred_payloads[key] = _DeferredPayloadState(
+            pane=pane,
+            text_ctrl=text_ctrl,
+            raw_payload=raw_payload,
+        )
+
+    # ------------------------------------------------------------------
+    def _attach_deferred_mirror(
+        self,
+        key: str,
+        _pane: wx.CollapsiblePane,
+        text_ctrl: wx.TextCtrl,
+    ) -> None:
+        state = self._deferred_payloads.get(key)
+        if state is None:
+            return
+        state.mirrors.append(text_ctrl)
+
+    # ------------------------------------------------------------------
+    def _apply_deferred_text(
+        self, state: _DeferredPayloadState, text: str
+    ) -> None:
+        try:
+            state.text_ctrl.ChangeValue(text)
+        except RuntimeError:
+            pass
+        for mirror in list(state.mirrors):
+            with suppress(RuntimeError):
+                mirror.ChangeValue(text)
+
+    # ------------------------------------------------------------------
+    def _ensure_deferred_payload_loaded(self, key: str) -> None:
+        state = self._deferred_payloads.get(key)
+        if state is None:
+            return
+        if state.cached_text is not None:
+            self._apply_deferred_text(state, state.cached_text)
+            handler = state.handler
+            if handler is not None:
+                with suppress(RuntimeError):
+                    state.pane.Unbind(wx.EVT_COLLAPSIBLEPANE_CHANGED, handler=handler)
+                state.handler = None
+            return
+        if state.loading:
+            return
+
+        state.loading = True
+        placeholder = _("Загрузка…")
+        self._apply_deferred_text(state, placeholder)
+
+        raw_payload = state.raw_payload
+
+        def finish() -> None:
+            try:
+                safe_payload = history_json_safe(raw_payload)
+                try:
+                    text = json.dumps(safe_payload, ensure_ascii=False, indent=2)
+                except (TypeError, ValueError):
+                    text = normalize_for_display(str(safe_payload))
+            except Exception:
+                text = normalize_for_display(str(raw_payload))
+
+            state.cached_text = text
+            state.loading = False
+            self._apply_deferred_text(state, text)
+            try:
+                state.text_ctrl.ShowPosition(0)
+            except RuntimeError:
+                pass
+
+            handler_ref = state.handler
+            if handler_ref is not None:
+                with suppress(RuntimeError):
+                    state.pane.Unbind(
+                        wx.EVT_COLLAPSIBLEPANE_CHANGED, handler=handler_ref
+                    )
+                state.handler = None
+
+        wx.CallAfter(finish)
+
+    def _make_deferred_loader(
+        self, key: str
+    ) -> Callable[[wx.CollapsiblePaneEvent], None]:
+        def handler(event: wx.CollapsiblePaneEvent) -> None:
+            if event.GetCollapsed():
+                event.Skip()
+                return
+            self._ensure_deferred_payload_loaded(key)
+            event.Skip()
+
+        return handler
 
     # ------------------------------------------------------------------
     def _make_tool_identifier(

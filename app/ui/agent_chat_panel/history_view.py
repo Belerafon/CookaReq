@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from typing import NamedTuple
 
 import wx
 import wx.dataview as dv
 
 from ...i18n import _
 from ..chat_entry import ChatConversation
+
+
+class HistoryInteractionPreparation(NamedTuple):
+    """Describe whether an interaction can proceed and if the view refreshed."""
+
+    allowed: bool
+    refreshed: bool
 
 
 class HistoryView:
@@ -254,8 +262,8 @@ class HistoryView:
 
     # ------------------------------------------------------------------
     def _show_context_menu(self, row: int | None) -> None:
-        self._prepare_for_interaction()
-        if self._is_running():
+        preparation = self._prepare_for_interaction()
+        if not preparation.allowed:
             return
         rows = self._ensure_row_selected(row)
         if not rows:
@@ -282,8 +290,11 @@ class HistoryView:
         if self._suppress_selection:
             event.Skip()
             return
-        refreshed = self._prepare_for_interaction()
-        index = self._extract_index(None if refreshed else event)
+        preparation = self._prepare_for_interaction()
+        if not preparation.allowed:
+            event.Skip()
+            return
+        index = self._extract_index(None if preparation.refreshed else event)
         if index is not None:
             self._activate_conversation(index)
         event.Skip()
@@ -305,38 +316,46 @@ class HistoryView:
 
     # ------------------------------------------------------------------
     def _on_mouse_down(self, event: wx.MouseEvent) -> None:
-        if not self._prepare_for_interaction():
+        preparation = self._prepare_for_interaction()
+        if not preparation.allowed:
             event.Skip()
             return
         pos = event.GetPosition()
         item, _column = self._list.HitTest(pos)
         if not item or not item.IsOk():
-            self._list.UnselectAll()
+            self._suppress_selection = True
+            try:
+                self._list.UnselectAll()
+            finally:
+                self._suppress_selection = False
             self._list.SetFocus()
+            event.Skip()
             return
         row = self._list.ItemToRow(item)
         if row == wx.NOT_FOUND:
-            self._list.UnselectAll()
+            self._suppress_selection = True
+            try:
+                self._list.UnselectAll()
+            finally:
+                self._suppress_selection = False
             self._list.SetFocus()
+            event.Skip()
             return
-        self._suppress_selection = True
-        try:
-            self._list.SelectRow(row)
-            self._list.EnsureVisible(item)
-        finally:
-            self._suppress_selection = False
-        self._activate_conversation(row)
+        self._list.SetFocus()
+        event.Skip()
 
     # ------------------------------------------------------------------
-    def _prepare_for_interaction(self) -> bool:
+    def _prepare_for_interaction(self) -> HistoryInteractionPreparation:
+        if self._is_running():
+            return HistoryInteractionPreparation(False, False)
         callback = self._prepare_interaction
         if callback is None:
-            return False
+            return HistoryInteractionPreparation(True, False)
         try:
             refreshed = bool(callback())
         except Exception:  # pragma: no cover - defensive guard
-            return False
-        return refreshed
+            return HistoryInteractionPreparation(False, False)
+        return HistoryInteractionPreparation(True, refreshed)
 
 
-__all__ = ["HistoryView"]
+__all__ = ["HistoryInteractionPreparation", "HistoryView"]

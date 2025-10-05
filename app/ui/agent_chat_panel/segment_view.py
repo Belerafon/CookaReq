@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
+import logging
+import time
+
 import wx
 from wx.lib.scrolledpanel import ScrolledPanel
 
@@ -12,6 +15,7 @@ from ...i18n import _
 from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import dip
 from .components.segments import TurnCard
+from .debug_logging import emit_history_debug, elapsed_ns
 from .view_model import (
     AgentSegment,
     ConversationTimeline,
@@ -19,6 +23,9 @@ from .view_model import (
     build_conversation_timeline,
     build_entry_segments,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class SegmentViewCallbacks:
@@ -96,14 +103,34 @@ class SegmentListView:
         updated_entries: Iterable[str] | None = None,
         force: bool = False,
     ) -> None:
+        pending_timeline_id = (
+            timeline.conversation_id if timeline is not None else None
+        )
+        conversation_id = None
+        if conversation is not None:
+            conversation_id = conversation.conversation_id
+        elif pending_timeline_id is not None:
+            conversation_id = pending_timeline_id
+        entry_ids: tuple[str, ...] | None = None
+        if updated_entries is not None:
+            entry_ids = tuple(updated_entries)
+        emit_history_debug(
+            logger,
+            "segment_view.schedule_render.request",
+            conversation_id=conversation_id,
+            pending_timeline=pending_timeline_id,
+            entry_count=len(entry_ids) if entry_ids else 0,
+            force=force,
+            already_scheduled=self._pending_scheduled,
+        )
         if timeline is not None:
             self._pending_timeline = timeline
         elif conversation is None:
             self._pending_timeline = None
         if force:
             self._pending_force = True
-        if updated_entries:
-            self._pending_entry_ids.update(updated_entries)
+        if entry_ids:
+            self._pending_entry_ids.update(entry_ids)
         if not self._pending_scheduled:
             self._pending_scheduled = True
             wx.CallAfter(self._flush_pending_updates)
@@ -144,6 +171,9 @@ class SegmentListView:
 
     # ------------------------------------------------------------------
     def _flush_pending_updates(self) -> None:
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         self._pending_scheduled = False
         timeline = self._pending_timeline
         entry_ids = list(self._pending_entry_ids)
@@ -151,13 +181,41 @@ class SegmentListView:
         self._pending_entry_ids.clear()
         self._pending_force = False
 
+        emit_history_debug(
+            logger,
+            "segment_view.flush.prepared",
+            pending_timeline=getattr(timeline, "conversation_id", None),
+            entry_count=len(entry_ids),
+            force=force,
+        )
+
         conversation = self._callbacks.get_conversation()
         if conversation is None:
             timeline = None
         elif timeline is None or timeline.conversation_id != conversation.conversation_id:
             timeline = build_conversation_timeline(conversation)
 
+        conversation_id = conversation.conversation_id if conversation else None
+        emit_history_debug(
+            logger,
+            "segment_view.flush.start",
+            conversation_id=conversation_id,
+            timeline_id=getattr(timeline, "conversation_id", None),
+            entry_count=len(entry_ids),
+            force=force,
+        )
+
         self._apply_timeline(conversation, timeline, entry_ids, force)
+
+        emit_history_debug(
+            logger,
+            "segment_view.flush.completed",
+            conversation_id=conversation_id,
+            timeline_id=getattr(timeline, "conversation_id", None),
+            entry_count=len(entry_ids),
+            force=force,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
 
     # ------------------------------------------------------------------
     def _apply_timeline(
@@ -170,14 +228,33 @@ class SegmentListView:
         panel = self._panel
         last_card: wx.Window | None = None
         has_entries = False
+        conversation_id = conversation.conversation_id if conversation else None
+        emit_history_debug(
+            logger,
+            "segment_view.apply_timeline.start",
+            conversation_id=conversation_id,
+            timeline_id=getattr(timeline, "conversation_id", None),
+            entry_count=len(entry_ids),
+            force=force,
+        )
 
         if conversation is None or timeline is None:
             self._pending_timeline = None
             self._detach_active_conversation()
             self._show_start_placeholder()
+            emit_history_debug(
+                logger,
+                "segment_view.apply_timeline.placeholder",
+                conversation_id=conversation_id,
+            )
         elif not timeline.entries:
             self._pending_timeline = timeline
             self._show_empty_conversation(conversation)
+            emit_history_debug(
+                logger,
+                "segment_view.apply_timeline.empty",
+                conversation_id=conversation_id,
+            )
         else:
             self._pending_timeline = timeline
             has_entries = True
@@ -189,6 +266,14 @@ class SegmentListView:
             last_card = self._update_conversation_cards(
                 conversation, timeline, entry_ids, force
             )
+            emit_history_debug(
+                logger,
+                "segment_view.apply_timeline.entries",
+                conversation_id=conversation_id,
+                entry_count=len(timeline.entries),
+                refreshed_ids=list(entry_ids) if entry_ids else None,
+                force=force,
+            )
 
         panel.Layout()
         panel.FitInside()
@@ -197,6 +282,12 @@ class SegmentListView:
             self._scroll_to_bottom(last_card)
         self._callbacks.update_copy_buttons(has_entries)
         self._callbacks.update_header()
+        emit_history_debug(
+            logger,
+            "segment_view.apply_timeline.completed",
+            conversation_id=conversation_id,
+            has_entries=has_entries,
+        )
 
     # ------------------------------------------------------------------
     def _update_conversation_cards(

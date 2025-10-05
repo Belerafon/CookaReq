@@ -305,9 +305,8 @@ class HistoryView:
 
     # ------------------------------------------------------------------
     def _on_mouse_down(self, event: wx.MouseEvent) -> None:
-        if not self._prepare_for_interaction():
-            event.Skip()
-            return
+        refreshed = self._prepare_for_interaction()
+        event.Skip()
         pos = event.GetPosition()
         item, _column = self._list.HitTest(pos)
         if not item or not item.IsOk():
@@ -319,12 +318,20 @@ class HistoryView:
             self._list.UnselectAll()
             self._list.SetFocus()
             return
-        self._suppress_selection = True
-        try:
-            self._list.SelectRow(row)
-            self._list.EnsureVisible(item)
-        finally:
-            self._suppress_selection = False
+        if refreshed:
+            self._suppress_selection = True
+            try:
+                self._list.SelectRow(row)
+                self._list.EnsureVisible(item)
+            finally:
+                self._suppress_selection = False
+            refreshed_index = self._extract_index(None)
+            if refreshed_index is None:
+                return
+            self._activate_conversation(refreshed_index)
+            return
+        if not self._list.IsRowSelected(row):
+            return
         self._activate_conversation(row)
 
     # ------------------------------------------------------------------

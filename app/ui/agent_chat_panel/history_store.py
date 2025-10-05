@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import time
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from ..chat_entry import ChatConversation, ChatEntry
+from .debug_logging import emit_history_debug, elapsed_ns
 from .paths import _default_history_path, _normalize_history_path
 
 
@@ -23,6 +25,11 @@ class HistoryStore:
 
     def __init__(self, path: Path | str | None = None) -> None:
         self._path = self._normalize(path)
+        emit_history_debug(
+            logger,
+            "store.init",
+            history_path=str(self._path),
+        )
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -50,41 +57,123 @@ class HistoryStore:
         """Update the history path if it changed."""
 
         new_path = self._normalize(path)
+        emit_history_debug(
+            logger,
+            "store.set_path.start",
+            requested_path=path,
+            normalized=str(new_path),
+            persist_existing=persist_existing,
+        )
         if new_path == self._path:
+            emit_history_debug(
+                logger,
+                "store.set_path.no_change",
+                history_path=str(self._path),
+            )
             return False
         if persist_existing and conversations is not None:
+            phase_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
             try:
                 self.save(conversations, active_id)
             except Exception:  # pragma: no cover - defensive logging
                 logger.exception(
                     "Failed to persist conversations before switching history path"
                 )
-        self._path = new_path
+                emit_history_debug(
+                    logger,
+                    "store.set_path.persist_failed",
+                    history_path=str(self._path),
+                    elapsed_ns=elapsed_ns(phase_ns),
+                )
+            self._path = new_path
+            emit_history_debug(
+                logger,
+                "store.set_path.persist_completed",
+                history_path=str(self._path),
+                elapsed_ns=elapsed_ns(phase_ns),
+            )
+        else:
+            self._path = new_path
+        emit_history_debug(
+            logger,
+            "store.set_path.changed",
+            history_path=str(self._path),
+        )
         return True
 
     # ------------------------------------------------------------------
     def load(self) -> tuple[list[ChatConversation], str | None]:
         """Load conversations and the active conversation id."""
 
+        debug_start_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        emit_history_debug(
+            logger,
+            "store.load.start",
+            history_path=str(self._path),
+        )
         try:
             with self._connect() as conn:
+                emit_history_debug(
+                    logger,
+                    "store.load.connected",
+                    elapsed_ns=elapsed_ns(debug_start_ns),
+                )
                 self._ensure_schema(conn)
+                emit_history_debug(
+                    logger,
+                    "store.load.schema_ready",
+                    elapsed_ns=elapsed_ns(debug_start_ns),
+                )
                 conversations = self._load_conversations(conn)
+                emit_history_debug(
+                    logger,
+                    "store.load.conversations",
+                    elapsed_ns=elapsed_ns(debug_start_ns),
+                    conversation_count=len(conversations),
+                )
                 if not conversations:
+                    emit_history_debug(
+                        logger,
+                        "store.load.no_conversations",
+                        elapsed_ns=elapsed_ns(debug_start_ns),
+                    )
                     return [], None
                 active_id = self._resolve_active_id(conn, conversations)
+                emit_history_debug(
+                    logger,
+                    "store.load.active_id",
+                    elapsed_ns=elapsed_ns(debug_start_ns),
+                    active_id=active_id,
+                )
                 return conversations, active_id
         except sqlite3.Error:  # pragma: no cover - defensive logging
             logger.exception("Failed to load chat history from %s", self._path)
+            emit_history_debug(
+                logger,
+                "store.load.error",
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
             return [], None
 
     # ------------------------------------------------------------------
     def load_entries(self, conversation_id: str) -> list[ChatEntry]:
         """Return entries belonging to *conversation_id*."""
 
+        debug_start_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        emit_history_debug(
+            logger,
+            "store.load_entries.start",
+            history_path=str(self._path),
+            conversation_id=conversation_id,
+        )
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)
+                emit_history_debug(
+                    logger,
+                    "store.load_entries.schema_ready",
+                    elapsed_ns=elapsed_ns(debug_start_ns),
+                )
                 rows = conn.execute(
                     """
                     SELECT payload
@@ -97,6 +186,11 @@ class HistoryStore:
         except sqlite3.Error:  # pragma: no cover - defensive logging
             logger.exception(
                 "Failed to load chat entries for %s from %s", conversation_id, self._path
+            )
+            emit_history_debug(
+                logger,
+                "store.load_entries.error",
+                elapsed_ns=elapsed_ns(debug_start_ns),
             )
             return []
 
@@ -116,6 +210,13 @@ class HistoryStore:
                 entries.append(ChatEntry.from_dict(payload))
             except Exception:  # pragma: no cover - defensive logging
                 logger.exception("Failed to deserialize chat entry for %s", conversation_id)
+        emit_history_debug(
+            logger,
+            "store.load_entries.completed",
+            conversation_id=conversation_id,
+            entry_count=len(entries),
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
         return entries
 
     # ------------------------------------------------------------------
@@ -151,15 +252,33 @@ class HistoryStore:
 
     # ------------------------------------------------------------------
     def _connect(self) -> sqlite3.Connection:
+        debug_start_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
         path = self._path
+        emit_history_debug(
+            logger,
+            "store.connect.start",
+            history_path=str(path),
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(path))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
+        emit_history_debug(
+            logger,
+            "store.connect.ready",
+            history_path=str(path),
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
         return conn
 
     # ------------------------------------------------------------------
     def _ensure_schema(self, conn: sqlite3.Connection) -> None:
+        debug_start_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        emit_history_debug(
+            logger,
+            "store.ensure_schema.start",
+            history_path=str(self._path),
+        )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS metadata (
@@ -199,11 +318,22 @@ class HistoryStore:
             raise sqlite3.DatabaseError(
                 f"Unsupported chat history schema version: {version!r}"
             )
+        emit_history_debug(
+            logger,
+            "store.ensure_schema.completed",
+            elapsed_ns=elapsed_ns(debug_start_ns),
+            schema_version=str(version) if version is not None else str(_SCHEMA_VERSION),
+        )
 
     # ------------------------------------------------------------------
     def _load_conversations(
         self, conn: sqlite3.Connection
     ) -> list[ChatConversation]:
+        debug_start_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        emit_history_debug(
+            logger,
+            "store.load_conversations.start",
+        )
         rows = conn.execute(
             """
             SELECT id, title, created_at, updated_at, preview
@@ -224,6 +354,12 @@ class HistoryStore:
                 lambda conv_id=row["id"]: self.load_entries(conv_id)
             )
             conversations.append(conversation)
+        emit_history_debug(
+            logger,
+            "store.load_conversations.completed",
+            elapsed_ns=elapsed_ns(debug_start_ns),
+            conversation_count=len(conversations),
+        )
         return conversations
 
     # ------------------------------------------------------------------
@@ -233,10 +369,29 @@ class HistoryStore:
         ids = [conv.conversation_id for conv in conversations]
         if not ids:
             return None
+        debug_start_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        emit_history_debug(
+            logger,
+            "store.resolve_active_id.start",
+            candidate_count=len(ids),
+        )
         active_id = self._get_metadata(conn, "active_id")
         if active_id in ids:
+            emit_history_debug(
+                logger,
+                "store.resolve_active_id.existing",
+                active_id=active_id,
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
             return active_id
-        return ids[-1]
+        fallback = ids[-1]
+        emit_history_debug(
+            logger,
+            "store.resolve_active_id.fallback",
+            active_id=fallback,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
+        return fallback
 
     # ------------------------------------------------------------------
     def _sync_conversations(

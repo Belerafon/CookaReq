@@ -4,15 +4,21 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import logging
+import time
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from typing import Any, Iterable, Literal, Mapping, Sequence
 
 from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation, ChatEntry
+from .debug_logging import emit_history_debug, elapsed_ns
 from .history_utils import history_json_safe, normalise_tool_payloads
 from .time_formatting import format_entry_timestamp, parse_iso_timestamp
 from .tool_summaries import ToolCallSummary, summarize_tool_payload
+
+
+logger = logging.getLogger("cookareq.ui.agent_chat_panel.timeline")
 
 
 @dataclass(slots=True)
@@ -219,6 +225,17 @@ class ConversationTimelineCache:
         conversation_id = conversation.conversation_id
         cached = self._cache.get(conversation_id)
         dirty_entries = self._dirty_entries.pop(conversation_id, set())
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
+        emit_history_debug(
+            logger,
+            "timeline.cache.request",
+            conversation_id=conversation_id,
+            cached=bool(cached),
+            dirty_count=len(dirty_entries),
+            conversation_entries=len(conversation.entries),
+        )
         requires_full_refresh = (
             cached is None
             or conversation_id in self._full_invalidations
@@ -226,16 +243,42 @@ class ConversationTimelineCache:
         )
 
         if requires_full_refresh:
+            build_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             timeline = build_conversation_timeline(conversation)
+            emit_history_debug(
+                logger,
+                "timeline.cache.full_rebuild",
+                conversation_id=conversation_id,
+                entry_count=len(timeline.entries),
+                elapsed_ns=elapsed_ns(build_start_ns),
+            )
             self._cache[conversation_id] = _CachedTimeline(
                 timeline=timeline,
                 entry_map={entry.entry_id: entry for entry in timeline.entries},
             )
             self._full_invalidations.discard(conversation_id)
+            emit_history_debug(
+                logger,
+                "timeline.cache.result",
+                conversation_id=conversation_id,
+                entry_count=len(timeline.entries),
+                mode="full",
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
             return timeline
 
         if not dirty_entries:
             self._full_invalidations.discard(conversation_id)
+            emit_history_debug(
+                logger,
+                "timeline.cache.result",
+                conversation_id=conversation_id,
+                entry_count=len(cached.timeline.entries),
+                mode="cached",
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
             return cached.timeline
 
         entries = list(cached.timeline.entries)
@@ -260,15 +303,39 @@ class ConversationTimelineCache:
             updated = True
 
         if fallback_to_full:
+            rebuild_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             timeline = build_conversation_timeline(conversation)
+            emit_history_debug(
+                logger,
+                "timeline.cache.partial_fallback",
+                conversation_id=conversation_id,
+                dirty_count=len(dirty_entries),
+                elapsed_ns=elapsed_ns(rebuild_start_ns),
+            )
             self._cache[conversation_id] = _CachedTimeline(
                 timeline=timeline,
                 entry_map={entry.entry_id: entry for entry in timeline.entries},
             )
             self._full_invalidations.discard(conversation_id)
+            emit_history_debug(
+                logger,
+                "timeline.cache.result",
+                conversation_id=conversation_id,
+                entry_count=len(timeline.entries),
+                mode="fallback",
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
             return timeline
 
         if updated:
+            emit_history_debug(
+                logger,
+                "timeline.cache.partial_update",
+                conversation_id=conversation_id,
+                dirty_count=len(dirty_entries),
+            )
             timeline = ConversationTimeline(
                 conversation_id=conversation_id,
                 entries=tuple(entries),
@@ -279,6 +346,14 @@ class ConversationTimelineCache:
             timeline = cached.timeline
 
         self._full_invalidations.discard(conversation_id)
+        emit_history_debug(
+            logger,
+            "timeline.cache.result",
+            conversation_id=conversation_id,
+            entry_count=len(timeline.entries),
+            mode="partial" if updated else "cached",  # cached when no change
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
         return timeline
 
 

@@ -18,6 +18,7 @@ from ...confirm import confirm
 from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT, TOOLS
 from ...llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
+from ...telemetry import log_event
 from ...util.time import utc_now_iso
 from ..chat_entry import (
     ChatConversation,
@@ -31,6 +32,8 @@ from ..helpers import (
 from ..text import normalize_for_display
 from .batch_runner import BatchTarget
 from .batch_ui import AgentBatchSection
+from .bootstrap import HistoryBootstrapResult, prepare_history_for_directory
+from .debug_logging import emit_history_debug, elapsed_ns
 from .components.view import AgentChatView, WaitStateCallbacks
 from .confirm_preferences import (
     ConfirmPreferencesMixin,
@@ -51,6 +54,7 @@ from .history_utils import (
     stringify_payload,
     update_tool_results,
 )
+from .layout import AgentChatLayoutBuilder
 from .log_export import compose_transcript_log_text, compose_transcript_text
 from .paths import (
     _normalize_history_path,
@@ -62,7 +66,7 @@ from .project_settings import (
     load_agent_project_settings,
     save_agent_project_settings,
 )
-from .layout import AgentChatLayoutBuilder
+from .segment_view import SegmentListView
 from .session import AgentChatSession
 from .settings_dialog import AgentProjectSettingsDialog
 from .time_formatting import format_entry_timestamp, format_last_activity
@@ -82,7 +86,6 @@ from .view_model import (
     TimestampInfo,
     ToolCallDetails,
 )
-from .segment_view import SegmentListView
 
 
 logger = logging.getLogger("cookareq.ui.agent_chat_panel")
@@ -254,23 +257,130 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 shutdown(wait=False)
 
     # ------------------------------------------------------------------
-    def set_history_path(self, path: Path | str | None) -> None:
+    def set_history_path(
+        self,
+        path: Path | str | None,
+        *,
+        load_directory: Path | None = None,
+        bootstrap: HistoryBootstrapResult | None = None,
+        started_at: float | None = None,
+    ) -> bool:
         """Switch to *path* reloading conversations from disk."""
 
+        start_time = started_at if started_at is not None else time.monotonic()
+        debug_start_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.start",
+            requested_path=path,
+            load_directory=load_directory,
+            bootstrap={
+                "path": getattr(bootstrap, "path", None),
+                "seed_source": getattr(bootstrap, "seed_source", None),
+                "seed_kind": getattr(bootstrap, "seed_kind", None),
+            }
+            if bootstrap is not None
+            else None,
+        )
         changed = self._session.set_history_path(
             path, persist_existing=bool(self.conversations)
         )
         if not changed:
-            return
+            emit_history_debug(
+                logger,
+                "panel.set_history_path.no_change",
+                requested_path=path,
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
+            return False
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.storage_switched",
+            history_path=str(self._session.history.path),
+        )
+        phase_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
         self._initialize_history_state()
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.history_initialized",
+            elapsed_ns=elapsed_ns(phase_ns),
+            conversation_count=len(self.conversations),
+        )
+        phase_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
         self._refresh_history_list()
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.history_refreshed",
+            elapsed_ns=elapsed_ns(phase_ns),
+            active_conversation=self.active_conversation_id,
+        )
+        phase_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
         self._render_transcript()
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.transcript_rendered",
+            elapsed_ns=elapsed_ns(phase_ns),
+            pending_refresh=self._transcript_refresh_scheduled,
+        )
 
-    def set_history_directory(self, directory: Path | str | None) -> None:
+        payload: dict[str, Any] = {
+            "path": str(self.history_path),
+            "conversation_count": len(self.conversations),
+            "active_conversation": self.active_conversation_id,
+        }
+        if load_directory is not None:
+            payload["requirements_directory"] = str(load_directory)
+        if bootstrap is not None and bootstrap.seed_source is not None:
+            payload["seed_source"] = str(bootstrap.seed_source)
+            if bootstrap.seed_kind is not None:
+                payload["seed_kind"] = bootstrap.seed_kind
+        log_event("AGENT_CHAT_HISTORY_READY", payload, start_time=start_time)
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.completed",
+            telemetry_payload=payload,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
+        return True
+
+    def set_history_directory(self, directory: Path | str | None) -> bool:
         """Persist chat history inside *directory* when provided."""
 
-        self.set_history_path(history_path_for_documents(directory))
+        start_time = time.monotonic()
+        debug_start_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        emit_history_debug(
+            logger,
+            "panel.set_history_directory.start",
+            directory=directory,
+        )
+        bootstrap = prepare_history_for_directory(directory)
+        emit_history_debug(
+            logger,
+            "panel.set_history_directory.bootstrap",
+            bootstrap={
+                "path": bootstrap.path,
+                "seed_source": bootstrap.seed_source,
+                "seed_kind": bootstrap.seed_kind,
+            },
+        )
+        normalized_directory = (
+            _normalize_history_path(directory) if directory is not None else None
+        )
+        changed = self.set_history_path(
+            bootstrap.path,
+            load_directory=normalized_directory,
+            bootstrap=bootstrap,
+            started_at=start_time,
+        )
         self.set_project_settings_path(settings_path_for_documents(directory))
+        emit_history_debug(
+            logger,
+            "panel.set_history_directory.finish",
+            changed=changed,
+            normalized_directory=normalized_directory,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
+        return changed
 
     @property
     def history_path(self) -> Path:
@@ -1641,56 +1751,163 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         force: bool = False,
         immediate: bool = False,
     ) -> None:
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         if conversation is None:
             conversation = self._get_active_conversation_loaded()
         conversation_id = conversation.conversation_id if conversation is not None else None
 
+        entry_ids_tuple: tuple[str, ...] | None = None
+        if entry_ids is not None:
+            entry_ids_tuple = tuple(entry_ids)
+        entry_count = len(entry_ids_tuple) if entry_ids_tuple is not None else 0
+
+        emit_history_debug(
+            logger,
+            "panel.transcript_refresh.request",
+            conversation_id=conversation_id,
+            entry_count=entry_count,
+            force=force,
+            immediate=immediate,
+            pending_conversations=len(self._pending_transcript_refresh),
+        )
+
         if conversation_id is None:
             self._pending_transcript_refresh[None] = None
+            queue_kind = "no_conversation"
         else:
             if force:
                 self._timeline_cache.invalidate_conversation(conversation_id)
                 self._pending_transcript_refresh[conversation_id] = None
+                queue_kind = "full"
             else:
-                entry_set = {entry_id for entry_id in (entry_ids or ()) if entry_id}
+                entry_set = {entry_id for entry_id in (entry_ids_tuple or ()) if entry_id}
                 if not entry_set:
+                    emit_history_debug(
+                        logger,
+                        "panel.transcript_refresh.request.skipped",
+                        conversation_id=conversation_id,
+                        reason="empty_entries",
+                        force=force,
+                        immediate=immediate,
+                        elapsed_ns=elapsed_ns(debug_start_ns),
+                    )
                     return
                 self._timeline_cache.invalidate_entries(conversation_id, entry_set)
                 existing = self._pending_transcript_refresh.get(conversation_id)
                 if existing is None and conversation_id in self._pending_transcript_refresh:
-                    # full refresh already queued
-                    pass
+                    queue_kind = "full_pending"
                 else:
                     bucket = self._pending_transcript_refresh.setdefault(
                         conversation_id, set()
                     )
                     if bucket is not None:
                         bucket.update(entry_set)
+                    queue_kind = "incremental"
+
+        emit_history_debug(
+            logger,
+            "panel.transcript_refresh.queued",
+            conversation_id=conversation_id,
+            queue_kind=queue_kind,
+            entry_count=entry_count,
+            force=force,
+            immediate=immediate,
+        )
 
         if immediate:
+            flush_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush_requested",
+                conversation_id=conversation_id,
+                queue_kind=queue_kind,
+            )
             self._flush_pending_transcript_refresh()
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush_completed",
+                conversation_id=conversation_id,
+                queue_kind=queue_kind,
+                flush_ns=elapsed_ns(flush_start_ns),
+            )
         elif not self._transcript_refresh_scheduled:
             self._transcript_refresh_scheduled = True
             wx.CallAfter(self._flush_pending_transcript_refresh)
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush_scheduled",
+                conversation_id=conversation_id,
+                queue_kind=queue_kind,
+            )
+
+        emit_history_debug(
+            logger,
+            "panel.transcript_refresh.request.completed",
+            conversation_id=conversation_id,
+            queue_kind=queue_kind,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
 
     def _flush_pending_transcript_refresh(self) -> None:
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         pending = self._pending_transcript_refresh
         if not pending:
             self._transcript_refresh_scheduled = False
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush.empty",
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
             return
         self._pending_transcript_refresh = {}
         self._transcript_refresh_scheduled = False
 
         view = self._transcript_view
         if view is None:
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush.view_missing",
+                conversations=list(pending),
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
             return
+
+        emit_history_debug(
+            logger,
+            "panel.transcript_refresh.flush.start",
+            conversations=list(pending),
+        )
 
         active_conversation = self._get_active_conversation_loaded()
         active_id = active_conversation.conversation_id if active_conversation else None
 
         for conversation_id, entry_ids in pending.items():
+            bucket_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             force = entry_ids is None
+            entry_count = len(entry_ids) if entry_ids else 0
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush.bucket",
+                conversation_id=conversation_id,
+                force=force,
+                entry_count=entry_count,
+                active=conversation_id == active_id,
+            )
+
             if conversation_id is None:
+                compose_start_ns = (
+                    time.perf_counter_ns()
+                    if logger.isEnabledFor(logging.DEBUG)
+                    else None
+                )
                 view.schedule_render(
                     conversation=None,
                     timeline=None,
@@ -1698,8 +1915,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     force=True,
                 )
                 self._latest_timeline = None
-                self._update_transcript_selection_probe(
-                    compose_transcript_text(None)
+                empty_transcript = compose_transcript_text(None)
+                self._update_transcript_selection_probe(empty_transcript)
+                emit_history_debug(
+                    logger,
+                    "panel.transcript_refresh.flush.cleared",
+                    compose_ns=elapsed_ns(compose_start_ns),
+                    elapsed_ns=elapsed_ns(bucket_start_ns),
                 )
                 continue
 
@@ -1710,13 +1932,40 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             )
             if conversation is None:
                 self._timeline_cache.forget(conversation_id)
+                emit_history_debug(
+                    logger,
+                    "panel.transcript_refresh.flush.forget",
+                    conversation_id=conversation_id,
+                    reason="conversation_missing",
+                    elapsed_ns=elapsed_ns(bucket_start_ns),
+                )
                 continue
 
+            timeline_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             timeline = self._timeline_cache.timeline_for(conversation)
+            timeline_elapsed = elapsed_ns(timeline_start_ns)
             if conversation_id != active_id:
+                emit_history_debug(
+                    logger,
+                    "panel.transcript_refresh.flush.deferred",
+                    conversation_id=conversation_id,
+                    entry_count=entry_count,
+                    force=force,
+                    timeline_ns=timeline_elapsed,
+                    reason="inactive",
+                )
                 continue
 
             if not force and not entry_ids:
+                emit_history_debug(
+                    logger,
+                    "panel.transcript_refresh.flush.skipped",
+                    conversation_id=conversation_id,
+                    reason="no_entries",
+                    timeline_ns=timeline_elapsed,
+                )
                 continue
 
             updated_entries = None if force else sorted(entry_ids)
@@ -1726,10 +1975,34 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 updated_entries=updated_entries,
                 force=force,
             )
-            self._latest_timeline = timeline
-            self._update_transcript_selection_probe(
-                compose_transcript_text(conversation, timeline=timeline)
+            compose_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
             )
+            transcript_text = compose_transcript_text(conversation, timeline=timeline)
+            compose_elapsed = elapsed_ns(compose_start_ns)
+            self._latest_timeline = timeline
+            self._update_transcript_selection_probe(transcript_text)
+            emit_history_debug(
+                logger,
+                "panel.transcript_refresh.flush.applied",
+                conversation_id=conversation_id,
+                force=force,
+                entry_count=entry_count,
+                updated_entry_count=(
+                    len(updated_entries) if isinstance(updated_entries, list) else None
+                ),
+                timeline_entries=len(getattr(timeline, "entries", ())),
+                timeline_ns=timeline_elapsed,
+                compose_ns=compose_elapsed,
+                elapsed_ns=elapsed_ns(bucket_start_ns),
+            )
+
+        emit_history_debug(
+            logger,
+            "panel.transcript_refresh.flush.completed",
+            conversations=list(pending),
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
 
     def _render_transcript(self) -> None:
         self._request_transcript_refresh(force=True, immediate=True)
@@ -2443,28 +2716,139 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         refresh_history: bool = True,
         _source: str = "unknown",
     ) -> None:
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.request",
+            index=index,
+            source=_source,
+            available=len(self.conversations),
+        )
         if not (0 <= index < len(self.conversations)):
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.invalid",
+                index=index,
+                source=_source,
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
             return
         conversation = self.conversations[index]
+        conversation_id = conversation.conversation_id
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.start",
+            index=index,
+            conversation_id=conversation_id,
+            source=_source,
+        )
+        previous_active = self.active_conversation_id
+        phase_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         self._set_active_conversation_id(conversation.conversation_id)
+        changed = previous_active != conversation_id
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.history_selected",
+            conversation_id=conversation_id,
+            changed=changed,
+            elapsed_ns=elapsed_ns(phase_ns),
+        )
         if persist:
+            phase_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             self._session.history.persist_active_selection()
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.persisted",
+                conversation_id=conversation_id,
+                elapsed_ns=elapsed_ns(phase_ns),
+            )
         if refresh_history:
+            phase_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             self._refresh_history_list()
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.history_refreshed",
+                conversation_id=conversation_id,
+                elapsed_ns=elapsed_ns(phase_ns),
+            )
         else:
             self._update_history_controls()
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.controls_updated",
+                conversation_id=conversation_id,
+            )
         self._ensure_history_visible(index)
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.history_visible",
+            conversation_id=conversation_id,
+            index=index,
+        )
+        phase_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         self._render_transcript()
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.transcript_requested",
+            conversation_id=conversation_id,
+            elapsed_ns=elapsed_ns(phase_ns),
+        )
 
         input_ctrl = getattr(self, "input", None)
         if input_ctrl is None:
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.completed",
+                conversation_id=conversation_id,
+                changed=changed,
+                source=_source,
+                elapsed_ns=elapsed_ns(debug_start_ns),
+                focus="missing",
+            )
             return
         try:
             if not input_ctrl or input_ctrl.IsBeingDeleted():
+                emit_history_debug(
+                    logger,
+                    "panel.activate_conversation.completed",
+                    conversation_id=conversation_id,
+                    changed=changed,
+                    source=_source,
+                    elapsed_ns=elapsed_ns(debug_start_ns),
+                    focus="deleted",
+                )
                 return
         except RuntimeError:
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.completed",
+                conversation_id=conversation_id,
+                changed=changed,
+                source=_source,
+                elapsed_ns=elapsed_ns(debug_start_ns),
+                focus="runtime_error",
+            )
             return
         input_ctrl.SetFocus()
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.completed",
+            conversation_id=conversation_id,
+            changed=changed,
+            source=_source,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+            focus="set",
+        )
 
     def _update_history_controls(self) -> None:
         has_conversations = bool(self.conversations)

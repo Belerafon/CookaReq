@@ -76,16 +76,44 @@ class AgentChatHistory:
         """Set active conversation id notifying listeners on change."""
 
         previous = self._active_id
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
+        emit_history_debug(
+            logger,
+            "history.set_active_id.start",
+            previous=previous,
+            requested=conversation_id,
+        )
         self._active_id = conversation_id
         if conversation_id is not None:
             conversation = self.get_conversation(conversation_id)
             if conversation is not None:
                 self.ensure_conversation_entries(conversation)
+            else:
+                emit_history_debug(
+                    logger,
+                    "history.set_active_id.missing",
+                    conversation_id=conversation_id,
+                    known_ids=[conv.conversation_id for conv in self._conversations],
+                )
+        else:
+            emit_history_debug(
+                logger,
+                "history.set_active_id.cleared",
+            )
         if (
             self._on_active_changed is not None
             and previous != conversation_id
         ):
             self._on_active_changed(previous, conversation_id)
+        emit_history_debug(
+            logger,
+            "history.set_active_id.completed",
+            active_id=self._active_id,
+            changed=previous != conversation_id,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
 
     # ------------------------------------------------------------------
     def persist_active_selection(self) -> None:

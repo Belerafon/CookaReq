@@ -2553,28 +2553,139 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         refresh_history: bool = True,
         _source: str = "unknown",
     ) -> None:
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.request",
+            index=index,
+            source=_source,
+            available=len(self.conversations),
+        )
         if not (0 <= index < len(self.conversations)):
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.invalid",
+                index=index,
+                source=_source,
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
             return
         conversation = self.conversations[index]
+        conversation_id = conversation.conversation_id
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.start",
+            index=index,
+            conversation_id=conversation_id,
+            source=_source,
+        )
+        previous_active = self.active_conversation_id
+        phase_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         self._set_active_conversation_id(conversation.conversation_id)
+        changed = previous_active != conversation_id
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.history_selected",
+            conversation_id=conversation_id,
+            changed=changed,
+            elapsed_ns=elapsed_ns(phase_ns),
+        )
         if persist:
+            phase_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             self._session.history.persist_active_selection()
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.persisted",
+                conversation_id=conversation_id,
+                elapsed_ns=elapsed_ns(phase_ns),
+            )
         if refresh_history:
+            phase_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             self._refresh_history_list()
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.history_refreshed",
+                conversation_id=conversation_id,
+                elapsed_ns=elapsed_ns(phase_ns),
+            )
         else:
             self._update_history_controls()
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.controls_updated",
+                conversation_id=conversation_id,
+            )
         self._ensure_history_visible(index)
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.history_visible",
+            conversation_id=conversation_id,
+            index=index,
+        )
+        phase_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         self._render_transcript()
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.transcript_requested",
+            conversation_id=conversation_id,
+            elapsed_ns=elapsed_ns(phase_ns),
+        )
 
         input_ctrl = getattr(self, "input", None)
         if input_ctrl is None:
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.completed",
+                conversation_id=conversation_id,
+                changed=changed,
+                source=_source,
+                elapsed_ns=elapsed_ns(debug_start_ns),
+                focus="missing",
+            )
             return
         try:
             if not input_ctrl or input_ctrl.IsBeingDeleted():
+                emit_history_debug(
+                    logger,
+                    "panel.activate_conversation.completed",
+                    conversation_id=conversation_id,
+                    changed=changed,
+                    source=_source,
+                    elapsed_ns=elapsed_ns(debug_start_ns),
+                    focus="deleted",
+                )
                 return
         except RuntimeError:
+            emit_history_debug(
+                logger,
+                "panel.activate_conversation.completed",
+                conversation_id=conversation_id,
+                changed=changed,
+                source=_source,
+                elapsed_ns=elapsed_ns(debug_start_ns),
+                focus="runtime_error",
+            )
             return
         input_ctrl.SetFocus()
+        emit_history_debug(
+            logger,
+            "panel.activate_conversation.completed",
+            conversation_id=conversation_id,
+            changed=changed,
+            source=_source,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+            focus="set",
+        )
 
     def _update_history_controls(self) -> None:
         has_conversations = bool(self.conversations)

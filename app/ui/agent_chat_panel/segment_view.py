@@ -58,6 +58,8 @@ class _ConversationRenderCache:
 class SegmentListView:
     """Render chat conversations as a list of turn cards."""
 
+    _DEBUG_POLL_INTERVAL_MS = 3000
+
     def __init__(
         self,
         owner: wx.Window,
@@ -78,6 +80,19 @@ class SegmentListView:
         self._pending_entry_ids: set[str] = set()
         self._pending_force: bool = False
         self._pending_scheduled = False
+        self._last_render_completed_ns: int | None = None
+        self._last_poll_conversation_id: str | None = None
+        self._last_poll_card_count = 0
+        self._debug_poll_timer = wx.Timer(self._panel)
+        self._panel.Bind(wx.EVT_TIMER, self._on_debug_poll_timer, self._debug_poll_timer)
+        self._panel.Bind(wx.EVT_WINDOW_DESTROY, self._on_panel_destroy)
+        timer_started = self._debug_poll_timer.Start(self._DEBUG_POLL_INTERVAL_MS)
+        emit_history_debug(
+            logger,
+            "segment_view.poll.started",
+            interval_ms=self._DEBUG_POLL_INTERVAL_MS,
+            started=bool(timer_started),
+        )
 
     # ------------------------------------------------------------------
     def render(self) -> None:
@@ -348,6 +363,7 @@ class SegmentListView:
             conversation_id=conversation_id,
             has_entries=has_entries,
         )
+        self._last_render_completed_ns = time.perf_counter_ns()
 
     # ------------------------------------------------------------------
     def _update_conversation_cards(
@@ -752,6 +768,86 @@ class SegmentListView:
         if self._is_window_alive(panel):
             panel.Layout()
             panel.FitInside()
+
+    # ------------------------------------------------------------------
+    def _on_debug_poll_timer(self, event: wx.TimerEvent) -> None:
+        if event.GetTimer() is not self._debug_poll_timer:
+            event.Skip()
+            return
+        snapshot = self._collect_render_snapshot()
+        emit_history_debug(logger, "segment_view.poll.snapshot", **snapshot)
+        self._last_poll_conversation_id = snapshot.get("conversation_id")
+        self._last_poll_card_count = snapshot.get("card_count", 0)
+
+    # ------------------------------------------------------------------
+    def _collect_render_snapshot(self) -> dict[str, object]:
+        panel = self._panel
+        if not self._is_window_alive(panel):
+            return {
+                "panel_alive": False,
+                "timer_running": self._debug_poll_timer.IsRunning(),
+            }
+
+        conversation = self._callbacks.get_conversation()
+        conversation_id = conversation.conversation_id if conversation else None
+        active_id = self._active_conversation_id
+        cache = self._conversation_cache.get(active_id) if active_id else None
+        card_count = len(cache.order) if cache else 0
+        cached_snapshots = len(cache.entry_snapshots) if cache else 0
+        pending_timeline_id = getattr(self._pending_timeline, "conversation_id", None)
+        sizer_children = list(self._sizer.GetChildren())
+        window_children = 0
+        alive_children = 0
+        for child in sizer_children:
+            if not child.IsWindow():
+                continue
+            window_children += 1
+            window = child.GetWindow()
+            if self._is_window_alive(window):
+                alive_children += 1
+        previous_conversation_id = self._last_poll_conversation_id
+        if previous_conversation_id == conversation_id:
+            card_delta = card_count - self._last_poll_card_count
+        else:
+            card_delta = None
+        snapshot = {
+            "panel_alive": True,
+            "conversation_id": conversation_id,
+            "active_conversation_id": active_id,
+            "card_count": card_count,
+            "card_delta": card_delta,
+            "cached_snapshots": cached_snapshots,
+            "sizer_windows": window_children,
+            "sizer_windows_alive": alive_children,
+            "pending_entries": len(self._pending_entry_ids),
+            "pending_timeline": pending_timeline_id,
+            "pending_force": self._pending_force,
+            "pending_scheduled": self._pending_scheduled,
+            "panel_frozen": getattr(panel, "IsFrozen", lambda: False)(),
+            "panel_enabled": panel.IsEnabled(),
+            "panel_shown": panel.IsShown(),
+            "timer_running": self._debug_poll_timer.IsRunning(),
+            "elapsed_since_render_ns": elapsed_ns(self._last_render_completed_ns),
+            "placeholders": {
+                "current": self._is_window_alive(self._current_placeholder),
+                "start": self._is_window_alive(self._start_placeholder),
+            },
+        }
+        if cache is not None:
+            snapshot["cache_order_size"] = len(cache.order)
+        return snapshot
+
+    # ------------------------------------------------------------------
+    def _on_panel_destroy(self, event: wx.WindowDestroyEvent) -> None:
+        if event.GetEventObject() is self._panel:
+            if self._debug_poll_timer.IsRunning():
+                self._debug_poll_timer.Stop()
+                emit_history_debug(
+                    logger,
+                    "segment_view.poll.stopped",
+                    interval_ms=self._DEBUG_POLL_INTERVAL_MS,
+                )
+        event.Skip()
 
     # ------------------------------------------------------------------
     @staticmethod

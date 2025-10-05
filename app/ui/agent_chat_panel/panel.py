@@ -18,6 +18,7 @@ from ...confirm import confirm
 from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT, TOOLS
 from ...llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
+from ...telemetry import log_event
 from ...util.time import utc_now_iso
 from ..chat_entry import (
     ChatConversation,
@@ -31,6 +32,8 @@ from ..helpers import (
 from ..text import normalize_for_display
 from .batch_runner import BatchTarget
 from .batch_ui import AgentBatchSection
+from .bootstrap import HistoryBootstrapResult, prepare_history_for_directory
+from .debug_logging import emit_history_debug, elapsed_ns
 from .components.view import AgentChatView, WaitStateCallbacks
 from .confirm_preferences import (
     ConfirmPreferencesMixin,
@@ -51,6 +54,7 @@ from .history_utils import (
     stringify_payload,
     update_tool_results,
 )
+from .layout import AgentChatLayoutBuilder
 from .log_export import compose_transcript_log_text, compose_transcript_text
 from .paths import (
     _normalize_history_path,
@@ -62,7 +66,7 @@ from .project_settings import (
     load_agent_project_settings,
     save_agent_project_settings,
 )
-from .layout import AgentChatLayoutBuilder
+from .segment_view import SegmentListView
 from .session import AgentChatSession
 from .settings_dialog import AgentProjectSettingsDialog
 from .time_formatting import format_entry_timestamp, format_last_activity
@@ -82,7 +86,6 @@ from .view_model import (
     TimestampInfo,
     ToolCallDetails,
 )
-from .segment_view import SegmentListView
 
 
 logger = logging.getLogger("cookareq.ui.agent_chat_panel")
@@ -254,23 +257,130 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 shutdown(wait=False)
 
     # ------------------------------------------------------------------
-    def set_history_path(self, path: Path | str | None) -> None:
+    def set_history_path(
+        self,
+        path: Path | str | None,
+        *,
+        load_directory: Path | None = None,
+        bootstrap: HistoryBootstrapResult | None = None,
+        started_at: float | None = None,
+    ) -> bool:
         """Switch to *path* reloading conversations from disk."""
 
+        start_time = started_at if started_at is not None else time.monotonic()
+        debug_start_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.start",
+            requested_path=path,
+            load_directory=load_directory,
+            bootstrap={
+                "path": getattr(bootstrap, "path", None),
+                "seed_source": getattr(bootstrap, "seed_source", None),
+                "seed_kind": getattr(bootstrap, "seed_kind", None),
+            }
+            if bootstrap is not None
+            else None,
+        )
         changed = self._session.set_history_path(
             path, persist_existing=bool(self.conversations)
         )
         if not changed:
-            return
+            emit_history_debug(
+                logger,
+                "panel.set_history_path.no_change",
+                requested_path=path,
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
+            return False
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.storage_switched",
+            history_path=str(self._session.history.path),
+        )
+        phase_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
         self._initialize_history_state()
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.history_initialized",
+            elapsed_ns=elapsed_ns(phase_ns),
+            conversation_count=len(self.conversations),
+        )
+        phase_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
         self._refresh_history_list()
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.history_refreshed",
+            elapsed_ns=elapsed_ns(phase_ns),
+            active_conversation=self.active_conversation_id,
+        )
+        phase_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
         self._render_transcript()
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.transcript_rendered",
+            elapsed_ns=elapsed_ns(phase_ns),
+            pending_refresh=self._transcript_refresh_scheduled,
+        )
 
-    def set_history_directory(self, directory: Path | str | None) -> None:
+        payload: dict[str, Any] = {
+            "path": str(self.history_path),
+            "conversation_count": len(self.conversations),
+            "active_conversation": self.active_conversation_id,
+        }
+        if load_directory is not None:
+            payload["requirements_directory"] = str(load_directory)
+        if bootstrap is not None and bootstrap.seed_source is not None:
+            payload["seed_source"] = str(bootstrap.seed_source)
+            if bootstrap.seed_kind is not None:
+                payload["seed_kind"] = bootstrap.seed_kind
+        log_event("AGENT_CHAT_HISTORY_READY", payload, start_time=start_time)
+        emit_history_debug(
+            logger,
+            "panel.set_history_path.completed",
+            telemetry_payload=payload,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
+        return True
+
+    def set_history_directory(self, directory: Path | str | None) -> bool:
         """Persist chat history inside *directory* when provided."""
 
-        self.set_history_path(history_path_for_documents(directory))
+        start_time = time.monotonic()
+        debug_start_ns = time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        emit_history_debug(
+            logger,
+            "panel.set_history_directory.start",
+            directory=directory,
+        )
+        bootstrap = prepare_history_for_directory(directory)
+        emit_history_debug(
+            logger,
+            "panel.set_history_directory.bootstrap",
+            bootstrap={
+                "path": bootstrap.path,
+                "seed_source": bootstrap.seed_source,
+                "seed_kind": bootstrap.seed_kind,
+            },
+        )
+        normalized_directory = (
+            _normalize_history_path(directory) if directory is not None else None
+        )
+        changed = self.set_history_path(
+            bootstrap.path,
+            load_directory=normalized_directory,
+            bootstrap=bootstrap,
+            started_at=start_time,
+        )
         self.set_project_settings_path(settings_path_for_documents(directory))
+        emit_history_debug(
+            logger,
+            "panel.set_history_directory.finish",
+            changed=changed,
+            normalized_directory=normalized_directory,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
+        return changed
 
     @property
     def history_path(self) -> Path:

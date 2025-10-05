@@ -212,13 +212,15 @@ class MarqueeDataViewListCtrl(dv.DataViewListCtrl):
                 except Exception:  # pragma: no cover - defensive
                     continue
             self._marquee_base.clear()
-        target = self._overlay_window()
-        if isinstance(target, wx.Window) and not target.HasCapture():
-            try:
-                target.CaptureMouse()
-            except Exception:  # pragma: no cover - defensive guard
-                return
-            self._capture_window = target
+        if self.HasCapture():
+            self._capture_window = self
+            return
+        try:
+            self.CaptureMouse()
+        except Exception:  # pragma: no cover - defensive guard
+            return
+        if self.HasCapture():
+            self._capture_window = self
 
     # ------------------------------------------------------------------
     def _finish_marquee(self) -> None:

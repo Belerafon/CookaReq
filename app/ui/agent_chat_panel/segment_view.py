@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 import logging
+import threading
 import time
 
 import wx
@@ -55,6 +56,88 @@ class _ConversationRenderCache:
     entry_snapshots: dict[str, TranscriptEntry] = field(default_factory=dict)
 
 
+class _SegmentViewPollMonitor:
+    """Background poller that re-emits render snapshots on a worker thread."""
+
+    def __init__(self, interval_ms: int) -> None:
+        self._interval_ms = max(interval_ms, 250)
+        self._interval_s = self._interval_ms / 1000.0
+        self._lock = threading.Lock()
+        self._snapshot: dict[str, object] | None = None
+        self._snapshot_ns: int | None = None
+        self._stop_event = threading.Event()
+        self._trigger_event = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="AgentChatHistoryPoll",
+            daemon=True,
+        )
+        self._thread.start()
+        emit_history_debug(
+            logger,
+            "segment_view.poll.thread_started",
+            interval_ms=self._interval_ms,
+        )
+
+    def update(self, snapshot: dict[str, object], source: str) -> None:
+        now_ns = time.perf_counter_ns()
+        payload = dict(snapshot)
+        payload["snapshot_source"] = source
+        payload["snapshot_updated_ns"] = now_ns
+        with self._lock:
+            self._snapshot = payload
+            self._snapshot_ns = now_ns
+        self._trigger_event.set()
+
+    def stop(self) -> None:
+        if self._stop_event.is_set():
+            return
+        self._stop_event.set()
+        self._trigger_event.set()
+        thread = self._thread
+        if thread.is_alive():
+            thread.join(timeout=self._interval_s * 2)
+        emit_history_debug(
+            logger,
+            "segment_view.poll.thread_stopped",
+            interval_ms=self._interval_ms,
+        )
+
+    def _run(self) -> None:
+        while True:
+            triggered = self._trigger_event.wait(self._interval_s)
+            self._trigger_event.clear()
+            if self._stop_event.is_set():
+                break
+            with self._lock:
+                if self._snapshot is not None:
+                    snapshot = dict(self._snapshot)
+                    snapshot_ns = self._snapshot_ns
+                else:
+                    snapshot = None
+                    snapshot_ns = None
+            if snapshot is None:
+                emit_history_debug(
+                    logger,
+                    "segment_view.poll.snapshot",
+                    poll_reason="monitor_idle",
+                    poll_triggered=triggered,
+                    snapshot_available=False,
+                    interval_ms=self._interval_ms,
+                )
+                continue
+            emit_history_debug(
+                logger,
+                "segment_view.poll.snapshot",
+                poll_reason="monitor_emit",
+                poll_triggered=triggered,
+                snapshot_available=True,
+                interval_ms=self._interval_ms,
+                stale_ns=elapsed_ns(snapshot_ns),
+                **snapshot,
+            )
+
+
 class SegmentListView:
     """Render chat conversations as a list of turn cards."""
 
@@ -83,6 +166,8 @@ class SegmentListView:
         self._last_render_completed_ns: int | None = None
         self._last_poll_conversation_id: str | None = None
         self._last_poll_card_count = 0
+        self._poll_sequence = 0
+        self._poll_monitor = _SegmentViewPollMonitor(self._DEBUG_POLL_INTERVAL_MS)
         self._debug_poll_timer = wx.Timer(self._panel)
         self._panel.Bind(wx.EVT_TIMER, self._on_debug_poll_timer, self._debug_poll_timer)
         self._panel.Bind(wx.EVT_WINDOW_DESTROY, self._on_panel_destroy)
@@ -93,6 +178,7 @@ class SegmentListView:
             interval_ms=self._DEBUG_POLL_INTERVAL_MS,
             started=bool(timer_started),
         )
+        self._record_poll_snapshot("initial")
 
     # ------------------------------------------------------------------
     def render(self) -> None:
@@ -364,6 +450,7 @@ class SegmentListView:
             has_entries=has_entries,
         )
         self._last_render_completed_ns = time.perf_counter_ns()
+        self._record_poll_snapshot("apply_timeline")
 
     # ------------------------------------------------------------------
     def _update_conversation_cards(
@@ -774,10 +861,7 @@ class SegmentListView:
         if event.GetTimer() is not self._debug_poll_timer:
             event.Skip()
             return
-        snapshot = self._collect_render_snapshot()
-        emit_history_debug(logger, "segment_view.poll.snapshot", **snapshot)
-        self._last_poll_conversation_id = snapshot.get("conversation_id")
-        self._last_poll_card_count = snapshot.get("card_count", 0)
+        self._record_poll_snapshot("wx_timer")
 
     # ------------------------------------------------------------------
     def _collect_render_snapshot(self) -> dict[str, object]:
@@ -837,6 +921,23 @@ class SegmentListView:
             snapshot["cache_order_size"] = len(cache.order)
         return snapshot
 
+    def _record_poll_snapshot(self, source: str) -> None:
+        monitor = getattr(self, "_poll_monitor", None)
+        if monitor is None:
+            return
+        snapshot = self._collect_render_snapshot()
+        snapshot["poll_source"] = source
+        self._poll_sequence += 1
+        snapshot["poll_sequence"] = self._poll_sequence
+        monitor.update(snapshot, source)
+        conversation_id = snapshot.get("conversation_id")
+        card_count = snapshot.get("card_count")
+        if isinstance(card_count, int):
+            self._last_poll_card_count = card_count
+        elif conversation_id != self._last_poll_conversation_id:
+            self._last_poll_card_count = 0
+        self._last_poll_conversation_id = conversation_id
+
     # ------------------------------------------------------------------
     def _on_panel_destroy(self, event: wx.WindowDestroyEvent) -> None:
         if event.GetEventObject() is self._panel:
@@ -847,6 +948,10 @@ class SegmentListView:
                     "segment_view.poll.stopped",
                     interval_ms=self._DEBUG_POLL_INTERVAL_MS,
                 )
+            monitor = getattr(self, "_poll_monitor", None)
+            if monitor is not None:
+                monitor.stop()
+                self._poll_monitor = None
         event.Skip()
 
     # ------------------------------------------------------------------

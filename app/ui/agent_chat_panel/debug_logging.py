@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -24,6 +25,7 @@ def emit_history_debug(
 
     if not logger.isEnabledFor(logging.DEBUG):
         return
+    normalized_fields = _normalize_fields(fields) if fields else {}
     payload: dict[str, Any] = {
         "event": _HISTORY_DEBUG_EVENT,
         "phase": phase,
@@ -31,12 +33,20 @@ def emit_history_debug(
         "monotonic_ns": time.perf_counter_ns(),
         "thread": threading.current_thread().name,
     }
-    if fields:
-        payload.update(_normalize_fields(fields))
-    logger.debug(
-        "agent_chat_history.%s", phase,
-        extra={"json": payload},
-    )
+    if normalized_fields:
+        payload.update(normalized_fields)
+        try:
+            summary = json.dumps(
+                normalized_fields,
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        except TypeError:
+            summary = repr(normalized_fields)
+        message = f"agent_chat_history.{phase} {summary}"
+    else:
+        message = f"agent_chat_history.{phase}"
+    logger.debug(message, extra={"json": payload})
 
 
 def _normalize_fields(fields: dict[str, Any]) -> dict[str, Any]:

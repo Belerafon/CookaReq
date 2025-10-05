@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import suppress
 import json
+import logging
 from typing import Any, Literal
 
 import wx

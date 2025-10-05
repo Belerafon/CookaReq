@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+import logging
 
 import wx
 from wx.lib.scrolledpanel import ScrolledPanel

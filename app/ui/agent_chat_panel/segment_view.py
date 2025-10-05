@@ -12,6 +12,7 @@ from ...i18n import _
 from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import dip
 from .components.segments import TurnCard
+from .render_logging import emit_render_debug, get_render_logger, perf_counter_ns
 from .view_model import (
     AgentSegment,
     ConversationTimeline,
@@ -254,13 +255,40 @@ class SegmentListView:
         cache: _ConversationRenderCache,
     ) -> wx.Window | None:
         panel = self._panel
+        logger = get_render_logger()
+        log_enabled = logger.isEnabledFor(logging.DEBUG)
+        entry_processing_ns = 0
+        destroy_ns = 0
+        attach_ns = 0
+        freeze_ns = 0
+        thaw_ns = 0
+        slow_entries: list[dict[str, int | str | bool]] = []
+        new_cards = 0
+        reused_cards = 0
+        total_start = perf_counter_ns() if log_enabled else 0
+        if log_enabled:
+            freeze_start = perf_counter_ns()
         panel.Freeze()
+        if log_enabled:
+            freeze_ns = perf_counter_ns() - freeze_start
+            emit_render_debug(
+                "segment_view.render.start",
+                conversation_id=timeline.conversation_id,
+                entry_count=len(timeline.entries),
+            )
         try:
             ordered_cards: list[tuple[str, TurnCard]] = []
-            for entry in timeline.entries:
+            for order_index, entry in enumerate(timeline.entries):
                 entry_id = entry.entry_id
+                create_ns = 0
+                segments_ns = 0
+                update_ns = 0
+                entry_start = perf_counter_ns() if log_enabled else 0
                 card = cache.cards_by_entry.get(entry_id)
-                if card is None or not self._is_window_alive(card):
+                card_alive = card is not None and self._is_window_alive(card)
+                if not card_alive:
+                    if log_enabled:
+                        create_start = perf_counter_ns()
                     card = TurnCard(
                         self._panel,
                         entry_id=entry_id,
@@ -269,7 +297,17 @@ class SegmentListView:
                     )
                     card.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_pane_toggled)
                     cache.cards_by_entry[entry_id] = card
+                    if log_enabled:
+                        create_ns = perf_counter_ns() - create_start
+                    new_cards += 1
+                else:
+                    reused_cards += 1
+                if log_enabled:
+                    segments_start = perf_counter_ns()
                 segments = build_entry_segments(entry)
+                if log_enabled:
+                    segments_ns = perf_counter_ns() - segments_start
+                    update_start = perf_counter_ns()
                 regenerate_callback = self._build_regenerate_callback(
                     timeline.conversation_id, entry
                 )
@@ -278,10 +316,40 @@ class SegmentListView:
                     on_regenerate=regenerate_callback,
                     regenerate_enabled=not self._callbacks.is_running(),
                 )
+                if log_enabled:
+                    update_ns = perf_counter_ns() - update_start
                 cache.entry_snapshots[entry_id] = entry
                 ordered_cards.append((entry_id, card))
+                if log_enabled:
+                    total_entry_ns = perf_counter_ns() - entry_start
+                    entry_processing_ns += total_entry_ns
+                    if total_entry_ns > 50_000_000:  # 50 ms
+                        slow_entries.append(
+                            {
+                                "entry_id": entry_id,
+                                "order_index": order_index,
+                                "total_ns": total_entry_ns,
+                                "create_ns": create_ns,
+                                "segments_ns": segments_ns,
+                                "update_ns": update_ns,
+                            }
+                        )
+                    emit_render_debug(
+                        "segment_view.render.entry",
+                        conversation_id=timeline.conversation_id,
+                        entry_id=entry_id,
+                        entry_index=entry.entry_index,
+                        order_index=order_index,
+                        created=not card_alive,
+                        create_ns=create_ns,
+                        segments_ns=segments_ns,
+                        update_ns=update_ns,
+                        total_ns=total_entry_ns,
+                    )
 
             keep = {key for key, _ in ordered_cards}
+            if log_enabled:
+                destroy_start = perf_counter_ns()
             for stale_key in list(cache.cards_by_entry.keys()):
                 if stale_key in keep:
                     continue
@@ -291,14 +359,39 @@ class SegmentListView:
                     if card.GetContainingSizer() is self._sizer:
                         self._sizer.Detach(card)
                     card.Destroy()
+            if log_enabled:
+                destroy_ns = perf_counter_ns() - destroy_start
 
             cache.order = [key for key, _ in ordered_cards]
             cache.entry_snapshots = {entry.entry_id: entry for entry in timeline.entries}
             cards = [card for _, card in ordered_cards]
+            if log_enabled:
+                attach_start = perf_counter_ns()
             self._attach_cards_in_order(cards)
+            if log_enabled:
+                attach_ns = perf_counter_ns() - attach_start
             return cards[-1] if cards else None
         finally:
+            if log_enabled:
+                thaw_start = perf_counter_ns()
             panel.Thaw()
+            if log_enabled:
+                thaw_ns = perf_counter_ns() - thaw_start
+                total_ns = perf_counter_ns() - total_start
+                emit_render_debug(
+                    "segment_view.render.summary",
+                    conversation_id=timeline.conversation_id,
+                    entry_count=len(timeline.entries),
+                    total_ns=total_ns,
+                    freeze_ns=freeze_ns,
+                    entry_processing_ns=entry_processing_ns,
+                    destroy_ns=destroy_ns,
+                    attach_ns=attach_ns,
+                    thaw_ns=thaw_ns,
+                    new_cards=new_cards,
+                    reused_cards=reused_cards,
+                    slow_entries=slow_entries,
+                )
 
     # ------------------------------------------------------------------
     def _attach_cards_in_order(self, cards: Sequence[TurnCard]) -> None:

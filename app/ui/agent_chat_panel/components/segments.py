@@ -13,6 +13,7 @@ from ....i18n import _
 from ...text import normalize_for_display
 from ...widgets.chat_message import MessageBubble, tool_bubble_palette
 from ..history_utils import format_value_snippet, history_json_safe
+from ..render_logging import emit_render_debug, get_render_logger, perf_counter_ns
 from ..tool_summaries import ToolCallSummary, prettify_key
 from ..view_model import (
     AgentResponse,
@@ -341,6 +342,15 @@ class MessageSegmentPanel(wx.Panel):
         regenerate_enabled: bool,
         on_regenerate: Callable[[], None] | None,
     ) -> None:
+        logger = get_render_logger()
+        log_enabled = logger.isEnabledFor(logging.DEBUG)
+        start_ns = perf_counter_ns() if log_enabled else 0
+        metrics: dict[str, Any] = {
+            "entry_id": self._entry_id,
+            "segment_kind": self._segment_kind,
+            "regenerate_enabled": regenerate_enabled,
+            "has_regenerate_handler": on_regenerate is not None,
+        }
         self._capture_collapsed_state()
         self._collapsible.clear()
         sizer = self.GetSizer()
@@ -351,16 +361,21 @@ class MessageSegmentPanel(wx.Panel):
         if self._segment_kind == "user":
             assert isinstance(payload, PromptSegment)
             self._layout_hints = dict(payload.layout_hints)
-            self._build_user_segment(payload)
+            user_metrics = self._build_user_segment(payload)
+            metrics.update(user_metrics)
         else:
             assert isinstance(payload, AgentSegment)
             self._layout_hints = dict(payload.layout_hints)
-            self._build_agent_segment(
+            agent_metrics = self._build_agent_segment(
                 payload,
                 regenerate_enabled=regenerate_enabled,
                 on_regenerate=on_regenerate,
             )
+            metrics.update(agent_metrics)
         self.Layout()
+        if log_enabled:
+            metrics["panel_total_ns"] = perf_counter_ns() - start_ns
+            emit_render_debug("segment_panel.update.summary", **metrics)
 
     # ------------------------------------------------------------------
     def enable_regenerate(self, enabled: bool) -> None:
@@ -368,16 +383,38 @@ class MessageSegmentPanel(wx.Panel):
             self._regenerate_button.Enable(enabled)
 
     # ------------------------------------------------------------------
-    def _build_user_segment(self, payload: PromptSegment) -> None:
+    def _build_user_segment(self, payload: PromptSegment) -> dict[str, Any]:
+        logger = get_render_logger()
+        log_enabled = logger.isEnabledFor(logging.DEBUG)
+        metrics: dict[str, Any] = {
+            "context_count": len(payload.context_messages or ()),
+            "has_prompt": payload.prompt is not None,
+            "rendered": False,
+        }
+        bubble_ns = 0
+        context_ns = 0
+        total_start = perf_counter_ns() if log_enabled else 0
+
         prompt = payload.prompt
         if prompt is None and not payload.context_messages:
-            return
+            if log_enabled:
+                metrics.update(
+                    {
+                        "total_ns": perf_counter_ns() - total_start,
+                        "bubble_ns": bubble_ns,
+                        "context_ns": context_ns,
+                    }
+                )
+                emit_render_debug("segment_panel.user.build", **metrics)
+            return metrics
         if prompt is None:
             prompt = PromptMessage(
                 text="",
                 timestamp=TimestampInfo(raw="", occurred_at=None, formatted="", missing=True),
             )
 
+        if log_enabled:
+            bubble_start = perf_counter_ns()
         bubble = MessageBubble(
             self,
             role_label=_("You"),
@@ -388,9 +425,13 @@ class MessageSegmentPanel(wx.Panel):
             width_hint=self._resolve_hint("user"),
             on_width_change=lambda width: self._emit_layout_hint("user", width),
         )
+        if log_enabled:
+            bubble_ns = perf_counter_ns() - bubble_start
         self.GetSizer().Add(bubble, 0, wx.EXPAND)
 
         if payload.context_messages:
+            if log_enabled:
+                context_start = perf_counter_ns()
             pane = _build_collapsible_section(
                 self,
                 label=_("Context"),
@@ -399,9 +440,24 @@ class MessageSegmentPanel(wx.Panel):
                 collapsed=self._collapsed_state.get("context", True),
                 name=f"context:{self._entry_id}",
             )
+            if log_enabled:
+                context_ns = perf_counter_ns() - context_start
             if pane is not None:
                 self._register_collapsible("context", pane)
                 self.GetSizer().Add(pane, 0, wx.EXPAND | wx.TOP, self.FromDIP(4))
+
+        metrics["rendered"] = True
+        if log_enabled:
+            metrics.update(
+                {
+                    "total_ns": perf_counter_ns() - total_start,
+                    "bubble_ns": bubble_ns,
+                    "context_ns": context_ns,
+                    "text_length": len(prompt.text or ""),
+                }
+            )
+            emit_render_debug("segment_panel.user.build", **metrics)
+        return metrics
 
     # ------------------------------------------------------------------
     def _build_agent_segment(
@@ -410,8 +466,25 @@ class MessageSegmentPanel(wx.Panel):
         *,
         regenerate_enabled: bool,
         on_regenerate: Callable[[], None] | None,
-    ) -> None:
+    ) -> dict[str, Any]:
+        logger = get_render_logger()
+        log_enabled = logger.isEnabledFor(logging.DEBUG)
+        total_start = perf_counter_ns() if log_enabled else 0
         turn = payload.turn
+        metrics: dict[str, Any] = {
+            "turn_present": turn is not None,
+            "event_count": len(turn.events) if turn is not None else 0,
+            "has_reasoning": bool(turn and turn.reasoning),
+            "has_llm_request": bool(turn and turn.llm_request),
+            "has_raw_payload": bool(turn and turn.raw_payload),
+            "rendered_widgets": 0,
+            "regenerate_available": payload.can_regenerate and on_regenerate is not None,
+        }
+        event_metrics: list[dict[str, Any]] = []
+        reasoning_ns = 0
+        llm_ns = 0
+        raw_ns = 0
+
         container = wx.Panel(self)
         container.SetBackgroundColour(self.GetBackgroundColour())
         container.SetForegroundColour(self.GetForegroundColour())
@@ -422,37 +495,68 @@ class MessageSegmentPanel(wx.Panel):
         timestamp_info = turn.timestamp if turn is not None else None
         if turn is not None:
             for event in turn.events:
+                event_start = perf_counter_ns() if log_enabled else 0
+                rendered_widgets = 0
                 if event.kind == "response" and event.response is not None:
                     bubble = self._create_agent_message_bubble(
                         container, event.response, timestamp_info
                     )
                     if bubble is not None:
                         rendered.append(bubble)
+                        rendered_widgets += 1
                 elif event.kind == "tool" and event.tool_call is not None:
                     bubble, raw_section = self._render_tool_event(
                         container, event.tool_call, event.order_index
                     )
                     if bubble is not None:
                         rendered.append(bubble)
+                        rendered_widgets += 1
                     if raw_section is not None:
                         rendered.append(raw_section)
+                        rendered_widgets += 1
+                if log_enabled:
+                    elapsed_ns = perf_counter_ns() - event_start
+                    event_metrics.append(
+                        {
+                            "kind": event.kind,
+                            "order_index": event.order_index,
+                            "rendered_widgets": rendered_widgets,
+                            "has_response": event.response is not None,
+                            "has_tool_call": event.tool_call is not None,
+                            "elapsed_ns": elapsed_ns,
+                            "response_chars": (
+                                len(event.response.text)
+                                if getattr(event.response, "text", None)
+                                else 0
+                            ),
+                        }
+                    )
 
         if turn is not None:
+            reasoning_start = perf_counter_ns() if log_enabled else 0
             reasoning_section = self._create_reasoning_section(
                 container, payload, turn.reasoning
             )
+            if log_enabled:
+                reasoning_ns = perf_counter_ns() - reasoning_start
             if reasoning_section is not None:
                 rendered.append(reasoning_section)
 
+            llm_start = perf_counter_ns() if log_enabled else 0
             llm_section = self._create_llm_request_section(
                 container, payload, turn.llm_request
             )
+            if log_enabled:
+                llm_ns = perf_counter_ns() - llm_start
             if llm_section is not None:
                 rendered.append(llm_section)
 
+            raw_start = perf_counter_ns() if log_enabled else 0
             raw_section = self._create_raw_payload_section(
                 container, payload, turn.raw_payload
             )
+            if log_enabled:
+                raw_ns = perf_counter_ns() - raw_start
             if raw_section is not None:
                 rendered.append(raw_section)
 
@@ -466,6 +570,7 @@ class MessageSegmentPanel(wx.Panel):
 
         if rendered:
             self.GetSizer().Add(container, 0, wx.EXPAND)
+            metrics["rendered_widgets"] = len(rendered)
         else:
             container.Destroy()
 
@@ -485,6 +590,19 @@ class MessageSegmentPanel(wx.Panel):
                 self.FromDIP(4),
             )
             self._regenerate_button = button
+
+        if log_enabled:
+            metrics.update(
+                {
+                    "total_ns": perf_counter_ns() - total_start,
+                    "event_metrics": event_metrics,
+                    "reasoning_ns": reasoning_ns,
+                    "llm_ns": llm_ns,
+                    "raw_ns": raw_ns,
+                }
+            )
+            emit_render_debug("segment_panel.agent.build", **metrics)
+        return metrics
 
     # ------------------------------------------------------------------
     def _render_tool_event(
@@ -835,6 +953,17 @@ class TurnCard(wx.Panel):
         on_regenerate: Callable[[], None] | None,
         regenerate_enabled: bool,
     ) -> None:
+        logger = get_render_logger()
+        log_enabled = logger.isEnabledFor(logging.DEBUG)
+        total_start = perf_counter_ns() if log_enabled else 0
+        user_panel_ns = 0
+        agent_panel_ns = 0
+        layout_ns = 0
+        metrics: dict[str, Any] = {
+            "entry_id": self._entry_id,
+            "entry_index": self._entry_index,
+            "regenerate_enabled": regenerate_enabled,
+        }
         self._capture_system_state()
         previous_notice = self._regenerated_notice
         sizer = self.GetSizer()
@@ -859,14 +988,20 @@ class TurnCard(wx.Panel):
         ]
 
         if prompt_segment is not None:
+            metrics["has_user_segment"] = True
+            if log_enabled:
+                user_start = perf_counter_ns()
             self._user_panel.update(
                 prompt_segment.payload,
                 regenerate_enabled=regenerate_enabled,
                 on_regenerate=None,
             )
+            if log_enabled:
+                user_panel_ns = perf_counter_ns() - user_start
             self._user_panel.Show()
             sizer.Add(self._user_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
         else:
+            metrics["has_user_segment"] = False
             self._user_panel.Hide()
 
         if (
@@ -879,19 +1014,29 @@ class TurnCard(wx.Panel):
             notice = wx.StaticText(self, label=_("Response was regenerated"))
             sizer.Add(notice, 0, wx.ALL, self.FromDIP(4))
             self._regenerated_notice = notice
+            metrics["regenerated_notice"] = True
+        else:
+            metrics["regenerated_notice"] = False
 
         if agent_segment is not None:
+            metrics["has_agent_segment"] = True
+            if log_enabled:
+                agent_start = perf_counter_ns()
             self._agent_panel.update(
                 agent_segment.payload,
                 regenerate_enabled=regenerate_enabled,
                 on_regenerate=on_regenerate,
             )
+            if log_enabled:
+                agent_panel_ns = perf_counter_ns() - agent_start
             self._agent_panel.enable_regenerate(regenerate_enabled)
             self._agent_panel.Show()
             sizer.Add(self._agent_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
         else:
+            metrics["has_agent_segment"] = False
             self._agent_panel.Hide()
 
+        system_count = 0
         for index, system_segment in enumerate(system_segments, start=1):
             text = _summarize_system_message(system_segment.payload)
             if not text:
@@ -909,8 +1054,24 @@ class TurnCard(wx.Panel):
                 continue
             self._system_sections[key] = pane
             sizer.Add(pane, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(4))
+            system_count += 1
 
+        metrics["system_segment_count"] = system_count
+
+        if log_enabled:
+            layout_start = perf_counter_ns()
         self.Layout()
+        if log_enabled:
+            layout_ns = perf_counter_ns() - layout_start
+            metrics.update(
+                {
+                    "user_panel_ns": user_panel_ns,
+                    "agent_panel_ns": agent_panel_ns,
+                    "layout_ns": layout_ns,
+                    "total_ns": perf_counter_ns() - total_start,
+                }
+            )
+            emit_render_debug("turn_card.update", **metrics)
 
     # ------------------------------------------------------------------
     def _capture_system_state(self) -> None:

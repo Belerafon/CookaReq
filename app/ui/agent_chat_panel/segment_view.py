@@ -133,6 +133,14 @@ class SegmentListView:
             self._pending_entry_ids.update(entry_ids)
         if not self._pending_scheduled:
             self._pending_scheduled = True
+            emit_history_debug(
+                logger,
+                "segment_view.schedule_render.dispatch",
+                conversation_id=conversation_id,
+                pending_timeline=pending_timeline_id,
+                entry_count=len(entry_ids) if entry_ids else 0,
+                force=force,
+            )
             wx.CallAfter(self._flush_pending_updates)
 
     # ------------------------------------------------------------------
@@ -190,12 +198,42 @@ class SegmentListView:
         )
 
         conversation = self._callbacks.get_conversation()
+        conversation_id = conversation.conversation_id if conversation else None
+        emit_history_debug(
+            logger,
+            "segment_view.flush.context",
+            conversation_id=conversation_id,
+            pending_timeline=getattr(timeline, "conversation_id", None),
+            pending_entries=len(getattr(timeline, "entries", ())),
+        )
         if conversation is None:
             timeline = None
+            emit_history_debug(
+                logger,
+                "segment_view.flush.timeline_skipped",
+                conversation_id=conversation_id,
+                reason="no_conversation",
+            )
         elif timeline is None or timeline.conversation_id != conversation.conversation_id:
+            build_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             timeline = build_conversation_timeline(conversation)
+            emit_history_debug(
+                logger,
+                "segment_view.flush.timeline_rebuilt",
+                conversation_id=conversation_id,
+                entry_count=len(getattr(timeline, "entries", ())),
+                elapsed_ns=elapsed_ns(build_start_ns),
+            )
+        else:
+            emit_history_debug(
+                logger,
+                "segment_view.flush.timeline_reused",
+                conversation_id=conversation_id,
+                entry_count=len(getattr(timeline, "entries", ())),
+            )
 
-        conversation_id = conversation.conversation_id if conversation else None
         emit_history_debug(
             logger,
             "segment_view.flush.start",
@@ -275,13 +313,35 @@ class SegmentListView:
                 force=force,
             )
 
+        layout_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         panel.Layout()
         panel.FitInside()
         panel.SetupScrolling(scroll_x=False, scroll_y=True)
+        layout_elapsed = elapsed_ns(layout_start_ns)
+        scroll_requested = bool(last_card)
         if last_card is not None:
             self._scroll_to_bottom(last_card)
+        copy_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         self._callbacks.update_copy_buttons(has_entries)
+        copy_elapsed = elapsed_ns(copy_start_ns)
+        header_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         self._callbacks.update_header()
+        header_elapsed = elapsed_ns(header_start_ns)
+        emit_history_debug(
+            logger,
+            "segment_view.apply_timeline.layout",
+            conversation_id=conversation_id,
+            layout_ns=layout_elapsed,
+            copy_buttons_ns=copy_elapsed,
+            header_ns=header_elapsed,
+            scroll_requested=scroll_requested,
+        )
         emit_history_debug(
             logger,
             "segment_view.apply_timeline.completed",
@@ -305,20 +365,48 @@ class SegmentListView:
 
         desired_order = [entry.entry_id for entry in timeline.entries]
         if force or cache.order != desired_order:
+            emit_history_debug(
+                logger,
+                "segment_view.update_cards.rebuild",
+                conversation_id=conversation_id,
+                previous_order=len(cache.order),
+                desired_order=len(desired_order),
+                force=force,
+            )
             return self._render_full_conversation(conversation, timeline, cache)
 
         if not entry_ids:
+            emit_history_debug(
+                logger,
+                "segment_view.update_cards.noop",
+                conversation_id=conversation_id,
+            )
             return None
 
         entry_lookup = {entry.entry_id: entry for entry in timeline.entries}
         last_card: wx.Window | None = None
+        updated = 0
 
         for entry_id in entry_ids:
             timeline_entry = entry_lookup.get(entry_id)
             if timeline_entry is None:
+                emit_history_debug(
+                    logger,
+                    "segment_view.update_cards.fallback",
+                    conversation_id=conversation_id,
+                    entry_id=entry_id,
+                    reason="missing_timeline_entry",
+                )
                 return self._render_full_conversation(conversation, timeline, cache)
             card = cache.cards_by_entry.get(entry_id)
             if card is None or not self._is_window_alive(card):
+                emit_history_debug(
+                    logger,
+                    "segment_view.update_cards.fallback",
+                    conversation_id=conversation_id,
+                    entry_id=entry_id,
+                    reason="missing_card",
+                )
                 return self._render_full_conversation(conversation, timeline, cache)
             previous_snapshot = cache.entry_snapshots.get(entry_id)
             if previous_snapshot == timeline_entry:
@@ -334,6 +422,15 @@ class SegmentListView:
             )
             cache.entry_snapshots[entry_id] = timeline_entry
             last_card = card
+            updated += 1
+
+        emit_history_debug(
+            logger,
+            "segment_view.update_cards.incremental",
+            conversation_id=conversation_id,
+            requested=len(entry_ids),
+            updated=updated,
+        )
 
         return last_card
 
@@ -344,10 +441,22 @@ class SegmentListView:
         timeline: ConversationTimeline,
         cache: _ConversationRenderCache,
     ) -> wx.Window | None:
+        conversation_id = conversation.conversation_id
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         panel = self._panel
+        emit_history_debug(
+            logger,
+            "segment_view.render_full.start",
+            conversation_id=conversation_id,
+            entry_count=len(timeline.entries),
+        )
         panel.Freeze()
         try:
             ordered_cards: list[tuple[str, TurnCard]] = []
+            new_cards = 0
+            reused_cards = 0
             for entry in timeline.entries:
                 entry_id = entry.entry_id
                 card = cache.cards_by_entry.get(entry_id)
@@ -360,6 +469,9 @@ class SegmentListView:
                     )
                     card.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_pane_toggled)
                     cache.cards_by_entry[entry_id] = card
+                    new_cards += 1
+                else:
+                    reused_cards += 1
                 segments = build_entry_segments(entry)
                 regenerate_callback = self._build_regenerate_callback(
                     timeline.conversation_id, entry
@@ -373,6 +485,7 @@ class SegmentListView:
                 ordered_cards.append((entry_id, card))
 
             keep = {key for key, _ in ordered_cards}
+            removed_cards = 0
             for stale_key in list(cache.cards_by_entry.keys()):
                 if stale_key in keep:
                     continue
@@ -382,18 +495,44 @@ class SegmentListView:
                     if card.GetContainingSizer() is self._sizer:
                         self._sizer.Detach(card)
                     card.Destroy()
+                    removed_cards += 1
 
             cache.order = [key for key, _ in ordered_cards]
             cache.entry_snapshots = {entry.entry_id: entry for entry in timeline.entries}
             cards = [card for _, card in ordered_cards]
+            attach_start_ns = (
+                time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+            )
             self._attach_cards_in_order(cards)
+            emit_history_debug(
+                logger,
+                "segment_view.render_full.cards",
+                conversation_id=conversation_id,
+                entry_count=len(cards),
+                new_cards=new_cards,
+                reused_cards=reused_cards,
+                removed_cards=removed_cards,
+                attach_ns=elapsed_ns(attach_start_ns),
+            )
             return cards[-1] if cards else None
         finally:
             panel.Thaw()
+            emit_history_debug(
+                logger,
+                "segment_view.render_full.completed",
+                conversation_id=conversation_id,
+                entry_count=len(timeline.entries),
+                elapsed_ns=elapsed_ns(debug_start_ns),
+            )
 
     # ------------------------------------------------------------------
     def _attach_cards_in_order(self, cards: Sequence[TurnCard]) -> None:
         existing_children = [child.GetWindow() for child in self._sizer.GetChildren()]
+        moved = 0
+        attached = 0
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         for index, card in enumerate(cards):
             if card.GetContainingSizer() is self._sizer:
                 try:
@@ -403,8 +542,10 @@ class SegmentListView:
                 if current_index != index:
                     self._sizer.Detach(card)
                     self._sizer.Insert(index, card, 0, wx.EXPAND)
+                    moved += 1
             else:
                 self._sizer.Insert(index, card, 0, wx.EXPAND)
+                attached += 1
             card.Show()
         keep = set(cards)
         for child in list(self._sizer.GetChildren()):
@@ -414,6 +555,14 @@ class SegmentListView:
             self._sizer.Detach(window)
             if self._is_window_alive(window):
                 window.Hide()
+        emit_history_debug(
+            logger,
+            "segment_view.attach_cards.completed",
+            attached=attached,
+            moved=moved,
+            kept=len(cards) - attached,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
 
     # ------------------------------------------------------------------
     def _make_hint_recorder(self, entry: ChatEntry) -> Callable[[str, int], None]:
@@ -516,25 +665,59 @@ class SegmentListView:
 
     # ------------------------------------------------------------------
     def _scroll_to_bottom(self, target: wx.Window | None) -> None:
-        self._apply_scroll(target)
-        wx.CallAfter(self._apply_scroll, target)
+        target_id = getattr(target, "_entry_id", None)
+        emit_history_debug(
+            logger,
+            "segment_view.scroll.request",
+            target_id=target_id,
+            target_alive=self._is_window_alive(target),
+        )
+        sync_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
+        self._apply_scroll(target, "immediate")
+        emit_history_debug(
+            logger,
+            "segment_view.scroll.request.completed",
+            target_id=target_id,
+            elapsed_ns=elapsed_ns(sync_start_ns),
+        )
+        wx.CallAfter(self._apply_scroll, target, "async")
 
     # ------------------------------------------------------------------
-    def _apply_scroll(self, target: wx.Window | None) -> None:
+    def _apply_scroll(self, target: wx.Window | None, source: str = "immediate") -> None:
         panel = self._panel
         if not self._is_window_alive(panel):
+            emit_history_debug(
+                logger,
+                "segment_view.scroll.apply.skipped",
+                source=source,
+                reason="panel_missing",
+            )
             return
+        debug_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
+        layout_start_ns = (
+            time.perf_counter_ns() if logger.isEnabledFor(logging.DEBUG) else None
+        )
         panel.Layout()
         panel.FitInside()
+        layout_elapsed = elapsed_ns(layout_start_ns)
         window: wx.Window | None = target if self._is_window_alive(target) else None
         if window is not None and window.GetParent() is not panel:
             window = None
+        scrolled = False
+        mode = "none"
         if window is not None:
             try:
                 panel.ScrollChildIntoView(window)
             except RuntimeError:
                 window = None
+                mode = "runtime_error"
             else:
+                scrolled = True
+                mode = "target"
                 rect = window.GetRect()
                 client_height = panel.GetClientSize().GetHeight()
                 bottom = rect.GetBottom()
@@ -545,8 +728,23 @@ class SegmentListView:
                     view_x, view_y = panel.GetViewStart()
                     extra_units = (bottom - client_height + ppu_y - 1) // ppu_y
                     panel.Scroll(view_x, view_y + extra_units)
+                    mode = "target_adjusted"
         if window is None:
             panel.ScrollChildIntoView(panel)
+            scrolled = True
+            if mode == "none":
+                mode = "panel"
+        emit_history_debug(
+            logger,
+            "segment_view.scroll.apply.completed",
+            source=source,
+            target_alive=self._is_window_alive(target),
+            effective_window=bool(window),
+            scrolled=scrolled,
+            mode=mode,
+            layout_ns=layout_elapsed,
+            elapsed_ns=elapsed_ns(debug_start_ns),
+        )
 
     # ------------------------------------------------------------------
     def _on_pane_toggled(self, _event: wx.CollapsiblePaneEvent) -> None:

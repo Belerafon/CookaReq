@@ -453,18 +453,7 @@ class MessageSegmentPanel(wx.Panel):
         regenerate_enabled: bool,
         on_regenerate: Callable[[], None] | None,
     ) -> None:
-        segment_start_ns = time.perf_counter_ns()
         turn = payload.turn
-        event_count = len(turn.events) if turn is not None and turn.events else 0
-        emit_history_debug(
-            _segment_logger,
-            "segment_view.render.agent_segment.start",
-            entry_id=self._entry_id,
-            has_turn=turn is not None,
-            event_count=event_count,
-            can_regenerate=payload.can_regenerate,
-        )
-
         container = wx.Panel(self)
         container.SetBackgroundColour(self.GetBackgroundColour())
         container.SetForegroundColour(self.GetForegroundColour())
@@ -502,7 +491,7 @@ class MessageSegmentPanel(wx.Panel):
                         )
                 elif event.kind == "tool" and event.tool_call is not None:
                     bubble, raw_section = self._render_tool_event(
-                        container, event.tool_call, order_index
+                        container, event.tool_call, event.order_index
                     )
                     emit_history_debug(
                         _segment_logger,
@@ -526,53 +515,48 @@ class MessageSegmentPanel(wx.Panel):
                     rendered_children=len(rendered),
                 )
 
-            if turn.reasoning:
-                reasoning_start_ns = time.perf_counter_ns()
-                reasoning_section = self._create_reasoning_section(
-                    container, payload, turn.reasoning
-                )
-                reasoning_elapsed = time.perf_counter_ns() - reasoning_start_ns
-                emit_history_debug(
-                    _segment_logger,
-                    "segment_view.render.agent_segment.reasoning",
-                    entry_id=self._entry_id,
-                    elapsed_ns=reasoning_elapsed,
-                    appended=reasoning_section is not None,
-                )
-                if reasoning_section is not None:
-                    rendered.append(reasoning_section)
+        if turn is not None:
+            reasoning_start_ns = time.perf_counter_ns()
+            reasoning_section = self._create_reasoning_section(
+                container, payload, turn.reasoning
+            )
+            if reasoning_section is not None:
+                rendered.append(reasoning_section)
+            emit_history_debug(
+                _segment_logger,
+                "segment_view.render.agent_segment.reasoning",
+                entry_id=self._entry_id,
+                elapsed_ns=time.perf_counter_ns() - reasoning_start_ns,
+                appended=reasoning_section is not None,
+            )
 
-            if turn.llm_request is not None:
-                llm_start_ns = time.perf_counter_ns()
-                llm_section = self._create_llm_request_section(
-                    container, payload, turn.llm_request
-                )
-                llm_elapsed = time.perf_counter_ns() - llm_start_ns
-                emit_history_debug(
-                    _segment_logger,
-                    "segment_view.render.agent_segment.llm_request",
-                    entry_id=self._entry_id,
-                    elapsed_ns=llm_elapsed,
-                    appended=llm_section is not None,
-                )
-                if llm_section is not None:
-                    rendered.append(llm_section)
+            llm_start_ns = time.perf_counter_ns()
+            llm_section = self._create_llm_request_section(
+                container, payload, turn.llm_request
+            )
+            if llm_section is not None:
+                rendered.append(llm_section)
+            emit_history_debug(
+                _segment_logger,
+                "segment_view.render.agent_segment.llm_request",
+                entry_id=self._entry_id,
+                elapsed_ns=time.perf_counter_ns() - llm_start_ns,
+                appended=llm_section is not None,
+            )
 
-            if turn.raw_payload is not None:
-                raw_start_ns = time.perf_counter_ns()
-                raw_section = self._create_raw_payload_section(
-                    container, payload, turn.raw_payload
-                )
-                raw_elapsed = time.perf_counter_ns() - raw_start_ns
-                emit_history_debug(
-                    _segment_logger,
-                    "segment_view.render.agent_segment.raw_payload",
-                    entry_id=self._entry_id,
-                    elapsed_ns=raw_elapsed,
-                    appended=raw_section is not None,
-                )
-                if raw_section is not None:
-                    rendered.append(raw_section)
+            raw_start_ns = time.perf_counter_ns()
+            raw_section = self._create_raw_payload_section(
+                container, payload, turn.raw_payload
+            )
+            if raw_section is not None:
+                rendered.append(raw_section)
+            emit_history_debug(
+                _segment_logger,
+                "segment_view.render.agent_segment.raw_payload",
+                entry_id=self._entry_id,
+                elapsed_ns=time.perf_counter_ns() - raw_start_ns,
+                appended=raw_section is not None,
+            )
 
         for index, widget in enumerate(rendered):
             container.GetSizer().Add(
@@ -588,7 +572,6 @@ class MessageSegmentPanel(wx.Panel):
             container.Destroy()
 
         if payload.can_regenerate and on_regenerate is not None:
-            button_start_ns = time.perf_counter_ns()
             button = wx.Button(
                 self,
                 label=_("Regenerate"),
@@ -604,20 +587,6 @@ class MessageSegmentPanel(wx.Panel):
                 self.FromDIP(4),
             )
             self._regenerate_button = button
-            emit_history_debug(
-                _segment_logger,
-                "segment_view.render.agent_segment.regenerate_button",
-                entry_id=self._entry_id,
-                elapsed_ns=time.perf_counter_ns() - button_start_ns,
-            )
-
-        emit_history_debug(
-            _segment_logger,
-            "segment_view.render.agent_segment.completed",
-            entry_id=self._entry_id,
-            elapsed_ns=time.perf_counter_ns() - segment_start_ns,
-            rendered_children=len(rendered),
-        )
 
     # ------------------------------------------------------------------
     def _render_tool_event(
@@ -626,32 +595,14 @@ class MessageSegmentPanel(wx.Panel):
         details: ToolCallDetails,
         order_index: int,
     ) -> tuple[MessageBubble | None, wx.CollapsiblePane | None]:
-        start_ns = time.perf_counter_ns()
-        emit_history_debug(
-            _segment_logger,
-            "segment_view.render.agent_segment.tool_event.start",
-            entry_id=self._entry_id,
-            order_index=order_index,
-            tool_name=details.summary.tool_name,
-        )
         bubble = self._create_tool_summary_bubble(parent, details)
         raw_section = self._create_tool_raw_section(parent, details, order_index)
-        emit_history_debug(
-            _segment_logger,
-            "segment_view.render.agent_segment.tool_event.completed",
-            entry_id=self._entry_id,
-            order_index=order_index,
-            elapsed_ns=time.perf_counter_ns() - start_ns,
-            has_summary=bubble is not None,
-            has_raw=raw_section is not None,
-        )
         return bubble, raw_section
 
     # ------------------------------------------------------------------
     def _create_tool_summary_bubble(
         self, parent: wx.Window, details: ToolCallDetails
     ) -> MessageBubble | None:
-        start_ns = time.perf_counter_ns()
         summary = details.summary
         tool_name = summary.tool_name or "Tool"
         status = summary.status or "returned data"
@@ -660,20 +611,11 @@ class MessageSegmentPanel(wx.Panel):
             status=normalize_for_display(status),
         )
 
-        bullet_start_ns = time.perf_counter_ns()
         bullet_lines = self._collect_tool_bullet_lines(summary)
-        bullet_ns = time.perf_counter_ns() - bullet_start_ns
         text_lines = [heading]
         text_lines.extend(f"• {line}" for line in bullet_lines if line)
         text = "\n".join(text_lines)
         if not text.strip():
-            emit_history_debug(
-                _segment_logger,
-                "segment_view.render.agent_segment.tool_summary.skip",
-                entry_id=self._entry_id,
-                bullet_lines=len(bullet_lines),
-                elapsed_ns=time.perf_counter_ns() - start_ns,
-            )
             return None
 
         timestamp_label = self._format_timestamp(details.timestamp) or None
@@ -687,15 +629,6 @@ class MessageSegmentPanel(wx.Panel):
             palette=tool_bubble_palette(self.GetBackgroundColour(), tool_name),
             width_hint=self._resolve_hint("tool"),
             on_width_change=lambda width: self._emit_layout_hint("tool", width),
-        )
-        emit_history_debug(
-            _segment_logger,
-            "segment_view.render.agent_segment.tool_summary.created",
-            entry_id=self._entry_id,
-            bullet_lines=len(bullet_lines),
-            text_chars=len(text),
-            elapsed_ns=time.perf_counter_ns() - start_ns,
-            bullet_ns=bullet_ns,
         )
         return bubble
 
@@ -750,19 +683,8 @@ class MessageSegmentPanel(wx.Panel):
         details: ToolCallDetails,
         order_index: int,
     ) -> wx.CollapsiblePane | None:
-        start_ns = time.perf_counter_ns()
-        format_start_ns = time.perf_counter_ns()
         raw_text = _format_raw_payload(details.raw_data)
-        format_ns = time.perf_counter_ns() - format_start_ns
         if not raw_text:
-            emit_history_debug(
-                _segment_logger,
-                "segment_view.render.agent_segment.tool_raw.skip",
-                entry_id=self._entry_id,
-                order_index=order_index,
-                elapsed_ns=time.perf_counter_ns() - start_ns,
-                format_ns=format_ns,
-            )
             return None
 
         identifier = self._make_tool_identifier(details, order_index)
@@ -777,16 +699,6 @@ class MessageSegmentPanel(wx.Panel):
         )
         if pane is not None:
             self._register_collapsible(state_key, pane)
-        emit_history_debug(
-            _segment_logger,
-            "segment_view.render.agent_segment.tool_raw.created",
-            entry_id=self._entry_id,
-            order_index=order_index,
-            elapsed_ns=time.perf_counter_ns() - start_ns,
-            format_ns=format_ns,
-            text_chars=len(raw_text),
-            collapsed=pane.IsCollapsed() if pane is not None else None,
-        )
         return pane
 
     # ------------------------------------------------------------------
@@ -796,15 +708,8 @@ class MessageSegmentPanel(wx.Panel):
         response: AgentResponse,
         turn_timestamp: TimestampInfo | None,
     ) -> MessageBubble | None:
-        start_ns = time.perf_counter_ns()
         text = response.display_text or response.text or ""
         if not text and not response.is_final:
-            emit_history_debug(
-                _segment_logger,
-                "segment_view.render.agent_segment.agent_bubble.skip",
-                entry_id=self._entry_id,
-                elapsed_ns=time.perf_counter_ns() - start_ns,
-            )
             return None
 
         labels: list[str] = []
@@ -834,14 +739,6 @@ class MessageSegmentPanel(wx.Panel):
             width_hint=self._resolve_hint("agent"),
             on_width_change=lambda width: self._emit_layout_hint("agent", width),
         )
-        emit_history_debug(
-            _segment_logger,
-            "segment_view.render.agent_segment.agent_bubble.created",
-            entry_id=self._entry_id,
-            text_chars=len(text),
-            elapsed_ns=time.perf_counter_ns() - start_ns,
-            labels=len(labels),
-        )
         return bubble
 
     # ------------------------------------------------------------------
@@ -851,15 +748,8 @@ class MessageSegmentPanel(wx.Panel):
         payload: AgentSegment,
         reasoning: Sequence[Mapping[str, Any]] | None,
     ) -> wx.CollapsiblePane | None:
-        start_ns = time.perf_counter_ns()
         text = _format_reasoning_segments(reasoning)
         if not text:
-            emit_history_debug(
-                _segment_logger,
-                "segment_view.render.agent_segment.reasoning_section.skip",
-                entry_id=self._entry_id,
-                elapsed_ns=time.perf_counter_ns() - start_ns,
-            )
             return None
         key = f"reasoning:{self._entry_id}"
         pane = _build_collapsible_section(
@@ -872,14 +762,6 @@ class MessageSegmentPanel(wx.Panel):
         )
         if pane is not None:
             self._register_collapsible(key, pane)
-        emit_history_debug(
-            _segment_logger,
-            "segment_view.render.agent_segment.reasoning_section.created",
-            entry_id=self._entry_id,
-            elapsed_ns=time.perf_counter_ns() - start_ns,
-            text_chars=len(text),
-            collapsed=pane.IsCollapsed() if pane is not None else None,
-        )
         return pane
 
     # ------------------------------------------------------------------
@@ -889,15 +771,8 @@ class MessageSegmentPanel(wx.Panel):
         payload: AgentSegment,
         snapshot: LlmRequestSnapshot | None,
     ) -> wx.CollapsiblePane | None:
-        start_ns = time.perf_counter_ns()
         summary_lines = _summarize_llm_request(snapshot)
         if not summary_lines:
-            emit_history_debug(
-                _segment_logger,
-                "segment_view.render.agent_segment.llm_section.skip",
-                entry_id=self._entry_id,
-                elapsed_ns=time.perf_counter_ns() - start_ns,
-            )
             return None
         text = "\n\n".join(summary_lines)
         key = f"llm:{self._entry_id}"
@@ -911,14 +786,6 @@ class MessageSegmentPanel(wx.Panel):
         )
         if pane is not None:
             self._register_collapsible(key, pane)
-        emit_history_debug(
-            _segment_logger,
-            "segment_view.render.agent_segment.llm_section.created",
-            entry_id=self._entry_id,
-            elapsed_ns=time.perf_counter_ns() - start_ns,
-            text_chars=len(text),
-            collapsed=pane.IsCollapsed() if pane is not None else None,
-        )
         return pane
 
     # ------------------------------------------------------------------
@@ -928,15 +795,8 @@ class MessageSegmentPanel(wx.Panel):
         payload: AgentSegment,
         raw_payload: Any,
     ) -> wx.CollapsiblePane | None:
-        start_ns = time.perf_counter_ns()
         text = _format_raw_payload(raw_payload)
         if not text:
-            emit_history_debug(
-                _segment_logger,
-                "segment_view.render.agent_segment.raw_section.skip",
-                entry_id=self._entry_id,
-                elapsed_ns=time.perf_counter_ns() - start_ns,
-            )
             return None
         key = f"raw:{self._entry_id}"
         pane = _build_collapsible_section(
@@ -962,14 +822,6 @@ class MessageSegmentPanel(wx.Panel):
                 if alias is not None:
                     alias.Hide()
                     self._alias_collapsibles.append(alias)
-        emit_history_debug(
-            _segment_logger,
-            "segment_view.render.agent_segment.raw_section.created",
-            entry_id=self._entry_id,
-            elapsed_ns=time.perf_counter_ns() - start_ns,
-            text_chars=len(text),
-            collapsed=pane.IsCollapsed() if pane is not None else None,
-        )
         return pane
 
     # ------------------------------------------------------------------
@@ -1086,42 +938,6 @@ class TurnCard(wx.Panel):
         regenerate_enabled: bool,
     ) -> None:
         render_start_ns = time.perf_counter_ns()
-        segment_stats = {
-            "total_segments": len(segments),
-            "user_segments": 0,
-            "agent_segments": 0,
-            "system_segments": 0,
-        }
-        emit_history_debug(
-            _turn_logger,
-            "segment_view.render.turn_card.start",
-            entry_id=self._entry_id,
-            entry_index=self._entry_index,
-            **segment_stats,
-        )
-
-        capture_start_ns = time.perf_counter_ns()
-        previous_system_sections = len(self._system_sections)
-        self._capture_system_state()
-        capture_ns = time.perf_counter_ns() - capture_start_ns
-
-        previous_notice = self._regenerated_notice
-        sizer = self.GetSizer()
-        clear_start_ns = time.perf_counter_ns()
-        sizer.Clear(delete_windows=False)
-        clear_ns = time.perf_counter_ns() - clear_start_ns
-        self._regenerated_notice = None
-
-        notice_destroy_ns = 0
-        if previous_notice is not None:
-            destroy_start_ns = time.perf_counter_ns()
-            try:
-                previous_notice.Destroy()
-            except RuntimeError:
-                pass
-            else:
-                notice_destroy_ns = time.perf_counter_ns() - destroy_start_ns
-
         prompt_segment = next(
             (segment for segment in segments if segment.kind == "user"),
             None,
@@ -1133,13 +949,37 @@ class TurnCard(wx.Panel):
         system_segments = [
             segment for segment in segments if segment.kind == "system"
         ]
-        segment_stats.update(
-            {
-                "user_segments": 1 if prompt_segment is not None else 0,
-                "agent_segments": 1 if agent_segment is not None else 0,
-                "system_segments": len(system_segments),
-            }
+        segment_stats = {
+            "total_segments": len(segments),
+            "user_segments": 1 if prompt_segment is not None else 0,
+            "agent_segments": 1 if agent_segment is not None else 0,
+            "system_segments": len(system_segments),
+        }
+        emit_history_debug(
+            _turn_logger,
+            "segment_view.render.turn_card.start",
+            entry_id=self._entry_id,
+            entry_index=self._entry_index,
+            **segment_stats,
         )
+        capture_start_ns = time.perf_counter_ns()
+        self._capture_system_state()
+        capture_ns = time.perf_counter_ns() - capture_start_ns
+        previous_notice = self._regenerated_notice
+        sizer = self.GetSizer()
+        clear_start_ns = time.perf_counter_ns()
+        sizer.Clear(delete_windows=False)
+        clear_ns = time.perf_counter_ns() - clear_start_ns
+        self._regenerated_notice = None
+        notice_destroy_ns = 0
+        if previous_notice is not None:
+            destroy_start_ns = time.perf_counter_ns()
+            try:
+                previous_notice.Destroy()
+            except RuntimeError:
+                pass
+            else:
+                notice_destroy_ns = time.perf_counter_ns() - destroy_start_ns
 
         user_ns = None
         if prompt_segment is not None:
@@ -1161,6 +1001,8 @@ class TurnCard(wx.Panel):
                 regenerate_enabled=regenerate_enabled,
                 on_regenerate=None,
             )
+            self._user_panel.Show()
+            sizer.Add(self._user_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
             user_ns = time.perf_counter_ns() - user_start_ns
             emit_history_debug(
                 _turn_logger,
@@ -1168,8 +1010,6 @@ class TurnCard(wx.Panel):
                 entry_id=self._entry_id,
                 elapsed_ns=user_ns,
             )
-            self._user_panel.Show()
-            sizer.Add(self._user_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
         else:
             self._user_panel.Hide()
 
@@ -1181,42 +1021,35 @@ class TurnCard(wx.Panel):
             and agent_segment.payload.turn.final_response is not None
             and agent_segment.payload.turn.final_response.regenerated
         ):
-            notice_start_ns = time.perf_counter_ns()
             notice = wx.StaticText(self, label=_("Response was regenerated"))
             sizer.Add(notice, 0, wx.ALL, self.FromDIP(4))
             self._regenerated_notice = notice
             regen_notice_created = True
-            notice_elapsed_ns = time.perf_counter_ns() - notice_start_ns
-            emit_history_debug(
-                _turn_logger,
-                "segment_view.render.turn_card.notice",
-                entry_id=self._entry_id,
-                elapsed_ns=notice_elapsed_ns,
-            )
 
         agent_ns = None
         agent_payload_meta: dict[str, Any] | None = None
-        if agent_segment is not None and isinstance(agent_segment.payload, AgentSegment):
+        if agent_segment is not None:
             payload = agent_segment.payload
-            agent_payload_meta = {
-                "has_turn": bool(getattr(payload, "turn", None)),
-                "event_count": len(payload.turn.events)
-                if getattr(payload, "turn", None) is not None
-                and payload.turn.events is not None
-                else 0,
-                "has_reasoning": bool(getattr(payload, "reasoning", None)),
-                "has_raw": payload.raw_payload is not None,
-                "has_llm_request": payload.llm_request_snapshot is not None,
-            }
+            if isinstance(payload, AgentSegment):
+                agent_payload_meta = {
+                    "has_turn": bool(getattr(payload, "turn", None)),
+                    "event_count": len(payload.turn.events)
+                    if getattr(payload, "turn", None) is not None
+                    and payload.turn.events is not None
+                    else 0,
+                    "has_reasoning": bool(getattr(payload, "reasoning", None)),
+                    "has_raw": payload.raw_payload is not None,
+                    "has_llm_request": payload.llm_request_snapshot is not None,
+                }
             emit_history_debug(
                 _turn_logger,
                 "segment_view.render.turn_card.agent.start",
                 entry_id=self._entry_id,
-                **agent_payload_meta,
+                **(agent_payload_meta or {}),
             )
             agent_start_ns = time.perf_counter_ns()
             self._agent_panel.update(
-                payload,
+                agent_segment.payload,
                 regenerate_enabled=regenerate_enabled,
                 on_regenerate=on_regenerate,
             )
@@ -1237,17 +1070,7 @@ class TurnCard(wx.Panel):
         system_logged = 0
         for index, system_segment in enumerate(system_segments, start=1):
             sys_start_ns = time.perf_counter_ns()
-            payload = system_segment.payload
-            text = _summarize_system_message(payload)
-            text_chars = len(text) if text else 0
-            emit_history_debug(
-                _turn_logger,
-                "segment_view.render.turn_card.system.start",
-                entry_id=self._entry_id,
-                segment_index=index,
-                payload_keys=list(payload.keys()) if isinstance(payload, Mapping) else None,
-                text_chars=text_chars,
-            )
+            text = _summarize_system_message(system_segment.payload)
             if not text:
                 emit_history_debug(
                     _turn_logger,
@@ -1266,35 +1089,29 @@ class TurnCard(wx.Panel):
                 collapsed=self._collapsed_state.get(key, True),
                 name=key,
             )
-            elapsed_ns = time.perf_counter_ns() - sys_start_ns
-            system_elapsed_ns += elapsed_ns
-            if pane is not None:
-                self._system_sections[key] = pane
-                sizer.Add(
-                    pane,
-                    0,
-                    wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
-                    self.FromDIP(4),
-                )
-                emit_history_debug(
-                    _turn_logger,
-                    "segment_view.render.turn_card.system.completed",
-                    entry_id=self._entry_id,
-                    segment_index=index,
-                    elapsed_ns=elapsed_ns,
-                    text_chars=text_chars,
-                    collapsed=pane.IsCollapsed(),
-                )
-                system_logged += 1
-            else:
+            if pane is None:
                 emit_history_debug(
                     _turn_logger,
                     "segment_view.render.turn_card.system.failed",
                     entry_id=self._entry_id,
                     segment_index=index,
-                    elapsed_ns=elapsed_ns,
-                    text_chars=text_chars,
+                    elapsed_ns=time.perf_counter_ns() - sys_start_ns,
                 )
+                continue
+            self._system_sections[key] = pane
+            sizer.Add(pane, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(4))
+            elapsed_ns = time.perf_counter_ns() - sys_start_ns
+            system_elapsed_ns += elapsed_ns
+            system_logged += 1
+            emit_history_debug(
+                _turn_logger,
+                "segment_view.render.turn_card.system.completed",
+                entry_id=self._entry_id,
+                segment_index=index,
+                elapsed_ns=elapsed_ns,
+                text_chars=len(text),
+                collapsed=pane.IsCollapsed(),
+            )
 
         layout_start_ns = time.perf_counter_ns()
         self.Layout()
@@ -1307,7 +1124,6 @@ class TurnCard(wx.Panel):
             entry_index=self._entry_index,
             total_ns=total_ns,
             capture_ns=capture_ns,
-            cleared_sections=previous_system_sections,
             clear_ns=clear_ns,
             notice_destroy_ns=notice_destroy_ns,
             regen_notice_created=regen_notice_created,

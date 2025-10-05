@@ -1,5 +1,3 @@
-"""Debug logging helpers for agent chat history instrumentation."""
-
 from __future__ import annotations
 
 import json
@@ -11,14 +9,12 @@ from typing import Any
 
 from ...util.time import utc_now_iso
 
-
 LOGGER_NAMESPACE = "cookareq.ui.agent_chat_panel"
 _HISTORY_DEBUG_EVENT = "AGENT_CHAT_HISTORY_TIMING"
-_ALLOWED_PHASE_PREFIXES = ("segment_view.render.",)
 
 
 def get_history_logger(component: str | None = None) -> logging.Logger:
-    """Return a logger bound to the agent chat panel namespace."""
+    """Return a logger scoped to the agent chat panel namespace."""
 
     if component:
         return logging.getLogger(f"{LOGGER_NAMESPACE}.{component}")
@@ -31,12 +27,11 @@ def emit_history_debug(
     /,
     **fields: Any,
 ) -> None:
-    """Emit a structured debug log entry for history instrumentation."""
+    """Emit a structured DEBUG message for chat history instrumentation."""
 
-    if not any(phase.startswith(prefix) for prefix in _ALLOWED_PHASE_PREFIXES):
-        return
     if not logger.isEnabledFor(logging.DEBUG):
         return
+
     normalized_fields = _normalize_fields(fields) if fields else {}
     payload: dict[str, Any] = {
         "event": _HISTORY_DEBUG_EVENT,
@@ -58,6 +53,7 @@ def emit_history_debug(
         message = f"agent_chat_history.{phase} {summary}"
     else:
         message = f"agent_chat_history.{phase}"
+
     logger.debug(message, extra={"json": payload})
 
 
@@ -81,7 +77,7 @@ def _normalize_value(value: Any) -> Any:
 
 
 def elapsed_ns(start_ns: int | None) -> int | None:
-    """Return elapsed nanoseconds for instrumentation helpers."""
+    """Return elapsed nanoseconds for helper timings."""
 
     if start_ns is None:
         return None

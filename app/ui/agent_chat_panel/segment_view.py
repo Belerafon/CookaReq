@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-import logging
 import time
 
 import wx
@@ -81,7 +80,6 @@ class SegmentListView:
         self._pending_entry_ids: set[str] = set()
         self._pending_force: bool = False
         self._pending_scheduled = False
-        self._last_render_completed_ns: int | None = None
 
     # ------------------------------------------------------------------
     def render(self) -> None:
@@ -107,25 +105,14 @@ class SegmentListView:
         updated_entries: Iterable[str] | None = None,
         force: bool = False,
     ) -> None:
-        pending_timeline_id = (
-            timeline.conversation_id if timeline is not None else None
-        )
-        conversation_id = None
-        if conversation is not None:
-            conversation_id = conversation.conversation_id
-        elif pending_timeline_id is not None:
-            conversation_id = pending_timeline_id
-        entry_ids: tuple[str, ...] | None = None
-        if updated_entries is not None:
-            entry_ids = tuple(updated_entries)
         if timeline is not None:
             self._pending_timeline = timeline
         elif conversation is None:
             self._pending_timeline = None
         if force:
             self._pending_force = True
-        if entry_ids:
-            self._pending_entry_ids.update(entry_ids)
+        if updated_entries:
+            self._pending_entry_ids.update(updated_entries)
         if not self._pending_scheduled:
             self._pending_scheduled = True
             wx.CallAfter(self._flush_pending_updates)
@@ -173,14 +160,13 @@ class SegmentListView:
         self._pending_entry_ids.clear()
         self._pending_force = False
 
-
         conversation = self._callbacks.get_conversation()
         if conversation is None:
             timeline = None
         elif timeline is None or timeline.conversation_id != conversation.conversation_id:
             timeline = build_conversation_timeline(conversation)
-        self._apply_timeline(conversation, timeline, entry_ids, force)
 
+        self._apply_timeline(conversation, timeline, entry_ids, force)
 
     # ------------------------------------------------------------------
     def _apply_timeline(
@@ -193,7 +179,6 @@ class SegmentListView:
         panel = self._panel
         last_card: wx.Window | None = None
         has_entries = False
-        conversation_id = conversation.conversation_id if conversation else None
 
         if conversation is None or timeline is None:
             self._pending_timeline = None
@@ -221,7 +206,6 @@ class SegmentListView:
             self._scroll_to_bottom(last_card)
         self._callbacks.update_copy_buttons(has_entries)
         self._callbacks.update_header()
-        self._last_render_completed_ns = time.perf_counter_ns()
 
     # ------------------------------------------------------------------
     def _update_conversation_cards(
@@ -246,7 +230,6 @@ class SegmentListView:
 
         entry_lookup = {entry.entry_id: entry for entry in timeline.entries}
         last_card: wx.Window | None = None
-        updated = 0
 
         for entry_id in entry_ids:
             timeline_entry = entry_lookup.get(entry_id)
@@ -269,8 +252,6 @@ class SegmentListView:
             )
             cache.entry_snapshots[entry_id] = timeline_entry
             last_card = card
-            updated += 1
-
 
         return last_card
 
@@ -288,10 +269,6 @@ class SegmentListView:
         thaw_ns = 0
         attach_elapsed_ns = 0
         destroy_elapsed_ns = 0
-        slow_entries: list[dict[str, object]] = []
-        new_cards = 0
-        reused_cards = 0
-        removed_cards = 0
         entry_processing_ns = 0
         attach_stats: dict[str, int] = {
             "attached": 0,
@@ -299,12 +276,18 @@ class SegmentListView:
             "kept": 0,
             "hidden": 0,
         }
+        slow_entries: list[dict[str, object]] = []
+        new_cards = 0
+        reused_cards = 0
+        removed_cards = 0
+
         emit_history_debug(
             logger,
             "segment_view.render.start",
             conversation_id=conversation_id,
             entry_count=len(timeline.entries),
         )
+
         freeze_start_ns = time.perf_counter_ns()
         panel.Freeze()
         freeze_ns = time.perf_counter_ns() - freeze_start_ns
@@ -317,7 +300,7 @@ class SegmentListView:
                 created = False
                 card = cache.cards_by_entry.get(entry_id)
                 if card is None or not self._is_window_alive(card):
-                    create_start = time.perf_counter_ns()
+                    create_start_ns = time.perf_counter_ns()
                     card = TurnCard(
                         self._panel,
                         entry_id=entry_id,
@@ -327,7 +310,7 @@ class SegmentListView:
                     card.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_pane_toggled)
                     cache.cards_by_entry[entry_id] = card
                     new_cards += 1
-                    create_elapsed_ns = time.perf_counter_ns() - create_start
+                    create_elapsed_ns = time.perf_counter_ns() - create_start_ns
                     created = True
                 else:
                     reused_cards += 1
@@ -471,6 +454,7 @@ class SegmentListView:
             "kept": kept,
             "hidden": hidden,
         }
+
     # ------------------------------------------------------------------
     def _make_hint_recorder(self, entry: ChatEntry) -> Callable[[str, int], None]:
         def _record_hint(hint_key: str, width: int) -> None:
@@ -572,11 +556,11 @@ class SegmentListView:
 
     # ------------------------------------------------------------------
     def _scroll_to_bottom(self, target: wx.Window | None) -> None:
-        self._apply_scroll(target, "immediate")
-        wx.CallAfter(self._apply_scroll, target, "async")
+        self._apply_scroll(target)
+        wx.CallAfter(self._apply_scroll, target)
 
     # ------------------------------------------------------------------
-    def _apply_scroll(self, target: wx.Window | None, source: str = "immediate") -> None:
+    def _apply_scroll(self, target: wx.Window | None) -> None:
         panel = self._panel
         if not self._is_window_alive(panel):
             return
@@ -601,11 +585,8 @@ class SegmentListView:
                     view_x, view_y = panel.GetViewStart()
                     extra_units = (bottom - client_height + ppu_y - 1) // ppu_y
                     panel.Scroll(view_x, view_y + extra_units)
-                return
-        try:
+        if window is None:
             panel.ScrollChildIntoView(panel)
-        except RuntimeError:
-            pass
 
     # ------------------------------------------------------------------
     def _on_pane_toggled(self, _event: wx.CollapsiblePaneEvent) -> None:

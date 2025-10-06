@@ -635,6 +635,33 @@ msgstr "Send"
 msgid "Clear input"
 msgstr "Clear input"
 
+msgid "Attach file…"
+msgstr "Attach file…"
+
+msgid "Select text file to attach"
+msgstr "Select text file to attach"
+
+msgid "Text files (*.txt)|*.txt|All files|*.*"
+msgstr "Text files (*.txt)|*.txt|All files|*.*"
+
+msgid "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
+msgstr "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
+
+msgid "Attachment error"
+msgstr "Attachment error"
+
+msgid "Failed to attach file {path}: {error}"
+msgstr "Failed to attach file {path}: {error}"
+
+msgid "No file attached"
+msgstr "No file attached"
+
+msgid "{size} KB"
+msgstr "{size} KB"
+
+msgid "Attachment: {name} — {size} • Tokens: {tokens} • Context window: {usage}"
+msgstr "Attachment: {name} — {size} • Tokens: {tokens} • Context window: {usage}"
+
 msgid "Stop"
 msgstr "Stop"
 

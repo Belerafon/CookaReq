@@ -11,6 +11,8 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from dataclasses import dataclass
+
 from concurrent.futures import ThreadPoolExecutor
 
 import wx
@@ -102,6 +104,20 @@ STATUS_HELP_TEXT = _(
 )
 
 
+@dataclass(slots=True)
+class _PendingAttachment:
+    """Container storing in-memory copy of a pending attachment."""
+
+    filename: str
+    content: str
+    size_bytes: int
+    message_content: str
+    token_info: TokenCountResult
+
+    def to_context_message(self) -> dict[str, Any]:
+        return {"role": "user", "content": self.message_content}
+
+
 class _PanelWaitCallbacks(WaitStateCallbacks):
     """Bridge view wait state callbacks back to the panel."""
 
@@ -176,6 +192,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._copy_conversation_btn: wx.Window | None = None
         self._history_view: HistoryView | None = None
         self._transcript_view: SegmentListView | None = None
+        self._attachment_button: wx.Button | None = None
+        self._attachment_summary: wx.StaticText | None = None
         self._timeline_cache = ConversationTimelineCache()
         self._pending_transcript_refresh: dict[str | None, set[str] | None] = {}
         self._transcript_refresh_scheduled = False
@@ -198,6 +216,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if persistent_preference is RequirementConfirmPreference.CHAT_ONLY:
             persistent_preference = RequirementConfirmPreference.PROMPT
         self._persistent_confirm_preference = persistent_preference
+        self._pending_attachment: _PendingAttachment | None = None
         self._confirm_preference = persistent_preference
         self._auto_confirm_overrides: dict[str, Any] | None = None
         self._confirm_choice: wx.Choice | None = None
@@ -423,6 +442,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         self._transcript_selection_probe.Hide()
         self._bottom_panel = layout.bottom_panel
+        self._attachment_button = layout.attachment_button
+        self._attachment_summary = layout.attachment_summary
         self.input = layout.input_control
         self._stop_btn = layout.stop_button
         self._send_btn = layout.send_button
@@ -441,6 +462,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._refresh_history_list()
         wx.CallAfter(self._adjust_vertical_splitter)
         wx.CallAfter(self._update_project_settings_ui)
+        wx.CallAfter(self._update_attachment_summary)
 
     def _observe_history_columns(self, history_list: wx.Window) -> None:
         """Start monitoring the history list so column drags repaint rows."""
@@ -718,6 +740,47 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         self.input.SetValue("")
         self.input.SetFocus()
+        self._clear_pending_attachment()
+
+    def _on_select_attachment(self, _event: wx.Event) -> None:
+        """Select a text attachment and keep its copy in memory."""
+
+        if self._session.is_running:
+            return
+        with wx.FileDialog(
+            self,
+            message=_("Select text file to attach"),
+            wildcard=_("Text files (*.txt)|*.txt|All files|*.*"),
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+        ) as dialog:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            selected = Path(dialog.GetPath())
+        try:
+            attachment = self._load_attachment(selected)
+        except UnicodeDecodeError:
+            wx.MessageBox(
+                _(
+                    "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
+                ).format(path=str(selected)),
+                _("Attachment error"),
+                style=wx.OK | wx.ICON_ERROR,
+                parent=self,
+            )
+            return
+        except Exception as exc:
+            wx.MessageBox(
+                _("Failed to attach file {path}: {error}").format(
+                    path=str(selected), error=str(exc)
+                ),
+                _("Attachment error"),
+                style=wx.OK | wx.ICON_ERROR,
+                parent=self,
+            )
+            return
+
+        self._pending_attachment = attachment
+        self._update_attachment_summary()
 
     def _on_clear_history(self, _event: wx.Event | None = None) -> None:
         """Delete selected conversations from history."""
@@ -831,6 +894,85 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self.Layout()
 
     # ------------------------------------------------------------------
+    def _clear_pending_attachment(self) -> None:
+        """Remove the currently selected attachment."""
+
+        if self._pending_attachment is None:
+            return
+        self._pending_attachment = None
+        self._update_attachment_summary()
+
+    @staticmethod
+    def _build_attachment_message_content(filename: str, content: str) -> str:
+        header = f"[Attachment: {filename}]"
+        if content:
+            return f"{header}\n{content}"
+        return header
+
+    def _load_attachment(self, path: Path) -> _PendingAttachment:
+        resolved = path.expanduser()
+        text = resolved.read_text(encoding="utf-8")
+        message_content = self._build_attachment_message_content(resolved.name, text)
+        token_info = count_text_tokens(message_content, model=self._token_model())
+        try:
+            size_bytes = resolved.stat().st_size
+        except OSError:
+            size_bytes = len(text.encode("utf-8"))
+        return _PendingAttachment(
+            filename=resolved.name,
+            content=text,
+            size_bytes=size_bytes,
+            message_content=message_content,
+            token_info=token_info,
+        )
+
+    def _update_attachment_summary(self) -> None:
+        """Refresh the UI label describing the pending attachment."""
+
+        label = self._attachment_summary
+        if label is None:
+            return
+        attachment = self._pending_attachment
+        if attachment is None:
+            label.SetLabel(_("No file attached"))
+        else:
+            label.SetLabel(self._format_attachment_summary(attachment))
+        parent = label.GetParent()
+        if parent is not None:
+            width = parent.GetClientSize().GetWidth()
+            if width > 0:
+                label.Wrap(width)
+        self._refresh_bottom_panel_layout()
+
+    def _format_attachment_summary(self, attachment: _PendingAttachment) -> str:
+        name = self._shorten_filename(attachment.filename)
+        kb_value = attachment.size_bytes / 1024 if attachment.size_bytes else 0.0
+        if kb_value >= 100:
+            size_value = f"{kb_value:.0f}"
+        elif kb_value >= 10:
+            size_value = f"{kb_value:.1f}"
+        else:
+            size_value = f"{kb_value:.2f}"
+        size_text = _("{size} KB").format(size=size_value)
+        tokens_text = format_token_quantity(attachment.token_info)
+        usage_text = self._format_context_percentage(
+            attachment.token_info, self._context_token_limit()
+        )
+        return _(
+            "Attachment: {name} — {size} • Tokens: {tokens} • Context window: {usage}"
+        ).format(name=name, size=size_text, tokens=tokens_text, usage=usage_text)
+
+    @staticmethod
+    def _shorten_filename(name: str, limit: int = 48) -> str:
+        if len(name) <= limit:
+            return name
+        if limit <= 3:
+            return name[:limit]
+        head = max(1, (limit - 1) // 2)
+        tail = max(1, limit - head - 1)
+        return f"{name[:head]}…{name[-tail:]}"
+
+    # ------------------------------------------------------------------
     def _set_wait_state(
         self,
         active: bool,
@@ -914,6 +1056,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         self._update_project_settings_ui()
         self._update_history_controls()
+        if self._attachment_button is not None:
+            self._attachment_button.Enable(not running)
         if running:
             self._update_status(0.0)
         if self._batch_section is not None:
@@ -1385,18 +1529,22 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 messages.append({"role": "assistant", "content": entry.response})
         return tuple(messages)
 
-    @staticmethod
     def _prepare_context_messages(
-        raw: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
+        self, raw: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None
     ) -> tuple[dict[str, Any], ...]:
-        if not raw:
-            return ()
-        if isinstance(raw, Mapping):
-            return (dict(raw),)
         prepared: list[dict[str, Any]] = []
-        for entry in raw:
-            if isinstance(entry, Mapping):
-                prepared.append(dict(entry))
+        if raw:
+            if isinstance(raw, Mapping):
+                prepared.append(dict(raw))
+            else:
+                for entry in raw:
+                    if isinstance(entry, Mapping):
+                        prepared.append(dict(entry))
+        attachment = self._pending_attachment
+        if attachment is not None:
+            prepared.append(attachment.to_context_message())
+            self._pending_attachment = None
+            self._update_attachment_summary()
         return tuple(prepared)
 
     @staticmethod

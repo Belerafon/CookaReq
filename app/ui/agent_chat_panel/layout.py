@@ -41,6 +41,8 @@ class AgentChatLayout:
     transcript_sizer: wx.BoxSizer
     transcript_view: SegmentListView
     bottom_panel: wx.Panel
+    attachment_button: wx.Button
+    attachment_summary: wx.StaticText
     input_control: wx.TextCtrl
     stop_button: wx.Button
     send_button: wx.Button
@@ -247,6 +249,13 @@ class AgentChatLayoutBuilder:
         settings_btn = wx.Button(bottom_panel, label=_("Agent instructions"))
         settings_btn.Bind(wx.EVT_BUTTON, panel._on_project_settings)
 
+        attachment_row = wx.BoxSizer(wx.HORIZONTAL)
+        attachment_btn = wx.Button(bottom_panel, label=_("Attach file…"))
+        attachment_btn.Bind(wx.EVT_BUTTON, panel._on_select_attachment)
+        attachment_summary = wx.StaticText(bottom_panel, label="")
+        attachment_row.Add(attachment_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
+        attachment_row.Add(attachment_summary, 1, wx.ALIGN_CENTER_VERTICAL)
+
         confirm_entries: tuple[tuple[RequirementConfirmPreference, str], ...] = (
             (RequirementConfirmPreference.PROMPT, _("Ask every time")),
             (
@@ -280,6 +289,8 @@ class AgentChatLayoutBuilder:
         controls_row.Add(button_row, 0, wx.ALIGN_CENTER_VERTICAL)
 
         bottom_sizer.Add(input_label, 0)
+        bottom_sizer.AddSpacer(spacing)
+        bottom_sizer.Add(attachment_row, 0, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
         bottom_sizer.Add(input_ctrl, 1, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
@@ -325,6 +336,8 @@ class AgentChatLayoutBuilder:
             transcript_sizer=transcript_box,
             transcript_view=transcript_view,
             bottom_panel=bottom_panel,
+            attachment_button=attachment_btn,
+            attachment_summary=attachment_summary,
             input_control=input_ctrl,
             stop_button=stop_btn,
             send_button=send_btn,

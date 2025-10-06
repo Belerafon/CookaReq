@@ -643,6 +643,33 @@ msgstr "Отправить"
 msgid "Clear input"
 msgstr "Очистить ввод"
 
+msgid "Attach file…"
+msgstr "Прикрепить файл…"
+
+msgid "Select text file to attach"
+msgstr "Выберите текстовый файл для прикрепления"
+
+msgid "Text files (*.txt)|*.txt|All files|*.*"
+msgstr "Текстовые файлы (*.txt)|*.txt|Все файлы|*.*"
+
+msgid "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
+msgstr "Не удалось прочитать {path} как текст UTF-8. Поддерживаются только текстовые файлы в кодировке UTF-8."
+
+msgid "Attachment error"
+msgstr "Ошибка вложения"
+
+msgid "Failed to attach file {path}: {error}"
+msgstr "Не удалось прикрепить файл {path}: {error}"
+
+msgid "No file attached"
+msgstr "Файл не прикреплён"
+
+msgid "{size} KB"
+msgstr "{size} КБ"
+
+msgid "Attachment: {name} — {size} • Tokens: {tokens} • Context window: {usage}"
+msgstr "Вложение: {name} — {size} • Токены: {tokens} • Окно контекста: {usage}"
+
 msgid "Stop"
 msgstr "Стоп"
 

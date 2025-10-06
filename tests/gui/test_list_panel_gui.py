@@ -133,6 +133,66 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     frame.Destroy()
 
 
+def test_list_panel_context_menu_stops_propagation(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_requirements([_req(1, "Item")])
+
+    monkeypatch.setattr(panel.list, "HitTestSubItem", lambda pt: (0, 0, 2))
+    monkeypatch.setattr(panel.list, "ScreenToClient", lambda pt: pt)
+
+    recorded: list[tuple[int, int | None]] = []
+
+    def fake_popup(index: int, column: int | None) -> None:
+        recorded.append((index, column))
+
+    monkeypatch.setattr(panel, "_popup_context_menu", fake_popup)
+
+    class _RightClickEvent:
+        def __init__(self) -> None:
+            self.skipped: bool | None = None
+
+        def GetPoint(self):
+            return (5, 5)
+
+        def GetIndex(self) -> int:
+            return 0
+
+        def Skip(self, flag: bool = True) -> None:
+            self.skipped = flag
+
+    right_event = _RightClickEvent()
+    panel._on_right_click(right_event)
+    assert right_event.skipped is False
+    assert recorded == [(0, 2)]
+
+    recorded.clear()
+
+    class _ContextMenuEvent:
+        def __init__(self) -> None:
+            self.skipped: bool | None = None
+
+        def GetPosition(self):
+            return wx.Point(10, 10)
+
+        def Skip(self, flag: bool = True) -> None:
+            self.skipped = flag
+
+    context_event = _ContextMenuEvent()
+    panel._on_context_menu(context_event)
+    assert context_event.skipped is False
+    assert recorded == [(0, 2)]
+
+    frame.Destroy()
+
+
 def test_marquee_selection_starts_from_cell(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

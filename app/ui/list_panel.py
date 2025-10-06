@@ -917,6 +917,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             _, _ = self.list.HitTest((x, y))
             col = None
         self._popup_context_menu(event.GetIndex(), col)
+        if hasattr(event, "Skip"):
+            event.Skip(False)
 
     def _on_context_menu(
         self,
@@ -937,6 +939,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             return
         self.list.Select(index)
         self._popup_context_menu(index, col)
+        if hasattr(event, "Skip"):
+            event.Skip(False)
 
     def _field_from_column(self, col: int | None) -> str | None:
         if col is None or col < 0 or col >= len(self._field_order):

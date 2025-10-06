@@ -260,8 +260,9 @@ def test_list_panel_bulk_status_change(wx_app):
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
     panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
 
-    menu, _, delete_item, _ = panel._create_context_menu(0, 0)
+    menu, _, delete_item, edit_item = panel._create_context_menu(0, 0)
     assert delete_item is not None
+    assert edit_item is None
     status_menu_item = next(
         (item for item in menu.GetMenuItems() if item.GetSubMenu()),
         None,
@@ -284,6 +285,36 @@ def test_list_panel_bulk_status_change(wx_app):
     assert panel.model.get_by_id(2).status is Status.APPROVED
     assert panel.get_selected_ids() == [1, 2]
 
+    frame.Destroy()
+
+
+def test_list_panel_single_selection_status_menu(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["status"])
+    panel.set_requirements([
+        _req(1, "A", status=Status.IN_REVIEW),
+    ])
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    menu, _, delete_item, edit_item = panel._create_context_menu(0, 0)
+    assert delete_item is not None
+    assert edit_item is None
+
+    status_menu_item = next(
+        (item for item in menu.GetMenuItems() if item.GetSubMenu()),
+        None,
+    )
+    assert status_menu_item is not None
+    assert status_menu_item.GetItemLabelText() == list_panel._("Set status")
+
+    menu.Destroy()
     frame.Destroy()
 
 

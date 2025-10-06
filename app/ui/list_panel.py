@@ -954,19 +954,21 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             clone_item = menu.Append(wx.ID_ANY, _("Clone"))
         delete_item = menu.Append(wx.ID_ANY, _("Delete"))
         status_menu = None
-        if len(selected_ids) > 1:
+        if selected_ids:
             status_menu = self._build_status_menu(selected_ids)
         if status_menu is not None:
-            menu.AppendSubMenu(status_menu, _("Set status for selected"))
+            label = _("Set status for selected") if len(selected_ids) > 1 else _("Set status")
+            menu.AppendSubMenu(status_menu, label)
         field = self._field_from_column(column)
         edit_item = None
         if field and field != "title":
-            edit_item = menu.Append(wx.ID_ANY, _("Edit {field}").format(field=field))
-            menu.Bind(
-                wx.EVT_MENU,
-                lambda _evt, c=column: self._on_edit_field(c),
-                edit_item,
-            )
+            if field != "status":
+                edit_item = menu.Append(wx.ID_ANY, _("Edit {field}").format(field=field))
+                menu.Bind(
+                    wx.EVT_MENU,
+                    lambda _evt, c=column: self._on_edit_field(c),
+                    edit_item,
+                )
         if clone_item and self._on_clone and req_id is not None:
             menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_clone(i), clone_item)
         if len(selected_ids) > 1:

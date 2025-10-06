@@ -1550,3 +1550,6 @@ msgstr "Requirement confirmations"
 
 msgid "Set status for selected"
 msgstr "Set status for selected"
+
+msgid "Set status"
+msgstr "Set status"

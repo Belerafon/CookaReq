@@ -1566,3 +1566,6 @@ msgstr "Подтверждения требований"
 
 msgid "Set status for selected"
 msgstr "Изменить статус выделенных"
+
+msgid "Set status"
+msgstr "Изменить статус"

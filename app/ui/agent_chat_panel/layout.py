@@ -44,8 +44,7 @@ class AgentChatLayout:
     attachment_button: wx.Button
     attachment_summary: wx.StaticText
     input_control: wx.TextCtrl
-    stop_button: wx.Button
-    send_button: wx.Button
+    primary_action_button: wx.Button
     batch_controls: BatchControls
     activity_indicator: wx.ActivityIndicator
     status_label: wx.StaticText
@@ -202,18 +201,26 @@ class AgentChatLayoutBuilder:
         run_batch_btn = wx.Button(bottom_panel, label=_("Run batch"))
         stop_batch_btn = wx.Button(bottom_panel, label=_("Stop batch"))
         stop_batch_btn.Enable(False)
-        clear_btn = wx.Button(bottom_panel, label=_("Clear input"))
+        icon_size = wx.Size(dip(panel, 20), dip(panel, 20))
+        clear_bitmap = wx.ArtProvider.GetBitmap(
+            wx.ART_DELETE, wx.ART_BUTTON, icon_size
+        )
+        if not clear_bitmap.IsOk():
+            clear_btn = wx.Button(bottom_panel, label=_("Clear input"))
+        else:
+            clear_btn = wx.BitmapButton(bottom_panel, bitmap=clear_bitmap)
+            clear_btn.SetBitmapDisabled(clear_bitmap)
         clear_btn.Bind(wx.EVT_BUTTON, panel._on_clear_input)
-        stop_btn = wx.Button(bottom_panel, label=_("Stop"))
-        stop_btn.Enable(False)
-        stop_btn.Bind(wx.EVT_BUTTON, panel._on_stop)
-        send_btn = wx.Button(bottom_panel, label=_("Send"))
-        send_btn.Bind(wx.EVT_BUTTON, panel._on_send)
+        clear_btn.SetToolTip(_("Clear input"))
+        primary_btn = wx.Button(bottom_panel, label=_("Send"))
+        primary_btn.Bind(wx.EVT_BUTTON, panel._on_primary_action)
+        primary_btn.SetToolTip(_("Send"))
         button_row.Add(run_batch_btn, 0, wx.RIGHT, spacing)
         button_row.Add(stop_batch_btn, 0, wx.RIGHT, spacing)
-        button_row.Add(clear_btn, 0, wx.RIGHT, spacing)
-        button_row.Add(stop_btn, 0, wx.RIGHT, spacing)
-        button_row.Add(send_btn, 0)
+        button_row.Add(
+            clear_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing
+        )
+        button_row.Add(primary_btn, 0)
 
         batch_panel = wx.Panel(bottom_panel)
         inherit_background(batch_panel, bottom_panel)
@@ -290,9 +297,9 @@ class AgentChatLayoutBuilder:
 
         bottom_sizer.Add(input_label, 0)
         bottom_sizer.AddSpacer(spacing)
-        bottom_sizer.Add(attachment_row, 0, wx.EXPAND)
-        bottom_sizer.AddSpacer(spacing)
         bottom_sizer.Add(input_ctrl, 1, wx.EXPAND)
+        bottom_sizer.AddSpacer(spacing)
+        bottom_sizer.Add(attachment_row, 0, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
         bottom_sizer.Add(batch_panel, 0, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
@@ -339,8 +346,7 @@ class AgentChatLayoutBuilder:
             attachment_button=attachment_btn,
             attachment_summary=attachment_summary,
             input_control=input_ctrl,
-            stop_button=stop_btn,
-            send_button=send_btn,
+            primary_action_button=primary_btn,
             batch_controls=batch_controls,
             activity_indicator=activity_indicator,
             status_label=status_label,

@@ -2005,13 +2005,17 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
         panel._on_send(None)
 
         assert agent.started.wait(1.0)
-        assert panel._stop_btn is not None and panel._stop_btn.IsEnabled()
+        assert panel._primary_action_btn is not None
+        assert panel._primary_action_btn.IsEnabled()
+        assert panel._primary_action_btn.GetLabel() == _("Stop")
 
         panel._on_stop(None)
 
         assert panel.input.GetValue() == "stop me"
         assert panel.status_label.GetLabel() == _("Generation cancelled")
-        assert panel._stop_btn is not None and not panel._stop_btn.IsEnabled()
+        assert panel._primary_action_btn is not None
+        assert panel._primary_action_btn.IsEnabled()
+        assert panel._primary_action_btn.GetLabel() == _("Send")
 
         assert agent.cancel_seen.wait(1.0)
         assert agent.completed.wait(1.0)

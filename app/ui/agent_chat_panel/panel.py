@@ -187,7 +187,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 self._executor_pool = pool
         self._new_chat_btn: wx.Button | None = None
         self._conversation_label: wx.StaticText | None = None
-        self._stop_btn: wx.Button | None = None
+        self._primary_action_btn: wx.Button | None = None
         self._bottom_panel: wx.Panel | None = None
         self._copy_conversation_btn: wx.Window | None = None
         self._history_view: HistoryView | None = None
@@ -445,8 +445,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._attachment_button = layout.attachment_button
         self._attachment_summary = layout.attachment_summary
         self.input = layout.input_control
-        self._stop_btn = layout.stop_button
-        self._send_btn = layout.send_button
+        self._primary_action_btn = layout.primary_action_button
         self._batch_controls = layout.batch_controls
         self.activity = layout.activity_indicator
         self.status_label = layout.status_label
@@ -726,6 +725,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         self.input.SetValue("")
         self._submit_prompt(text)
+
+    def _on_primary_action(self, event: wx.Event) -> None:
+        """Dispatch the main action button based on session state."""
+
+        if self._session.is_running:
+            self._on_stop(event)
+            return
+        self._on_send(event)
 
     def _submit_prompt(self, prompt: str, *, prompt_at: str | None = None) -> None:
         """Submit ``prompt`` to the agent pipeline."""

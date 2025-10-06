@@ -77,15 +77,19 @@ class AgentChatView:
         """Reflect busy state in the view."""
 
         state = self.state
-        send_btn = state.layout.send_button
+        primary_btn = state.layout.primary_action_button
         input_ctrl = state.layout.input_control
-        stop_btn = state.layout.stop_button
         activity = state.layout.activity_indicator
 
-        send_btn.Enable(not active)
         input_ctrl.Enable(not active)
-        if stop_btn is not None:
-            stop_btn.Enable(active)
+        primary_btn.Enable(True)
+        if active:
+            label = _("Stop")
+        else:
+            label = _("Send")
+        if primary_btn.GetLabel() != label:
+            primary_btn.SetLabel(label)
+        primary_btn.SetToolTip(label)
 
         if active:
             activity.Show()

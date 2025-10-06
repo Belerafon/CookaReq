@@ -944,11 +944,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             label.SetLabel(_("No file attached"))
         else:
             label.SetLabel(self._format_attachment_summary(attachment))
-        parent = label.GetParent()
-        if parent is not None:
-            width = parent.GetClientSize().GetWidth()
-            if width > 0:
-                label.Wrap(width)
+        label.InvalidateBestSize()
         self._refresh_bottom_panel_layout()
 
     def _format_attachment_summary(self, attachment: _PendingAttachment) -> str:

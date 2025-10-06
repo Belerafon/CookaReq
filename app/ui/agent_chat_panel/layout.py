@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from textwrap import dedent
 from typing import TYPE_CHECKING
 
 import wx
@@ -201,15 +202,7 @@ class AgentChatLayoutBuilder:
         run_batch_btn = wx.Button(bottom_panel, label=_("Run batch"))
         stop_batch_btn = wx.Button(bottom_panel, label=_("Stop batch"))
         stop_batch_btn.Enable(False)
-        icon_size = wx.Size(dip(panel, 20), dip(panel, 20))
-        clear_bitmap = wx.ArtProvider.GetBitmap(
-            wx.ART_DELETE, wx.ART_BUTTON, icon_size
-        )
-        if not clear_bitmap.IsOk():
-            clear_btn = wx.Button(bottom_panel, label=_("Clear input"))
-        else:
-            clear_btn = wx.BitmapButton(bottom_panel, bitmap=clear_bitmap)
-            clear_btn.SetBitmapDisabled(clear_bitmap)
+        clear_btn = self._create_clear_button(bottom_panel)
         clear_btn.Bind(wx.EVT_BUTTON, panel._on_clear_input)
         clear_btn.SetToolTip(_("Clear input"))
         primary_btn = wx.Button(bottom_panel, label=_("Send"))
@@ -259,7 +252,11 @@ class AgentChatLayoutBuilder:
         attachment_row = wx.BoxSizer(wx.HORIZONTAL)
         attachment_btn = wx.Button(bottom_panel, label=_("Attach file…"))
         attachment_btn.Bind(wx.EVT_BUTTON, panel._on_select_attachment)
-        attachment_summary = wx.StaticText(bottom_panel, label="")
+        attachment_summary = wx.StaticText(
+            bottom_panel,
+            label=_("No file attached"),
+            style=wx.ST_ELLIPSIZE_MIDDLE,
+        )
         attachment_row.Add(attachment_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         attachment_row.Add(attachment_summary, 1, wx.ALIGN_CENTER_VERTICAL)
 
@@ -355,6 +352,71 @@ class AgentChatLayoutBuilder:
             confirm_entries=confirm_entries,
             confirm_choice_index=confirm_choice_index,
         )
+
+    # ------------------------------------------------------------------
+    def _create_clear_button(self, parent: wx.Window) -> wx.Control:
+        """Create a compact bitmap button for clearing the chat input."""
+
+        panel = self._panel
+        icon_edge = dip(panel, 18)
+        icon_size = wx.Size(icon_edge, icon_edge)
+        inherit_background(parent, panel)
+
+        bitmaps = self._load_clear_button_bitmaps(icon_size)
+        if bitmaps is None:
+            button = wx.Button(parent, label=_("Clear input"))
+            inherit_background(button, parent)
+            return button
+
+        normal_bitmap, disabled_bitmap = bitmaps
+        button = wx.BitmapButton(
+            parent,
+            bitmap=normal_bitmap,
+            size=icon_size,
+            style=wx.BU_AUTODRAW | wx.BORDER_NONE,
+        )
+        inherit_background(button, parent)
+        button.SetBitmapCurrent(normal_bitmap)
+        button.SetBitmapFocus(normal_bitmap)
+        button.SetBitmapDisabled(disabled_bitmap)
+        button.SetMinSize(icon_size)
+        return button
+
+    # ------------------------------------------------------------------
+    def _load_clear_button_bitmaps(
+        self, icon_size: wx.Size
+    ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
+        """Return bitmaps for the clear-input button or ``None`` if unavailable."""
+
+        if not hasattr(wx, "BitmapBundle"):
+            return None
+        from_svg = getattr(wx.BitmapBundle, "FromSVG", None)
+        if from_svg is None:
+            return None
+
+        try:
+            bundle = from_svg(_CLEAR_INPUT_ICON_SVG, icon_size)
+        except (TypeError, ValueError):
+            return None
+        if not bundle.IsOk():
+            return None
+
+        normal_bitmap = bundle.GetBitmap(icon_size)
+        disabled_image = normal_bitmap.ConvertToImage().ConvertToDisabled()
+        disabled_bitmap = wx.Bitmap(disabled_image)
+        return normal_bitmap, disabled_bitmap
+
+
+_CLEAR_INPUT_ICON_SVG = dedent(
+    """
+    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <g stroke="#56637A" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4.5 15.5L10.4 6.8a1.6 1.6 0 0 1 2.6 0l5.0 8.7" />
+        <path d="M3.5 18.5h11.5" />
+      </g>
+    </svg>
+    """
+)
 
 
 __all__ = ["AgentChatLayout", "AgentChatLayoutBuilder"]

@@ -267,6 +267,7 @@ def test_list_panel_bulk_status_change(wx_app):
         None,
     )
     assert status_menu_item is not None
+    assert status_menu_item.GetItemLabelText() == list_panel._("Set status for selected")
     status_menu = status_menu_item.GetSubMenu()
     target_label = ui_locale.code_to_label("status", Status.APPROVED.value)
     approved_item = next(

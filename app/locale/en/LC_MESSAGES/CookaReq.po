@@ -1548,5 +1548,5 @@ msgstr "Never ask"
 msgid "Requirement confirmations"
 msgstr "Requirement confirmations"
 
-msgid "Set status"
-msgstr "Set status"
+msgid "Set status for selected"
+msgstr "Set status for selected"

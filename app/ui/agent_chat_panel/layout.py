@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from textwrap import dedent
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Sequence
 
 import wx
 import wx.dataview as dv
@@ -225,7 +225,10 @@ class AgentChatLayoutBuilder:
         run_batch_btn = wx.Button(bottom_panel, label=_("Run batch"))
         stop_batch_btn = wx.Button(bottom_panel, label=_("Stop batch"))
         stop_batch_btn.Enable(False)
-        clear_btn = self._create_clear_button(bottom_panel)
+        icon_buttons_to_match: list[wx.Button] = []
+        clear_btn, clear_uses_icon = self._create_clear_button(bottom_panel)
+        if clear_uses_icon:
+            icon_buttons_to_match.append(clear_btn)
         clear_btn.Bind(wx.EVT_BUTTON, panel._on_clear_input)
         clear_btn.SetToolTip(_("Clear input"))
         (
@@ -277,7 +280,11 @@ class AgentChatLayoutBuilder:
         settings_btn = wx.Button(bottom_panel, label=_("Agent instructions"))
         settings_btn.Bind(wx.EVT_BUTTON, panel._on_project_settings)
 
-        attachment_btn = self._create_attachment_button(bottom_panel)
+        attachment_btn, attachment_uses_icon = self._create_attachment_button(
+            bottom_panel
+        )
+        if attachment_uses_icon:
+            icon_buttons_to_match.append(attachment_btn)
         attachment_btn.Bind(wx.EVT_BUTTON, panel._on_select_attachment)
         attachment_btn.SetToolTip(_("Attach file…"))
         attachment_summary = wx.StaticText(
@@ -315,7 +322,7 @@ class AgentChatLayoutBuilder:
         controls_row.Add(
             attachment_btn,
             0,
-            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            wx.ALIGN_TOP | wx.RIGHT,
             spacing,
         )
         controls_row.Add(
@@ -329,6 +336,8 @@ class AgentChatLayoutBuilder:
         controls_row.Add(settings_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         controls_row.Add(confirm_row, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         controls_row.Add(button_row, 0, wx.ALIGN_TOP)
+        if icon_buttons_to_match:
+            self._harmonize_icon_button_sizes(primary_btn, icon_buttons_to_match)
 
         bottom_sizer.Add(input_label, 0)
         bottom_sizer.AddSpacer(spacing)
@@ -440,11 +449,11 @@ class AgentChatLayoutBuilder:
         """Apply the provided visual state to the primary action button."""
 
         if visual.uses_bitmap and visual.bitmap is not None:
-            self._apply_primary_action_bitmaps(
+            self._apply_button_bitmaps(
                 button, visual.bitmap, visual.disabled_bitmap
             )
         else:
-            self._clear_primary_action_bitmaps(button)
+            self._clear_button_bitmaps(button)
         label = visual.label if visual.label else ""
         if button.GetLabel() != label:
             button.SetLabel(label)
@@ -593,10 +602,10 @@ class AgentChatLayoutBuilder:
         return 255
 
     # ------------------------------------------------------------------
-    def _apply_primary_action_bitmaps(
+    def _apply_button_bitmaps(
         self, button: wx.Button, bitmap: wx.Bitmap, disabled_bitmap: wx.Bitmap | None
     ) -> None:
-        """Attach the idle icon bitmaps to the primary action button."""
+        """Attach the provided bitmaps to a button."""
 
         if not bitmap or not bitmap.IsOk():
             return
@@ -622,8 +631,8 @@ class AgentChatLayoutBuilder:
             margins(0, 0)
 
     # ------------------------------------------------------------------
-    def _clear_primary_action_bitmaps(self, button: wx.Button) -> None:
-        """Remove any bitmaps associated with the primary action button."""
+    def _clear_button_bitmaps(self, button: wx.Button) -> None:
+        """Remove any bitmaps associated with a button."""
 
         null_bitmap = wx.NullBitmap
         for attr in (
@@ -639,71 +648,74 @@ class AgentChatLayoutBuilder:
                 setter(null_bitmap)
 
     # ------------------------------------------------------------------
-    def _create_attachment_button(self, parent: wx.Window) -> wx.Button:
+    def _harmonize_icon_button_sizes(
+        self, primary_button: wx.Button, buttons: Sequence[wx.Button]
+    ) -> None:
+        """Align auxiliary icon buttons with the primary button footprint."""
+
+        if not buttons:
+            return
+
+        reference = primary_button.GetMinSize()
+        if reference == wx.DefaultSize or not reference.IsFullySpecified():
+            primary_button.InvalidateBestSize()
+            reference = primary_button.GetBestSize()
+
+        width = max(reference.GetWidth(), 0)
+        height = max(reference.GetHeight(), 0)
+        if width <= 0 or height <= 0:
+            return
+
+        size = wx.Size(width, height)
+        for button in buttons:
+            button.SetMinSize(size)
+            button.InvalidateBestSize()
+
+    # ------------------------------------------------------------------
+    def _create_attachment_button(
+        self, parent: wx.Window
+    ) -> tuple[wx.Button, bool]:
         """Create an icon-first button used to pick an attachment."""
 
         panel = self._panel
-        icon_edge = dip(panel, 18)
+        icon_edge = dip(panel, PRIMARY_ACTION_ICON_EDGE)
         icon_size = wx.Size(icon_edge, icon_edge)
         inherit_background(parent, panel)
 
         bitmaps = self._load_attachment_button_bitmaps(parent, icon_size)
+        button = wx.Button(parent, label="", style=wx.BU_AUTODRAW | wx.BU_EXACTFIT)
+        inherit_background(button, parent)
         if bitmaps is None:
-            button = wx.Button(parent, label=_("Attach file…"))
-            inherit_background(button, parent)
-            return button
+            button.SetLabel(_("Attach file…"))
+            return button, False
 
         normal_bitmap, disabled_bitmap = bitmaps
-        button = wx.BitmapButton(
-            parent,
-            bitmap=normal_bitmap,
-            size=icon_size,
-            style=wx.BU_AUTODRAW | wx.BORDER_NONE,
-        )
-        inherit_background(button, parent)
-        for attr in (
-            "SetBitmapCurrent",
-            "SetBitmapFocus",
-            "SetBitmapPressed",
-            "SetBitmapHover",
-        ):
-            setter = getattr(button, attr, None)
-            if callable(setter):
-                setter(normal_bitmap)
-        setter = getattr(button, "SetBitmapDisabled", None)
-        if callable(setter):
-            setter(disabled_bitmap)
+        self._apply_button_bitmaps(button, normal_bitmap, disabled_bitmap)
         button.SetMinSize(icon_size)
-        return button
+        return button, True
 
     # ------------------------------------------------------------------
-    def _create_clear_button(self, parent: wx.Window) -> wx.Control:
-        """Create a compact bitmap button for clearing the chat input."""
+    def _create_clear_button(
+        self, parent: wx.Window
+    ) -> tuple[wx.Button, bool]:
+        """Create a compact button for clearing the chat input."""
 
         panel = self._panel
-        icon_edge = dip(panel, 18)
+        icon_edge = dip(panel, PRIMARY_ACTION_ICON_EDGE)
         icon_size = wx.Size(icon_edge, icon_edge)
         inherit_background(parent, panel)
 
         bitmaps = self._load_clear_button_bitmaps(parent, icon_size)
+        button = wx.Button(parent, label="", style=wx.BU_AUTODRAW | wx.BU_EXACTFIT)
+        inherit_background(button, parent)
         if bitmaps is None:
-            button = wx.Button(parent, label=_("Clear input"))
-            inherit_background(button, parent)
-            return button
+            button.SetLabel(_("Clear input"))
+            return button, False
 
         normal_bitmap, disabled_bitmap = bitmaps
-        button = wx.BitmapButton(
-            parent,
-            bitmap=normal_bitmap,
-            size=icon_size,
-            style=wx.BU_AUTODRAW | wx.BORDER_NONE,
-        )
-        inherit_background(button, parent)
-        button.SetBitmapCurrent(normal_bitmap)
-        button.SetBitmapFocus(normal_bitmap)
-        button.SetBitmapDisabled(disabled_bitmap)
+        self._apply_button_bitmaps(button, normal_bitmap, disabled_bitmap)
         button.SetMinSize(icon_size)
-        return button
+        return button, True
 
     # ------------------------------------------------------------------
     def _load_clear_button_bitmaps(

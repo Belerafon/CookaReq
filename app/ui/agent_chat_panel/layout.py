@@ -46,6 +46,7 @@ class AgentChatLayout:
     attachment_summary: wx.StaticText
     input_control: wx.TextCtrl
     primary_action_button: wx.Button
+    primary_action_idle_label: str
     batch_controls: BatchControls
     activity_indicator: wx.ActivityIndicator
     status_label: wx.StaticText
@@ -53,6 +54,9 @@ class AgentChatLayout:
     confirm_choice: wx.Choice
     confirm_entries: tuple[tuple[RequirementConfirmPreference, str], ...]
     confirm_choice_index: dict[RequirementConfirmPreference, int]
+
+
+PRIMARY_ACTION_IDLE_LABEL = "⬆"
 
 
 class AgentChatLayoutBuilder:
@@ -205,9 +209,10 @@ class AgentChatLayoutBuilder:
         clear_btn = self._create_clear_button(bottom_panel)
         clear_btn.Bind(wx.EVT_BUTTON, panel._on_clear_input)
         clear_btn.SetToolTip(_("Clear input"))
-        primary_btn = wx.Button(bottom_panel, label=_("Send"))
+        primary_btn = wx.Button(bottom_panel, label=PRIMARY_ACTION_IDLE_LABEL)
         primary_btn.Bind(wx.EVT_BUTTON, panel._on_primary_action)
         primary_btn.SetToolTip(_("Send"))
+        self._ensure_primary_button_capacity(primary_btn)
         button_row.Add(run_batch_btn, 0, wx.RIGHT, spacing)
         button_row.Add(stop_batch_btn, 0, wx.RIGHT, spacing)
         button_row.Add(
@@ -344,6 +349,7 @@ class AgentChatLayoutBuilder:
             attachment_summary=attachment_summary,
             input_control=input_ctrl,
             primary_action_button=primary_btn,
+            primary_action_idle_label=PRIMARY_ACTION_IDLE_LABEL,
             batch_controls=batch_controls,
             activity_indicator=activity_indicator,
             status_label=status_label,
@@ -352,6 +358,31 @@ class AgentChatLayoutBuilder:
             confirm_entries=confirm_entries,
             confirm_choice_index=confirm_choice_index,
         )
+
+    # ------------------------------------------------------------------
+    def _ensure_primary_button_capacity(self, button: wx.Button) -> None:
+        """Keep the primary button width stable across idle/run labels."""
+
+        idle_label = PRIMARY_ACTION_IDLE_LABEL
+        stop_label = _("Stop")
+        original = button.GetLabel()
+        required_width = 0
+        required_height = 0
+
+        for candidate in (idle_label, stop_label):
+            if candidate != original:
+                button.SetLabel(candidate)
+                button.InvalidateBestSize()
+            size = button.GetBestSize()
+            required_width = max(required_width, size.width)
+            required_height = max(required_height, size.height)
+
+        button.SetLabel(original)
+        button.InvalidateBestSize()
+        current_size = button.GetBestSize()
+        required_width = max(required_width, current_size.width)
+        required_height = max(required_height, current_size.height)
+        button.SetMinSize(wx.Size(required_width, required_height))
 
     # ------------------------------------------------------------------
     def _create_clear_button(self, parent: wx.Window) -> wx.Control:

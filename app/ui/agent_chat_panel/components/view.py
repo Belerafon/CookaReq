@@ -78,18 +78,24 @@ class AgentChatView:
 
         state = self.state
         primary_btn = state.layout.primary_action_button
+        idle_label = state.layout.primary_action_idle_label
         input_ctrl = state.layout.input_control
         activity = state.layout.activity_indicator
 
         input_ctrl.Enable(not active)
         primary_btn.Enable(True)
+        send_tooltip = _("Send")
+        stop_label = _("Stop")
         if active:
-            label = _("Stop")
+            label = stop_label
+            tooltip = stop_label
         else:
-            label = _("Send")
+            label = idle_label
+            tooltip = send_tooltip
         if primary_btn.GetLabel() != label:
             primary_btn.SetLabel(label)
-        primary_btn.SetToolTip(label)
+            primary_btn.InvalidateBestSize()
+        primary_btn.SetToolTip(tooltip)
 
         if active:
             activity.Show()

@@ -21,6 +21,7 @@ from app.ui.agent_chat_panel.view_model import (
     build_transcript_segments,
 )
 from app.ui.agent_chat_panel.time_formatting import format_entry_timestamp
+from app.ui.agent_chat_panel.layout import PRIMARY_ACTION_IDLE_LABEL
 from app.ui.chat_entry import ChatConversation, ChatEntry
 from app.ui.agent_chat_panel.history_store import HistoryStore
 from app.ui.widgets.chat_message import MessageBubble
@@ -2015,7 +2016,7 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
         assert panel.status_label.GetLabel() == _("Generation cancelled")
         assert panel._primary_action_btn is not None
         assert panel._primary_action_btn.IsEnabled()
-        assert panel._primary_action_btn.GetLabel() == _("Send")
+        assert panel._primary_action_btn.GetLabel() == PRIMARY_ACTION_IDLE_LABEL
 
         assert agent.cancel_seen.wait(1.0)
         assert agent.completed.wait(1.0)

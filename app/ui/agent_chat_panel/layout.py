@@ -388,6 +388,20 @@ class AgentChatLayoutBuilder:
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
         """Return bitmaps for the clear-input button or ``None`` if unavailable."""
 
+        bitmap = self._render_clear_icon_with_bundle(icon_size)
+        if bitmap is None:
+            bitmap = self._render_clear_icon_with_svg_module(icon_size)
+        if bitmap is None:
+            return None
+
+        disabled_image = bitmap.ConvertToImage().ConvertToDisabled()
+        disabled_bitmap = wx.Bitmap(disabled_image)
+        return bitmap, disabled_bitmap
+
+    # ------------------------------------------------------------------
+    def _render_clear_icon_with_bundle(self, icon_size: wx.Size) -> wx.Bitmap | None:
+        """Render the clear-input icon via :mod:`wx.BitmapBundle` if possible."""
+
         if not hasattr(wx, "BitmapBundle"):
             return None
         from_svg = getattr(wx.BitmapBundle, "FromSVG", None)
@@ -395,16 +409,42 @@ class AgentChatLayoutBuilder:
             return None
 
         try:
-            bundle = from_svg(_CLEAR_INPUT_ICON_SVG, icon_size)
-        except (TypeError, ValueError):
+            bundle = from_svg(_CLEAR_INPUT_ICON_SVG.encode("utf-8"), icon_size)
+        except (TypeError, ValueError, RuntimeError):
             return None
-        if not bundle.IsOk():
+        if not bundle or not bundle.IsOk():
             return None
 
-        normal_bitmap = bundle.GetBitmap(icon_size)
-        disabled_image = normal_bitmap.ConvertToImage().ConvertToDisabled()
-        disabled_bitmap = wx.Bitmap(disabled_image)
-        return normal_bitmap, disabled_bitmap
+        bitmap = bundle.GetBitmap(icon_size)
+        if not bitmap or not bitmap.IsOk():
+            return None
+        return bitmap
+
+    # ------------------------------------------------------------------
+    def _render_clear_icon_with_svg_module(
+        self, icon_size: wx.Size
+    ) -> wx.Bitmap | None:
+        """Render the clear-input icon via :mod:`wx.svg` as a compatibility fallback."""
+
+        try:
+            import wx.svg as wxsvg
+        except Exception:  # pragma: no cover - defensive against missing module
+            return None
+
+        create_from_string = getattr(wxsvg.SVGimage, "CreateFromString", None)
+        if create_from_string is None:
+            return None
+
+        image = create_from_string(_CLEAR_INPUT_ICON_SVG)
+        if image is None or not image.IsOk():
+            return None
+
+        width = max(icon_size.GetWidth(), 1)
+        height = max(icon_size.GetHeight(), 1)
+        bitmap = image.Render(width, height)
+        if not bitmap or not bitmap.IsOk():
+            return None
+        return bitmap
 
 
 _CLEAR_INPUT_ICON_SVG = dedent(

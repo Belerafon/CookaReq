@@ -277,16 +277,14 @@ class AgentChatLayoutBuilder:
         settings_btn = wx.Button(bottom_panel, label=_("Agent instructions"))
         settings_btn.Bind(wx.EVT_BUTTON, panel._on_project_settings)
 
-        attachment_row = wx.BoxSizer(wx.HORIZONTAL)
-        attachment_btn = wx.Button(bottom_panel, label=_("Attach file…"))
+        attachment_btn = self._create_attachment_button(bottom_panel)
         attachment_btn.Bind(wx.EVT_BUTTON, panel._on_select_attachment)
+        attachment_btn.SetToolTip(_("Attach file…"))
         attachment_summary = wx.StaticText(
             bottom_panel,
             label=_("No file attached"),
             style=wx.ST_ELLIPSIZE_MIDDLE,
         )
-        attachment_row.Add(attachment_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
-        attachment_row.Add(attachment_summary, 1, wx.ALIGN_CENTER_VERTICAL)
 
         confirm_entries: tuple[tuple[RequirementConfirmPreference, str], ...] = (
             (RequirementConfirmPreference.PROMPT, _("Ask every time")),
@@ -314,7 +312,19 @@ class AgentChatLayoutBuilder:
         confirm_row.Add(confirm_choice, 0, wx.ALIGN_CENTER_VERTICAL)
 
         controls_row = wx.BoxSizer(wx.HORIZONTAL)
-        controls_row.Add(status_row, 0, wx.ALIGN_CENTER_VERTICAL)
+        controls_row.Add(
+            attachment_btn,
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            spacing,
+        )
+        controls_row.Add(
+            attachment_summary,
+            1,
+            wx.EXPAND | wx.RIGHT,
+            spacing,
+        )
+        controls_row.Add(status_row, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         controls_row.AddStretchSpacer()
         controls_row.Add(settings_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         controls_row.Add(confirm_row, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
@@ -323,8 +333,6 @@ class AgentChatLayoutBuilder:
         bottom_sizer.Add(input_label, 0)
         bottom_sizer.AddSpacer(spacing)
         bottom_sizer.Add(input_ctrl, 1, wx.EXPAND)
-        bottom_sizer.AddSpacer(spacing)
-        bottom_sizer.Add(attachment_row, 0, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
         bottom_sizer.Add(batch_panel, 0, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
@@ -631,6 +639,44 @@ class AgentChatLayoutBuilder:
                 setter(null_bitmap)
 
     # ------------------------------------------------------------------
+    def _create_attachment_button(self, parent: wx.Window) -> wx.Button:
+        """Create an icon-first button used to pick an attachment."""
+
+        panel = self._panel
+        icon_edge = dip(panel, 18)
+        icon_size = wx.Size(icon_edge, icon_edge)
+        inherit_background(parent, panel)
+
+        bitmaps = self._load_attachment_button_bitmaps(parent, icon_size)
+        if bitmaps is None:
+            button = wx.Button(parent, label=_("Attach file…"))
+            inherit_background(button, parent)
+            return button
+
+        normal_bitmap, disabled_bitmap = bitmaps
+        button = wx.BitmapButton(
+            parent,
+            bitmap=normal_bitmap,
+            size=icon_size,
+            style=wx.BU_AUTODRAW | wx.BORDER_NONE,
+        )
+        inherit_background(button, parent)
+        for attr in (
+            "SetBitmapCurrent",
+            "SetBitmapFocus",
+            "SetBitmapPressed",
+            "SetBitmapHover",
+        ):
+            setter = getattr(button, attr, None)
+            if callable(setter):
+                setter(normal_bitmap)
+        setter = getattr(button, "SetBitmapDisabled", None)
+        if callable(setter):
+            setter(disabled_bitmap)
+        button.SetMinSize(icon_size)
+        return button
+
+    # ------------------------------------------------------------------
     def _create_clear_button(self, parent: wx.Window) -> wx.Control:
         """Create a compact bitmap button for clearing the chat input."""
 
@@ -665,11 +711,7 @@ class AgentChatLayoutBuilder:
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
         """Return bitmaps for the clear-input button or ``None`` if unavailable."""
 
-        colour = parent.GetForegroundColour()
-        if not isinstance(colour, wx.Colour) or not colour.IsOk():
-            colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
-        if not colour.IsOk():
-            colour = wx.Colour(86, 99, 122)
+        colour = self._resolve_control_icon_colour(parent)
 
         stroke = self._colour_to_hex(colour)
         opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
@@ -685,6 +727,39 @@ class AgentChatLayoutBuilder:
         disabled_image = bitmap.ConvertToImage().ConvertToDisabled()
         disabled_bitmap = wx.Bitmap(disabled_image)
         return bitmap, disabled_bitmap
+
+    # ------------------------------------------------------------------
+    def _load_attachment_button_bitmaps(
+        self, parent: wx.Window, icon_size: wx.Size
+    ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
+        """Return bitmaps for the attachment button or ``None`` if unavailable."""
+
+        colour = self._resolve_control_icon_colour(parent)
+        stroke = self._colour_to_hex(colour)
+        opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
+        svg_markup = _ATTACHMENT_ICON_SVG_TEMPLATE.format(
+            stroke=stroke,
+            stroke_opacity=f"{opacity:.3f}",
+        )
+
+        bitmap = self._render_svg_bitmap(svg_markup, icon_size)
+        if bitmap is None:
+            return None
+
+        disabled_image = bitmap.ConvertToImage().ConvertToDisabled()
+        disabled_bitmap = wx.Bitmap(disabled_image)
+        return bitmap, disabled_bitmap
+
+    # ------------------------------------------------------------------
+    def _resolve_control_icon_colour(self, parent: wx.Window) -> wx.Colour:
+        """Return a foreground colour suitable for monochrome control icons."""
+
+        colour = parent.GetForegroundColour()
+        if not isinstance(colour, wx.Colour) or not colour.IsOk():
+            colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
+        if not colour.IsOk():
+            colour = wx.Colour(86, 99, 122)
+        return colour
 
     # ------------------------------------------------------------------
     def _render_svg_bitmap(self, svg_markup: str, icon_size: wx.Size) -> wx.Bitmap | None:
@@ -791,6 +866,14 @@ _PRIMARY_ACTION_STOP_ICON_SVG_TEMPLATE = dedent(
     <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <rect x="5" y="5" width="14" height="14" rx="3" fill="{fill}" fill-opacity="{fill_opacity}" />
       <rect x="6" y="6" width="12" height="12" rx="2.4" fill="none" stroke="{fill}" stroke-opacity="{fill_opacity}" stroke-width="1.4" />
+    </svg>
+    """
+)
+
+_ATTACHMENT_ICON_SVG_TEMPLATE = dedent(
+    """
+    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M9 6.5 C9 5.12 10.12 4 11.5 4 C12.88 4 14 5.12 14 6.5 V15.8 C14 17.57 12.57 19 10.8 19 C9.03 19 7.6 17.57 7.6 15.8 V8.2 C7.6 7.08 8.48 6.2 9.6 6.2 C10.72 6.2 11.6 7.08 11.6 8.2 V15.2 C11.6 15.75 12.05 16.2 12.6 16.2 C13.15 16.2 13.6 15.75 13.6 15.2 V9.3" fill="none" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
     """
 )

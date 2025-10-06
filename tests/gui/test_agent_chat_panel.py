@@ -3049,6 +3049,59 @@ def test_agent_chat_panel_history_columns_show_metadata(tmp_path, wx_app):
     destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_history_resize_repaints_rows(
+    tmp_path, wx_app, monkeypatch
+):
+    class EchoAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            return {"ok": True, "error": None, "result": text.upper()}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, EchoAgent())
+
+    try:
+        flush_wx_events(wx)
+        assert isinstance(panel._history_main_window, wx.Window)
+        panel._history_column_widths = (100, 120)
+        refresh_calls: list[bool] = []
+        original_refresh = panel.history_list.__class__.Refresh
+
+        def record_refresh(self, *args, **kwargs):  # pragma: no cover - exercised
+            refresh_calls.append(True)
+            return original_refresh(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            panel.history_list.__class__, "Refresh", record_refresh, raising=False
+        )
+
+        monkeypatch.setattr(
+            panel,
+            "_current_history_column_widths",
+            lambda history_list=None: (140, 120),
+        )
+
+        main_window = panel._history_main_window
+        assert isinstance(main_window, wx.Window)
+        size_event = wx.SizeEvent(panel.history_list.GetSize(), main_window.GetId())
+        size_event.SetEventObject(main_window)
+        panel._on_history_main_window_size(size_event)
+
+        flush_wx_events(wx, count=6)
+
+        assert refresh_calls
+        assert not panel._history_column_refresh_scheduled
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_handles_tokenizer_failure(tmp_path, wx_app, monkeypatch):
     class EchoAgent:
         def run_command(

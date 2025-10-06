@@ -37,6 +37,11 @@ def test_create_update_delete(tmp_path: Path) -> None:
     )
     assert res2["title"] == "N"
     assert res2["revision"] == 2
+    assert res2["field_change"] == {
+        "field": "title",
+        "previous": "T",
+        "current": "N",
+    }
     res3 = tools_write.delete_requirement(tmp_path, "SYS1")
     assert res3 == {"rid": "SYS1"}
 

@@ -434,6 +434,27 @@ def summarize_specific_tool(
                 _("Requirement: {rid}").format(rid=format_value_snippet(rid))
             )
             consumed_args.add("rid")
+
+        change_field: str | None = None
+        previous_display: str | None = None
+        current_display: str | None = None
+        if isinstance(result, Mapping):
+            change_section = result.get("field_change")
+            if isinstance(change_section, Mapping):
+                raw_change_field = change_section.get("field")
+                if isinstance(raw_change_field, str):
+                    text = raw_change_field.strip()
+                    if text:
+                        change_field = normalize_for_display(text)
+                if "previous" in change_section:
+                    previous_display = format_value_snippet(
+                        change_section.get("previous")
+                    )
+                if "current" in change_section:
+                    current_display = format_value_snippet(
+                        change_section.get("current")
+                    )
+
         if isinstance(arguments, Mapping):
             field = arguments.get("field")
             if field is not None:
@@ -443,13 +464,32 @@ def summarize_specific_tool(
                     )
                 )
                 consumed_args.add("field")
-            if "value" in arguments:
+            elif change_field is not None:
                 lines.append(
-                    _("New value: {value}").format(
-                        value=format_value_snippet(arguments.get("value"))
+                    _("Field: {field}").format(
+                        field=format_value_snippet(change_field)
                     )
                 )
+            if "value" in arguments:
                 consumed_args.add("value")
+                if current_display is None:
+                    current_display = format_value_snippet(arguments.get("value"))
+        elif change_field is not None:
+            lines.append(
+                _("Field: {field}").format(
+                    field=format_value_snippet(change_field)
+                )
+            )
+
+        if previous_display is not None:
+            lines.append(
+                _("Previous value: {value}").format(value=previous_display)
+            )
+        if current_display is not None:
+            lines.append(
+                _("New value: {value}").format(value=current_display)
+            )
+
         if isinstance(result, Mapping):
             revision = result.get("revision")
             if revision is not None:

@@ -704,6 +704,52 @@ def test_tool_summary_includes_diagnostics_metadata() -> None:
     assert isinstance(summary.arguments, Mapping)
     assert summary.arguments["rid"] == "REQ-9"
 
+
+def test_update_requirement_field_summary_includes_value_diff() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="",
+        tokens=1,
+        raw_result={
+            "tool_results": [
+                {
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "tool-7",
+                    "tool_arguments": {
+                        "rid": "SYS-0001",
+                        "field": "title",
+                        "value": "Updated title",
+                    },
+                    "result": {
+                        "rid": "SYS-0001",
+                        "title": "Updated title",
+                        "revision": 3,
+                        "field_change": {
+                            "field": "title",
+                            "previous": "Original title",
+                            "current": "Updated title",
+                        },
+                    },
+                }
+            ]
+        },
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+    summary = turn.tool_calls[0].summary
+
+    assert any(
+        line.startswith("Previous value:") and "`Original title`" in line
+        for line in summary.bullet_lines
+    )
+    assert any(
+        line.startswith("New value:") and "`Updated title`" in line
+        for line in summary.bullet_lines
+    )
+
 def test_llm_request_sequence_preserved() -> None:
     entry = ChatEntry(
         prompt="translate",

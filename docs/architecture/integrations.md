@@ -42,6 +42,11 @@
 - The `fields` parameter limits the reply to two key fields (`title`, `statement`) to reduce payload size during asynchronous context requests.
 - Responses always include `result.items` with `{rid, ...}` objects and an optional `missing` list. The agent skips missing RIDs and continues even when the tool returns an empty set.
 
+### `update_requirement_field`
+
+- The tool now returns a `field_change` block alongside the updated requirement payload. The structure mirrors `{"field": ..., "previous": ..., "current": ...}` and is derived from the persisted requirement state prior to the mutation.
+- GUI summaries (`app/ui/agent_chat_panel/tool_summaries.py`) rely on this metadata to render “previous/new value” lines in tool bubbles, so the agent chat transcript explicitly shows what changed.
+
 ## 3. Filesystem and OS interaction
 - [ ] File dialogs, permissions, and path handling.
 - [ ] Environment requirements (wxPython, Python 3.12, dependencies).

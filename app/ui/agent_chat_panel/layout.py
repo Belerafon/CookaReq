@@ -226,6 +226,20 @@ class AgentChatLayoutBuilder:
         stop_batch_btn = wx.Button(bottom_panel, label=_("Stop batch"))
         stop_batch_btn.Enable(False)
         icon_buttons_to_match: list[wx.Button] = []
+        attachment_btn, attachment_uses_icon = self._create_attachment_button(
+            bottom_panel
+        )
+        if attachment_uses_icon:
+            icon_buttons_to_match.append(attachment_btn)
+        attachment_btn.Bind(wx.EVT_BUTTON, panel._on_select_attachment)
+        attachment_btn.SetToolTip(_("Attach file…"))
+        settings_btn, settings_uses_icon = self._create_instructions_button(
+            bottom_panel
+        )
+        if settings_uses_icon:
+            icon_buttons_to_match.append(settings_btn)
+        settings_btn.Bind(wx.EVT_BUTTON, panel._on_project_settings)
+        settings_btn.SetToolTip(_("Agent instructions"))
         clear_btn, clear_uses_icon = self._create_clear_button(bottom_panel)
         if clear_uses_icon:
             icon_buttons_to_match.append(clear_btn)
@@ -243,6 +257,8 @@ class AgentChatLayoutBuilder:
         )
         button_row.Add(run_batch_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
         button_row.Add(stop_batch_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
+        button_row.Add(settings_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
+        button_row.Add(attachment_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
         button_row.Add(clear_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
         button_row.Add(primary_btn, 0, wx.ALIGN_TOP)
 
@@ -277,16 +293,6 @@ class AgentChatLayoutBuilder:
         activity_indicator.SetToolTip(status_help_text)
         status_label.SetToolTip(status_help_text)
 
-        settings_btn = wx.Button(bottom_panel, label=_("Agent instructions"))
-        settings_btn.Bind(wx.EVT_BUTTON, panel._on_project_settings)
-
-        attachment_btn, attachment_uses_icon = self._create_attachment_button(
-            bottom_panel
-        )
-        if attachment_uses_icon:
-            icon_buttons_to_match.append(attachment_btn)
-        attachment_btn.Bind(wx.EVT_BUTTON, panel._on_select_attachment)
-        attachment_btn.SetToolTip(_("Attach file…"))
         attachment_summary = wx.StaticText(
             bottom_panel,
             label=_("No file attached"),
@@ -322,7 +328,7 @@ class AgentChatLayoutBuilder:
         controls_row.Add(
             status_row,
             0,
-            wx.ALIGN_TOP | wx.RIGHT,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
             spacing,
         )
         controls_row.Add(
@@ -331,14 +337,7 @@ class AgentChatLayoutBuilder:
             wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
             spacing,
         )
-        controls_row.Add(
-            attachment_btn,
-            0,
-            wx.ALIGN_TOP | wx.RIGHT,
-            spacing,
-        )
         controls_row.AddStretchSpacer()
-        controls_row.Add(settings_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         controls_row.Add(confirm_row, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         controls_row.Add(button_row, 0, wx.ALIGN_TOP)
         if icon_buttons_to_match:
@@ -700,6 +699,29 @@ class AgentChatLayoutBuilder:
         return button, True
 
     # ------------------------------------------------------------------
+    def _create_instructions_button(
+        self, parent: wx.Window
+    ) -> tuple[wx.Button, bool]:
+        """Create a compact icon button that opens agent instructions."""
+
+        panel = self._panel
+        icon_edge = dip(panel, PRIMARY_ACTION_ICON_EDGE)
+        icon_size = wx.Size(icon_edge, icon_edge)
+        inherit_background(parent, panel)
+
+        bitmaps = self._load_instructions_button_bitmaps(parent, icon_size)
+        button = wx.Button(parent, label="", style=wx.BU_AUTODRAW | wx.BU_EXACTFIT)
+        inherit_background(button, parent)
+        if bitmaps is None:
+            button.SetLabel(_("Agent instructions"))
+            return button, False
+
+        normal_bitmap, disabled_bitmap = bitmaps
+        self._apply_button_bitmaps(button, normal_bitmap, disabled_bitmap)
+        button.SetMinSize(icon_size)
+        return button, True
+
+    # ------------------------------------------------------------------
     def _create_clear_button(
         self, parent: wx.Window
     ) -> tuple[wx.Button, bool]:
@@ -757,6 +779,32 @@ class AgentChatLayoutBuilder:
         svg_markup = _ATTACHMENT_ICON_SVG_TEMPLATE.format(
             stroke=stroke,
             stroke_opacity=f"{opacity:.3f}",
+        )
+
+        bitmap = self._render_svg_bitmap(svg_markup, icon_size)
+        if bitmap is None:
+            return None
+
+        disabled_image = bitmap.ConvertToImage().ConvertToDisabled()
+        disabled_bitmap = wx.Bitmap(disabled_image)
+        return bitmap, disabled_bitmap
+
+    # ------------------------------------------------------------------
+    def _load_instructions_button_bitmaps(
+        self, parent: wx.Window, icon_size: wx.Size
+    ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
+        """Return bitmaps for the agent instructions button."""
+
+        highlight = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
+        if not isinstance(highlight, wx.Colour) or not highlight.IsOk():
+            highlight = wx.Colour(33, 114, 229)
+        fill = self._colour_to_hex(highlight)
+        opacity = max(0.0, min(self._colour_alpha(highlight) / 255.0, 1.0))
+        svg_markup = _INSTRUCTIONS_ICON_SVG_TEMPLATE.format(
+            stroke=fill,
+            stroke_opacity=f"{opacity:.3f}",
+            fill=fill,
+            fill_opacity=f"{opacity:.3f}",
         )
 
         bitmap = self._render_svg_bitmap(svg_markup, icon_size)
@@ -903,6 +951,16 @@ _CLEAR_INPUT_ICON_SVG_TEMPLATE = dedent(
       <rect x="7.5" y="8.2" width="9" height="10.8" rx="2.2" fill="none" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linejoin="round" />
       <path d="M10.2 10.5 V16.7" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" />
       <path d="M13.8 10.5 V16.7" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" />
+    </svg>
+    """
+)
+
+_INSTRUCTIONS_ICON_SVG_TEMPLATE = dedent(
+    """
+    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4.5" y="4.5" width="15" height="15" rx="3.2" fill="none" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.4" />
+      <rect x="11" y="10" width="2" height="7.2" rx="1" fill="{fill}" fill-opacity="{fill_opacity}" />
+      <circle cx="12" cy="7.3" r="1.3" fill="{fill}" fill-opacity="{fill_opacity}" />
     </svg>
     """
 )

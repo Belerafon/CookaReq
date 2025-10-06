@@ -78,33 +78,39 @@ class AgentChatView:
 
         state = self.state
         primary_btn = state.layout.primary_action_button
-        idle_label = state.layout.primary_action_idle_label
+        idle_label_text = state.layout.primary_action_idle_label
         idle_uses_bitmap = state.layout.primary_action_idle_uses_bitmap
         idle_bitmap = state.layout.primary_action_idle_bitmap
         idle_disabled_bitmap = state.layout.primary_action_idle_disabled_bitmap
+        stop_label_text = state.layout.primary_action_stop_label
+        stop_uses_bitmap = state.layout.primary_action_stop_uses_bitmap
+        stop_bitmap = state.layout.primary_action_stop_bitmap
+        stop_disabled_bitmap = state.layout.primary_action_stop_disabled_bitmap
         input_ctrl = state.layout.input_control
         activity = state.layout.activity_indicator
 
         input_ctrl.Enable(not active)
         primary_btn.Enable(True)
         send_tooltip = _("Send")
-        stop_label = _("Stop")
+        stop_tooltip = _("Stop")
         if active:
-            self._clear_primary_action_bitmaps(primary_btn)
-            label = stop_label
-            tooltip = stop_label
+            self._apply_primary_action_visual(
+                primary_btn,
+                label=stop_label_text,
+                uses_bitmap=stop_uses_bitmap,
+                bitmap=stop_bitmap,
+                disabled_bitmap=stop_disabled_bitmap,
+            )
+            tooltip = stop_tooltip
         else:
-            if idle_uses_bitmap and idle_bitmap is not None:
-                self._set_primary_action_bitmaps(
-                    primary_btn, idle_bitmap, idle_disabled_bitmap
-                )
-            else:
-                self._clear_primary_action_bitmaps(primary_btn)
-            label = idle_label if idle_label else ""
+            self._apply_primary_action_visual(
+                primary_btn,
+                label=idle_label_text,
+                uses_bitmap=idle_uses_bitmap,
+                bitmap=idle_bitmap,
+                disabled_bitmap=idle_disabled_bitmap,
+            )
             tooltip = send_tooltip
-        if primary_btn.GetLabel() != label:
-            primary_btn.SetLabel(label)
-            primary_btn.InvalidateBestSize()
         primary_btn.SetToolTip(tooltip)
 
         if active:
@@ -216,6 +222,28 @@ class AgentChatView:
             setter = getattr(button, attr, None)
             if callable(setter):
                 setter(null_bitmap)
+
+    # ------------------------------------------------------------------
+    def _apply_primary_action_visual(
+        self,
+        button: wx.Button,
+        *,
+        label: str,
+        uses_bitmap: bool,
+        bitmap: wx.Bitmap | None,
+        disabled_bitmap: wx.Bitmap | None,
+    ) -> None:
+        """Apply the requested primary action presentation."""
+
+        if uses_bitmap and bitmap is not None:
+            self._set_primary_action_bitmaps(button, bitmap, disabled_bitmap)
+        else:
+            self._clear_primary_action_bitmaps(button)
+
+        value = label if label else ""
+        if button.GetLabel() != value:
+            button.SetLabel(value)
+            button.InvalidateBestSize()
 
     # ------------------------------------------------------------------
     def _build_running_status(

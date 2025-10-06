@@ -2047,7 +2047,18 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
         assert agent.started.wait(1.0)
         assert panel._primary_action_btn is not None
         assert panel._primary_action_btn.IsEnabled()
-        assert panel._primary_action_btn.GetLabel() == _("Stop")
+        layout = getattr(panel, "_layout", None)
+        assert layout is not None
+        stop_label = panel._primary_action_btn.GetLabel()
+        if layout.primary_action_stop_uses_bitmap:
+            assert stop_label == ""
+            getter = getattr(panel._primary_action_btn, "GetBitmap", None)
+            if callable(getter):
+                bitmap = getter()
+                assert bitmap is not None
+                assert bitmap.IsOk()
+        else:
+            assert stop_label == _("Stop")
 
         panel._on_stop(None)
 
@@ -2055,8 +2066,6 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
         assert panel.status_label.GetLabel() == _("Generation cancelled")
         assert panel._primary_action_btn is not None
         assert panel._primary_action_btn.IsEnabled()
-        layout = getattr(panel, "_layout", None)
-        assert layout is not None
         idle_label = panel._primary_action_btn.GetLabel()
         if layout.primary_action_idle_uses_bitmap:
             assert idle_label == ""

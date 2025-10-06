@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from textwrap import dedent
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import wx
 import wx.dataview as dv
@@ -50,6 +50,10 @@ class AgentChatLayout:
     primary_action_idle_uses_bitmap: bool
     primary_action_idle_bitmap: wx.Bitmap | None
     primary_action_idle_disabled_bitmap: wx.Bitmap | None
+    primary_action_stop_label: str
+    primary_action_stop_uses_bitmap: bool
+    primary_action_stop_bitmap: wx.Bitmap | None
+    primary_action_stop_disabled_bitmap: wx.Bitmap | None
     batch_controls: BatchControls
     activity_indicator: wx.ActivityIndicator
     status_label: wx.StaticText
@@ -60,7 +64,7 @@ class AgentChatLayout:
 
 
 PRIMARY_ACTION_IDLE_LABEL = "⬆"
-PRIMARY_ACTION_ICON_EDGE = 22
+PRIMARY_ACTION_ICON_EDGE = 28
 
 
 @dataclass(slots=True)
@@ -71,6 +75,7 @@ class _PrimaryActionVisual:
     uses_bitmap: bool
     bitmap: wx.Bitmap | None
     disabled_bitmap: wx.Bitmap | None
+    min_size: wx.Size | None
 
 
 class AgentChatLayoutBuilder:
@@ -223,12 +228,16 @@ class AgentChatLayoutBuilder:
         clear_btn = self._create_clear_button(bottom_panel)
         clear_btn.Bind(wx.EVT_BUTTON, panel._on_clear_input)
         clear_btn.SetToolTip(_("Clear input"))
-        primary_btn, primary_idle_visual = self._create_primary_action_button(
-            bottom_panel
-        )
+        (
+            primary_btn,
+            primary_idle_visual,
+            primary_stop_visual,
+        ) = self._create_primary_action_button(bottom_panel)
         primary_btn.Bind(wx.EVT_BUTTON, panel._on_primary_action)
         primary_btn.SetToolTip(_("Send"))
-        self._ensure_primary_button_capacity(primary_btn, primary_idle_visual)
+        self._ensure_primary_button_capacity(
+            primary_btn, primary_idle_visual, primary_stop_visual
+        )
         button_row.Add(run_batch_btn, 0, wx.RIGHT, spacing)
         button_row.Add(stop_batch_btn, 0, wx.RIGHT, spacing)
         button_row.Add(
@@ -369,6 +378,10 @@ class AgentChatLayoutBuilder:
             primary_action_idle_uses_bitmap=primary_idle_visual.uses_bitmap,
             primary_action_idle_bitmap=primary_idle_visual.bitmap,
             primary_action_idle_disabled_bitmap=primary_idle_visual.disabled_bitmap,
+            primary_action_stop_label=primary_stop_visual.label,
+            primary_action_stop_uses_bitmap=primary_stop_visual.uses_bitmap,
+            primary_action_stop_bitmap=primary_stop_visual.bitmap,
+            primary_action_stop_disabled_bitmap=primary_stop_visual.disabled_bitmap,
             batch_controls=batch_controls,
             activity_indicator=activity_indicator,
             status_label=status_label,
@@ -380,29 +393,45 @@ class AgentChatLayoutBuilder:
 
     # ------------------------------------------------------------------
     def _ensure_primary_button_capacity(
-        self, button: wx.Button, idle_visual: _PrimaryActionVisual
+        self,
+        button: wx.Button,
+        idle_visual: _PrimaryActionVisual,
+        stop_visual: _PrimaryActionVisual,
     ) -> None:
-        """Keep the primary button width stable across idle and running states."""
+        """Keep the primary button size stable across idle and running states."""
 
-        self._apply_primary_action_idle_visual(button, idle_visual)
-        button.InvalidateBestSize()
-        idle_size = button.GetBestSize()
+        idle_size = self._measure_primary_action_visual(button, idle_visual)
+        stop_size = self._measure_primary_action_visual(button, stop_visual)
 
-        self._apply_primary_action_stop_visual(button)
-        button.InvalidateBestSize()
-        stop_size = button.GetBestSize()
+        width = max(idle_size.width, stop_size.width)
+        height = max(idle_size.height, stop_size.height)
+        for visual in (idle_visual, stop_visual):
+            if visual.min_size is not None:
+                width = max(width, visual.min_size.GetWidth())
+                height = max(height, visual.min_size.GetHeight())
+        edge = max(width, height)
+        button.SetMinSize(wx.Size(edge, edge))
 
-        required_width = max(idle_size.width, stop_size.width)
-        required_height = max(idle_size.height, stop_size.height)
-        button.SetMinSize(wx.Size(required_width, required_height))
-
-        self._apply_primary_action_idle_visual(button, idle_visual)
+        self._apply_primary_action_visual(button, idle_visual)
 
     # ------------------------------------------------------------------
-    def _apply_primary_action_idle_visual(
+    def _measure_primary_action_visual(
+        self, button: wx.Button, visual: _PrimaryActionVisual
+    ) -> wx.Size:
+        """Return the best size for the provided primary action visual."""
+
+        self._apply_primary_action_visual(button, visual)
+        button.InvalidateBestSize()
+        size = button.GetBestSize()
+        if not size.IsFullySpecified():
+            return wx.Size(max(size.width, 0), max(size.height, 0))
+        return size
+
+    # ------------------------------------------------------------------
+    def _apply_primary_action_visual(
         self, button: wx.Button, visual: _PrimaryActionVisual
     ) -> None:
-        """Restore the idle icon or label for the primary action button."""
+        """Apply the provided visual state to the primary action button."""
 
         if visual.uses_bitmap and visual.bitmap is not None:
             self._apply_primary_action_bitmaps(
@@ -410,44 +439,67 @@ class AgentChatLayoutBuilder:
             )
         else:
             self._clear_primary_action_bitmaps(button)
-        button.SetLabel(visual.label)
-
-    # ------------------------------------------------------------------
-    def _apply_primary_action_stop_visual(self, button: wx.Button) -> None:
-        """Show the "Stop" label without any icon on the primary button."""
-
-        self._clear_primary_action_bitmaps(button)
-        button.SetLabel(_("Stop"))
+        label = visual.label if visual.label else ""
+        if button.GetLabel() != label:
+            button.SetLabel(label)
 
     # ------------------------------------------------------------------
     def _create_primary_action_button(
         self, parent: wx.Window
-    ) -> tuple[wx.Button, _PrimaryActionVisual]:
-        """Construct the send/stop button together with its idle presentation."""
+    ) -> tuple[wx.Button, _PrimaryActionVisual, _PrimaryActionVisual]:
+        """Construct the send/stop button together with its visuals."""
 
-        visual = self._build_primary_action_visual(parent)
-        label = visual.label if visual.label else ""
-        button = wx.Button(parent, label=label, style=wx.BU_AUTODRAW)
+        idle_visual = self._build_primary_action_idle_visual(parent)
+        stop_visual = self._build_primary_action_stop_visual(parent)
+        button = wx.Button(parent, label="", style=wx.BU_AUTODRAW)
         inherit_background(button, parent)
-        if visual.uses_bitmap and visual.bitmap is not None:
-            self._apply_primary_action_bitmaps(
-                button, visual.bitmap, visual.disabled_bitmap
-            )
-        return button, visual
+        self._apply_primary_action_visual(button, idle_visual)
+        return button, idle_visual, stop_visual
 
     # ------------------------------------------------------------------
-    def _build_primary_action_visual(self, parent: wx.Window) -> _PrimaryActionVisual:
+    def _build_primary_action_idle_visual(
+        self, parent: wx.Window
+    ) -> _PrimaryActionVisual:
         """Return the idle visual description for the primary action button."""
+
+        return self._build_primary_action_visual(
+            parent,
+            svg_builder=self._build_primary_action_arrow_svg,
+            fallback_label=PRIMARY_ACTION_IDLE_LABEL,
+        )
+
+    # ------------------------------------------------------------------
+    def _build_primary_action_stop_visual(
+        self, parent: wx.Window
+    ) -> _PrimaryActionVisual:
+        """Return the running visual description for the primary action button."""
+
+        return self._build_primary_action_visual(
+            parent,
+            svg_builder=self._build_primary_action_stop_svg,
+            fallback_label=_("Stop"),
+        )
+
+    # ------------------------------------------------------------------
+    def _build_primary_action_visual(
+        self,
+        parent: wx.Window,
+        *,
+        svg_builder: Callable[[wx.Colour], str],
+        fallback_label: str,
+    ) -> _PrimaryActionVisual:
+        """Return a visual description for the primary action button."""
 
         icon_edge = dip(self._panel, PRIMARY_ACTION_ICON_EDGE)
         icon_size = wx.Size(icon_edge, icon_edge)
-        bitmaps = self._render_primary_action_bitmaps(icon_size, parent)
+        bitmaps = self._render_primary_action_bitmaps(parent, icon_size, svg_builder)
         if bitmaps is None:
             return _PrimaryActionVisual(
-                label=PRIMARY_ACTION_IDLE_LABEL,
+                label=fallback_label,
                 uses_bitmap=False,
                 bitmap=None,
                 disabled_bitmap=None,
+                min_size=None,
             )
         normal_bitmap, disabled_bitmap = bitmaps
         return _PrimaryActionVisual(
@@ -455,11 +507,15 @@ class AgentChatLayoutBuilder:
             uses_bitmap=True,
             bitmap=normal_bitmap,
             disabled_bitmap=disabled_bitmap,
+            min_size=icon_size,
         )
 
     # ------------------------------------------------------------------
     def _render_primary_action_bitmaps(
-        self, icon_size: wx.Size, parent: wx.Window
+        self,
+        parent: wx.Window,
+        icon_size: wx.Size,
+        svg_builder: Callable[[wx.Colour], str],
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
         """Render the idle-state bitmaps for the primary action button."""
 
@@ -467,22 +523,15 @@ class AgentChatLayoutBuilder:
         if colours is None:
             return None
         accent_colour, disabled_colour = colours
-        normal = self._render_primary_action_bitmap(icon_size, accent_colour)
+        normal_markup = svg_builder(accent_colour)
+        normal = self._render_svg_bitmap(normal_markup, icon_size)
         if normal is None or not normal.IsOk():
             return None
-        disabled = self._render_primary_action_bitmap(icon_size, disabled_colour)
+        disabled_markup = svg_builder(disabled_colour)
+        disabled = self._render_svg_bitmap(disabled_markup, icon_size)
         if disabled is None or not disabled.IsOk():
             return None
         return normal, disabled
-
-    # ------------------------------------------------------------------
-    def _render_primary_action_bitmap(
-        self, icon_size: wx.Size, colour: wx.Colour
-    ) -> wx.Bitmap | None:
-        """Render the bold upward arrow icon for the idle state."""
-
-        svg_markup = self._build_primary_action_svg(colour)
-        return self._render_svg_bitmap(svg_markup, icon_size)
 
     # ------------------------------------------------------------------
     def _resolve_primary_action_colours(
@@ -592,7 +641,7 @@ class AgentChatLayoutBuilder:
         icon_size = wx.Size(icon_edge, icon_edge)
         inherit_background(parent, panel)
 
-        bitmaps = self._load_clear_button_bitmaps(icon_size)
+        bitmaps = self._load_clear_button_bitmaps(parent, icon_size)
         if bitmaps is None:
             button = wx.Button(parent, label=_("Clear input"))
             inherit_background(button, parent)
@@ -614,11 +663,24 @@ class AgentChatLayoutBuilder:
 
     # ------------------------------------------------------------------
     def _load_clear_button_bitmaps(
-        self, icon_size: wx.Size
+        self, parent: wx.Window, icon_size: wx.Size
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
         """Return bitmaps for the clear-input button or ``None`` if unavailable."""
 
-        bitmap = self._render_svg_bitmap(_CLEAR_INPUT_ICON_SVG, icon_size)
+        colour = parent.GetForegroundColour()
+        if not isinstance(colour, wx.Colour) or not colour.IsOk():
+            colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
+        if not colour.IsOk():
+            colour = wx.Colour(86, 99, 122)
+
+        stroke = self._colour_to_hex(colour)
+        opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
+        svg_markup = _CLEAR_INPUT_ICON_SVG_TEMPLATE.format(
+            stroke=stroke,
+            stroke_opacity=f"{opacity:.3f}",
+        )
+
+        bitmap = self._render_svg_bitmap(svg_markup, icon_size)
         if bitmap is None:
             return None
 
@@ -686,14 +748,25 @@ class AgentChatLayoutBuilder:
         return bitmap
 
     # ------------------------------------------------------------------
-    def _build_primary_action_svg(self, colour: wx.Colour) -> str:
+    def _build_primary_action_arrow_svg(self, colour: wx.Colour) -> str:
         """Return SVG markup for the idle-state upward arrow."""
 
         fill = self._colour_to_hex(colour)
         opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
-        return _PRIMARY_ACTION_ICON_SVG_TEMPLATE.format(
+        return _PRIMARY_ACTION_ARROW_ICON_SVG_TEMPLATE.format(
             fill=fill,
-            opacity=f"{opacity:.3f}",
+            fill_opacity=f"{opacity:.3f}",
+        )
+
+    # ------------------------------------------------------------------
+    def _build_primary_action_stop_svg(self, colour: wx.Colour) -> str:
+        """Return SVG markup for the running-state stop icon."""
+
+        fill = self._colour_to_hex(colour)
+        opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
+        return _PRIMARY_ACTION_STOP_ICON_SVG_TEMPLATE.format(
+            fill=fill,
+            fill_opacity=f"{opacity:.3f}",
         )
 
     # ------------------------------------------------------------------
@@ -707,21 +780,29 @@ class AgentChatLayoutBuilder:
         )
 
 
-_PRIMARY_ACTION_ICON_SVG_TEMPLATE = dedent(
+_PRIMARY_ACTION_ARROW_ICON_SVG_TEMPLATE = dedent(
     """
     <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 2 L20 11 H16.4 V21 H7.6 V11 H4 Z" fill="{fill}" fill-opacity="{opacity}" />
+      <path d="M12 2 L20 11 H16.4 V21 H7.6 V11 H4 Z" fill="{fill}" fill-opacity="{fill_opacity}" />
     </svg>
     """
 )
 
-_CLEAR_INPUT_ICON_SVG = dedent(
+_PRIMARY_ACTION_STOP_ICON_SVG_TEMPLATE = dedent(
     """
     <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      <g stroke="#56637A" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4.5 15.5L10.4 6.8a1.6 1.6 0 0 1 2.6 0l5.0 8.7" />
-        <path d="M3.5 18.5h11.5" />
-      </g>
+      <rect x="5" y="5" width="14" height="14" rx="3" fill="{fill}" fill-opacity="{fill_opacity}" />
+      <rect x="6" y="6" width="12" height="12" rx="2.4" fill="none" stroke="{fill}" stroke-opacity="{fill_opacity}" stroke-width="1.4" />
+    </svg>
+    """
+)
+
+_CLEAR_INPUT_ICON_SVG_TEMPLATE = dedent(
+    """
+    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6.5 7 L10.8 12 L6.5 17 H19 C20.3807 17 21.5 15.8807 21.5 14.5 V9.5 C21.5 8.1193 20.3807 7 19 7 Z" fill="none" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M13 10 L17 14" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" />
+      <path d="M17 10 L13 14" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" />
     </svg>
     """
 )

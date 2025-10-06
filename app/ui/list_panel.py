@@ -1157,7 +1157,27 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         for updated in updates:
             self._persist_requirement(updated)
 
-        self._refresh()
+        try:
+            status_col = self._field_order.index("status")
+        except ValueError:
+            status_col = None
+
+        if status_col is not None:
+            display = locale.code_to_label("status", status.value)
+            updated_ids = {req.id for req in updates}
+            for idx in range(self.list.GetItemCount()):
+                try:
+                    raw_id = self.list.GetItemData(idx)
+                except Exception:
+                    continue
+                try:
+                    req_id = int(raw_id)
+                except (TypeError, ValueError):
+                    continue
+                if req_id not in updated_ids:
+                    continue
+                self.list.SetItem(idx, status_col, display)
+
         self._restore_selection(unique_order)
 
     def _show_labels_dialog(self, req_ids: Sequence[int]) -> None:

@@ -284,6 +284,9 @@ def test_list_panel_bulk_status_change(wx_app):
     assert panel.model.get_by_id(1).status is Status.APPROVED
     assert panel.model.get_by_id(2).status is Status.APPROVED
     assert panel.get_selected_ids() == [1, 2]
+    status_col = panel._field_order.index("status")
+    assert panel.list.GetItemText(0, status_col) == target_label
+    assert panel.list.GetItemText(1, status_col) == target_label
 
     frame.Destroy()
 

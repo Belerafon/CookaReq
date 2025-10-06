@@ -105,6 +105,9 @@ STATUS_HELP_TEXT = _(
 )
 
 
+MAX_ATTACHMENT_BYTES = 1024 * 1024
+
+
 class AttachmentValidationError(Exception):
     """Raised when a selected attachment fails validation."""
 
@@ -933,10 +936,32 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
 
     def _read_attachment_text(self, resolved: Path) -> tuple[str, int]:
+        limit = MAX_ATTACHMENT_BYTES
+
+        try:
+            stat_size = resolved.stat().st_size
+        except OSError:
+            stat_size = None
+
+        if stat_size is not None and stat_size > limit:
+            raise AttachmentValidationError(
+                _("The selected file {path} exceeds the maximum attachment size of 1 MB.").format(
+                    path=str(resolved)
+                )
+            )
+
         try:
             raw_bytes = resolved.read_bytes()
         except OSError:
             raise
+
+        actual_size = len(raw_bytes)
+        if actual_size > limit:
+            raise AttachmentValidationError(
+                _("The selected file {path} exceeds the maximum attachment size of 1 MB.").format(
+                    path=str(resolved)
+                )
+            )
 
         try:
             text = raw_bytes.decode("utf-8")
@@ -954,11 +979,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 ).format(path=str(resolved))
             )
 
-        size_bytes = len(raw_bytes)
-        try:
-            size_bytes = resolved.stat().st_size
-        except OSError:
-            pass
+        size_bytes = stat_size if stat_size is not None else actual_size
         return text, size_bytes
 
     def _update_attachment_summary(self) -> None:

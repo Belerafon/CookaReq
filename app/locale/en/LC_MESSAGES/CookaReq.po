@@ -647,6 +647,9 @@ msgstr "All files|*.*|Text files (*.txt)|*.txt"
 msgid "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
 msgstr "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
 
+msgid "The selected file {path} exceeds the maximum attachment size of 1 MB."
+msgstr "The selected file {path} exceeds the maximum attachment size of 1 MB."
+
 msgid "The selected file {path} does not appear to be plain text. Please choose a UTF-8 text document."
 msgstr "The selected file {path} does not appear to be plain text. Please choose a UTF-8 text document."
 

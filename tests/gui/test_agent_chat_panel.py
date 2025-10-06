@@ -11,6 +11,7 @@ from app.confirm import ConfirmDecision, reset_requirement_update_preference, se
 from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel.token_usage import summarize_token_usage
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
+from app.ui.agent_chat_panel.panel import AttachmentValidationError, MAX_ATTACHMENT_BYTES
 from app.ui.agent_chat_panel.components.segments import (
     MessageSegmentPanel,
     TurnCard,
@@ -319,6 +320,44 @@ def destroy_panel(frame, panel):
         restore()
     panel.Destroy()
     frame.Destroy()
+
+
+def test_attachment_rejects_files_over_limit(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    _wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        oversize = tmp_path / "oversize.txt"
+        oversize.write_bytes(b"a" * (MAX_ATTACHMENT_BYTES + 1))
+
+        with pytest.raises(AttachmentValidationError) as exc:
+            panel._read_attachment_text(oversize)
+
+        assert "1 MB" in str(exc.value)
+    finally:
+        destroy_panel(frame, panel)
+
+
+def test_attachment_accepts_files_up_to_limit(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    _wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        boundary = tmp_path / "boundary.txt"
+        boundary.write_bytes(b"b" * MAX_ATTACHMENT_BYTES)
+
+        text, size = panel._read_attachment_text(boundary)
+
+        assert len(text) == MAX_ATTACHMENT_BYTES
+        assert size == MAX_ATTACHMENT_BYTES
+    finally:
+        destroy_panel(frame, panel)
 
 
 def test_switching_to_previous_chat_after_starting_new_one(tmp_path, wx_app):

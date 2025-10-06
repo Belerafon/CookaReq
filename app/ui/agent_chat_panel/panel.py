@@ -178,6 +178,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._timeline_cache = ConversationTimelineCache()
         self._pending_transcript_refresh: dict[str | None, set[str] | None] = {}
         self._transcript_refresh_scheduled = False
+        self._history_header_target: wx.Window | None = None
+        self._history_header_window: wx.Window | None = None
+        self._history_header_bound = False
         self._latest_timeline: ConversationTimeline | None = None
         self._history_last_sash = 0
         self._vertical_sash_goal: int | None = None
@@ -435,6 +438,55 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._refresh_history_list()
         wx.CallAfter(self._adjust_vertical_splitter)
         wx.CallAfter(self._update_project_settings_ui)
+
+    def _attach_history_header_events(self, history_list: wx.Window) -> None:
+        """Start monitoring header interactions for the history columns."""
+
+        self._history_header_target = history_list
+        self._history_header_window = None
+        self._history_header_bound = False
+        self._ensure_history_header_binding()
+
+    def _ensure_history_header_binding(self) -> None:
+        """Bind header events once the native header window exists."""
+
+        target = self._history_header_target
+        if target is None:
+            return
+        getter = getattr(target, "GetHeaderWindow", None)
+        if not callable(getter):
+            return
+        header = getter()
+        if not isinstance(header, wx.Window):
+            wx.CallAfter(self._ensure_history_header_binding)
+            return
+        if self._history_header_bound and header is self._history_header_window:
+            return
+        header.Bind(wx.EVT_LEFT_UP, self._on_history_header_interaction)
+        header.Bind(wx.EVT_LEFT_DCLICK, self._on_history_header_interaction)
+        self._history_header_window = header
+        self._history_header_bound = True
+
+    def _on_history_header_interaction(self, event: wx.MouseEvent) -> None:
+        """Refresh history rows after header clicks or drags."""
+
+        event.Skip()
+        wx.CallAfter(self._refresh_history_columns)
+
+    def _refresh_history_columns(self) -> None:
+        """Force history list to repaint after column metrics change."""
+
+        history_list = getattr(self, "history_list", None)
+        if history_list is None:
+            return
+        history_list.Refresh()
+        history_list.Update()
+        get_main = getattr(history_list, "GetMainWindow", None)
+        if callable(get_main):
+            main_window = get_main()
+            if isinstance(main_window, wx.Window):
+                main_window.Refresh()
+                main_window.Update()
 
     def _initialize_controller(self) -> None:
         callbacks = AgentRunCallbacks(

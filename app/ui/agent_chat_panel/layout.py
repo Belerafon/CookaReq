@@ -112,6 +112,7 @@ class AgentChatLayoutBuilder:
             splitter=horizontal_splitter,
             prepare_interaction=panel._prepare_history_interaction,
         )
+        panel._attach_history_header_events(history_list)
 
         history_sizer.Add(history_header, 0, wx.EXPAND)
         history_sizer.AddSpacer(spacing)

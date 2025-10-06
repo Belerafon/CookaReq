@@ -7,6 +7,7 @@ import logging
 import textwrap
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -178,6 +179,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._timeline_cache = ConversationTimelineCache()
         self._pending_transcript_refresh: dict[str | None, set[str] | None] = {}
         self._transcript_refresh_scheduled = False
+        self._history_list_window: wx.Window | None = None
+        self._history_main_window: wx.Window | None = None
+        self._history_column_widths: tuple[int, ...] | None = None
+        self._history_column_refresh_scheduled = False
         self._latest_timeline: ConversationTimeline | None = None
         self._history_last_sash = 0
         self._vertical_sash_goal: int | None = None
@@ -230,6 +235,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     # ------------------------------------------------------------------
     def _on_destroy(self, event: wx.WindowDestroyEvent) -> None:
         if event.GetEventObject() is self:
+            self._unbind_history_column_observers()
             self._cleanup_executor()
         event.Skip()
 
@@ -435,6 +441,104 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._refresh_history_list()
         wx.CallAfter(self._adjust_vertical_splitter)
         wx.CallAfter(self._update_project_settings_ui)
+
+    def _observe_history_columns(self, history_list: wx.Window) -> None:
+        """Start monitoring the history list so column drags repaint rows."""
+
+        self._unbind_history_column_observers()
+        self._history_list_window = history_list
+        self._history_column_widths = self._current_history_column_widths(history_list)
+        with suppress(Exception):
+            history_list.Unbind(wx.EVT_IDLE, handler=self._on_history_list_idle)
+        history_list.Bind(wx.EVT_IDLE, self._on_history_list_idle)
+        self._bind_history_main_window(history_list)
+        self._detect_history_column_change()
+
+    def _bind_history_main_window(self, history_list: wx.Window) -> None:
+        getter = getattr(history_list, "GetMainWindow", None)
+        window = getter() if callable(getter) else None
+        if not isinstance(window, wx.Window):
+            self._history_main_window = None
+            return
+        with suppress(Exception):
+            window.Unbind(wx.EVT_IDLE, handler=self._on_history_main_window_idle)
+        window.Bind(wx.EVT_IDLE, self._on_history_main_window_idle)
+        self._history_main_window = window
+
+    def _unbind_history_column_observers(self) -> None:
+        if self._history_list_window is not None:
+            with suppress(Exception):
+                self._history_list_window.Unbind(
+                    wx.EVT_IDLE, handler=self._on_history_list_idle
+                )
+        if self._history_main_window is not None:
+            with suppress(Exception):
+                self._history_main_window.Unbind(
+                    wx.EVT_IDLE, handler=self._on_history_main_window_idle
+                )
+        self._history_list_window = None
+        self._history_main_window = None
+
+    def _on_history_list_idle(self, event: wx.IdleEvent) -> None:
+        event.Skip()
+        self._detect_history_column_change()
+
+    def _on_history_main_window_idle(self, event: wx.IdleEvent) -> None:
+        event.Skip()
+        self._detect_history_column_change()
+
+    def _current_history_column_widths(
+        self, history_list: wx.Window | None = None
+    ) -> tuple[int, ...]:
+        target = history_list
+        if target is None:
+            target = getattr(self, "history_list", None)
+        if target is None:
+            target = self._history_list_window
+        if target is None:
+            return ()
+        count_getter = getattr(target, "GetColumnCount", None)
+        column_getter = getattr(target, "GetColumn", None)
+        if not callable(count_getter) or not callable(column_getter):
+            return ()
+        widths: list[int] = []
+        count = count_getter()
+        for index in range(count):
+            column = column_getter(index)
+            if column is None:
+                continue
+            with suppress(Exception):
+                widths.append(int(column.GetWidth()))
+        return tuple(widths)
+
+    def _detect_history_column_change(self) -> None:
+        widths = self._current_history_column_widths()
+        if widths != self._history_column_widths:
+            self._history_column_widths = widths
+            if widths:
+                self._schedule_history_column_refresh()
+
+    def _schedule_history_column_refresh(self) -> None:
+        if self._history_column_refresh_scheduled:
+            return
+        self._history_column_refresh_scheduled = True
+        wx.CallAfter(self._refresh_history_columns)
+
+    def _refresh_history_columns(self) -> None:
+        """Force history list to repaint after column metrics change."""
+
+        self._history_column_refresh_scheduled = False
+        history_list = getattr(self, "history_list", None)
+        if history_list is None:
+            return
+        history_list.Refresh()
+        history_list.Update()
+        get_main = getattr(history_list, "GetMainWindow", None)
+        if callable(get_main):
+            main_window = get_main()
+            if isinstance(main_window, wx.Window):
+                main_window.Refresh()
+                main_window.Update()
 
     def _initialize_controller(self) -> None:
         callbacks = AgentRunCallbacks(

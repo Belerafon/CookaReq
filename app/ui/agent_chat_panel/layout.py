@@ -64,7 +64,7 @@ class AgentChatLayout:
 
 
 PRIMARY_ACTION_IDLE_LABEL = "⬆"
-PRIMARY_ACTION_ICON_EDGE = 28
+PRIMARY_ACTION_ICON_EDGE = 14
 
 
 @dataclass(slots=True)
@@ -238,12 +238,10 @@ class AgentChatLayoutBuilder:
         self._ensure_primary_button_capacity(
             primary_btn, primary_idle_visual, primary_stop_visual
         )
-        button_row.Add(run_batch_btn, 0, wx.RIGHT, spacing)
-        button_row.Add(stop_batch_btn, 0, wx.RIGHT, spacing)
-        button_row.Add(
-            clear_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing
-        )
-        button_row.Add(primary_btn, 0)
+        button_row.Add(run_batch_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
+        button_row.Add(stop_batch_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
+        button_row.Add(clear_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
+        button_row.Add(primary_btn, 0, wx.ALIGN_TOP)
 
         batch_panel = wx.Panel(bottom_panel)
         inherit_background(batch_panel, bottom_panel)
@@ -320,7 +318,7 @@ class AgentChatLayoutBuilder:
         controls_row.AddStretchSpacer()
         controls_row.Add(settings_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         controls_row.Add(confirm_row, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
-        controls_row.Add(button_row, 0, wx.ALIGN_CENTER_VERTICAL)
+        controls_row.Add(button_row, 0, wx.ALIGN_TOP)
 
         bottom_sizer.Add(input_label, 0)
         bottom_sizer.AddSpacer(spacing)
@@ -451,7 +449,7 @@ class AgentChatLayoutBuilder:
 
         idle_visual = self._build_primary_action_idle_visual(parent)
         stop_visual = self._build_primary_action_stop_visual(parent)
-        button = wx.Button(parent, label="", style=wx.BU_AUTODRAW)
+        button = wx.Button(parent, label="", style=wx.BU_AUTODRAW | wx.BU_EXACTFIT)
         inherit_background(button, parent)
         self._apply_primary_action_visual(button, idle_visual)
         return button, idle_visual, stop_visual
@@ -800,9 +798,11 @@ _PRIMARY_ACTION_STOP_ICON_SVG_TEMPLATE = dedent(
 _CLEAR_INPUT_ICON_SVG_TEMPLATE = dedent(
     """
     <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      <path d="M6.5 7 L10.8 12 L6.5 17 H19 C20.3807 17 21.5 15.8807 21.5 14.5 V9.5 C21.5 8.1193 20.3807 7 19 7 Z" fill="none" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-      <path d="M13 10 L17 14" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" />
-      <path d="M17 10 L13 14" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" />
+      <path d="M8.8 6.5 L9.3 5.2 C9.5 4.7 9.9 4.4 10.4 4.4 H13.6 C14.1 4.4 14.5 4.7 14.7 5.2 L15.2 6.5" fill="none" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M6 6.5 H18" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" />
+      <rect x="7.5" y="8.2" width="9" height="10.8" rx="2.2" fill="none" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linejoin="round" />
+      <path d="M10.2 10.5 V16.7" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" />
+      <path d="M13.8 10.5 V16.7" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" stroke-linecap="round" />
     </svg>
     """
 )

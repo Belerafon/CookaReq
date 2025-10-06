@@ -907,7 +907,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self.PopupMenu(menu)
         finally:
             menu.Destroy()
-            self._context_menu_open = False
+            reset = getattr(wx, "CallAfter", None)
+            if callable(reset):
+                reset(self._reset_context_menu_flag)
+            else:  # pragma: no cover - fallback for minimal wx builds
+                self._reset_context_menu_flag()
 
     def _on_right_click(self, event: ListEvent) -> None:  # pragma: no cover - GUI event
         x, y = event.GetPoint()
@@ -946,6 +950,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if col is None or col < 0 or col >= len(self._field_order):
             return None
         return self._field_order[col]
+
+    def _reset_context_menu_flag(self) -> None:
+        """Allow opening the context menu again after the current popup closes."""
+
+        self._context_menu_open = False
 
     def _create_context_menu(self, index: int, column: int | None):
         menu = wx.Menu()

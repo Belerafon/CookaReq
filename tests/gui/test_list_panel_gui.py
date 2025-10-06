@@ -193,6 +193,51 @@ def test_list_panel_context_menu_stops_propagation(monkeypatch, wx_app):
     frame.Destroy()
 
 
+def test_list_panel_context_menu_waits_for_reset(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["status"])
+    panel.set_requirements([_req(1, "A", status=Status.DRAFT)])
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    opened: list[int] = []
+
+    def fake_popup(menu: wx.Menu) -> None:
+        opened.append(menu.GetMenuItemCount())
+
+    monkeypatch.setattr(panel, "PopupMenu", fake_popup)
+
+    scheduled: list[tuple[object, tuple, dict]] = []
+
+    def fake_call_after(func, *args, **kwargs):
+        scheduled.append((func, args, kwargs))
+
+    monkeypatch.setattr(list_panel.wx, "CallAfter", fake_call_after)
+
+    panel._popup_context_menu(0, None)
+    assert opened and opened[0] > 0
+    first_count = opened[0]
+
+    panel._popup_context_menu(0, None)
+    assert opened == [first_count]
+
+    assert scheduled
+    func, args, kwargs = scheduled.pop(0)
+    func(*args, **kwargs)
+
+    panel._popup_context_menu(0, None)
+    assert opened == [first_count, first_count]
+
+    frame.Destroy()
+
+
 def test_marquee_selection_starts_from_cell(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

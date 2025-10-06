@@ -461,77 +461,28 @@ class AgentChatLayoutBuilder:
     def _render_primary_action_bitmaps(
         self, icon_size: wx.Size, parent: wx.Window
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
-        """Draw the idle icon for the primary action button."""
+        """Render the idle-state bitmaps for the primary action button."""
 
         colours = self._resolve_primary_action_colours(parent)
         if colours is None:
             return None
         accent_colour, disabled_colour = colours
-        normal = self._draw_primary_action_bitmap(icon_size, accent_colour)
+        normal = self._render_primary_action_bitmap(icon_size, accent_colour)
         if normal is None or not normal.IsOk():
             return None
-        disabled = self._draw_primary_action_bitmap(icon_size, disabled_colour)
+        disabled = self._render_primary_action_bitmap(icon_size, disabled_colour)
         if disabled is None or not disabled.IsOk():
             return None
         return normal, disabled
 
     # ------------------------------------------------------------------
-    def _draw_primary_action_bitmap(
+    def _render_primary_action_bitmap(
         self, icon_size: wx.Size, colour: wx.Colour
     ) -> wx.Bitmap | None:
-        """Render a bold upward arrow bitmap."""
+        """Render the bold upward arrow icon for the idle state."""
 
-        width = max(icon_size.GetWidth(), 1)
-        height = max(icon_size.GetHeight(), 1)
-        try:
-            bitmap = wx.Bitmap(width, height, 32)
-        except Exception:  # pragma: no cover - defensive against platform quirks
-            return None
-
-        dc = wx.MemoryDC()
-        dc.SelectObject(bitmap)
-        try:
-            try:
-                gcdc = wx.GCDC(dc)
-            except Exception:  # pragma: no cover - guard headless builds
-                return None
-
-            background = wx.Brush(wx.Colour(0, 0, 0, 0))
-            gcdc.SetBackground(background)
-            gcdc.Clear()
-
-            antialias = getattr(gcdc, "SetAntialiasMode", None)
-            if callable(antialias):
-                antialias(wx.ANTIALIAS_DEFAULT)
-
-            gcdc.SetBrush(wx.Brush(colour))
-            pen_width = max(int(round(width * 0.08)), 1)
-            gcdc.SetPen(wx.Pen(colour, pen_width))
-
-            mid_x = width / 2.0
-            top_margin = height * 0.1
-            wing_y = height * 0.45
-            base_y = height * 0.88
-            shaft_half = width * 0.18
-            left_shaft = mid_x - shaft_half
-            right_shaft = mid_x + shaft_half
-            left_wing = width * 0.18
-            right_wing = width * 0.82
-
-            points = [
-                wx.Point(int(round(mid_x)), int(round(top_margin))),
-                wx.Point(int(round(right_wing)), int(round(wing_y))),
-                wx.Point(int(round(right_shaft)), int(round(wing_y))),
-                wx.Point(int(round(right_shaft)), int(round(base_y))),
-                wx.Point(int(round(left_shaft)), int(round(base_y))),
-                wx.Point(int(round(left_shaft)), int(round(wing_y))),
-                wx.Point(int(round(left_wing)), int(round(wing_y))),
-            ]
-            gcdc.DrawPolygon(points)
-        finally:
-            dc.SelectObject(wx.NullBitmap)
-
-        return bitmap if bitmap.IsOk() else None
+        svg_markup = self._build_primary_action_svg(colour)
+        return self._render_svg_bitmap(svg_markup, icon_size)
 
     # ------------------------------------------------------------------
     def _resolve_primary_action_colours(
@@ -667,9 +618,7 @@ class AgentChatLayoutBuilder:
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
         """Return bitmaps for the clear-input button or ``None`` if unavailable."""
 
-        bitmap = self._render_clear_icon_with_bundle(icon_size)
-        if bitmap is None:
-            bitmap = self._render_clear_icon_with_svg_module(icon_size)
+        bitmap = self._render_svg_bitmap(_CLEAR_INPUT_ICON_SVG, icon_size)
         if bitmap is None:
             return None
 
@@ -678,8 +627,19 @@ class AgentChatLayoutBuilder:
         return bitmap, disabled_bitmap
 
     # ------------------------------------------------------------------
-    def _render_clear_icon_with_bundle(self, icon_size: wx.Size) -> wx.Bitmap | None:
-        """Render the clear-input icon via :mod:`wx.BitmapBundle` if possible."""
+    def _render_svg_bitmap(self, svg_markup: str, icon_size: wx.Size) -> wx.Bitmap | None:
+        """Render SVG markup into a bitmap using available wx backends."""
+
+        bitmap = self._render_svg_with_bitmap_bundle(svg_markup, icon_size)
+        if bitmap is None:
+            bitmap = self._render_svg_with_wxsvg(svg_markup, icon_size)
+        return bitmap
+
+    # ------------------------------------------------------------------
+    def _render_svg_with_bitmap_bundle(
+        self, svg_markup: str, icon_size: wx.Size
+    ) -> wx.Bitmap | None:
+        """Render SVG markup through :mod:`wx.BitmapBundle` if supported."""
 
         if not hasattr(wx, "BitmapBundle"):
             return None
@@ -688,7 +648,7 @@ class AgentChatLayoutBuilder:
             return None
 
         try:
-            bundle = from_svg(_CLEAR_INPUT_ICON_SVG.encode("utf-8"), icon_size)
+            bundle = from_svg(svg_markup.encode("utf-8"), icon_size)
         except (TypeError, ValueError, RuntimeError):
             return None
         if not bundle or not bundle.IsOk():
@@ -700,10 +660,10 @@ class AgentChatLayoutBuilder:
         return bitmap
 
     # ------------------------------------------------------------------
-    def _render_clear_icon_with_svg_module(
-        self, icon_size: wx.Size
+    def _render_svg_with_wxsvg(
+        self, svg_markup: str, icon_size: wx.Size
     ) -> wx.Bitmap | None:
-        """Render the clear-input icon via :mod:`wx.svg` as a compatibility fallback."""
+        """Render SVG markup via :mod:`wx.svg` as a compatibility fallback."""
 
         try:
             import wx.svg as wxsvg
@@ -714,7 +674,7 @@ class AgentChatLayoutBuilder:
         if create_from_string is None:
             return None
 
-        image = create_from_string(_CLEAR_INPUT_ICON_SVG)
+        image = create_from_string(svg_markup)
         if image is None or not image.IsOk():
             return None
 
@@ -725,6 +685,35 @@ class AgentChatLayoutBuilder:
             return None
         return bitmap
 
+    # ------------------------------------------------------------------
+    def _build_primary_action_svg(self, colour: wx.Colour) -> str:
+        """Return SVG markup for the idle-state upward arrow."""
+
+        fill = self._colour_to_hex(colour)
+        opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
+        return _PRIMARY_ACTION_ICON_SVG_TEMPLATE.format(
+            fill=fill,
+            opacity=f"{opacity:.3f}",
+        )
+
+    # ------------------------------------------------------------------
+    def _colour_to_hex(self, colour: wx.Colour) -> str:
+        """Convert a colour to a ``#RRGGBB`` hex string."""
+
+        return "#{:02X}{:02X}{:02X}".format(
+            max(0, min(int(colour.Red()), 255)),
+            max(0, min(int(colour.Green()), 255)),
+            max(0, min(int(colour.Blue()), 255)),
+        )
+
+
+_PRIMARY_ACTION_ICON_SVG_TEMPLATE = dedent(
+    """
+    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2 L20 11 H16.4 V21 H7.6 V11 H4 Z" fill="{fill}" fill-opacity="{opacity}" />
+    </svg>
+    """
+)
 
 _CLEAR_INPUT_ICON_SVG = dedent(
     """

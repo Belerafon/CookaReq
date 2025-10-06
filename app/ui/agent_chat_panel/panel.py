@@ -235,6 +235,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     # ------------------------------------------------------------------
     def _on_destroy(self, event: wx.WindowDestroyEvent) -> None:
         if event.GetEventObject() is self:
+            self._unbind_history_column_observers()
             self._cleanup_executor()
         event.Skip()
 
@@ -448,8 +449,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._history_list_window = history_list
         self._history_column_widths = self._current_history_column_widths(history_list)
         with suppress(Exception):
-            history_list.Unbind(wx.EVT_SIZE, handler=self._on_history_list_size)
-        history_list.Bind(wx.EVT_SIZE, self._on_history_list_size)
+            history_list.Unbind(wx.EVT_IDLE, handler=self._on_history_list_idle)
+        history_list.Bind(wx.EVT_IDLE, self._on_history_list_idle)
         self._bind_history_main_window(history_list)
         self._detect_history_column_change()
 
@@ -460,29 +461,29 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self._history_main_window = None
             return
         with suppress(Exception):
-            window.Unbind(wx.EVT_SIZE, handler=self._on_history_main_window_size)
-        window.Bind(wx.EVT_SIZE, self._on_history_main_window_size)
+            window.Unbind(wx.EVT_IDLE, handler=self._on_history_main_window_idle)
+        window.Bind(wx.EVT_IDLE, self._on_history_main_window_idle)
         self._history_main_window = window
 
     def _unbind_history_column_observers(self) -> None:
         if self._history_list_window is not None:
             with suppress(Exception):
                 self._history_list_window.Unbind(
-                    wx.EVT_SIZE, handler=self._on_history_list_size
+                    wx.EVT_IDLE, handler=self._on_history_list_idle
                 )
         if self._history_main_window is not None:
             with suppress(Exception):
                 self._history_main_window.Unbind(
-                    wx.EVT_SIZE, handler=self._on_history_main_window_size
+                    wx.EVT_IDLE, handler=self._on_history_main_window_idle
                 )
         self._history_list_window = None
         self._history_main_window = None
 
-    def _on_history_list_size(self, event: wx.SizeEvent) -> None:
+    def _on_history_list_idle(self, event: wx.IdleEvent) -> None:
         event.Skip()
         self._detect_history_column_change()
 
-    def _on_history_main_window_size(self, event: wx.SizeEvent) -> None:
+    def _on_history_main_window_idle(self, event: wx.IdleEvent) -> None:
         event.Skip()
         self._detect_history_column_change()
 

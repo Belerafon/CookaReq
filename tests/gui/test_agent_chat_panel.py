@@ -3069,7 +3069,6 @@ def test_agent_chat_panel_history_resize_repaints_rows(
 
     try:
         flush_wx_events(wx)
-        assert isinstance(panel._history_main_window, wx.Window)
         panel._history_column_widths = (100, 120)
         refresh_calls: list[bool] = []
         original_refresh = panel.history_list.__class__.Refresh
@@ -3088,11 +3087,9 @@ def test_agent_chat_panel_history_resize_repaints_rows(
             lambda history_list=None: (140, 120),
         )
 
-        main_window = panel._history_main_window
-        assert isinstance(main_window, wx.Window)
-        size_event = wx.SizeEvent(panel.history_list.GetSize(), main_window.GetId())
-        size_event.SetEventObject(main_window)
-        panel._on_history_main_window_size(size_event)
+        idle_event = wx.IdleEvent()
+        idle_event.SetEventObject(panel.history_list)
+        panel._on_history_list_idle(idle_event)
 
         flush_wx_events(wx, count=6)
 

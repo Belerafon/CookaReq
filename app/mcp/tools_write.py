@@ -61,6 +61,23 @@ def update_requirement_field(
         "value": value,
     }
     service = RequirementsService(directory)
+    before_snapshot: dict[str, Any] | None = None
+    try:
+        previous = service.get_requirement(rid)
+    except RequirementNotFoundError as exc:
+        return log_tool(
+            "update_requirement_field",
+            params,
+            mcp_error(ErrorCode.NOT_FOUND, str(exc)),
+        )
+    except DocumentNotFoundError as exc:
+        return log_tool(
+            "update_requirement_field",
+            params,
+            mcp_error(ErrorCode.NOT_FOUND, str(exc)),
+        )
+    else:
+        before_snapshot = requirement_to_dict(previous)
     try:
         req = service.update_requirement_field(rid, field=field, value=value)
     except RequirementNotFoundError as exc:
@@ -81,7 +98,18 @@ def update_requirement_field(
             params,
             mcp_error(ErrorCode.INTERNAL, str(exc)),
         )
-    return log_tool("update_requirement_field", params, _result_payload(req))
+
+    payload = _result_payload(req)
+    if before_snapshot is not None:
+        after_snapshot = dict(payload)
+        previous_value = before_snapshot.get(field)
+        current_value = after_snapshot.get(field)
+        payload["field_change"] = {
+            "field": field,
+            "previous": previous_value,
+            "current": current_value,
+        }
+    return log_tool("update_requirement_field", params, payload)
 
 
 def set_requirement_labels(

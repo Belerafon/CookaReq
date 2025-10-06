@@ -1553,3 +1553,6 @@ msgstr "Set status for selected"
 
 msgid "Set status"
 msgstr "Set status"
+
+msgid "Set labels…"
+msgstr "Set labels…"

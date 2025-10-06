@@ -18,6 +18,7 @@ from ..i18n import _
 from ..log import logger
 from . import locale
 from .helpers import dip, inherit_background
+from .label_selection_dialog import LabelSelectionDialog
 from .enums import ENUMS
 from .filter_dialog import FilterDialog
 from .requirement_model import RequirementModel
@@ -262,6 +263,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 with suppress(Exception):  # pragma: no cover - backend quirks
                     self.list.SetExtraStyle(self.list.GetExtraStyle() | extra)
         self._labels: list[LabelDef] = []
+        self._labels_allow_freeform = False
         self.current_filters: dict = {}
         self._image_list: wx.ImageList | None = None
         self._label_images: dict[tuple[str, ...], int] = {}
@@ -686,9 +688,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             filters["fields"] = list(fields)
         self.apply_filters(filters)
 
-    def update_labels_list(self, labels: list[LabelDef]) -> None:
-        """Update available labels for the filter dialog."""
+    def update_labels_list(self, labels: list[LabelDef], allow_freeform: bool) -> None:
+        """Update available labels and whether custom labels are allowed."""
         self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
+        self._labels_allow_freeform = bool(allow_freeform)
 
     def _on_filter(self, event):  # pragma: no cover - simple event binding
         dlg = FilterDialog(self, labels=self._labels, values=self.current_filters)
@@ -954,8 +957,15 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             clone_item = menu.Append(wx.ID_ANY, _("Clone"))
         delete_item = menu.Append(wx.ID_ANY, _("Delete"))
         status_menu = None
+        labels_item = None
         if selected_ids:
             status_menu = self._build_status_menu(selected_ids)
+            labels_item = menu.Append(wx.ID_ANY, _("Set labels…"))
+            menu.Bind(
+                wx.EVT_MENU,
+                lambda _evt, ids=tuple(selected_ids): self._show_labels_dialog(ids),
+                labels_item,
+            )
         if status_menu is not None:
             label = _("Set status for selected") if len(selected_ids) > 1 else _("Set status")
             menu.AppendSubMenu(status_menu, label)
@@ -1114,14 +1124,22 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self.list.SetItem(idx, column, str(display))
             self._persist_requirement(req)
 
-    def _set_status(self, req_ids: Sequence[int], status: Status) -> None:
-        unique_order: list[int] = []
+    def _ordered_unique_ids(self, req_ids: Sequence[int]) -> list[int]:
+        """Return ``req_ids`` without duplicates preserving order."""
+
+        unique: list[int] = []
         seen: set[int] = set()
         for req_id in req_ids:
+            if not isinstance(req_id, int):
+                continue
             if req_id in seen:
                 continue
             seen.add(req_id)
-            unique_order.append(req_id)
+            unique.append(req_id)
+        return unique
+
+    def _set_status(self, req_ids: Sequence[int], status: Status) -> None:
+        unique_order = self._ordered_unique_ids(req_ids)
 
         updates: list[Requirement] = []
         for req_id in unique_order:
@@ -1131,6 +1149,95 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if getattr(requirement, "status", None) == status:
                 continue
             updates.append(replace(requirement, status=status))
+
+        if not updates:
+            return
+
+        self.model.update_many(updates)
+        for updated in updates:
+            self._persist_requirement(updated)
+
+        self._refresh()
+        self._restore_selection(unique_order)
+
+    def _show_labels_dialog(self, req_ids: Sequence[int]) -> None:
+        """Open dialog to adjust labels for ``req_ids``."""
+
+        unique_order = self._ordered_unique_ids(req_ids)
+        if not unique_order:
+            return
+
+        requirements: list[Requirement] = []
+        existing_labels: list[list[str]] = []
+        for req_id in unique_order:
+            requirement = self.model.get_by_id(req_id)
+            if requirement is None:
+                continue
+            requirements.append(requirement)
+            labels = list(getattr(requirement, "labels", []) or [])
+            existing_labels.append(labels)
+
+        if not requirements:
+            return
+
+        available = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
+        known_keys = {lbl.key for lbl in available}
+        for labels in existing_labels:
+            for name in labels:
+                if name in known_keys:
+                    continue
+                known_keys.add(name)
+                available.append(LabelDef(name, name, stable_color(name)))
+
+        initial: list[str] = []
+        if existing_labels:
+            common = list(dict.fromkeys(existing_labels[0]))
+            for labels in existing_labels[1:]:
+                common = [name for name in common if name in labels]
+            initial = common
+
+        dlg = LabelSelectionDialog(
+            self,
+            labels=available,
+            selected=initial,
+            allow_freeform=self._labels_allow_freeform,
+        )
+        try:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            chosen = dlg.get_selected()
+        finally:
+            dlg.Destroy()
+
+        self._set_labels(unique_order, chosen)
+
+    def _set_labels(self, req_ids: Sequence[int], labels: Sequence[str]) -> None:
+        """Apply ``labels`` to requirements identified by ``req_ids``."""
+
+        unique_order = self._ordered_unique_ids(req_ids)
+        if not unique_order:
+            return
+
+        sanitized: list[str] = []
+        seen: set[str] = set()
+        for label in labels:
+            if not isinstance(label, str):
+                continue
+            text = label.strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            sanitized.append(text)
+
+        updates: list[Requirement] = []
+        for req_id in unique_order:
+            requirement = self.model.get_by_id(req_id)
+            if requirement is None:
+                continue
+            current = list(getattr(requirement, "labels", []) or [])
+            if current == sanitized:
+                continue
+            updates.append(replace(requirement, labels=list(sanitized)))
 
         if not updates:
             return

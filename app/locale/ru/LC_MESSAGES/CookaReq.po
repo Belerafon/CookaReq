@@ -1569,3 +1569,6 @@ msgstr "Изменить статус выделенных"
 
 msgid "Set status"
 msgstr "Изменить статус"
+
+msgid "Set labels…"
+msgstr "Изменить метки…"

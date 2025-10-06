@@ -262,7 +262,7 @@ class MainFrameRequirementsMixin:
             self.current_doc_prefix
         )
         self.editor.update_labels_list(labels, freeform)
-        self.panel.update_labels_list(labels)
+        self.panel.update_labels_list(labels, freeform)
 
     def on_delete_requirement(self: MainFrame, req_id: int) -> None:
         """Delete requirement ``req_id`` and refresh views."""

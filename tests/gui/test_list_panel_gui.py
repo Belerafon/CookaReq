@@ -288,6 +288,81 @@ def test_list_panel_bulk_status_change(wx_app):
     frame.Destroy()
 
 
+def test_list_panel_bulk_labels_change(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+    from app.services.requirements import LabelDef
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.update_labels_list(
+        [
+            LabelDef("backend", "Backend", "#123456"),
+            LabelDef("api", "API", "#abcdef"),
+        ],
+        allow_freeform=True,
+    )
+    panel.set_requirements(
+        [
+            _req(1, "A", labels=["backend", "legacy"]),
+            _req(2, "B", labels=["backend", "api"]),
+        ]
+    )
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+    panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    captured: dict[str, object] = {}
+
+    class DummyDialog:
+        def __init__(self, parent, labels, selected, allow_freeform):
+            captured["labels"] = labels
+            captured["selected"] = selected
+            captured["allow_freeform"] = allow_freeform
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            captured["destroyed"] = True
+
+        def get_selected(self):
+            return ["backend", "ux"]
+
+    monkeypatch.setattr(list_panel, "LabelSelectionDialog", DummyDialog)
+
+    menu, _, delete_item, edit_item = panel._create_context_menu(0, 0)
+    assert delete_item is not None
+    assert edit_item is None
+    labels_item = next(
+        (
+            item
+            for item in menu.GetMenuItems()
+            if item.GetItemLabelText() == list_panel._("Set labels…")
+        ),
+        None,
+    )
+    assert labels_item is not None
+
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, labels_item.GetId())
+    menu.ProcessEvent(evt)
+    menu.Destroy()
+
+    assert captured["allow_freeform"] is True
+    available = {label.key for label in captured["labels"]}
+    assert {"backend", "api", "legacy"}.issubset(available)
+    assert captured["selected"] == ["backend"]
+    assert captured.get("destroyed") is True
+
+    assert panel.model.get_by_id(1).labels == ["backend", "ux"]
+    assert panel.model.get_by_id(2).labels == ["backend", "ux"]
+    assert panel.get_selected_ids() == [1, 2]
+
+    frame.Destroy()
+
+
 def test_list_panel_single_selection_status_menu(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

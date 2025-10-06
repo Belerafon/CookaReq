@@ -47,6 +47,9 @@ class AgentChatLayout:
     input_control: wx.TextCtrl
     primary_action_button: wx.Button
     primary_action_idle_label: str
+    primary_action_idle_uses_bitmap: bool
+    primary_action_idle_bitmap: wx.Bitmap | None
+    primary_action_idle_disabled_bitmap: wx.Bitmap | None
     batch_controls: BatchControls
     activity_indicator: wx.ActivityIndicator
     status_label: wx.StaticText
@@ -57,6 +60,17 @@ class AgentChatLayout:
 
 
 PRIMARY_ACTION_IDLE_LABEL = "⬆"
+PRIMARY_ACTION_ICON_EDGE = 22
+
+
+@dataclass(slots=True)
+class _PrimaryActionVisual:
+    """Describe how the primary action button looks in idle state."""
+
+    label: str
+    uses_bitmap: bool
+    bitmap: wx.Bitmap | None
+    disabled_bitmap: wx.Bitmap | None
 
 
 class AgentChatLayoutBuilder:
@@ -209,10 +223,12 @@ class AgentChatLayoutBuilder:
         clear_btn = self._create_clear_button(bottom_panel)
         clear_btn.Bind(wx.EVT_BUTTON, panel._on_clear_input)
         clear_btn.SetToolTip(_("Clear input"))
-        primary_btn = wx.Button(bottom_panel, label=PRIMARY_ACTION_IDLE_LABEL)
+        primary_btn, primary_idle_visual = self._create_primary_action_button(
+            bottom_panel
+        )
         primary_btn.Bind(wx.EVT_BUTTON, panel._on_primary_action)
         primary_btn.SetToolTip(_("Send"))
-        self._ensure_primary_button_capacity(primary_btn)
+        self._ensure_primary_button_capacity(primary_btn, primary_idle_visual)
         button_row.Add(run_batch_btn, 0, wx.RIGHT, spacing)
         button_row.Add(stop_batch_btn, 0, wx.RIGHT, spacing)
         button_row.Add(
@@ -349,7 +365,10 @@ class AgentChatLayoutBuilder:
             attachment_summary=attachment_summary,
             input_control=input_ctrl,
             primary_action_button=primary_btn,
-            primary_action_idle_label=PRIMARY_ACTION_IDLE_LABEL,
+            primary_action_idle_label=primary_idle_visual.label,
+            primary_action_idle_uses_bitmap=primary_idle_visual.uses_bitmap,
+            primary_action_idle_bitmap=primary_idle_visual.bitmap,
+            primary_action_idle_disabled_bitmap=primary_idle_visual.disabled_bitmap,
             batch_controls=batch_controls,
             activity_indicator=activity_indicator,
             status_label=status_label,
@@ -360,29 +379,258 @@ class AgentChatLayoutBuilder:
         )
 
     # ------------------------------------------------------------------
-    def _ensure_primary_button_capacity(self, button: wx.Button) -> None:
-        """Keep the primary button width stable across idle/run labels."""
+    def _ensure_primary_button_capacity(
+        self, button: wx.Button, idle_visual: _PrimaryActionVisual
+    ) -> None:
+        """Keep the primary button width stable across idle and running states."""
 
-        idle_label = PRIMARY_ACTION_IDLE_LABEL
-        stop_label = _("Stop")
-        original = button.GetLabel()
-        required_width = 0
-        required_height = 0
-
-        for candidate in (idle_label, stop_label):
-            if candidate != original:
-                button.SetLabel(candidate)
-                button.InvalidateBestSize()
-            size = button.GetBestSize()
-            required_width = max(required_width, size.width)
-            required_height = max(required_height, size.height)
-
-        button.SetLabel(original)
+        self._apply_primary_action_idle_visual(button, idle_visual)
         button.InvalidateBestSize()
-        current_size = button.GetBestSize()
-        required_width = max(required_width, current_size.width)
-        required_height = max(required_height, current_size.height)
+        idle_size = button.GetBestSize()
+
+        self._apply_primary_action_stop_visual(button)
+        button.InvalidateBestSize()
+        stop_size = button.GetBestSize()
+
+        required_width = max(idle_size.width, stop_size.width)
+        required_height = max(idle_size.height, stop_size.height)
         button.SetMinSize(wx.Size(required_width, required_height))
+
+        self._apply_primary_action_idle_visual(button, idle_visual)
+
+    # ------------------------------------------------------------------
+    def _apply_primary_action_idle_visual(
+        self, button: wx.Button, visual: _PrimaryActionVisual
+    ) -> None:
+        """Restore the idle icon or label for the primary action button."""
+
+        if visual.uses_bitmap and visual.bitmap is not None:
+            self._apply_primary_action_bitmaps(
+                button, visual.bitmap, visual.disabled_bitmap
+            )
+        else:
+            self._clear_primary_action_bitmaps(button)
+        button.SetLabel(visual.label)
+
+    # ------------------------------------------------------------------
+    def _apply_primary_action_stop_visual(self, button: wx.Button) -> None:
+        """Show the "Stop" label without any icon on the primary button."""
+
+        self._clear_primary_action_bitmaps(button)
+        button.SetLabel(_("Stop"))
+
+    # ------------------------------------------------------------------
+    def _create_primary_action_button(
+        self, parent: wx.Window
+    ) -> tuple[wx.Button, _PrimaryActionVisual]:
+        """Construct the send/stop button together with its idle presentation."""
+
+        visual = self._build_primary_action_visual(parent)
+        label = visual.label if visual.label else ""
+        button = wx.Button(parent, label=label, style=wx.BU_AUTODRAW)
+        inherit_background(button, parent)
+        if visual.uses_bitmap and visual.bitmap is not None:
+            self._apply_primary_action_bitmaps(
+                button, visual.bitmap, visual.disabled_bitmap
+            )
+        return button, visual
+
+    # ------------------------------------------------------------------
+    def _build_primary_action_visual(self, parent: wx.Window) -> _PrimaryActionVisual:
+        """Return the idle visual description for the primary action button."""
+
+        icon_edge = dip(self._panel, PRIMARY_ACTION_ICON_EDGE)
+        icon_size = wx.Size(icon_edge, icon_edge)
+        bitmaps = self._render_primary_action_bitmaps(icon_size, parent)
+        if bitmaps is None:
+            return _PrimaryActionVisual(
+                label=PRIMARY_ACTION_IDLE_LABEL,
+                uses_bitmap=False,
+                bitmap=None,
+                disabled_bitmap=None,
+            )
+        normal_bitmap, disabled_bitmap = bitmaps
+        return _PrimaryActionVisual(
+            label="",
+            uses_bitmap=True,
+            bitmap=normal_bitmap,
+            disabled_bitmap=disabled_bitmap,
+        )
+
+    # ------------------------------------------------------------------
+    def _render_primary_action_bitmaps(
+        self, icon_size: wx.Size, parent: wx.Window
+    ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
+        """Draw the idle icon for the primary action button."""
+
+        colours = self._resolve_primary_action_colours(parent)
+        if colours is None:
+            return None
+        accent_colour, disabled_colour = colours
+        normal = self._draw_primary_action_bitmap(icon_size, accent_colour)
+        if normal is None or not normal.IsOk():
+            return None
+        disabled = self._draw_primary_action_bitmap(icon_size, disabled_colour)
+        if disabled is None or not disabled.IsOk():
+            return None
+        return normal, disabled
+
+    # ------------------------------------------------------------------
+    def _draw_primary_action_bitmap(
+        self, icon_size: wx.Size, colour: wx.Colour
+    ) -> wx.Bitmap | None:
+        """Render a bold upward arrow bitmap."""
+
+        width = max(icon_size.GetWidth(), 1)
+        height = max(icon_size.GetHeight(), 1)
+        try:
+            bitmap = wx.Bitmap(width, height, 32)
+        except Exception:  # pragma: no cover - defensive against platform quirks
+            return None
+
+        dc = wx.MemoryDC()
+        dc.SelectObject(bitmap)
+        try:
+            try:
+                gcdc = wx.GCDC(dc)
+            except Exception:  # pragma: no cover - guard headless builds
+                return None
+
+            background = wx.Brush(wx.Colour(0, 0, 0, 0))
+            gcdc.SetBackground(background)
+            gcdc.Clear()
+
+            antialias = getattr(gcdc, "SetAntialiasMode", None)
+            if callable(antialias):
+                antialias(wx.ANTIALIAS_DEFAULT)
+
+            gcdc.SetBrush(wx.Brush(colour))
+            pen_width = max(int(round(width * 0.08)), 1)
+            gcdc.SetPen(wx.Pen(colour, pen_width))
+
+            mid_x = width / 2.0
+            top_margin = height * 0.1
+            wing_y = height * 0.45
+            base_y = height * 0.88
+            shaft_half = width * 0.18
+            left_shaft = mid_x - shaft_half
+            right_shaft = mid_x + shaft_half
+            left_wing = width * 0.18
+            right_wing = width * 0.82
+
+            points = [
+                wx.Point(int(round(mid_x)), int(round(top_margin))),
+                wx.Point(int(round(right_wing)), int(round(wing_y))),
+                wx.Point(int(round(right_shaft)), int(round(wing_y))),
+                wx.Point(int(round(right_shaft)), int(round(base_y))),
+                wx.Point(int(round(left_shaft)), int(round(base_y))),
+                wx.Point(int(round(left_shaft)), int(round(wing_y))),
+                wx.Point(int(round(left_wing)), int(round(wing_y))),
+            ]
+            gcdc.DrawPolygon(points)
+        finally:
+            dc.SelectObject(wx.NullBitmap)
+
+        return bitmap if bitmap.IsOk() else None
+
+    # ------------------------------------------------------------------
+    def _resolve_primary_action_colours(
+        self, parent: wx.Window
+    ) -> tuple[wx.Colour, wx.Colour] | None:
+        """Pick colours for the active and disabled arrow."""
+
+        accent = parent.GetForegroundColour()
+        if not isinstance(accent, wx.Colour) or not accent.IsOk():
+            accent = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
+        if not accent.IsOk():
+            return None
+
+        background = parent.GetBackgroundColour()
+        if not isinstance(background, wx.Colour) or not background.IsOk():
+            background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNFACE)
+        if not background.IsOk():
+            background = wx.Colour(240, 240, 240)
+
+        disabled = self._mix_colour(accent, background, 0.35)
+        return accent, disabled
+
+    # ------------------------------------------------------------------
+    def _mix_colour(
+        self, first: wx.Colour, second: wx.Colour, first_weight: float
+    ) -> wx.Colour:
+        """Blend two colours using the provided weight for the first colour."""
+
+        ratio = max(0.0, min(1.0, first_weight))
+        other = 1.0 - ratio
+
+        def _clamp(value: float) -> int:
+            return max(0, min(int(round(value)), 255))
+
+        first_alpha = self._colour_alpha(first)
+        second_alpha = self._colour_alpha(second)
+        return wx.Colour(
+            _clamp(first.Red() * ratio + second.Red() * other),
+            _clamp(first.Green() * ratio + second.Green() * other),
+            _clamp(first.Blue() * ratio + second.Blue() * other),
+            _clamp(first_alpha * ratio + second_alpha * other),
+        )
+
+    # ------------------------------------------------------------------
+    def _colour_alpha(self, colour: wx.Colour) -> int:
+        """Return the alpha component of a colour, defaulting to fully opaque."""
+
+        alpha_getter = getattr(colour, "Alpha", None)
+        if callable(alpha_getter):
+            return int(alpha_getter())
+        if hasattr(colour, "GetAlpha") and callable(colour.GetAlpha):
+            return int(colour.GetAlpha())
+        return 255
+
+    # ------------------------------------------------------------------
+    def _apply_primary_action_bitmaps(
+        self, button: wx.Button, bitmap: wx.Bitmap, disabled_bitmap: wx.Bitmap | None
+    ) -> None:
+        """Attach the idle icon bitmaps to the primary action button."""
+
+        if not bitmap or not bitmap.IsOk():
+            return
+
+        for attr in (
+            "SetBitmap",
+            "SetBitmapCurrent",
+            "SetBitmapFocus",
+            "SetBitmapPressed",
+            "SetBitmapHover",
+        ):
+            setter = getattr(button, attr, None)
+            if callable(setter):
+                setter(bitmap)
+
+        if disabled_bitmap and disabled_bitmap.IsOk():
+            setter = getattr(button, "SetBitmapDisabled", None)
+            if callable(setter):
+                setter(disabled_bitmap)
+
+        margins = getattr(button, "SetBitmapMargins", None)
+        if callable(margins):
+            margins(0, 0)
+
+    # ------------------------------------------------------------------
+    def _clear_primary_action_bitmaps(self, button: wx.Button) -> None:
+        """Remove any bitmaps associated with the primary action button."""
+
+        null_bitmap = wx.NullBitmap
+        for attr in (
+            "SetBitmap",
+            "SetBitmapCurrent",
+            "SetBitmapFocus",
+            "SetBitmapPressed",
+            "SetBitmapHover",
+            "SetBitmapDisabled",
+        ):
+            setter = getattr(button, attr, None)
+            if callable(setter):
+                setter(null_bitmap)
 
     # ------------------------------------------------------------------
     def _create_clear_button(self, parent: wx.Window) -> wx.Control:

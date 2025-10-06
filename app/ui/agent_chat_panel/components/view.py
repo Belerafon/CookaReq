@@ -79,6 +79,9 @@ class AgentChatView:
         state = self.state
         primary_btn = state.layout.primary_action_button
         idle_label = state.layout.primary_action_idle_label
+        idle_uses_bitmap = state.layout.primary_action_idle_uses_bitmap
+        idle_bitmap = state.layout.primary_action_idle_bitmap
+        idle_disabled_bitmap = state.layout.primary_action_idle_disabled_bitmap
         input_ctrl = state.layout.input_control
         activity = state.layout.activity_indicator
 
@@ -87,10 +90,17 @@ class AgentChatView:
         send_tooltip = _("Send")
         stop_label = _("Stop")
         if active:
+            self._clear_primary_action_bitmaps(primary_btn)
             label = stop_label
             tooltip = stop_label
         else:
-            label = idle_label
+            if idle_uses_bitmap and idle_bitmap is not None:
+                self._set_primary_action_bitmaps(
+                    primary_btn, idle_bitmap, idle_disabled_bitmap
+                )
+            else:
+                self._clear_primary_action_bitmaps(primary_btn)
+            label = idle_label if idle_label else ""
             tooltip = send_tooltip
         if primary_btn.GetLabel() != label:
             primary_btn.SetLabel(label)
@@ -157,6 +167,55 @@ class AgentChatView:
         if details == TOKEN_UNAVAILABLE_LABEL and context_limit is None:
             return base
         return _("{base} — {details}").format(base=base, details=details)
+
+    # ------------------------------------------------------------------
+    def _set_primary_action_bitmaps(
+        self,
+        button: wx.Button,
+        bitmap: wx.Bitmap,
+        disabled_bitmap: wx.Bitmap | None,
+    ) -> None:
+        """Attach the idle-state bitmaps to the primary action button."""
+
+        if not bitmap or not bitmap.IsOk():
+            return
+
+        for attr in (
+            "SetBitmap",
+            "SetBitmapCurrent",
+            "SetBitmapFocus",
+            "SetBitmapPressed",
+            "SetBitmapHover",
+        ):
+            setter = getattr(button, attr, None)
+            if callable(setter):
+                setter(bitmap)
+
+        if disabled_bitmap and disabled_bitmap.IsOk():
+            setter = getattr(button, "SetBitmapDisabled", None)
+            if callable(setter):
+                setter(disabled_bitmap)
+
+        margins = getattr(button, "SetBitmapMargins", None)
+        if callable(margins):
+            margins(0, 0)
+
+    # ------------------------------------------------------------------
+    def _clear_primary_action_bitmaps(self, button: wx.Button) -> None:
+        """Remove bitmaps from the primary action button."""
+
+        null_bitmap = wx.NullBitmap
+        for attr in (
+            "SetBitmap",
+            "SetBitmapCurrent",
+            "SetBitmapFocus",
+            "SetBitmapPressed",
+            "SetBitmapHover",
+            "SetBitmapDisabled",
+        ):
+            setter = getattr(button, attr, None)
+            if callable(setter):
+                setter(null_bitmap)
 
     # ------------------------------------------------------------------
     def _build_running_status(

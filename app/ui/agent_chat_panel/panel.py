@@ -32,6 +32,7 @@ from ..helpers import (
     inherit_background,
 )
 from ..text import normalize_for_display
+from .attachment_utils import looks_like_plain_text
 from .batch_runner import BatchTarget
 from .batch_ui import AgentBatchSection
 from .components.view import AgentChatView, WaitStateCallbacks
@@ -102,6 +103,10 @@ STATUS_HELP_TEXT = _(
     "• The status text describes whether the agent is still working or has finished.\n"
     "• The spinning indicator on the left stays active while the agent is still working."
 )
+
+
+class AttachmentValidationError(Exception):
+    """Raised when a selected attachment fails validation."""
 
 
 @dataclass(slots=True)
@@ -756,8 +761,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return
         with wx.FileDialog(
             self,
-            message=_("Select text file to attach"),
-            wildcard=_("Text files (*.txt)|*.txt|All files|*.*"),
+            message=_("Select file to attach"),
+            wildcard=_("All files|*.*|Text files (*.txt)|*.txt"),
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
         ) as dialog:
             if dialog.ShowModal() != wx.ID_OK:
@@ -765,11 +770,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             selected = Path(dialog.GetPath())
         try:
             attachment = self._load_attachment(selected)
-        except UnicodeDecodeError:
+        except AttachmentValidationError as exc:
             wx.MessageBox(
-                _(
-                    "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
-                ).format(path=str(selected)),
+                str(exc),
                 _("Attachment error"),
                 style=wx.OK | wx.ICON_ERROR,
                 parent=self,
@@ -918,13 +921,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _load_attachment(self, path: Path) -> _PendingAttachment:
         resolved = path.expanduser()
-        text = resolved.read_text(encoding="utf-8")
+        text, size_bytes = self._read_attachment_text(resolved)
         message_content = self._build_attachment_message_content(resolved.name, text)
         token_info = count_text_tokens(message_content, model=self._token_model())
-        try:
-            size_bytes = resolved.stat().st_size
-        except OSError:
-            size_bytes = len(text.encode("utf-8"))
         return _PendingAttachment(
             filename=resolved.name,
             content=text,
@@ -932,6 +931,35 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             message_content=message_content,
             token_info=token_info,
         )
+
+    def _read_attachment_text(self, resolved: Path) -> tuple[str, int]:
+        try:
+            raw_bytes = resolved.read_bytes()
+        except OSError:
+            raise
+
+        try:
+            text = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise AttachmentValidationError(
+                _(
+                    "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
+                ).format(path=str(resolved))
+            ) from exc
+
+        if not looks_like_plain_text(text):
+            raise AttachmentValidationError(
+                _(
+                    "The selected file {path} does not appear to be plain text. Please choose a UTF-8 text document."
+                ).format(path=str(resolved))
+            )
+
+        size_bytes = len(raw_bytes)
+        try:
+            size_bytes = resolved.stat().st_size
+        except OSError:
+            pass
+        return text, size_bytes
 
     def _update_attachment_summary(self) -> None:
         """Refresh the UI label describing the pending attachment."""

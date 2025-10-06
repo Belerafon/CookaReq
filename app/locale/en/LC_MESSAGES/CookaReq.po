@@ -638,14 +638,17 @@ msgstr "Clear input"
 msgid "Attach file…"
 msgstr "Attach file…"
 
-msgid "Select text file to attach"
-msgstr "Select text file to attach"
+msgid "Select file to attach"
+msgstr "Select file to attach"
 
-msgid "Text files (*.txt)|*.txt|All files|*.*"
-msgstr "Text files (*.txt)|*.txt|All files|*.*"
+msgid "All files|*.*|Text files (*.txt)|*.txt"
+msgstr "All files|*.*|Text files (*.txt)|*.txt"
 
 msgid "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
 msgstr "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
+
+msgid "The selected file {path} does not appear to be plain text. Please choose a UTF-8 text document."
+msgstr "The selected file {path} does not appear to be plain text. Please choose a UTF-8 text document."
 
 msgid "Attachment error"
 msgstr "Attachment error"

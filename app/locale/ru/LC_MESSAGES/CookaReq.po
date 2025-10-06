@@ -646,14 +646,17 @@ msgstr "Очистить ввод"
 msgid "Attach file…"
 msgstr "Прикрепить файл…"
 
-msgid "Select text file to attach"
-msgstr "Выберите текстовый файл для прикрепления"
+msgid "Select file to attach"
+msgstr "Выберите файл для прикрепления"
 
-msgid "Text files (*.txt)|*.txt|All files|*.*"
-msgstr "Текстовые файлы (*.txt)|*.txt|Все файлы|*.*"
+msgid "All files|*.*|Text files (*.txt)|*.txt"
+msgstr "Все файлы|*.*|Текстовые файлы (*.txt)|*.txt"
 
 msgid "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
 msgstr "Не удалось прочитать {path} как текст UTF-8. Поддерживаются только текстовые файлы в кодировке UTF-8."
+
+msgid "The selected file {path} does not appear to be plain text. Please choose a UTF-8 text document."
+msgstr "Выбранный файл {path} не похож на текстовый UTF-8. Пожалуйста, выберите текстовый документ."
 
 msgid "Attachment error"
 msgstr "Ошибка вложения"

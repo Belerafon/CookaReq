@@ -991,28 +991,96 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         attachment = self._pending_attachment
         if attachment is None:
             label.SetLabel(_("No file attached"))
+            self._set_tooltip(label, None)
         else:
-            label.SetLabel(self._format_attachment_summary(attachment))
+            compact, tooltip = self._build_attachment_summary_texts(attachment)
+            label.SetLabel(compact)
+            self._set_tooltip(label, tooltip)
         label.InvalidateBestSize()
         self._refresh_bottom_panel_layout()
 
-    def _format_attachment_summary(self, attachment: _PendingAttachment) -> str:
-        name = self._shorten_filename(attachment.filename)
-        kb_value = attachment.size_bytes / 1024 if attachment.size_bytes else 0.0
-        if kb_value >= 100:
-            size_value = f"{kb_value:.0f}"
-        elif kb_value >= 10:
-            size_value = f"{kb_value:.1f}"
-        else:
-            size_value = f"{kb_value:.2f}"
-        size_text = _("{size} KB").format(size=size_value)
-        tokens_text = format_token_quantity(attachment.token_info)
-        usage_text = self._format_context_percentage(
+    def _build_attachment_summary_texts(
+        self, attachment: _PendingAttachment
+    ) -> tuple[str, str]:
+        """Return compact label and tooltip for an attachment summary."""
+
+        short_name = self._shorten_filename(attachment.filename)
+        size_compact, size_full = self._format_attachment_size(attachment.size_bytes)
+        tokens_compact = self._format_compact_token_quantity(attachment.token_info)
+        tokens_full = format_token_quantity(attachment.token_info)
+        usage_full = self._format_context_percentage(
             attachment.token_info, self._context_token_limit()
         )
-        return _(
-            "Attachment: {name} — {size} • Tokens: {tokens} • Context window: {usage}"
-        ).format(name=name, size=size_text, tokens=tokens_text, usage=usage_text)
+        usage_compact = self._strip_approximate_prefix(usage_full)
+        compact_label = _("{name} • {size}/{tokens}/{usage}").format(
+            name=short_name,
+            size=size_compact,
+            tokens=tokens_compact,
+            usage=usage_compact,
+        )
+        tooltip = _(
+            "Attachment: {name}\nSize: {size}\nTokens: {tokens}\nContext window: {usage}"
+        ).format(
+            name=attachment.filename,
+            size=size_full,
+            tokens=tokens_full,
+            usage=usage_full,
+        )
+        return compact_label, tooltip
+
+    @staticmethod
+    def _strip_approximate_prefix(value: str) -> str:
+        """Remove leading approximation markers used in compact stats."""
+
+        if value.startswith("~"):
+            return value[1:]
+        if value.startswith("≈"):
+            return value[1:]
+        return value
+
+    def _format_compact_token_quantity(
+        self, tokens: TokenCountResult
+    ) -> str:
+        """Return condensed token counter label for inline attachment stats."""
+
+        if tokens.tokens is None:
+            return TOKEN_UNAVAILABLE_LABEL
+        quantity = tokens.tokens / 1000 if tokens.tokens else 0.0
+        if quantity >= 100:
+            formatted = f"{quantity:.0f}"
+        elif quantity >= 10:
+            formatted = f"{quantity:.1f}"
+        else:
+            formatted = f"{quantity:.2f}"
+        unit = _("kTok")
+        return f"{formatted}{unit}"
+
+    def _format_attachment_size(self, size_bytes: int) -> tuple[str, str]:
+        """Return compact and full textual representations of attachment size."""
+
+        kb_value = size_bytes / 1024 if size_bytes > 0 else 0.0
+        if kb_value >= 100:
+            formatted = f"{kb_value:.0f}"
+        elif kb_value >= 10:
+            formatted = f"{kb_value:.1f}"
+        else:
+            formatted = f"{kb_value:.2f}"
+        compact = _("{size}KB").format(size=formatted)
+        detailed = _("{size} KB").format(size=formatted)
+        return compact, detailed
+
+    @staticmethod
+    def _set_tooltip(control: wx.Window, tip: str | None) -> None:
+        """Attach or clear a tooltip on ``control``."""
+
+        if not tip:
+            unset = getattr(control, "UnsetToolTip", None)
+            if callable(unset):
+                unset()
+            else:  # pragma: no cover - compatibility path
+                control.SetToolTip(None)
+            return
+        control.SetToolTip(tip)
 
     @staticmethod
     def _shorten_filename(name: str, limit: int = 48) -> str:

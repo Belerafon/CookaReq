@@ -360,6 +360,46 @@ def test_attachment_accepts_files_up_to_limit(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+def test_attachment_summary_compact_format(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        sample = tmp_path / (
+            "sample_attachment_with_a_pretty_long_name_to_trigger_ellipsis.txt"
+        )
+        sample.write_text("hello world\n")
+
+        attachment = panel._load_attachment(sample)
+        panel._pending_attachment = attachment
+        panel._update_attachment_summary()
+        flush_wx_events(wx)
+
+        label = panel._attachment_summary
+        assert label is not None
+        text = label.GetLabel()
+        # Compact stats should show file name and three segments joined with slashes.
+        assert "•" in text
+        assert text.count("/") == 2
+        assert text.endswith("%") or text.endswith(i18n._("n/a"))
+
+        tooltip_obj = label.GetToolTip()
+        assert tooltip_obj is not None
+        tooltip = tooltip_obj.GetTip()
+        assert "Attachment:" in tooltip
+        assert sample.name in tooltip
+        assert "Tokens:" in tooltip
+
+        panel._clear_pending_attachment()
+        flush_wx_events(wx)
+        assert label.GetToolTip() is None
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_switching_to_previous_chat_after_starting_new_one(tmp_path, wx_app):
     class DummyAgent:
         def run_command(

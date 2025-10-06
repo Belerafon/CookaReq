@@ -673,8 +673,17 @@ msgstr "Файл не прикреплён"
 msgid "{size} KB"
 msgstr "{size} КБ"
 
-msgid "Attachment: {name} — {size} • Tokens: {tokens} • Context window: {usage}"
-msgstr "Вложение: {name} — {size} • Токены: {tokens} • Окно контекста: {usage}"
+msgid "{size}KB"
+msgstr "{size}КБ"
+
+msgid "kTok"
+msgstr "кТок"
+
+msgid "{name} • {size}/{tokens}/{usage}"
+msgstr "{name} • {size}/{tokens}/{usage}"
+
+msgid "Attachment: {name}\nSize: {size}\nTokens: {tokens}\nContext window: {usage}"
+msgstr "Вложение: {name}\nРазмер: {size}\nТокены: {tokens}\nКонтекстное окно: {usage}"
 
 msgid "Stop"
 msgstr "Стоп"

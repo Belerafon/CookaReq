@@ -665,8 +665,17 @@ msgstr "No file attached"
 msgid "{size} KB"
 msgstr "{size} KB"
 
-msgid "Attachment: {name} — {size} • Tokens: {tokens} • Context window: {usage}"
-msgstr "Attachment: {name} — {size} • Tokens: {tokens} • Context window: {usage}"
+msgid "{size}KB"
+msgstr "{size}KB"
+
+msgid "kTok"
+msgstr "kTok"
+
+msgid "{name} • {size}/{tokens}/{usage}"
+msgstr "{name} • {size}/{tokens}/{usage}"
+
+msgid "Attachment: {name}\nSize: {size}\nTokens: {tokens}\nContext window: {usage}"
+msgstr "Attachment: {name}\nSize: {size}\nTokens: {tokens}\nContext window: {usage}"
 
 msgid "Stop"
 msgstr "Stop"

@@ -320,7 +320,7 @@ class AgentChatLayoutBuilder:
 
         controls_row = wx.BoxSizer(wx.HORIZONTAL)
         controls_row.Add(
-            attachment_btn,
+            status_row,
             0,
             wx.ALIGN_TOP | wx.RIGHT,
             spacing,
@@ -328,10 +328,15 @@ class AgentChatLayoutBuilder:
         controls_row.Add(
             attachment_summary,
             1,
-            wx.EXPAND | wx.RIGHT,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
             spacing,
         )
-        controls_row.Add(status_row, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
+        controls_row.Add(
+            attachment_btn,
+            0,
+            wx.ALIGN_TOP | wx.RIGHT,
+            spacing,
+        )
         controls_row.AddStretchSpacer()
         controls_row.Add(settings_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         controls_row.Add(confirm_row, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)

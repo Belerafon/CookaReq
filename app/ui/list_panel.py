@@ -6,13 +6,14 @@ from collections.abc import Callable, Sequence
 from contextlib import suppress
 from enum import Enum
 from typing import TYPE_CHECKING
+from dataclasses import replace
 
 import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
 from .. import columns
 from ..services.requirements import LabelDef, label_color, parse_rid, stable_color
-from ..core.model import Requirement
+from ..core.model import Requirement, Status
 from ..i18n import _
 from ..log import logger
 from . import locale
@@ -952,6 +953,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             derive_item = menu.Append(wx.ID_ANY, _("Derive"))
             clone_item = menu.Append(wx.ID_ANY, _("Clone"))
         delete_item = menu.Append(wx.ID_ANY, _("Delete"))
+        status_menu = self._build_status_menu(selected_ids)
+        if status_menu is not None:
+            menu.AppendSubMenu(status_menu, _("Set status"))
         field = self._field_from_column(column)
         edit_item = None
         if field and field != "title":
@@ -989,6 +993,21 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 derive_item,
             )
         return menu, clone_item, delete_item, edit_item
+
+    def _build_status_menu(self, selected_ids: Sequence[int]) -> wx.Menu | None:
+        if not selected_ids:
+            return None
+
+        menu = wx.Menu()
+        for status in Status:
+            label = locale.code_to_label("status", status.value)
+            item = menu.Append(wx.ID_ANY, label)
+            menu.Bind(
+                wx.EVT_MENU,
+                lambda _evt, s=status, ids=tuple(selected_ids): self._set_status(ids, s),
+                item,
+            )
+        return menu
 
     def _get_selected_indices(self) -> list[int]:
         indices: list[int] = []
@@ -1090,6 +1109,66 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 display = value
             self.list.SetItem(idx, column, str(display))
             self._persist_requirement(req)
+
+    def _set_status(self, req_ids: Sequence[int], status: Status) -> None:
+        unique_order: list[int] = []
+        seen: set[int] = set()
+        for req_id in req_ids:
+            if req_id in seen:
+                continue
+            seen.add(req_id)
+            unique_order.append(req_id)
+
+        updates: list[Requirement] = []
+        for req_id in unique_order:
+            requirement = self.model.get_by_id(req_id)
+            if requirement is None:
+                continue
+            if getattr(requirement, "status", None) == status:
+                continue
+            updates.append(replace(requirement, status=status))
+
+        if not updates:
+            return
+
+        self.model.update_many(updates)
+        for updated in updates:
+            self._persist_requirement(updated)
+
+        self._refresh()
+        self._restore_selection(unique_order)
+
+    def _restore_selection(self, req_ids: Sequence[int]) -> None:
+        if not req_ids:
+            return
+
+        desired = [req_id for req_id in req_ids if isinstance(req_id, int)]
+        if not desired:
+            return
+
+        desired_set = set(desired)
+        focus_index: int | None = None
+        for idx in range(self.list.GetItemCount()):
+            try:
+                raw_id = self.list.GetItemData(idx)
+            except Exception:
+                continue
+            try:
+                req_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            should_select = req_id in desired_set
+            self._set_item_selected(idx, should_select)
+            if should_select and focus_index is None and req_id == desired[0]:
+                focus_index = idx
+
+        if focus_index is not None:
+            if hasattr(self.list, "Focus"):
+                with suppress(Exception):
+                    self.list.Focus(focus_index)
+            if hasattr(self.list, "EnsureVisible"):
+                with suppress(Exception):
+                    self.list.EnsureVisible(focus_index)
 
     def _persist_requirement(self, req: Requirement) -> None:
         """Persist edited ``req`` if controller and document are available."""

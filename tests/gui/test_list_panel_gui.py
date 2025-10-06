@@ -242,6 +242,50 @@ def test_list_panel_delete_many_falls_back_to_single_handler(wx_app):
     frame.Destroy()
 
 
+def test_list_panel_bulk_status_change(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+    from app.ui import locale as ui_locale
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["status"])
+    panel.set_requirements([
+        _req(1, "A", status=Status.DRAFT),
+        _req(2, "B", status=Status.IN_REVIEW),
+    ])
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+    panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    menu, _, delete_item, _ = panel._create_context_menu(0, 0)
+    assert delete_item is not None
+    status_menu_item = next(
+        (item for item in menu.GetMenuItems() if item.GetSubMenu()),
+        None,
+    )
+    assert status_menu_item is not None
+    status_menu = status_menu_item.GetSubMenu()
+    target_label = ui_locale.code_to_label("status", Status.APPROVED.value)
+    approved_item = next(
+        (item for item in status_menu.GetMenuItems() if item.GetItemLabel() == target_label),
+        None,
+    )
+    assert approved_item is not None
+
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, approved_item.GetId())
+    status_menu.ProcessEvent(evt)
+    menu.Destroy()
+
+    assert panel.model.get_by_id(1).status is Status.APPROVED
+    assert panel.model.get_by_id(2).status is Status.APPROVED
+    assert panel.get_selected_ids() == [1, 2]
+
+    frame.Destroy()
+
+
 def test_list_panel_refresh_selects_new_row(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

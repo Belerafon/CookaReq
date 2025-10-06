@@ -1563,3 +1563,6 @@ msgstr "Не запрашивать никогда"
 
 msgid "Requirement confirmations"
 msgstr "Подтверждения требований"
+
+msgid "Set status"
+msgstr "Изменить статус"

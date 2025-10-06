@@ -87,7 +87,7 @@ class HistoryStore:
                 self._ensure_schema(conn)
                 rows = conn.execute(
                     """
-                    SELECT payload
+                    SELECT position, payload
                     FROM entries
                     WHERE conversation_id = ?
                     ORDER BY position
@@ -102,13 +102,34 @@ class HistoryStore:
 
         entries: list[ChatEntry] = []
         for row in rows:
-            payload_raw = row["payload"]
+            if isinstance(row, sqlite3.Row):
+                position = row["position"]
+                payload_raw = row["payload"]
+            else:
+                position, payload_raw = row
+            if not isinstance(position, int):
+                try:
+                    position = int(position)
+                except (TypeError, ValueError):
+                    position = None
+
             if not isinstance(payload_raw, str):
+                self._handle_corrupted_entry(
+                    conversation_id,
+                    position,
+                    payload_raw,
+                    detail="Stored payload is not a string.",
+                )
                 continue
             try:
                 payload = json.loads(payload_raw)
-            except json.JSONDecodeError:  # pragma: no cover - defensive logging
-                logger.exception("Failed to decode stored chat entry for %s", conversation_id)
+            except json.JSONDecodeError as exc:  # pragma: no cover - defensive logging
+                self._handle_corrupted_entry(
+                    conversation_id,
+                    position,
+                    payload_raw,
+                    exc=exc,
+                )
                 continue
             if not isinstance(payload, dict):
                 continue
@@ -327,6 +348,74 @@ class HistoryStore:
             conn.execute("DELETE FROM metadata WHERE key = ?", ("active_id",))
         else:
             self._set_metadata(conn, "active_id", active_id)
+
+    # ------------------------------------------------------------------
+    def _handle_corrupted_entry(
+        self,
+        conversation_id: str,
+        position: int | None,
+        payload: object,
+        *,
+        detail: str | None = None,
+        exc: Exception | None = None,
+    ) -> None:
+        """Log and prune an invalid entry payload."""
+
+        snippet, payload_length = self._summarise_payload(payload)
+        logger.error(
+            (
+                "Failed to decode stored chat entry for %s at position %s in %s. %s "
+                "payload_length=%d, payload_preview=%r"
+            ),
+            conversation_id,
+            "?" if position is None else position,
+            self._path,
+            detail or "Stored payload is not valid JSON.",
+            payload_length,
+            snippet,
+            exc_info=exc,
+        )
+        if position is not None:
+            self._delete_entry(conversation_id, position)
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _summarise_payload(payload: object, *, limit: int = 256) -> tuple[str, int]:
+        """Return a short preview and size of *payload* for diagnostics."""
+
+        if isinstance(payload, str):
+            text = payload
+            length = len(payload)
+        elif isinstance(payload, bytes):
+            text = payload.decode("utf-8", errors="replace")
+            length = len(payload)
+        else:
+            text = repr(payload)
+            length = len(text)
+        snippet = text[:limit]
+        if len(text) > limit:
+            snippet = f"{snippet}… (truncated)"
+        snippet = snippet.replace("\n", "\\n")
+        return snippet, length
+
+    # ------------------------------------------------------------------
+    def _delete_entry(self, conversation_id: str, position: int) -> None:
+        """Remove an invalid entry from the backing store."""
+
+        try:
+            with self._connect() as conn:
+                with conn:
+                    conn.execute(
+                        "DELETE FROM entries WHERE conversation_id = ? AND position = ?",
+                        (conversation_id, position),
+                    )
+        except sqlite3.Error:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to prune corrupted entry %s/%s from %s",
+                conversation_id,
+                position,
+                self._path,
+            )
 
 
 __all__ = ["HistoryStore"]

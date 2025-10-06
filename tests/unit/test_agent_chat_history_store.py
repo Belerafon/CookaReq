@@ -1,3 +1,5 @@
+import logging
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -100,3 +102,42 @@ def test_set_path_persists_existing_payload(tmp_path: Path, sample_conversation:
     reloaded = conversations[0]
     reloaded.ensure_entries_loaded()
     assert reloaded.entries[0].prompt == sample_conversation.entries[0].prompt
+
+
+def test_load_entries_prunes_corrupted_payload(
+    tmp_path: Path, sample_conversation: ChatConversation, caplog: pytest.LogCaptureFixture
+) -> None:
+    history_path = tmp_path / "agent_chats.sqlite"
+    store = HistoryStore(history_path)
+    store.save([sample_conversation], sample_conversation.conversation_id)
+
+    with sqlite3.connect(str(history_path)) as conn:
+        conn.execute(
+            "UPDATE entries SET payload = ? WHERE conversation_id = ?",
+            ("{", sample_conversation.conversation_id),
+        )
+        conn.commit()
+
+    caplog.set_level(logging.ERROR)
+
+    entries = store.load_entries(sample_conversation.conversation_id)
+
+    assert entries == []
+
+    with sqlite3.connect(str(history_path)) as conn:
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM entries WHERE conversation_id = ?",
+            (sample_conversation.conversation_id,),
+        ).fetchone()[0]
+    assert remaining == 0
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if "Failed to decode stored chat entry" in record.getMessage()
+    ]
+    assert messages, "expected error log for corrupted payload"
+    message = messages[0]
+    assert str(sample_conversation.conversation_id) in message
+    assert "payload_length" in message
+    assert "payload_preview" in message

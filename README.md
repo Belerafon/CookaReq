@@ -5,8 +5,9 @@ CookaReq (Cook a requirement) is a wxPython desktop workspace for curating struc
 ## Highlights
 
 - Manage hierarchical requirement documents with revision tracking, preset label palettes, attachments, and move/copy helpers.
+- Import large batches from CSV/TSV/Excel through a column-mapping wizard with previews, automatic ID allocation, and delimiter/sheet controls.
 - Rich navigation UI: filterable document tree, configurable list view, Markdown preview, detachable editor and per-requirement history.
-- Built-in agent console that streams thoughts, tool calls, and confirmations while reusing the same MCP tools exposed to external clients.
+- Built-in agent console that streams thoughts, tool calls, confirmations, and reasoning traces; persists transcripts to project-scoped SQLite files, offers timeline/log clipboard exports, and automates batch prompts over selected requirements.
 - Structured logging and telemetry (`~/.cookareq/logs` by default) with redaction of sensitive fields and rotating JSON/Text logs for diagnostics.
 - FastAPI MCP server launched in-process with token-protected endpoints, trace matrix exports, and configurable log directories.
 - Scriptable CLI that mirrors the GUI operations, including create/edit/move/delete flows, trace matrix export, and environment checks.
@@ -73,15 +74,17 @@ Key workspace areas:
 1. **Document tree** with collapse state, quick filters, and drag-and-drop moves between prefixes.
 2. **Requirement list** with configurable columns, saved sorts, Markdown preview, and suspect link indicators.
 3. **Editor & history** that exposes attachments, links, revision bumps, and detachable editing windows.
-4. **Agent console** that streams LLM messages, tool calls, and confirmation prompts while logging telemetry events.
+4. **Agent console** that streams LLM messages, tool calls, confirmation prompts, and token counters while logging telemetry events. Conversations persist to `.cookareq/agent_chats.sqlite`, load entries on demand, and surface reasoning/tool timelines with clipboard-friendly plain and log transcripts alongside a batch queue for running the same prompt across multiple requirements.
 
-Additional dialogs provide filter presets, label management, derivation graph visualisation, trace matrix export, settings, and a log viewer backed by the structured log files.
+Additional dialogs provide filter presets, label management, derivation graph visualisation, CSV/Excel import with preview/mapping, trace matrix export, settings, and a log viewer backed by the structured log files.
 
 ### Configuration and logs
 
 - UI/MCP/LLM options are validated through `app.settings.AppSettings`. GUI changes persist immediately; the CLI can load overrides via `--settings path/to/settings.json|toml`.
 - Set `OPEN_ROUTER` (for example by `source .env`) to provide the OpenRouter API key used by the default LLM client. Other providers can be configured through the Settings dialog or JSON/TOML files.
 - Logs live in `~/.cookareq/logs` unless the `COOKAREQ_LOG_DIR` environment variable overrides the path. The MCP server writes its own rotated `server.log`/`server.jsonl` under `<log_dir>/mcp`.
+- Agent-specific data lives alongside the requirements directory under `.cookareq/agent_chats.sqlite` (chat history) and `.cookareq/agent_settings.json` (project prompt overrides). When no repository is open the files fall back to the user's home directory.
+- LLM settings expose message formats (`openai-chat`, `harmony`, `qwen`), context limits, retries, and optional temperature overrides so both GUI and CLI runs share the same request semantics.
 
 ## Command-line interface
 

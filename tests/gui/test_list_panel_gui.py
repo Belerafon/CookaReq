@@ -133,7 +133,7 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     frame.Destroy()
 
 
-def test_list_panel_context_menu_stops_propagation(monkeypatch, wx_app):
+def test_list_panel_context_menu_resolves_column(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
 
@@ -170,7 +170,7 @@ def test_list_panel_context_menu_stops_propagation(monkeypatch, wx_app):
 
     right_event = _RightClickEvent()
     panel._on_right_click(right_event)
-    assert right_event.skipped is False
+    assert right_event.skipped is None
     assert recorded == [(0, 2)]
 
     recorded.clear()
@@ -187,7 +187,7 @@ def test_list_panel_context_menu_stops_propagation(monkeypatch, wx_app):
 
     context_event = _ContextMenuEvent()
     panel._on_context_menu(context_event)
-    assert context_event.skipped is False
+    assert context_event.skipped is None
     assert recorded == [(0, 2)]
 
     frame.Destroy()

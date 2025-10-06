@@ -921,8 +921,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             _, _ = self.list.HitTest((x, y))
             col = None
         self._popup_context_menu(event.GetIndex(), col)
-        if hasattr(event, "Skip"):
-            event.Skip(False)
 
     def _on_context_menu(
         self,
@@ -943,8 +941,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             return
         self.list.Select(index)
         self._popup_context_menu(index, col)
-        if hasattr(event, "Skip"):
-            event.Skip(False)
 
     def _field_from_column(self, col: int | None) -> str | None:
         if col is None or col < 0 or col >= len(self._field_order):
@@ -1169,28 +1165,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.model.update_many(updates)
         for updated in updates:
             self._persist_requirement(updated)
-
-        try:
-            status_col = self._field_order.index("status")
-        except ValueError:
-            status_col = None
-
-        if status_col is not None:
-            display = locale.code_to_label("status", status.value)
-            updated_ids = {req.id for req in updates}
-            for idx in range(self.list.GetItemCount()):
-                try:
-                    raw_id = self.list.GetItemData(idx)
-                except Exception:
-                    continue
-                try:
-                    req_id = int(raw_id)
-                except (TypeError, ValueError):
-                    continue
-                if req_id not in updated_ids:
-                    continue
-                self.list.SetItem(idx, status_col, display)
-
+        self._refresh()
         self._restore_selection(unique_order)
 
     def _show_labels_dialog(self, req_ids: Sequence[int]) -> None:

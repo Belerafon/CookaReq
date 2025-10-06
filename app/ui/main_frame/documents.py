@@ -189,7 +189,7 @@ class MainFrameDocumentsMixin:
             self.editor.set_document(None)
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([])
-            self.panel.update_labels_list([])
+            self.panel.update_labels_list([], False)
         self._update_requirements_label()
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
@@ -234,7 +234,7 @@ class MainFrameDocumentsMixin:
             self.editor.set_document(None)
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([])
-            self.panel.update_labels_list([])
+            self.panel.update_labels_list([], False)
             self._selected_requirement_id = None
             self._clear_editor_panel()
             self._update_requirements_label()
@@ -256,7 +256,7 @@ class MainFrameDocumentsMixin:
             self.model.set_requirements([])
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([], False)
-            self.panel.update_labels_list([])
+            self.panel.update_labels_list([], False)
             self._selected_requirement_id = None
             self._clear_editor_panel()
             self.splitter.UpdateSize()
@@ -264,7 +264,7 @@ class MainFrameDocumentsMixin:
         labels, freeform = self.docs_controller.collect_labels(prefix)
         self.panel.set_requirements(self.model.get_all(), derived_map)
         self.editor.update_labels_list(labels, freeform)
-        self.panel.update_labels_list(labels)
+        self.panel.update_labels_list(labels, freeform)
         self._selected_requirement_id = None
         self._clear_editor_panel()
         total = len(self.model.get_all())
@@ -566,7 +566,7 @@ class MainFrameDocumentsMixin:
             labels_all, freeform = self.docs_controller.collect_labels(
                 self.current_doc_prefix
             )
-            self.panel.update_labels_list(labels_all)
+            self.panel.update_labels_list(labels_all, freeform)
             self.editor.update_labels_list(labels_all, freeform)
         dlg.Destroy()
 

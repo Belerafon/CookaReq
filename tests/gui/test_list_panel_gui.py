@@ -133,6 +133,111 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     frame.Destroy()
 
 
+def test_list_panel_context_menu_resolves_column(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_requirements([_req(1, "Item")])
+
+    monkeypatch.setattr(panel.list, "HitTestSubItem", lambda pt: (0, 0, 2))
+    monkeypatch.setattr(panel.list, "ScreenToClient", lambda pt: pt)
+
+    recorded: list[tuple[int, int | None]] = []
+
+    def fake_popup(index: int, column: int | None) -> None:
+        recorded.append((index, column))
+
+    monkeypatch.setattr(panel, "_popup_context_menu", fake_popup)
+
+    class _RightClickEvent:
+        def __init__(self) -> None:
+            self.skipped: bool | None = None
+
+        def GetPoint(self):
+            return (5, 5)
+
+        def GetIndex(self) -> int:
+            return 0
+
+        def Skip(self, flag: bool = True) -> None:
+            self.skipped = flag
+
+    right_event = _RightClickEvent()
+    panel._on_right_click(right_event)
+    assert right_event.skipped is None
+    assert recorded == [(0, 2)]
+
+    recorded.clear()
+
+    class _ContextMenuEvent:
+        def __init__(self) -> None:
+            self.skipped: bool | None = None
+
+        def GetPosition(self):
+            return wx.Point(10, 10)
+
+        def Skip(self, flag: bool = True) -> None:
+            self.skipped = flag
+
+    context_event = _ContextMenuEvent()
+    panel._on_context_menu(context_event)
+    assert context_event.skipped is None
+    assert recorded == [(0, 2)]
+
+    frame.Destroy()
+
+
+def test_list_panel_context_menu_waits_for_reset(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["status"])
+    panel.set_requirements([_req(1, "A", status=Status.DRAFT)])
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    opened: list[int] = []
+
+    def fake_popup(menu: wx.Menu) -> None:
+        opened.append(menu.GetMenuItemCount())
+
+    monkeypatch.setattr(panel, "PopupMenu", fake_popup)
+
+    scheduled: list[tuple[object, tuple, dict]] = []
+
+    def fake_call_after(func, *args, **kwargs):
+        scheduled.append((func, args, kwargs))
+
+    monkeypatch.setattr(list_panel.wx, "CallAfter", fake_call_after)
+
+    panel._popup_context_menu(0, None)
+    assert opened and opened[0] > 0
+    first_count = opened[0]
+
+    panel._popup_context_menu(0, None)
+    assert opened == [first_count]
+
+    assert scheduled
+    func, args, kwargs = scheduled.pop(0)
+    func(*args, **kwargs)
+
+    panel._popup_context_menu(0, None)
+    assert opened == [first_count, first_count]
+
+    frame.Destroy()
+
+
 def test_marquee_selection_starts_from_cell(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
@@ -239,6 +344,160 @@ def test_list_panel_delete_many_falls_back_to_single_handler(wx_app):
     menu.Destroy()
 
     assert called == [1, 2]
+    frame.Destroy()
+
+
+def test_list_panel_bulk_status_change(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+    from app.ui import locale as ui_locale
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["status"])
+    panel.set_requirements([
+        _req(1, "A", status=Status.DRAFT),
+        _req(2, "B", status=Status.IN_REVIEW),
+    ])
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+    panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    menu, _, delete_item, edit_item = panel._create_context_menu(0, 0)
+    assert delete_item is not None
+    assert edit_item is None
+    status_menu_item = next(
+        (item for item in menu.GetMenuItems() if item.GetSubMenu()),
+        None,
+    )
+    assert status_menu_item is not None
+    assert status_menu_item.GetItemLabelText() == list_panel._("Set status for selected")
+    status_menu = status_menu_item.GetSubMenu()
+    target_label = ui_locale.code_to_label("status", Status.APPROVED.value)
+    approved_item = next(
+        (item for item in status_menu.GetMenuItems() if item.GetItemLabel() == target_label),
+        None,
+    )
+    assert approved_item is not None
+
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, approved_item.GetId())
+    status_menu.ProcessEvent(evt)
+    menu.Destroy()
+
+    assert panel.model.get_by_id(1).status is Status.APPROVED
+    assert panel.model.get_by_id(2).status is Status.APPROVED
+    assert panel.get_selected_ids() == [1, 2]
+    status_col = panel._field_order.index("status")
+    assert panel.list.GetItemText(0, status_col) == target_label
+    assert panel.list.GetItemText(1, status_col) == target_label
+
+    frame.Destroy()
+
+
+def test_list_panel_bulk_labels_change(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+    from app.services.requirements import LabelDef
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.update_labels_list(
+        [
+            LabelDef("backend", "Backend", "#123456"),
+            LabelDef("api", "API", "#abcdef"),
+        ],
+        allow_freeform=True,
+    )
+    panel.set_requirements(
+        [
+            _req(1, "A", labels=["backend", "legacy"]),
+            _req(2, "B", labels=["backend", "api"]),
+        ]
+    )
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+    panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    captured: dict[str, object] = {}
+
+    class DummyDialog:
+        def __init__(self, parent, labels, selected, allow_freeform):
+            captured["labels"] = labels
+            captured["selected"] = selected
+            captured["allow_freeform"] = allow_freeform
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def Destroy(self):
+            captured["destroyed"] = True
+
+        def get_selected(self):
+            return ["backend", "ux"]
+
+    monkeypatch.setattr(list_panel, "LabelSelectionDialog", DummyDialog)
+
+    menu, _, delete_item, edit_item = panel._create_context_menu(0, 0)
+    assert delete_item is not None
+    assert edit_item is None
+    labels_item = next(
+        (
+            item
+            for item in menu.GetMenuItems()
+            if item.GetItemLabelText() == list_panel._("Set labels…")
+        ),
+        None,
+    )
+    assert labels_item is not None
+
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, labels_item.GetId())
+    menu.ProcessEvent(evt)
+    menu.Destroy()
+
+    assert captured["allow_freeform"] is True
+    available = {label.key for label in captured["labels"]}
+    assert {"backend", "api", "legacy"}.issubset(available)
+    assert captured["selected"] == ["backend"]
+    assert captured.get("destroyed") is True
+
+    assert panel.model.get_by_id(1).labels == ["backend", "ux"]
+    assert panel.model.get_by_id(2).labels == ["backend", "ux"]
+    assert panel.get_selected_ids() == [1, 2]
+
+    frame.Destroy()
+
+
+def test_list_panel_single_selection_status_menu(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["status"])
+    panel.set_requirements([
+        _req(1, "A", status=Status.IN_REVIEW),
+    ])
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    menu, _, delete_item, edit_item = panel._create_context_menu(0, 0)
+    assert delete_item is not None
+    assert edit_item is None
+
+    status_menu_item = next(
+        (item for item in menu.GetMenuItems() if item.GetSubMenu()),
+        None,
+    )
+    assert status_menu_item is not None
+    assert status_menu_item.GetItemLabelText() == list_panel._("Set status")
+
+    menu.Destroy()
     frame.Destroy()
 
 

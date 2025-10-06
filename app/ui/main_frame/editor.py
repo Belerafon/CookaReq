@@ -92,7 +92,7 @@ class MainFrameEditorMixin:
         self.panel.recalc_derived_map(self.model.get_all())
         labels, freeform = self.docs_controller.collect_labels(prefix)
         editor_panel.update_labels_list(labels, freeform)
-        self.panel.update_labels_list(labels)
+        self.panel.update_labels_list(labels, freeform)
         if editor_panel is not self.editor:
             self.editor.update_labels_list(labels, freeform)
             if (

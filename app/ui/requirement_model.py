@@ -52,6 +52,26 @@ class RequirementModel:
             self._all.append(requirement)
         self._refresh()
 
+    def update_many(self, requirements: Sequence[Requirement]) -> None:
+        """Replace or append multiple ``requirements`` in one refresh."""
+
+        if not requirements:
+            return
+
+        by_id = {req.id: req for req in requirements}
+        changed = False
+        for index, existing in enumerate(self._all):
+            replacement = by_id.pop(existing.id, None)
+            if replacement is None:
+                continue
+            self._all[index] = replacement
+            changed = True
+        if by_id:
+            self._all.extend(by_id.values())
+            changed = True
+        if changed:
+            self._refresh()
+
     def delete(self, req_id: int) -> None:
         """Remove requirement with ``req_id``."""
 

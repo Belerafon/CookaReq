@@ -172,17 +172,6 @@ def shorten_text(text: str, *, limit: int = 120) -> str:
     return _shorten_text(text, limit=limit)
 
 
-def describe_error(error: Any) -> str:
-    """Return a localized string describing ``error`` payload."""
-
-    from .tool_summaries import summarize_error_details
-
-    details = summarize_error_details(error)
-    if not details:
-        return ""
-    return "\n".join(normalize_for_display(line) for line in details)
-
-
 __all__ = [
     "history_json_safe",
     "stringify_payload",
@@ -194,5 +183,4 @@ __all__ = [
     "update_tool_results",
     "format_value_snippet",
     "shorten_text",
-    "describe_error",
 ]

@@ -635,6 +635,48 @@ msgstr "Send"
 msgid "Clear input"
 msgstr "Clear input"
 
+msgid "Attach file…"
+msgstr "Attach file…"
+
+msgid "Select file to attach"
+msgstr "Select file to attach"
+
+msgid "All files|*.*|Text files (*.txt)|*.txt"
+msgstr "All files|*.*|Text files (*.txt)|*.txt"
+
+msgid "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
+msgstr "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
+
+msgid "The selected file {path} exceeds the maximum attachment size of 1 MB."
+msgstr "The selected file {path} exceeds the maximum attachment size of 1 MB."
+
+msgid "The selected file {path} does not appear to be plain text. Please choose a UTF-8 text document."
+msgstr "The selected file {path} does not appear to be plain text. Please choose a UTF-8 text document."
+
+msgid "Attachment error"
+msgstr "Attachment error"
+
+msgid "Failed to attach file {path}: {error}"
+msgstr "Failed to attach file {path}: {error}"
+
+msgid "No file attached"
+msgstr "No file attached"
+
+msgid "{size} KB"
+msgstr "{size} KB"
+
+msgid "{size}KB"
+msgstr "{size}KB"
+
+msgid "kTok"
+msgstr "kTok"
+
+msgid "{name} • {size}/{tokens}/{usage}"
+msgstr "{name} • {size}/{tokens}/{usage}"
+
+msgid "Attachment: {name}\nSize: {size}\nTokens: {tokens}\nContext window: {usage}"
+msgstr "Attachment: {name}\nSize: {size}\nTokens: {tokens}\nContext window: {usage}"
+
 msgid "Stop"
 msgstr "Stop"
 

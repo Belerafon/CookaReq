@@ -11,6 +11,7 @@ from app.confirm import ConfirmDecision, reset_requirement_update_preference, se
 from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel.token_usage import summarize_token_usage
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
+from app.ui.agent_chat_panel.panel import AttachmentValidationError, MAX_ATTACHMENT_BYTES
 from app.ui.agent_chat_panel.components.segments import (
     MessageSegmentPanel,
     TurnCard,
@@ -21,6 +22,7 @@ from app.ui.agent_chat_panel.view_model import (
     build_transcript_segments,
 )
 from app.ui.agent_chat_panel.time_formatting import format_entry_timestamp
+from app.ui.agent_chat_panel.layout import PRIMARY_ACTION_IDLE_LABEL
 from app.ui.chat_entry import ChatConversation, ChatEntry
 from app.ui.agent_chat_panel.history_store import HistoryStore
 from app.ui.widgets.chat_message import MessageBubble
@@ -318,6 +320,84 @@ def destroy_panel(frame, panel):
         restore()
     panel.Destroy()
     frame.Destroy()
+
+
+def test_attachment_rejects_files_over_limit(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    _wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        oversize = tmp_path / "oversize.txt"
+        oversize.write_bytes(b"a" * (MAX_ATTACHMENT_BYTES + 1))
+
+        with pytest.raises(AttachmentValidationError) as exc:
+            panel._read_attachment_text(oversize)
+
+        assert "1 MB" in str(exc.value)
+    finally:
+        destroy_panel(frame, panel)
+
+
+def test_attachment_accepts_files_up_to_limit(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    _wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        boundary = tmp_path / "boundary.txt"
+        boundary.write_bytes(b"b" * MAX_ATTACHMENT_BYTES)
+
+        text, size = panel._read_attachment_text(boundary)
+
+        assert len(text) == MAX_ATTACHMENT_BYTES
+        assert size == MAX_ATTACHMENT_BYTES
+    finally:
+        destroy_panel(frame, panel)
+
+
+def test_attachment_summary_compact_format(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        sample = tmp_path / (
+            "sample_attachment_with_a_pretty_long_name_to_trigger_ellipsis.txt"
+        )
+        sample.write_text("hello world\n")
+
+        attachment = panel._load_attachment(sample)
+        panel._pending_attachment = attachment
+        panel._update_attachment_summary()
+        flush_wx_events(wx)
+
+        label = panel._attachment_summary
+        assert label is not None
+        text = label.GetLabel()
+        # Compact stats should show file name and three segments joined with slashes.
+        assert "•" in text
+        assert text.count("/") == 2
+        assert text.endswith("%") or text.endswith(i18n._("n/a"))
+
+        tooltip_obj = label.GetToolTip()
+        assert tooltip_obj is not None
+        tooltip = tooltip_obj.GetTip()
+        assert "Attachment:" in tooltip
+        assert sample.name in tooltip
+        assert "Tokens:" in tooltip
+
+        panel._clear_pending_attachment()
+        flush_wx_events(wx)
+        assert label.GetToolTip() is None
+    finally:
+        destroy_panel(frame, panel)
 
 
 def test_switching_to_previous_chat_after_starting_new_one(tmp_path, wx_app):
@@ -2005,13 +2085,37 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
         panel._on_send(None)
 
         assert agent.started.wait(1.0)
-        assert panel._stop_btn is not None and panel._stop_btn.IsEnabled()
+        assert panel._primary_action_btn is not None
+        assert panel._primary_action_btn.IsEnabled()
+        layout = getattr(panel, "_layout", None)
+        assert layout is not None
+        stop_label = panel._primary_action_btn.GetLabel()
+        if layout.primary_action_stop_uses_bitmap:
+            assert stop_label == ""
+            getter = getattr(panel._primary_action_btn, "GetBitmap", None)
+            if callable(getter):
+                bitmap = getter()
+                assert bitmap is not None
+                assert bitmap.IsOk()
+        else:
+            assert stop_label == _("Stop")
 
         panel._on_stop(None)
 
         assert panel.input.GetValue() == "stop me"
         assert panel.status_label.GetLabel() == _("Generation cancelled")
-        assert panel._stop_btn is not None and not panel._stop_btn.IsEnabled()
+        assert panel._primary_action_btn is not None
+        assert panel._primary_action_btn.IsEnabled()
+        idle_label = panel._primary_action_btn.GetLabel()
+        if layout.primary_action_idle_uses_bitmap:
+            assert idle_label == ""
+            getter = getattr(panel._primary_action_btn, "GetBitmap", None)
+            if callable(getter):
+                bitmap = getter()
+                assert bitmap is not None
+                assert bitmap.IsOk()
+        else:
+            assert idle_label == PRIMARY_ACTION_IDLE_LABEL
 
         assert agent.cancel_seen.wait(1.0)
         assert agent.completed.wait(1.0)

@@ -643,6 +643,48 @@ msgstr "Отправить"
 msgid "Clear input"
 msgstr "Очистить ввод"
 
+msgid "Attach file…"
+msgstr "Прикрепить файл…"
+
+msgid "Select file to attach"
+msgstr "Выберите файл для прикрепления"
+
+msgid "All files|*.*|Text files (*.txt)|*.txt"
+msgstr "Все файлы|*.*|Текстовые файлы (*.txt)|*.txt"
+
+msgid "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
+msgstr "Не удалось прочитать {path} как текст UTF-8. Поддерживаются только текстовые файлы в кодировке UTF-8."
+
+msgid "The selected file {path} exceeds the maximum attachment size of 1 MB."
+msgstr "Выбранный файл {path} превышает максимальный размер вложения 1 МБ."
+
+msgid "The selected file {path} does not appear to be plain text. Please choose a UTF-8 text document."
+msgstr "Выбранный файл {path} не похож на текстовый UTF-8. Пожалуйста, выберите текстовый документ."
+
+msgid "Attachment error"
+msgstr "Ошибка вложения"
+
+msgid "Failed to attach file {path}: {error}"
+msgstr "Не удалось прикрепить файл {path}: {error}"
+
+msgid "No file attached"
+msgstr "Файл не прикреплён"
+
+msgid "{size} KB"
+msgstr "{size} КБ"
+
+msgid "{size}KB"
+msgstr "{size}КБ"
+
+msgid "kTok"
+msgstr "кТок"
+
+msgid "{name} • {size}/{tokens}/{usage}"
+msgstr "{name} • {size}/{tokens}/{usage}"
+
+msgid "Attachment: {name}\nSize: {size}\nTokens: {tokens}\nContext window: {usage}"
+msgstr "Вложение: {name}\nРазмер: {size}\nТокены: {tokens}\nКонтекстное окно: {usage}"
+
 msgid "Stop"
 msgstr "Стоп"
 

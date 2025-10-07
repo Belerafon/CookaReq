@@ -644,14 +644,22 @@ msgstr "Select file to attach"
 msgid "All files|*.*|Text files (*.txt)|*.txt"
 msgstr "All files|*.*|Text files (*.txt)|*.txt"
 
-msgid "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
-msgstr "Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are supported."
+msgid ""
+"Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are "
+"supported."
+msgstr ""
+"Unable to read {path} as UTF-8 text. Only UTF-8 encoded text files are "
+"supported."
 
 msgid "The selected file {path} exceeds the maximum attachment size of 1 MB."
 msgstr "The selected file {path} exceeds the maximum attachment size of 1 MB."
 
-msgid "The selected file {path} does not appear to be plain text. Please choose a UTF-8 text document."
-msgstr "The selected file {path} does not appear to be plain text. Please choose a UTF-8 text document."
+msgid ""
+"The selected file {path} does not appear to be plain text. Please choose a "
+"UTF-8 text document."
+msgstr ""
+"The selected file {path} does not appear to be plain text. Please choose a "
+"UTF-8 text document."
 
 msgid "Attachment error"
 msgstr "Attachment error"
@@ -674,8 +682,16 @@ msgstr "kTok"
 msgid "{name} • {size}/{tokens}/{usage}"
 msgstr "{name} • {size}/{tokens}/{usage}"
 
-msgid "Attachment: {name}\nSize: {size}\nTokens: {tokens}\nContext window: {usage}"
-msgstr "Attachment: {name}\nSize: {size}\nTokens: {tokens}\nContext window: {usage}"
+msgid ""
+"Attachment: {name}\n"
+"Size: {size}\n"
+"Tokens: {tokens}\n"
+"Context window: {usage}"
+msgstr ""
+"Attachment: {name}\n"
+"Size: {size}\n"
+"Tokens: {tokens}\n"
+"Context window: {usage}"
 
 msgid "Stop"
 msgstr "Stop"
@@ -1418,8 +1434,12 @@ msgstr "Agent → LLM history messages:"
 msgid "Agent → LLM compiled request:"
 msgstr "Agent → LLM compiled request:"
 
-msgid "Tool specifications are sent as a separate payload and therefore do not appear inside the compiled request messages."
-msgstr "Tool specifications are sent as a separate payload and therefore do not appear inside the compiled request messages."
+msgid ""
+"Tool specifications are sent as a separate payload and therefore do not "
+"appear inside the compiled request messages."
+msgstr ""
+"Tool specifications are sent as a separate payload and therefore do not "
+"appear inside the compiled request messages."
 
 msgid "LLM system prompt:"
 msgstr "LLM system prompt:"
@@ -1598,3 +1618,628 @@ msgstr "Set status"
 
 msgid "Set labels…"
 msgstr "Set labels…"
+
+msgid "&Import Requirements…"
+msgstr "&Import Requirements…"
+
+msgid "(Auto)"
+msgstr "(Auto)"
+
+msgid "(Ignore)"
+msgstr "(Ignore)"
+
+msgid "(missing field)"
+msgstr "(missing field)"
+
+msgid "(untitled)"
+msgstr "(untitled)"
+
+msgid "<i>Select a file to preview data.</i>"
+msgstr "<i>Select a file to preview data.</i>"
+
+msgid "Agent (step {index}):"
+msgstr "Agent (step {index}):"
+
+msgid "Agent: tool call {index}: {tool} — {status}"
+msgstr "Agent: tool call {index}: {tool} — {status}"
+
+msgid "Arguments: {value}"
+msgstr "Arguments: {value}"
+
+msgid "Attachments provided: {count}"
+msgstr "Attachments provided: {count}"
+
+msgid "Batch cancellation requested"
+msgstr "Batch cancellation requested"
+
+msgid ""
+"Batch finished: {done} completed, {failed} failed, {cancelled} cancelled"
+msgstr ""
+"Batch finished: {done} completed, {failed} failed, {cancelled} cancelled"
+
+msgid "Batch queue"
+msgstr "Batch queue"
+
+msgid "Batch ready: {total} requirements queued ({pending} pending)"
+msgstr "Batch ready: {total} requirements queued ({pending} pending)"
+
+msgid "Batch started: {count} requirements"
+msgstr "Batch started: {count} requirements"
+
+msgid "Batch • {rid}"
+msgstr "Batch • {rid}"
+
+msgid ""
+"CSV and Excel files "
+"(*.csv;*.tsv;*.xlsx;*.xlsm)|*.csv;*.tsv;*.xlsx;*.xlsm|All files|*.*"
+msgstr ""
+"CSV and Excel files "
+"(*.csv;*.tsv;*.xlsx;*.xlsm)|*.csv;*.tsv;*.xlsx;*.xlsm|All files|*.*"
+
+msgid "Call identifier: {identifier}"
+msgstr "Call identifier: {identifier}"
+
+msgid "Cancelled"
+msgstr "Cancelled"
+
+msgid "Children:"
+msgstr "Children:"
+
+msgid ""
+"Choose the conversation envelope used when talking to the model.\n"
+"\n"
+"• OpenAI chat — the classic JSON schema {role, content}. Works with most compatible APIs, supports standard tool_calls, and matches the OpenAI Chat Completions and OpenRouter interfaces. Keep this option when the provider does not document extended formats.\n"
+"\n"
+"• Harmony (GPT-OSS) — a structured protocol with system/developer/user/ assistant/tool roles and analysis/commentary/final channels. Used by the gpt-oss family of models, it separates the chain of thought from the user-facing answer and clearly signals tool invocations. Requires a provider that accepts Harmony tokens (for example, the OpenAI Responses API or a compatible gateway). In streaming mode the model returns a sequence of events that must each be decoded via a Harmony renderer.\n"
+"\n"
+"• Qwen (ChatML + reasoning) — the format for Qwen-R/-MCP models with reasoning_content support. Dialogues are assembled in ChatML syntax (<|im_start|>role ...), and intermediate reasoning plus tool calls arrive directly inside the reasoning stream. CookaReq exposes the option in the UI, but full reasoning-tool support will ship after the Qwen renderer and parser are integrated.\n"
+"\n"
+"Practical guidance:\n"
+"— Always match the selected format with the provider's capabilities. Picking an incompatible protocol results in errors or empty replies.\n"
+"— Harmony and Qwen need dedicated streaming parsers. If streaming is enabled, ensure that the LLM client can decode events for these formats.\n"
+"— When migrating to new models, lock the format in configuration to avoid falling back to OpenAI chat by accident.\n"
+"— When experimenting with Harmony, check that the system prompt enables Reasoning and lists valid channels; otherwise the model may degrade or ignore tool_calls.\n"
+"— After CookaReq updates, review the architecture notes: they track the limitations and support status for each format."
+msgstr ""
+"Choose the conversation envelope used when talking to the model.\n"
+"\n"
+"• OpenAI chat — the classic JSON schema {role, content}. Works with most compatible APIs, supports standard tool_calls, and matches the OpenAI Chat Completions and OpenRouter interfaces. Keep this option when the provider does not document extended formats.\n"
+"\n"
+"• Harmony (GPT-OSS) — a structured protocol with system/developer/user/ assistant/tool roles and analysis/commentary/final channels. Used by the gpt-oss family of models, it separates the chain of thought from the user-facing answer and clearly signals tool invocations. Requires a provider that accepts Harmony tokens (for example, the OpenAI Responses API or a compatible gateway). In streaming mode the model returns a sequence of events that must each be decoded via a Harmony renderer.\n"
+"\n"
+"• Qwen (ChatML + reasoning) — the format for Qwen-R/-MCP models with reasoning_content support. Dialogues are assembled in ChatML syntax (<|im_start|>role ...), and intermediate reasoning plus tool calls arrive directly inside the reasoning stream. CookaReq exposes the option in the UI, but full reasoning-tool support will ship after the Qwen renderer and parser are integrated.\n"
+"\n"
+"Practical guidance:\n"
+"— Always match the selected format with the provider's capabilities. Picking an incompatible protocol results in errors or empty replies.\n"
+"— Harmony and Qwen need dedicated streaming parsers. If streaming is enabled, ensure that the LLM client can decode events for these formats.\n"
+"— When migrating to new models, lock the format in configuration to avoid falling back to OpenAI chat by accident.\n"
+"— When experimenting with Harmony, check that the system prompt enables Reasoning and lists valid channels; otherwise the model may degrade or ignore tool_calls.\n"
+"— After CookaReq updates, review the architecture notes: they track the limitations and support status for each format."
+
+msgid "Column"
+msgstr "Column"
+
+msgid "Column mapping"
+msgstr "Column mapping"
+
+msgid "Columns document"
+msgstr "Columns document"
+
+msgid "Completed"
+msgstr "Completed"
+
+msgid "Completed at {timestamp}"
+msgstr "Completed at {timestamp}"
+
+msgid "Context"
+msgstr "Context"
+
+msgid "Copy log output to clipboard"
+msgstr "Copy log output to clipboard"
+
+msgid "Copy logs"
+msgstr "Copy logs"
+
+msgid "Created requirement: {rid}"
+msgstr "Created requirement: {rid}"
+
+msgid "Current attachment count: {count}"
+msgstr "Current attachment count: {count}"
+
+msgid "Current outgoing links: {count}"
+msgstr "Current outgoing links: {count}"
+
+msgid ""
+"Custom instructions appended to the system prompt:\n"
+"{instructions}"
+msgstr ""
+"Custom instructions appended to the system prompt:\n"
+"{instructions}"
+
+msgid ""
+"Custom instructions are appended to the agent's system prompt for this "
+"project. Use them to encode domain conventions, coding standards or policies"
+" the assistant must follow."
+msgstr ""
+"Custom instructions are appended to the agent's system prompt for this "
+"project. Use them to encode domain conventions, coding standards or policies"
+" the assistant must follow."
+
+msgid "Define project-specific instructions appended to the system prompt."
+msgstr "Define project-specific instructions appended to the system prompt."
+
+msgid "Delete requirement failed"
+msgstr "Delete requirement failed"
+
+msgid "Deleted requirement: {rid}"
+msgstr "Deleted requirement: {rid}"
+
+msgid "Document: {doc}"
+msgstr "Document: {doc}"
+
+msgid "Document: {prefix}"
+msgstr "Document: {prefix}"
+
+msgid ""
+"Enable the checkbox to send a fixed sampling temperature to the LLM.\n"
+"When disabled, the temperature parameter is omitted and the provider falls back to its default.\n"
+"\n"
+"Allowed values range from 0 to 2. Lower temperatures produce more deterministic replies, higher values increase variety. Default value: {default}."
+msgstr ""
+"Enable the checkbox to send a fixed sampling temperature to the LLM.\n"
+"When disabled, the temperature parameter is omitted and the provider falls back to its default.\n"
+"\n"
+"Allowed values range from 0 to 2. Lower temperatures produce more deterministic replies, higher values increase variety. Default value: {default}."
+
+msgid "Enter a prompt before starting a batch"
+msgstr "Enter a prompt before starting a batch"
+
+msgid "Error details: {details}"
+msgstr "Error details: {details}"
+
+msgid "Error {code}: [{code}]"
+msgstr "Error {code}: [{code}]"
+
+msgid "Error {code}: [{code}] {message}"
+msgstr "Error {code}: [{code}] {message}"
+
+msgid "Error: {message}"
+msgstr "Error: {message}"
+
+msgid "Failed"
+msgstr "Failed"
+
+msgid "Field delimiter"
+msgstr "Field delimiter"
+
+msgid "Field: {field}"
+msgstr "Field: {field}"
+
+msgid "Filters: {filters}"
+msgstr "Filters: {filters}"
+
+msgid "First row is a header"
+msgstr "First row is a header"
+
+msgid "Format"
+msgstr "Format"
+
+msgid "Found {count} issue(s)."
+msgstr "Found {count} issue(s)."
+
+msgid "Harmony (GPT-OSS)"
+msgstr "Harmony (GPT-OSS)"
+
+msgid "Import"
+msgstr "Import"
+
+msgid "Import Requirements"
+msgstr "Import Requirements"
+
+msgid "Import blocked"
+msgstr "Import blocked"
+
+msgid "Import completed"
+msgstr "Import completed"
+
+msgid "Imported {count} requirement(s)."
+msgstr "Imported {count} requirement(s)."
+
+msgid ""
+"Invalid arguments for %(tool)s: expected a JSON object but received %(type)s"
+msgstr ""
+"Invalid arguments for %(tool)s: expected a JSON object but received %(type)s"
+
+msgid "Labels cleared"
+msgstr "Labels cleared"
+
+msgid "Labels: {labels}"
+msgstr "Labels: {labels}"
+
+msgid "Matching requirements: {count}"
+msgstr "Matching requirements: {count}"
+
+msgid "Model reasoning"
+msgstr "Model reasoning"
+
+msgid "New value: {value}"
+msgstr "New value: {value}"
+
+msgid "No"
+msgstr "No"
+
+msgid "No data"
+msgstr "No data"
+
+msgid "No documents found"
+msgstr "No documents found"
+
+msgid "No links."
+msgstr "No links."
+
+msgid "No requirements to import."
+msgstr "No requirements to import."
+
+msgid "OpenAI chat (default)"
+msgstr "OpenAI chat (default)"
+
+msgid "Outgoing links cleared"
+msgstr "Outgoing links cleared"
+
+msgid "Outgoing links provided: {count}"
+msgstr "Outgoing links provided: {count}"
+
+msgid "Override temperature"
+msgstr "Override temperature"
+
+msgid "Owner: {owner}"
+msgstr "Owner: {owner}"
+
+msgid "Parents:"
+msgstr "Parents:"
+
+msgid "Pending"
+msgstr "Pending"
+
+msgid "Preview"
+msgstr "Preview"
+
+msgid "Previous value: {value}"
+msgstr "Previous value: {value}"
+
+msgid "Priority: {priority}"
+msgstr "Priority: {priority}"
+
+msgid "Query: {query}"
+msgstr "Query: {query}"
+
+msgid "Qwen (ChatML + reasoning)"
+msgstr "Qwen (ChatML + reasoning)"
+
+msgid "RID"
+msgstr "RID"
+
+msgid "RID: {rid}"
+msgstr "RID: {rid}"
+
+msgid "Raw data"
+msgstr "Raw data"
+
+msgid "Raw response payload"
+msgstr "Raw response payload"
+
+msgid ""
+"Ready to import {imported} requirement(s) from {total} data row(s). Skipped "
+"{skipped}."
+msgstr ""
+"Ready to import {imported} requirement(s) from {total} data row(s). Skipped "
+"{skipped}."
+
+msgid "Rebuild…"
+msgstr "Rebuild…"
+
+msgid "Request sent to the LLM"
+msgstr "Request sent to the LLM"
+
+msgid ""
+"Requirements: {rows} × {columns}. Linked {linked} of {pairs} pairs "
+"({coverage:.0%})"
+msgstr ""
+"Requirements: {rows} × {columns}. Linked {linked} of {pairs} pairs "
+"({coverage:.0%})"
+
+msgid ""
+"Requirements: {rows} × {columns}. No requirement combinations available"
+msgstr ""
+"Requirements: {rows} × {columns}. No requirement combinations available"
+
+msgid "Response was regenerated"
+msgstr "Response was regenerated"
+
+msgid "Result: {value}"
+msgstr "Result: {value}"
+
+msgid "Returned items: {count}"
+msgstr "Returned items: {count}"
+
+msgid "Revision: {revision}"
+msgstr "Revision: {revision}"
+
+msgid "Row"
+msgstr "Row"
+
+msgid "Row {row}, field {field}: {message}"
+msgstr "Row {row}, field {field}: {message}"
+
+msgid "Row {row}: {message}"
+msgstr "Row {row}: {message}"
+
+msgid "Rows document"
+msgstr "Rows document"
+
+msgid "Run batch"
+msgstr "Run batch"
+
+msgid "Running"
+msgstr "Running"
+
+msgid ""
+"Running {current} of {total} requirements (done: {done}, failed: {failed}, "
+"cancelled: {cancelled})"
+msgstr ""
+"Running {current} of {total} requirements (done: {done}, failed: {failed}, "
+"cancelled: {cancelled})"
+
+msgid "Select CSV or Excel file"
+msgstr "Select CSV or Excel file"
+
+msgid "Select a cell or header to view details."
+msgstr "Select a cell or header to view details."
+
+msgid "Select a cell to view link information."
+msgstr "Select a cell to view link information."
+
+msgid "Select at least one requirement in the list to run a batch"
+msgstr "Select at least one requirement in the list to run a batch"
+
+msgid "Select requirements and run a batch"
+msgstr "Select requirements and run a batch"
+
+msgid "Selected documents do not contain requirements"
+msgstr "Selected documents do not contain requirements"
+
+msgid "Showing first {count} row(s)"
+msgstr "Showing first {count} row(s)"
+
+msgid "Some requirements failed"
+msgstr "Some requirements failed"
+
+msgid "Source: {rid}"
+msgstr "Source: {rid}"
+
+msgid "Started at {timestamp}"
+msgstr "Started at {timestamp}"
+
+msgid "Status: {status}"
+msgstr "Status: {status}"
+
+msgid "Step {index}"
+msgstr "Step {index}"
+
+msgid "Stop batch"
+msgstr "Stop batch"
+
+msgid "System message"
+msgstr "System message"
+
+msgid "Tags: {tags}"
+msgstr "Tags: {tags}"
+
+msgid "Target document: {label}"
+msgstr "Target document: {label}"
+
+msgid "Targets: {targets}"
+msgstr "Targets: {targets}"
+
+msgid "The selected documents contain no requirements to display."
+msgstr "The selected documents contain no requirements to display."
+
+msgid ""
+"The waiting status shows three elements:\n"
+"• The timer reports how long the agent has been running in mm:ss and updates every second.\n"
+"• The status text describes whether the agent is still working or has finished.\n"
+"• The spinning indicator on the left stays active while the agent is still working."
+msgstr ""
+"The waiting status shows three elements:\n"
+"• The timer reports how long the agent has been running in mm:ss and updates every second.\n"
+"• The status text describes whether the agent is still working or has finished.\n"
+"• The spinning indicator on the left stays active while the agent is still working."
+
+msgid "There are suspect links."
+msgstr "There are suspect links."
+
+msgid "Thought {index}"
+msgstr "Thought {index}"
+
+msgid "Timestamp unavailable"
+msgstr "Timestamp unavailable"
+
+msgid "Title: {title}"
+msgstr "Title: {title}"
+
+msgid "Tokens: {tokens} • Context window: {usage}"
+msgstr "Tokens: {tokens} • Context window: {usage}"
+
+msgid "Tool: {tool}"
+msgstr "Tool: {tool}"
+
+msgid "Total items: {total}"
+msgstr "Total items: {total}"
+
+msgid "Total links: {count}"
+msgstr "Total links: {count}"
+
+msgid "Trace Matrix Configuration"
+msgstr "Trace Matrix Configuration"
+
+msgid "Type: {type}"
+msgstr "Type: {type}"
+
+msgid "Unable to start batch queue"
+msgstr "Unable to start batch queue"
+
+msgid "Waiting for agent… {time}"
+msgstr "Waiting for agent… {time}"
+
+msgid "Worksheet"
+msgstr "Worksheet"
+
+msgid "Yes"
+msgstr "Yes"
+
+msgid "[{timestamp}] Context messages:"
+msgstr "[{timestamp}] Context messages:"
+
+msgid "[{timestamp}] LLM request:"
+msgstr "[{timestamp}] LLM request:"
+
+msgid "[{timestamp}] Model reasoning:"
+msgstr "[{timestamp}] Model reasoning:"
+
+msgid "[{timestamp}] Raw LLM payload:"
+msgstr "[{timestamp}] Raw LLM payload:"
+
+msgid "[{timestamp}] System message:"
+msgstr "[{timestamp}] System message:"
+
+msgid "[{timestamp}] Tool call {index}: {tool} — {status}"
+msgstr "[{timestamp}] Tool call {index}: {tool} — {status}"
+
+msgid "[{timestamp}] You:"
+msgstr "[{timestamp}] You:"
+
+msgid "[{timestamp}] {label}"
+msgstr "[{timestamp}] {label}"
+
+msgid "at least one --columns value is required"
+msgstr "at least one --columns value is required"
+
+msgid "at least one --rows value is required"
+msgstr "at least one --rows value is required"
+
+msgid "cannot delete {rid}: revision error: {msg}\n"
+msgstr "cannot delete {rid}: revision error: {msg}\n"
+
+msgid "code {code}"
+msgstr "code {code}"
+
+msgid "column document prefixes (comma separated)"
+msgstr "column document prefixes (comma separated)"
+
+msgid "completed"
+msgstr "completed"
+
+msgid "completed successfully"
+msgstr "completed successfully"
+
+msgid "failed"
+msgstr "failed"
+
+msgid "filter columns by requirement type"
+msgstr "filter columns by requirement type"
+
+msgid "filter columns by status"
+msgstr "filter columns by status"
+
+msgid "filter rows by requirement type"
+msgstr "filter rows by requirement type"
+
+msgid "filter rows by status"
+msgstr "filter rows by status"
+
+msgid "in progress…"
+msgstr "in progress…"
+
+msgid "include descendant documents for columns"
+msgstr "include descendant documents for columns"
+
+msgid "include descendant documents for rows"
+msgstr "include descendant documents for rows"
+
+msgid "interpretation of links"
+msgstr "interpretation of links"
+
+msgid "keep columns with any of the labels"
+msgstr "keep columns with any of the labels"
+
+msgid "keep rows with any of the labels"
+msgstr "keep rows with any of the labels"
+
+msgid "keys: {keys}"
+msgstr "keys: {keys}"
+
+msgid "limit column search fields (comma separated)"
+msgstr "limit column search fields (comma separated)"
+
+msgid "limit row search fields (comma separated)"
+msgstr "limit row search fields (comma separated)"
+
+msgid "n/a"
+msgstr "n/a"
+
+msgid "require all labels on columns"
+msgstr "require all labels on columns"
+
+msgid "require all labels on rows"
+msgstr "require all labels on rows"
+
+msgid "returned data"
+msgstr "returned data"
+
+msgid "row document prefixes (comma separated)"
+msgstr "row document prefixes (comma separated)"
+
+msgid "text query for columns"
+msgstr "text query for columns"
+
+msgid "text query for rows"
+msgstr "text query for rows"
+
+msgid "update"
+msgstr "update"
+
+msgid "{base} — {details}"
+msgstr "{base} — {details}"
+
+msgid "{count} more issue(s) not shown"
+msgstr "{count} more issue(s) not shown"
+
+msgid "{index}. Invalid change payload"
+msgstr "{index}. Invalid change payload"
+
+msgid "{index}. replace attachments → {value}"
+msgstr "{index}. replace attachments → {value}"
+
+msgid "{index}. replace labels → {value}"
+msgstr "{index}. replace labels → {value}"
+
+msgid "{index}. replace links → {value}"
+msgstr "{index}. replace links → {value}"
+
+msgid "{index}. set {field} → {value}"
+msgstr "{index}. set {field} → {value}"
+
+msgid "{index}. {kind} → {value}"
+msgstr "{index}. {kind} → {value}"
+
+msgid "{label}: {value}"
+msgstr "{label}: {value}"
+
+msgid "{rid}: {message}"
+msgstr "{rid}: {message}"
+
+msgid "{used} / {limit}"
+msgstr "{used} / {limit}"
+
+msgid "Загрузка…"
+msgstr "Загрузка…"

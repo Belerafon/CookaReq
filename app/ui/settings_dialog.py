@@ -541,7 +541,11 @@ class SettingsDialog(wx.Dialog):
         self._documents_browse.Bind(
             wx.EVT_BUTTON, self._on_browse_documents_path
         )
-        self._documents_hint = wx.StaticText(mcp, style=wx.ST_NO_AUTORESIZE)
+        default_documents_hint = _("Documentation root: disabled")
+        self._documents_hint = wx.StaticText(
+            mcp,
+            label=default_documents_hint,
+        )
         self._documents_hint_default_colour = self._documents_hint.GetForegroundColour()
         self._documents_hint_success_colour = wx.Colour(0, 128, 0)
         self._documents_hint_error_colour = wx.Colour(178, 34, 34)

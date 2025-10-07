@@ -12,6 +12,10 @@ from textwrap import dedent
 from typing import Any, Mapping
 
 from ..core.model import Priority, RequirementType, Status, Verification
+from ..services.user_documents import (
+    DEFAULT_MAX_READ_BYTES as USER_DOCUMENT_DEFAULT_READ_BYTES,
+    MAX_ALLOWED_READ_BYTES as USER_DOCUMENT_MAX_READ_BYTES,
+)
 
 __all__ = ["SYSTEM_PROMPT", "TOOLS"]
 
@@ -44,6 +48,10 @@ _EDITABLE_FIELDS = [
 
 # Prompt instructing the model to prefer MCP tool calls while allowing
 # conversational fallbacks when tools are not relevant.
+_USER_DOCUMENT_DEFAULT_READ_KIB = USER_DOCUMENT_DEFAULT_READ_BYTES // 1024
+_USER_DOCUMENT_MAX_READ_KIB = USER_DOCUMENT_MAX_READ_BYTES // 1024
+
+
 SYSTEM_PROMPT = (
     dedent(
         """
@@ -59,6 +67,11 @@ SYSTEM_PROMPT = (
         `create_requirement` adds a new requirement; provide a `prefix` (for example, `SYS`) and a `data` object containing at least title, statement, type, status, owner, priority, source and verification. Optional fields may also be included.
         `delete_requirement` removes an existing requirement by RID; use it only when the user explicitly requests deletion.
         `link_requirements` creates hierarchy links; pass `source_rid`, `derived_rid` and `link_type` (currently `parent`).
+        The workspace may expose an optional user documentation directory. When it is configured, the workspace context includes a `[User documentation]` section with the rendered tree and metadata. Use the specialised tools below to inspect or modify those files. Never assume the directory exists; handle missing roots gracefully and report when the operator needs to configure it.
+        `list_user_documents` enumerates the directory tree, returning token statistics (including percentage of the maximum context window) for each entry along with a text tree representation.
+        `read_user_document` streams a slice of a file as numbered lines. Always respect the configured byte budget: stay within the workspace limit (default {default_read_kib} KiB, never exceeding {max_read_kib} KiB) and consult the `[User documentation]` context block for the precise value. Provide a smaller `max_bytes` when you only need a fragment. Start counting at line 1 by default; provide `start_line` when resuming from a later offset. Examine the `truncated` flag to determine whether additional reads are required.
+        `create_user_document` writes a new UTF-8 file within the documentation root. Pass `exist_ok` only when intentionally overwriting an existing file. Always explain to the user when content is being created and report the byte count written.
+        `delete_user_document` permanently removes a file. Only invoke it when the user explicitly confirms deletion and be mindful that directories cannot be removed with this tool.
         When the user references a requirement, always use its requirement identifier (RID) exactly as shown in the workspace context using the `<prefix><number>` format (case-sensitive). Context summaries show entries as `<RID> — <title>` (the title may be omitted); the RID is the concatenation of the prefix and number (for example, `HLR1`). Highlighted selections are listed on a single `Selected requirement RIDs:` line (for example, `Selected requirement RIDs: SYS2, SYS3`). When the line lists multiple RIDs, call `get_requirement` once using the array form of the `rid` argument in the same order, removing duplicates if necessary. When the user refers to the highlighted or selected requirement(s), resolve them using the RID(s) from that line. Never pass only the numeric `id`.
         Examples:
         - Context entry "SYS11 — Graphical User Interface" and user request "Write the text of the first requirement" → call `get_requirement` with {{"rid": "SYS11"}}.
@@ -69,7 +82,11 @@ SYSTEM_PROMPT = (
         """
     )
     .strip()
-    .format(editable_fields=", ".join(_EDITABLE_FIELDS))
+    .format(
+        editable_fields=", ".join(_EDITABLE_FIELDS),
+        default_read_kib=_USER_DOCUMENT_DEFAULT_READ_KIB,
+        max_read_kib=_USER_DOCUMENT_MAX_READ_KIB,
+    )
 )
 
 
@@ -534,6 +551,97 @@ TOOLS: list[dict[str, Any]] = [
                     "derived_rid",
                     "link_type",
                 ],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_user_documents",
+            "description": "Enumerate user-provided documentation files as a tree",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_user_document",
+            "description": "Read a slice of a documentation file with numbered lines",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the target file relative to the configured documentation root.",
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "First line number to include (1-based).",
+                    },
+                    "max_bytes": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": USER_DOCUMENT_MAX_READ_BYTES,
+                        "default": USER_DOCUMENT_DEFAULT_READ_BYTES,
+                        "description": (
+                            "Maximum number of UTF-8 bytes to read "
+                            f"(defaults to {USER_DOCUMENT_DEFAULT_READ_BYTES} "
+                            f"and never exceeds {USER_DOCUMENT_MAX_READ_BYTES})."
+                        ),
+                    },
+                },
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_user_document",
+            "description": "Create or overwrite a documentation file with optional content",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path of the file to create relative to the documentation root.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "UTF-8 text to write into the file (defaults to empty).",
+                    },
+                    "exist_ok": {
+                        "type": "boolean",
+                        "description": "Allow overwriting an existing file when true (defaults to false).",
+                    },
+                },
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_user_document",
+            "description": "Delete a documentation file from the user directory",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path of the file to remove relative to the documentation root.",
+                    },
+                },
+                "required": ["path"],
                 "additionalProperties": False,
             },
         },

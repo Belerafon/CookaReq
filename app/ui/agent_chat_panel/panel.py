@@ -176,11 +176,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._documents_root_listener: Callable[[Path | None], None] | None = None
         self._requirements_directory: Path | None = None
         self._documents_root: Path | None = None
-        self._documents_subdirectory = normalize_documents_path(
+        self._default_documents_subdirectory = normalize_documents_path(
             documents_subdirectory
         )
-        self._project_settings = load_agent_project_settings(self._settings_path)
-        self._update_documents_root()
+        self._project_documents_subdirectory = ""
+        self._project_settings = AgentProjectSettings()
+        self._load_project_settings()
         self._token_model_resolver = (
             token_model_resolver if token_model_resolver is not None else lambda: None
         )
@@ -361,17 +362,33 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def documents_subdirectory(self) -> str:
         """Return the configured documentation subdirectory relative to requirements."""
 
-        return getattr(self, "_documents_subdirectory", "")
+        project = getattr(self, "_project_documents_subdirectory", "")
+        if project:
+            return project
+        return getattr(self, "_default_documents_subdirectory", "")
 
     def set_documents_subdirectory(self, value: str | None) -> None:
         """Update documentation subdirectory and notify listeners if it changes."""
 
         normalized = normalize_documents_path(value)
-        if normalized == getattr(self, "_documents_subdirectory", ""):
+        previous_effective = self.documents_subdirectory
+        if normalized == getattr(self, "_default_documents_subdirectory", ""):
             return
-        self._documents_subdirectory = normalized
-        self._update_documents_root()
+        self._default_documents_subdirectory = normalized
+        if previous_effective != self.documents_subdirectory:
+            self._update_documents_root()
         self._update_project_settings_ui()
+
+    def _set_project_documents_subdirectory(
+        self, value: str | None, *, update_ui: bool = True
+    ) -> None:
+        normalized = normalize_documents_path(value)
+        if normalized == getattr(self, "_project_documents_subdirectory", ""):
+            return
+        self._project_documents_subdirectory = normalized
+        self._update_documents_root()
+        if update_ui:
+            self._update_project_settings_ui()
 
     def set_documents_root_listener(
         self, callback: Callable[[Path | None], None] | None
@@ -2733,8 +2750,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _load_project_settings(self) -> None:
         self._project_settings = load_agent_project_settings(self._settings_path)
+        self._set_project_documents_subdirectory(
+            self._project_settings.documents_path, update_ui=False
+        )
         self._update_project_settings_ui()
-        self._update_documents_root()
 
     def _save_project_settings(self) -> None:
         try:
@@ -2768,9 +2787,23 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     "Define project-specific instructions appended to the system prompt."
                 )
             )
+        project_override = getattr(self, "_project_documents_subdirectory", "")
+        default_documents = getattr(self, "_default_documents_subdirectory", "")
         subdirectory = self.documents_subdirectory
         if subdirectory:
             resolved = self.documents_root
+            if project_override:
+                tooltip_lines.append(
+                    _("Project override: {path}").format(
+                        path=normalize_for_display(project_override)
+                    )
+                )
+            elif default_documents:
+                tooltip_lines.append(
+                    _("Default from MCP settings: {path}").format(
+                        path=normalize_for_display(default_documents)
+                    )
+                )
             if resolved is not None:
                 tooltip_lines.append(
                     _("Documentation folder: {path}").format(
@@ -2796,14 +2829,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     ) -> None:
         normalized = settings.normalized()
         if normalized == self._project_settings:
+            self._set_project_documents_subdirectory(normalized.documents_path)
             self._update_project_settings_ui()
-            self._update_documents_root()
             return
         self._project_settings = normalized
         if persist:
             self._save_project_settings()
+        self._set_project_documents_subdirectory(
+            normalized.documents_path, update_ui=False
+        )
         self._update_project_settings_ui()
-        self._update_documents_root()
         self._update_conversation_header()
 
     def _on_project_settings(self, _event: wx.Event) -> None:
@@ -2813,8 +2848,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if result != wx.ID_OK:
                 return
             prompt = dialog.get_custom_system_prompt()
+            documents_path = dialog.get_documents_path()
             self._apply_project_settings(
-                AgentProjectSettings(custom_system_prompt=prompt)
+                AgentProjectSettings(
+                    custom_system_prompt=prompt,
+                    documents_path=documents_path,
+                )
             )
         finally:
             dialog.Destroy()

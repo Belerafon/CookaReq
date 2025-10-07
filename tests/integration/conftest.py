@@ -18,7 +18,12 @@ def mcp_server(tmp_path_factory: pytest.TempPathFactory, free_tcp_port: int) -> 
     base_dir: Path = tmp_path_factory.mktemp("mcp-server")
 
     stop_server()
-    start_server(port=port, base_path=str(base_dir))
+    start_server(
+        port=port,
+        base_path=str(base_dir),
+        max_context_tokens=8192,
+        token_model="test-mcp",
+    )
     _wait_until_ready(port)
 
     try:

@@ -576,18 +576,56 @@ def test_agent_project_settings_dialog_handles_custom_prompt(wx_app):
     frame = wx.Frame(None)
     settings = AgentProjectSettings(
         custom_system_prompt="Existing",
+        documents_path="docs",
     )
 
     try:
         dialog = AgentProjectSettingsDialog(frame, settings=settings)
         try:
             assert dialog.get_custom_system_prompt() == "Existing"
+            assert dialog.get_documents_path() == "docs"
             dialog._prompt.SetValue("   updated instructions   ")
             assert dialog.get_custom_system_prompt() == "updated instructions"
+            dialog._documents_path.SetValue("  материалы ")
+            assert dialog.get_documents_path() == "материалы"
         finally:
             dialog.Destroy()
     finally:
         frame.Destroy()
+
+
+def test_project_settings_override_documents_path(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
+
+    try:
+        base_dir = tmp_path / "repo"
+        base_dir.mkdir()
+        (base_dir / "share").mkdir()
+        override = base_dir / "Документы" / "рабочие материалы"
+        override.mkdir(parents=True)
+
+        panel.set_history_directory(base_dir)
+        panel._apply_project_settings(
+            AgentProjectSettings(documents_path="Документы/рабочие материалы")
+        )
+
+        assert panel.documents_subdirectory == "Документы/рабочие материалы"
+        assert panel.project_settings.documents_path == "Документы/рабочие материалы"
+        resolved = panel.documents_root
+        assert resolved is not None
+        assert resolved == override.resolve()
+
+        panel.set_documents_subdirectory("другое")
+        assert panel.documents_subdirectory == "Документы/рабочие материалы"
+        assert panel.documents_root == resolved
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):

@@ -136,7 +136,11 @@ class MainFrameDocumentsMixin:
             )
 
         try:
-            self.mcp.start(self.mcp_settings)
+            self.mcp.start(
+                self.mcp_settings,
+                max_context_tokens=self.llm_settings.max_context_tokens,
+                token_model=self.llm_settings.model,
+            )
         except Exception:  # pragma: no cover - controller must not crash UI
             logger.exception(
                 "Failed to start MCP server after applying new base path"

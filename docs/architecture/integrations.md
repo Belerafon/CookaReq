@@ -36,6 +36,13 @@
 - [ ] Table of registered tools and their contracts.
 - [ ] Procedure for adding new tools and testing them.
 
+### User documentation toolset
+
+- `list_user_documents` — returns a JSON tree (`root_entry`, `entries`) for the user-provided documentation directory, including token counts, context usage percentages, a pre-rendered ASCII tree (`tree_text`), and metadata describing the active tokenizer and read limits (`max_context_tokens`, `max_read_bytes`, `max_read_kib`). The tool works even when the root is missing, signalling the absence through an error payload so the agent can request configuration updates.
+- `read_user_document` — streams numbered lines from a file while enforcing the configured byte cap. Operators control the default slice size via the MCP settings dialog (`documents_max_read_kb`, clamped to 512 KiB); agents can still request smaller reads by passing `max_bytes`. The response includes the consumed byte count, the start/end line numbers, and a `truncated` flag so the agent can resume subsequent reads.
+- `create_user_document` — writes UTF-8 content to a new or existing file within the documentation root. The caller controls overwrites with the `exist_ok` flag, and responses echo the relative path plus the number of bytes written.
+- `delete_user_document` — removes a single file under the documentation root. The MCP layer rejects directory paths and any attempt to escape the configured root, returning structured errors with `ErrorCode.UNAUTHORIZED` or `ErrorCode.VALIDATION_ERROR`.
+
 ### `get_requirement`
 
 - The tool accepts a `rid` string or an array of strings. When enriching context (see `LocalAgent._fetch_requirement_summaries_async`) the agent passes an array, preserving the order from the system message and removing duplicates.

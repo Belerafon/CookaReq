@@ -17,7 +17,11 @@ from ..llm.constants import (
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
 from ..mcp.paths import describe_documents_root, resolve_documents_root
-from ..settings import LLMSettings, MCPSettings
+from ..settings import (
+    LLMSettings,
+    MCPSettings,
+    MAX_DOCUMENT_MAX_READ_KB,
+)
 from .helpers import format_error_message, make_help_button
 
 GENERAL_HELP: dict[str, str] = {
@@ -143,6 +147,12 @@ MCP_HELP: dict[str, str] = {
         "Relative paths are resolved from the active requirements folder.\n"
         "Leave empty to disable documentation access.",
     ),
+    "documents_max_read_kb": _(
+        "Maximum amount of documentation text (in KiB) streamed by"
+        " `read_user_document` when the model omits `max_bytes`."
+        " Increase only when necessary; higher limits mean longer MCP"
+        " responses and more context usage.",
+    ),
     "log_dir": _(
         "Directory for MCP request logs. Example: /var/log/cookareq\n"
         "Leave empty to store logs in the standard application log folder.",
@@ -225,6 +235,7 @@ class SettingsDialog(wx.Dialog):
         port: int,
         base_path: str,
         documents_path: str,
+        documents_max_read_kb: int,
         log_dir: str | None,
         require_token: bool,
         token: str,
@@ -537,6 +548,18 @@ class SettingsDialog(wx.Dialog):
         self._port = wx.SpinCtrl(mcp, min=1, max=65535, initial=port)
         self._base_path = wx.TextCtrl(mcp, value=base_path)
         self._documents_path = wx.TextCtrl(mcp, value=documents_path)
+        self._documents_read_limit = wx.SpinCtrl(
+            mcp,
+            min=1,
+            max=MAX_DOCUMENT_MAX_READ_KB,
+            initial=max(1, min(documents_max_read_kb, MAX_DOCUMENT_MAX_READ_KB)),
+        )
+        self._documents_read_limit.Bind(
+            wx.EVT_SPINCTRL, self._on_documents_read_limit_changed
+        )
+        self._documents_read_limit.Bind(
+            wx.EVT_TEXT, self._on_documents_read_limit_changed
+        )
         self._documents_browse = wx.Button(mcp, label=_("Browse…"))
         self._documents_browse.Bind(
             wx.EVT_BUTTON, self._on_browse_documents_path
@@ -655,6 +678,29 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         mcp_sizer.Add(documents_sz, 0, wx.ALL | wx.EXPAND, 5)
+        documents_limit_sz = wx.BoxSizer(wx.HORIZONTAL)
+        documents_limit_sz.Add(
+            wx.StaticText(mcp, label=_("Read chunk limit (KiB)")),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            5,
+        )
+        documents_limit_sz.Add(
+            self._documents_read_limit,
+            0,
+            wx.ALIGN_CENTER_VERTICAL,
+        )
+        documents_limit_sz.Add(
+            make_help_button(
+                mcp,
+                MCP_HELP["documents_max_read_kb"],
+                dialog_parent=self,
+            ),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        mcp_sizer.Add(documents_limit_sz, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 5)
         mcp_sizer.Add(
             self._documents_hint,
             0,
@@ -798,32 +844,45 @@ class SettingsDialog(wx.Dialog):
 
         self._refresh_documents_hint()
 
+    def _on_documents_read_limit_changed(self, _event: wx.Event) -> None:
+        """Keep the documentation hint in sync with the read limit spinner."""
+
+        self._refresh_documents_hint()
+
     def _refresh_documents_hint(self) -> None:
         """Update the absolute documentation path preview and validation colour."""
 
         base_text = self._base_path.GetValue().strip()
         documents_text = self._documents_path.GetValue().strip()
         description = describe_documents_root(base_text, documents_text)
+        limit_value = self._documents_read_limit.GetValue()
+        limit_suffix = _(" — default read limit: {limit} KiB").format(
+            limit=limit_value,
+        )
         if description.status == "disabled":
-            label = _("Documentation disabled")
+            label = _("Documentation disabled") + limit_suffix
             colour = self._documents_hint_default_colour
         elif description.status == "missing_base":
             label = _(
                 "Base path is required for relative folders"
-            )
+            ) + limit_suffix
             colour = self._documents_hint_error_colour
         elif description.status == "invalid":
-            label = _("Invalid documentation path")
+            label = _("Invalid documentation path") + limit_suffix
             colour = self._documents_hint_error_colour
         else:
             assert description.resolved is not None
             resolved_text = str(description.resolved)
             exists = description.resolved.exists()
             if exists:
-                label = resolved_text
+                label = _("Documentation root: {path}").format(
+                    path=resolved_text,
+                ) + limit_suffix
                 colour = self._documents_hint_success_colour
             else:
-                label = _("{path} (missing)").format(path=resolved_text)
+                label = _("Documentation root: {path} (missing)").format(
+                    path=resolved_text,
+                ) + limit_suffix
                 colour = self._documents_hint_error_colour
         self._documents_hint.SetLabel(label)
         self._documents_hint.SetForegroundColour(colour)
@@ -886,6 +945,7 @@ class SettingsDialog(wx.Dialog):
             port=self._port.GetValue(),
             base_path=self._base_path.GetValue(),
             documents_path=self._documents_path.GetValue().strip(),
+            documents_max_read_kb=self._documents_read_limit.GetValue(),
             log_dir=self._log_dir.GetValue().strip() or None,
             require_token=self._require_token.GetValue(),
             token=self._token.GetValue(),
@@ -893,7 +953,12 @@ class SettingsDialog(wx.Dialog):
 
     def _on_start(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         settings = self._current_settings()
-        self._mcp.start(settings)
+        llm_settings = self._current_llm_settings()
+        self._mcp.start(
+            settings,
+            max_context_tokens=llm_settings.max_context_tokens,
+            token_model=llm_settings.model,
+        )
         self._update_mcp_controls()
 
     def _on_stop(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
@@ -1025,6 +1090,7 @@ class SettingsDialog(wx.Dialog):
         bool,
         str,
         int,
+        int,
         str,
         str,
         bool,
@@ -1051,6 +1117,7 @@ class SettingsDialog(wx.Dialog):
             self._port.GetValue(),
             self._base_path.GetValue(),
             self._documents_path.GetValue().strip(),
+            self._documents_read_limit.GetValue(),
             self._log_dir.GetValue().strip(),
             self._require_token.GetValue(),
             self._token.GetValue(),

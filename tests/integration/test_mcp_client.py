@@ -4,6 +4,10 @@ import json
 import logging
 from pathlib import Path
 
+import json
+import logging
+from pathlib import Path
+
 import pytest
 
 from app.log import logger
@@ -16,10 +20,19 @@ from tests.mcp_utils import _wait_until_ready
 pytestmark = pytest.mark.integration
 
 
+_TEST_CONTEXT_LIMIT = 8192
+_TEST_MODEL = "test-mcp"
+
+
 def test_check_tools_success(tmp_path: Path) -> None:
     port = 8134
     stop_server()
-    start_server(port=port, base_path=str(tmp_path))
+    start_server(
+        port=port,
+        base_path=str(tmp_path),
+        max_context_tokens=_TEST_CONTEXT_LIMIT,
+        token_model=_TEST_MODEL,
+    )
     try:
         _wait_until_ready(port)
         settings = settings_with_mcp(
@@ -56,7 +69,12 @@ def test_check_tools_success(tmp_path: Path) -> None:
 def test_ensure_ready_success(tmp_path: Path) -> None:
     port = 8136
     stop_server()
-    start_server(port=port, base_path=str(tmp_path))
+    start_server(
+        port=port,
+        base_path=str(tmp_path),
+        max_context_tokens=_TEST_CONTEXT_LIMIT,
+        token_model=_TEST_MODEL,
+    )
     try:
         _wait_until_ready(port)
         settings = settings_with_mcp(
@@ -100,7 +118,13 @@ def test_ensure_ready_reports_connection_errors(tmp_path: Path) -> None:
 def test_ensure_ready_respects_authorization(tmp_path: Path) -> None:
     port = 8138
     stop_server()
-    start_server(port=port, base_path=str(tmp_path), token="secret")
+    start_server(
+        port=port,
+        base_path=str(tmp_path),
+        token="secret",
+        max_context_tokens=_TEST_CONTEXT_LIMIT,
+        token_model=_TEST_MODEL,
+    )
     try:
         _wait_until_ready(port)
         settings = settings_with_mcp(
@@ -122,7 +146,13 @@ def test_ensure_ready_respects_authorization(tmp_path: Path) -> None:
 def test_check_tools_unauthorized(tmp_path: Path) -> None:
     port = 8135
     stop_server()
-    start_server(port=port, base_path=str(tmp_path), token="secret")
+    start_server(
+        port=port,
+        base_path=str(tmp_path),
+        token="secret",
+        max_context_tokens=_TEST_CONTEXT_LIMIT,
+        token_model=_TEST_MODEL,
+    )
     try:
         _wait_until_ready(port)
         settings = settings_with_mcp(

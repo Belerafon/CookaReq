@@ -48,6 +48,7 @@ FIELD_BINDINGS: dict[str, FieldBinding] = {
     "mcp_port": FieldBinding("mcp", "port"),
     "mcp_base_path": FieldBinding("mcp", "base_path"),
     "mcp_documents_path": FieldBinding("mcp", "documents_path"),
+    "mcp_documents_max_read_kb": FieldBinding("mcp", "documents_max_read_kb"),
     "mcp_log_dir": FieldBinding("mcp", "log_dir"),
     "mcp_require_token": FieldBinding("mcp", "require_token"),
     "mcp_token": FieldBinding("mcp", "token"),

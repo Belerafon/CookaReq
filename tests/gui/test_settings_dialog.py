@@ -473,12 +473,17 @@ def test_documents_hint_tracks_filesystem(wx_app, tmp_path):
 
     wx.YieldIfNeeded()
     hint = dlg._documents_hint
-    assert str(docs_dir.resolve()) in hint.GetLabel()
+    expected_path = str(docs_dir.resolve())
+    assert hint.GetLabel() == f"Documentation root: docs → {expected_path}"
     assert hint.GetForegroundColour() == wx.Colour(0, 128, 0)
 
     dlg._documents_path.SetValue("missing")
     wx.YieldIfNeeded()
-    assert "missing" in hint.GetLabel()
+    missing_path = str((base_dir / "missing").resolve())
+    assert (
+        hint.GetLabel()
+        == f"Documentation root: missing → {missing_path} (missing)"
+    )
     assert hint.GetForegroundColour() == wx.Colour(178, 34, 34)
 
     dlg._documents_path.SetValue("")
@@ -487,5 +492,53 @@ def test_documents_hint_tracks_filesystem(wx_app, tmp_path):
     assert (
         hint.GetForegroundColour() == dlg._documents_hint_default_colour
     )
+
+    dlg.Destroy()
+
+
+def test_documents_hint_supports_absolute_path(wx_app, tmp_path):
+    wx = pytest.importorskip("wx")
+    from app.ui.settings_dialog import SettingsDialog
+
+    docs_dir = tmp_path / "absolute"
+    docs_dir.mkdir()
+
+    dlg = SettingsDialog(
+        None,
+        open_last=False,
+        remember_sort=False,
+        language="en",
+        base_url="http://api",
+        model="gpt-test",
+        message_format="openai-chat",
+        api_key="",
+        max_retries=3,
+        max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS,
+        timeout_minutes=10,
+        use_custom_temperature=False,
+        temperature=DEFAULT_LLM_TEMPERATURE,
+        stream=False,
+        auto_start=True,
+        host="localhost",
+        port=8123,
+        base_path=str(tmp_path / "requirements"),
+        documents_path=str(docs_dir),
+        log_dir="",
+        require_token=False,
+        token="",
+        mcp_controller_factory=lambda: IdleMCPController(),
+    )
+
+    wx.YieldIfNeeded()
+    hint = dlg._documents_hint
+    absolute_text = str(docs_dir)
+    assert hint.GetLabel() == f"Documentation root: {absolute_text}"
+    assert hint.GetForegroundColour() == wx.Colour(0, 128, 0)
+
+    dlg._documents_path.SetValue(str(docs_dir / "missing"))
+    wx.YieldIfNeeded()
+    missing_abs = str(docs_dir / "missing")
+    assert hint.GetLabel() == f"Documentation root: {missing_abs} (missing)"
+    assert hint.GetForegroundColour() == wx.Colour(178, 34, 34)
 
     dlg.Destroy()

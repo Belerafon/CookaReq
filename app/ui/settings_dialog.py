@@ -16,7 +16,7 @@ from ..llm.constants import (
 )
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
-from ..mcp.paths import resolve_documents_root
+from ..mcp.paths import describe_documents_root, resolve_documents_root
 from ..settings import LLMSettings, MCPSettings
 from .helpers import format_error_message, make_help_button
 
@@ -798,25 +798,40 @@ class SettingsDialog(wx.Dialog):
 
         base_text = self._base_path.GetValue().strip()
         documents_text = self._documents_path.GetValue().strip()
-        if not documents_text:
+        description = describe_documents_root(base_text, documents_text)
+        if description.status == "disabled":
             label = _("Documentation root: disabled")
             colour = self._documents_hint_default_colour
+        elif description.status == "missing_base":
+            label = _(
+                "Documentation root: base path is required for relative folders"
+            )
+            colour = self._documents_hint_error_colour
+        elif description.status == "invalid":
+            label = _("Documentation root: invalid path")
+            colour = self._documents_hint_error_colour
         else:
-            resolved = resolve_documents_root(base_text, documents_text)
-            if resolved is None:
-                if not base_text:
-                    label = _(
-                        "Documentation root: base path is required for relative folders"
+            assert description.resolved is not None
+            resolved_text = str(description.resolved)
+            exists = description.resolved.exists()
+            if description.is_relative:
+                if exists:
+                    label = _("Documentation root: {source} → {path}").format(
+                        source=description.input_path,
+                        path=resolved_text,
                     )
+                    colour = self._documents_hint_success_colour
                 else:
-                    label = _("Documentation root: invalid path")
-                colour = self._documents_hint_error_colour
-            else:
-                resolved_text = str(resolved)
-                if resolved.exists():
-                    label = _("Documentation root: {path}").format(
-                        path=resolved_text
+                    label = _(
+                        "Documentation root: {source} → {path} (missing)"
+                    ).format(
+                        source=description.input_path,
+                        path=resolved_text,
                     )
+                    colour = self._documents_hint_error_colour
+            else:
+                if exists:
+                    label = _("Documentation root: {path}").format(path=resolved_text)
                     colour = self._documents_hint_success_colour
                 else:
                     label = _("Documentation root: {path} (missing)").format(

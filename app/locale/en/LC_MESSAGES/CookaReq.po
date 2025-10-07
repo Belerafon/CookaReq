@@ -2252,3 +2252,27 @@ msgstr "{used} / {limit}"
 
 msgid "Загрузка…"
 msgstr "Загрузка…"
+
+msgid "Documentation root: disabled"
+msgstr "Documentation root: disabled"
+
+msgid "Documentation root: base path is required for relative folders"
+msgstr "Documentation root: base path is required for relative folders"
+
+msgid "Documentation root: invalid path"
+msgstr "Documentation root: invalid path"
+
+msgid "Documentation root: {source} → {path}"
+msgstr "Documentation root: {source} → {path}"
+
+msgid "Documentation root: {source} → {path} (missing)"
+msgstr "Documentation root: {source} → {path} (missing)"
+
+msgid "Documentation root: {path}"
+msgstr "Documentation root: {path}"
+
+msgid "Documentation root: {path} (missing)"
+msgstr "Documentation root: {path} (missing)"
+
+msgid "Select documentation folder"
+msgstr "Select documentation folder"

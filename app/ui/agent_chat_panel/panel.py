@@ -171,7 +171,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         self._session = AgentChatSession(history=history, timer_owner=self)
         self._settings_path = settings_path_for_documents(None)
+        self._documents_root_listener: Callable[[Path | None], None] | None = None
+        self._requirements_directory: Path | None = None
+        self._documents_root: Path | None = None
         self._project_settings = load_agent_project_settings(self._settings_path)
+        self._update_documents_root()
         self._token_model_resolver = (
             token_model_resolver if token_model_resolver is not None else lambda: None
         )
@@ -302,8 +306,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def set_history_directory(self, directory: Path | str | None) -> None:
         """Persist chat history inside *directory* when provided."""
 
+        self._requirements_directory = (
+            None if directory is None else _normalize_history_path(directory)
+        )
         self.set_history_path(history_path_for_documents(directory))
         self.set_project_settings_path(settings_path_for_documents(directory))
+        self._update_documents_root()
 
     @property
     def history_path(self) -> Path:
@@ -336,6 +344,20 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         """Return the active project settings."""
 
         return self._project_settings
+
+    @property
+    def documents_root(self) -> Path | None:
+        """Return the resolved documentation root directory if configured."""
+
+        return self._documents_root
+
+    def set_documents_root_listener(
+        self, callback: Callable[[Path | None], None] | None
+    ) -> None:
+        """Register *callback* to receive documentation root updates."""
+
+        self._documents_root_listener = callback
+        self._notify_documents_root_listener()
 
     @property
     def conversations(self) -> list[ChatConversation]:
@@ -2690,6 +2712,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _load_project_settings(self) -> None:
         self._project_settings = load_agent_project_settings(self._settings_path)
         self._update_project_settings_ui()
+        self._update_documents_root()
 
     def _save_project_settings(self) -> None:
         try:
@@ -2705,20 +2728,38 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return settings.custom_system_prompt.strip()
         return ""
 
+    def _documents_path(self) -> str:
+        settings = getattr(self, "_project_settings", None)
+        if isinstance(settings, AgentProjectSettings):
+            return settings.documents_path.strip()
+        return ""
+
     def _update_project_settings_ui(self) -> None:
         button = getattr(self, "_project_settings_button", None)
         if button is None:
             return
         prompt = self._custom_system_prompt()
+        tooltip_lines: list[str] = []
         if prompt:
-            tooltip = _(
-                "Custom instructions appended to the system prompt:\n{instructions}"
-            ).format(instructions=normalize_for_display(prompt))
-        else:
-            tooltip = _(
-                "Define project-specific instructions appended to the system prompt."
+            tooltip_lines.append(
+                _(
+                    "Custom instructions appended to the system prompt:\n{instructions}"
+                ).format(instructions=normalize_for_display(prompt))
             )
-        button.SetToolTip(tooltip)
+        else:
+            tooltip_lines.append(
+                _(
+                    "Define project-specific instructions appended to the system prompt."
+                )
+            )
+        documents_path = self._documents_path()
+        if documents_path:
+            tooltip_lines.append(
+                _("User documentation folder: {path}").format(
+                    path=normalize_for_display(documents_path)
+                )
+            )
+        button.SetToolTip("\n\n".join(tooltip_lines))
         button.Enable(not self._session.is_running)
 
     def _apply_project_settings(
@@ -2730,11 +2771,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         normalized = settings.normalized()
         if normalized == self._project_settings:
             self._update_project_settings_ui()
+            self._update_documents_root()
             return
         self._project_settings = normalized
         if persist:
             self._save_project_settings()
         self._update_project_settings_ui()
+        self._update_documents_root()
         self._update_conversation_header()
 
     def _on_project_settings(self, _event: wx.Event) -> None:
@@ -2744,11 +2787,52 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if result != wx.ID_OK:
                 return
             prompt = dialog.get_custom_system_prompt()
+            documents_path = dialog.get_documents_path()
             self._apply_project_settings(
-                AgentProjectSettings(custom_system_prompt=prompt)
+                AgentProjectSettings(
+                    custom_system_prompt=prompt, documents_path=documents_path
+                )
             )
         finally:
             dialog.Destroy()
+
+    def _notify_documents_root_listener(self) -> None:
+        callback = getattr(self, "_documents_root_listener", None)
+        if callback is None:
+            return
+        try:
+            callback(self._documents_root)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to notify documents root listener")
+
+    def _resolve_documents_root(self) -> Path | None:
+        documents_path = self._documents_path()
+        if not documents_path:
+            return None
+        try:
+            candidate = Path(documents_path).expanduser()
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning("Invalid documents path %s: %s", documents_path, exc)
+            return None
+        if candidate.is_absolute():
+            return candidate
+        base = getattr(self, "_requirements_directory", None)
+        if base is None:
+            return None
+        try:
+            base_path = Path(base).expanduser()
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning("Invalid requirements base %s: %s", base, exc)
+            return None
+        return (base_path / candidate).resolve(strict=False)
+
+    def _update_documents_root(self) -> None:
+        resolved = self._resolve_documents_root()
+        current = getattr(self, "_documents_root", None)
+        if current == resolved:
+            return
+        self._documents_root = resolved
+        self._notify_documents_root_listener()
 
     def _active_index(self) -> int | None:
         active_id = self.active_conversation_id

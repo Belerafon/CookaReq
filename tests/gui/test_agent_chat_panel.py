@@ -567,6 +567,28 @@ def test_agent_custom_system_prompt_appended(tmp_path, wx_app):
         assert entry.diagnostic["history_messages"][0]["content"] == custom_prompt
     finally:
         destroy_panel(frame, panel)
+
+
+def test_agent_project_settings_dialog_handles_documents_path(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.agent_chat_panel.settings_dialog import AgentProjectSettingsDialog
+
+    frame = wx.Frame(None)
+    settings = AgentProjectSettings(
+        custom_system_prompt="Existing",
+        documents_path=str(tmp_path / "docs"),
+    )
+
+    try:
+        dialog = AgentProjectSettingsDialog(frame, settings=settings)
+        try:
+            assert dialog.get_documents_path().endswith("docs")
+            dialog._documents_path.SetValue("   relative/manuals   ")
+            assert dialog.get_documents_path() == "relative/manuals"
+        finally:
+            dialog.Destroy()
+    finally:
+        frame.Destroy()
 def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):

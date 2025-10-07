@@ -16,6 +16,7 @@ from .requirements import (
     rid_for,
     stable_color,
 )
+from .user_documents import UserDocumentsService
 
 __all__ = [
     "RequirementsService",
@@ -32,4 +33,5 @@ __all__ = [
     "parse_rid",
     "rid_for",
     "stable_color",
+    "UserDocumentsService",
 ]

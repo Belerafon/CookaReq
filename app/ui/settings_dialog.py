@@ -138,11 +138,6 @@ MCP_HELP: dict[str, str] = {
         "Base folder with requirements. Example: /tmp/reqs\n"
         "Required; the server serves files from this directory.",
     ),
-    "documents_path": _(
-        "Documentation directory visible to MCP tools. Example: share\n"
-        "Relative paths are resolved from the active requirements folder.\n"
-        "Leave empty to disable documentation access.",
-    ),
     "log_dir": _(
         "Directory for MCP request logs. Example: /var/log/cookareq\n"
         "Leave empty to store logs in the standard application log folder.",
@@ -649,14 +644,6 @@ class SettingsDialog(wx.Dialog):
             self._documents_browse,
             0,
             wx.LEFT,
-            5,
-        )
-        documents_sz.Add(
-            make_help_button(
-                mcp, MCP_HELP["documents_path"], dialog_parent=self
-            ),
-            0,
-            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
         )
         mcp_sizer.Add(documents_sz, 0, wx.ALL | wx.EXPAND, 5)

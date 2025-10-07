@@ -8,6 +8,7 @@ from typing import Any
 from collections.abc import Callable, Mapping, Sequence
 
 from app.confirm import ConfirmDecision, reset_requirement_update_preference, set_confirm, set_requirement_update_confirm
+from app.llm.spec import SYSTEM_PROMPT
 from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel.token_usage import summarize_token_usage
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
@@ -16,6 +17,7 @@ from app.ui.agent_chat_panel.components.segments import (
     MessageSegmentPanel,
     TurnCard,
 )
+from app.ui.agent_chat_panel.execution import _AgentRunHandle
 from app.ui.agent_chat_panel.view_model import (
     TranscriptEntry,
     build_conversation_timeline,
@@ -26,6 +28,7 @@ from app.ui.agent_chat_panel.layout import PRIMARY_ACTION_IDLE_LABEL
 from app.ui.chat_entry import ChatConversation, ChatEntry
 from app.ui.agent_chat_panel.history_store import HistoryStore
 from app.ui.widgets.chat_message import MessageBubble
+from app.util.cancellation import CancellationEvent
 from app import i18n
 
 import pytest
@@ -3376,6 +3379,107 @@ def test_agent_chat_panel_updates_status_with_token_count(
         assert tokens.tokens is not None and 990 <= tokens.tokens <= 1010
         assert tokens.approximate
     finally:
+        destroy_panel(frame, panel)
+
+
+def test_wait_status_reports_full_prompt_tokens(tmp_path, wx_app, monkeypatch):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    model_name = "fake-model"
+    system_text = str(SYSTEM_PROMPT)
+    token_map = {
+        system_text: 100,
+        "history prompt": 10,
+        "history response": 20,
+        "context-role": 5,
+        "context message": 15,
+        "user prompt": 30,
+    }
+
+    def fake_count(text, *, model=None):
+        value = token_map.get(str(text), 0)
+        return TokenCountResult.exact(value, model=model or model_name)
+
+    monkeypatch.setattr("app.ui.agent_chat_panel.panel.count_text_tokens", fake_count)
+    monkeypatch.setattr("app.ui.chat_entry.count_text_tokens", fake_count)
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
+
+    try:
+        panel._token_model = lambda: model_name
+        conversation = panel._ensure_active_conversation()
+        conversation.append_entry(
+            ChatEntry(
+                prompt="history prompt",
+                response="history response",
+                tokens=0,
+                token_info=TokenCountResult.exact(0, model=model_name),
+                prompt_at="2024-01-01T00:00:00Z",
+                response_at="2024-01-01T00:01:00Z",
+            )
+        )
+
+        context_messages = ({"role": "context-role", "content": "context message"},)
+
+        handle = _AgentRunHandle(
+            run_id=1,
+            prompt="user prompt",
+            prompt_tokens=TokenCountResult.exact(token_map["user prompt"], model=model_name),
+            cancel_event=CancellationEvent(),
+            prompt_at="2024-01-01T00:02:00Z",
+        )
+        handle.context_messages = context_messages
+
+        pending_entry = panel._add_pending_entry(
+            conversation,
+            "user prompt",
+            prompt_at="2024-01-01T00:02:00Z",
+            context_messages=context_messages,
+        )
+        handle.pending_entry = pending_entry
+
+        class _CoordinatorStub:
+            def __init__(self, active_handle):
+                self.active_handle = active_handle
+
+            def stop(self) -> None:  # pragma: no cover - cleanup helper
+                return None
+
+        panel._coordinator = _CoordinatorStub(handle)
+
+        breakdown = panel._compute_context_token_breakdown()
+        expected_total = sum(
+            token_map[key]
+            for key in (
+                system_text,
+                "history prompt",
+                "history response",
+                "context-role",
+                "context message",
+                "user prompt",
+            )
+        )
+        assert breakdown.total.tokens == expected_total
+
+        panel._set_wait_state(True, handle.prompt_tokens)
+
+        total_tokens = panel.tokens
+        assert total_tokens.tokens == expected_total
+        assert total_tokens.model == model_name
+
+        from app.i18n import _
+
+        details = summarize_token_usage(total_tokens, panel._context_token_limit())
+        expected_label = _("{base} — {details}").format(
+            base=_("Waiting for agent… {time}").format(time="00:00"),
+            details=details,
+        )
+        assert panel.status_label.GetLabel() == expected_label
+    finally:
+        if panel._session.is_running:
+            panel._set_wait_state(False, TokenCountResult.exact(0, model=model_name))
         destroy_panel(frame, panel)
 
 

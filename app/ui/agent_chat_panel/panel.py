@@ -1114,10 +1114,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     ) -> None:
         """Enable or disable busy indicators."""
 
+        effective_tokens = tokens
         if active:
-            self._session.begin_run(tokens=tokens)
+            breakdown = self._compute_context_token_breakdown()
+            effective_tokens = breakdown.total
+        if active:
+            self._session.begin_run(tokens=effective_tokens)
             return
-        self._session.finalize_run(tokens=tokens)
+        self._session.finalize_run(tokens=effective_tokens)
 
     def _adjust_vertical_splitter(self) -> None:
         """Size the vertical splitter so the bottom pane hugs the controls."""

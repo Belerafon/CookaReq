@@ -251,6 +251,7 @@ class MainFrame(
                 persist_confirm_preference=self.config.set_agent_confirm_mode,
                 batch_target_provider=self._agent_batch_targets,
                 batch_context_provider=self._agent_context_for_requirement,
+                documents_subdirectory=self.mcp_settings.documents_path,
             ),
         )
         self._init_mcp_tool_listener()
@@ -347,6 +348,7 @@ class MainFrame(
                 persist_confirm_preference=self.config.set_agent_confirm_mode,
                 batch_target_provider=self._agent_batch_targets,
                 batch_context_provider=self._agent_context_for_requirement,
+                documents_subdirectory=self.mcp_settings.documents_path,
             )
             self._init_mcp_tool_listener()
             history_sash = self.config.get_agent_history_sash(

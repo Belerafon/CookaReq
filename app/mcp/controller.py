@@ -41,6 +41,7 @@ class MCPController:
             settings.host,
             settings.port,
             settings.base_path,
+            settings.documents_path,
             token,
             log_dir=settings.log_dir,
         )

@@ -70,6 +70,7 @@ def _recent_dirs_factory(tmp_path):
         ("language", None),
         ("mcp_auto_start", True),
         ("mcp_base_path", default_requirements_path()),
+        ("mcp_documents_path", "share"),
         ("mcp_port", 59362),
         ("llm_max_context_tokens", DEFAULT_MAX_CONTEXT_TOKENS),
         ("llm_format", "openai-chat"),
@@ -108,6 +109,12 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
         pytest.param("mcp_auto_start", _const(False), _const(False), id="mcp_auto_start"),
         pytest.param("mcp_host", _const("10.0.0.1"), _const("10.0.0.1"), id="mcp_host"),
         pytest.param("mcp_port", _const(6543), _const(6543), id="mcp_port"),
+        pytest.param(
+            "mcp_documents_path",
+            _const("docs"),
+            _const("docs"),
+            id="mcp_documents_path",
+        ),
         pytest.param("mcp_require_token", _const(True), _const(True), id="mcp_require_token"),
         pytest.param("mcp_token", _const("secret"), _const("secret"), id="mcp_token"),
         pytest.param("llm_base_url", _const("http://api"), _const("http://api"), id="llm_base_url"),
@@ -301,6 +308,7 @@ def test_get_mcp_settings_uses_default_requirements(tmp_path, wx_app):
     settings = cfg.get_mcp_settings()
 
     assert settings.base_path == default_requirements_path()
+    assert settings.documents_path == "share"
     assert settings.log_dir is None
 
 
@@ -308,6 +316,7 @@ def test_app_settings_default_uses_sample_requirements():
     settings = AppSettings()
 
     assert settings.mcp.base_path == default_requirements_path()
+    assert settings.mcp.documents_path == "share"
     assert settings.mcp.log_dir is None
     assert settings.llm.base_url == DEFAULT_LLM_BASE_URL
     assert settings.llm.model == DEFAULT_LLM_MODEL

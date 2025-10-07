@@ -80,3 +80,14 @@ def test_base_path_does_not_override_log_directory(tmp_path: Path):
         assert log_dir != tmp_path
     finally:
         stop_server()
+
+
+def test_documents_root_defaults_to_share(tmp_path: Path):
+    port = 8131
+    stop_server()
+    start_server(port=port, base_path=str(tmp_path))
+    try:
+        _wait_until_ready(port)
+        assert Path(mcp_app.state.documents_root) == (tmp_path / "share").resolve()
+    finally:
+        stop_server()

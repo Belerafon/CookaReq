@@ -31,6 +31,7 @@ from ..log import (
 )
 from ..util.time import utc_now_iso
 from . import tools_read, tools_write
+from .paths import resolve_documents_root
 from .utils import ErrorCode, exception_to_mcp_error, mcp_error, sanitize
 
 # Dedicated logger for MCP request logging so global handlers remain untouched
@@ -415,6 +416,7 @@ def start_server(
     host: str = "127.0.0.1",
     port: int = 59362,
     base_path: str = "",
+    documents_path: str | Path | None = "share",
     token: str = "",
     *,
     log_dir: str | Path | None = None,
@@ -425,6 +427,8 @@ def start_server(
         host: Interface to bind the server to.
         port: TCP port where the server listens.
         base_path: Base filesystem path available to the MCP server.
+        documents_path: Directory containing user documentation accessible to
+            tools. Relative paths are resolved against ``base_path``.
         token: Authorization token expected in the ``Authorization`` header.
         log_dir: Directory where request logs are stored.  Defaults to the
             application log directory under ``mcp`` when not provided.
@@ -436,6 +440,8 @@ def start_server(
         return
 
     app.state.base_path = base_path
+    documents_root = resolve_documents_root(base_path, documents_path)
+    app.state.documents_root = str(documents_root) if documents_root else None
     app.state.expected_token = token
     resolved_log_dir = _configure_request_logging(log_dir)
     app.state.log_dir = str(resolved_log_dir)
@@ -509,3 +515,4 @@ def stop_server() -> None:
 
     elapsed = time.perf_counter() - start
     logger.info("MCP server shutdown cleanup completed in %.3fs", elapsed)
+    app.state.documents_root = None

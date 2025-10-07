@@ -21,6 +21,7 @@ from ...confirm import confirm
 from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT, TOOLS
 from ...llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
+from ...mcp.paths import normalize_documents_path, resolve_documents_root
 from ...util.time import utc_now_iso
 from ..chat_entry import (
     ChatConversation,
@@ -148,6 +149,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         *,
         agent_supplier: Callable[..., LocalAgent],
         history_path: Path | str | None = None,
+        documents_subdirectory: str | None = "share",
         command_executor: AgentCommandExecutor | None = None,
         token_model_resolver: Callable[[], str | None] | None = None,
         context_provider: Callable[
@@ -174,6 +176,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._documents_root_listener: Callable[[Path | None], None] | None = None
         self._requirements_directory: Path | None = None
         self._documents_root: Path | None = None
+        self._documents_subdirectory = normalize_documents_path(
+            documents_subdirectory
+        )
         self._project_settings = load_agent_project_settings(self._settings_path)
         self._update_documents_root()
         self._token_model_resolver = (
@@ -312,6 +317,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self.set_history_path(history_path_for_documents(directory))
         self.set_project_settings_path(settings_path_for_documents(directory))
         self._update_documents_root()
+        self._update_project_settings_ui()
 
     @property
     def history_path(self) -> Path:
@@ -350,6 +356,22 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         """Return the resolved documentation root directory if configured."""
 
         return self._documents_root
+
+    @property
+    def documents_subdirectory(self) -> str:
+        """Return the configured documentation subdirectory relative to requirements."""
+
+        return getattr(self, "_documents_subdirectory", "")
+
+    def set_documents_subdirectory(self, value: str | None) -> None:
+        """Update documentation subdirectory and notify listeners if it changes."""
+
+        normalized = normalize_documents_path(value)
+        if normalized == getattr(self, "_documents_subdirectory", ""):
+            return
+        self._documents_subdirectory = normalized
+        self._update_documents_root()
+        self._update_project_settings_ui()
 
     def set_documents_root_listener(
         self, callback: Callable[[Path | None], None] | None
@@ -2728,12 +2750,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return settings.custom_system_prompt.strip()
         return ""
 
-    def _documents_path(self) -> str:
-        settings = getattr(self, "_project_settings", None)
-        if isinstance(settings, AgentProjectSettings):
-            return settings.documents_path.strip()
-        return ""
-
     def _update_project_settings_ui(self) -> None:
         button = getattr(self, "_project_settings_button", None)
         if button is None:
@@ -2752,13 +2768,23 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     "Define project-specific instructions appended to the system prompt."
                 )
             )
-        documents_path = self._documents_path()
-        if documents_path:
-            tooltip_lines.append(
-                _("User documentation folder: {path}").format(
-                    path=normalize_for_display(documents_path)
+        subdirectory = self.documents_subdirectory
+        if subdirectory:
+            resolved = self.documents_root
+            if resolved is not None:
+                tooltip_lines.append(
+                    _("Documentation folder: {path}").format(
+                        path=normalize_for_display(str(resolved))
+                    )
                 )
-            )
+            else:
+                tooltip_lines.append(
+                    _(
+                        "Documentation folder pending: {path} (open a requirements folder)"
+                    ).format(path=normalize_for_display(subdirectory))
+                )
+        else:
+            tooltip_lines.append(_("Documentation folder access disabled."))
         button.SetToolTip("\n\n".join(tooltip_lines))
         button.Enable(not self._session.is_running)
 
@@ -2787,11 +2813,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if result != wx.ID_OK:
                 return
             prompt = dialog.get_custom_system_prompt()
-            documents_path = dialog.get_documents_path()
             self._apply_project_settings(
-                AgentProjectSettings(
-                    custom_system_prompt=prompt, documents_path=documents_path
-                )
+                AgentProjectSettings(custom_system_prompt=prompt)
             )
         finally:
             dialog.Destroy()
@@ -2806,25 +2829,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             logger.exception("Failed to notify documents root listener")
 
     def _resolve_documents_root(self) -> Path | None:
-        documents_path = self._documents_path()
-        if not documents_path:
-            return None
-        try:
-            candidate = Path(documents_path).expanduser()
-        except Exception as exc:  # pragma: no cover - defensive logging
-            logger.warning("Invalid documents path %s: %s", documents_path, exc)
-            return None
-        if candidate.is_absolute():
-            return candidate
         base = getattr(self, "_requirements_directory", None)
-        if base is None:
-            return None
-        try:
-            base_path = Path(base).expanduser()
-        except Exception as exc:  # pragma: no cover - defensive logging
-            logger.warning("Invalid requirements base %s: %s", base, exc)
-            return None
-        return (base_path / candidate).resolve(strict=False)
+        base_text = str(base) if base is not None else None
+        resolved = resolve_documents_root(base_text, self.documents_subdirectory)
+        return resolved
 
     def _update_documents_root(self) -> None:
         resolved = self._resolve_documents_root()
@@ -2833,6 +2841,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return
         self._documents_root = resolved
         self._notify_documents_root_listener()
+        self._update_project_settings_ui()
 
     def _active_index(self) -> int | None:
         active_id = self.active_conversation_id

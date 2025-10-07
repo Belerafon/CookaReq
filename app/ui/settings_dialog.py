@@ -818,30 +818,14 @@ class SettingsDialog(wx.Dialog):
             assert description.resolved is not None
             resolved_text = str(description.resolved)
             exists = description.resolved.exists()
-            if description.is_relative:
-                if exists:
-                    label = _("Documentation root: {source} → {path}").format(
-                        source=description.input_path,
-                        path=resolved_text,
-                    )
-                    colour = self._documents_hint_success_colour
-                else:
-                    label = _(
-                        "Documentation root: {source} → {path} (missing)"
-                    ).format(
-                        source=description.input_path,
-                        path=resolved_text,
-                    )
-                    colour = self._documents_hint_error_colour
+            if exists:
+                label = _("Documentation root: {path}").format(path=resolved_text)
+                colour = self._documents_hint_success_colour
             else:
-                if exists:
-                    label = _("Documentation root: {path}").format(path=resolved_text)
-                    colour = self._documents_hint_success_colour
-                else:
-                    label = _("Documentation root: {path} (missing)").format(
-                        path=resolved_text
-                    )
-                    colour = self._documents_hint_error_colour
+                label = _("Documentation root: {path} (missing)").format(
+                    path=resolved_text
+                )
+                colour = self._documents_hint_error_colour
         self._documents_hint.SetLabel(label)
         self._documents_hint.SetForegroundColour(colour)
         parent = self._documents_hint.GetParent()

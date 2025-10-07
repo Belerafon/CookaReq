@@ -20,6 +20,10 @@ from .llm.constants import (
 )
 
 
+DEFAULT_DOCUMENT_MAX_READ_KB = 10
+MAX_DOCUMENT_MAX_READ_KB = 512
+
+
 class LLMSettings(BaseModel):
     """Settings for connecting to an LLM service."""
 
@@ -125,6 +129,7 @@ class MCPSettings(BaseModel):
     port: int = 59362
     base_path: str = Field(default_factory=default_requirements_path)
     documents_path: str = "share"
+    documents_max_read_kb: int = DEFAULT_DOCUMENT_MAX_READ_KB
     log_dir: str | None = None
     require_token: bool = False
     token: str = ""
@@ -150,6 +155,33 @@ class MCPSettings(BaseModel):
             return ""
         text = str(value).strip()
         return text
+
+    @field_validator("documents_max_read_kb", mode="before")
+    @classmethod
+    def _normalize_documents_max_read_kb(
+        cls, value: int | str | None
+    ) -> int:
+        """Coerce ``value`` into the supported documentation read window."""
+
+        if value is None:
+            return DEFAULT_DOCUMENT_MAX_READ_KB
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return DEFAULT_DOCUMENT_MAX_READ_KB
+            try:
+                parsed = int(raw)
+            except ValueError:  # pragma: no cover - delegated to Pydantic
+                return value
+        else:
+            if isinstance(value, bool):
+                raise TypeError("Boolean is not a valid documents_max_read_kb")
+            parsed = int(value)
+        if parsed <= 0:
+            return DEFAULT_DOCUMENT_MAX_READ_KB
+        if parsed > MAX_DOCUMENT_MAX_READ_KB:
+            return MAX_DOCUMENT_MAX_READ_KB
+        return parsed
 
 
 DEFAULT_LIST_COLUMNS = list(BASE_DEFAULT_LIST_COLUMNS)

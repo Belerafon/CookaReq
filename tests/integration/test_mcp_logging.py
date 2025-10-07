@@ -19,7 +19,14 @@ def test_request_logged_and_token_masked():
     with TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         stop_server()
-        start_server(port=port, base_path=tmp, token="secret", log_dir=tmp_path)
+        start_server(
+            port=port,
+            base_path=tmp,
+            token="secret",
+            log_dir=tmp_path,
+            max_context_tokens=8192,
+            token_model="test-mcp",
+        )
         try:
             _wait_until_ready(port, {"Authorization": "Bearer secret"})
             status, _ = _request(port, {"Authorization": "Bearer secret"})
@@ -54,7 +61,13 @@ def test_request_logged_and_token_masked():
 def test_tool_request_logs_share_request_id(tmp_path: Path):
     port = 8128
     stop_server()
-    start_server(port=port, base_path=str(tmp_path), log_dir=tmp_path)
+    start_server(
+        port=port,
+        base_path=str(tmp_path),
+        log_dir=tmp_path,
+        max_context_tokens=8192,
+        token_model="test-mcp",
+    )
     try:
         _wait_until_ready(port)
         conn = HTTPConnection("127.0.0.1", port, timeout=5)

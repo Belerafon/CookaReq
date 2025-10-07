@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from types import SimpleNamespace
+
 from app.settings import MCPSettings
 from app.ui.main_frame.documents import MainFrameDocumentsMixin
 
@@ -26,7 +28,7 @@ class _StubMCPController:
         self.stop_calls += 1
         self._running = False
 
-    def start(self, settings: MCPSettings) -> None:
+    def start(self, settings: MCPSettings, **_: object) -> None:
         self.start_calls += 1
         self.started_with = settings
         self._running = True
@@ -40,6 +42,10 @@ class _StubFrame(MainFrameDocumentsMixin):
             base_path=str(base_path),
         )
         self.mcp = _StubMCPController(running=running)
+        self.llm_settings = SimpleNamespace(
+            max_context_tokens=4096,
+            model="test-model",
+        )
 
 
 def test_sync_mcp_base_path_restarts_running_server_when_auto_start_disabled(tmp_path):

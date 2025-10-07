@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Mapping
 
+from ...mcp.paths import normalize_documents_path
+
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +20,14 @@ class AgentProjectSettings:
     """Immutable container with project-specific agent options."""
 
     custom_system_prompt: str = ""
+    documents_path: str = ""
 
-    def normalized(self) -> AgentProjectSettings:
+    def normalized(self) -> "AgentProjectSettings":
         """Return settings with whitespace-normalised fields."""
 
         return AgentProjectSettings(
             custom_system_prompt=self.custom_system_prompt.strip(),
+            documents_path=normalize_documents_path(self.documents_path),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -31,8 +35,9 @@ class AgentProjectSettings:
 
         normalized = self.normalized()
         return {
-            "version": 3,
+            "version": 4,
             "custom_system_prompt": normalized.custom_system_prompt,
+            "documents_path": normalized.documents_path,
         }
 
     @classmethod
@@ -42,7 +47,13 @@ class AgentProjectSettings:
         prompt = payload.get("custom_system_prompt", "")
         if not isinstance(prompt, str):
             prompt = ""
-        return cls(custom_system_prompt=prompt.strip())
+        documents_path = payload.get("documents_path", "")
+        if not isinstance(documents_path, str):
+            documents_path = ""
+        return cls(
+            custom_system_prompt=prompt.strip(),
+            documents_path=normalize_documents_path(documents_path),
+        )
 
 
 def load_agent_project_settings(path: Path) -> AgentProjectSettings:

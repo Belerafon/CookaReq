@@ -29,8 +29,12 @@ from ..log import (
     get_log_directory,
     logger,
 )
+from ..services.user_documents import (
+    MAX_ALLOWED_READ_BYTES,
+    UserDocumentsService,
+)
 from ..util.time import utc_now_iso
-from . import tools_read, tools_write
+from . import tools_documents, tools_read, tools_write
 from .paths import resolve_documents_root
 from .utils import ErrorCode, exception_to_mcp_error, mcp_error, sanitize
 
@@ -46,6 +50,9 @@ request_logger.propagate = False
 app = FastAPI()
 app.state.expected_token = ""
 app.state.log_dir = "."
+app.state.max_context_tokens = 0
+app.state.token_model = None
+app.state.documents_service: UserDocumentsService | None = None
 
 _TEXT_LOG_NAME = "server.log"
 _JSONL_LOG_NAME = "server.jsonl"
@@ -320,6 +327,62 @@ def link_requirements(
     )
 
 
+def _documents_service() -> UserDocumentsService | None:
+    return app.state.documents_service
+
+
+@register_tool()
+def list_user_documents() -> dict:
+    """Return the structure of the configured user documentation directory."""
+
+    service = _documents_service()
+    return tools_documents.list_user_documents(service)
+
+
+@register_tool()
+def read_user_document(
+    path: str,
+    *,
+    start_line: int = 1,
+    max_bytes: int | None = None,
+) -> dict:
+    """Read a chunk from a user-provided document."""
+
+    service = _documents_service()
+    return tools_documents.read_user_document(
+        service,
+        path,
+        start_line=start_line,
+        max_bytes=max_bytes,
+    )
+
+
+@register_tool()
+def create_user_document(
+    path: str,
+    *,
+    content: str = "",
+    exist_ok: bool = False,
+) -> dict:
+    """Create a user document relative to the configured root."""
+
+    service = _documents_service()
+    return tools_documents.create_user_document(
+        service,
+        path,
+        content=content,
+        exist_ok=exist_ok,
+    )
+
+
+@register_tool()
+def delete_user_document(path: str) -> dict:
+    """Delete a user document relative to the configured root."""
+
+    service = _documents_service()
+    return tools_documents.delete_user_document(service, path)
+
+
 # --------------------------- MCP endpoint ----------------------------------
 
 
@@ -419,6 +482,9 @@ def start_server(
     documents_path: str | Path | None = "share",
     token: str = "",
     *,
+    max_context_tokens: int,
+    token_model: str | None = None,
+    documents_max_read_kb: int = 10,
     log_dir: str | Path | None = None,
 ) -> None:
     """Start the HTTP server in a background thread.
@@ -430,6 +496,11 @@ def start_server(
         documents_path: Directory containing user documentation accessible to
             tools. Relative paths are resolved against ``base_path``.
         token: Authorization token expected in the ``Authorization`` header.
+        max_context_tokens: Maximum context window used for percentage
+            calculations when reporting document sizes.
+        token_model: Identifier of the tokenizer model used for token counts.
+        documents_max_read_kb: Maximum number of kilobytes returned by
+            ``read_user_document`` when the agent omits ``max_bytes``.
         log_dir: Directory where request logs are stored.  Defaults to the
             application log directory under ``mcp`` when not provided.
     """
@@ -439,9 +510,30 @@ def start_server(
         # Server already running
         return
 
+    max_read_kb = int(documents_max_read_kb)
+    if max_read_kb <= 0:
+        raise ValueError("documents_max_read_kb must be positive")
+    if max_read_kb * 1024 > MAX_ALLOWED_READ_BYTES:
+        raise ValueError(
+            "documents_max_read_kb exceeds supported limit"
+            f" ({MAX_ALLOWED_READ_BYTES // 1024} KiB)"
+        )
+
     app.state.base_path = base_path
     documents_root = resolve_documents_root(base_path, documents_path)
     app.state.documents_root = str(documents_root) if documents_root else None
+    app.state.max_context_tokens = int(max_context_tokens)
+    app.state.token_model = token_model
+    app.state.documents_max_read_bytes = max_read_kb * 1024
+    if documents_root is not None:
+        app.state.documents_service = UserDocumentsService(
+            documents_root,
+            max_context_tokens=max_context_tokens,
+            token_model=token_model,
+            max_read_bytes=app.state.documents_max_read_bytes,
+        )
+    else:
+        app.state.documents_service = None
     app.state.expected_token = token
     resolved_log_dir = _configure_request_logging(log_dir)
     app.state.log_dir = str(resolved_log_dir)
@@ -516,3 +608,6 @@ def stop_server() -> None:
     elapsed = time.perf_counter() - start
     logger.info("MCP server shutdown cleanup completed in %.3fs", elapsed)
     app.state.documents_root = None
+    app.state.documents_service = None
+    app.state.max_context_tokens = 0
+    app.state.token_model = None

@@ -33,7 +33,13 @@ class MCPCheckResult:
 class MCPController:
     """Service layer controlling the MCP server."""
 
-    def start(self, settings: MCPSettings) -> None:
+    def start(
+        self,
+        settings: MCPSettings,
+        *,
+        max_context_tokens: int,
+        token_model: str | None,
+    ) -> None:
         """Launch the MCP server with ``settings``."""
 
         token = settings.token if settings.require_token else ""
@@ -43,6 +49,9 @@ class MCPController:
             settings.base_path,
             settings.documents_path,
             token,
+            max_context_tokens=max_context_tokens,
+            token_model=token_model,
+            documents_max_read_kb=settings.documents_max_read_kb,
             log_dir=settings.log_dir,
         )
 

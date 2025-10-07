@@ -62,6 +62,7 @@ def test_settings_dialog_returns_language(wx_app):
         port=59362,
         base_path="/tmp",
         documents_path="docs",
+        documents_max_read_kb=12,
         log_dir="/logs",
         require_token=True,
         token="abc",
@@ -87,6 +88,7 @@ def test_settings_dialog_returns_language(wx_app):
         59362,
         "/tmp",
         "docs",
+        12,
         "/logs",
         True,
         "abc",
@@ -140,6 +142,7 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         port=8123,
         base_path="/tmp",
         documents_path="manuals",
+        documents_max_read_kb=24,
         log_dir="",
         require_token=False,
         token="",
@@ -158,10 +161,11 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         settings.port,
         settings.base_path,
         settings.documents_path,
+        settings.documents_max_read_kb,
         settings.log_dir,
         settings.require_token,
         settings.token,
-    ) == ("localhost", 8123, "/tmp", "manuals", None, False, "")
+    ) == ("localhost", 8123, "/tmp", "manuals", 24, None, False, "")
     assert not dlg._start.IsEnabled()
     assert dlg._stop.IsEnabled()
     assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('running')}"
@@ -224,6 +228,7 @@ def test_mcp_check_status(monkeypatch, wx_app):
         port=8123,
         base_path="/tmp",
         documents_path="docs",
+        documents_max_read_kb=10,
         log_dir="",
         require_token=True,
         token="abc",
@@ -299,6 +304,7 @@ def test_llm_agent_checks(monkeypatch, wx_app):
         port=59362,
         base_path="/tmp",
         documents_path="share",
+        documents_max_read_kb=10,
         log_dir="",
         require_token=False,
         token="",
@@ -363,6 +369,7 @@ def test_llm_agent_check_failure_logs(monkeypatch, wx_app):
         port=59362,
         base_path="/tmp",
         documents_path="share",
+        documents_max_read_kb=10,
         log_dir="",
         require_token=False,
         token="",
@@ -412,6 +419,7 @@ def test_settings_help_buttons(monkeypatch, wx_app):
         port=8000,
         base_path="/tmp",
         documents_path="share",
+        documents_max_read_kb=10,
         log_dir="",
         require_token=False,
         token="",
@@ -465,6 +473,7 @@ def test_documents_hint_tracks_filesystem(wx_app, tmp_path):
         port=8123,
         base_path=str(base_dir),
         documents_path="docs",
+        documents_max_read_kb=10,
         log_dir="",
         require_token=False,
         token="",
@@ -474,7 +483,10 @@ def test_documents_hint_tracks_filesystem(wx_app, tmp_path):
     wx.YieldIfNeeded()
     hint = dlg._documents_hint
     expected_path = str(docs_dir.resolve())
-    assert hint.GetLabel() == f"Documentation root: docs → {expected_path}"
+    assert (
+        hint.GetLabel()
+        == f"Documentation root: {expected_path} — default read limit: 10 KiB"
+    )
     assert hint.GetForegroundColour() == wx.Colour(0, 128, 0)
 
     dlg._documents_path.SetValue("missing")
@@ -482,13 +494,14 @@ def test_documents_hint_tracks_filesystem(wx_app, tmp_path):
     missing_path = str((base_dir / "missing").resolve())
     assert (
         hint.GetLabel()
-        == f"Documentation root: missing → {missing_path} (missing)"
+        == f"Documentation root: {missing_path} (missing) — default read limit: 10 KiB"
     )
     assert hint.GetForegroundColour() == wx.Colour(178, 34, 34)
 
     dlg._documents_path.SetValue("")
     wx.YieldIfNeeded()
-    assert "disabled" in hint.GetLabel()
+    assert "Documentation disabled" in hint.GetLabel()
+    assert hint.GetLabel().endswith("default read limit: 10 KiB")
     assert (
         hint.GetForegroundColour() == dlg._documents_hint_default_colour
     )
@@ -523,6 +536,7 @@ def test_documents_hint_supports_absolute_path(wx_app, tmp_path):
         port=8123,
         base_path=str(tmp_path / "requirements"),
         documents_path=str(docs_dir),
+        documents_max_read_kb=10,
         log_dir="",
         require_token=False,
         token="",
@@ -532,13 +546,19 @@ def test_documents_hint_supports_absolute_path(wx_app, tmp_path):
     wx.YieldIfNeeded()
     hint = dlg._documents_hint
     absolute_text = str(docs_dir)
-    assert hint.GetLabel() == f"Documentation root: {absolute_text}"
+    assert (
+        hint.GetLabel()
+        == f"Documentation root: {absolute_text} — default read limit: 10 KiB"
+    )
     assert hint.GetForegroundColour() == wx.Colour(0, 128, 0)
 
     dlg._documents_path.SetValue(str(docs_dir / "missing"))
     wx.YieldIfNeeded()
     missing_abs = str(docs_dir / "missing")
-    assert hint.GetLabel() == f"Documentation root: {missing_abs} (missing)"
+    assert (
+        hint.GetLabel()
+        == f"Documentation root: {missing_abs} (missing) — default read limit: 10 KiB"
+    )
     assert hint.GetForegroundColour() == wx.Colour(178, 34, 34)
 
     dlg.Destroy()

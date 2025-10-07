@@ -10,7 +10,11 @@ from typing import Any, Iterable, Literal, Mapping, Sequence
 
 from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation, ChatEntry
-from .history_utils import history_json_safe, normalise_tool_payloads
+from .history_utils import (
+    history_json_safe,
+    looks_like_tool_payload,
+    normalise_tool_payloads,
+)
 from .time_formatting import format_entry_timestamp, parse_iso_timestamp
 from .tool_summaries import ToolCallSummary, summarize_tool_payload
 
@@ -1897,6 +1901,8 @@ def _iter_tool_payloads(tool_source: Any) -> Iterable[Mapping[str, Any]]:
     result: list[Mapping[str, Any]] = []
     for payload in payloads:
         if isinstance(payload, Mapping):
+            if not looks_like_tool_payload(payload):
+                continue
             result.append(payload)
     return tuple(result)
 

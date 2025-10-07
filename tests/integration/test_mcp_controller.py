@@ -85,10 +85,24 @@ def test_controller_start_stop(monkeypatch):
         documents_path,
         token,
         *,
+        max_context_tokens,
+        token_model,
+        documents_max_read_kb,
         log_dir=None,
     ) -> None:
         calls.append(
-            ("start", host, port, base_path, documents_path, token, log_dir)
+            (
+                "start",
+                host,
+                port,
+                base_path,
+                documents_path,
+                token,
+                max_context_tokens,
+                token_model,
+                documents_max_read_kb,
+                log_dir,
+            )
         )
 
     monkeypatch.setattr("app.mcp.controller.start_server", fake_start)
@@ -99,9 +113,20 @@ def test_controller_start_stop(monkeypatch):
 
     ctrl = MCPController()
     settings = MCPSettings(host="localhost", port=8123, base_path="/tmp", token="")
-    ctrl.start(settings)
+    ctrl.start(settings, max_context_tokens=8192, token_model="test-mcp")
     ctrl.stop()
     assert calls == [
-        ("start", "localhost", 8123, "/tmp", settings.documents_path, "", None),
+        (
+            "start",
+            "localhost",
+            8123,
+            "/tmp",
+            settings.documents_path,
+            "",
+            8192,
+            "test-mcp",
+            settings.documents_max_read_kb,
+            None,
+        ),
         ("stop",),
     ]

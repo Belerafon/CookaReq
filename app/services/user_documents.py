@@ -8,7 +8,8 @@ from typing import Iterable, Iterator
 
 from ..llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
 
-MAX_READ_BYTES = 10_240
+DEFAULT_MAX_READ_BYTES = 10_240
+MAX_ALLOWED_READ_BYTES = 524_288
 
 
 @dataclass(slots=True)
@@ -49,12 +50,20 @@ class UserDocumentsService:
         *,
         max_context_tokens: int,
         token_model: str | None = None,
+        max_read_bytes: int = DEFAULT_MAX_READ_BYTES,
     ) -> None:
         if max_context_tokens <= 0:
             raise ValueError("max_context_tokens must be positive")
+        if max_read_bytes <= 0:
+            raise ValueError("max_read_bytes must be positive")
+        if max_read_bytes > MAX_ALLOWED_READ_BYTES:
+            raise ValueError(
+                f"max_read_bytes must not exceed {MAX_ALLOWED_READ_BYTES}"
+            )
         self.root = Path(root).expanduser().resolve()
         self.max_context_tokens = int(max_context_tokens)
         self.token_model = token_model
+        self.max_read_bytes = int(max_read_bytes)
 
     # ------------------------------------------------------------------
     def list_tree(self) -> dict[str, object]:
@@ -74,6 +83,8 @@ class UserDocumentsService:
             "root": str(self.root),
             "token_model": self.token_model,
             "max_context_tokens": self.max_context_tokens,
+            "max_read_bytes": self.max_read_bytes,
+            "max_read_kib": self.max_read_bytes // 1024,
             "root_entry": entry.to_dict(),
             "entries": [child.to_dict() for child in entry.children],
             "tree_text": text_tree,
@@ -85,15 +96,19 @@ class UserDocumentsService:
         relative_path: str | Path,
         *,
         start_line: int = 1,
-        max_bytes: int = MAX_READ_BYTES,
+        max_bytes: int | None = None,
     ) -> dict[str, object]:
         """Return a chunk of the target file capped at ``max_bytes`` bytes."""
 
         file_path = self._ensure_file(relative_path)
         if start_line < 1:
             raise ValueError("start_line must be >= 1")
-        if max_bytes <= 0 or max_bytes > MAX_READ_BYTES:
-            raise ValueError("max_bytes must be within 1..10_240")
+        if max_bytes is None:
+            max_bytes = self.max_read_bytes
+        if max_bytes <= 0 or max_bytes > self.max_read_bytes:
+            raise ValueError(
+                f"max_bytes must be within 1..{self.max_read_bytes}"
+            )
 
         collected: list[str] = []
         consumed = 0

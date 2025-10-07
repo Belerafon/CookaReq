@@ -47,6 +47,7 @@ class MainFrameSettingsMixin:
             port=self.mcp_settings.port,
             base_path=self.mcp_settings.base_path,
             documents_path=self.mcp_settings.documents_path,
+            documents_max_read_kb=self.mcp_settings.documents_max_read_kb,
             log_dir=self.mcp_settings.log_dir,
             require_token=self.mcp_settings.require_token,
             token=self.mcp_settings.token,
@@ -72,6 +73,7 @@ class MainFrameSettingsMixin:
                 port,
                 base_path,
                 documents_path,
+                documents_max_read_kb,
                 log_dir,
                 require_token,
                 token,
@@ -100,6 +102,7 @@ class MainFrameSettingsMixin:
                 port=port,
                 base_path=base_path,
                 documents_path=documents_path,
+                documents_max_read_kb=documents_max_read_kb,
                 log_dir=log_dir or None,
                 require_token=require_token,
                 token=token,
@@ -122,12 +125,20 @@ class MainFrameSettingsMixin:
             )
             if auto_start_changed:
                 if self.mcp_settings.auto_start:
-                    self.mcp.start(self.mcp_settings)
+                    self.mcp.start(
+                        self.mcp_settings,
+                        max_context_tokens=self.llm_settings.max_context_tokens,
+                        token_model=self.llm_settings.model,
+                    )
                 else:
                     self.mcp.stop()
             elif self.mcp_settings.auto_start and server_config_changed:
                 self.mcp.stop()
-                self.mcp.start(self.mcp_settings)
+                self.mcp.start(
+                    self.mcp_settings,
+                    max_context_tokens=self.llm_settings.max_context_tokens,
+                    token_model=self.llm_settings.model,
+                )
             if language_changed:
                 self._apply_language()
         dlg.Destroy()

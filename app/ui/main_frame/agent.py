@@ -13,6 +13,11 @@ import wx
 
 from ...confirm import ConfirmDecision, RequirementUpdatePrompt
 from ...services.requirements import parse_rid
+from ...services.user_documents import (
+    DEFAULT_MAX_READ_BYTES,
+    MAX_ALLOWED_READ_BYTES,
+    UserDocumentsService,
+)
 from ...core.model import Requirement, requirement_from_dict
 from ...settings import AppSettings
 from ...mcp.events import ToolResultEvent, add_tool_result_listener
@@ -277,7 +282,95 @@ class MainFrameAgentMixin:
                 "Unresolved GUI selection ids: " + ", ".join(unresolved_ids)
             )
 
+        documents_context = self._compose_user_documents_context()
+        if documents_context:
+            lines.append("")
+            lines.extend(documents_context)
+
         return [{"role": "system", "content": "\n".join(lines)}]
+
+    def _compose_user_documents_context(self: MainFrame) -> list[str]:
+        panel = getattr(self, "agent_panel", None)
+        if panel is None:
+            return []
+
+        subdirectory = getattr(panel, "documents_subdirectory", "") or ""
+        lines: list[str] = ["[User documentation]"]
+        if not subdirectory:
+            lines.append("Documentation folder access disabled (no path configured).")
+            return lines
+
+        documents_root = getattr(panel, "documents_root", None)
+        if documents_root is None:
+            lines.append(
+                "Documentation folder pending: "
+                f"{subdirectory} (open a requirements folder to resolve)."
+            )
+            return lines
+
+        llm_settings = getattr(self, "llm_settings", None)
+        try:
+            max_context_tokens = int(
+                getattr(llm_settings, "max_context_tokens", 0) or 0
+            )
+        except Exception:
+            max_context_tokens = 0
+        if max_context_tokens <= 0:
+            max_context_tokens = 1
+        token_model = getattr(llm_settings, "model", None)
+
+        mcp_settings = getattr(self, "mcp_settings", None)
+        try:
+            documents_max_read_kb = int(
+                getattr(mcp_settings, "documents_max_read_kb", 0) or 0
+            )
+        except Exception:
+            documents_max_read_kb = 0
+        if documents_max_read_kb <= 0:
+            max_read_bytes = DEFAULT_MAX_READ_BYTES
+        else:
+            max_read_bytes = documents_max_read_kb * 1024
+        max_read_bytes = max(1, min(MAX_ALLOWED_READ_BYTES, max_read_bytes))
+
+        try:
+            service = UserDocumentsService(
+                documents_root,
+                max_context_tokens=max_context_tokens,
+                token_model=token_model,
+                max_read_bytes=max_read_bytes,
+            )
+            snapshot = service.list_tree()
+        except Exception as exc:
+            lines.append(
+                "Failed to enumerate documentation folder: "
+                f"{getattr(exc, 'message', None) or exc}"
+            )
+            return lines
+
+        lines.append(f"Resolved documentation root: {documents_root}")
+        read_limit = snapshot.get("max_read_bytes", max_read_bytes)
+        read_kib = snapshot.get("max_read_kib")
+        if read_kib is None:
+            read_kib = read_limit // 1024
+        lines.append(
+            "Read chunk limit: {bytes} bytes (~{kib} KiB)".format(
+                bytes=read_limit,
+                kib=read_kib,
+            )
+        )
+        tree_model = snapshot.get("token_model")
+        if tree_model:
+            lines.append(f"Token model for analysis: {tree_model}")
+        lines.append(f"Context window tokens: {snapshot.get('max_context_tokens')}")
+
+        tree_text = str(snapshot.get("tree_text", "")).strip()
+        if tree_text:
+            lines.append("Directory tree:")
+            lines.append(tree_text)
+        else:
+            lines.append("Directory tree: (empty)")
+
+        return lines
 
     def _agent_context_for_requirement(
         self: MainFrame, requirement_id: int

@@ -38,6 +38,12 @@ def _create_main_frame(tmp_path: Path):
 
 def test_agent_context_includes_selected_requirements(tmp_path, wx_app):
     repository = _copy_sample_repository(tmp_path)
+    docs_root = repository / "share"
+    docs_root.mkdir()
+    (docs_root / "ГОСТ требования.txt").write_text("Содержание", encoding="utf-8")
+    nested = docs_root / "папка с пробелами"
+    nested.mkdir()
+    (nested / "описание.md").write_text("# Заголовок", encoding="utf-8")
     frame = _create_main_frame(tmp_path)
 
     try:
@@ -63,6 +69,10 @@ def test_agent_context_includes_selected_requirements(tmp_path, wx_app):
         assert "prefix=" not in content
         assert "DEMO1" in content
         assert "DEMO2" in content
+        assert "[User documentation]" in content
+        assert "Directory tree:" in content
+        assert "ГОСТ требования.txt" in content
+        assert "папка с пробелами" in content
     finally:
         frame.Destroy()
         wx_app.Yield()

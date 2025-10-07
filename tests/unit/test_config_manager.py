@@ -14,6 +14,7 @@ from app.llm.constants import (
 from app.settings import (
     AppSettings,
     DEFAULT_LIST_COLUMNS,
+    DEFAULT_DOCUMENT_MAX_READ_KB,
     LLMSettings,
     MCPSettings,
     UISettings,
@@ -71,6 +72,7 @@ def _recent_dirs_factory(tmp_path):
         ("mcp_auto_start", True),
         ("mcp_base_path", default_requirements_path()),
         ("mcp_documents_path", "share"),
+        ("mcp_documents_max_read_kb", DEFAULT_DOCUMENT_MAX_READ_KB),
         ("mcp_port", 59362),
         ("llm_max_context_tokens", DEFAULT_MAX_CONTEXT_TOKENS),
         ("llm_format", "openai-chat"),
@@ -114,6 +116,12 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
             _const("docs"),
             _const("docs"),
             id="mcp_documents_path",
+        ),
+        pytest.param(
+            "mcp_documents_max_read_kb",
+            _const(32),
+            _const(32),
+            id="mcp_documents_max_read_kb",
         ),
         pytest.param("mcp_require_token", _const(True), _const(True), id="mcp_require_token"),
         pytest.param("mcp_token", _const("secret"), _const("secret"), id="mcp_token"),
@@ -309,6 +317,7 @@ def test_get_mcp_settings_uses_default_requirements(tmp_path, wx_app):
 
     assert settings.base_path == default_requirements_path()
     assert settings.documents_path == "share"
+    assert settings.documents_max_read_kb == DEFAULT_DOCUMENT_MAX_READ_KB
     assert settings.log_dir is None
 
 
@@ -317,6 +326,7 @@ def test_app_settings_default_uses_sample_requirements():
 
     assert settings.mcp.base_path == default_requirements_path()
     assert settings.mcp.documents_path == "share"
+    assert settings.mcp.documents_max_read_kb == DEFAULT_DOCUMENT_MAX_READ_KB
     assert settings.mcp.log_dir is None
     assert settings.llm.base_url == DEFAULT_LLM_BASE_URL
     assert settings.llm.model == DEFAULT_LLM_MODEL

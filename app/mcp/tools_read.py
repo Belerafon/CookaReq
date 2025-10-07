@@ -109,12 +109,44 @@ def _page_to_payload(
         data: dict[str, Any] = requirement_to_dict(req)
         data["rid"] = req.rid
         items.append(_apply_field_selection(data, fields))
+    hint = _build_list_pagination_hint(page, len(items))
     return {
         "total": page.total,
         "page": page.page,
         "per_page": page.per_page,
         "items": items,
+        "usage_hint": hint,
     }
+
+
+def _build_list_pagination_hint(page: RequirementPage, returned: int) -> str:
+    total = page.total
+    requested = page.per_page
+    page_number = page.page
+
+    if total == 0:
+        return (
+            "No requirements were found for the selected parameters. Adjust the filters "
+            "or directory and try again."
+        )
+
+    base = (
+        f"Requested {requested} requirements on page {page_number}; received {returned} "
+        f"of {total}."
+    )
+
+    if returned == 0:
+        return base + " This page has no items—check the page and per_page values."
+
+    if page_number * requested < total:
+        next_page = page_number + 1
+        return (
+            base
+            + f" To fetch the rest, call list_requirements with page={next_page} and the same "
+            f"per_page, or set per_page={total} to retrieve everything at once."
+        )
+
+    return base + " This is the last page; no additional records are available."
 
 
 def list_requirements(

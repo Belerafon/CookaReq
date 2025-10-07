@@ -56,6 +56,54 @@ def test_list_requirements_field_filter(tmp_path):
     ]
 
 
+def test_list_requirements_usage_hint_reports_remaining(tmp_path):
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+    save_item(
+        tmp_path / "SYS",
+        doc,
+        {
+            "id": 1,
+            "title": "Telemetry",
+            "statement": "Collect data",
+            "type": "requirement",
+            "status": "approved",
+            "owner": "QA",
+            "priority": "high",
+            "source": "Spec",
+            "verification": "analysis",
+            "labels": ["telemetry"],
+            "links": [],
+            "notes": "",
+        },
+    )
+    save_item(
+        tmp_path / "SYS",
+        doc,
+        {
+            "id": 2,
+            "title": "Communications",
+            "statement": "Maintain uplink",
+            "type": "requirement",
+            "status": "draft",
+            "owner": "OPS",
+            "priority": "medium",
+            "source": "Spec",
+            "verification": "analysis",
+            "labels": ["comms"],
+            "links": [],
+            "notes": "",
+        },
+    )
+
+    result = list_requirements(tmp_path, per_page=1)
+
+    assert result["usage_hint"].startswith(
+        "Requested 1 requirements on page 1; received 1 of 2."
+    )
+    assert "page=2" in result["usage_hint"]
+
+
 def test_list_requirements_invalid_fields_returns_full_payload(tmp_path):
     _create_demo_requirement(tmp_path)
 

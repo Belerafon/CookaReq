@@ -217,12 +217,10 @@ class AgentChatLayoutBuilder:
         bottom_sizer.AddSpacer(spacing)
 
         input_label = wx.StaticText(bottom_inner, label=_("Ask the agent"))
-        input_ctrl = wx.TextCtrl(
-            bottom_inner, style=wx.TE_PROCESS_ENTER | wx.TE_MULTILINE
-        )
+        input_ctrl = wx.TextCtrl(bottom_inner, style=wx.TE_MULTILINE)
         if hasattr(input_ctrl, "SetHint"):
             input_ctrl.SetHint(_("Describe what you need the agent to do"))
-        input_ctrl.Bind(wx.EVT_TEXT_ENTER, panel._on_send)
+        input_ctrl.Bind(wx.EVT_KEY_DOWN, panel._on_input_key_down)
 
         button_row = wx.BoxSizer(wx.HORIZONTAL)
         run_batch_btn = wx.Button(bottom_inner, label=_("Run batch"))

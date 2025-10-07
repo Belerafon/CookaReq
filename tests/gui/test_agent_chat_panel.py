@@ -103,6 +103,34 @@ def flush_wx_events(wx, count: int = 3) -> None:
         wx.Yield()
 
 
+class FakeKeyEvent:
+    """Minimal stand-in for :class:`wx.KeyEvent` used in key handling tests."""
+
+    def __init__(
+        self,
+        key_code: int,
+        *,
+        control: bool = False,
+        command: bool = False,
+    ) -> None:
+        self._key_code = key_code
+        self._control = control
+        self._command = command
+        self.skipped = False
+
+    def GetKeyCode(self) -> int:
+        return self._key_code
+
+    def ControlDown(self) -> bool:
+        return self._control
+
+    def CmdDown(self) -> bool:
+        return self._command
+
+    def Skip(self) -> None:
+        self.skipped = True
+
+
 def build_entry_timeline(
     *,
     prompt: str = "user",
@@ -356,6 +384,61 @@ def test_attachment_accepts_files_up_to_limit(tmp_path, wx_app):
 
         assert len(text) == MAX_ATTACHMENT_BYTES
         assert size == MAX_ATTACHMENT_BYTES
+    finally:
+        destroy_panel(frame, panel)
+
+
+def test_input_enter_does_not_submit_without_modifier(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        sent_prompts: list[str] = []
+
+        def fake_submit(prompt: str, *, prompt_at: str | None = None) -> None:
+            sent_prompts.append(prompt)
+
+        panel._submit_prompt = fake_submit  # type: ignore[assignment]
+        panel.input.SetValue("hello agent")
+
+        event = FakeKeyEvent(wx.WXK_RETURN)
+        panel._on_input_key_down(event)
+
+        assert event.skipped is True
+        assert sent_prompts == []
+        assert panel.input.GetValue() == "hello agent"
+    finally:
+        destroy_panel(frame, panel)
+
+
+@pytest.mark.parametrize("modifier", ["control", "command"])
+def test_input_modifier_enter_submits_prompt(tmp_path, wx_app, modifier):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        sent_prompts: list[str] = []
+
+        def fake_submit(prompt: str, *, prompt_at: str | None = None) -> None:
+            sent_prompts.append(prompt)
+
+        panel._submit_prompt = fake_submit  # type: ignore[assignment]
+        panel.input.SetValue("send me")
+
+        kwargs = {"control": False, "command": False}
+        kwargs[modifier] = True
+        event = FakeKeyEvent(wx.WXK_RETURN, **kwargs)
+        panel._on_input_key_down(event)
+
+        assert event.skipped is False
+        assert sent_prompts == ["send me"]
+        assert panel.input.GetValue() == ""
     finally:
         destroy_panel(frame, panel)
 

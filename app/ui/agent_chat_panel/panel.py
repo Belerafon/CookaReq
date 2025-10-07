@@ -721,6 +721,20 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         else:
             event.Skip()
 
+    def _on_input_key_down(self, event: wx.KeyEvent) -> None:
+        """Submit the prompt when Ctrl+Enter (or Cmd+Enter) is pressed."""
+
+        key_code = event.GetKeyCode()
+        if key_code not in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            event.Skip()
+            return
+
+        if event.ControlDown() or event.CmdDown():
+            self._on_send(event)
+            return
+
+        event.Skip()
+
     def _on_send(self, _event: wx.Event) -> None:
         """Send prompt to agent."""
 

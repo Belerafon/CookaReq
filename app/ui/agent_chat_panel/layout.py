@@ -233,6 +233,11 @@ class AgentChatLayoutBuilder:
             icon_buttons_to_match.append(attachment_btn)
         attachment_btn.Bind(wx.EVT_BUTTON, panel._on_select_attachment)
         attachment_btn.SetToolTip(_("Attach file…"))
+        attachment_summary = wx.StaticText(
+            bottom_panel,
+            label=_("No file attached"),
+            style=wx.ST_ELLIPSIZE_MIDDLE,
+        )
         settings_btn, settings_uses_icon = self._create_instructions_button(
             bottom_panel
         )
@@ -255,12 +260,22 @@ class AgentChatLayoutBuilder:
         self._ensure_primary_button_capacity(
             primary_btn, primary_idle_visual, primary_stop_visual
         )
+
+        icon_cluster = wx.BoxSizer(wx.HORIZONTAL)
+        icon_cluster.Add(attachment_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
+        icon_cluster.Add(
+            attachment_summary,
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            spacing,
+        )
+        icon_cluster.Add(clear_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
+        icon_cluster.Add(settings_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
+        icon_cluster.Add(primary_btn, 0, wx.ALIGN_TOP)
+
         button_row.Add(run_batch_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
         button_row.Add(stop_batch_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
-        button_row.Add(settings_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
-        button_row.Add(attachment_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
-        button_row.Add(clear_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
-        button_row.Add(primary_btn, 0, wx.ALIGN_TOP)
+        button_row.Add(icon_cluster, 0, wx.ALIGN_TOP)
 
         batch_panel = wx.Panel(bottom_panel)
         inherit_background(batch_panel, bottom_panel)
@@ -293,12 +308,6 @@ class AgentChatLayoutBuilder:
         activity_indicator.SetToolTip(status_help_text)
         status_label.SetToolTip(status_help_text)
 
-        attachment_summary = wx.StaticText(
-            bottom_panel,
-            label=_("No file attached"),
-            style=wx.ST_ELLIPSIZE_MIDDLE,
-        )
-
         confirm_entries: tuple[tuple[RequirementConfirmPreference, str], ...] = (
             (RequirementConfirmPreference.PROMPT, _("Ask every time")),
             (
@@ -328,12 +337,6 @@ class AgentChatLayoutBuilder:
         controls_row.Add(
             status_row,
             0,
-            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
-            spacing,
-        )
-        controls_row.Add(
-            attachment_summary,
-            1,
             wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
             spacing,
         )
@@ -958,9 +961,9 @@ _CLEAR_INPUT_ICON_SVG_TEMPLATE = dedent(
 _INSTRUCTIONS_ICON_SVG_TEMPLATE = dedent(
     """
     <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      <rect x="4.5" y="4.5" width="15" height="15" rx="3.2" fill="none" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.4" />
-      <rect x="11" y="10" width="2" height="7.2" rx="1" fill="{fill}" fill-opacity="{fill_opacity}" />
-      <circle cx="12" cy="7.3" r="1.3" fill="{fill}" fill-opacity="{fill_opacity}" />
+      <rect x="3.4" y="3.4" width="17.2" height="17.2" rx="3.6" fill="none" stroke="{stroke}" stroke-opacity="{stroke_opacity}" stroke-width="1.6" />
+      <rect x="10.4" y="8.7" width="3.2" height="9.1" rx="1.4" fill="{fill}" fill-opacity="{fill_opacity}" />
+      <circle cx="12" cy="6.8" r="1.6" fill="{fill}" fill-opacity="{fill_opacity}" />
     </svg>
     """
 )

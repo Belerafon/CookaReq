@@ -541,10 +541,11 @@ class SettingsDialog(wx.Dialog):
         self._documents_browse.Bind(
             wx.EVT_BUTTON, self._on_browse_documents_path
         )
-        default_documents_hint = _("Documentation root: disabled")
+        default_documents_hint = _("Documentation disabled")
         self._documents_hint = wx.StaticText(
             mcp,
             label=default_documents_hint,
+            style=wx.ST_ELLIPSIZE_MIDDLE,
         )
         self._documents_hint_default_colour = self._documents_hint.GetForegroundColour()
         self._documents_hint_success_colour = wx.Colour(0, 128, 0)
@@ -631,12 +632,6 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         mcp_sizer.Add(base_sz, 0, wx.ALL | wx.EXPAND, 5)
-        mcp_sizer.Add(
-            self._documents_hint,
-            0,
-            wx.LEFT | wx.RIGHT | wx.TOP | wx.BOTTOM,
-            5,
-        )
         documents_sz = wx.BoxSizer(wx.HORIZONTAL)
         documents_sz.Add(
             wx.StaticText(mcp, label=_("Documentation folder")),
@@ -660,6 +655,12 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         mcp_sizer.Add(documents_sz, 0, wx.ALL | wx.EXPAND, 5)
+        mcp_sizer.Add(
+            self._documents_hint,
+            0,
+            wx.LEFT | wx.RIGHT | wx.BOTTOM,
+            5,
+        )
         log_sz = wx.BoxSizer(wx.HORIZONTAL)
         log_sz.Add(
             wx.StaticText(mcp, label=_("Log directory")),
@@ -804,35 +805,30 @@ class SettingsDialog(wx.Dialog):
         documents_text = self._documents_path.GetValue().strip()
         description = describe_documents_root(base_text, documents_text)
         if description.status == "disabled":
-            label = _("Documentation root: disabled")
+            label = _("Documentation disabled")
             colour = self._documents_hint_default_colour
         elif description.status == "missing_base":
             label = _(
-                "Documentation root: base path is required for relative folders"
+                "Base path is required for relative folders"
             )
             colour = self._documents_hint_error_colour
         elif description.status == "invalid":
-            label = _("Documentation root: invalid path")
+            label = _("Invalid documentation path")
             colour = self._documents_hint_error_colour
         else:
             assert description.resolved is not None
             resolved_text = str(description.resolved)
             exists = description.resolved.exists()
             if exists:
-                label = _("Documentation root: {path}").format(path=resolved_text)
+                label = resolved_text
                 colour = self._documents_hint_success_colour
             else:
-                label = _("Documentation root: {path} (missing)").format(
-                    path=resolved_text
-                )
+                label = _("{path} (missing)").format(path=resolved_text)
                 colour = self._documents_hint_error_colour
         self._documents_hint.SetLabel(label)
         self._documents_hint.SetForegroundColour(colour)
         parent = self._documents_hint.GetParent()
         if parent:
-            width = parent.GetClientSize().width
-            if width:
-                self._documents_hint.Wrap(width)
             parent.Layout()
 
     def _update_mcp_controls(self) -> None:

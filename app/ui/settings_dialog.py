@@ -16,6 +16,7 @@ from ..llm.constants import (
 )
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
+from ..mcp.paths import resolve_documents_root
 from ..settings import LLMSettings, MCPSettings
 from .helpers import format_error_message, make_help_button
 
@@ -540,6 +541,12 @@ class SettingsDialog(wx.Dialog):
         self._documents_browse.Bind(
             wx.EVT_BUTTON, self._on_browse_documents_path
         )
+        self._documents_hint = wx.StaticText(mcp, style=wx.ST_NO_AUTORESIZE)
+        self._documents_hint_default_colour = self._documents_hint.GetForegroundColour()
+        self._documents_hint_success_colour = wx.Colour(0, 128, 0)
+        self._documents_hint_error_colour = wx.Colour(178, 34, 34)
+        self._base_path.Bind(wx.EVT_TEXT, self._on_documents_path_edited)
+        self._documents_path.Bind(wx.EVT_TEXT, self._on_documents_path_edited)
         log_dir_value = str(log_dir) if log_dir else ""
         self._log_dir = wx.TextCtrl(mcp, value=log_dir_value)
         self._require_token = wx.CheckBox(mcp, label=_("Require token"))
@@ -620,6 +627,12 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         mcp_sizer.Add(base_sz, 0, wx.ALL | wx.EXPAND, 5)
+        mcp_sizer.Add(
+            self._documents_hint,
+            0,
+            wx.LEFT | wx.RIGHT | wx.TOP | wx.BOTTOM,
+            5,
+        )
         documents_sz = wx.BoxSizer(wx.HORIZONTAL)
         documents_sz.Add(
             wx.StaticText(mcp, label=_("Documentation folder")),
@@ -724,6 +737,7 @@ class SettingsDialog(wx.Dialog):
         )
         mcp_sizer.Add(help_txt, 0, wx.ALL | wx.EXPAND, 5)
         mcp.SetSizer(mcp_sizer)
+        self._refresh_documents_hint()
         self._update_mcp_controls()
 
         # Notebook --------------------------------------------------------
@@ -772,6 +786,51 @@ class SettingsDialog(wx.Dialog):
             self._documents_path.SetValue(dialog.GetPath())
         finally:
             dialog.Destroy()
+        self._refresh_documents_hint()
+
+    def _on_documents_path_edited(self, _event: wx.Event) -> None:
+        """Refresh documentation hint when related paths change."""
+
+        self._refresh_documents_hint()
+
+    def _refresh_documents_hint(self) -> None:
+        """Update the absolute documentation path preview and validation colour."""
+
+        base_text = self._base_path.GetValue().strip()
+        documents_text = self._documents_path.GetValue().strip()
+        if not documents_text:
+            label = _("Documentation root: disabled")
+            colour = self._documents_hint_default_colour
+        else:
+            resolved = resolve_documents_root(base_text, documents_text)
+            if resolved is None:
+                if not base_text:
+                    label = _(
+                        "Documentation root: base path is required for relative folders"
+                    )
+                else:
+                    label = _("Documentation root: invalid path")
+                colour = self._documents_hint_error_colour
+            else:
+                resolved_text = str(resolved)
+                if resolved.exists():
+                    label = _("Documentation root: {path}").format(
+                        path=resolved_text
+                    )
+                    colour = self._documents_hint_success_colour
+                else:
+                    label = _("Documentation root: {path} (missing)").format(
+                        path=resolved_text
+                    )
+                    colour = self._documents_hint_error_colour
+        self._documents_hint.SetLabel(label)
+        self._documents_hint.SetForegroundColour(colour)
+        parent = self._documents_hint.GetParent()
+        if parent:
+            width = parent.GetClientSize().width
+            if width:
+                self._documents_hint.Wrap(width)
+            parent.Layout()
 
     def _update_mcp_controls(self) -> None:
         running = self._mcp.is_running()

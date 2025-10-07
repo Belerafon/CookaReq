@@ -13,6 +13,7 @@ from wx.lib.scrolledpanel import ScrolledPanel
 from ...i18n import _
 from ..helpers import create_copy_button, dip, inherit_background
 from ..splitter_utils import refresh_splitter_highlight, style_splitter
+from ..widgets import SectionContainer
 from ..widgets.marquee_dataview import MarqueeDataViewListCtrl
 from .batch_ui import BatchControls
 from .confirm_preferences import RequirementConfirmPreference
@@ -96,7 +97,7 @@ class AgentChatLayoutBuilder:
         vertical_splitter.SetMinimumPaneSize(dip(panel, 160))
 
         top_panel = wx.Panel(vertical_splitter)
-        bottom_panel = wx.Panel(vertical_splitter)
+        bottom_panel = SectionContainer(vertical_splitter)
         inherit_background(top_panel, panel)
         inherit_background(bottom_panel, panel)
 
@@ -209,43 +210,45 @@ class AgentChatLayoutBuilder:
         top_sizer.Add(horizontal_splitter, 1, wx.EXPAND)
         top_panel.SetSizer(top_sizer)
 
+        bottom_inner = wx.Panel(bottom_panel)
+        inherit_background(bottom_inner, bottom_panel)
+        bottom_padding = dip(panel, 6)
         bottom_sizer = wx.BoxSizer(wx.VERTICAL)
-        bottom_sizer.Add(wx.StaticLine(bottom_panel), 0, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
 
-        input_label = wx.StaticText(bottom_panel, label=_("Ask the agent"))
+        input_label = wx.StaticText(bottom_inner, label=_("Ask the agent"))
         input_ctrl = wx.TextCtrl(
-            bottom_panel, style=wx.TE_PROCESS_ENTER | wx.TE_MULTILINE
+            bottom_inner, style=wx.TE_PROCESS_ENTER | wx.TE_MULTILINE
         )
         if hasattr(input_ctrl, "SetHint"):
             input_ctrl.SetHint(_("Describe what you need the agent to do"))
         input_ctrl.Bind(wx.EVT_TEXT_ENTER, panel._on_send)
 
         button_row = wx.BoxSizer(wx.HORIZONTAL)
-        run_batch_btn = wx.Button(bottom_panel, label=_("Run batch"))
-        stop_batch_btn = wx.Button(bottom_panel, label=_("Stop batch"))
+        run_batch_btn = wx.Button(bottom_inner, label=_("Run batch"))
+        stop_batch_btn = wx.Button(bottom_inner, label=_("Stop batch"))
         stop_batch_btn.Enable(False)
         icon_buttons_to_match: list[wx.Button] = []
         attachment_btn, attachment_uses_icon = self._create_attachment_button(
-            bottom_panel
+            bottom_inner
         )
         if attachment_uses_icon:
             icon_buttons_to_match.append(attachment_btn)
         attachment_btn.Bind(wx.EVT_BUTTON, panel._on_select_attachment)
         attachment_btn.SetToolTip(_("Attach file…"))
         attachment_summary = wx.StaticText(
-            bottom_panel,
+            bottom_inner,
             label=_("No file attached"),
             style=wx.ST_ELLIPSIZE_MIDDLE,
         )
         settings_btn, settings_uses_icon = self._create_instructions_button(
-            bottom_panel
+            bottom_inner
         )
         if settings_uses_icon:
             icon_buttons_to_match.append(settings_btn)
         settings_btn.Bind(wx.EVT_BUTTON, panel._on_project_settings)
         settings_btn.SetToolTip(_("Agent instructions"))
-        clear_btn, clear_uses_icon = self._create_clear_button(bottom_panel)
+        clear_btn, clear_uses_icon = self._create_clear_button(bottom_inner)
         if clear_uses_icon:
             icon_buttons_to_match.append(clear_btn)
         clear_btn.Bind(wx.EVT_BUTTON, panel._on_clear_input)
@@ -254,7 +257,7 @@ class AgentChatLayoutBuilder:
             primary_btn,
             primary_idle_visual,
             primary_stop_visual,
-        ) = self._create_primary_action_button(bottom_panel)
+        ) = self._create_primary_action_button(bottom_inner)
         primary_btn.Bind(wx.EVT_BUTTON, panel._on_primary_action)
         primary_btn.SetToolTip(_("Send"))
         self._ensure_primary_button_capacity(
@@ -277,8 +280,8 @@ class AgentChatLayoutBuilder:
         button_row.Add(stop_batch_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
         button_row.Add(icon_cluster, 0, wx.ALIGN_TOP)
 
-        batch_panel = wx.Panel(bottom_panel)
-        inherit_background(batch_panel, bottom_panel)
+        batch_panel = wx.Panel(bottom_inner)
+        inherit_background(batch_panel, bottom_inner)
         batch_box = wx.StaticBoxSizer(wx.VERTICAL, batch_panel, _("Batch queue"))
         batch_status_label = wx.StaticText(
             batch_panel, label=_("Select requirements and run a batch")
@@ -297,9 +300,9 @@ class AgentChatLayoutBuilder:
         batch_panel.SetSizer(batch_box)
         batch_panel.Hide()
 
-        activity_indicator = wx.ActivityIndicator(bottom_panel)
+        activity_indicator = wx.ActivityIndicator(bottom_inner)
         activity_indicator.Hide()
-        status_label = wx.StaticText(bottom_panel, label=_("Ready"))
+        status_label = wx.StaticText(bottom_inner, label=_("Ready"))
         status_row = wx.BoxSizer(wx.HORIZONTAL)
         status_row.Add(
             activity_indicator, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing
@@ -317,7 +320,7 @@ class AgentChatLayoutBuilder:
             (RequirementConfirmPreference.NEVER, _("Never ask")),
         )
         confirm_choice = wx.Choice(
-            bottom_panel,
+            bottom_inner,
             choices=[label for _pref, label in confirm_entries],
         )
         confirm_choice.Bind(wx.EVT_CHOICE, panel._on_confirm_choice)
@@ -325,7 +328,7 @@ class AgentChatLayoutBuilder:
             pref: idx for idx, (pref, _label) in enumerate(confirm_entries)
         }
         confirm_label = wx.StaticText(
-            bottom_panel, label=_("Requirement confirmations")
+            bottom_inner, label=_("Requirement confirmations")
         )
         confirm_row = wx.BoxSizer(wx.HORIZONTAL)
         confirm_row.Add(
@@ -354,7 +357,11 @@ class AgentChatLayoutBuilder:
         bottom_sizer.AddSpacer(spacing)
         bottom_sizer.Add(controls_row, 0, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
-        bottom_panel.SetSizer(bottom_sizer)
+        bottom_inner.SetSizer(bottom_sizer)
+
+        container_sizer = wx.BoxSizer(wx.VERTICAL)
+        container_sizer.Add(bottom_inner, 1, wx.EXPAND | wx.ALL, bottom_padding)
+        bottom_panel.SetSizer(container_sizer)
 
         vertical_splitter.SplitHorizontally(top_panel, bottom_panel)
         vertical_splitter.SetSashGravity(1.0)

@@ -9,7 +9,8 @@ import wx
 
 from ...i18n import _
 from ...log import get_log_directory, logger, open_log_directory
-from ..helpers import create_copy_button
+from ..helpers import create_copy_button, inherit_background
+from ..widgets import SectionContainer
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .frame import MainFrame
@@ -77,25 +78,28 @@ class MainFrameLoggingMixin:
     def _init_log_console(self: MainFrame) -> None:
         """Create the log console panel and attach handler."""
 
-        self.log_panel = wx.Panel(self.main_splitter)
+        self.log_panel = SectionContainer(self.main_splitter)
+        inner_panel = wx.Panel(self.log_panel)
+        inherit_background(inner_panel, self.log_panel)
+        padding = inner_panel.FromDIP(6)
         log_sizer = wx.BoxSizer(wx.VERTICAL)
         header = wx.BoxSizer(wx.HORIZONTAL)
-        self.log_label = wx.StaticText(self.log_panel, label=_("Log Console"))
+        self.log_label = wx.StaticText(inner_panel, label=_("Log Console"))
         header.Add(self.log_label, 1, wx.ALIGN_CENTER_VERTICAL)
-        self.log_level_label = wx.StaticText(self.log_panel, label=_("Log Level"))
+        self.log_level_label = wx.StaticText(inner_panel, label=_("Log Level"))
         header.Add(self.log_level_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         self._log_level_values = []
-        self.log_level_choice = wx.Choice(self.log_panel, choices=[])
+        self.log_level_choice = wx.Choice(inner_panel, choices=[])
         header.Add(self.log_level_choice, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 2)
         self.open_logs_button = wx.Button(
-            self.log_panel,
+            inner_panel,
             label=_("Open Log Folder"),
             style=wx.BU_EXACTFIT,
         )
         self.open_logs_button.Bind(wx.EVT_BUTTON, self.on_open_logs)
         header.Add(self.open_logs_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         self.copy_logs_button = create_copy_button(
-            self.log_panel,
+            inner_panel,
             tooltip=_("Copy log output to clipboard"),
             fallback_label=_("Copy logs"),
             handler=self.on_copy_logs,
@@ -103,11 +107,15 @@ class MainFrameLoggingMixin:
         header.Add(self.copy_logs_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
         log_sizer.Add(header, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
         self.log_console = wx.TextCtrl(
-            self.log_panel,
+            inner_panel,
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP,
         )
         log_sizer.Add(self.log_console, 1, wx.EXPAND | wx.ALL, 5)
-        self.log_panel.SetSizer(log_sizer)
+        inner_panel.SetSizer(log_sizer)
+
+        container_sizer = wx.BoxSizer(wx.VERTICAL)
+        container_sizer.Add(inner_panel, 1, wx.EXPAND | wx.ALL, padding)
+        self.log_panel.SetSizer(container_sizer)
 
         existing = next(
             (h for h in logger.handlers if isinstance(h, WxLogHandler)),

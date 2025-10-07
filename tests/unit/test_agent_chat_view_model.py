@@ -809,6 +809,52 @@ def test_missing_timestamps_reported_as_missing() -> None:
     assert raw_section is None or isinstance(raw_section, Mapping)
 
 
+def test_tool_summary_skips_non_tool_raw_result() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="done",
+        tokens=1,
+        raw_result={
+            "ok": True,
+            "status": "completed",
+            "result": {"value": "final"},
+        },
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+
+    assert turn is not None
+    assert not turn.tool_calls
+
+
+def test_tool_summary_skips_tool_results_without_metadata() -> None:
+    entry = ChatEntry(
+        prompt="",
+        response="done",
+        tokens=1,
+        raw_result={
+            "ok": True,
+            "result": "done",
+            "tool_results": [
+                {
+                    "ok": True,
+                    "result": "done",
+                }
+            ],
+        },
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+
+    assert turn is not None
+    assert not turn.tool_calls
+    assert not any(event.kind == "tool" for event in turn.events)
+
+
 def test_chat_entry_from_dict_preserves_reasoning_whitespace() -> None:
     payload = {
         "prompt": "",

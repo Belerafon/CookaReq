@@ -40,14 +40,51 @@ def stringify_payload(payload: Any) -> str:
 def looks_like_tool_payload(payload: Mapping[str, Any]) -> bool:
     """Heuristically determine whether *payload* originates from an MCP tool."""
 
-    tool_keys = {
-        "tool_arguments",
-        "tool_name",
-        "tool",
-        "tool_call_id",
-        "call_id",
-    }
-    return any(key in payload for key in tool_keys)
+    def _has_text(value: Any) -> bool:
+        return isinstance(value, str) and bool(value.strip())
+
+    def _has_meaningful(value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, Mapping):
+            return any(_has_meaningful(item) for item in value.values())
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            return any(_has_meaningful(item) for item in value)
+        return True
+
+    identifier_keys = ("tool_call_id", "call_id", "call_identifier", "id")
+    argument_keys = ("tool_arguments", "arguments", "args")
+
+    if _has_text(payload.get("tool_name")) or _has_text(payload.get("tool")):
+        return True
+
+    for key in identifier_keys:
+        if _has_text(payload.get(key)):
+            return True
+
+    for key in argument_keys:
+        if _has_meaningful(payload.get(key)):
+            return True
+
+    tool_section = payload.get("tool")
+    if isinstance(tool_section, Mapping):
+        if _has_text(tool_section.get("name")):
+            return True
+        for key in identifier_keys:
+            if _has_text(tool_section.get(key)):
+                return True
+        for key in argument_keys:
+            if _has_meaningful(tool_section.get(key)):
+                return True
+
+    if _has_text(payload.get("name")):
+        for key in argument_keys:
+            if _has_meaningful(payload.get(key)):
+                return True
+
+    return False
 
 
 def clone_streamed_tool_results(

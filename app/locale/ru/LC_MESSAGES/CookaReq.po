@@ -2268,3 +2268,27 @@ msgstr "{used} / {limit}"
 
 msgid "Загрузка…"
 msgstr "Загрузка…"
+
+msgid "Documentation root: disabled"
+msgstr "Корневая папка документации: отключена"
+
+msgid "Documentation root: base path is required for relative folders"
+msgstr "Корневая папка документации: для относительных путей требуется базовый каталог"
+
+msgid "Documentation root: invalid path"
+msgstr "Корневая папка документации: некорректный путь"
+
+msgid "Documentation root: {source} → {path}"
+msgstr "Корневая папка документации: {source} → {path}"
+
+msgid "Documentation root: {source} → {path} (missing)"
+msgstr "Корневая папка документации: {source} → {path} (не существует)"
+
+msgid "Documentation root: {path}"
+msgstr "Корневая папка документации: {path}"
+
+msgid "Documentation root: {path} (missing)"
+msgstr "Корневая папка документации: {path} (не существует)"
+
+msgid "Select documentation folder"
+msgstr "Выберите папку документации"

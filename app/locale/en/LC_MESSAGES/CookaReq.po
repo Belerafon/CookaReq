@@ -2029,6 +2029,15 @@ msgstr "Step {index}"
 msgid "Stop batch"
 msgstr "Stop batch"
 
+msgid "Hide batch queue"
+msgstr "Hide batch queue"
+
+msgid "Batch processing is still running. Stop and close the queue?"
+msgstr "Batch processing is still running. Stop and close the queue?"
+
+msgid "Stop batch processing?"
+msgstr "Stop batch processing?"
+
 msgid "System message"
 msgstr "System message"
 

@@ -2045,6 +2045,15 @@ msgstr "Шаг {index}"
 msgid "Stop batch"
 msgstr "Остановить пакет"
 
+msgid "Hide batch queue"
+msgstr "Скрыть очередь пакета"
+
+msgid "Batch processing is still running. Stop and close the queue?"
+msgstr "Пакетная обработка ещё выполняется. Остановить и закрыть очередь?"
+
+msgid "Stop batch processing?"
+msgstr "Остановить пакетную обработку?"
+
 msgid "System message"
 msgstr "Системное сообщение"
 

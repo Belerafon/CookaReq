@@ -29,6 +29,7 @@ class BatchControls:
     """Widgets composing the batch queue section."""
 
     panel: wx.Panel
+    close_button: wx.Button
     run_button: wx.Button
     stop_button: wx.Button
     status_label: wx.StaticText
@@ -60,6 +61,7 @@ class AgentBatchSection:
         )
         controls.run_button.Bind(wx.EVT_BUTTON, self._handle_run_request)
         controls.stop_button.Bind(wx.EVT_BUTTON, self._handle_stop_request)
+        controls.close_button.Bind(wx.EVT_BUTTON, self._handle_close_request)
         self.update_ui()
 
     # ------------------------------------------------------------------
@@ -110,6 +112,26 @@ class AgentBatchSection:
     # ------------------------------------------------------------------
     def request_skip_current(self) -> None:
         self._runner.request_skip_current()
+
+    # ------------------------------------------------------------------
+    def close_panel(self) -> None:
+        """Reset the batch queue and hide the panel."""
+
+        runner = self._runner
+        if runner.is_running:
+            dialog = wx.MessageDialog(
+                self._controls.panel,
+                _("Batch processing is still running. Stop and close the queue?"),
+                _("Stop batch processing?"),
+                style=wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
+            )
+            try:
+                if dialog.ShowModal() != wx.ID_YES:
+                    return
+            finally:
+                dialog.Destroy()
+            self.stop_batch()
+        runner.reset()
 
     # ------------------------------------------------------------------
     def notify_completion(
@@ -259,6 +281,10 @@ class AgentBatchSection:
     # ------------------------------------------------------------------
     def _handle_stop_request(self, _event: wx.Event) -> None:
         self.stop_batch()
+
+    # ------------------------------------------------------------------
+    def _handle_close_request(self, _event: wx.Event) -> None:
+        self.close_panel()
 
 
 __all__ = ["AgentBatchSection", "BatchControls"]

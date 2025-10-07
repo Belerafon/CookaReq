@@ -286,6 +286,17 @@ class AgentChatLayoutBuilder:
         batch_status_label = wx.StaticText(
             batch_panel, label=_("Select requirements and run a batch")
         )
+        close_bitmap = wx.ArtProvider.GetBitmap(
+            wx.ART_CLOSE, wx.ART_BUTTON, wx.Size(dip(panel, 16), dip(panel, 16))
+        )
+        close_button = wx.BitmapButton(
+            batch_panel,
+            bitmap=close_bitmap,
+            style=wx.BU_EXACTFIT | wx.BORDER_NONE,
+        )
+        close_button.SetToolTip(_("Hide batch queue"))
+        close_button.SetBackgroundColour(batch_panel.GetBackgroundColour())
+        close_button.SetForegroundColour(batch_panel.GetForegroundColour())
         batch_progress = wx.Gauge(batch_panel, range=1, style=wx.GA_HORIZONTAL)
         batch_progress.SetValue(0)
         batch_progress.SetMinSize(wx.Size(-1, dip(panel, 12)))
@@ -294,7 +305,10 @@ class AgentChatLayoutBuilder:
         batch_list.AppendTextColumn(_("RID"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 120))
         batch_list.AppendTextColumn(_("Title"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 200))
         batch_list.AppendTextColumn(_("Status"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 220))
-        batch_box.Add(batch_status_label, 0, wx.BOTTOM, spacing)
+        batch_header = wx.BoxSizer(wx.HORIZONTAL)
+        batch_header.Add(batch_status_label, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
+        batch_header.Add(close_button, 0, wx.ALIGN_CENTER_VERTICAL)
+        batch_box.Add(batch_header, 0, wx.EXPAND | wx.BOTTOM, spacing)
         batch_box.Add(batch_progress, 0, wx.EXPAND | wx.BOTTOM, spacing)
         batch_box.Add(batch_list, 1, wx.EXPAND)
         batch_panel.SetSizer(batch_box)
@@ -378,6 +392,7 @@ class AgentChatLayoutBuilder:
             panel=batch_panel,
             run_button=run_batch_btn,
             stop_button=stop_batch_btn,
+            close_button=close_button,
             status_label=batch_status_label,
             progress=batch_progress,
             list_ctrl=batch_list,

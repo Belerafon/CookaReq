@@ -24,6 +24,7 @@ def test_agent_batch_section_handles_start_and_stop(wx_app):
                 (),
                 {"stop": lambda self: True},
             )()
+            self.coordinator = self._controller
             self._batch_target_provider = lambda: [
                 BatchTarget(requirement_id=1, rid="REQ-1", title="Sample"),
             ]
@@ -32,8 +33,13 @@ def test_agent_batch_section_handles_start_and_stop(wx_app):
         def _refresh_bottom_panel_layout(self) -> None:
             self.layout_refreshes += 1
 
+        @property
+        def is_running(self) -> bool:
+            return self._is_running
+
     panel = DummyPanel(frame)
 
+    close_button = wx.Button(panel, label="Close")
     run_button = wx.Button(panel, label="Run")
     stop_button = wx.Button(panel, label="Stop")
     status_label = wx.StaticText(panel)
@@ -42,6 +48,7 @@ def test_agent_batch_section_handles_start_and_stop(wx_app):
 
     controls = BatchControls(
         panel=panel,
+        close_button=close_button,
         run_button=run_button,
         stop_button=stop_button,
         status_label=status_label,
@@ -54,6 +61,7 @@ def test_agent_batch_section_handles_start_and_stop(wx_app):
             self.started = None
             self.cancelled = False
             self.skipped = False
+            self.reset_called = False
             self._items: list[BatchItem] = []
             self.is_running = False
             self.active_item = None
@@ -82,6 +90,11 @@ def test_agent_batch_section_handles_start_and_stop(wx_app):
         def handle_cancellation(self, *, conversation_id):
             self.is_running = False
 
+        def reset(self):
+            self.reset_called = True
+            self._items = []
+            self.is_running = False
+
     runner = StubRunner()
     section = AgentBatchSection(panel=panel, controls=controls, runner=runner)
 
@@ -95,5 +108,8 @@ def test_agent_batch_section_handles_start_and_stop(wx_app):
     section.stop_batch()
     assert runner.cancelled
     assert "Batch cancellation requested" in panel.status_label.GetLabel()
+
+    section.close_panel()
+    assert runner.reset_called
 
     frame.Destroy()

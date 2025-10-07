@@ -61,6 +61,7 @@ def test_settings_dialog_returns_language(wx_app):
         host="127.0.0.1",
         port=59362,
         base_path="/tmp",
+        documents_path="docs",
         log_dir="/logs",
         require_token=True,
         token="abc",
@@ -85,6 +86,7 @@ def test_settings_dialog_returns_language(wx_app):
         "127.0.0.1",
         59362,
         "/tmp",
+        "docs",
         "/logs",
         True,
         "abc",
@@ -137,6 +139,7 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         host="localhost",
         port=8123,
         base_path="/tmp",
+        documents_path="manuals",
         log_dir="",
         require_token=False,
         token="",
@@ -154,10 +157,11 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         settings.host,
         settings.port,
         settings.base_path,
+        settings.documents_path,
         settings.log_dir,
         settings.require_token,
         settings.token,
-    ) == ("localhost", 8123, "/tmp", None, False, "")
+    ) == ("localhost", 8123, "/tmp", "manuals", None, False, "")
     assert not dlg._start.IsEnabled()
     assert dlg._stop.IsEnabled()
     assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('running')}"
@@ -219,6 +223,7 @@ def test_mcp_check_status(monkeypatch, wx_app):
         host="localhost",
         port=8123,
         base_path="/tmp",
+        documents_path="docs",
         log_dir="",
         require_token=True,
         token="abc",
@@ -293,6 +298,7 @@ def test_llm_agent_checks(monkeypatch, wx_app):
         host="localhost",
         port=59362,
         base_path="/tmp",
+        documents_path="share",
         log_dir="",
         require_token=False,
         token="",
@@ -356,6 +362,7 @@ def test_llm_agent_check_failure_logs(monkeypatch, wx_app):
         host="localhost",
         port=59362,
         base_path="/tmp",
+        documents_path="share",
         log_dir="",
         require_token=False,
         token="",
@@ -404,6 +411,7 @@ def test_settings_help_buttons(monkeypatch, wx_app):
         host="localhost",
         port=8000,
         base_path="/tmp",
+        documents_path="share",
         log_dir="",
         require_token=False,
         token="",

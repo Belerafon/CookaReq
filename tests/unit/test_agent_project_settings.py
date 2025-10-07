@@ -13,24 +13,19 @@ def test_agent_project_settings_roundtrip(tmp_path):
     # missing file -> defaults
     settings = load_agent_project_settings(settings_path)
     assert settings.custom_system_prompt == ""
-    assert settings.documents_path == ""
 
     # corrupted payload -> defaults
     settings_path.write_text("not json", encoding="utf-8")
     settings = load_agent_project_settings(settings_path)
     assert settings.custom_system_prompt == ""
-    assert settings.documents_path == ""
 
     desired = AgentProjectSettings(
         custom_system_prompt="  Keep naming short  ",
-        documents_path="  docs/manuals  ",
     )
     save_agent_project_settings(settings_path, desired)
 
     loaded = load_agent_project_settings(settings_path)
     assert loaded.custom_system_prompt == "Keep naming short"
-    assert loaded.documents_path.endswith("docs/manuals")
-    assert "  " not in loaded.documents_path
 
 
 def test_agent_project_settings_loads_version_one_payload(tmp_path):
@@ -43,4 +38,3 @@ def test_agent_project_settings_loads_version_one_payload(tmp_path):
 
     loaded = load_agent_project_settings(settings_path)
     assert loaded.custom_system_prompt == "Legacy prompt"
-    assert loaded.documents_path == ""

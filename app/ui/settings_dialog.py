@@ -137,6 +137,11 @@ MCP_HELP: dict[str, str] = {
         "Base folder with requirements. Example: /tmp/reqs\n"
         "Required; the server serves files from this directory.",
     ),
+    "documents_path": _(
+        "Documentation directory visible to MCP tools. Example: share\n"
+        "Relative paths are resolved from the active requirements folder.\n"
+        "Leave empty to disable documentation access.",
+    ),
     "log_dir": _(
         "Directory for MCP request logs. Example: /var/log/cookareq\n"
         "Leave empty to store logs in the standard application log folder.",
@@ -218,6 +223,7 @@ class SettingsDialog(wx.Dialog):
         host: str,
         port: int,
         base_path: str,
+        documents_path: str,
         log_dir: str | None,
         require_token: bool,
         token: str,
@@ -529,6 +535,11 @@ class SettingsDialog(wx.Dialog):
         self._host = wx.TextCtrl(mcp, value=host)
         self._port = wx.SpinCtrl(mcp, min=1, max=65535, initial=port)
         self._base_path = wx.TextCtrl(mcp, value=base_path)
+        self._documents_path = wx.TextCtrl(mcp, value=documents_path)
+        self._documents_browse = wx.Button(mcp, label=_("Browse…"))
+        self._documents_browse.Bind(
+            wx.EVT_BUTTON, self._on_browse_documents_path
+        )
         log_dir_value = str(log_dir) if log_dir else ""
         self._log_dir = wx.TextCtrl(mcp, value=log_dir_value)
         self._require_token = wx.CheckBox(mcp, label=_("Require token"))
@@ -609,6 +620,29 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         mcp_sizer.Add(base_sz, 0, wx.ALL | wx.EXPAND, 5)
+        documents_sz = wx.BoxSizer(wx.HORIZONTAL)
+        documents_sz.Add(
+            wx.StaticText(mcp, label=_("Documentation folder")),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            5,
+        )
+        documents_sz.Add(self._documents_path, 1, wx.ALIGN_CENTER_VERTICAL)
+        documents_sz.Add(
+            self._documents_browse,
+            0,
+            wx.LEFT,
+            5,
+        )
+        documents_sz.Add(
+            make_help_button(
+                mcp, MCP_HELP["documents_path"], dialog_parent=self
+            ),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        mcp_sizer.Add(documents_sz, 0, wx.ALL | wx.EXPAND, 5)
         log_sz = wx.BoxSizer(wx.HORIZONTAL)
         log_sz.Add(
             wx.StaticText(mcp, label=_("Log directory")),
@@ -718,6 +752,27 @@ class SettingsDialog(wx.Dialog):
         enabled = self._custom_temperature.GetValue()
         self._temperature.Enable(enabled)
 
+    def _on_browse_documents_path(self, _event: wx.Event) -> None:
+        """Prompt the user to select a documentation directory."""
+
+        current = self._documents_path.GetValue().strip()
+        start_path = current or ""
+        style = getattr(wx, "DD_DEFAULT_STYLE", 0) | getattr(
+            wx, "DD_NEW_DIR_BUTTON", 0
+        )
+        dialog = wx.DirDialog(
+            self,
+            _("Select documentation folder"),
+            start_path,
+            style=style,
+        )
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            self._documents_path.SetValue(dialog.GetPath())
+        finally:
+            dialog.Destroy()
+
     def _update_mcp_controls(self) -> None:
         running = self._mcp.is_running()
         self._start.Enable(not running)
@@ -772,6 +827,7 @@ class SettingsDialog(wx.Dialog):
             host=self._host.GetValue(),
             port=self._port.GetValue(),
             base_path=self._base_path.GetValue(),
+            documents_path=self._documents_path.GetValue().strip(),
             log_dir=self._log_dir.GetValue().strip() or None,
             require_token=self._require_token.GetValue(),
             token=self._token.GetValue(),
@@ -936,6 +992,7 @@ class SettingsDialog(wx.Dialog):
             self._host.GetValue(),
             self._port.GetValue(),
             self._base_path.GetValue(),
+            self._documents_path.GetValue().strip(),
             self._log_dir.GetValue().strip(),
             self._require_token.GetValue(),
             self._token.GetValue(),

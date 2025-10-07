@@ -569,22 +569,21 @@ def test_agent_custom_system_prompt_appended(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
-def test_agent_project_settings_dialog_handles_documents_path(tmp_path, wx_app):
+def test_agent_project_settings_dialog_handles_custom_prompt(wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel.settings_dialog import AgentProjectSettingsDialog
 
     frame = wx.Frame(None)
     settings = AgentProjectSettings(
         custom_system_prompt="Existing",
-        documents_path=str(tmp_path / "docs"),
     )
 
     try:
         dialog = AgentProjectSettingsDialog(frame, settings=settings)
         try:
-            assert dialog.get_documents_path().endswith("docs")
-            dialog._documents_path.SetValue("   relative/manuals   ")
-            assert dialog.get_documents_path() == "relative/manuals"
+            assert dialog.get_custom_system_prompt() == "Existing"
+            dialog._prompt.SetValue("   updated instructions   ")
+            assert dialog.get_custom_system_prompt() == "updated instructions"
         finally:
             dialog.Destroy()
     finally:

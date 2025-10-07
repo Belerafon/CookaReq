@@ -124,6 +124,7 @@ class MCPSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 59362
     base_path: str = Field(default_factory=default_requirements_path)
+    documents_path: str = "share"
     log_dir: str | None = None
     require_token: bool = False
     token: str = ""
@@ -137,6 +138,18 @@ class MCPSettings(BaseModel):
             return None
         text = str(value).strip()
         return text or None
+
+    @field_validator("documents_path", mode="before")
+    @classmethod
+    def _normalize_documents_path(
+        cls, value: str | Path | None
+    ) -> str:
+        """Return a whitespace-normalised representation of ``value``."""
+
+        if value is None:
+            return ""
+        text = str(value).strip()
+        return text
 
 
 DEFAULT_LIST_COLUMNS = list(BASE_DEFAULT_LIST_COLUMNS)

@@ -519,6 +519,9 @@ msgstr "Выберите вложение"
 msgid "Select requirements folder first"
 msgstr "Сначала выберите папку требований"
 
+msgid "Select a document first"
+msgstr "Сначала выберите документ"
+
 msgid "Set"
 msgstr "Установить"
 

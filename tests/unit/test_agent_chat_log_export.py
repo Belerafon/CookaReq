@@ -187,6 +187,47 @@ def test_transcript_log_replaces_repeated_system_prompt():
     assert log_text.count(SYSTEM_PROMPT_PLACEHOLDER) >= 1
 
 
+def test_transcript_log_replaces_prefixed_system_prompt_but_keeps_context():
+    conversation = ChatConversation.new()
+    prompt_text = "Переведи требования"
+    combined_prompt = _SYSTEM_PROMPT_TEXT + "\n\nContext:\n- File: README.md"
+    entry = ChatEntry(
+        prompt=prompt_text,
+        response="Готово",
+        tokens=0,
+        prompt_at=_iso("2025-10-02T12:00:00+00:00"),
+        response_at=_iso("2025-10-02T12:00:05+00:00"),
+        raw_result={
+            "llm_requests": [
+                {
+                    "messages": [
+                        {"role": "system", "content": combined_prompt},
+                        {"role": "user", "content": prompt_text},
+                    ]
+                },
+                {
+                    "messages": [
+                        {"role": "system", "content": combined_prompt},
+                        {"role": "assistant", "content": "Работаю"},
+                    ]
+                },
+            ]
+        },
+    )
+    conversation.append_entry(entry)
+
+    log_text = compose_transcript_log_text(conversation)
+    encoded_prompt = json.dumps(combined_prompt, ensure_ascii=False)
+    encoded_placeholder_with_context = json.dumps(
+        SYSTEM_PROMPT_PLACEHOLDER + "\n\nContext:\n- File: README.md",
+        ensure_ascii=False,
+    )
+
+    assert log_text.count(encoded_prompt) == 1
+    assert encoded_placeholder_with_context in log_text
+    assert log_text.count(SYSTEM_PROMPT_PLACEHOLDER) >= 1
+
+
 def test_transcript_log_sanitises_raw_payload_prompts():
     conversation = ChatConversation.new()
     entry = ChatEntry(
@@ -224,3 +265,5 @@ def test_transcript_log_sanitises_raw_payload_prompts():
 
     assert log_text.count(encoded_prompt) == 1
     assert log_text.count(SYSTEM_PROMPT_PLACEHOLDER) >= 2
+
+

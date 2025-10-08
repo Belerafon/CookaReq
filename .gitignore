@@ -44,3 +44,6 @@ app/locale/missing.po
 /server.jsonl
 # Helper logs emitted during wx GUI tests
 requirements/server.log
+
+# Scratch files produced during investigations
+tmp/

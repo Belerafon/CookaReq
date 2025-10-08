@@ -153,6 +153,46 @@ def _flatten_arg_list(values: Any) -> list[str]:
     return tokens
 
 
+def _load_template(data_arg: str | Path | None) -> dict[str, Any] | None:
+    """Read optional JSON template referenced by ``--data`` arguments."""
+
+    if not data_arg:
+        return {}
+
+    path = Path(data_arg)
+    if not path.exists():
+        sys.stdout.write(
+            _("template file not found: {path}\n").format(path=path)
+        )
+        return None
+
+    try:
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
+    except json.JSONDecodeError as exc:
+        sys.stdout.write(
+            _("invalid template JSON in {path}: {error}\n").format(
+                path=path, error=str(exc)
+            )
+        )
+        return None
+    except OSError as exc:
+        sys.stdout.write(
+            _("failed to read template {path}: {error}\n").format(
+                path=path, error=str(exc)
+            )
+        )
+        return None
+
+    if not isinstance(data, Mapping):
+        sys.stdout.write(
+            _("template must be a JSON object: {path}\n").format(path=path)
+        )
+        return None
+
+    return dict(data)
+
+
 def _service_for(
     context: ApplicationContext, directory: str | Path
 ) -> RequirementsService:
@@ -568,11 +608,9 @@ def cmd_item_add(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
     """Create a new requirement item under a document."""
-    base: dict[str, Any] = {}
-    data_path = getattr(args, "data", None)
-    if data_path:
-        with open(data_path, encoding="utf-8") as fh:
-            base = json.load(fh)
+    base = _load_template(getattr(args, "data", None))
+    if base is None:
+        return
     service = _service_for(context, args.directory)
     try:
         payload = build_item_payload(args, base)
@@ -605,11 +643,9 @@ def cmd_item_edit(
         sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
         return
 
-    template: Mapping[str, Any] = {}
-    data_path = getattr(args, "data", None)
-    if data_path:
-        with open(data_path, encoding="utf-8") as fh:
-            template = json.load(fh)
+    template = _load_template(getattr(args, "data", None))
+    if template is None:
+        return
 
     base_payload: dict[str, Any] = dict(data)
     base_payload.update(template)
@@ -645,11 +681,9 @@ def cmd_item_move(
         sys.stdout.write(_("requirement not found: {rid}\n").format(rid=args.rid))
         return
 
-    template: Mapping[str, Any] = {}
-    data_path = getattr(args, "data", None)
-    if data_path:
-        with open(data_path, encoding="utf-8") as fh:
-            template = json.load(fh)
+    template = _load_template(getattr(args, "data", None))
+    if template is None:
+        return
 
     base_payload: dict[str, Any] = current.to_mapping()
     base_payload.update(template)

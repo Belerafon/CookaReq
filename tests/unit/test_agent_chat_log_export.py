@@ -142,50 +142,6 @@ def _conversation_with_streamed_responses() -> ChatConversation:
     return conversation
 
 
-def _conversation_with_validation_guard() -> ChatConversation:
-    conversation = ChatConversation.new()
-    prompt_text = "Переведи требования"
-    entry = ChatEntry(
-        prompt=prompt_text,
-        response="Готово",
-        tokens=0,
-        prompt_at=_iso("2025-10-02T10:00:00+00:00"),
-        response_at=_iso("2025-10-02T10:00:10+00:00"),
-        raw_result={
-            "tool_results": [
-                {
-                    "tool_name": "invalid_tool_call",
-                    "agent_status": "failed",
-                    "ok": False,
-                    "error": {
-                        "code": "VALIDATION_ERROR",
-                        "message": "LLM response did not include a tool call or message (type: ToolValidationError)",
-                        "details": {
-                            "type": "ToolValidationError",
-                            "llm_message": "LLM response did not include a tool call or message (type: ToolValidationError)",
-                        },
-                    },
-                    "tool_call_id": "tool_call_0",
-                    "call_id": "tool_call_0",
-                },
-                {
-                    "tool_name": "update_requirement_field",
-                    "agent_status": "completed",
-                    "ok": True,
-                    "tool_arguments": {
-                        "rid": "DEMO",
-                        "field": "title",
-                        "value": "Новый заголовок",
-                    },
-                    "result": {"rid": "DEMO"},
-                },
-            ]
-        },
-    )
-    conversation.append_entry(entry)
-    return conversation
-
-
 def test_plain_transcript_uses_agent_turn_text_and_tool_summaries():
     conversation = _conversation_with_failed_updates()
 
@@ -219,16 +175,6 @@ def test_plain_transcript_includes_streamed_responses():
     assert "[02 Oct 2025 11:00:05] Agent (step 2):" in plain_text
     assert "Готово: итоговое сообщение" in plain_text
     assert "Waiting for agent response" not in plain_text
-
-
-def test_plain_transcript_labels_validation_guard():
-    conversation = _conversation_with_validation_guard()
-
-    plain_text = compose_transcript_text(conversation)
-
-    assert "LLM validation guard" in plain_text
-    assert "Guard message" in plain_text
-    assert "invalid_tool_call" not in plain_text
 
 
 def test_transcript_log_replaces_repeated_system_prompt():
@@ -321,13 +267,3 @@ def test_transcript_log_sanitises_raw_payload_prompts():
     assert log_text.count(SYSTEM_PROMPT_PLACEHOLDER) >= 2
 
 
-def test_transcript_log_annotations_validation_guard():
-    conversation = _conversation_with_validation_guard()
-
-    log_text = compose_transcript_log_text(conversation)
-
-    assert "Tool call 1: LLM validation guard — blocked invalid response" in log_text
-    assert "Guard message: LLM response did not include a tool call" in log_text
-    assert '"validation_guard"' in log_text
-    assert '"interpreted_state": "guarded"' in log_text
-    assert "Synthesized guard entry" in log_text

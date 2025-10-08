@@ -908,25 +908,11 @@ class LocalAgent:
 
         if tool_messages:
             conversation.extend(tool_messages)
-        else:
-            fallback_payload: dict[str, Any] = {
+        elif first_error_payload is None:
+            first_error_payload = {
                 "ok": False,
                 "error": dict(error_template),
-                "tool_name": "invalid_tool_call",
-                "tool_call_id": "tool_call_0",
-                "call_id": "tool_call_0",
-                "agent_status": "failed",
             }
-            self._emit_tool_result(on_tool_result, fallback_payload)
-            conversation.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": fallback_payload["tool_call_id"],
-                    "name": fallback_payload["tool_name"],
-                    "content": json.dumps(fallback_payload, ensure_ascii=False, default=str),
-                }
-            )
-            first_error_payload = fallback_payload
 
         synthetic_response = LLMResponse(
             content=message_text,

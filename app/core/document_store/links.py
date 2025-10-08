@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Iterable, Mapping
 
-from ..model import Link, Requirement, requirement_fingerprint, requirement_from_dict, requirement_to_dict
+from ..model import Link, Requirement, requirement_fingerprint
 from .types import Document, ValidationError
 from .documents import is_ancestor, load_documents
 from .items import (
@@ -300,11 +300,11 @@ def link_requirements(
         raise ValidationError("revision must be positive")
     updated["revision"] = revision
 
-    req = requirement_from_dict(
+    req = Requirement.from_mapping(
         updated,
         doc_prefix=derived_prefix,
         rid=derived_canonical_rid,
     )
     _update_link_suspicions(root_path, docs_map, req)
-    save_item(derived_dir, derived_doc, requirement_to_dict(req))
+    save_item(derived_dir, derived_doc, req.to_mapping())
     return req

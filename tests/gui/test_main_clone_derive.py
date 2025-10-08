@@ -11,7 +11,6 @@ from app.core.model import (
     RequirementType,
     Status,
     Verification,
-    requirement_to_dict,
 )
 from app.application import ApplicationContext
 from app.config import ConfigManager
@@ -71,10 +70,10 @@ def _prepare_frame(tmp_path, extra_requirements=None):
     doc_dir = tmp_path / "REQ"
     save_document(doc_dir, doc)
     base_req = _req(1, "Base")
-    save_item(doc_dir, doc, requirement_to_dict(base_req))
+    save_item(doc_dir, doc, base_req.to_mapping())
     if extra_requirements:
         for req in extra_requirements:
-            save_item(doc_dir, doc, requirement_to_dict(req))
+            save_item(doc_dir, doc, req.to_mapping())
 
     controller = DocumentsController(RequirementsService(tmp_path), model)
     controller.load_documents()

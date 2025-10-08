@@ -9,7 +9,6 @@ from app.core.model import (
     Status,
     Priority,
     Verification,
-    requirement_to_dict,
 )
 from app.services.requirements import RequirementsService
 from app.ui.editor_panel import EditorPanel
@@ -38,7 +37,7 @@ def test_editor_save_rejects_duplicate_id(monkeypatch, wx_app, tmp_path: Path) -
     service = RequirementsService(tmp_path)
     service.save_document(doc)
     assert doc_dir.exists()
-    service.save_requirement_payload("SYS", requirement_to_dict(_make_requirement(1)))
+    service.save_requirement_payload("SYS", _make_requirement(1).to_mapping())
 
     frame = wx.Frame(None)
     panel = EditorPanel(frame)

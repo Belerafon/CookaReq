@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from ..core.model import Requirement, requirement_to_dict
+from ..core.model import Requirement
 from ..services.requirements import (
     RequirementsService,
     RequirementNotFoundError,
@@ -105,7 +105,7 @@ def _page_to_payload(
 ) -> dict[str, Any]:
     items: list[dict[str, Any]] = []
     for req in page.items:
-        data: dict[str, Any] = requirement_to_dict(req)
+        data: dict[str, Any] = req.to_mapping()
         data["rid"] = req.rid
         items.append(_apply_field_selection(data, fields))
     hint = _build_list_pagination_hint(page, len(items))
@@ -238,7 +238,7 @@ def get_requirement(
                 params,
                 mcp_error(ErrorCode.INTERNAL, str(exc)),
             )
-        result: dict[str, Any] = requirement_to_dict(req)
+        result: dict[str, Any] = req.to_mapping()
         result["rid"] = req.rid
         return log_tool(
             "get_requirement",
@@ -266,7 +266,7 @@ def get_requirement(
                 params,
                 mcp_error(ErrorCode.INTERNAL, str(exc)),
             )
-        data = requirement_to_dict(req)
+        data = req.to_mapping()
         data["rid"] = req.rid
         items.append(_apply_field_selection(data, normalized_fields))
 

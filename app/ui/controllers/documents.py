@@ -17,7 +17,7 @@ from ...services.requirements import (
     parse_rid,
     rid_for,
 )
-from ...core.model import Requirement, requirement_to_dict
+from ...core.model import Requirement
 from ...core.trace_matrix import TraceMatrix, TraceMatrixConfig, build_trace_matrix
 
 
@@ -155,7 +155,7 @@ class DocumentsController:
         )
         req.doc_prefix = prefix
         req.rid = rid_for(doc, req.id)
-        data = requirement_to_dict(req)
+        data = req.to_mapping()
         return self.service.save_requirement_payload(prefix, data)
 
     def delete_requirement(self, prefix: str, req_id: int) -> str:

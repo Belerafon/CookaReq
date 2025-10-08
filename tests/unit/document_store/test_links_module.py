@@ -22,7 +22,6 @@ from app.core.model import (
     Priority,
     Verification,
     requirement_fingerprint,
-    requirement_to_dict,
 )
 
 pytestmark = pytest.mark.unit
@@ -48,8 +47,8 @@ def test_validate_and_link(tmp_path: Path) -> None:
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
 
-    save_item(tmp_path / "SYS", sys_doc, requirement_to_dict(_requirement(1)))
-    child_data = requirement_to_dict(_requirement(1))
+    save_item(tmp_path / "SYS", sys_doc, _requirement(1).to_mapping())
+    child_data = _requirement(1).to_mapping()
     child_data["links"] = []
     save_item(tmp_path / "HLR", hlr_doc, child_data)
 
@@ -106,8 +105,8 @@ def test_link_rejects_mismatched_case_rids(tmp_path: Path) -> None:
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
 
-    save_item(tmp_path / "SYS", sys_doc, requirement_to_dict(_requirement(1)))
-    save_item(tmp_path / "HLR", hlr_doc, requirement_to_dict(_requirement(2)))
+    save_item(tmp_path / "SYS", sys_doc, _requirement(1).to_mapping())
+    save_item(tmp_path / "HLR", hlr_doc, _requirement(2).to_mapping())
 
     docs = load_documents(tmp_path)
 
@@ -130,8 +129,8 @@ def test_link_becomes_suspect_after_parent_change(tmp_path: Path) -> None:
     save_document(tmp_path / "SYS", sys_doc)
     save_document(tmp_path / "HLR", hlr_doc)
 
-    save_item(tmp_path / "SYS", sys_doc, requirement_to_dict(_requirement(1)))
-    child_payload = requirement_to_dict(_requirement(2))
+    save_item(tmp_path / "SYS", sys_doc, _requirement(1).to_mapping())
+    child_payload = _requirement(2).to_mapping()
     save_item(tmp_path / "HLR", hlr_doc, child_payload)
 
     docs = load_documents(tmp_path)
@@ -158,7 +157,7 @@ def test_link_becomes_suspect_after_parent_change(tmp_path: Path) -> None:
     assert link_obj.suspect is True
     assert link_obj.fingerprint == stored_fp
 
-    serialized = requirement_to_dict(updated)
+    serialized = updated.to_mapping()
     assert serialized["links"][0]["fingerprint"] == stored_fp
     assert serialized["links"][0]["suspect"] is True
 

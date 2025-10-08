@@ -18,7 +18,7 @@ from ...services.user_documents import (
     MAX_ALLOWED_READ_BYTES,
     UserDocumentsService,
 )
-from ...core.model import Requirement, requirement_from_dict
+from ...core.model import Requirement
 from ...settings import AppSettings
 from ...mcp.events import ToolResultEvent, add_tool_result_listener
 from ..agent_chat_panel.batch_runner import BatchTarget
@@ -575,7 +575,7 @@ class MainFrameAgentMixin:
         prefix = prefix_raw
         canonical_rid = f"{prefix}{req_id}"
         try:
-            requirement = requirement_from_dict(
+            requirement = Requirement.from_mapping(
                 dict(result_payload),
                 doc_prefix=prefix,
                 rid=canonical_rid,

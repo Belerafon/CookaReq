@@ -11,8 +11,6 @@ from app.core.model import (
     Status,
     Verification,
     requirement_fingerprint,
-    requirement_from_dict,
-    requirement_to_dict,
 )
 
 pytestmark = pytest.mark.unit
@@ -53,20 +51,20 @@ def test_requirement_prefix_and_rid():
         "source": "s",
         "verification": "analysis",
     }
-    req = requirement_from_dict(data, doc_prefix="SYS", rid="SYS5")
+    req = Requirement.from_mapping(data, doc_prefix="SYS", rid="SYS5")
     assert req.doc_prefix == "SYS"
     assert req.rid == "SYS5"
-    roundtrip = requirement_to_dict(req)
+    roundtrip = req.to_mapping()
     assert "doc_prefix" not in roundtrip
     assert "rid" not in roundtrip
 
 
-def test_requirement_from_dict_missing_metadata_defaults():
+def test_requirement_from_mapping_missing_metadata_defaults():
     data = {
         "id": "7",
         "statement": "Legacy statement",
     }
-    req = requirement_from_dict(data)
+    req = Requirement.from_mapping(data)
     assert req.id == 7
     assert req.title == ""
     assert req.type is RequirementType.REQUIREMENT
@@ -97,13 +95,13 @@ def test_requirement_extended_roundtrip():
         rationale="because",
         assumptions="if ready",
     )
-    data = requirement_to_dict(req)
+    data = req.to_mapping()
     assert data["attachments"][0]["path"] == "doc.txt"
     assert data["approved_at"] == "2024-01-01 00:00:00"
     assert "acceptance" in data and data["acceptance"] is None
     assert data["rationale"] == "because"
     assert data["assumptions"] == "if ready"
-    again = requirement_from_dict(data)
+    again = Requirement.from_mapping(data)
     assert again.attachments[0].note == "ref"
     assert again.approved_at == "2024-01-01 00:00:00"
     assert again.notes == "extra"
@@ -124,9 +122,9 @@ def test_requirement_links_roundtrip():
         verification=Verification.ANALYSIS,
         links=[Link(rid="SYS1", fingerprint="abc", suspect=True)],
     )
-    data = requirement_to_dict(req)
+    data = req.to_mapping()
     assert data["links"] == [{"rid": "SYS1", "fingerprint": "abc", "suspect": True}]
-    again = requirement_from_dict(data)
+    again = Requirement.from_mapping(data)
     assert len(again.links) == 1
     assert again.links[0].rid == "SYS1"
     assert again.links[0].fingerprint == "abc"
@@ -151,7 +149,7 @@ def test_requirement_fingerprint_changes_on_text_update():
     assert fp1 != fp2
 
 
-def test_requirement_from_dict_missing_statement():
+def test_requirement_from_mapping_missing_statement():
     data = {
         "id": 1,
         "title": "T",
@@ -163,10 +161,10 @@ def test_requirement_from_dict_missing_statement():
         "verification": "analysis",
     }
     with pytest.raises(KeyError):
-        requirement_from_dict(data)
+        Requirement.from_mapping(data)
 
 
-def test_requirement_from_dict_rejects_text_field():
+def test_requirement_from_mapping_rejects_text_field():
     data = {
         "id": 1,
         "title": "T",
@@ -179,14 +177,14 @@ def test_requirement_from_dict_rejects_text_field():
         "verification": "analysis",
     }
     with pytest.raises(KeyError):
-        requirement_from_dict(data)
+        Requirement.from_mapping(data)
 
 
-def test_requirement_from_dict_rejects_invalid_revision():
+def test_requirement_from_mapping_rejects_invalid_revision():
     data = {
         "id": 1,
         "statement": "S",
         "revision": "beta",
     }
     with pytest.raises(TypeError):
-        requirement_from_dict(data)
+        Requirement.from_mapping(data)

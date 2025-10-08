@@ -14,7 +14,6 @@ from app.core.model import (
     RequirementType,
     Status,
     Verification,
-    requirement_to_dict,
 )
 from app.services.requirements import RequirementsService
 
@@ -314,7 +313,7 @@ def test_context_edit_saves_to_disk(
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
     original = _req(1, "Base", owner="alice")
-    save_item(doc_dir, doc, requirement_to_dict(original))
+    save_item(doc_dir, doc, original.to_mapping())
 
     model = requirement_model_cls()
     controller = documents_controller_cls(RequirementsService(tmp_path), model)

@@ -4,7 +4,7 @@ import sys
 import pytest
 
 from app.core.document_store import Document, load_document, save_document
-from app.core.model import requirement_from_dict, requirement_to_dict
+from app.core.model import Requirement
 
 
 @pytest.mark.smoke
@@ -21,8 +21,8 @@ def test_requirement_roundtrip() -> None:
         "source": "spec",
         "verification": "analysis",
     }
-    req = requirement_from_dict(data)
-    assert requirement_to_dict(req)["statement"] == "Do something"
+    req = Requirement.from_mapping(data)
+    assert req.to_mapping()["statement"] == "Do something"
 
 
 @pytest.mark.smoke

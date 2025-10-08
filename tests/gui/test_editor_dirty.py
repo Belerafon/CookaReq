@@ -137,7 +137,7 @@ def test_detached_editor_cancel_closes_window_without_saving(wx_app, tmp_path):
     import wx
 
     from app.core.document_store import LabelDef
-    from app.core.model import requirement_from_dict
+    from app.core.model import Requirement
     from app.ui.detached_editor import DetachedEditorFrame
 
     parent = wx.Frame(None)
@@ -147,7 +147,7 @@ def test_detached_editor_cancel_closes_window_without_saving(wx_app, tmp_path):
         def _on_close(frame: DetachedEditorFrame) -> None:
             closed.append(frame)
 
-        requirement = requirement_from_dict({"id": 1, "statement": "Original"})
+        requirement = Requirement.from_mapping({"id": 1, "statement": "Original"})
         frame = DetachedEditorFrame(
             parent,
             requirement=requirement,

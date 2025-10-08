@@ -26,12 +26,11 @@ from app.services.requirements import (
 from app.core.model import (
     Link,
     Priority,
+    Requirement,
     RequirementType,
     Status,
     Verification,
     requirement_fingerprint,
-    requirement_from_dict,
-    requirement_to_dict,
 )
 from app.core.trace_matrix import (
     TraceDirection,
@@ -630,8 +629,8 @@ def cmd_item_edit(
 
     payload["id"] = int(data["id"])
 
-    req = requirement_from_dict(payload, doc_prefix=doc.prefix, rid=args.rid)
-    service.save_requirement_payload(prefix, requirement_to_dict(req))
+    req = Requirement.from_mapping(payload, doc_prefix=doc.prefix, rid=args.rid)
+    service.save_requirement_payload(prefix, req.to_mapping())
     sys.stdout.write(f"{req.rid}\n")
 
 
@@ -652,7 +651,7 @@ def cmd_item_move(
         with open(data_path, encoding="utf-8") as fh:
             template = json.load(fh)
 
-    base_payload: dict[str, Any] = requirement_to_dict(current)
+    base_payload: dict[str, Any] = current.to_mapping()
     base_payload.update(template)
 
     try:
@@ -857,7 +856,7 @@ def cmd_link(
             return
         parent_payloads[rid] = parent_data
 
-    req = requirement_from_dict(data, doc_prefix=doc.prefix, rid=args.rid)
+    req = Requirement.from_mapping(data, doc_prefix=doc.prefix, rid=args.rid)
     existing_links = {link.rid: link for link in getattr(req, "links", [])}
     if args.replace:
         existing_links.clear()
@@ -868,7 +867,7 @@ def cmd_link(
             suspect=False,
         )
     req.links = [existing_links[rid] for rid in sorted(existing_links)]
-    service.save_requirement_payload(prefix, requirement_to_dict(req))
+    service.save_requirement_payload(prefix, req.to_mapping())
     sys.stdout.write(f"{args.rid}\n")
 
 

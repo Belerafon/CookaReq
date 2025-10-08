@@ -8,13 +8,7 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Callable, Mapping, Sequence
 
-from ..model import (
-    Link,
-    Requirement,
-    requirement_fingerprint,
-    requirement_from_dict,
-    requirement_to_dict,
-)
+from ..model import Link, Requirement, requirement_fingerprint
 from ..search import filter_by_labels, filter_by_status, search
 from .types import (
     Document,
@@ -261,7 +255,7 @@ def _iter_requirements(
             rid = rid_for(doc, item_id)
             cache[rid] = requirement_fingerprint(data)
             requirements.append(
-                requirement_from_dict(
+                Requirement.from_mapping(
                     data,
                     doc_prefix=prefix,
                     rid=rid,
@@ -400,7 +394,7 @@ def get_requirement(
     prefix, item_id, doc, _directory, data, canonical_rid = _resolve_requirement(
         root_path, rid, docs_map
     )
-    req = requirement_from_dict(data, doc_prefix=prefix, rid=canonical_rid)
+    req = Requirement.from_mapping(data, doc_prefix=prefix, rid=canonical_rid)
     _update_link_suspicions(root_path, docs_map, req)
     return req
 
@@ -429,13 +423,13 @@ def create_requirement(
     if "revision" not in payload:
         payload["revision"] = 1
     try:
-        req = requirement_from_dict(
+        req = Requirement.from_mapping(
             payload, doc_prefix=prefix, rid=rid_for(doc, item_id)
         )
     except (TypeError, ValueError) as exc:
         raise ValidationError(str(exc)) from exc
     _update_link_suspicions(root_path, docs_map, req)
-    save_item(directory, doc, requirement_to_dict(req))
+    save_item(directory, doc, req.to_mapping())
     return req
 
 
@@ -473,11 +467,13 @@ def _update_requirement(
         raise ValidationError(err)
     payload["labels"] = labels
     try:
-        req = requirement_from_dict(payload, doc_prefix=prefix, rid=canonical_rid)
+        req = Requirement.from_mapping(
+            payload, doc_prefix=prefix, rid=canonical_rid
+        )
     except (TypeError, ValueError) as exc:
         raise ValidationError(str(exc)) from exc
     _update_link_suspicions(root_path, docs_map, req)
-    save_item(directory, doc, requirement_to_dict(req))
+    save_item(directory, doc, req.to_mapping())
     return req
 
 
@@ -650,9 +646,11 @@ def move_requirement(
                 updated["links"] = new_links
                 referencing_updates.append((dir_path, doc, updated))
 
-    req = requirement_from_dict(updated_payload, doc_prefix=new_prefix, rid=new_rid)
+    req = Requirement.from_mapping(
+        updated_payload, doc_prefix=new_prefix, rid=new_rid
+    )
     _update_link_suspicions(root_path, docs_map, req)
-    save_item(dst_dir, dst_doc, requirement_to_dict(req))
+    save_item(dst_dir, dst_doc, req.to_mapping())
 
     for directory, doc, item_payload in referencing_updates:
         save_item(directory, doc, item_payload)

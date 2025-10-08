@@ -8,7 +8,6 @@ import pytest
 
 from app.application import ApplicationContext
 
-from app.core.model import requirement_to_dict
 from app.mcp.events import notify_tool_success
 
 pytestmark = pytest.mark.gui
@@ -70,7 +69,7 @@ def test_agent_tool_updates_reflect_in_ui(tmp_path, wx_app):
         original = frame.model.get_visible()[0]
         new_title = f"{original.title} (renamed)"
 
-        payload = requirement_to_dict(original)
+        payload = original.to_mapping()
         payload["rid"] = original.rid
         payload["title"] = new_title
         payload["revision"] = original.revision + 1
@@ -156,12 +155,12 @@ def test_agent_streaming_tool_updates_refresh_list_during_run(tmp_path, wx_app):
         english_title = f"{original.title} (EN)"
         translated_title = f"{original.title} (RU)"
 
-        payload_en = requirement_to_dict(original)
+        payload_en = original.to_mapping()
         payload_en["rid"] = original.rid
         payload_en["title"] = english_title
         payload_en["revision"] = original.revision + 1
 
-        payload_ru = requirement_to_dict(original)
+        payload_ru = original.to_mapping()
         payload_ru["rid"] = original.rid
         payload_ru["title"] = translated_title
         payload_ru["revision"] = original.revision + 2

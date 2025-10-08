@@ -16,7 +16,6 @@ from .model import (
     RequirementType,
     Status,
     Verification,
-    requirement_from_dict,
 )
 
 try:  # pragma: no cover - import guarded for environments without Excel support
@@ -464,7 +463,7 @@ def build_requirements(
             )
             continue
         try:
-            requirement = requirement_from_dict(payload)
+            requirement = Requirement.from_mapping(payload)
         except (TypeError, ValueError) as exc:
             issues.append(
                 RequirementImportIssue(row=row_index, field=None, message=str(exc))

@@ -29,8 +29,6 @@ from ..core.model import (
     Status,
     Verification,
     requirement_fingerprint,
-    requirement_from_dict,
-    requirement_to_dict,
 )
 from ..util.time import local_now_str, normalize_timestamp
 from ..i18n import _
@@ -677,7 +675,7 @@ class EditorPanel(wx.Panel):
         if isinstance(data, Requirement):
             self.extra["doc_prefix"] = data.doc_prefix
             self.extra["rid"] = data.rid
-            data = requirement_to_dict(data)
+            data = data.to_mapping()
         else:
             self.extra["doc_prefix"] = data.get("doc_prefix", "")
             self.extra["rid"] = data.get("rid", "")
@@ -845,7 +843,7 @@ class EditorPanel(wx.Panel):
         self.extra["labels"] = data["labels"]
         self.extra["approved_at"] = approved_at
         self.extra["notes"] = notes
-        return requirement_from_dict(
+        return Requirement.from_mapping(
             data,
             doc_prefix=self.extra.get("doc_prefix", ""),
             rid=self.extra.get("rid", ""),
@@ -1106,7 +1104,7 @@ class EditorPanel(wx.Panel):
             else None
         )
         req.modified_at = normalize_timestamp(mod) if mod else local_now_str()
-        data = requirement_to_dict(req)
+        data = req.to_mapping()
         path = service.save_requirement_payload(prefix, data)
         self.fields["modified_at"].ChangeValue(req.modified_at)
         self.original_modified_at = req.modified_at

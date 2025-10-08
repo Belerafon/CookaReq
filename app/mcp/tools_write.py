@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Mapping, Sequence
 
-from ..core.model import requirement_to_dict
+from ..core.model import Requirement
 from ..services.requirements import (
     RequirementsService,
     DocumentNotFoundError,
@@ -16,8 +16,8 @@ from ..services.requirements import (
 from .utils import ErrorCode, log_tool, mcp_error
 
 
-def _result_payload(req) -> dict:
-    data = requirement_to_dict(req)
+def _result_payload(req: Requirement) -> dict:
+    data = req.to_mapping()
     data["rid"] = req.rid
     return data
 
@@ -78,7 +78,7 @@ def update_requirement_field(
             mcp_error(ErrorCode.NOT_FOUND, str(exc)),
         )
     else:
-        before_snapshot = requirement_to_dict(previous)
+        before_snapshot = previous.to_mapping()
     try:
         req = service.update_requirement_field(rid, field=field, value=value)
     except RequirementNotFoundError as exc:

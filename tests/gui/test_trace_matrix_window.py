@@ -12,7 +12,6 @@ from app.core.model import (
     RequirementType,
     Status,
     Verification,
-    requirement_to_dict,
 )
 from app.core.trace_matrix import TraceMatrixAxisConfig, TraceMatrixConfig
 from app.services.requirements import RequirementsService
@@ -58,7 +57,7 @@ def test_trace_matrix_frame_renders_links(wx_app, tmp_path):
     hlr_dir = tmp_path / "HLR"
     save_document(hlr_dir, hlr)
     hlr_req = _requirement(1, "HLR Requirement", doc_prefix="HLR")
-    save_item(hlr_dir, hlr, requirement_to_dict(hlr_req))
+    save_item(hlr_dir, hlr, hlr_req.to_mapping())
 
     sys = Document(prefix="SYS", title="System", parent="HLR")
     sys_dir = tmp_path / "SYS"
@@ -66,10 +65,10 @@ def test_trace_matrix_frame_renders_links(wx_app, tmp_path):
 
     link = Link(rid="HLR1")
     sys_req_linked = _requirement(1, "SYS covers HLR", doc_prefix="SYS", links=[link])
-    save_item(sys_dir, sys, requirement_to_dict(sys_req_linked))
+    save_item(sys_dir, sys, sys_req_linked.to_mapping())
 
     sys_req_orphan = _requirement(2, "SYS orphan", doc_prefix="SYS")
-    save_item(sys_dir, sys, requirement_to_dict(sys_req_orphan))
+    save_item(sys_dir, sys, sys_req_orphan.to_mapping())
 
     controller.load_documents()
 

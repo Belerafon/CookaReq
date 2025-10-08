@@ -9,8 +9,6 @@ from app.core.model import (
     RequirementType,
     Status,
     Verification,
-    requirement_from_dict,
-    requirement_to_dict,
 )
 
 pytestmark = pytest.mark.unit
@@ -36,9 +34,9 @@ def test_save_and_load_extended_fields(tmp_path: Path):
         rationale="reason",
         assumptions="context",
     )
-    save_item(doc_dir, doc, requirement_to_dict(req))
+    save_item(doc_dir, doc, req.to_mapping())
     data, _ = load_item(doc_dir, doc, 1)
-    loaded = requirement_from_dict(data)
+    loaded = Requirement.from_mapping(data)
     assert loaded.attachments[0].path == "file.txt"
     assert loaded.approved_at == "2024-01-01"
     assert loaded.notes == "note"

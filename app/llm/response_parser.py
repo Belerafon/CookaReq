@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, is_dataclass
-from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
@@ -1046,10 +1047,7 @@ class LLMResponseParser:
         function = call_map.get("function") if call_map else None
         if function is None:
             function = getattr(tool_call, "function", None)
-        if function is not None:
-            func_map = extract_mapping(function)
-        else:
-            func_map = None
+        func_map = extract_mapping(function) if function is not None else None
 
         name = getattr(function, "name", None)
         if func_map is not None and name is None:

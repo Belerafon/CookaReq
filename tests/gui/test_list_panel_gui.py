@@ -11,7 +11,6 @@ from app.core.model import (
     RequirementType,
     Status,
     Verification,
-    requirement_to_dict,
 )
 from app.services.requirements import RequirementsService
 from app.ui.controllers import DocumentsController
@@ -667,10 +666,10 @@ def test_reload_marks_child_suspect_after_parent_change(wx_app, tmp_path):
     service = RequirementsService(tmp_path)
     service.create_document(prefix="SYS", title="System")
     service.create_document(prefix="REQ", title="Requirements", parent="SYS")
-    service.create_requirement("SYS", requirement_to_dict(_req(1, "Parent")))
+    service.create_requirement("SYS", _req(1, "Parent").to_mapping())
     service.create_requirement(
         "REQ",
-        requirement_to_dict(_req(1, "Child", links=["SYS1"])),
+        _req(1, "Child", links=["SYS1"]).to_mapping(),
     )
 
     model = RequirementModel()

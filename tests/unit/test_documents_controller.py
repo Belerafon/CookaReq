@@ -24,7 +24,6 @@ from app.core.model import (
     Status,
     Priority,
     Verification,
-    requirement_to_dict,
 )
 
 pytestmark = pytest.mark.unit
@@ -55,7 +54,7 @@ def test_load_documents_and_items(tmp_path: Path):
     )
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
-    save_item(doc_dir, doc, requirement_to_dict(_req(1)))
+    save_item(doc_dir, doc, _req(1).to_mapping())
 
     model = RequirementModel()
     controller = _controller(tmp_path, model)
@@ -100,7 +99,7 @@ def test_add_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
-    save_item(doc_dir, doc, requirement_to_dict(_req(1)))
+    save_item(doc_dir, doc, _req(1).to_mapping())
 
     model = RequirementModel()
     controller = _controller(tmp_path, model)
@@ -116,8 +115,8 @@ def test_save_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
-    save_item(doc_dir, doc, requirement_to_dict(_req(1)))
-    save_item(doc_dir, doc, requirement_to_dict(_req(2)))
+    save_item(doc_dir, doc, _req(1).to_mapping())
+    save_item(doc_dir, doc, _req(2).to_mapping())
 
     model = RequirementModel()
     controller = _controller(tmp_path, model)
@@ -139,8 +138,8 @@ def test_iter_links(tmp_path: Path):
     hlr_dir = tmp_path / "HLR"
     save_document(sys_dir, sys_doc)
     save_document(hlr_dir, hlr_doc)
-    save_item(sys_dir, sys_doc, requirement_to_dict(_req(1)))
-    data = requirement_to_dict(_req(1))
+    save_item(sys_dir, sys_doc, _req(1).to_mapping())
+    data = _req(1).to_mapping()
     data["links"] = ["SYS1"]
     save_item(hlr_dir, hlr_doc, data)
     model = RequirementModel()
@@ -157,8 +156,8 @@ def test_delete_requirement_removes_links(tmp_path: Path):
     hlr_dir = tmp_path / "HLR"
     save_document(sys_dir, sys_doc)
     save_document(hlr_dir, hlr_doc)
-    save_item(sys_dir, sys_doc, requirement_to_dict(_req(1)))
-    data = requirement_to_dict(_req(1))
+    save_item(sys_dir, sys_doc, _req(1).to_mapping())
+    data = _req(1).to_mapping()
     data["links"] = ["SYS1"]
     save_item(hlr_dir, hlr_doc, data)
     model = RequirementModel()
@@ -175,7 +174,7 @@ def test_delete_requirement_with_invalid_revision(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
-    save_item(doc_dir, doc, requirement_to_dict(_req(1)))
+    save_item(doc_dir, doc, _req(1).to_mapping())
 
     path = item_path(doc_dir, doc, 1)
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -204,9 +203,9 @@ def test_delete_document_recursively(tmp_path: Path):
     save_document(sys_dir, sys_doc)
     save_document(hlr_dir, hlr_doc)
     save_document(llr_dir, llr_doc)
-    save_item(sys_dir, sys_doc, requirement_to_dict(_req(1)))
-    save_item(hlr_dir, hlr_doc, requirement_to_dict(_req(1)))
-    save_item(llr_dir, llr_doc, requirement_to_dict(_req(1)))
+    save_item(sys_dir, sys_doc, _req(1).to_mapping())
+    save_item(hlr_dir, hlr_doc, _req(1).to_mapping())
+    save_item(llr_dir, llr_doc, _req(1).to_mapping())
     model = RequirementModel()
     controller = _controller(tmp_path, model)
     controller.load_documents()

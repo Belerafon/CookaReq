@@ -7,7 +7,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from ..util.time import normalize_timestamp
 
@@ -47,15 +47,33 @@ class Verification(str, Enum):
     TEST = "test"
 
 
-@dataclass
+@dataclass(slots=True)
 class Attachment:
     """Represent a file attached to a requirement."""
 
     path: str
     note: str = ""
 
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> Attachment:
+        """Create an :class:`Attachment` from a JSON mapping."""
+        if not isinstance(data, Mapping):
+            raise TypeError("attachment must be a mapping")
+        try:
+            path_raw = data["path"]
+        except KeyError as exc:  # pragma: no cover - defensive
+            raise TypeError("attachment mapping missing 'path'") from exc
+        note_raw = data.get("note", "")
+        path = str(path_raw)
+        note = "" if note_raw is None else str(note_raw)
+        return cls(path=path, note=note)
 
-@dataclass
+    def to_mapping(self) -> dict[str, Any]:
+        """Serialise the attachment for JSON storage."""
+        return {"path": self.path, "note": self.note}
+
+
+@dataclass(slots=True)
 class Requirement:
     """Represent a requirement with metadata and trace links."""
 
@@ -83,169 +101,190 @@ class Requirement:
     doc_prefix: str = ""
     rid: str = ""
 
+    @classmethod
+    def from_mapping(
+        cls,
+        data: Mapping[str, Any],
+        *,
+        doc_prefix: str = "",
+        rid: str = "",
+    ) -> Requirement:
+        """Create a requirement instance from JSON-compatible mapping."""
 
-def requirement_from_dict(
-    data: dict[str, Any], *, doc_prefix: str = "", rid: str = ""
-) -> Requirement:
-    """Create :class:`Requirement` instance from a plain ``dict``.
+        if not isinstance(data, Mapping):
+            raise TypeError("requirement payload must be a mapping")
 
-    Nested ``attachments`` and derivation structures are converted
-    into their respective dataclasses. Missing optional fields fall back to
-    sensible defaults.
-    """
-    required = [
-        "id",
-        "statement",
-    ]
-    for required_field in required:
-        if required_field not in data:
-            raise KeyError(f"missing required field: {required_field}")
+        required = ["id", "statement"]
+        for required_field in required:
+            if required_field not in data:
+                raise KeyError(f"missing required field: {required_field}")
 
-    for legacy_field in ("text", "tags"):
-        if legacy_field in data:
-            raise KeyError(f"unsupported field: {legacy_field}")
+        for legacy_field in ("text", "tags"):
+            if legacy_field in data:
+                raise KeyError(f"unsupported field: {legacy_field}")
 
-    def _enum_value(field: str, enum_cls: type[Enum], default: Enum) -> Enum:
-        value = data.get(field, default)
-        if isinstance(value, enum_cls):
-            return value
-        if value in (None, ""):
-            return default
-        try:
-            return enum_cls(value)
-        except ValueError as exc:
-            allowed = ", ".join(member.value for member in enum_cls)
-            raise ValueError(
-                f"invalid {field}: {value!r}; expected one of: {allowed}"
-            ) from exc
-
-    def _text_value(field: str, default: str = "") -> str:
-        value = data.get(field, default)
-        if value is None:
-            return default
-        if isinstance(value, str):
-            return value
-        return str(value)
-
-    attachments_data = data.get("attachments")
-    if attachments_data in (None, ""):
-        attachments_data = []
-    if not isinstance(attachments_data, list):
-        raise TypeError("attachments must be a list")
-    attachments = [Attachment(**a) for a in attachments_data]
-
-    raw_links = data.get("links")
-    links: list[Link] = []
-    if raw_links in (None, ""):
-        raw_links = []
-    if raw_links:
-        if not isinstance(raw_links, list):
-            raise TypeError("links must be a list")
-        for entry in raw_links:
+        def _enum_value(field: str, enum_cls: type[Enum], default: Enum) -> Enum:
+            value = data.get(field, default)
+            if isinstance(value, enum_cls):
+                return value
+            if value in (None, ""):
+                return default
             try:
-                link = Link.from_raw(entry)
-            except (TypeError, ValueError) as exc:
-                raise TypeError("invalid link entry") from exc
-            links.append(link)
+                return enum_cls(value)
+            except ValueError as exc:
+                allowed = ", ".join(member.value for member in enum_cls)
+                raise ValueError(
+                    f"invalid {field}: {value!r}; expected one of: {allowed}"
+                ) from exc
 
-    labels_data = data.get("labels")
-    if labels_data in (None, ""):
-        labels: list[str] = []
-    else:
-        if not isinstance(labels_data, list):
-            raise TypeError("labels must be a list")
-        labels = [str(label) for label in labels_data]
+        def _text_value(field: str, default: str = "") -> str:
+            value = data.get(field, default)
+            if value is None:
+                return default
+            if isinstance(value, str):
+                return value
+            return str(value)
 
-    try:
-        req_id = int(data["id"])
-    except (TypeError, ValueError) as exc:
-        raise TypeError("id must be an integer") from exc
+        attachments_data = data.get("attachments")
+        if attachments_data in (None, ""):
+            attachments_source: Sequence[Any] = []
+        else:
+            attachments_source = attachments_data  # type: ignore[assignment]
+        if isinstance(attachments_source, (str, bytes)) or not isinstance(
+            attachments_source, Sequence
+        ):
+            raise TypeError("attachments must be a list")
+        attachments: list[Attachment] = []
+        for entry in attachments_source:
+            if isinstance(entry, Attachment):
+                attachments.append(entry)
+            else:
+                attachments.append(Attachment.from_mapping(entry))
 
-    statement = data["statement"]
-    if statement is None:
-        raise TypeError("statement cannot be null")
-    if not isinstance(statement, str):
-        statement = str(statement)
+        raw_links = data.get("links")
+        links: list[Link] = []
+        if raw_links in (None, ""):
+            raw_links = []
+        if raw_links:
+            if not isinstance(raw_links, list):
+                raise TypeError("links must be a list")
+            for entry in raw_links:
+                if isinstance(entry, Link):
+                    links.append(entry)
+                    continue
+                try:
+                    link = Link.from_raw(entry)
+                except (TypeError, ValueError) as exc:
+                    raise TypeError("invalid link entry") from exc
+                links.append(link)
 
-    title = _text_value("title")
-    owner = _text_value("owner")
-    source = _text_value("source")
-    conditions = _text_value("conditions")
-    rationale = _text_value("rationale")
-    assumptions = _text_value("assumptions")
-    notes = _text_value("notes")
+        labels_data = data.get("labels")
+        if labels_data in (None, ""):
+            labels = []
+        else:
+            if not isinstance(labels_data, list):
+                raise TypeError("labels must be a list")
+            labels = [str(label) for label in labels_data]
 
-    acceptance_raw = data.get("acceptance")
-    if acceptance_raw is None:
-        acceptance = None
-    elif isinstance(acceptance_raw, str):
-        acceptance = acceptance_raw
-    else:
-        acceptance = str(acceptance_raw)
+        try:
+            req_id = int(data["id"])
+        except (TypeError, ValueError) as exc:
+            raise TypeError("id must be an integer") from exc
 
-    revision_raw = data.get("revision", 1)
-    try:
-        revision = int(revision_raw)
-    except (TypeError, ValueError) as exc:
-        raise TypeError("revision must be an integer") from exc
-    if revision <= 0:
-        raise ValueError("revision must be positive")
+        statement = data["statement"]
+        if statement is None:
+            raise TypeError("statement cannot be null")
+        if not isinstance(statement, str):
+            statement = str(statement)
 
-    modified_at = normalize_timestamp(data.get("modified_at"))
-    approved_raw = data.get("approved_at")
-    approved_at = normalize_timestamp(approved_raw) if approved_raw else None
+        title = _text_value("title")
+        owner = _text_value("owner")
+        source = _text_value("source")
+        conditions = _text_value("conditions")
+        rationale = _text_value("rationale")
+        assumptions = _text_value("assumptions")
+        notes = _text_value("notes")
 
-    return Requirement(
-        id=req_id,
-        title=title,
-        statement=statement,
-        type=_enum_value("type", RequirementType, RequirementType.REQUIREMENT),
-        status=_enum_value("status", Status, Status.DRAFT),
-        owner=owner,
-        priority=_enum_value("priority", Priority, Priority.MEDIUM),
-        source=source,
-        verification=_enum_value(
-            "verification", Verification, Verification.ANALYSIS
-        ),
-        acceptance=acceptance,
-        conditions=conditions,
-        rationale=rationale,
-        assumptions=assumptions,
-        modified_at=modified_at,
-        labels=labels,
-        attachments=attachments,
-        revision=revision,
-        approved_at=approved_at,
-        notes=notes,
-        links=links,
-        doc_prefix=doc_prefix,
-        rid=rid,
-    )
+        acceptance_raw = data.get("acceptance")
+        if acceptance_raw is None:
+            acceptance = None
+        elif isinstance(acceptance_raw, str):
+            acceptance = acceptance_raw
+        else:
+            acceptance = str(acceptance_raw)
 
-def requirement_to_dict(req: Requirement) -> dict[str, Any]:
-    """Convert ``req`` into a plain ``dict`` suitable for JSON storage."""
-    data = asdict(req)
-    # ``doc_prefix`` and ``rid`` are derived from file location; omit
-    data.pop("doc_prefix", None)
-    data.pop("rid", None)
-    if data.get("links"):
-        links: list[dict[str, Any]] = []
-        for link in req.links:
-            if isinstance(link, Link):
-                links.append(link.to_dict())
-            else:  # pragma: no cover - defensive
-                links.append({"rid": str(link)})
-        if links:
-            data["links"] = links
+        revision_raw = data.get("revision", 1)
+        try:
+            revision = int(revision_raw)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("revision must be an integer") from exc
+        if revision <= 0:
+            raise ValueError("revision must be positive")
+
+        modified_at = normalize_timestamp(data.get("modified_at"))
+        approved_raw = data.get("approved_at")
+        approved_at = normalize_timestamp(approved_raw) if approved_raw else None
+
+        return cls(
+            id=req_id,
+            title=title,
+            statement=statement,
+            type=_enum_value("type", RequirementType, RequirementType.REQUIREMENT),
+            status=_enum_value("status", Status, Status.DRAFT),
+            owner=owner,
+            priority=_enum_value("priority", Priority, Priority.MEDIUM),
+            source=source,
+            verification=_enum_value(
+                "verification", Verification, Verification.ANALYSIS
+            ),
+            acceptance=acceptance,
+            conditions=conditions,
+            rationale=rationale,
+            assumptions=assumptions,
+            modified_at=modified_at,
+            labels=labels,
+            attachments=attachments,
+            revision=revision,
+            approved_at=approved_at,
+            notes=notes,
+            links=links,
+            doc_prefix=str(doc_prefix),
+            rid=str(rid),
+        )
+
+    def to_mapping(self) -> dict[str, Any]:
+        """Serialise the requirement into JSON-compatible mapping."""
+
+        data = asdict(self)
+        data.pop("doc_prefix", None)
+        data.pop("rid", None)
+        if data.get("links"):
+            links: list[dict[str, Any]] = []
+            for link in self.links:
+                if isinstance(link, Link):
+                    links.append(link.to_dict())
+                else:  # pragma: no cover - defensive
+                    links.append({"rid": str(link)})
+            if links:
+                data["links"] = links
+            else:
+                data.pop("links", None)
         else:
             data.pop("links", None)
-    else:
-        data.pop("links", None)
-    for key in ("type", "status", "priority", "verification"):
-        value = data.get(key)
-        if isinstance(value, Enum):
-            data[key] = value.value
-    return data
+        attachments_payload: list[dict[str, Any]] = []
+        for attachment in self.attachments:
+            if isinstance(attachment, Attachment):
+                attachments_payload.append(attachment.to_mapping())
+            elif isinstance(attachment, Mapping):  # pragma: no cover - defensive
+                attachments_payload.append(dict(attachment))
+            else:  # pragma: no cover - defensive
+                attachments_payload.append({"path": str(attachment)})
+        data["attachments"] = attachments_payload
+        for key in ("type", "status", "priority", "verification"):
+            value = data.get(key)
+            if isinstance(value, Enum):
+                data[key] = value.value
+        return data
 
 
 FINGERPRINT_FIELDS = (
@@ -275,6 +314,8 @@ def requirement_fingerprint(payload: Requirement | Mapping[str, Any]) -> str:
     data = {field: _fingerprint_value(payload, field) for field in FINGERPRINT_FIELDS}
     serialized = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
 @dataclass
 class Link:
     """Represent relationship to a parent requirement."""

@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 from app.core.document_store import Document
-from app.core.model import requirement_to_dict
 from app.services.requirements import RequirementsService
 from app.ui.editor_panel import EditorPanel
 
@@ -37,7 +36,7 @@ def test_mark_link_as_suspect_updates_ui_and_serialization(wx_app):
 
     req = panel.get_data()
     assert req.links[0].suspect is True
-    data = requirement_to_dict(req)
+    data = req.to_mapping()
     assert data["links"][0]["suspect"] is True
     frame.Destroy()
 

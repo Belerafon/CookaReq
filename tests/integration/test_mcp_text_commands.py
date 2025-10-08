@@ -17,7 +17,6 @@ from app.core.model import (
     RequirementType,
     Status,
     Verification,
-    requirement_to_dict,
 )
 from app.log import logger
 from app.mcp.server import JsonlHandler
@@ -135,7 +134,7 @@ def test_run_command_fetches_requirement_with_prefixed_rid(
         source="specification",
         verification=Verification.ANALYSIS,
     )
-    save_item(doc_dir, doc, requirement_to_dict(requirement))
+    save_item(doc_dir, doc, requirement.to_mapping())
 
     responses = {
         "Write the text of the first requirement": [

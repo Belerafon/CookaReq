@@ -573,36 +573,16 @@ class LocalAgent:
         on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Drive an agent loop that may invoke MCP tools before replying."""
-        context_messages = self._prepare_context_messages(context)
-        conversation = self._prepare_conversation(
-            text,
-            history,
-            context=context_messages,
-        )
-        log_event(
-            "AGENT_START",
-            {"history_count": len(history or []), "prompt": self._preview(text, 200)},
-        )
-        self._llm_requests = []
-        self._llm_steps = []
-        try:
-            result = self._run_sync(
-                self._run_loop_core(
-                    conversation,
-                    cancellation=cancellation,
-                    on_tool_result=on_tool_result,
-                    on_llm_step=on_llm_step,
-                )
+        return self._run_sync(
+            self.run_command_async(
+                text,
+                history=history,
+                context=context,
+                cancellation=cancellation,
+                on_tool_result=on_tool_result,
+                on_llm_step=on_llm_step,
             )
-        except OperationCancelledError:
-            log_event("AGENT_CANCELLED", {"reason": "user-request"})
-            raise
-        except Exception as exc:
-            err = exception_to_mcp_error(exc)["error"]
-            log_event("ERROR", {"error": err})
-            return self._prepare_result_with_diagnostic({"ok": False, "error": err})
-        log_event("AGENT_RESULT", self._summarize_result(result))
-        return self._prepare_result_with_diagnostic(result)
+        )
 
     async def run_command_async(
         self,

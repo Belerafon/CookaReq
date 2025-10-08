@@ -345,6 +345,29 @@ def test_item_add_rejects_invalid_status(tmp_path, capsys, cli_context):
 
 
 @pytest.mark.unit
+def test_item_add_reports_invalid_template_json(tmp_path, capsys, cli_context):
+    doc_sys = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc_sys)
+
+    bad_template = tmp_path / "broken.json"
+    bad_template.write_text("{", encoding="utf-8")
+
+    args = argparse.Namespace(
+        directory=str(tmp_path),
+        prefix="SYS",
+        data=str(bad_template),
+        title="Invalid",
+        statement="Body",
+        labels=None,
+    )
+    commands.cmd_item_add(args, cli_context)
+
+    out = capsys.readouterr().out
+    assert "invalid template JSON" in out
+    assert not any((tmp_path / "SYS" / "items").glob("*.json"))
+
+
+@pytest.mark.unit
 def test_item_delete_removes_links(tmp_path, capsys, cli_context):
     doc_sys = Document(prefix="SYS", title="System")
     doc_hlr = Document(prefix="HLR", title="High", parent="SYS")

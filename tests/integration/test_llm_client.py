@@ -101,6 +101,69 @@ def test_check_llm_omits_token_limits(tmp_path: Path, monkeypatch) -> None:
 
 
 
+
+
+
+def test_chat_custom_temperature_applied(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path)
+    settings.llm.use_custom_temperature = True
+    settings.llm.temperature = 0.37
+    captured_temperatures: list[float | None] = []
+    captured_kwargs: list[dict[str, object]] = []
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k) -> None:  # pragma: no cover - simple capture
+            def create(
+                *,
+                model,
+                messages,
+                tools=None,
+                temperature=None,
+                **kwargs,
+            ):  # noqa: ANN001
+                captured_temperatures.append(temperature)
+                captured_kwargs.append(dict(kwargs))
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content="ok",
+                                tool_calls=None,
+                            )
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+            self.responses = SimpleNamespace(
+                create=lambda **kwargs: SimpleNamespace(
+                    output=[
+                        SimpleNamespace(
+                            type="message",
+                            content=[
+                                SimpleNamespace(type="output_text", text="noop")
+                            ],
+                        )
+                    ]
+                )
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+
+    assert client.check_llm() == {"ok": True}
+    response = client.parse_command("ping")
+    assert response.content == "ok"
+
+    assert len(captured_temperatures) == 2
+    for value in captured_temperatures:
+        assert value == pytest.approx(settings.llm.temperature)
+    for payload in captured_kwargs:
+        assert "temperature" not in payload
+
+
 def test_check_llm_harmony_reports_missing_responses(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -128,6 +191,59 @@ def test_check_llm_harmony_reports_missing_responses(
     assert error["type"] == "HTTPStatusError"
     assert "Responses API" in error["hint"]
     assert settings.llm.base_url in error["hint"]
+
+
+
+
+
+def test_harmony_custom_temperature_applied(tmp_path: Path, monkeypatch) -> None:
+    settings = settings_with_llm(tmp_path, message_format="harmony")
+    settings.llm.use_custom_temperature = True
+    settings.llm.temperature = 1.5
+    captured_temperatures: list[float | None] = []
+    captured_kwargs: list[dict[str, object]] = []
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k) -> None:  # pragma: no cover - simple capture
+            def create(
+                *,
+                model,
+                input,
+                tools,
+                reasoning,
+                temperature=None,
+                **kwargs,
+            ):  # noqa: ANN001
+                captured_temperatures.append(temperature)
+                captured_kwargs.append(dict(kwargs))
+                return SimpleNamespace(
+                    output=[
+                        SimpleNamespace(
+                            type="message",
+                            content=[
+                                SimpleNamespace(type="output_text", text="done")
+                            ],
+                        )
+                    ]
+                )
+
+            self.responses = SimpleNamespace(create=create)
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **kwargs: SimpleNamespace())
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+
+    assert client.check_llm() == {"ok": True}
+    response = client.parse_command("ping")
+    assert response.content == "done"
+
+    assert len(captured_temperatures) == 2
+    for value in captured_temperatures:
+        assert value == pytest.approx(settings.llm.temperature)
+    for payload in captured_kwargs:
+        assert "temperature" not in payload
 
 
 def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:

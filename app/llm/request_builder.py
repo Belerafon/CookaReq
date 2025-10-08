@@ -63,7 +63,6 @@ class LLMRequestBuilder:
         *,
         tools: Sequence[Mapping[str, Any]] | None = None,
         stream: bool = False,
-        temperature: float | None = None,
     ) -> PreparedChatRequest:
         """Return normalized messages and arguments for the chat endpoint."""
         messages = self._prepare_messages(conversation or [])
@@ -72,7 +71,6 @@ class LLMRequestBuilder:
             messages,
             tools=tools,
             stream=stream,
-            temperature=temperature,
         )
         return PreparedChatRequest(
             messages=messages,

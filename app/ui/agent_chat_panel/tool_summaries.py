@@ -9,6 +9,7 @@ from typing import Any
 import json
 
 from ...i18n import _
+from ...llm.tokenizer import TokenCountResult, count_text_tokens
 from ..text import normalize_for_display
 from .time_formatting import format_entry_timestamp, parse_iso_timestamp
 
@@ -729,6 +730,28 @@ def summarize_specific_tool(
                 consumed_args.add("tags")
         return lines, consumed_args, None
 
+    if tool_name == "read_user_document":
+        if isinstance(result, Mapping) and "content" in result:
+            preview = _summarize_document_content_preview(result.get("content"))
+            lines.append(
+                _("Content preview: {preview}").format(
+                    preview=_wrap_preview_for_display(preview)
+                )
+            )
+            consumed_result.add("content")
+        return lines, consumed_args, consumed_result
+
+    if tool_name == "create_user_document":
+        if isinstance(arguments, Mapping) and "content" in arguments:
+            preview = _summarize_document_content_preview(arguments.get("content"))
+            lines.append(
+                _("Content preview: {preview}").format(
+                    preview=_wrap_preview_for_display(preview)
+                )
+            )
+            consumed_args.add("content")
+        return lines, consumed_args, consumed_result
+
     return lines, consumed_args, consumed_result
 
 
@@ -897,6 +920,64 @@ def shorten_text(text: str, *, limit: int = 120) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1] + "…"
+
+
+def _wrap_preview_for_display(preview: str) -> str:
+    cleaned = normalize_for_display(preview)
+    if not cleaned:
+        return "`" + normalize_for_display(_("(empty)")) + "`"
+    return f"`{cleaned}`"
+
+
+def _summarize_document_content_preview(content: Any) -> str:
+    if content is None:
+        return normalize_for_display(_("(empty)"))
+    try:
+        text = str(content)
+    except Exception:  # pragma: no cover - defensive
+        text = ""
+    if not text:
+        return normalize_for_display(_("(empty)"))
+
+    prefix_segment = text[:20]
+    suffix_segment = text[-20:]
+    prefix = _prepare_preview_segment(prefix_segment)
+    suffix = _prepare_preview_segment(suffix_segment)
+    token_result = count_text_tokens(text)
+    token_text = _format_token_metric(token_result)
+    line_count = len(text.splitlines())
+    if line_count == 0 and text:
+        line_count = 1
+    info = _("lines: {lines}, tokens: {tokens}, characters: {characters}").format(
+        lines=line_count,
+        tokens=token_text,
+        characters=len(text),
+    )
+    return f"{prefix}…[{normalize_for_display(info)}]…{suffix}"
+
+
+def _prepare_preview_segment(segment: str) -> str:
+    if not segment:
+        return ""
+    normalized = segment.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = normalized.replace("\n", "⏎")
+    normalized = normalized.replace("\t", "⇥")
+    printable = []
+    for char in normalized:
+        printable.append(char if char.isprintable() else "�")
+    return normalize_for_display("".join(printable))
+
+
+def _format_token_metric(result: TokenCountResult | None) -> str:
+    if result is None:
+        return "?"
+    tokens = result.tokens
+    if tokens is None:
+        return "?"
+    text = normalize_for_display(str(max(tokens, 0)))
+    if result.approximate:
+        return f"≈{text}"
+    return text
 
 
 __all__ = [

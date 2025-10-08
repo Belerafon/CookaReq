@@ -104,13 +104,11 @@ def test_execute_tool_calls_logs_full_exchange(
         arguments={"rid": "DEMO14", "field": "title", "value": "Текст"},
     )
 
-    messages, error_payload, successful = asyncio.run(
-        agent._execute_tool_calls_core((tool_call,))
-    )
+    outcome = asyncio.run(agent._execute_tool_calls_core((tool_call,)))
 
-    assert messages[0]["content"] != ""
-    assert error_payload is None
-    assert successful and successful[0]["ok"] is True
+    assert outcome.messages[0]["content"] != ""
+    assert outcome.error_payload is None
+    assert outcome.successful_results and outcome.successful_results[0]["ok"] is True
 
     call_detail = next(payload for event, payload in captured if event == "AGENT_TOOL_CALL_DETAIL")
     assert call_detail["arguments"]["rid"] == "DEMO14"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 import json
 
@@ -29,6 +29,17 @@ class ToolCallSummary:
     cost: str | None = None
     error_message: str | None = None
     arguments: Any | None = None
+    category: Literal["tool", "validation_guard"] = "tool"
+
+
+@dataclass(frozen=True)
+class ValidationGuardMetadata:
+    """Structured details extracted from a validation guard payload."""
+
+    reason: str | None
+    llm_message: str | None
+    code: str | None
+    details: Mapping[str, Any] | None
 
 
 def summarize_tool_results(
@@ -63,6 +74,14 @@ def _normalise_timestamp(value: Any) -> str | None:
         if formatted:
             return normalize_for_display(formatted)
         return normalize_for_display(text)
+    return None
+
+
+def _normalise_optional_string(value: Any) -> str | None:
+    if isinstance(value, str):
+        text = value.strip()
+        if text:
+            return normalize_for_display(text)
     return None
 
 
@@ -204,6 +223,41 @@ def _derive_error_message(payload: Mapping[str, Any]) -> str | None:
 def summarize_tool_payload(
     index: int, payload: Mapping[str, Any]
 ) -> ToolCallSummary | None:
+    if is_validation_guard_payload(payload):
+        metadata = extract_validation_guard_metadata(payload)
+        bullet_lines: list[str] = []
+        if metadata.reason:
+            bullet_lines.append(
+                _("Guard message: {message}").format(message=metadata.reason)
+            )
+        if metadata.llm_message and metadata.llm_message != metadata.reason:
+            bullet_lines.append(
+                _("LLM message: {message}").format(message=metadata.llm_message)
+            )
+        duration_seconds = _extract_duration_seconds(payload)
+        cost_text = _extract_cost_text(payload)
+        started_at = _normalise_timestamp(
+            payload.get("started_at") or payload.get("first_observed_at")
+        )
+        completed_at = _normalise_timestamp(payload.get("completed_at"))
+        last_observed = _normalise_timestamp(
+            payload.get("last_observed_at") or payload.get("observed_at")
+        )
+        return ToolCallSummary(
+            index=index,
+            tool_name=_("LLM validation guard"),
+            status=_("blocked invalid response"),
+            bullet_lines=tuple(bullet_lines),
+            started_at=started_at,
+            completed_at=completed_at,
+            last_observed_at=last_observed,
+            duration=duration_seconds,
+            cost=cost_text,
+            error_message=extract_error_message(payload.get("error")),
+            arguments=None,
+            category="validation_guard",
+        )
+
     tool_name = extract_tool_name(payload)
     status = format_tool_status(payload)
     bullet_lines = list(summarize_tool_details(payload))
@@ -230,6 +284,70 @@ def summarize_tool_payload(
         cost=cost_text,
         error_message=error_text,
         arguments=arguments,
+    )
+
+
+def is_validation_guard_payload(payload: Mapping[str, Any]) -> bool:
+    """Return ``True`` if *payload* corresponds to a validation guard entry."""
+
+    if not isinstance(payload, Mapping):
+        return False
+
+    def _matches_name(value: Any) -> bool:
+        return isinstance(value, str) and value.strip().lower() == "invalid_tool_call"
+
+    if _matches_name(payload.get("tool_name")):
+        return True
+
+    tool_section = payload.get("tool")
+    if isinstance(tool_section, Mapping) and _matches_name(tool_section.get("name")):
+        return True
+
+    if _matches_name(payload.get("name")):
+        return True
+
+    error_payload = payload.get("error")
+    if isinstance(error_payload, Mapping):
+        details = error_payload.get("details")
+        if isinstance(details, Mapping):
+            error_type = details.get("type")
+            if isinstance(error_type, str) and error_type.strip():
+                if error_type.strip().lower() == "toolvalidationerror":
+                    return True
+    return False
+
+
+def extract_validation_guard_metadata(
+    payload: Mapping[str, Any]
+) -> ValidationGuardMetadata:
+    """Return structured metadata extracted from a validation guard payload."""
+
+    reason = _normalise_optional_string(payload.get("reason"))
+    error_payload = payload.get("error")
+    details_payload: Mapping[str, Any] | None = None
+    llm_message: str | None = None
+    code: str | None = None
+
+    if isinstance(error_payload, Mapping):
+        if reason is None:
+            reason = _normalise_optional_string(error_payload.get("message"))
+        code = _normalise_optional_string(error_payload.get("code"))
+        details_candidate = error_payload.get("details")
+        if isinstance(details_candidate, Mapping):
+            details_payload = details_candidate
+            llm_message = _normalise_optional_string(
+                details_candidate.get("llm_message")
+            )
+            if llm_message is None:
+                llm_message = _normalise_optional_string(
+                    details_candidate.get("message")
+                )
+
+    return ValidationGuardMetadata(
+        reason=reason,
+        llm_message=llm_message,
+        code=code,
+        details=details_payload,
     )
 
 
@@ -902,8 +1020,11 @@ def shorten_text(text: str, *, limit: int = 120) -> str:
 
 __all__ = [
     "ToolCallSummary",
+    "ValidationGuardMetadata",
     "summarize_tool_results",
     "summarize_tool_payload",
+    "is_validation_guard_payload",
+    "extract_validation_guard_metadata",
     "render_tool_summary_markdown",
     "render_tool_summaries_markdown",
     "render_tool_summaries_plain",

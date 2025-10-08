@@ -8,6 +8,7 @@ from contextlib import suppress
 from dataclasses import dataclass, replace
 from typing import Any, Iterable, Literal, Mapping, Sequence
 
+from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation, ChatEntry
 from .history_utils import (
@@ -16,7 +17,12 @@ from .history_utils import (
     normalise_tool_payloads,
 )
 from .time_formatting import format_entry_timestamp, parse_iso_timestamp
-from .tool_summaries import ToolCallSummary, summarize_tool_payload
+from .tool_summaries import (
+    ToolCallSummary,
+    extract_validation_guard_metadata,
+    is_validation_guard_payload,
+    summarize_tool_payload,
+)
 
 
 @dataclass(slots=True)
@@ -771,6 +777,10 @@ def _compose_tool_result_section(tool_payload: Any) -> Mapping[str, Any] | None:
         return None
 
     sections: dict[str, Any] = {}
+    guard_metadata = None
+    is_guard = is_validation_guard_payload(safe_payload)
+    if is_guard:
+        guard_metadata = extract_validation_guard_metadata(safe_payload)
 
     tool_section: dict[str, Any] = {}
     name = _normalise_optional_string(
@@ -780,6 +790,8 @@ def _compose_tool_result_section(tool_payload: Any) -> Mapping[str, Any] | None:
     )
     if name:
         tool_section["name"] = name
+    if is_guard:
+        tool_section["display_name"] = _("LLM validation guard")
 
     identifiers: list[str] = []
     for key in ("tool_call_id", "call_id", "call_identifier"):
@@ -814,6 +826,14 @@ def _compose_tool_result_section(tool_payload: Any) -> Mapping[str, Any] | None:
     stop_reason = history_json_safe(safe_payload.get("agent_stop_reason"))
     if _has_meaningful_payload(stop_reason):
         status_section["stop_reason"] = stop_reason
+    if is_guard:
+        status_section.setdefault("interpreted_state", _("guarded"))
+        status_section.setdefault(
+            "note",
+            _(
+                "Synthesized guard entry because the LLM response did not include a tool call."
+            ),
+        )
     if status_section:
         sections["status"] = status_section
 
@@ -843,6 +863,24 @@ def _compose_tool_result_section(tool_payload: Any) -> Mapping[str, Any] | None:
             sections["timestamp"] = timeline[0][1]
         else:
             sections["timeline"] = {key: value for key, value in timeline}
+
+    if is_guard and guard_metadata is not None:
+        guard_section: dict[str, Any] = {}
+        if guard_metadata.reason:
+            guard_section["reason"] = guard_metadata.reason
+        if (
+            guard_metadata.llm_message
+            and guard_metadata.llm_message != guard_metadata.reason
+        ):
+            guard_section["llm_message"] = guard_metadata.llm_message
+        if guard_metadata.code:
+            guard_section["error_code"] = guard_metadata.code
+        if isinstance(guard_metadata.details, Mapping):
+            details_payload = history_json_safe(guard_metadata.details)
+            if _has_meaningful_payload(details_payload):
+                guard_section["details"] = details_payload
+        if guard_section:
+            sections["validation_guard"] = guard_section
 
     return sections or None
 

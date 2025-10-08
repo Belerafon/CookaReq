@@ -122,9 +122,9 @@ class LLMClient:
 
     def _check_llm_chat(self) -> dict[str, Any]:
         request_args = self._request_builder.build_raw_request_args(
-            [{"role": "user", "content": "ping"}],
-            temperature=self._request_builder.resolve_temperature(),
+            [{"role": "user", "content": "ping"}]
         )
+        self._apply_temperature(request_args)
         start = time.monotonic()
         log_request(request_args)
         try:
@@ -148,9 +148,7 @@ class LLMClient:
             "tools": convert_tools_for_harmony(TOOLS),
             "reasoning": {"effort": "high"},
         }
-        temperature = self._request_builder.resolve_temperature()
-        if temperature is not None:
-            request_args["temperature"] = temperature
+        self._apply_temperature(request_args)
         start = time.monotonic()
         log_request(request_args)
         try:
@@ -185,14 +183,13 @@ class LLMClient:
         *,
         cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
-        temperature = self._request_builder.resolve_temperature()
         use_stream = bool(cancellation) or self.settings.stream
         prepared = self._request_builder.build_chat_request(
             conversation,
             tools=TOOLS,
             stream=use_stream,
-            temperature=temperature,
         )
+        self._apply_temperature(prepared.request_args)
         self._apply_reasoning_defaults(prepared.request_args)
         start = time.monotonic()
         log_request(prepared.request_args)
@@ -329,6 +326,14 @@ class LLMClient:
                 reasoning=response.reasoning,
             )
 
+    def _apply_temperature(self, request_args: dict[str, Any]) -> None:
+        """Inject the configured temperature into ``request_args`` when set."""
+        temperature = self._request_builder.resolve_temperature()
+        if temperature is None:
+            request_args.pop("temperature", None)
+            return
+        request_args["temperature"] = temperature
+
     def _apply_reasoning_defaults(self, request_args: dict[str, Any]) -> None:
         """Inject reasoning flags so compatible models emit their thoughts."""
         request_args.pop("reasoning_effort", None)
@@ -368,9 +373,7 @@ class LLMClient:
             "tools": convert_tools_for_harmony(TOOLS),
             "reasoning": {"effort": "high"},
         }
-        temperature = self._request_builder.resolve_temperature()
-        if temperature is not None:
-            request_args["temperature"] = temperature
+        self._apply_temperature(request_args)
         start = time.monotonic()
         log_request(request_args)
 

@@ -35,7 +35,6 @@ class DummyRequestBuilder:
         *,
         tools: Sequence[Mapping[str, Any]] | None = None,
         stream: bool = False,
-        temperature: float | None = None,
     ) -> PreparedChatRequest:
         return PreparedChatRequest(
             messages=list(conversation or []),
@@ -45,7 +44,6 @@ class DummyRequestBuilder:
                 "messages": list(conversation or []),
                 "tools": tools,
                 "stream": stream,
-                "temperature": temperature,
             },
         )
 

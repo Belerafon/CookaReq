@@ -67,6 +67,8 @@ class Navigation:
         self.agent_chat_menu_item: wx.MenuItem | None = None
         self.recent_menu = wx.Menu()
         self.recent_menu_item: wx.MenuItem | None = None
+        self.manage_labels_id: int | None = None
+        self._manage_labels_enabled = False
         self._build()
 
     # ------------------------------------------------------------------
@@ -149,6 +151,7 @@ class Navigation:
         menu_bar.Append(tools_menu, _("&Tools"))
         self.menu_bar = menu_bar
         self.frame.SetMenuBar(self.menu_bar)
+        self._apply_manage_labels_enabled()
 
     def _rebuild_recent_menu(self) -> None:
         for item in list(self.recent_menu.GetMenuItems()):
@@ -168,6 +171,23 @@ class Navigation:
         self.selected_fields = selected_fields
         self.frame.SetMenuBar(None)
         self._build()
+
+    def _apply_manage_labels_enabled(self) -> None:
+        """Synchronise the Manage Labels menu state with stored preference."""
+        if self.menu_bar and self.manage_labels_id is not None:
+            self.menu_bar.Enable(self.manage_labels_id, self._manage_labels_enabled)
+
+    def set_manage_labels_enabled(self, enabled: bool) -> None:
+        """Enable or disable the Manage Labels menu entry."""
+        self._manage_labels_enabled = enabled
+        self._apply_manage_labels_enabled()
+
+    def is_manage_labels_enabled(self) -> bool:
+        """Return whether the Manage Labels menu entry is enabled."""
+        if not self.menu_bar or self.manage_labels_id is None:
+            return False
+        item = self.menu_bar.FindItemById(self.manage_labels_id)
+        return bool(item and item.IsEnabled())
 
     def update_recent_menu(self) -> None:
         """Refresh menu showing recently opened directories."""

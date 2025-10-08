@@ -192,7 +192,7 @@ def delete_item(
                 new_links.append(link.to_dict())
             if changed:
                 data["links"] = new_links
-                save_item(dir_path, d, data)
+                save_item(dir_path, d, data, docs=docs)
     return True
 
 
@@ -310,5 +310,5 @@ def link_requirements(
         rid=derived_canonical_rid,
     )
     _update_link_suspicions(root_path, docs_map, req)
-    save_item(derived_dir, derived_doc, req.to_mapping())
+    save_item(derived_dir, derived_doc, req.to_mapping(), docs=docs_map)
     return req

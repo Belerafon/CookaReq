@@ -188,15 +188,25 @@ def item_path(directory: str | Path, doc: Document, item_id: int) -> Path:
     return directory_path / "items" / canonical_item_name(item_id)
 
 
-def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
-    """Save requirement ``data`` within ``doc`` and return file path."""
+def save_item(
+    directory: str | Path,
+    doc: Document,
+    data: Mapping[str, Any],
+    *,
+    docs: Mapping[str, Document] | None = None,
+) -> Path:
+    """Save requirement ``data`` within ``doc`` and return file path.
+
+    ``docs`` allows callers that already hold a document mapping to avoid an
+    extra on-disk scan.  When omitted the mapping is reloaded from ``root``.
+    """
     root = Path(directory).parent
-    docs = load_documents(root)
+    docs_map = _ensure_documents(root, docs)
     from .links import validate_item_links  # local import to avoid cycle
 
     payload = dict(data)
-    validate_item_links(root, doc, payload, docs)
-    _prepare_links_for_storage(root, docs, payload)
+    validate_item_links(root, doc, payload, docs_map)
+    _prepare_links_for_storage(root, docs_map, payload)
     directory_path = Path(directory)
     item_id = int(payload["id"])
     path = item_path(directory_path, doc, item_id)
@@ -429,7 +439,7 @@ def create_requirement(
     except (TypeError, ValueError) as exc:
         raise ValidationError(str(exc)) from exc
     _update_link_suspicions(root_path, docs_map, req)
-    save_item(directory, doc, req.to_mapping())
+    save_item(directory, doc, req.to_mapping(), docs=docs_map)
     return req
 
 
@@ -473,7 +483,7 @@ def _update_requirement(
     except (TypeError, ValueError) as exc:
         raise ValidationError(str(exc)) from exc
     _update_link_suspicions(root_path, docs_map, req)
-    save_item(directory, doc, req.to_mapping())
+    save_item(directory, doc, req.to_mapping(), docs=docs_map)
     return req
 
 
@@ -650,10 +660,10 @@ def move_requirement(
         updated_payload, doc_prefix=new_prefix, rid=new_rid
     )
     _update_link_suspicions(root_path, docs_map, req)
-    save_item(dst_dir, dst_doc, req.to_mapping())
+    save_item(dst_dir, dst_doc, req.to_mapping(), docs=docs_map)
 
     for directory, doc, item_payload in referencing_updates:
-        save_item(directory, doc, item_payload)
+        save_item(directory, doc, item_payload, docs=docs_map)
 
     src_path = item_path(src_directory, src_doc, item_id)
     with suppress(FileNotFoundError):  # pragma: no cover - defensive

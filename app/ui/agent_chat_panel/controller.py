@@ -17,6 +17,7 @@ from ...util.cancellation import CancellationEvent, OperationCancelledError
 from ...util.time import utc_now_iso
 from .execution import AgentCommandExecutor, _AgentRunHandle
 from .history_utils import clone_streamed_tool_results, history_json_safe
+from .tool_result_state import StreamedToolResultState
 
 if TYPE_CHECKING:
     from ..chat_entry import ChatConversation, ChatEntry
@@ -37,93 +38,6 @@ def _call_supports_keyword(func: Any, name: str) -> bool:
         parameter.kind == inspect.Parameter.VAR_KEYWORD
         for parameter in parameters.values()
     )
-
-
-def _normalise_status_update_payload(payload: Mapping[str, Any]) -> dict[str, Any] | None:
-    status_value = payload.get("status") or payload.get("agent_status")
-    if not isinstance(status_value, str):
-        return None
-
-    status_text = status_value.strip()
-    if not status_text:
-        return None
-
-    prefix, separator, remainder = status_text.partition(":")
-    status_label = prefix.strip() if separator else status_text
-    message: str | None = remainder.strip() if separator else None
-
-    if not message:
-        fallback = payload.get("status_message") or payload.get("message")
-        if isinstance(fallback, str):
-            candidate = fallback.strip()
-            if candidate:
-                message = candidate
-
-    if not message and status_label.lower() == "running":
-        message = "Applying updates"
-
-    timestamp: str | None = None
-    for key in (
-        "observed_at",
-        "last_observed_at",
-        "completed_at",
-        "started_at",
-        "first_observed_at",
-    ):
-        candidate = payload.get(key)
-        if isinstance(candidate, str):
-            text = candidate.strip()
-            if text:
-                timestamp = text
-                break
-
-    update: dict[str, Any] = {"raw": status_text, "status": status_label}
-    if message:
-        update["message"] = message
-    if timestamp:
-        update["at"] = timestamp
-    return update
-
-
-def _coerce_status_updates_list(candidate: Any) -> list[dict[str, Any]]:
-    if isinstance(candidate, Mapping):
-        return [dict(candidate)]
-    if isinstance(candidate, Sequence) and not isinstance(candidate, (str, bytes, bytearray)):
-        updates: list[dict[str, Any]] = []
-        for entry in candidate:
-            if isinstance(entry, Mapping):
-                updates.append(dict(entry))
-        return updates
-    return []
-
-
-def _merge_status_update_lists(
-    existing: Any,
-    incoming: Any,
-    fallback: Mapping[str, Any] | None,
-) -> list[dict[str, Any]]:
-    merged: list[dict[str, Any]] = []
-    seen: set[tuple[Any, Any, Any]] = set()
-
-    def add(entry: Mapping[str, Any] | None) -> None:
-        if not isinstance(entry, Mapping):
-            return
-        fingerprint = (
-            entry.get("raw"),
-            entry.get("at"),
-            entry.get("status"),
-        )
-        if fingerprint in seen:
-            return
-        seen.add(fingerprint)
-        merged.append(dict(entry))
-
-    for item in _coerce_status_updates_list(existing):
-        add(item)
-    for item in _coerce_status_updates_list(incoming):
-        add(item)
-    add(fallback)
-    return merged
 
 
 @dataclass(slots=True)
@@ -176,79 +90,23 @@ class AgentRunController:
         if not isinstance(payload, Mapping):
             return
 
-        candidate = dict(payload) if not isinstance(payload, dict) else payload
-        call_id = candidate.get("call_id") or candidate.get("tool_call_id")
-        fallback_update = _normalise_status_update_payload(candidate)
-        incoming_updates = _coerce_status_updates_list(candidate.get("status_updates"))
+        incoming_state = StreamedToolResultState.from_payload(payload)
 
-        if not call_id:
-            updates = _merge_status_update_lists([], incoming_updates, fallback_update)
-            if updates:
-                candidate["status_updates"] = updates
-            else:
-                candidate.pop("status_updates", None)
-            handle.streamed_tool_results.append(candidate)
+        if not incoming_state.call_id:
+            handle.streamed_tool_results.append(incoming_state.to_payload())
             return
 
         for index, existing in enumerate(handle.streamed_tool_results):
-            existing_id = existing.get("call_id") or existing.get("tool_call_id")
-            if existing_id != call_id:
+            if not isinstance(existing, Mapping):
                 continue
-
-            merged = dict(existing)
-            first_seen = (
-                merged.get("first_observed_at")
-                or merged.get("started_at")
-                or merged.get("observed_at")
-            )
-            if isinstance(first_seen, str) and first_seen.strip():
-                merged.setdefault("first_observed_at", first_seen)
-                merged.setdefault("started_at", first_seen)
-
-            merged.update(candidate)
-
-            updates = _merge_status_update_lists(
-                existing.get("status_updates"), incoming_updates, fallback_update
-            )
-            if updates:
-                merged["status_updates"] = updates
-            else:
-                merged.pop("status_updates", None)
-
-            observed = merged.get("observed_at")
-            if isinstance(observed, str) and observed.strip():
-                merged["last_observed_at"] = observed
-                if merged.get("agent_status") in {"completed", "failed"} or merged.get("ok") in (
-                    True,
-                    False,
-                ):
-                    merged.setdefault("completed_at", observed)
-
-            handle.streamed_tool_results[index] = merged
+            existing_state = StreamedToolResultState.from_serialized(existing)
+            if existing_state.call_id != incoming_state.call_id:
+                continue
+            existing_state.merge_payload(payload)
+            handle.streamed_tool_results[index] = existing_state.to_payload()
             return
 
-        first_seen = (
-            candidate.get("first_observed_at")
-            or candidate.get("started_at")
-            or candidate.get("observed_at")
-        )
-        if isinstance(first_seen, str) and first_seen.strip():
-            candidate.setdefault("first_observed_at", first_seen)
-            candidate.setdefault("started_at", first_seen)
-            candidate.setdefault("last_observed_at", first_seen)
-            if candidate.get("agent_status") in {"completed", "failed"} or candidate.get("ok") in (
-                True,
-                False,
-            ):
-                candidate.setdefault("completed_at", first_seen)
-
-        updates = _merge_status_update_lists([], incoming_updates, fallback_update)
-        if updates:
-            candidate["status_updates"] = updates
-        else:
-            candidate.pop("status_updates", None)
-
-        handle.streamed_tool_results.append(candidate)
+        handle.streamed_tool_results.append(incoming_state.to_payload())
 
     def __init__(
         self,

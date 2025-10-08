@@ -90,6 +90,8 @@ so you know which modules are involved and which regressions to guard against.
   * `agent_chat_panel/` displays the running agent transcript, batching controls
     and confirmation toggles. Long-running commands execute through
     `ThreadedAgentCommandExecutor` (a single-worker `ThreadPoolExecutor`).
+    `tool_result_state.py` keeps the merge logic for streamed tool results
+    linear and testable (timestamps, status updates, raw tool arguments).
   * `trace_matrix.py` and `derivation_graph.py` visualise relationships.
 * **Controllers** — under `app/ui/controllers/`, they translate wx events into
   service calls (`DocumentsController`, `MCPController`, etc.). Controllers take

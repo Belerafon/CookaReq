@@ -511,6 +511,9 @@ msgstr "Select attachment"
 msgid "Select requirements folder first"
 msgstr "Select requirements folder first"
 
+msgid "Select a document first"
+msgstr "Select a document first"
+
 msgid "Set"
 msgstr "Set"
 

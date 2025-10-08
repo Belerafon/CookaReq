@@ -180,6 +180,7 @@ class MainFrame(
         self.editor_menu_item = self.navigation.editor_menu_item
         self.agent_chat_menu_item = self.navigation.agent_chat_menu_item
         self.manage_labels_id = self.navigation.manage_labels_id
+        self.navigation.set_manage_labels_enabled(False)
 
     def _init_sections(self) -> None:
         """Construct hierarchy, list, editor and agent panels."""

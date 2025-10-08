@@ -172,6 +172,7 @@ class MainFrameDocumentsMixin:
         if hasattr(self, "agent_panel"):
             self.agent_panel.set_history_directory(path)
         self._sync_mcp_base_path(path)
+        has_docs = bool(docs)
         if docs:
             first = sorted(docs)[0]
             self.current_doc_prefix = first
@@ -186,6 +187,8 @@ class MainFrameDocumentsMixin:
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([])
             self.panel.update_labels_list([], False)
+        if hasattr(self, "navigation"):
+            self.navigation.set_manage_labels_enabled(has_docs)
         self._update_requirements_label()
         if self.remember_sort and self.sort_column != -1:
             self.panel.sort(self.sort_column, self.sort_ascending)
@@ -232,6 +235,8 @@ class MainFrameDocumentsMixin:
             self._selected_requirement_id = None
             self._clear_editor_panel()
             self._update_requirements_label()
+        if hasattr(self, "navigation"):
+            self.navigation.set_manage_labels_enabled(bool(docs))
 
     def _load_document_contents(self: MainFrame, prefix: str) -> bool:
         """Load items and labels for ``prefix`` and update the views."""
@@ -429,8 +434,12 @@ class MainFrameDocumentsMixin:
         if prefix == self.current_doc_prefix:
             return
         if not self.docs_controller:
+            if hasattr(self, "navigation"):
+                self.navigation.set_manage_labels_enabled(False)
             return
         self.current_doc_prefix = prefix
+        if hasattr(self, "navigation"):
+            self.navigation.set_manage_labels_enabled(True)
         self.panel.set_active_document(prefix)
         self.editor.set_document(prefix)
         self._load_document_contents(prefix)
@@ -541,16 +550,24 @@ class MainFrameDocumentsMixin:
 
     def on_manage_labels(self: MainFrame, _event: wx.Event) -> None:
         """Open dialog to manage defined labels."""
-        if not (self.docs_controller and self.current_doc_prefix and self.current_dir):
+        if not (self.docs_controller and self.current_dir):
+            wx.MessageBox(_("Select requirements folder first"), _("No Data"))
             return
-        doc = self.docs_controller.documents[self.current_doc_prefix]
+        prefix = self.current_doc_prefix
+        if not prefix:
+            wx.MessageBox(_("Select a document first"), _("No Data"))
+            return
+        doc = self.docs_controller.documents.get(prefix)
+        if doc is None:
+            wx.MessageBox(_("Document not found"), _("Error"), wx.ICON_ERROR)
+            return
         labels = [LabelDef(ld.key, ld.title, ld.color) for ld in doc.labels.defs]
         dlg = LabelsDialog(self, labels)
         if dlg.ShowModal() == wx.ID_OK:
             doc.labels.defs = dlg.get_labels()
             self.docs_controller.service.save_document(doc)
             labels_all, freeform = self.docs_controller.collect_labels(
-                self.current_doc_prefix
+                prefix
             )
             self.panel.update_labels_list(labels_all, freeform)
             self.editor.update_labels_list(labels_all, freeform)

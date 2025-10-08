@@ -53,6 +53,81 @@ class MainFrameSettingsMixin:
             mcp_controller_factory=self._mcp_factory,
         )
         if dlg.ShowModal() == wx.ID_OK:
+            values = list(dlg.get_values())
+            expected_fields = [
+                "auto_open_last",
+                "remember_sort",
+                "language",
+                "base_url",
+                "model",
+                "message_format",
+                "api_key",
+                "max_retries",
+                "max_context_tokens",
+                "timeout_minutes",
+                "use_custom_temperature",
+                "temperature",
+                "stream",
+                "auto_start",
+                "host",
+                "port",
+                "base_path",
+                "documents_path",
+                "documents_max_read_kb",
+                "log_dir",
+                "require_token",
+                "token",
+            ]
+            fallbacks = {
+                "auto_open_last": self.auto_open_last,
+                "remember_sort": self.remember_sort,
+                "language": self.language,
+                "base_url": self.llm_settings.base_url,
+                "model": self.llm_settings.model,
+                "message_format": getattr(
+                    self.llm_settings.message_format,
+                    "value",
+                    self.llm_settings.message_format,
+                ),
+                "api_key": self.llm_settings.api_key or "",
+                "max_retries": self.llm_settings.max_retries,
+                "max_context_tokens": self.llm_settings.max_context_tokens,
+                "timeout_minutes": self.llm_settings.timeout_minutes,
+                "use_custom_temperature": self.llm_settings.use_custom_temperature,
+                "temperature": self.llm_settings.temperature,
+                "stream": self.llm_settings.stream,
+                "auto_start": self.mcp_settings.auto_start,
+                "host": self.mcp_settings.host,
+                "port": self.mcp_settings.port,
+                "base_path": self.mcp_settings.base_path,
+                "documents_path": self.mcp_settings.documents_path,
+                "documents_max_read_kb": self.mcp_settings.documents_max_read_kb,
+                "log_dir": self.mcp_settings.log_dir or "",
+                "require_token": self.mcp_settings.require_token,
+                "token": self.mcp_settings.token,
+            }
+            if len(values) == len(expected_fields) - 2:
+                values = (
+                    values[:17]
+                    + [
+                        fallbacks["documents_path"],
+                        fallbacks["documents_max_read_kb"],
+                    ]
+                    + values[17:]
+                )
+            elif len(values) == len(expected_fields) - 1:
+                values = (
+                    values[:17]
+                    + [fallbacks["documents_path"]]
+                    + values[17:]
+                )
+            mapping = {
+                field: values[index]
+                for index, field in enumerate(expected_fields[: len(values)])
+            }
+            final_values = [
+                mapping.get(field, fallbacks[field]) for field in expected_fields
+            ]
             (
                 auto_open_last,
                 remember_sort,
@@ -76,7 +151,7 @@ class MainFrameSettingsMixin:
                 log_dir,
                 require_token,
                 token,
-            ) = dlg.get_values()
+            ) = final_values
             previous_language = self.language
             language_changed = previous_language != language
             self.auto_open_last = auto_open_last

@@ -5,7 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from functools import lru_cache
+from typing import Any, TYPE_CHECKING
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from uuid import uuid4
 
@@ -15,7 +16,12 @@ from ..llm.tokenizer import (
     count_text_tokens,
 )
 from ..util.time import utc_now_iso
-from .agent_chat_panel.history_utils import extract_tool_results, update_tool_results
+
+if TYPE_CHECKING:  # pragma: no cover - imported for type checking only
+    from .agent_chat_panel.history_utils import (
+        extract_tool_results as _extract_tool_results_fn,
+        update_tool_results as _update_tool_results_fn,
+    )
 
 
 _DEFAULT_TOKEN_MODEL = "cl100k_base"
@@ -49,6 +55,27 @@ def _hash_context_messages(
             )
     blob = "\u241e".join(serialised)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+@lru_cache(maxsize=1)
+def _history_utils_module():  # pragma: no cover - trivial cache wrapper
+    from .agent_chat_panel import history_utils
+
+    return history_utils
+
+
+def extract_tool_results(raw_result: Any) -> list[Any] | None:
+    """Expose lazy history helper to avoid circular imports."""
+
+    return _history_utils_module().extract_tool_results(raw_result)
+
+
+def update_tool_results(
+    raw_result: Any | None, tool_results: Sequence[Any] | None
+) -> Any | None:
+    """Expose lazy history helper to avoid circular imports."""
+
+    return _history_utils_module().update_tool_results(raw_result, tool_results)
 
 
 @dataclass(frozen=True)

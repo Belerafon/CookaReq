@@ -53,6 +53,7 @@ class AgentChatSession:
         *,
         history: AgentChatHistory,
         timer_owner: wx.EvtHandler,
+        monotonic: Callable[[], float] | None = None,
     ) -> None:
         self._history = history
         self._timer = wx.Timer(timer_owner)
@@ -61,6 +62,7 @@ class AgentChatSession:
         self._start_time: float | None = None
         self._tokens = TokenCountResult.exact(0)
         self._elapsed = 0.0
+        self._monotonic: Callable[[], float] = monotonic or time.monotonic
         timer_owner.Bind(wx.EVT_TIMER, self._on_timer, self._timer)
         self.events = AgentChatSessionEvents(
             running_changed=SessionEvent(),
@@ -89,7 +91,7 @@ class AgentChatSession:
         """Mark the agent run as active."""
         self._is_running = True
         self._tokens = tokens if tokens is not None else TokenCountResult.exact(0)
-        self._start_time = time.monotonic()
+        self._start_time = self._monotonic()
         self._elapsed = 0.0
         self.events.running_changed.emit(True)
         self.events.tokens_changed.emit(self._tokens)
@@ -101,7 +103,7 @@ class AgentChatSession:
         """Mark the agent run as completed."""
         if self._start_time is not None:
             try:
-                self._elapsed = max(0.0, time.monotonic() - self._start_time)
+                self._elapsed = max(0.0, self._monotonic() - self._start_time)
             except Exception:  # pragma: no cover - defensive
                 self._elapsed = 0.0
         if tokens is not None:
@@ -167,7 +169,7 @@ class AgentChatSession:
     def _on_timer(self, _event: wx.TimerEvent) -> None:
         if not self._is_running or self._start_time is None:
             return
-        elapsed = time.monotonic() - self._start_time
+        elapsed = self._monotonic() - self._start_time
         self._elapsed = elapsed
         self.events.elapsed.emit(elapsed)
 

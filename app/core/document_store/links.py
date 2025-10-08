@@ -42,8 +42,10 @@ def validate_item_links(
             prefix, item_id = parse_rid(rid)
         except ValueError as exc:
             raise ValidationError(f"links[{index}].rid: {exc}") from exc
-        if rid == rid_self:
-            raise ValidationError(f"links[{index}]: link references self")
+        if rid == rid_self and not link.suspect:
+            raise ValidationError(
+                f"links[{index}]: link references self without being marked suspect"
+            )
         target_doc = docs.get(prefix)
         if target_doc is None:
             raise ValidationError(
@@ -53,6 +55,8 @@ def validate_item_links(
             raise ValidationError(f"links[{index}].rid: invalid link target: {rid}")
         path = item_path(root / prefix, target_doc, item_id)
         if not path.exists():
+            if link.suspect:
+                continue
             raise ValidationError(f"links[{index}].rid: linked item not found: {rid}")
 
 

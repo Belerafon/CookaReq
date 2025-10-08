@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING
 
 from .controller import AgentRunController
 from .execution import AgentCommandExecutor, _AgentRunHandle
 from .session import AgentChatSession
-from ..chat_entry import ChatEntry
+
+if TYPE_CHECKING:
+    from ..chat_entry import ChatEntry
 
 
 class AgentChatCoordinator:

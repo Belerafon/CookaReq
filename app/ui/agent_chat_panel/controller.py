@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass
-from typing import Any
-from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 import wx
 
@@ -16,9 +15,11 @@ from ...llm.reasoning import normalise_reasoning_segments
 from ...llm.tokenizer import TokenCountResult, count_text_tokens
 from ...util.cancellation import CancellationEvent, OperationCancelledError
 from ...util.time import utc_now_iso
-from ..chat_entry import ChatConversation, ChatEntry
 from .execution import AgentCommandExecutor, _AgentRunHandle
 from .history_utils import clone_streamed_tool_results, history_json_safe
+
+if TYPE_CHECKING:
+    from ..chat_entry import ChatConversation, ChatEntry
 
 logger = logging.getLogger(__name__)
 

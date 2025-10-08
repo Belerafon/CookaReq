@@ -1116,6 +1116,13 @@ class TurnCard(wx.Panel):
         self.Layout()
 
     # ------------------------------------------------------------------
+    def enable_regenerate(self, enabled: bool) -> None:
+        """Toggle regenerate controls without rebuilding the card."""
+
+        self._user_panel.enable_regenerate(enabled)
+        self._agent_panel.enable_regenerate(enabled)
+
+    # ------------------------------------------------------------------
     def _capture_system_state(self) -> None:
         for key, pane in list(self._system_sections.items()):
             if isinstance(pane, wx.CollapsiblePane):

@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import NamedTuple
+from typing import NamedTuple, TYPE_CHECKING, Any
 
 import wx
 import wx.dataview as dv
 
 from ...i18n import _
-from ..chat_entry import ChatConversation
+if TYPE_CHECKING:  # pragma: no cover - import for typing only
+    from ..chat_entry import ChatConversation
+else:  # pragma: no cover - runtime avoids circular import
+    ChatConversation = Any  # type: ignore[assignment]
 
 
 class HistoryInteractionPreparation(NamedTuple):

@@ -3,7 +3,7 @@ import json
 from typing import Any
 from collections.abc import Mapping
 
-from app.agent.local_agent import AgentLoopRunner, LocalAgent
+from app.agent.local_agent import AgentLoopRunner, LocalAgent, ToolBatchOutcome
 from app.llm.types import LLMReasoningSegment, LLMResponse, LLMToolCall
 from app.llm.validation import ToolValidationError
 
@@ -118,8 +118,8 @@ def test_runner_aborts_after_consecutive_tool_errors(monkeypatch):
         cancellation=None,
         on_tool_result=None,
     ):
-        return (
-            [
+        return ToolBatchOutcome(
+            messages=[
                 {
                     "role": "tool",
                     "tool_call_id": "call-1",
@@ -127,8 +127,7 @@ def test_runner_aborts_after_consecutive_tool_errors(monkeypatch):
                     "content": "{}",
                 }
             ],
-            failure_payload,
-            [],
+            error_payload=failure_payload,
         )
 
     monkeypatch.setattr(LocalAgent, "_execute_tool_calls_core", fake_execute)
@@ -188,8 +187,8 @@ def test_reasoning_segments_survive_tool_roundtrip(monkeypatch):
         cancellation=None,
         on_tool_result=None,
     ):
-        return (
-            [
+        return ToolBatchOutcome(
+            messages=[
                 {
                     "role": "tool",
                     "tool_call_id": tool_calls[0].id,
@@ -197,8 +196,7 @@ def test_reasoning_segments_survive_tool_roundtrip(monkeypatch):
                     "content": "{}",
                 }
             ],
-            None,
-            [
+            successful_results=[
                 {
                     "ok": True,
                     "tool_name": tool_calls[0].name,

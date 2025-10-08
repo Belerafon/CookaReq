@@ -299,7 +299,7 @@ def test_run_command_reports_internal_error_for_openai_failure():
     assert result["error"]["details"]["type"] == "APIConnectionError"
 
 
-def test_run_command_reports_validation_fallback_message():
+def test_run_command_does_not_inject_validation_fallback_message():
     class EmptyValidationLLM(LLMAsyncBridge):
         def __init__(self) -> None:
             self.calls = 0
@@ -333,11 +333,7 @@ def test_run_command_reports_validation_fallback_message():
     details = error.get("details") or {}
     assert details.get("type") == "ToolValidationError"
     fallback_message = details.get("llm_message")
-    assert fallback_message
-    assert (
-        fallback_message
-        == "Invalid arguments for list_requirements: per_page is required (type: ToolValidationError)"
-    )
+    assert fallback_message == ""
     stop_reason = result.get("agent_stop_reason") or {}
     assert stop_reason.get("type") == "consecutive_tool_errors"
     assert stop_reason.get("count") == 1

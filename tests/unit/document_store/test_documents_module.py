@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-from app.core.document_store import Document, DocumentLabels, LabelDef
+from app.core.document_store import Document, DocumentLabels, LabelDef, ValidationError
 from app.core.document_store.documents import (
     collect_label_defs,
     collect_labels,
@@ -69,3 +69,75 @@ def test_is_ancestor_includes_self(tmp_path: Path) -> None:
     save_document(tmp_path / "SYS", doc)
     docs = load_documents(tmp_path)
     assert is_ancestor("SYS", "SYS", docs) is True
+
+
+def test_document_labels_roundtrip() -> None:
+    labels = DocumentLabels(
+        allow_freeform=True,
+        defs=[LabelDef(key="safety", title="Safety", color=None)],
+    )
+
+    as_mapping = labels.to_mapping()
+    assert as_mapping == {
+        "allowFreeform": True,
+        "defs": [{"key": "safety", "title": "Safety", "color": None}],
+    }
+
+    restored = DocumentLabels.from_mapping(as_mapping)
+    assert restored == labels
+
+
+def test_document_labels_from_mapping_validates_entries() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        DocumentLabels.from_mapping({"defs": ["invalid"]})
+
+    assert "labels.defs[0]" in str(excinfo.value)
+
+
+def test_document_from_mapping_roundtrip() -> None:
+    raw = {
+        "title": "System",
+        "parent": "ROOT",
+        "labels": {
+            "allowFreeform": 1,
+            "defs": [
+                {
+                    "key": "safety",
+                    "title": "Safety",
+                    "color": "#123456",
+                }
+            ],
+        },
+        "attributes": {"owner": "QA"},
+    }
+
+    document = Document.from_mapping(prefix="SYS", data=raw)
+
+    assert document.title == "System"
+    assert document.parent == "ROOT"
+    assert document.labels.allow_freeform is True
+    assert document.labels.defs[0].color == "#123456"
+    assert document.attributes == {"owner": "QA"}
+
+    assert document.to_mapping() == {
+        "title": "System",
+        "parent": "ROOT",
+        "labels": {
+            "allowFreeform": True,
+            "defs": [
+                {
+                    "key": "safety",
+                    "title": "Safety",
+                    "color": "#123456",
+                }
+            ],
+        },
+        "attributes": {"owner": "QA"},
+    }
+
+
+def test_document_from_mapping_validates_parent_type() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        Document.from_mapping(prefix="SYS", data={"parent": 123})
+
+    assert "parent must be a string" in str(excinfo.value)

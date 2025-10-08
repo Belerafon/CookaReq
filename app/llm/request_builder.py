@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 from ..telemetry import log_event
 from .constants import DEFAULT_MAX_CONTEXT_TOKENS, MIN_MAX_CONTEXT_TOKENS
@@ -13,7 +14,7 @@ from .reasoning import is_reasoning_type, normalise_reasoning_segments
 from .response_parser import normalise_tool_calls
 from .spec import SYSTEM_PROMPT, TOOLS
 from .tokenizer import count_text_tokens
-from .types import HistoryTrimResult, LLMReasoningSegment
+from .types import HistoryTrimResult
 from .utils import extract_mapping
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from pathlib import Path
 from collections.abc import Mapping
 
-from . import Document, DocumentLabels, LabelDef, ValidationError
+from .types import Document, LabelDef, ValidationError
 
 
 def _read_json(path: Path) -> dict:
@@ -35,24 +34,7 @@ def load_document(directory: str | Path) -> Document:
     prefix = directory_path.name
     path = directory_path / "document.json"
     data = _read_json(path)
-    stored_prefix = data.get("prefix")
-    if stored_prefix is not None and stored_prefix != prefix:
-        raise ValidationError(
-            f"document prefix mismatch: directory '{prefix}' != stored '{stored_prefix}'"
-        )
-    labels_data = data.get("labels", {})
-    defs = [LabelDef(**d) for d in labels_data.get("defs", [])]
-    labels = DocumentLabels(
-        allow_freeform=labels_data.get("allowFreeform", False),
-        defs=defs,
-    )
-    return Document(
-        prefix=prefix,
-        title=data.get("title", prefix),
-        parent=data.get("parent"),
-        labels=labels,
-        attributes=dict(data.get("attributes", {})),
-    )
+    return Document.from_mapping(prefix=prefix, data=data)
 
 
 def save_document(directory: str | Path, doc: Document) -> Path:
@@ -66,13 +48,7 @@ def save_document(directory: str | Path, doc: Document) -> Path:
     path = directory_path / "document.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
-        "title": doc.title,
-        "parent": doc.parent,
-        "labels": {
-            "allowFreeform": doc.labels.allow_freeform,
-            "defs": [asdict(d) for d in doc.labels.defs],
-        },
-        "attributes": doc.attributes,
+        **doc.to_mapping(),
     }
     with path.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)

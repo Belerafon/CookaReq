@@ -1,7 +1,7 @@
 """Helpers for validating chat attachments."""
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 _ALLOWED_TEXT_CONTROLS = frozenset({"\n", "\r", "\t", "\f", "\b", "\x1b"})
 _SAMPLE_LIMIT = 8192

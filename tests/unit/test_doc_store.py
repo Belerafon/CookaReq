@@ -5,6 +5,7 @@ import pytest
 
 from app.core.document_store import (
     Document,
+    ValidationError,
     delete_document,
     delete_item,
     item_path,
@@ -74,6 +75,19 @@ def test_load_document_drops_unknown_fields(tmp_path: Path) -> None:
         "labels": {"allowFreeform": False, "defs": []},
         "attributes": {},
     }
+
+
+def test_load_document_validates_labels_section(tmp_path: Path) -> None:
+    doc_dir = tmp_path / "SYS"
+    doc_dir.mkdir()
+    doc_path = doc_dir / "document.json"
+    with doc_path.open("w", encoding="utf-8") as fh:
+        json.dump({"title": "System", "labels": []}, fh)
+
+    with pytest.raises(ValidationError) as excinfo:
+        load_document(doc_dir)
+
+    assert "labels must be a mapping" in str(excinfo.value)
 
 
 def test_parse_rid_and_next_id(tmp_path: Path):

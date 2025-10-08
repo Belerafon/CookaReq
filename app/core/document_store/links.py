@@ -6,7 +6,7 @@ from typing import Any
 from collections.abc import Iterable, Mapping
 
 from ..model import Link, Requirement, requirement_fingerprint, requirement_from_dict, requirement_to_dict
-from . import Document, ValidationError
+from .types import Document, ValidationError
 from .documents import is_ancestor, load_documents
 from .items import (
     _ensure_documents,

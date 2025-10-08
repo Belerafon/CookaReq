@@ -16,7 +16,7 @@ from ..model import (
     requirement_to_dict,
 )
 from ..search import filter_by_labels, filter_by_status, search
-from . import (
+from .types import (
     Document,
     DocumentNotFoundError,
     RequirementIDCollisionError,

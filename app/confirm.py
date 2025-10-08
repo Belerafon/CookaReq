@@ -58,7 +58,6 @@ def set_requirement_update_confirm(
     callback: RequirementUpdateConfirmCallback,
 ) -> None:
     """Register specialised confirmation for MCP requirement updates."""
-
     global _requirement_update_callback, _requirement_update_always
     _requirement_update_callback = callback
     # Reset stored preference when the UI provides a new handler.
@@ -67,13 +66,13 @@ def set_requirement_update_confirm(
 
 def reset_requirement_update_preference() -> None:
     """Clear session-wide "always" confirmation for requirement updates."""
-
     global _requirement_update_always
     _requirement_update_always = False
 
 
 def confirm(message: str) -> bool:
     """Invoke registered confirmation callback with *message*.
+
     Raises ``RuntimeError`` if no callback configured.
     """
     if _callback is None:
@@ -83,7 +82,6 @@ def confirm(message: str) -> bool:
 
 def confirm_requirement_update(prompt: RequirementUpdatePrompt) -> ConfirmDecision:
     """Return confirmation decision for an MCP requirement update."""
-
     global _requirement_update_always
 
     if _requirement_update_always:
@@ -103,7 +101,6 @@ def _call_in_wx_main_thread(
     func: Callable[_P, _T], /, *args: _P.args, **kwargs: _P.kwargs
 ) -> _T:
     """Execute *func* on the wx main thread and return its result."""
-
     import wx  # type: ignore
 
     is_main_thread = True
@@ -153,8 +150,7 @@ def _call_in_wx_main_thread(
 def _fallback_requirement_update_confirm(
     prompt: RequirementUpdatePrompt,
 ) -> ConfirmDecision:
-    """Default requirement update confirmation using the generic callback."""
-
+    """Return fallback requirement update confirmation via the generic callback."""
     message = format_requirement_update_prompt(prompt)
     if _callback is None:
         return ConfirmDecision.YES
@@ -166,7 +162,6 @@ def format_requirement_update_prompt(
     prompt: RequirementUpdatePrompt, *, include_changes: bool = True
 ) -> str:
     """Return a human-readable confirmation message for *prompt*."""
-
     from .i18n import _
 
     rid = prompt.rid or _("(unknown requirement)")
@@ -194,7 +189,6 @@ def summarise_requirement_changes(
     changes: Sequence[RequirementChange] | Iterable[RequirementChange],
 ) -> Iterable[str]:
     """Yield textual descriptions for requirement updates in *changes*."""
-
     from .i18n import _
 
     for index, change in enumerate(changes, start=1):
@@ -245,7 +239,6 @@ def summarise_requirement_changes(
 
 def _format_change_value(value: Any) -> str:
     """Return short preview of change *value* suitable for prompts."""
-
     if isinstance(value, str):
         formatted = json.dumps(value, ensure_ascii=False)
     else:
@@ -260,7 +253,6 @@ def _format_change_value(value: Any) -> str:
 
 def wx_confirm(message: str) -> bool:
     """GUI confirmation dialog using wxWidgets."""
-
     from .i18n import _
 
     def _show_dialog() -> bool:
@@ -293,7 +285,6 @@ def wx_confirm_requirement_update(
     prompt: RequirementUpdatePrompt,
 ) -> ConfirmDecision:
     """Show a rich confirmation dialog for MCP requirement updates."""
-
     if _requirement_update_always:
         return ConfirmDecision.ALWAYS
 
@@ -383,13 +374,12 @@ def wx_confirm_requirement_update(
 
 
 def auto_confirm(_message: str) -> bool:
-    """Confirmation callback that always returns True."""
+    """Return ``True`` for every confirmation request."""
     return True
 
 
 def auto_confirm_requirement_update(
     _prompt: RequirementUpdatePrompt,
 ) -> ConfirmDecision:
-    """Requirement update confirmation that always approves changes."""
-
+    """Approve requirement update prompts unconditionally."""
     return ConfirmDecision.ALWAYS

@@ -33,7 +33,6 @@ class SectionContainer(wx.Panel):
 
     def SetBackgroundColour(self, colour: wx.Colour | wx.ColourBase) -> bool:  # type: ignore[override]
         """Ensure chrome colours follow the panel background."""
-
         changed = super().SetBackgroundColour(colour)
         if changed and self._chrome:
             self._chrome.refresh_palette()

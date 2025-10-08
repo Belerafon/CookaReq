@@ -819,7 +819,6 @@ class SettingsDialog(wx.Dialog):
 
     def _on_browse_documents_path(self, _event: wx.Event) -> None:
         """Prompt the user to select a documentation directory."""
-
         current = self._documents_path.GetValue().strip()
         start_path = current or ""
         style = getattr(wx, "DD_DEFAULT_STYLE", 0) | getattr(
@@ -841,17 +840,14 @@ class SettingsDialog(wx.Dialog):
 
     def _on_documents_path_edited(self, _event: wx.Event) -> None:
         """Refresh documentation hint when related paths change."""
-
         self._refresh_documents_hint()
 
     def _on_documents_read_limit_changed(self, _event: wx.Event) -> None:
         """Keep the documentation hint in sync with the read limit spinner."""
-
         self._refresh_documents_hint()
 
     def _refresh_documents_hint(self) -> None:
         """Update the absolute documentation path preview and validation colour."""
-
         base_text = self._base_path.GetValue().strip()
         documents_text = self._documents_path.GetValue().strip()
         description = describe_documents_root(base_text, documents_text)

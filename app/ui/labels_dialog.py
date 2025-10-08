@@ -261,6 +261,5 @@ class LabelsDialog(wx.Dialog):
 
     def Destroy(self) -> bool:  # pragma: no cover - GUI side effect
         """Save window geometry before closing dialog."""
-
         self._save_layout()
         return super().Destroy()

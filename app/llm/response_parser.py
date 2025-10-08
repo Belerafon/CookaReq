@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict, dataclass, is_dataclass
-from typing import Any, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 
 from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
@@ -19,6 +19,9 @@ from .reasoning import (
 from .types import LLMReasoningSegment, LLMToolCall
 from .utils import extract_mapping
 from .validation import ToolValidationError
+
+if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    from ..settings import LLMSettings
 
 __all__ = [
     "LLMResponseParser",
@@ -179,7 +182,7 @@ def normalise_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
 class LLMResponseParser:
     """Convert raw LLM payloads into internal response structures."""
 
-    def __init__(self, settings: "LLMSettings", message_format: str) -> None:
+    def __init__(self, settings: LLMSettings, message_format: str) -> None:
         """Capture parser configuration shared across conversion helpers."""
         from ..settings import LLMSettings  # local import to avoid cycles
 

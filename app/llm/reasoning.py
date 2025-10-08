@@ -46,7 +46,6 @@ REASONING_KEYWORDS = ("reason", "think", "analysis", "reflect")
 
 def is_reasoning_type(value: Any) -> bool:
     """Return ``True`` when *value* denotes a reasoning segment."""
-
     if not isinstance(value, str):
         return False
     lowered = value.strip().lower()
@@ -59,7 +58,6 @@ def is_reasoning_type(value: Any) -> bool:
 
 def extract_reasoning_entries(payload: Any) -> list[Mapping[str, Any]]:
     """Return flattened reasoning segments from *payload*."""
-
     if not payload:
         return []
     if isinstance(payload, (str, bytes, bytearray)):
@@ -79,7 +77,6 @@ def extract_reasoning_entries(payload: Any) -> list[Mapping[str, Any]]:
 
 def collect_reasoning_fragments(payload: Any) -> list[ReasoningFragment]:
     """Return reasoning fragments with preserved edge whitespace."""
-
     fragments: list[ReasoningFragment] = []
     if not payload:
         return fragments
@@ -175,7 +172,6 @@ def merge_reasoning_fragments(
     fragments: Sequence[ReasoningFragment],
 ) -> list[ReasoningFragment]:
     """Collapse adjacent fragments of the same type preserving edge whitespace."""
-
     merged: list[ReasoningFragment] = []
     if not fragments:
         return merged
@@ -243,7 +239,6 @@ def merge_reasoning_fragments(
 
 def normalise_reasoning_segments(payload: Any) -> list[dict[str, Any]]:
     """Return sanitized reasoning segments suitable for JSON payloads."""
-
     normalized: list[dict[str, Any]] = []
     if not payload:
         return normalized

@@ -134,5 +134,4 @@ class DocumentPropertiesDialog(wx.Dialog):
 
     def get_properties(self) -> DocumentProperties | None:
         """Return document properties when dialog was accepted."""
-
         return self._result

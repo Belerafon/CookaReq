@@ -17,7 +17,6 @@ class SplitterEventBlocker:
     @contextmanager
     def pause(self) -> Iterator[None]:
         """Temporarily increment the guard depth while yielding control."""
-
         self._depth += 1
         try:
             yield
@@ -27,7 +26,6 @@ class SplitterEventBlocker:
     @property
     def active(self) -> bool:
         """Return ``True`` when callbacks should be ignored."""
-
         return self._depth > 0
 
 _DEFAULT_SASH_THICKNESS_DIP = 6
@@ -42,7 +40,6 @@ def style_splitter(
     thickness: int | None = None,
 ) -> None:
     """Highlight ``splitter`` so the draggable sash is easy to find."""
-
     if not splitter:
         return
     accent = _resolve_colour(splitter, sash_colour)
@@ -58,7 +55,6 @@ def style_splitter(
 
 def refresh_splitter_highlight(splitter: wx.SplitterWindow) -> None:
     """Force ``splitter`` to repaint its sash highlight if configured."""
-
     helper = getattr(splitter, "_cooka_splitter_highlight", None)
     if helper is not None:
         helper.refresh()

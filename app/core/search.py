@@ -24,7 +24,6 @@ def filter_by_status(
     status: str | Status | None,
 ) -> list[Requirement]:
     """Filter ``requirements`` by ``status`` if provided."""
-
     reqs = list(requirements)
     if not status:
         return reqs
@@ -94,7 +93,6 @@ def filter_text_fields(
     :data:`SEARCHABLE_FIELDS` or empty query strings are ignored. A requirement
     must satisfy *all* provided field queries to be included in the result.
     """
-
     reqs = list(requirements)
     if not queries:
         return reqs
@@ -108,7 +106,6 @@ def filter_text_fields(
 
 def filter_is_derived(requirements: Iterable[Requirement]) -> list[Requirement]:
     """Return only requirements that link to other requirements."""
-
     return [r for r in requirements if getattr(r, "links", [])]
 
 
@@ -117,7 +114,6 @@ def filter_has_derived(
     all_requirements: Iterable[Requirement],
 ) -> list[Requirement]:
     """Return requirements that are referenced by other requirements."""
-
     reqs = list(requirements)
     sources: set[str] = set()
     for req in all_requirements:

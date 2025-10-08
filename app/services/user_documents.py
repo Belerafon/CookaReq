@@ -22,7 +22,7 @@ class UserDocumentEntry:
     size_bytes: int | None = None
     token_count: TokenCountResult | None = None
     percent_of_context: float | None = None
-    children: list["UserDocumentEntry"] = field(default_factory=list)
+    children: list[UserDocumentEntry] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         """Serialise the entry and its children into primitive structures."""

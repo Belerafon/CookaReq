@@ -87,7 +87,6 @@ class AgentChatSession:
     # ------------------------------------------------------------------
     def begin_run(self, *, tokens: TokenCountResult | None = None) -> None:
         """Mark the agent run as active."""
-
         self._is_running = True
         self._tokens = tokens if tokens is not None else TokenCountResult.exact(0)
         self._start_time = time.monotonic()
@@ -100,7 +99,6 @@ class AgentChatSession:
     # ------------------------------------------------------------------
     def finalize_run(self, *, tokens: TokenCountResult | None = None) -> None:
         """Mark the agent run as completed."""
-
         if self._start_time is not None:
             try:
                 self._elapsed = max(0.0, time.monotonic() - self._start_time)
@@ -120,7 +118,6 @@ class AgentChatSession:
     # ------------------------------------------------------------------
     def update_tokens(self, tokens: TokenCountResult) -> None:
         """Persist the latest token usage."""
-
         self._tokens = tokens
         self.events.tokens_changed.emit(tokens)
 
@@ -128,26 +125,22 @@ class AgentChatSession:
     @property
     def elapsed(self) -> float:
         """Return the latest elapsed value in seconds."""
-
         return self._elapsed
 
     # ------------------------------------------------------------------
     def notify_history_changed(self) -> None:
         """Emit a change event for the underlying history."""
-
         self.events.history_changed.emit(self._history)
 
     # ------------------------------------------------------------------
     def load_history(self) -> None:
         """Refresh the in-memory history from disk."""
-
         self._history.load()
         self.notify_history_changed()
 
     # ------------------------------------------------------------------
     def save_history(self) -> None:
         """Persist the in-memory history to disk."""
-
         self._history.save()
 
     # ------------------------------------------------------------------
@@ -158,7 +151,6 @@ class AgentChatSession:
         persist_existing: bool = False,
     ) -> bool:
         """Update the history storage location."""
-
         changed = self._history.set_path(path, persist_existing=persist_existing)
         if changed:
             self.notify_history_changed()
@@ -167,7 +159,6 @@ class AgentChatSession:
     # ------------------------------------------------------------------
     def shutdown(self) -> None:
         """Tear down resources owned by the session."""
-
         if self._timer.IsRunning():
             self._timer.Stop()
         self._timer_owner.Unbind(wx.EVT_TIMER, handler=self._on_timer, source=self._timer)

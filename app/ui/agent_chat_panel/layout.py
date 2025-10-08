@@ -442,7 +442,6 @@ class AgentChatLayoutBuilder:
         stop_visual: _PrimaryActionVisual,
     ) -> None:
         """Keep the primary button size stable across idle and running states."""
-
         idle_size = self._measure_primary_action_visual(button, idle_visual)
         stop_size = self._measure_primary_action_visual(button, stop_visual)
 
@@ -462,7 +461,6 @@ class AgentChatLayoutBuilder:
         self, button: wx.Button, visual: _PrimaryActionVisual
     ) -> wx.Size:
         """Return the best size for the provided primary action visual."""
-
         self._apply_primary_action_visual(button, visual)
         button.InvalidateBestSize()
         size = button.GetBestSize()
@@ -475,7 +473,6 @@ class AgentChatLayoutBuilder:
         self, button: wx.Button, visual: _PrimaryActionVisual
     ) -> None:
         """Apply the provided visual state to the primary action button."""
-
         if visual.uses_bitmap and visual.bitmap is not None:
             self._apply_button_bitmaps(
                 button, visual.bitmap, visual.disabled_bitmap
@@ -491,7 +488,6 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window
     ) -> tuple[wx.Button, _PrimaryActionVisual, _PrimaryActionVisual]:
         """Construct the send/stop button together with its visuals."""
-
         idle_visual = self._build_primary_action_idle_visual(parent)
         stop_visual = self._build_primary_action_stop_visual(parent)
         button = wx.Button(parent, label="", style=wx.BU_AUTODRAW | wx.BU_EXACTFIT)
@@ -504,7 +500,6 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window
     ) -> _PrimaryActionVisual:
         """Return the idle visual description for the primary action button."""
-
         return self._build_primary_action_visual(
             parent,
             svg_builder=self._build_primary_action_arrow_svg,
@@ -516,7 +511,6 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window
     ) -> _PrimaryActionVisual:
         """Return the running visual description for the primary action button."""
-
         return self._build_primary_action_visual(
             parent,
             svg_builder=self._build_primary_action_stop_svg,
@@ -532,7 +526,6 @@ class AgentChatLayoutBuilder:
         fallback_label: str,
     ) -> _PrimaryActionVisual:
         """Return a visual description for the primary action button."""
-
         icon_edge = dip(self._panel, PRIMARY_ACTION_ICON_EDGE)
         icon_size = wx.Size(icon_edge, icon_edge)
         bitmaps = self._render_primary_action_bitmaps(parent, icon_size, svg_builder)
@@ -561,7 +554,6 @@ class AgentChatLayoutBuilder:
         svg_builder: Callable[[wx.Colour], str],
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
         """Render the idle-state bitmaps for the primary action button."""
-
         colours = self._resolve_primary_action_colours(parent)
         if colours is None:
             return None
@@ -581,7 +573,6 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window
     ) -> tuple[wx.Colour, wx.Colour] | None:
         """Pick colours for the active and disabled arrow."""
-
         accent = parent.GetForegroundColour()
         if not isinstance(accent, wx.Colour) or not accent.IsOk():
             accent = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
@@ -602,7 +593,6 @@ class AgentChatLayoutBuilder:
         self, first: wx.Colour, second: wx.Colour, first_weight: float
     ) -> wx.Colour:
         """Blend two colours using the provided weight for the first colour."""
-
         ratio = max(0.0, min(1.0, first_weight))
         other = 1.0 - ratio
 
@@ -621,7 +611,6 @@ class AgentChatLayoutBuilder:
     # ------------------------------------------------------------------
     def _colour_alpha(self, colour: wx.Colour) -> int:
         """Return the alpha component of a colour, defaulting to fully opaque."""
-
         alpha_getter = getattr(colour, "Alpha", None)
         if callable(alpha_getter):
             return int(alpha_getter())
@@ -634,7 +623,6 @@ class AgentChatLayoutBuilder:
         self, button: wx.Button, bitmap: wx.Bitmap, disabled_bitmap: wx.Bitmap | None
     ) -> None:
         """Attach the provided bitmaps to a button."""
-
         if not bitmap or not bitmap.IsOk():
             return
 
@@ -661,7 +649,6 @@ class AgentChatLayoutBuilder:
     # ------------------------------------------------------------------
     def _clear_button_bitmaps(self, button: wx.Button) -> None:
         """Remove any bitmaps associated with a button."""
-
         null_bitmap = wx.NullBitmap
         for attr in (
             "SetBitmap",
@@ -680,7 +667,6 @@ class AgentChatLayoutBuilder:
         self, primary_button: wx.Button, buttons: Sequence[wx.Button]
     ) -> None:
         """Align auxiliary icon buttons with the primary button footprint."""
-
         if not buttons:
             return
 
@@ -704,7 +690,6 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window
     ) -> tuple[wx.Button, bool]:
         """Create an icon-first button used to pick an attachment."""
-
         panel = self._panel
         icon_edge = dip(panel, PRIMARY_ACTION_ICON_EDGE)
         icon_size = wx.Size(icon_edge, icon_edge)
@@ -727,7 +712,6 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window
     ) -> tuple[wx.Button, bool]:
         """Create a compact icon button that opens agent instructions."""
-
         panel = self._panel
         icon_edge = dip(panel, PRIMARY_ACTION_ICON_EDGE)
         icon_size = wx.Size(icon_edge, icon_edge)
@@ -750,7 +734,6 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window
     ) -> tuple[wx.Button, bool]:
         """Create a compact button for clearing the chat input."""
-
         panel = self._panel
         icon_edge = dip(panel, PRIMARY_ACTION_ICON_EDGE)
         icon_size = wx.Size(icon_edge, icon_edge)
@@ -773,7 +756,6 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window, icon_size: wx.Size
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
         """Return bitmaps for the clear-input button or ``None`` if unavailable."""
-
         colour = self._resolve_control_icon_colour(parent)
 
         stroke = self._colour_to_hex(colour)
@@ -796,7 +778,6 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window, icon_size: wx.Size
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
         """Return bitmaps for the attachment button or ``None`` if unavailable."""
-
         colour = self._resolve_control_icon_colour(parent)
         stroke = self._colour_to_hex(colour)
         opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
@@ -818,7 +799,6 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window, icon_size: wx.Size
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
         """Return bitmaps for the agent instructions button."""
-
         highlight = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
         if not isinstance(highlight, wx.Colour) or not highlight.IsOk():
             highlight = wx.Colour(33, 114, 229)
@@ -842,7 +822,6 @@ class AgentChatLayoutBuilder:
     # ------------------------------------------------------------------
     def _resolve_control_icon_colour(self, parent: wx.Window) -> wx.Colour:
         """Return a foreground colour suitable for monochrome control icons."""
-
         colour = parent.GetForegroundColour()
         if not isinstance(colour, wx.Colour) or not colour.IsOk():
             colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
@@ -853,7 +832,6 @@ class AgentChatLayoutBuilder:
     # ------------------------------------------------------------------
     def _render_svg_bitmap(self, svg_markup: str, icon_size: wx.Size) -> wx.Bitmap | None:
         """Render SVG markup into a bitmap using available wx backends."""
-
         bitmap = self._render_svg_with_bitmap_bundle(svg_markup, icon_size)
         if bitmap is None:
             bitmap = self._render_svg_with_wxsvg(svg_markup, icon_size)
@@ -864,7 +842,6 @@ class AgentChatLayoutBuilder:
         self, svg_markup: str, icon_size: wx.Size
     ) -> wx.Bitmap | None:
         """Render SVG markup through :mod:`wx.BitmapBundle` if supported."""
-
         if not hasattr(wx, "BitmapBundle"):
             return None
         from_svg = getattr(wx.BitmapBundle, "FromSVG", None)
@@ -888,7 +865,6 @@ class AgentChatLayoutBuilder:
         self, svg_markup: str, icon_size: wx.Size
     ) -> wx.Bitmap | None:
         """Render SVG markup via :mod:`wx.svg` as a compatibility fallback."""
-
         try:
             import wx.svg as wxsvg
         except Exception:  # pragma: no cover - defensive against missing module
@@ -912,7 +888,6 @@ class AgentChatLayoutBuilder:
     # ------------------------------------------------------------------
     def _build_primary_action_arrow_svg(self, colour: wx.Colour) -> str:
         """Return SVG markup for the idle-state upward arrow."""
-
         fill = self._colour_to_hex(colour)
         opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
         return _PRIMARY_ACTION_ARROW_ICON_SVG_TEMPLATE.format(
@@ -923,7 +898,6 @@ class AgentChatLayoutBuilder:
     # ------------------------------------------------------------------
     def _build_primary_action_stop_svg(self, colour: wx.Colour) -> str:
         """Return SVG markup for the running-state stop icon."""
-
         fill = self._colour_to_hex(colour)
         opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
         return _PRIMARY_ACTION_STOP_ICON_SVG_TEMPLATE.format(
@@ -934,7 +908,6 @@ class AgentChatLayoutBuilder:
     # ------------------------------------------------------------------
     def _colour_to_hex(self, colour: wx.Colour) -> str:
         """Convert a colour to a ``#RRGGBB`` hex string."""
-
         red = max(0, min(int(colour.Red()), 255))
         green = max(0, min(int(colour.Green()), 255))
         blue = max(0, min(int(colour.Blue()), 255))

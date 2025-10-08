@@ -61,7 +61,6 @@ class MainFrame(
         mcp_factory: MCPControllerFactory | None = None,
     ) -> None:
         """Set up main application window and controllers."""
-
         self._base_title = "CookaReq"
         if context is None:
             raise ValueError("MainFrame requires an ApplicationContext instance")
@@ -143,7 +142,6 @@ class MainFrame(
     # initialization helpers
     def _init_icons(self) -> None:
         """Load platform icons into the frame."""
-
         with resources.as_file(
             resources.files("app.resources") / "app.ico",
         ) as icon_path:
@@ -152,7 +150,6 @@ class MainFrame(
 
     def _create_navigation(self) -> Navigation:
         """Build the navigation menus and toolbars."""
-
         return Navigation(
             self,
             self.config,
@@ -177,7 +174,6 @@ class MainFrame(
 
     def _assign_navigation_references(self) -> None:
         """Expose frequently used menu items as attributes."""
-
         self._recent_menu = self.navigation.recent_menu
         self.log_menu_item = self.navigation.log_menu_item
         self.hierarchy_menu_item = self.navigation.hierarchy_menu_item
@@ -187,7 +183,6 @@ class MainFrame(
 
     def _init_sections(self) -> None:
         """Construct hierarchy, list, editor and agent panels."""
-
         (
             self.doc_tree_container,
             self.doc_tree_label,

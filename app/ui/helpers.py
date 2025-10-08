@@ -11,7 +11,6 @@ from ..i18n import _
 
 def inherit_background(target: wx.Window, source: wx.Window | None) -> None:
     """Copy background colour from ``source`` to ``target`` when available."""
-
     if source is None:
         return
     setter = getattr(target, "SetBackgroundColour", None)
@@ -46,7 +45,6 @@ def inherit_background(target: wx.Window, source: wx.Window | None) -> None:
 
 def dip(window: wx.Window, value: int) -> int:
     """Convert a device-independent pixel ``value`` for ``window`` if possible."""
-
     converter = getattr(window, "FromDIP", None)
     if callable(converter):
         try:
@@ -69,7 +67,6 @@ def create_copy_button(
     size: int = 16,
 ) -> wx.Window:
     """Create a copy button reusing themed bitmaps when available."""
-
     icon_size = wx.Size(dip(parent, size), dip(parent, size))
     bitmap = wx.ArtProvider.GetBitmap(wx.ART_COPY, wx.ART_BUTTON, icon_size)
     if bitmap.IsOk():
@@ -134,7 +131,6 @@ class HelpStaticBox(wx.StaticBoxSizer):
 
     def _handle_help(self, _evt: wx.CommandEvent) -> None:
         """Invoke the configured help callback for this static box."""
-
         self._on_help(self._btn, self._help_text)
 
     def Add(
@@ -254,7 +250,6 @@ class AutoHeightListCtrl(wx.ListCtrl):
 
 def _client_display_rect_for(window: wx.Window | None) -> wx.Rect:
     """Return the usable display area for the monitor containing ``window``."""
-
     if window is not None:
         index = wx.Display.GetFromWindow(window)
         if index != wx.NOT_FOUND:
@@ -270,7 +265,6 @@ def _calculate_popup_position(
     pad: int = 8,
 ) -> tuple[int, int]:
     """Compute where to place a popup so it stays close to ``anchor_rect``."""
-
     width = popup_size.width
     height = popup_size.height
 
@@ -317,7 +311,6 @@ def _calculate_popup_position(
 
 def _position_window_near_anchor(window: wx.Window, anchor: wx.Window | None) -> None:
     """Place ``window`` close to ``anchor`` while keeping it on-screen."""
-
     if anchor is None or not anchor.IsShownOnScreen():
         window.CenterOnParent()
         return
@@ -340,7 +333,6 @@ def show_help(
     anchor: wx.Window | None = None,
 ) -> None:
     """Display a modal dialog with ``message`` near the triggering control."""
-
     top_level = parent.GetTopLevelParent() if parent else None
     dialog_parent = top_level or parent
 
@@ -390,7 +382,6 @@ def make_help_button(
         widgets (e.g. notebook pages) and guarantees the popup stays near the
         triggering button.
     """
-
     btn = wx.Button(parent, label="?", style=wx.BU_EXACTFIT)
 
     def _on_click(_evt: wx.CommandEvent) -> None:
@@ -408,7 +399,6 @@ def format_error_message(error: object, *, fallback: str | None = None) -> str:
     ``"code: message"`` pairs when possible.  If all attempts fail, returns the
     provided ``fallback`` or a localized "Unknown error" string.
     """
-
     if isinstance(error, dict):
         code = error.get("code") or error.get("type")
         message = error.get("message")

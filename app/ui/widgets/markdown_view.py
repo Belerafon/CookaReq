@@ -106,7 +106,6 @@ class MarkdownView(html.HtmlWindow):
 
     def SetMarkdown(self, markdown_text: str) -> None:
         """Update control contents with *markdown_text*."""
-
         self._markdown = markdown_text
         html_markup = self._wrap_html(_render_markdown(markdown_text))
         html_markup = normalize_for_display(html_markup)
@@ -282,7 +281,6 @@ class MarkdownContent(wx.Panel):
 
     def SetMarkdown(self, markdown: str) -> None:
         """Forward updated markdown to the underlying view."""
-
         self._view.SetMarkdown(markdown)
 
     def SelectAll(self) -> None:  # noqa: N802 - wx naming convention

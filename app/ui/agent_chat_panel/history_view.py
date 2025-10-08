@@ -61,7 +61,6 @@ class HistoryView:
     # ------------------------------------------------------------------
     def refresh(self) -> None:
         """Repopulate the history list from the callbacks."""
-
         conversations = self._get_conversations()
         self._list.Freeze()
         self._suppress_selection = True

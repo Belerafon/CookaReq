@@ -79,12 +79,10 @@ class AgentProjectSettingsDialog(wx.Dialog):
 
     def get_custom_system_prompt(self) -> str:
         """Return the configured custom system prompt."""
-
         return self._prompt.GetValue().strip()
 
     def get_documents_path(self) -> str:
         """Return the configured documentation directory path."""
-
         return self._documents_path.GetValue().strip()
 
     def _on_browse_documents_path(self, _event: wx.Event) -> None:

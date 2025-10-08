@@ -24,7 +24,6 @@ class MainFrameSectionsMixin:
 
     def _create_splitter(self, parent: wx.Window) -> wx.SplitterWindow:
         """Create a splitter with consistent styling and behaviour."""
-
         splitter = wx.SplitterWindow(parent)
         style_splitter(splitter)
         self._disable_splitter_unsplit(splitter)
@@ -41,7 +40,6 @@ class MainFrameSectionsMixin:
         padding: int = 0,
     ) -> tuple[wx.Panel, wx.StaticText, wx.Window]:
         """Build a titled container holding the widget returned by ``factory``."""
-
         container = SectionContainer(parent)
         background = container.GetBackgroundColour()
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -78,7 +76,6 @@ class MainFrameSectionsMixin:
     # visibility and localisation helpers
     def _apply_doc_tree_visibility(self: MainFrame, *, persist: bool) -> None:
         """Update hierarchy pane visibility based on the menu state."""
-
         if not getattr(self, "doc_splitter", None) or not getattr(self, "doc_tree_container", None):
             return
         if not self.hierarchy_menu_item:
@@ -115,19 +112,16 @@ class MainFrameSectionsMixin:
 
     def _is_doc_tree_visible(self: MainFrame) -> bool:
         """Return whether the hierarchy pane is currently shown."""
-
         return bool(self.hierarchy_menu_item and self.hierarchy_menu_item.IsChecked())
 
     def on_toggle_hierarchy(self: MainFrame, _event: wx.CommandEvent | None) -> None:
         """Handle hierarchy visibility toggles from the menu."""
-
         if not self.hierarchy_menu_item:
             return
         self._apply_doc_tree_visibility(persist=True)
 
     def _apply_agent_chat_visibility(self: MainFrame, *, persist: bool) -> None:
         """Update agent chat pane visibility based on the menu state."""
-
         if not self.agent_chat_menu_item:
             return
         shown = self.agent_chat_menu_item.IsChecked()
@@ -164,12 +158,10 @@ class MainFrameSectionsMixin:
 
     def _is_agent_chat_visible(self: MainFrame) -> bool:
         """Return whether the agent chat pane is currently shown."""
-
         return bool(self.agent_chat_menu_item and self.agent_chat_menu_item.IsChecked())
 
     def _show_editor_panel(self: MainFrame) -> None:
         """Display the editor section alongside its container."""
-
         if not self.splitter.IsSplit():
             sash = self.config.get_editor_sash(self._default_editor_sash())
             self.splitter.SplitVertically(
@@ -185,14 +177,12 @@ class MainFrameSectionsMixin:
 
     def _hide_editor_panel(self: MainFrame) -> None:
         """Hide the editor section and its container."""
-
         self.editor.Hide()
         self.editor_container.Hide()
         refresh_splitter_highlight(self.splitter)
 
     def _clear_editor_panel(self: MainFrame) -> None:
         """Reset editor contents and reflect current visibility setting."""
-
         if not getattr(self, "editor", None):
             return
         self.editor.new_requirement()
@@ -203,12 +193,10 @@ class MainFrameSectionsMixin:
 
     def _is_editor_visible(self: MainFrame) -> bool:
         """Return ``True`` when the main editor pane is enabled."""
-
         return bool(self.editor_menu_item and self.editor_menu_item.IsChecked())
 
     def _show_agent_section(self: MainFrame) -> None:
         """Display the agent chat section and ensure layout refresh."""
-
         self.agent_container.Show()
         self.agent_panel.Show()
         self.agent_container.Layout()
@@ -217,14 +205,12 @@ class MainFrameSectionsMixin:
 
     def _hide_agent_section(self: MainFrame) -> None:
         """Hide the agent chat widgets to free screen space."""
-
         self.agent_panel.Hide()
         self.agent_container.Hide()
         refresh_splitter_highlight(self.agent_splitter)
 
     def _update_section_labels(self: MainFrame) -> None:
         """Refresh captions for titled sections according to current locale."""
-
         self.doc_tree_label.SetLabel(_("Hierarchy"))
         self.editor_label.SetLabel(_("Editor"))
         self.agent_label.SetLabel(_("Agent Chat"))
@@ -236,7 +222,6 @@ class MainFrameSectionsMixin:
 
     def _confirm_discard_changes(self: MainFrame) -> bool:
         """Ask user to discard unsaved edits if editor has pending changes."""
-
         from . import confirm
 
         if not getattr(self, "editor", None):
@@ -309,7 +294,6 @@ class MainFrameSectionsMixin:
 
     def on_toggle_requirement_editor(self: MainFrame, _event: wx.CommandEvent) -> None:
         """Toggle visibility of the requirement editor pane."""
-
         if not self.editor_menu_item:
             return
         if (
@@ -324,7 +308,6 @@ class MainFrameSectionsMixin:
     # persistence helpers
     def _load_layout(self: MainFrame) -> None:
         """Restore window geometry, splitter, console, and column widths."""
-
         self.config.restore_layout(
             self,
             self.doc_splitter,
@@ -356,7 +339,6 @@ class MainFrameSectionsMixin:
 
     def _save_layout(self: MainFrame) -> None:
         """Persist window geometry, splitter, console, and column widths."""
-
         doc_tree_sash = (
             self.doc_splitter.GetSashPosition()
             if self.doc_splitter.IsSplit()
@@ -385,11 +367,9 @@ class MainFrameSectionsMixin:
     # splitter behaviour
     def _disable_splitter_unsplit(self: MainFrame, splitter: wx.SplitterWindow) -> None:
         """Attach handlers preventing ``splitter`` from unsplitting on double click."""
-
         splitter.Bind(wx.EVT_SPLITTER_DOUBLECLICKED, self._prevent_splitter_unsplit)
         splitter.Bind(wx.EVT_SPLITTER_DCLICK, self._prevent_splitter_unsplit)
 
     def _prevent_splitter_unsplit(self: MainFrame, event: wx.SplitterEvent) -> None:
         """Block attempts to unsplit panes initiated by double clicks."""
-
         event.Veto()

@@ -117,7 +117,6 @@ def build_trace_matrix(
     docs: Mapping[str, Document] | None = None,
 ) -> TraceMatrix:
     """Return a traceability matrix for ``config`` rooted at ``root``."""
-
     root_path = Path(root)
     docs_map = docs or load_documents(root_path)
     row_prefixes = _resolve_prefixes(config.rows, docs_map)

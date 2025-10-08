@@ -225,7 +225,6 @@ class SequentialIDAllocator:
 
 def detect_format(path: str | Path) -> TabularFileFormat:
     """Infer tabular format from file extension."""
-
     suffix = Path(path).suffix.lower()
     if suffix in {".csv", ".tsv"}:
         return TabularFileFormat.CSV
@@ -244,7 +243,6 @@ def _normalize_delimiter(delimiter: str) -> str:
 
 def load_csv_dataset(path: str | Path, *, delimiter: str = ",") -> TabularDataset:
     """Load CSV/TSV file into a :class:`TabularDataset`."""
-
     norm_delim = _normalize_delimiter(delimiter)
     rows: list[list[Any]] = []
     with Path(path).open(encoding="utf-8") as fh:
@@ -256,7 +254,6 @@ def load_csv_dataset(path: str | Path, *, delimiter: str = ",") -> TabularDatase
 
 def list_excel_sheets(path: str | Path) -> list[str]:
     """Return sheet names available within an Excel workbook."""
-
     if load_workbook is None:
         raise RequirementImportError("openpyxl is not available")
     workbook = load_workbook(filename=Path(path), read_only=True, data_only=True)
@@ -272,7 +269,6 @@ def load_excel_dataset(
     sheet: str | None = None,
 ) -> TabularDataset:
     """Load Excel sheet into a :class:`TabularDataset`."""
-
     if load_workbook is None:
         raise RequirementImportError("openpyxl is not available")
     workbook = load_workbook(filename=Path(path), read_only=True, data_only=True)
@@ -432,7 +428,6 @@ def build_requirements(
     max_rows: int | None = None,
 ) -> RequirementImportResult:
     """Convert a dataset into Requirement objects using ``config`` mapping."""
-
     requirements: list[Requirement] = []
     issues: list[RequirementImportIssue] = []
     processed = 0

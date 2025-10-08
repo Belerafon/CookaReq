@@ -12,6 +12,7 @@ class ErrorDialog(wx.Dialog):
     """Dialog showing a copyable error message."""
 
     def __init__(self, parent: wx.Window | None, message: str, *, title: str) -> None:
+        """Initialise the dialog and populate it with controls."""
         super().__init__(
             parent,
             title=title,
@@ -47,7 +48,6 @@ class ErrorDialog(wx.Dialog):
 
     def _on_copy(self, event: wx.CommandEvent | None) -> None:
         """Copy error text to clipboard."""
-
         clipboard = wx.TheClipboard
         opened = False
         try:
@@ -65,7 +65,6 @@ class ErrorDialog(wx.Dialog):
 
     def _on_close(self, event: wx.CommandEvent | None) -> None:
         """Close dialog."""
-
         self.EndModal(wx.ID_OK)
         if event is not None:
             event.Skip(False)
@@ -78,7 +77,6 @@ def show_error_dialog(
     title: str | None = None,
 ) -> None:
     """Display an :class:`ErrorDialog` with ``message``."""
-
     dlg = ErrorDialog(parent, message, title=title or _("Error"))
     try:
         dlg.ShowModal()

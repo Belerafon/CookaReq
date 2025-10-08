@@ -20,7 +20,6 @@ class MainFrameSettingsMixin:
         _event: wx.Event,
     ) -> None:  # pragma: no cover - GUI event
         """Display settings dialog and apply changes."""
-
         from . import SettingsDialog
 
         dlg = SettingsDialog(

@@ -34,7 +34,6 @@ def make_json_safe(
         Fallback callable used for unsupported objects. Defaults to
         :func:`repr` to match :mod:`json` behaviour.
     """
-
     if default is None:
         default = repr
 

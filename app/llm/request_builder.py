@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
 from ..telemetry import log_event
 from .constants import DEFAULT_MAX_CONTEXT_TOKENS, MIN_MAX_CONTEXT_TOKENS
@@ -15,6 +15,9 @@ from .spec import SYSTEM_PROMPT, TOOLS
 from .tokenizer import count_text_tokens
 from .types import HistoryTrimResult, LLMReasoningSegment
 from .utils import extract_mapping
+
+if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    from ..settings import LLMSettings
 
 __all__ = ["LLMRequestBuilder", "PreparedChatRequest"]
 
@@ -31,7 +34,7 @@ class PreparedChatRequest:
 class LLMRequestBuilder:
     """Prepare request arguments for the configured LLM backend."""
 
-    def __init__(self, settings: "LLMSettings", message_format: str) -> None:
+    def __init__(self, settings: LLMSettings, message_format: str) -> None:
         """Bind the request builder to explicit LLM settings and message format."""
         from ..settings import LLMSettings  # local import to avoid cycles
 

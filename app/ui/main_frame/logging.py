@@ -43,7 +43,6 @@ class WxLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - GUI side effect
         """Append formatted ``record`` text to the log console."""
-
         if not wx.GetApp():
             return
         msg = self.format(record)
@@ -51,7 +50,6 @@ class WxLogHandler(logging.Handler):
 
     def _append_message(self, message: str) -> None:
         """Render ``message`` in the target control respecting the size limit."""
-
         target = self._target
         if not target or target.IsBeingDeleted():
             return
@@ -77,7 +75,6 @@ class MainFrameLoggingMixin:
 
     def _init_log_console(self: MainFrame) -> None:
         """Create the log console panel and attach handler."""
-
         self.log_panel = SectionContainer(self.main_splitter)
         inner_panel = wx.Panel(self.log_panel)
         inherit_background(inner_panel, self.log_panel)
@@ -136,7 +133,6 @@ class MainFrameLoggingMixin:
     # log level handling
     def _log_level_options(self) -> list[tuple[str, int]]:
         """Return ordered pairs of localized labels and log levels."""
-
         return [
             (_("Debug"), logging.DEBUG),
             (_("Info"), logging.INFO),
@@ -146,7 +142,6 @@ class MainFrameLoggingMixin:
 
     def _populate_log_level_choice(self, selected_level: int | None = None) -> None:
         """Fill the level selector preserving the current ``selected_level``."""
-
         if not getattr(self, "log_level_choice", None):
             return
 
@@ -171,7 +166,6 @@ class MainFrameLoggingMixin:
 
     def _find_choice_index_for_level(self, level: int) -> int:
         """Return the closest matching index for ``level`` in the selector."""
-
         if not self._log_level_values:
             return -1
         if level in self._log_level_values:
@@ -183,7 +177,6 @@ class MainFrameLoggingMixin:
 
     def on_change_log_level(self, event: wx.CommandEvent) -> None:
         """Adjust the wx log handler level according to user selection."""
-
         if not getattr(self, "log_handler", None):
             return
         selection = event.GetSelection()
@@ -197,7 +190,6 @@ class MainFrameLoggingMixin:
     # visibility & labelling helpers
     def on_toggle_log_console(self, _event: wx.CommandEvent) -> None:
         """Toggle visibility of log console panel."""
-
         if self.navigation.log_menu_item.IsChecked():
             sash = self.config.get_log_sash(self.GetClientSize().height - 150)
             self.log_panel.Show()
@@ -211,7 +203,6 @@ class MainFrameLoggingMixin:
 
     def update_log_console_labels(self) -> None:
         """Refresh captions for logging controls according to locale."""
-
         if not getattr(self, "log_label", None):
             return
         self.log_label.SetLabel(_("Log Console"))
@@ -229,7 +220,6 @@ class MainFrameLoggingMixin:
     # clipboard interaction
     def on_copy_logs(self, event: wx.CommandEvent | None) -> None:
         """Copy current log console text to the clipboard."""
-
         console = getattr(self, "log_console", None)
         if console is None or console.IsBeingDeleted():
             return
@@ -254,7 +244,6 @@ class MainFrameLoggingMixin:
     # file system interaction
     def on_open_logs(self, _event: wx.CommandEvent) -> None:
         """Show the log directory in the system file browser."""
-
         from ...telemetry import log_event
 
         directory = get_log_directory()
@@ -271,6 +260,5 @@ class MainFrameLoggingMixin:
 
     def _detach_log_handler(self) -> None:
         """Remove the custom wx handler from the global logger."""
-
         if getattr(self, "log_handler", None) and self.log_handler in logger.handlers:
             logger.removeHandler(self.log_handler)

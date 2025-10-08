@@ -58,7 +58,6 @@ def validate_item_links(
 
 def iter_links(root: str | Path) -> Iterable[tuple[str, str]]:
     """Yield pairs of (child_rid, parent_rid) for all links under ``root``."""
-
     docs = load_documents(root)
     for prefix in sorted(docs):
         doc = docs[prefix]
@@ -86,7 +85,6 @@ def plan_delete_item(
     docs: Mapping[str, Document] | None = None,
 ) -> tuple[bool, list[str]]:
     """Return items referencing ``rid`` without deleting anything."""
-
     root_path = Path(root)
     if docs is None:
         docs = load_documents(root_path)
@@ -125,7 +123,6 @@ def plan_delete_document(
     docs: Mapping[str, Document] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return document prefixes and item ids that would be removed."""
-
     root_path = Path(root)
     if docs is None:
         docs = load_documents(root_path)
@@ -153,7 +150,6 @@ def delete_item(
     docs: Mapping[str, Document] | None = None,
 ) -> bool:
     """Remove requirement ``rid`` and drop links pointing to it."""
-
     root_path = Path(root)
     if docs is None:
         docs = load_documents(root_path)
@@ -202,7 +198,6 @@ def delete_document(
     docs: Mapping[str, Document] | None = None,
 ) -> bool:
     """Remove document ``prefix`` and all its items."""
-
     root_path = Path(root)
     if docs is None:
         docs = load_documents(root_path)
@@ -233,7 +228,6 @@ def link_requirements(
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
     """Link ``derived_rid`` to ``source_rid`` when hierarchy permits."""
-
     if link_type != "parent":
         raise ValidationError(f"invalid link_type: {link_type}")
 

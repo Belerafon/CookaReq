@@ -10,7 +10,6 @@ from ...i18n import _
 
 def _coerce_datetime(value: Any) -> datetime.datetime | None:
     """Return timezone-aware ``datetime`` extracted from *value*."""
-
     if isinstance(value, datetime.datetime):
         moment = value
     elif isinstance(value, str):
@@ -33,7 +32,6 @@ def _coerce_datetime(value: Any) -> datetime.datetime | None:
 
 def format_last_activity(timestamp: str | None) -> str:
     """Return human readable description of last activity time."""
-
     if not timestamp:
         return _("No activity yet")
     moment = _coerce_datetime(timestamp)
@@ -54,7 +52,6 @@ def format_last_activity(timestamp: str | None) -> str:
 
 def format_entry_timestamp(timestamp: str | None) -> str:
     """Return timestamp for transcript entries in local time."""
-
     if not timestamp:
         return ""
     moment = _coerce_datetime(timestamp)
@@ -66,7 +63,6 @@ def format_entry_timestamp(timestamp: str | None) -> str:
 
 def parse_iso_timestamp(value: Any) -> datetime.datetime | None:
     """Return timezone-aware ``datetime`` derived from ISO timestamp."""
-
     return _coerce_datetime(value)
 
 

@@ -65,7 +65,6 @@ class _PromptLogState:
 
     def register(self, signature: PromptSignature | None) -> bool:
         """Return ``True`` when *signature* was logged before."""
-
         if signature is None:
             return False
         if not signature.system_parts and not signature.tool_names:
@@ -77,7 +76,6 @@ class _PromptLogState:
 
     def reset(self) -> None:
         """Forget previously seen signatures (testing helper)."""
-
         self._seen_signatures.clear()
 
 
@@ -86,13 +84,11 @@ _PROMPT_STATE = _PromptLogState()
 
 def _reset_prompt_log_state() -> None:
     """Reset internal cache used to de-duplicate prompt logging."""
-
     _PROMPT_STATE.reset()
 
 
 def log_request(payload: Mapping[str, Any]) -> None:
     """Record telemetry for an outbound LLM request."""
-
     prepared = _prepare_request_payload(payload)
     log_debug_payload("LLM_REQUEST", prepared)
     log_event("LLM_REQUEST", prepared)
@@ -102,7 +98,6 @@ def log_response(
     payload: Mapping[str, Any], *, start_time: float | None = None, direction: str = "inbound"
 ) -> None:
     """Record telemetry for an inbound LLM response."""
-
     log_event("LLM_RESPONSE", payload, start_time=start_time)
     debug_payload = {"direction": direction, **payload}
     log_debug_payload("LLM_RESPONSE", debug_payload)
@@ -110,7 +105,6 @@ def log_response(
 
 def _prepare_request_payload(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     """Return a deep-copied payload with repeated prompts collapsed."""
-
     if not isinstance(payload, Mapping):
         return payload
 
@@ -133,7 +127,6 @@ def _prepare_request_payload(payload: Mapping[str, Any]) -> Mapping[str, Any]:
 
 def _analyze_chat_payload(payload: Mapping[str, Any]) -> ChatPromptAnalysis:
     """Extract metadata describing Chat Completions requests."""
-
     messages = payload.get("messages")
     if not isinstance(messages, Sequence):
         return ChatPromptAnalysis(signature=None, system_indices=(), has_tools=False)
@@ -172,7 +165,6 @@ def _apply_chat_placeholders(
     payload: Mapping[str, Any], analysis: ChatPromptAnalysis
 ) -> None:
     """Replace duplicated Chat Completions prompts with a placeholder."""
-
     messages = payload.get("messages")
     if isinstance(messages, list):
         for index in analysis.system_indices:
@@ -185,7 +177,6 @@ def _apply_chat_placeholders(
 
 def _replace_system_prompt_in_message(message: Mapping[str, Any]) -> None:
     """Trim the base system prompt from *message* preserving contextual tail."""
-
     if not isinstance(message, dict):
         return
     content = message.get("content")
@@ -200,7 +191,6 @@ def _replace_system_prompt_in_message(message: Mapping[str, Any]) -> None:
 
 def _rebuild_message_content(original: Any, new_text: str) -> Any:
     """Return message content mirroring *original* but with *new_text*."""
-
     if isinstance(original, list):
         return [{"type": "text", "text": new_text}]
     if isinstance(original, Mapping):
@@ -215,7 +205,6 @@ def _rebuild_message_content(original: Any, new_text: str) -> Any:
 
 def _analyze_harmony_payload(payload: Mapping[str, Any]) -> HarmonyPromptAnalysis:
     """Extract metadata describing Harmony Responses requests."""
-
     prompt = payload.get("input")
     if not isinstance(prompt, str):
         return HarmonyPromptAnalysis(
@@ -302,7 +291,6 @@ def _apply_harmony_placeholders(
     payload: Mapping[str, Any], analysis: HarmonyPromptAnalysis
 ) -> None:
     """Replace duplicated Harmony prompt fragments with a placeholder."""
-
     prompt = payload.get("input")
     if not isinstance(prompt, str):
         return
@@ -331,7 +319,6 @@ def _apply_harmony_placeholders(
 
 def _extract_text(content: Any) -> str:
     """Return best-effort textual representation of ``content``."""
-
     if content is None:
         return ""
     if isinstance(content, str):
@@ -354,7 +341,6 @@ def _extract_text(content: Any) -> str:
 
 def _extract_tool_names(value: Any) -> tuple[str, ...]:
     """Return ordered tool names extracted from ``value``."""
-
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
         return ()
     names: list[str] = []
@@ -373,7 +359,6 @@ def _extract_tool_names(value: Any) -> tuple[str, ...]:
 
 def _find_system_prompt_slice(text: str | None) -> tuple[int, int] | None:
     """Locate the base system prompt within developer instructions."""
-
     if not text:
         return None
     stripped = text.lstrip()

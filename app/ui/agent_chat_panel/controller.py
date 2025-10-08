@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 def _call_supports_keyword(func: Any, name: str) -> bool:
     """Return True when *func* accepts the keyword argument ``name``."""
-
     try:
         signature = inspect.signature(func)
     except (TypeError, ValueError):  # pragma: no cover - fallback for builtins

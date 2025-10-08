@@ -93,7 +93,6 @@ def requirement_from_dict(
     into their respective dataclasses. Missing optional fields fall back to
     sensible defaults.
     """
-
     required = [
         "id",
         "statement",
@@ -273,7 +272,6 @@ def _fingerprint_value(payload: Requirement | Mapping[str, Any], field: str) -> 
 
 def requirement_fingerprint(payload: Requirement | Mapping[str, Any]) -> str:
     """Compute fingerprint for ``payload`` based on key textual fields."""
-
     data = {field: _fingerprint_value(payload, field) for field in FINGERPRINT_FIELDS}
     serialized = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
@@ -288,7 +286,6 @@ class Link:
     @classmethod
     def from_raw(cls, raw: Any) -> Link:
         """Create :class:`Link` from ``raw`` representation."""
-
         if isinstance(raw, str):
             rid = raw.strip()
             if not rid:
@@ -320,7 +317,6 @@ class Link:
 
     def to_dict(self) -> dict[str, Any]:
         """Return JSON-friendly representation of the link."""
-
         data: dict[str, Any] = {"rid": self.rid}
         if self.fingerprint:
             data["fingerprint"] = self.fingerprint

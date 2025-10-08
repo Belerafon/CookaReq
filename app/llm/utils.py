@@ -11,7 +11,6 @@ __all__ = ["extract_mapping"]
 
 def extract_mapping(obj: Any) -> Mapping[str, Any] | None:
     """Return a mapping representation of *obj* when possible."""
-
     if isinstance(obj, Mapping):
         return obj
     for attr in ("model_dump", "dict"):

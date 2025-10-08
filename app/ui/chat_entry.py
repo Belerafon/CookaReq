@@ -77,7 +77,6 @@ def _deserialize_token_cache(
     payload: Any,
 ) -> dict[str, dict[str, EntryTokenCacheRecord]]:
     """Return sanitised cache mapping from serialized representation."""
-
     if not isinstance(payload, Mapping):
         return {}
     cache: dict[str, dict[str, EntryTokenCacheRecord]] = {}
@@ -104,7 +103,6 @@ def count_context_message_tokens(
     model: str | None,
 ) -> TokenCountResult:
     """Return token usage for a single contextual message."""
-
     if not isinstance(message, Mapping):
         return TokenCountResult.exact(0, model=model)
 
@@ -142,7 +140,6 @@ def count_context_message_tokens(
 
 def _recalculate_pair_token_info(prompt: str, response: str) -> TokenCountResult:
     """Return combined token statistics for *prompt* and *response*."""
-
     prompt_tokens = count_text_tokens(prompt, model=_DEFAULT_TOKEN_MODEL)
     response_tokens = count_text_tokens(response, model=_DEFAULT_TOKEN_MODEL)
     combined = combine_token_counts((prompt_tokens, response_tokens))
@@ -257,7 +254,6 @@ class ChatEntry:
     @property
     def tool_results(self) -> list[Any] | None:
         """Return MCP tool payloads associated with this entry."""
-
         results = extract_tool_results(self.raw_result)
         if not results:
             return None
@@ -311,7 +307,6 @@ class ChatEntry:
 
     def ensure_token_info(self, *, force: bool = False) -> TokenCountResult | None:
         """Ensure ``token_info`` reflects the current prompt/response text."""
-
         if force or self.token_info is None:
             self.token_info = _recalculate_pair_token_info(self.prompt, self.response)
         info = self.token_info
@@ -323,7 +318,6 @@ class ChatEntry:
 
     def ensure_prompt_token_usage(self, model: str | None) -> TokenCountResult:
         """Return token count for the prompt, caching the result."""
-
         text = self.prompt or ""
         digest = _hash_text(text)
         cached = self._cache_lookup("prompt", model=model, digest=digest)
@@ -335,7 +329,6 @@ class ChatEntry:
 
     def ensure_response_token_usage(self, model: str | None) -> TokenCountResult:
         """Return token count for the response, caching the result."""
-
         text = self.response or ""
         digest = _hash_text(text)
         cached = self._cache_lookup("response", model=model, digest=digest)
@@ -352,7 +345,6 @@ class ChatEntry:
         messages: tuple[dict[str, Any], ...] | None = None,
     ) -> TokenCountResult:
         """Return token count for contextual messages, caching the result."""
-
         if messages is None:
             messages = self.context_messages
         if not messages:
@@ -373,7 +365,6 @@ class ChatEntry:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> ChatEntry:
         """Create :class:`ChatEntry` instance from stored mapping."""
-
         prompt = str(payload.get("prompt", ""))
         response = str(payload.get("response", ""))
         display_response = payload.get("display_response")
@@ -469,7 +460,6 @@ class ChatEntry:
 
     def to_dict(self) -> dict[str, Any]:
         """Return representation suitable for JSON storage."""
-
         payload = {
             "prompt": self.prompt,
             "response": self.response,
@@ -525,7 +515,6 @@ class ChatConversation:
     @classmethod
     def new(cls) -> ChatConversation:
         """Return empty conversation with generated identifiers."""
-
         now = utc_now_iso()
         return cls(
             conversation_id=str(uuid4()),
@@ -539,7 +528,6 @@ class ChatConversation:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> ChatConversation:
         """Create :class:`ChatConversation` from stored mapping."""
-
         conversation_id_raw = payload.get("id") or payload.get("conversation_id")
         conversation_id = (
             conversation_id_raw if isinstance(conversation_id_raw, str) else str(uuid4())
@@ -642,7 +630,6 @@ class ChatConversation:
 
     def ensure_title(self) -> None:
         """Populate title from first prompt when unset."""
-
         if self.title:
             return
         derived = self.derive_title()
@@ -651,7 +638,6 @@ class ChatConversation:
 
     def derive_title(self) -> str:
         """Generate human-friendly title from entries."""
-
         self.ensure_entries_loaded()
         for entry in self._entries:
             candidate = entry.prompt.strip()
@@ -662,7 +648,6 @@ class ChatConversation:
 
     def append_entry(self, entry: ChatEntry) -> None:
         """Add ``entry`` to the conversation and refresh metadata."""
-
         if not self._entries_loaded:
             self._entries = []
             self._entries_loaded = True
@@ -684,7 +669,6 @@ class ChatConversation:
 
     def total_token_info(self) -> TokenCountResult:
         """Return aggregated token statistics for the conversation."""
-
         self.ensure_entries_loaded()
         results: list[TokenCountResult] = []
         for item in self._entries:
@@ -695,12 +679,10 @@ class ChatConversation:
 
     def total_tokens(self) -> int:
         """Return total token count across all entries."""
-
         return self.total_token_info().tokens or 0
 
     def to_dict(self) -> dict[str, Any]:
         """Return representation suitable for JSON storage."""
-
         self.ensure_entries_loaded()
         return {
             "id": self.conversation_id,

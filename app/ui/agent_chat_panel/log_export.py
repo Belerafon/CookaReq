@@ -35,7 +35,6 @@ class _PlainEvent:
 
 def _format_timestamp_label(info: TimestampInfo | None) -> str:
     """Return display label for *info* consistent with the transcript UI."""
-
     if info is None:
         return _("not recorded")
     if info.formatted:
@@ -49,7 +48,6 @@ def _format_timestamp_label(info: TimestampInfo | None) -> str:
 
 def _format_iso_timestamp(value: str | None, fallback: TimestampInfo | None) -> str:
     """Return formatted timestamp derived from ISO *value* or *fallback*."""
-
     if value:
         formatted = format_entry_timestamp(value)
         if formatted:
@@ -62,7 +60,6 @@ def _format_tool_timestamp(
     summary: Any, fallback: TimestampInfo | None
 ) -> str:
     """Return formatted timestamp for a tool call *summary*."""
-
     for candidate in (
         getattr(summary, "completed_at", None),
         getattr(summary, "last_observed_at", None),
@@ -75,7 +72,6 @@ def _format_tool_timestamp(
 
 def _collect_agent_plain_events(entry: TranscriptEntry) -> list[_PlainEvent]:
     """Return ordered plain-text events describing the agent turn."""
-
     turn = entry.agent_turn
     events: list[_PlainEvent] = []
     last_text: str | None = None
@@ -211,7 +207,6 @@ def compose_transcript_text(
     timeline: ConversationTimeline | None = None,
 ) -> str:
     """Return the plain conversation transcript for *conversation*."""
-
     if conversation is None:
         return _("Start chatting with the agent to see responses here.")
     if not conversation.entries:
@@ -333,7 +328,6 @@ def compose_transcript_log_text(
     timeline: ConversationTimeline | None = None,
 ) -> str:
     """Return the detailed diagnostic log for *conversation*."""
-
     if conversation is None:
         return _("Start chatting with the agent to see responses here.")
     if not conversation.entries:

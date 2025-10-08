@@ -1,10 +1,8 @@
-"""Segment-based widgets for the agent chat transcript."""
+"""Widgets and helpers for rendering transcript segments inside the chat panel."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping, Sequence
-"""Widgets and helpers for rendering transcript segments inside the chat panel."""
-
 from contextlib import suppress
 import json
 from typing import Any, Literal

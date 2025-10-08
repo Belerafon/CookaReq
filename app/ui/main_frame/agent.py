@@ -32,7 +32,6 @@ logger = logging.getLogger("cookareq.ui.main_frame.agent")
 
 def _short_repr(value: Any, *, limit: int = 200) -> str:
     """Return shortened ``repr`` for logging purposes."""
-
     try:
         text = repr(value)
     except Exception:  # pragma: no cover - extremely defensive
@@ -58,7 +57,6 @@ class MainFrameAgentMixin:
         | None = None,
     ):
         """Construct ``LocalAgent`` using current settings."""
-
         from . import confirm
 
         factory = getattr(self, "local_agent_factory", None)
@@ -77,7 +75,6 @@ class MainFrameAgentMixin:
 
     def _init_mcp_tool_listener(self: MainFrame) -> None:
         """Subscribe to MCP tool result notifications."""
-
         if getattr(self, "_mcp_tool_listener_remove", None):
             return
 
@@ -93,7 +90,6 @@ class MainFrameAgentMixin:
 
     def _teardown_mcp_tool_listener(self: MainFrame) -> None:
         """Detach from MCP tool result notifications."""
-
         remover = getattr(self, "_mcp_tool_listener_remove", None)
         if remover is not None:
             try:
@@ -121,7 +117,6 @@ class MainFrameAgentMixin:
         self: MainFrame, event: ToolResultEvent
     ) -> None:
         """Apply requirement changes described by *event*."""
-
         if not event.payloads:
             return
         if getattr(self, "_shutdown_in_progress", False):
@@ -439,7 +434,6 @@ class MainFrameAgentMixin:
         self: MainFrame, tool_results: Sequence[Mapping[str, Any]]
     ) -> None:
         """Apply requirement updates returned by the agent."""
-
         if not tool_results:
             return
         current_prefix = getattr(self, "current_doc_prefix", None)
@@ -595,7 +589,6 @@ class MainFrameAgentMixin:
 
     def on_run_command(self: MainFrame, _event: wx.Event) -> None:
         """Ensure agent chat panel is visible and focused."""
-
         if not self.agent_chat_menu_item:
             return
         if not self.agent_chat_menu_item.IsChecked():
@@ -606,7 +599,6 @@ class MainFrameAgentMixin:
 
     def on_toggle_agent_chat(self: MainFrame, _event: wx.CommandEvent | None) -> None:
         """Toggle agent chat panel visibility."""
-
         if not self.agent_chat_menu_item:
             return
         self._apply_agent_chat_visibility(persist=True)

@@ -1,6 +1,8 @@
 """Composition root building shared dependencies for CookaReq."""
 from __future__ import annotations
+
 from collections.abc import Callable
+
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from .config import ConfigManager
@@ -65,9 +67,10 @@ class ApplicationContext:
         config_factory: Callable[[str], ConfigManager] | None = None,
         requirement_model_factory: Callable[[], RequirementModel] | None = None,
         requirements_service_cls: type[RequirementsService] = RequirementsService,
-        local_agent_cls: type["LocalAgent"] | None = None,
+        local_agent_cls: type[LocalAgent] | None = None,
         mcp_controller_cls: type[MCPController] = MCPController,
     ) -> None:
+        """Initialise the dependency container shared across frontends."""
         self._app_name = app_name
         self._config_factory = config_factory or (lambda name: ConfigManager(name))
         self._requirement_model_factory = (
@@ -127,7 +130,7 @@ class ApplicationContext:
                 confirm_override: ConfirmCallback | None = None,
                 confirm_requirement_update_override: RequirementUpdateConfirmCallback
                 | None = None,
-            ) -> "LocalAgent":
+            ) -> LocalAgent:
                 kwargs: dict[str, object] = {"settings": settings}
                 if confirm_override is not None:
                     kwargs["confirm"] = confirm_override
@@ -153,7 +156,7 @@ class ApplicationContext:
         return self._mcp_controller_factory
 
     @classmethod
-    def for_gui(cls, *, app_name: str = "CookaReq") -> "ApplicationContext":
+    def for_gui(cls, *, app_name: str = "CookaReq") -> ApplicationContext:
         """Return context configured for the wx-based GUI."""
         from .confirm import wx_confirm, wx_confirm_requirement_update
 
@@ -164,7 +167,7 @@ class ApplicationContext:
         )
 
     @classmethod
-    def for_cli(cls, *, app_name: str = "CookaReq") -> "ApplicationContext":
+    def for_cli(cls, *, app_name: str = "CookaReq") -> ApplicationContext:
         """Return context configured for non-interactive CLI usage."""
         from .confirm import auto_confirm, auto_confirm_requirement_update
 

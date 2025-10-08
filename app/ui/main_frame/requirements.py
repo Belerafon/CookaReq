@@ -26,7 +26,6 @@ class MainFrameRequirementsMixin:
 
     def on_toggle_column(self: MainFrame, event: wx.CommandEvent) -> None:
         """Show or hide column associated with menu item."""
-
         field = self.navigation.get_field_for_id(event.GetId())
         if not field:
             return
@@ -41,7 +40,6 @@ class MainFrameRequirementsMixin:
 
     def on_new_requirement(self: MainFrame, _event: wx.Event) -> None:
         """Create and persist a new requirement."""
-
         if not (self.docs_controller and self.current_doc_prefix):
             return
         new_id = self.docs_controller.next_item_id(self.current_doc_prefix)
@@ -60,7 +58,6 @@ class MainFrameRequirementsMixin:
 
     def on_clone_requirement(self: MainFrame, req_id: int) -> None:
         """Clone requirement ``req_id`` and open in editor."""
-
         if not (self.docs_controller and self.current_doc_prefix):
             return
         source = self.model.get_by_id(req_id)
@@ -131,7 +128,6 @@ class MainFrameRequirementsMixin:
 
     def on_derive_requirement(self: MainFrame, req_id: int) -> None:
         """Create a requirement derived from ``req_id`` and open it."""
-
         if not (self.docs_controller and self.current_doc_prefix):
             return
         source = self.model.get_by_id(req_id)
@@ -166,7 +162,6 @@ class MainFrameRequirementsMixin:
 
     def on_delete_requirements(self: MainFrame, req_ids: Sequence[int]) -> None:
         """Delete multiple requirements referenced by ``req_ids``."""
-
         if not req_ids:
             return
         if not (self.docs_controller and self.current_doc_prefix):
@@ -266,7 +261,6 @@ class MainFrameRequirementsMixin:
 
     def on_delete_requirement(self: MainFrame, req_id: int) -> None:
         """Delete requirement ``req_id`` and refresh views."""
-
         self.on_delete_requirements([req_id])
 
     def _on_sort_changed(self: MainFrame, column: int, ascending: bool) -> None:

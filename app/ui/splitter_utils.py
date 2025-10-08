@@ -2,32 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 
 import wx
-
-
-class SplitterEventBlocker:
-    """Re-entrant guard that suppresses splitter change callbacks."""
-
-    def __init__(self) -> None:
-        self._depth = 0
-
-    @contextmanager
-    def pause(self) -> Iterator[None]:
-        """Temporarily increment the guard depth while yielding control."""
-        self._depth += 1
-        try:
-            yield
-        finally:
-            self._depth -= 1
-
-    @property
-    def active(self) -> bool:
-        """Return ``True`` when callbacks should be ignored."""
-        return self._depth > 0
-
 _DEFAULT_SASH_THICKNESS_DIP = 6
 _TINT_FACTOR = 0.25
 _MIN_THICKNESS = 4

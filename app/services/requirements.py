@@ -145,7 +145,8 @@ class RequirementsService:
         """Persist raw requirement ``payload`` under document ``prefix``."""
         doc = self.get_document(prefix)
         directory = self.root / prefix
-        return doc_store.save_item(directory, doc, dict(payload))
+        docs = self._ensure_documents()
+        return doc_store.save_item(directory, doc, payload, docs=docs)
 
     def delete_requirement(self, rid: str) -> str:
         """Delete requirement ``rid`` enforcing revision semantics."""

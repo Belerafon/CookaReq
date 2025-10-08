@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, field
 
 import wx
@@ -13,7 +14,6 @@ from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import dip
 from .components.segments import TurnCard
 from .view_model import (
-    AgentSegment,
     ConversationTimeline,
     TranscriptEntry,
     build_conversation_timeline,
@@ -33,6 +33,7 @@ class SegmentViewCallbacks:
         update_copy_buttons: Callable[[bool], None],
         update_header: Callable[[], None],
     ) -> None:
+        """Store controller hooks consumed by :class:`SegmentListView`."""
         self.get_conversation = get_conversation
         self.is_running = is_running
         self.on_regenerate = on_regenerate
@@ -59,6 +60,7 @@ class SegmentListView:
         *,
         callbacks: SegmentViewCallbacks,
     ) -> None:
+        """Initialise the transcript view wrappers for *owner* widgets."""
         self._owner = owner
         self._panel = panel
         self._sizer = sizer
@@ -74,6 +76,7 @@ class SegmentListView:
 
     # ------------------------------------------------------------------
     def render(self) -> None:
+        """Force a synchronous refresh for the active conversation."""
         conversation = self._callbacks.get_conversation()
         timeline = (
             build_conversation_timeline(conversation)
@@ -96,6 +99,7 @@ class SegmentListView:
         updated_entries: Iterable[str] | None = None,
         force: bool = False,
     ) -> None:
+        """Throttle timeline updates while merging redundant requests."""
         if timeline is not None:
             self._pending_timeline = timeline
         elif conversation is None:
@@ -110,6 +114,7 @@ class SegmentListView:
 
     # ------------------------------------------------------------------
     def forget_conversations(self, conversation_ids: Iterable[str]) -> None:
+        """Destroy cached widgets for conversations not tracked anymore."""
         for conversation_id in list(conversation_ids):
             cache = self._conversation_cache.pop(conversation_id, None)
             if cache is None:
@@ -133,6 +138,7 @@ class SegmentListView:
 
     # ------------------------------------------------------------------
     def sync_known_conversations(self, conversation_ids: Iterable[str]) -> None:
+        """Remove cached data for conversations missing from *conversation_ids*."""
         known = set(conversation_ids)
         obsolete = [
             conversation_id
@@ -154,7 +160,9 @@ class SegmentListView:
         conversation = self._callbacks.get_conversation()
         if conversation is None:
             timeline = None
-        elif timeline is None or timeline.conversation_id != conversation.conversation_id:
+        elif timeline is None or (
+            timeline.conversation_id != conversation.conversation_id
+        ):
             timeline = build_conversation_timeline(conversation)
 
         self._apply_timeline(conversation, timeline, entry_ids, force)
@@ -293,7 +301,9 @@ class SegmentListView:
                     card.Destroy()
 
             cache.order = [key for key, _ in ordered_cards]
-            cache.entry_snapshots = {entry.entry_id: entry for entry in timeline.entries}
+            cache.entry_snapshots = {
+                entry.entry_id: entry for entry in timeline.entries
+            }
             cards = [card for _, card in ordered_cards]
             self._attach_cards_in_order(cards)
             return cards[-1] if cards else None
@@ -334,10 +344,7 @@ class SegmentListView:
             if numeric_width <= 0:
                 return
             hints = entry.layout_hints
-            if isinstance(hints, Mapping):
-                updated = dict(hints)
-            else:
-                updated = {}
+            updated = dict(hints) if isinstance(hints, Mapping) else {}
             updated[hint_key] = numeric_width
             entry.layout_hints = updated
 
@@ -406,16 +413,12 @@ class SegmentListView:
         if not self._is_window_alive(placeholder):
             self._current_placeholder = None
             return
-        try:
+        with suppress(RuntimeError):
             if placeholder.GetContainingSizer() is self._sizer:
                 self._sizer.Detach(placeholder)
-        except RuntimeError:
-            pass
         placeholder.Hide()
-        try:
+        with suppress(RuntimeError):
             placeholder.Destroy()
-        except RuntimeError:
-            pass
         if placeholder is self._start_placeholder:
             self._start_placeholder = None
         for cache in self._conversation_cache.values():

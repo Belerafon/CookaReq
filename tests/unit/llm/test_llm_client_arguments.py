@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from typing import Any
 
 from openai.types.responses.response_function_tool_call import (

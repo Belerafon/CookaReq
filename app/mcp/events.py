@@ -1,5 +1,4 @@
 """Notification helpers for MCP tool results."""
-
 from __future__ import annotations
 
 import logging
@@ -32,7 +31,6 @@ class _ToolResultBus:
 
     def add_listener(self, listener: _Listener) -> Callable[[], None]:
         """Register *listener* and return a callable removing it."""
-
         with self._lock:
             self._listeners.add(listener)
 
@@ -43,13 +41,11 @@ class _ToolResultBus:
 
     def remove_listener(self, listener: _Listener) -> None:
         """Unregister *listener* ignoring unknown references."""
-
         with self._lock:
             self._listeners.discard(listener)
 
     def emit(self, event: ToolResultEvent) -> None:
         """Send *event* to all registered listeners."""
-
         with self._lock:
             listeners = tuple(self._listeners)
         for listener in listeners:
@@ -64,13 +60,11 @@ _bus = _ToolResultBus()
 
 def add_tool_result_listener(listener: _Listener) -> Callable[[], None]:
     """Register *listener* to receive :class:`ToolResultEvent` objects."""
-
     return _bus.add_listener(listener)
 
 
 def remove_tool_result_listener(listener: _Listener) -> None:
     """Unregister *listener* from receiving tool result events."""
-
     _bus.remove_listener(listener)
 
 
@@ -82,7 +76,6 @@ def notify_tool_success(
     result: Mapping[str, Any] | None,
 ) -> None:
     """Broadcast a successful tool invocation to registered listeners."""
-
     if not tool_name:
         return
 
@@ -113,7 +106,6 @@ def notify_tool_success_many(
     payloads: Sequence[Mapping[str, Any]],
 ) -> None:
     """Broadcast pre-built payloads to registered listeners."""
-
     if not payloads:
         return
     event = ToolResultEvent(

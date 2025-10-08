@@ -1,5 +1,4 @@
 """Utilities for deriving MCP filesystem locations."""
-
 from __future__ import annotations
 
 import logging
@@ -22,13 +21,9 @@ class DocumentsRootDescription:
 
 def normalize_documents_path(value: str | Path | None) -> str:
     """Return ``value`` as a trimmed string suitable for persistence."""
-
     if value is None:
         return ""
-    if isinstance(value, Path):
-        text = str(value)
-    else:
-        text = str(value)
+    text = str(value)
     return text.strip()
 
 
@@ -37,7 +32,6 @@ def describe_documents_root(
     documents_path: str | Path | None,
 ) -> DocumentsRootDescription:
     """Return a structured description of the documentation directory."""
-
     text = normalize_documents_path(documents_path)
     if not text:
         return DocumentsRootDescription(status="disabled")
@@ -80,7 +74,6 @@ def resolve_documents_root(
     documents_path: str | Path | None,
 ) -> Path | None:
     """Resolve the documentation directory combining base and document paths."""
-
     description = describe_documents_root(base_path, documents_path)
     if description.status != "resolved":
         return None

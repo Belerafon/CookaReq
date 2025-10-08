@@ -31,9 +31,11 @@ class ConsoleFormatter(logging.Formatter):
     """Console formatter that surfaces structured payloads when available."""
 
     def __init__(self) -> None:
+        """Set up the formatter with the standard console template."""
         super().__init__("%(levelname)s: %(message)s")
 
     def format(self, record: logging.LogRecord) -> str:
+        """Render *record* optionally appending the structured payload."""
         base = super().format(record)
         payload = _extract_console_payload(record)
         if payload is None:

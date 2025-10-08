@@ -1,8 +1,11 @@
+"""High-level wrappers around the document store for requirements management."""
+
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from ..core import document_store as doc_store
 from ..core.document_store import (
@@ -18,6 +21,23 @@ from ..core.document_store import (
 from ..core.model import Requirement
 
 # Re-export selected helpers so callers do not need to depend on ``document_store``.
+__all__ = [
+    "Document",
+    "DocumentLabels",
+    "DocumentNotFoundError",
+    "LabelDef",
+    "RequirementIDCollisionError",
+    "RequirementNotFoundError",
+    "RequirementPage",
+    "ValidationError",
+    "RequirementsService",
+    "iter_links",
+    "label_color",
+    "stable_color",
+    "parse_rid",
+    "rid_for",
+]
+
 iter_links = doc_store.iter_links
 label_color = doc_store.label_color
 stable_color = doc_store.stable_color
@@ -33,12 +53,12 @@ class RequirementsService:
     _documents: dict[str, Document] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        """Normalise the configured root into a :class:`~pathlib.Path`."""
         self.root = Path(self.root)
 
     # ------------------------------------------------------------------
     def clear_cache(self) -> None:
         """Drop cached document metadata."""
-
         self._documents = None
 
     # ------------------------------------------------------------------
@@ -49,13 +69,11 @@ class RequirementsService:
 
     def load_documents(self, *, refresh: bool = False) -> dict[str, Document]:
         """Return mapping of prefix to :class:`Document` under ``root``."""
-
         docs = self._ensure_documents(refresh=refresh)
         return dict(docs)
 
     def get_document(self, prefix: str) -> Document:
         """Return document ``prefix`` loading it from disk when necessary."""
-
         docs = self._ensure_documents()
         doc = docs.get(prefix)
         if doc is not None:
@@ -74,7 +92,6 @@ class RequirementsService:
     # ------------------------------------------------------------------
     def save_document(self, document: Document) -> Path:
         """Persist ``document`` metadata and refresh the cache."""
-
         path = doc_store.save_document(self.root / document.prefix, document)
         self._ensure_documents(refresh=True)
         return path
@@ -88,14 +105,12 @@ class RequirementsService:
         labels: DocumentLabels | None = None,
     ) -> Document:
         """Create and persist a new document."""
-
         document = Document(prefix=prefix, title=title, parent=parent, labels=labels)
         self.save_document(document)
         return document
 
     def delete_document(self, prefix: str) -> bool:
         """Delete document ``prefix`` and refresh the cache on success."""
-
         docs = self._ensure_documents()
         removed = doc_store.delete_document(self.root, prefix, docs)
         if removed:
@@ -104,55 +119,47 @@ class RequirementsService:
 
     def plan_delete_document(self, prefix: str) -> tuple[list[str], list[str]]:
         """Return prospective documents and items affected by deletion."""
-
         docs = self._ensure_documents()
         return doc_store.plan_delete_document(self.root, prefix, docs)
 
     # ------------------------------------------------------------------
     def list_item_ids(self, prefix: str) -> list[int]:
         """Return sorted item identifiers for document ``prefix``."""
-
         doc = self.get_document(prefix)
         directory = self.root / prefix
         return sorted(doc_store.list_item_ids(directory, doc))
 
     def load_item(self, prefix: str, item_id: int) -> tuple[dict[str, Any], float]:
         """Return raw payload and modification time for requirement ``item_id``."""
-
         doc = self.get_document(prefix)
         directory = self.root / prefix
         return doc_store.load_item(directory, doc, item_id)
 
     def next_item_id(self, prefix: str) -> int:
         """Return the next available numeric identifier for ``prefix``."""
-
         doc = self.get_document(prefix)
         directory = self.root / prefix
         return doc_store.next_item_id(directory, doc)
 
     def save_requirement_payload(self, prefix: str, payload: Mapping[str, Any]) -> Path:
         """Persist raw requirement ``payload`` under document ``prefix``."""
-
         doc = self.get_document(prefix)
         directory = self.root / prefix
         return doc_store.save_item(directory, doc, dict(payload))
 
     def delete_requirement(self, rid: str) -> str:
         """Delete requirement ``rid`` enforcing revision semantics."""
-
         docs = self._ensure_documents()
         return doc_store.delete_requirement(self.root, rid, docs=docs)
 
     def plan_delete_requirement(self, rid: str) -> tuple[bool, list[str]]:
         """Return existence flag and references for requirement ``rid``."""
-
         docs = self._ensure_documents()
         return doc_store.plan_delete_item(self.root, rid, docs)
 
     # ------------------------------------------------------------------
     def create_requirement(self, prefix: str, data: Mapping[str, Any]) -> Requirement:
         """Create a new requirement within ``prefix``."""
-
         docs = self._ensure_documents()
         return doc_store.create_requirement(
             self.root,
@@ -163,7 +170,6 @@ class RequirementsService:
 
     def get_requirement(self, rid: str) -> Requirement:
         """Return requirement ``rid`` using cached documents when possible."""
-
         docs = self._ensure_documents()
         return doc_store.get_requirement(self.root, rid, docs=docs)
 
@@ -175,7 +181,6 @@ class RequirementsService:
         payload: Mapping[str, Any],
     ) -> Requirement:
         """Move requirement ``rid`` to document ``new_prefix``."""
-
         docs = self._ensure_documents()
         return doc_store.move_requirement(
             self.root,
@@ -192,6 +197,7 @@ class RequirementsService:
         field: str,
         value: Any,
     ) -> Requirement:
+        """Update a single field on the requirement identified by ``rid``."""
         docs = self._ensure_documents()
         return doc_store.update_requirement_field(
             self.root,
@@ -202,6 +208,7 @@ class RequirementsService:
         )
 
     def set_requirement_labels(self, rid: str, labels: Sequence[str]) -> Requirement:
+        """Replace labels associated with ``rid`` ensuring validation."""
         docs = self._ensure_documents()
         return doc_store.set_requirement_labels(
             self.root,
@@ -215,6 +222,7 @@ class RequirementsService:
         rid: str,
         attachments: Sequence[Mapping[str, Any]],
     ) -> Requirement:
+        """Synchronise attachment metadata for requirement ``rid``."""
         docs = self._ensure_documents()
         return doc_store.set_requirement_attachments(
             self.root,
@@ -228,6 +236,7 @@ class RequirementsService:
         rid: str,
         links: Sequence[Mapping[str, Any] | str],
     ) -> Requirement:
+        """Persist traceability links for requirement ``rid``."""
         docs = self._ensure_documents()
         return doc_store.set_requirement_links(
             self.root,
@@ -243,6 +252,7 @@ class RequirementsService:
         derived_rid: str,
         link_type: str,
     ) -> Requirement:
+        """Create a directional link between ``source_rid`` and ``derived_rid``."""
         docs = self._ensure_documents()
         return doc_store.link_requirements(
             self.root,
@@ -255,15 +265,16 @@ class RequirementsService:
     # ------------------------------------------------------------------
     def collect_label_defs(self, prefix: str) -> tuple[list[LabelDef], bool]:
         """Return label definitions and freeform flag for ``prefix``."""
-
         docs = self._ensure_documents()
         return doc_store.collect_label_defs(prefix, docs)
 
     def validate_labels(self, prefix: str, labels: Sequence[str]) -> str | None:
+        """Validate ``labels`` for ``prefix`` returning an error message if any."""
         docs = self._ensure_documents()
         return doc_store.validate_labels(prefix, list(labels), docs)
 
     def is_ancestor(self, child_prefix: str, ancestor_prefix: str) -> bool:
+        """Return ``True`` when ``ancestor_prefix`` is in the lineage of ``child_prefix``."""
         docs = self._ensure_documents()
         return doc_store.is_ancestor(child_prefix, ancestor_prefix, docs)
 
@@ -275,6 +286,7 @@ class RequirementsService:
         status: str | None = None,
         labels: Sequence[str] | None = None,
     ) -> RequirementPage:
+        """Return a paginated view across requirements filtered by metadata."""
         docs = self._ensure_documents()
         return doc_store.list_requirements(
             self.root,
@@ -289,7 +301,6 @@ class RequirementsService:
         self, *, prefixes: Sequence[str] | None = None
     ) -> list[Requirement]:
         """Return requirements for ``prefixes`` refreshing link metadata."""
-
         docs = self._ensure_documents()
         return doc_store.load_requirements(
             self.root,
@@ -306,6 +317,7 @@ class RequirementsService:
         page: int = 1,
         per_page: int = 50,
     ) -> RequirementPage:
+        """Search requirements by text and metadata returning a paginated result."""
         docs = self._ensure_documents()
         return doc_store.search_requirements(
             self.root,

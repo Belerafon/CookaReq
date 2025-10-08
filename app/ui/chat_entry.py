@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any, Callable
-from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from uuid import uuid4
 
 from ..llm.tokenizer import (

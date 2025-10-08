@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Generic, TypeVar
+from collections.abc import Callable
+from contextlib import suppress
+from typing import Any
 import time
 
 import wx
@@ -13,27 +15,22 @@ from .history import AgentChatHistory
 from .token_usage import TokenCountResult
 
 
-T = TypeVar("T")
-
-
-class SessionEvent(Generic[T]):
+class SessionEvent:
     """Simple signal implementation for the session model."""
 
     __slots__ = ("_listeners",)
 
     def __init__(self) -> None:
-        self._listeners: list[Callable[[T], None]] = []
+        self._listeners: list[Callable[[Any], None]] = []
 
-    def connect(self, callback: Callable[[T], None]) -> None:
+    def connect(self, callback: Callable[[Any], None]) -> None:
         self._listeners.append(callback)
 
-    def disconnect(self, callback: Callable[[T], None]) -> None:
-        try:
+    def disconnect(self, callback: Callable[[Any], None]) -> None:
+        with suppress(ValueError):
             self._listeners.remove(callback)
-        except ValueError:  # pragma: no cover - defensive cleanup
-            pass
 
-    def emit(self, payload: T) -> None:
+    def emit(self, payload: Any) -> None:
         for listener in list(self._listeners):
             listener(payload)
 

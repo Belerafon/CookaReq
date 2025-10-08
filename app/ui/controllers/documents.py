@@ -134,7 +134,7 @@ class DocumentsController:
     def next_item_id(self, prefix: str) -> int:
         """Return next available requirement id for document ``prefix``."""
 
-        doc = self._get_document(prefix)
+        self._get_document(prefix)
         return self.service.next_item_id(prefix)
 
     def add_requirement(self, prefix: str, req: Requirement) -> None:
@@ -211,7 +211,7 @@ class DocumentsController:
                 raise ValueError("document cannot be its own parent")
             if parent not in self.documents:
                 raise ValueError(f"unknown parent document: {parent}")
-        doc = self.service.create_document(
+        self.service.create_document(
             prefix=prefix,
             title=title or prefix,
             parent=parent or None,

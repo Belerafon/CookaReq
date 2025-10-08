@@ -16,7 +16,7 @@ from ..llm.constants import (
 )
 from ..mcp.client import MCPClient
 from ..mcp.controller import MCPController, MCPStatus
-from ..mcp.paths import describe_documents_root, resolve_documents_root
+from ..mcp.paths import describe_documents_root
 from ..settings import (
     LLMSettings,
     MCPSettings,

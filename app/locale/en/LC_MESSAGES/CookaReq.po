@@ -2256,6 +2256,15 @@ msgstr "Загрузка…"
 msgid "Documentation disabled"
 msgstr "Documentation disabled"
 
+msgid " — default read limit: {limit} KiB"
+msgstr " — default read limit: {limit} KiB"
+
+msgid "Browse…"
+msgstr "Browse…"
+
+msgid "Default from MCP settings: {path}"
+msgstr "Default from MCP settings: {path}"
+
 msgid "Base path is required for relative folders"
 msgstr "Base path is required for relative folders"
 
@@ -2267,3 +2276,36 @@ msgstr "{path} (missing)"
 
 msgid "Select documentation folder"
 msgstr "Select documentation folder"
+
+msgid "Documentation directory visible to MCP tools. Example: share\nRelative paths are resolved from the active requirements folder.\nLeave empty to disable documentation access."
+msgstr "Documentation directory visible to MCP tools. Example: share\nRelative paths are resolved from the active requirements folder.\nLeave empty to disable documentation access."
+
+msgid "Documentation folder"
+msgstr "Documentation folder"
+
+msgid "Documentation folder (optional). Relative paths resolve against the current requirements directory when one is open."
+msgstr "Documentation folder (optional). Relative paths resolve against the current requirements directory when one is open."
+
+msgid "Documentation folder access disabled."
+msgstr "Documentation folder access disabled."
+
+msgid "Documentation folder pending: {path} (open a requirements folder)"
+msgstr "Documentation folder pending: {path} (open a requirements folder)"
+
+msgid "Documentation folder: {path}"
+msgstr "Documentation folder: {path}"
+
+msgid "Documentation root: {path}"
+msgstr "Documentation root: {path}"
+
+msgid "Documentation root: {path} (missing)"
+msgstr "Documentation root: {path} (missing)"
+
+msgid "Maximum amount of documentation text (in KiB) streamed by `read_user_document` when the model omits `max_bytes`. Increase only when necessary; higher limits mean longer MCP responses and more context usage."
+msgstr "Maximum amount of documentation text (in KiB) streamed by `read_user_document` when the model omits `max_bytes`. Increase only when necessary; higher limits mean longer MCP responses and more context usage."
+
+msgid "Project override: {path}"
+msgstr "Project override: {path}"
+
+msgid "Read chunk limit (KiB)"
+msgstr "Read chunk limit (KiB)"

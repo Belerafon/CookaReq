@@ -1,5 +1,4 @@
 """MCP tool helpers for user-provided documentation files."""
-
 from __future__ import annotations
 
 from typing import Any
@@ -30,6 +29,7 @@ def _normalize_max_bytes(service: UserDocumentsService, value: int | None) -> in
 
 
 def list_user_documents(service: UserDocumentsService | None) -> dict[str, Any]:
+    """Return a serialized tree of available user documents."""
     params: dict[str, Any] = {}
     if service is None:
         return _missing_root_error("list_user_documents", params)
@@ -52,6 +52,7 @@ def read_user_document(
     start_line: int = 1,
     max_bytes: int | None = None,
 ) -> dict[str, Any]:
+    """Read the requested document while enforcing configured limits."""
     params: dict[str, Any] = {"path": path, "start_line": start_line}
     if max_bytes is not None:
         params["max_bytes"] = max_bytes
@@ -94,6 +95,7 @@ def create_user_document(
     content: str = "",
     exist_ok: bool = False,
 ) -> dict[str, Any]:
+    """Persist a document under the configured root, optionally replacing it."""
     params: dict[str, Any] = {
         "path": path,
         "exist_ok": exist_ok,
@@ -132,6 +134,7 @@ def delete_user_document(
     service: UserDocumentsService | None,
     path: str,
 ) -> dict[str, Any]:
+    """Remove the specified document from the managed root."""
     params: dict[str, Any] = {"path": path}
     if service is None:
         return _missing_root_error("delete_user_document", params)

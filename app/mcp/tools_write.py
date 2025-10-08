@@ -1,3 +1,5 @@
+"""Write-oriented MCP tool implementations."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -53,7 +55,6 @@ def update_requirement_field(
     value: Any,
 ) -> dict:
     """Update a single field of a requirement."""
-
     params = {
         "directory": str(directory),
         "rid": rid,
@@ -118,7 +119,6 @@ def set_requirement_labels(
     labels: Sequence[str],
 ) -> dict:
     """Replace the label list of a requirement."""
-
     params = {
         "directory": str(directory),
         "rid": rid,
@@ -160,7 +160,6 @@ def set_requirement_attachments(
     attachments: Sequence[Mapping[str, Any]],
 ) -> dict:
     """Replace attachments of a requirement."""
-
     params = {
         "directory": str(directory),
         "rid": rid,
@@ -202,7 +201,6 @@ def set_requirement_links(
     links: Sequence[Mapping[str, Any] | str],
 ) -> dict:
     """Replace the outgoing links of a requirement."""
-
     params = {
         "directory": str(directory),
         "rid": rid,

@@ -353,10 +353,7 @@ class MainFrameAgentMixin:
         if read_kib is None:
             read_kib = read_limit // 1024
         lines.append(
-            "Read chunk limit: {bytes} bytes (~{kib} KiB)".format(
-                bytes=read_limit,
-                kib=read_kib,
-            )
+            f"Read chunk limit: {read_limit} bytes (~{read_kib} KiB)"
         )
         tree_model = snapshot.get("token_model")
         if tree_model:

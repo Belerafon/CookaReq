@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.llm.spec import SYSTEM_PROMPT
 from app.ui.agent_chat_panel.log_export import (
@@ -16,7 +16,7 @@ _SYSTEM_PROMPT_TEXT = str(SYSTEM_PROMPT).strip()
 def _iso(ts: str) -> str:
     """Return ISO8601 timestamp for tests."""
 
-    return datetime.fromisoformat(ts).astimezone(timezone.utc).isoformat()
+    return datetime.fromisoformat(ts).astimezone(UTC).isoformat()
 
 
 def _build_tool_payloads() -> list[dict[str, object]]:

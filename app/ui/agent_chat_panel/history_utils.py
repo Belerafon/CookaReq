@@ -8,7 +8,6 @@ from typing import Any
 import json
 
 from ...util.json import make_json_safe
-from ..text import normalize_for_display
 from .time_formatting import parse_iso_timestamp
 
 
@@ -184,10 +183,7 @@ def update_tool_results(
             return updated
         return raw_result
 
-    if isinstance(raw_result, Mapping):
-        updated = dict(raw_result)
-    else:
-        updated = {}
+    updated = dict(raw_result) if isinstance(raw_result, Mapping) else {}
 
     updated["tool_results"] = normalised
     return updated
@@ -203,7 +199,6 @@ def format_value_snippet(value: Any) -> str:
 
 def shorten_text(text: str, *, limit: int = 120) -> str:
     """Truncate ``text`` to ``limit`` characters preserving ellipsis."""
-
     from .tool_summaries import shorten_text as _shorten_text
 
     return _shorten_text(text, limit=limit)

@@ -5,7 +5,6 @@ Context Protocol (MCP) server. The server is started with `start_server`
 which runs uvicorn in a background thread so that the wxPython GUI main
 loop remains responsive.
 """
-
 from __future__ import annotations
 
 import logging
@@ -170,7 +169,7 @@ async def auth_middleware(request: Request, call_next):
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    """Simple readiness probe used by external tools."""
+    """Report readiness information for external health probes."""
     return {"status": "ok"}
 
 
@@ -193,7 +192,6 @@ def register_tool(
     decorator returns the original function unchanged so regular unit testing
     remains straightforward.
     """
-
     def decorator(target: ToolCallable) -> ToolCallable:
         tool_name = name or target.__name__
         if tool_name in _TOOLS:
@@ -334,7 +332,6 @@ def _documents_service() -> UserDocumentsService | None:
 @register_tool()
 def list_user_documents() -> dict:
     """Return the structure of the configured user documentation directory."""
-
     service = _documents_service()
     return tools_documents.list_user_documents(service)
 
@@ -347,7 +344,6 @@ def read_user_document(
     max_bytes: int | None = None,
 ) -> dict:
     """Read a chunk from a user-provided document."""
-
     service = _documents_service()
     return tools_documents.read_user_document(
         service,
@@ -365,7 +361,6 @@ def create_user_document(
     exist_ok: bool = False,
 ) -> dict:
     """Create a user document relative to the configured root."""
-
     service = _documents_service()
     return tools_documents.create_user_document(
         service,
@@ -378,7 +373,6 @@ def create_user_document(
 @register_tool()
 def delete_user_document(path: str) -> dict:
     """Delete a user document relative to the configured root."""
-
     service = _documents_service()
     return tools_documents.delete_user_document(service, path)
 

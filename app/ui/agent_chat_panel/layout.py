@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from textwrap import dedent
-from typing import TYPE_CHECKING, Callable, Sequence
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING
 
 import wx
 import wx.dataview as dv
@@ -934,11 +935,10 @@ class AgentChatLayoutBuilder:
     def _colour_to_hex(self, colour: wx.Colour) -> str:
         """Convert a colour to a ``#RRGGBB`` hex string."""
 
-        return "#{:02X}{:02X}{:02X}".format(
-            max(0, min(int(colour.Red()), 255)),
-            max(0, min(int(colour.Green()), 255)),
-            max(0, min(int(colour.Blue()), 255)),
-        )
+        red = max(0, min(int(colour.Red()), 255))
+        green = max(0, min(int(colour.Green()), 255))
+        blue = max(0, min(int(colour.Blue()), 255))
+        return f"#{red:02X}{green:02X}{blue:02X}"
 
 
 _PRIMARY_ACTION_ARROW_ICON_SVG_TEMPLATE = dedent(

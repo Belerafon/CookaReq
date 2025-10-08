@@ -26,7 +26,6 @@ REDACTED = "[REDACTED]"
 
 def _sanitize_value(value: Any) -> Any:
     """Recursively sanitize ``value``."""
-
     if isinstance(value, Mapping):
         return {
             k: (REDACTED if k.lower() in SENSITIVE_KEYS else _sanitize_value(v))
@@ -41,7 +40,6 @@ def _sanitize_value(value: Any) -> Any:
 
 def sanitize(data: Mapping[str, Any]) -> dict[str, Any]:
     """Return a deep copy of *data* with sensitive keys replaced by ``[REDACTED]``."""
-
     return _sanitize_value(dict(data))
 
 
@@ -67,7 +65,6 @@ def log_event(
     level:
         Logging level used for the emitted record. Defaults to ``logging.INFO``.
     """
-
     data: dict[str, Any] = {"event": event}
     if payload:
         sanitized = sanitize(dict(payload))
@@ -89,7 +86,6 @@ def log_debug_payload(
     payload: Mapping[str, Any] | Sequence[Any] | str | None = None,
 ) -> None:
     """Emit debug-level log entry with full payload details."""
-
     if not logger.isEnabledFor(logging.DEBUG):
         return
 

@@ -22,6 +22,7 @@ class HistoryStore:
     """Manage loading and saving chat histories on disk."""
 
     def __init__(self, path: Path | str | None = None) -> None:
+        """Initialise store using *path* or the default persistent location."""
         self._path = self._normalize(path)
 
     # ------------------------------------------------------------------
@@ -35,7 +36,6 @@ class HistoryStore:
     @property
     def path(self) -> Path:
         """Return the SQLite database path."""
-
         return self._path
 
     # ------------------------------------------------------------------
@@ -48,7 +48,6 @@ class HistoryStore:
         active_id: str | None = None,
     ) -> bool:
         """Update the history path if it changed."""
-
         new_path = self._normalize(path)
         if new_path == self._path:
             return False
@@ -65,7 +64,6 @@ class HistoryStore:
     # ------------------------------------------------------------------
     def load(self) -> tuple[list[ChatConversation], str | None]:
         """Load conversations and the active conversation id."""
-
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)
@@ -81,7 +79,6 @@ class HistoryStore:
     # ------------------------------------------------------------------
     def load_entries(self, conversation_id: str) -> list[ChatEntry]:
         """Return entries belonging to *conversation_id*."""
-
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)
@@ -96,7 +93,9 @@ class HistoryStore:
                 ).fetchall()
         except sqlite3.Error:  # pragma: no cover - defensive logging
             logger.exception(
-                "Failed to load chat entries for %s from %s", conversation_id, self._path
+                "Failed to load chat entries for %s from %s",
+                conversation_id,
+                self._path,
             )
             return []
 
@@ -136,7 +135,10 @@ class HistoryStore:
             try:
                 entries.append(ChatEntry.from_dict(payload))
             except Exception:  # pragma: no cover - defensive logging
-                logger.exception("Failed to deserialize chat entry for %s", conversation_id)
+                logger.exception(
+                    "Failed to deserialize chat entry for %s",
+                    conversation_id,
+                )
         return entries
 
     # ------------------------------------------------------------------
@@ -146,7 +148,6 @@ class HistoryStore:
         active_id: str | None,
     ) -> None:
         """Persist *conversations* to the configured history path."""
-
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)
@@ -160,14 +161,16 @@ class HistoryStore:
     # ------------------------------------------------------------------
     def save_active_id(self, active_id: str | None) -> None:
         """Persist only the active conversation id."""
-
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)
                 with conn:
                     self._set_active_id(conn, active_id)
         except sqlite3.Error:
-            logger.exception("Failed to persist active chat selection to %s", self._path)
+            logger.exception(
+                "Failed to persist active chat selection to %s",
+                self._path,
+            )
             raise
 
     # ------------------------------------------------------------------
@@ -264,20 +267,29 @@ class HistoryStore:
         self, conn: sqlite3.Connection, conversations: list[ChatConversation]
     ) -> None:
         existing_ids = {
-            row["id"] for row in conn.execute("SELECT id FROM conversations").fetchall()
+            row["id"]
+            for row in conn.execute("SELECT id FROM conversations").fetchall()
         }
         desired_ids = {conv.conversation_id for conv in conversations}
         removed = existing_ids - desired_ids
         if removed:
             conn.executemany(
-                "DELETE FROM conversations WHERE id = ?", ((conversation_id,) for conversation_id in removed)
+                "DELETE FROM conversations WHERE id = ?",
+                ((conversation_id,) for conversation_id in removed),
             )
 
         for position, conversation in enumerate(conversations):
             preview = conversation.preview
             conn.execute(
                 """
-                INSERT INTO conversations (id, position, title, created_at, updated_at, preview)
+                INSERT INTO conversations (
+                    id,
+                    position,
+                    title,
+                    created_at,
+                    updated_at,
+                    preview
+                )
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     position = excluded.position,
@@ -360,7 +372,6 @@ class HistoryStore:
         exc: Exception | None = None,
     ) -> None:
         """Log and prune an invalid entry payload."""
-
         snippet, payload_length = self._summarise_payload(payload)
         logger.error(
             (
@@ -382,7 +393,6 @@ class HistoryStore:
     @staticmethod
     def _summarise_payload(payload: object, *, limit: int = 256) -> tuple[str, int]:
         """Return a short preview and size of *payload* for diagnostics."""
-
         if isinstance(payload, str):
             text = payload
             length = len(payload)
@@ -401,14 +411,12 @@ class HistoryStore:
     # ------------------------------------------------------------------
     def _delete_entry(self, conversation_id: str, position: int) -> None:
         """Remove an invalid entry from the backing store."""
-
         try:
-            with self._connect() as conn:
-                with conn:
-                    conn.execute(
-                        "DELETE FROM entries WHERE conversation_id = ? AND position = ?",
-                        (conversation_id, position),
-                    )
+            with self._connect() as conn, conn:
+                conn.execute(
+                    "DELETE FROM entries WHERE conversation_id = ? AND position = ?",
+                    (conversation_id, position),
+                )
         except sqlite3.Error:  # pragma: no cover - defensive logging
             logger.exception(
                 "Failed to prune corrupted entry %s/%s from %s",

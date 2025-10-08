@@ -1,5 +1,4 @@
 """Helpers responsible for preparing LLM request payloads."""
-
 from __future__ import annotations
 
 import json
@@ -33,6 +32,7 @@ class LLMRequestBuilder:
     """Prepare request arguments for the configured LLM backend."""
 
     def __init__(self, settings: "LLMSettings", message_format: str) -> None:
+        """Bind the request builder to explicit LLM settings and message format."""
         from ..settings import LLMSettings  # local import to avoid cycles
 
         if not isinstance(settings, LLMSettings):  # pragma: no cover - defensive
@@ -43,7 +43,6 @@ class LLMRequestBuilder:
     # ------------------------------------------------------------------
     def resolve_temperature(self) -> float | None:
         """Return the user-configured temperature or ``None`` when unset."""
-
         if getattr(self.settings, "use_custom_temperature", False):
             value = getattr(self.settings, "temperature", None)
             if value is None:
@@ -63,7 +62,6 @@ class LLMRequestBuilder:
         temperature: float | None = None,
     ) -> PreparedChatRequest:
         """Return normalized messages and arguments for the chat endpoint."""
-
         messages = self._prepare_messages(conversation or [])
         snapshot = self._snapshot_messages(messages)
         request_args = self._build_request_args(
@@ -84,12 +82,12 @@ class LLMRequestBuilder:
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Expose low-level payload builder for health checks and tests."""
-
         return self._build_request_args(messages, **kwargs)
 
     def build_harmony_prompt(
         self, conversation: Sequence[Mapping[str, Any]]
     ) -> HarmonyPrompt:
+        """Render a Harmony prompt describing the provided conversation history."""
         system_parts, ordered_messages, _ = self._prepare_history_components(
             conversation
         )

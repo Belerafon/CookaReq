@@ -1,5 +1,4 @@
 """HTTP client for interacting with the MCP server."""
-
 from __future__ import annotations
 
 import logging
@@ -82,7 +81,6 @@ class MCPClient:
         self, name: str, arguments: Mapping[str, Any]
     ) -> bool:
         """Return ``True`` when the write operation should proceed."""
-
         prompt: RequirementUpdatePrompt | None = None
         confirm_payload: dict[str, Any] = {"tool": name}
         if name in self._UPDATE_TOOLS:
@@ -125,7 +123,6 @@ class MCPClient:
         result: Mapping[str, Any] | None,
     ) -> None:
         """Notify listeners about successful requirement-changing tools."""
-
         if name not in self._BROADCAST_TOOLS:
             return
         if result is None or not isinstance(result, Mapping):
@@ -144,7 +141,6 @@ class MCPClient:
         self, name: str, arguments: Mapping[str, Any]
     ) -> Any:
         """Return tool arguments without performing local validation."""
-
         if arguments is None:
             return {}
         if isinstance(arguments, Mapping):
@@ -171,7 +167,6 @@ class MCPClient:
         name: str, arguments: Mapping[str, Any]
     ) -> RequirementUpdatePrompt:
         """Create :class:`RequirementUpdatePrompt` from MCP tool *arguments*."""
-
         directory = arguments.get("directory")
         rid = arguments.get("rid")
         return RequirementUpdatePrompt(
@@ -186,7 +181,6 @@ class MCPClient:
         name: str, arguments: Mapping[str, Any]
     ) -> tuple[RequirementChange, ...]:
         """Return canonical representation of planned updates for prompts."""
-
         if name == "update_requirement_field":
             field = arguments.get("field")
             return (
@@ -215,7 +209,6 @@ class MCPClient:
     # ------------------------------------------------------------------
     def _build_base_url(self) -> str:
         """Return base URL for requests, wrapping IPv6 literals if required."""
-
         host = self.settings.host
         if ":" in host and not host.startswith("["):
             host = f"[{host}]"
@@ -223,7 +216,6 @@ class MCPClient:
 
     def _headers(self, *, json_body: bool = False) -> dict[str, str]:
         """Return default headers for requests."""
-
         headers: dict[str, str] = {}
         if json_body:
             headers["Content-Type"] = "application/json"
@@ -240,7 +232,6 @@ class MCPClient:
         json_body: Any | None = None,
     ) -> httpx.Response:
         """Execute *method* request synchronously and return the response."""
-
         request_headers = dict(headers or {})
         with httpx.Client(base_url=self._base_url, timeout=self._REQUEST_TIMEOUT) as client:
             return client.request(method, path, json=json_body, headers=request_headers)
@@ -254,7 +245,6 @@ class MCPClient:
         json_body: Any | None = None,
     ) -> httpx.Response:
         """Execute *method* request asynchronously and return the response."""
-
         request_headers = dict(headers or {})
         async with httpx.AsyncClient(
             base_url=self._base_url, timeout=self._REQUEST_TIMEOUT
@@ -272,7 +262,6 @@ class MCPClient:
             ``error`` contains the structured MCP error payload when
             ``ok`` is ``False`` and is ``None`` otherwise.
         """
-
         params = {
             "host": self.settings.host,
             "port": self.settings.port,
@@ -344,7 +333,6 @@ class MCPClient:
     # ------------------------------------------------------------------
     async def check_tools_async(self) -> dict[str, Any]:
         """Asynchronous counterpart to :meth:`check_tools`."""
-
         request_body = {"name": "list_requirements", "arguments": {"per_page": 1}}
         headers = self._headers(json_body=True)
         params = {
@@ -425,7 +413,6 @@ class MCPClient:
             structure as :meth:`check_tools`.  When ``ok`` is ``True`` the
             optional ``result`` key contains the payload returned by the server.
         """
-
         prepared_arguments = self._prepare_tool_arguments(name, arguments)
 
         if name == "delete_requirement" or name in self._UPDATE_TOOLS:
@@ -505,7 +492,6 @@ class MCPClient:
         self, name: str, arguments: Mapping[str, Any]
     ) -> dict[str, Any]:
         """Asynchronous counterpart to :meth:`call_tool`."""
-
         prepared_arguments = self._prepare_tool_arguments(name, arguments)
 
         if name == "delete_requirement" or name in self._UPDATE_TOOLS:
@@ -584,7 +570,6 @@ class MCPClient:
     # ------------------------------------------------------------------
     def ensure_ready(self, *, force: bool = False) -> None:
         """Raise :class:`MCPNotReadyError` if the MCP server is unavailable."""
-
         if (
             not force
             and self._last_ready_ok
@@ -687,7 +672,6 @@ class MCPClient:
     # ------------------------------------------------------------------
     async def ensure_ready_async(self, *, force: bool = False) -> None:
         """Asynchronous counterpart to :meth:`ensure_ready`."""
-
         if (
             not force
             and self._last_ready_ok
@@ -792,7 +776,6 @@ class MCPClient:
         self, ok: bool, error: Mapping[str, Any] | None
     ) -> None:
         """Remember the outcome of the most recent readiness probe."""
-
         self._last_ready_check = time.monotonic()
         self._last_ready_ok = ok
         self._last_ready_error = dict(error) if isinstance(error, Mapping) else None
@@ -804,7 +787,6 @@ class MCPClient:
         details: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return MCP-formatted health check error payload."""
-
         payload = mcp_error(ErrorCode.INTERNAL, message, details)["error"]
         return payload
 

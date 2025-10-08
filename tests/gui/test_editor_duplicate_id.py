@@ -37,6 +37,7 @@ def test_editor_save_rejects_duplicate_id(monkeypatch, wx_app, tmp_path: Path) -
     doc_dir = tmp_path / "SYS"
     service = RequirementsService(tmp_path)
     service.save_document(doc)
+    assert doc_dir.exists()
     service.save_requirement_payload("SYS", requirement_to_dict(_make_requirement(1)))
 
     frame = wx.Frame(None)

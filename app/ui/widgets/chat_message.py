@@ -108,9 +108,9 @@ _TOOL_ACCENT_COLOURS: tuple[wx.Colour, ...] = (
     wx.Colour(196, 221, 255),
     wx.Colour(202, 242, 255),
     wx.Colour(210, 245, 221),
-    wx.Colour(255, 232, 206),
-    wx.Colour(244, 224, 255),
-    wx.Colour(255, 226, 235),
+    wx.Colour(235, 244, 215),
+    wx.Colour(229, 241, 255),
+    wx.Colour(224, 239, 246),
 )
 
 

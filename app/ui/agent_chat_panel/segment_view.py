@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
+from functools import lru_cache
+from typing import Any, TYPE_CHECKING
 
 import wx
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from ...i18n import _
-from ..chat_entry import ChatConversation, ChatEntry
 from ..helpers import dip
 from .components.segments import TurnCard
 from .view_model import (
@@ -19,6 +20,19 @@ from .view_model import (
     build_conversation_timeline,
     build_entry_segments,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - import for typing only
+    from ..chat_entry import ChatConversation, ChatEntry
+else:  # pragma: no cover - runtime avoids circular import
+    ChatConversation = Any  # type: ignore[assignment]
+    ChatEntry = Any  # type: ignore[assignment]
+
+
+@lru_cache(maxsize=1)
+def _chat_entry_cls():  # pragma: no cover - trivial cache wrapper
+    from ..chat_entry import ChatEntry as _ChatEntry
+
+    return _ChatEntry
 
 
 class SegmentViewCallbacks:
@@ -47,6 +61,14 @@ class _ConversationRenderCache:
     order: list[str] = field(default_factory=list)
     placeholder: wx.Window | None = None
     entry_snapshots: dict[str, TranscriptEntry] = field(default_factory=dict)
+
+    def __contains__(self, entry_id: str) -> bool:
+        return entry_id in self.cards_by_entry or entry_id in self.entry_snapshots
+
+    @property
+    def panels_by_entry(self) -> dict[str, TurnCard]:
+        """Backward compatible alias exposing rendered panels by entry id."""
+        return self.cards_by_entry
 
 
 class SegmentListView:
@@ -111,6 +133,27 @@ class SegmentListView:
         if not self._pending_scheduled:
             self._pending_scheduled = True
             wx.CallAfter(self._flush_pending_updates)
+
+    # ------------------------------------------------------------------
+    def render_now(
+        self,
+        *,
+        conversation: ChatConversation | None = None,
+        timeline: ConversationTimeline | None = None,
+        updated_entries: Iterable[str] | None = None,
+        force: bool = False,
+    ) -> None:
+        """Render the transcript immediately without queuing a UI callback."""
+
+        if timeline is None and conversation is not None:
+            timeline = build_conversation_timeline(conversation)
+
+        entry_ids = list(updated_entries or ())
+        self._pending_timeline = None
+        self._pending_entry_ids.clear()
+        self._pending_force = False
+        self._pending_scheduled = False
+        self._apply_timeline(conversation, timeline, entry_ids, force)
 
     # ------------------------------------------------------------------
     def forget_conversations(self, conversation_ids: Iterable[str]) -> None:
@@ -221,13 +264,38 @@ class SegmentListView:
         self._active_conversation_id = conversation_id
 
         desired_order = [entry.entry_id for entry in timeline.entries]
-        if force or cache.order != desired_order:
+        entry_lookup = {entry.entry_id: entry for entry in timeline.entries}
+
+        if force:
+            reuse_cards = cache.order == desired_order and bool(desired_order)
+            if reuse_cards:
+                regenerate_enabled = not self._callbacks.is_running()
+                cards: list[TurnCard] = []
+                for entry_id in desired_order:
+                    snapshot = cache.entry_snapshots.get(entry_id)
+                    card = cache.cards_by_entry.get(entry_id)
+                    timeline_entry = entry_lookup.get(entry_id)
+                    if (
+                        snapshot != timeline_entry
+                        or card is None
+                        or not self._is_window_alive(card)
+                    ):
+                        reuse_cards = False
+                        break
+                    cards.append(card)
+                if reuse_cards:
+                    for card in cards:
+                        card.enable_regenerate(regenerate_enabled)
+                    self._attach_cards_in_order(cards)
+                    return cards[-1] if cards else None
+            return self._render_full_conversation(conversation, timeline, cache)
+
+        if cache.order != desired_order:
             return self._render_full_conversation(conversation, timeline, cache)
 
         if not entry_ids:
             return None
 
-        entry_lookup = {entry.entry_id: entry for entry in timeline.entries}
         last_card: wx.Window | None = None
 
         for entry_id in entry_ids:
@@ -479,7 +547,7 @@ class SegmentListView:
         if not entry.can_regenerate:
             return None
         chat_entry = entry.entry
-        if not isinstance(chat_entry, ChatEntry):
+        if not isinstance(chat_entry, _chat_entry_cls()):
             return None
 
         def _callback(entry_ref: ChatEntry = chat_entry) -> None:

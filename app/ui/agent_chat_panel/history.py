@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import logging
 
-from ..chat_entry import ChatConversation
 from .history_store import HistoryStore
+
+if TYPE_CHECKING:
+    from ..chat_entry import ChatConversation
 
 
 logger = logging.getLogger(__name__)

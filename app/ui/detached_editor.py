@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import wx
 
@@ -22,14 +23,31 @@ class DetachedEditorFrame(wx.Frame):
         parent: wx.Window,
         *,
         requirement: Requirement,
-        service: RequirementsService,
+        service: RequirementsService | None = None,
         doc_prefix: str,
+        directory: Path | str | None = None,
         labels: list[LabelDef],
         allow_freeform: bool,
         on_save: Callable[[DetachedEditorFrame], bool],
         on_close: Callable[[DetachedEditorFrame], None] | None = None,
     ) -> None:
         """Create frame initialized with ``requirement`` contents."""
+        if service is None:
+            if directory is None:
+                raise ValueError(
+                    "DetachedEditorFrame requires either a requirements service or a directory"
+                )
+            service = RequirementsService(directory)
+        else:
+            if directory is not None:
+                resolved = Path(directory)
+                try:
+                    service_root = getattr(service, "root", None)
+                except Exception:  # pragma: no cover - defensive guard
+                    service_root = None
+                if service_root is None or Path(service_root) != resolved:
+                    service = RequirementsService(resolved)
+
         title = self._format_title(requirement, doc_prefix)
         super().__init__(parent, title=title)
         background_source = self._resolve_background_source(parent)

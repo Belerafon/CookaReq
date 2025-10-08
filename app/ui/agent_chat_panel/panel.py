@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
@@ -168,7 +169,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             history_path=history_path,
             on_active_changed=self._on_active_conversation_changed,
         )
-        self._session = AgentChatSession(history=history, timer_owner=self)
+        self._session = AgentChatSession(
+            history=history,
+            timer_owner=self,
+            monotonic=lambda: time.monotonic(),
+        )
         self._settings_path = settings_path_for_documents(None)
         self._documents_root_listener: Callable[[Path | None], None] | None = None
         self._requirements_directory: Path | None = None
@@ -614,8 +619,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             prompt_text: str,
             prompt_at,
             context_messages,
-        ) -> None:
-            self._add_pending_entry(
+        ) -> ChatEntry:
+            return self._add_pending_entry(
                 conv,
                 prompt_text,
                 prompt_at=prompt_at,
@@ -1746,8 +1751,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         display_response: str,
         raw_result: Any | None,
         token_info: TokenCountResult | None,
-        *,
         prompt_at: str | None = None,
+        *,
         response_at: str | None = None,
         context_messages: tuple[dict[str, Any], ...] | None = None,
         history_snapshot: tuple[dict[str, Any], ...] | None = None,
@@ -2066,7 +2071,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self._pending_transcript_refresh[None] = None
         else:
             if force:
-                self._timeline_cache.invalidate_conversation(conversation_id)
                 self._pending_transcript_refresh[conversation_id] = None
             else:
                 entry_set = {entry_id for entry_id in (entry_ids or ()) if entry_id}
@@ -2088,12 +2092,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                         bucket.update(entry_set)
 
         if immediate:
-            self._flush_pending_transcript_refresh()
+            self._flush_pending_transcript_refresh(immediate=True)
         elif not self._transcript_refresh_scheduled:
             self._transcript_refresh_scheduled = True
             wx.CallAfter(self._flush_pending_transcript_refresh)
 
-    def _flush_pending_transcript_refresh(self) -> None:
+    def _flush_pending_transcript_refresh(self, *, immediate: bool = False) -> None:
         pending = self._pending_transcript_refresh
         if not pending:
             self._transcript_refresh_scheduled = False
@@ -2111,12 +2115,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         for conversation_id, entry_ids in pending.items():
             force = entry_ids is None
             if conversation_id is None:
-                view.schedule_render(
+                render_kwargs = dict(
                     conversation=None,
                     timeline=None,
                     updated_entries=None,
                     force=True,
                 )
+                if immediate:
+                    view.render_now(**render_kwargs)
+                else:
+                    view.schedule_render(**render_kwargs)
                 self._latest_timeline = None
                 self._update_transcript_selection_probe(
                     compose_transcript_text(None)
@@ -2140,12 +2148,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 continue
 
             updated_entries = None if force else sorted(entry_ids)
-            view.schedule_render(
+            render_kwargs = dict(
                 conversation=conversation,
                 timeline=timeline,
                 updated_entries=updated_entries,
                 force=force,
             )
+            if immediate:
+                view.render_now(**render_kwargs)
+            else:
+                view.schedule_render(**render_kwargs)
             self._latest_timeline = timeline
             self._update_transcript_selection_probe(
                 compose_transcript_text(conversation, timeline=timeline)
@@ -2647,7 +2659,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if conversation is None:
             return compose_transcript_text(None)
         if self._transcript_refresh_scheduled:
-            self._flush_pending_transcript_refresh()
+            self._flush_pending_transcript_refresh(immediate=True)
         timeline = self._latest_timeline
         if timeline is None or timeline.conversation_id != conversation.conversation_id:
             timeline = self._timeline_cache.timeline_for(conversation)
@@ -2659,7 +2671,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if conversation is None:
             return compose_transcript_log_text(None)
         if self._transcript_refresh_scheduled:
-            self._flush_pending_transcript_refresh()
+            self._flush_pending_transcript_refresh(immediate=True)
         timeline = self._latest_timeline
         if timeline is None or timeline.conversation_id != conversation.conversation_id:
             timeline = self._timeline_cache.timeline_for(conversation)

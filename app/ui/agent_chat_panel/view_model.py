@@ -7,10 +7,9 @@ import json
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any, Literal
+from typing import Any, Literal, TYPE_CHECKING
 
 from ...llm.spec import SYSTEM_PROMPT
-from ..chat_entry import ChatConversation, ChatEntry
 from .history_utils import (
     history_json_safe,
     looks_like_tool_payload,
@@ -18,6 +17,12 @@ from .history_utils import (
 )
 from .time_formatting import format_entry_timestamp, parse_iso_timestamp
 from .tool_summaries import ToolCallSummary, summarize_tool_payload
+
+if TYPE_CHECKING:  # pragma: no cover - imported for type checking only
+    from ..chat_entry import ChatConversation, ChatEntry
+else:  # pragma: no cover - runtime avoids circular import
+    ChatConversation = Any  # type: ignore[assignment]
+    ChatEntry = Any  # type: ignore[assignment]
 
 
 @dataclass(slots=True)

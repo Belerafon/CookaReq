@@ -7,9 +7,12 @@ import logging
 import sqlite3
 from collections.abc import Iterable, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ..chat_entry import ChatConversation, ChatEntry
 from .paths import _default_history_path, _normalize_history_path
+
+if TYPE_CHECKING:
+    from ..chat_entry import ChatConversation, ChatEntry
 
 
 logger = logging.getLogger(__name__)
@@ -100,6 +103,7 @@ class HistoryStore:
             return []
 
         entries: list[ChatEntry] = []
+        from ..chat_entry import ChatEntry
         for row in rows:
             if isinstance(row, sqlite3.Row):
                 position = row["position"]
@@ -228,6 +232,7 @@ class HistoryStore:
     def _load_conversations(
         self, conn: sqlite3.Connection
     ) -> list[ChatConversation]:
+        from ..chat_entry import ChatConversation
         rows = conn.execute(
             """
             SELECT id, title, created_at, updated_at, preview

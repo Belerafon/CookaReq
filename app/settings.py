@@ -76,7 +76,6 @@ class LLMSettings(BaseModel):
     @classmethod
     def _normalize_max_context_tokens(cls, value: int | str | None) -> int:
         """Clamp misconfigured prompt context limits to supported ranges."""
-
         return cls._normalize_token_limit(
             value,
             default=DEFAULT_MAX_CONTEXT_TOKENS,
@@ -87,7 +86,6 @@ class LLMSettings(BaseModel):
     @classmethod
     def _normalize_temperature(cls, value: float | str | None) -> float:
         """Coerce *value* to the supported temperature range."""
-
         if value is None:
             return DEFAULT_LLM_TEMPERATURE
         if isinstance(value, str):
@@ -111,7 +109,6 @@ class LLMSettings(BaseModel):
 
 def default_requirements_path() -> str:
     """Return bundled requirements directory if present."""
-
     try:
         candidate = Path(__file__).resolve().parents[1] / "requirements"
     except OSError:  # pragma: no cover - very defensive
@@ -138,7 +135,6 @@ class MCPSettings(BaseModel):
     @classmethod
     def _normalize_log_dir(cls, value: str | Path | None) -> str | None:
         """Convert empty strings to ``None`` and normalise paths."""
-
         if value is None:
             return None
         text = str(value).strip()
@@ -150,7 +146,6 @@ class MCPSettings(BaseModel):
         cls, value: str | Path | None
     ) -> str:
         """Return a whitespace-normalised representation of ``value``."""
-
         if value is None:
             return ""
         text = str(value).strip()
@@ -162,7 +157,6 @@ class MCPSettings(BaseModel):
         cls, value: int | str | None
     ) -> int:
         """Coerce ``value`` into the supported documentation read window."""
-
         if value is None:
             return DEFAULT_DOCUMENT_MAX_READ_KB
         if isinstance(value, str):
@@ -201,7 +195,6 @@ class AgentSettings(BaseModel):
         cls, value: int | str | None
     ) -> int | None:
         """Coerce *value* into a positive limit or ``None`` for unlimited loops."""
-
         if value is None:
             return None
         if isinstance(value, str):
@@ -226,7 +219,6 @@ class AgentSettings(BaseModel):
         cls, value: int | str | None
     ) -> int | None:
         """Coerce *value* into a positive limit or ``None`` to disable the cap."""
-
         if value is None:
             return None
         if isinstance(value, str):
@@ -309,7 +301,6 @@ def load_app_settings(path: str | Path) -> AppSettings:
     everything else is treated as JSON.  Any validation errors are wrapped into
     :class:`ValueError` with a human-friendly message.
     """
-
     p = Path(path)
     with p.open("rb") as fh:
         data = tomllib.load(fh) if p.suffix.lower() == ".toml" else json.load(fh)

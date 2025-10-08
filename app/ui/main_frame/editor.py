@@ -23,7 +23,6 @@ class MainFrameEditorMixin:
 
     def on_requirement_selected(self: MainFrame, event: wx.ListEvent) -> None:
         """Load requirement into editor when selected in list."""
-
         index = event.GetIndex()
         if index == wx.NOT_FOUND:
             return
@@ -46,7 +45,6 @@ class MainFrameEditorMixin:
 
     def on_requirement_activated(self: MainFrame, event: wx.ListEvent) -> None:
         """Open requirement in a detached editor when activated."""
-
         if self._is_editor_visible():
             event.Skip()
             return
@@ -111,7 +109,6 @@ class MainFrameEditorMixin:
 
     def _handle_editor_discard(self: MainFrame) -> bool:
         """Reload currently selected requirement into the editor."""
-
         if self._selected_requirement_id is None:
             return False
         requirement = self.model.get_by_id(self._selected_requirement_id)

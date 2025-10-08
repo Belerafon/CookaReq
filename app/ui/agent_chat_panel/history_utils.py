@@ -8,13 +8,11 @@ from typing import Any
 import json
 
 from ...util.json import make_json_safe
-from ..text import normalize_for_display
 from .time_formatting import parse_iso_timestamp
 
 
 def history_json_safe(value: Any) -> Any:
     """Convert values for history storage using permissive coercions."""
-
     return make_json_safe(
         value,
         stringify_keys=True,
@@ -26,7 +24,6 @@ def history_json_safe(value: Any) -> Any:
 
 def stringify_payload(payload: Any) -> str:
     """Return textual representation suitable for transcript storage."""
-
     if payload is None:
         return ""
     if isinstance(payload, str):
@@ -91,7 +88,6 @@ def clone_streamed_tool_results(
     tool_results: Sequence[Mapping[str, Any]] | None,
 ) -> tuple[dict[str, Any], ...]:
     """Return a defensive copy of streamed tool payloads."""
-
     if not tool_results:
         return ()
     clones: list[dict[str, Any]] = []
@@ -105,7 +101,6 @@ def sort_tool_payloads(
     payloads: Sequence[Any] | None,
 ) -> list[Any]:
     """Return payloads ordered by their earliest recorded timestamp."""
-
     if not payloads:
         return []
 
@@ -135,7 +130,6 @@ def sort_tool_payloads(
 
 def normalise_tool_payloads(tool_results: Any) -> list[Any] | None:
     """Return sorted tool payloads from *tool_results* or ``None``."""
-
     if not tool_results:
         return None
 
@@ -164,7 +158,6 @@ def normalise_tool_payloads(tool_results: Any) -> list[Any] | None:
 
 def extract_tool_results(raw_result: Any) -> list[Any] | None:
     """Pull tool payloads from *raw_result* if present."""
-
     if not isinstance(raw_result, Mapping):
         return None
     return normalise_tool_payloads(raw_result.get("tool_results"))
@@ -174,7 +167,6 @@ def update_tool_results(
     raw_result: Any | None, tool_results: Sequence[Any] | None
 ) -> Any | None:
     """Return ``raw_result`` with the provided ``tool_results`` merged in."""
-
     normalised = normalise_tool_payloads(tool_results)
 
     if normalised is None:
@@ -184,10 +176,7 @@ def update_tool_results(
             return updated
         return raw_result
 
-    if isinstance(raw_result, Mapping):
-        updated = dict(raw_result)
-    else:
-        updated = {}
+    updated = dict(raw_result) if isinstance(raw_result, Mapping) else {}
 
     updated["tool_results"] = normalised
     return updated
@@ -195,7 +184,6 @@ def update_tool_results(
 
 def format_value_snippet(value: Any) -> str:
     """Produce a human-friendly snippet for diagnostic payloads."""
-
     from .tool_summaries import format_value_snippet as _format_value_snippet
 
     return _format_value_snippet(value)
@@ -203,7 +191,6 @@ def format_value_snippet(value: Any) -> str:
 
 def shorten_text(text: str, *, limit: int = 120) -> str:
     """Truncate ``text`` to ``limit`` characters preserving ellipsis."""
-
     from .tool_summaries import shorten_text as _shorten_text
 
     return _shorten_text(text, limit=limit)

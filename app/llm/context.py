@@ -23,7 +23,6 @@ def extract_selected_rids_from_text(content: str) -> list[str]:
     and returns the canonical identifiers. Invalid tokens are ignored so that
     partially malformed selections still yield useful information for the LLM.
     """
-
     if not isinstance(content, str) or not content:
         return []
 
@@ -60,7 +59,6 @@ def extract_selected_rids_from_messages(
     messages: Sequence[Mapping[str, Any]] | None,
 ) -> list[str]:
     """Scan *messages* and return selected RIDs referenced in system snapshots."""
-
     if not messages:
         return []
 

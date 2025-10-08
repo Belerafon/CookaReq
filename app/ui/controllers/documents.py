@@ -36,7 +36,6 @@ class DocumentsController:
     # ------------------------------------------------------------------
     def load_documents(self) -> dict[str, Document]:
         """Populate ``documents`` from the service and return them."""
-
         self.documents = self.service.load_documents(refresh=True)
         return self.documents
 
@@ -61,12 +60,10 @@ class DocumentsController:
 
     def collect_labels(self, prefix: str) -> tuple[list[LabelDef], bool]:
         """Return labels and free-form flag for document ``prefix``."""
-
         return self.service.collect_label_defs(prefix)
 
     def build_trace_matrix(self, config: TraceMatrixConfig) -> TraceMatrix:
         """Construct traceability matrix for ``config`` using cached documents."""
-
         if not self.documents:
             self.load_documents()
         return build_trace_matrix(self.service.root, config, docs=self.documents)
@@ -133,13 +130,11 @@ class DocumentsController:
     # requirement operations -----------------------------------------
     def next_item_id(self, prefix: str) -> int:
         """Return next available requirement id for document ``prefix``."""
-
-        doc = self._get_document(prefix)
+        self._get_document(prefix)
         return self.service.next_item_id(prefix)
 
     def add_requirement(self, prefix: str, req: Requirement) -> None:
         """Add ``req`` to the in-memory model for document ``prefix``."""
-
         doc = self._get_document(prefix)
         self._ensure_unique_id(prefix, doc, req)
         req.doc_prefix = prefix
@@ -148,7 +143,6 @@ class DocumentsController:
 
     def save_requirement(self, prefix: str, req: Requirement) -> Path:
         """Persist ``req`` within document ``prefix`` and return file path."""
-
         doc = self._get_document(prefix)
         original_rid = getattr(req, "rid", "")
         original_id = self._parse_original_id(doc, original_rid)
@@ -166,7 +160,6 @@ class DocumentsController:
 
     def delete_requirement(self, prefix: str, req_id: int) -> str:
         """Remove requirement ``req_id`` from document ``prefix``."""
-
         try:
             doc = self._get_document(prefix)
         except ValueError as exc:
@@ -182,7 +175,6 @@ class DocumentsController:
 
     def delete_document(self, prefix: str) -> bool:
         """Remove document ``prefix`` and its descendants."""
-
         removed = self.service.delete_document(prefix)
         if removed:
             self.load_documents()
@@ -197,7 +189,6 @@ class DocumentsController:
         parent: str | None = None,
     ) -> Document:
         """Create a new document and persist it to disk."""
-
         prefix = prefix.strip()
         if not prefix:
             raise ValueError("prefix cannot be empty")
@@ -211,7 +202,7 @@ class DocumentsController:
                 raise ValueError("document cannot be its own parent")
             if parent not in self.documents:
                 raise ValueError(f"unknown parent document: {parent}")
-        doc = self.service.create_document(
+        self.service.create_document(
             prefix=prefix,
             title=title or prefix,
             parent=parent or None,
@@ -226,7 +217,6 @@ class DocumentsController:
         title: str | None = None,
     ) -> Document:
         """Update metadata of document ``prefix``."""
-
         doc = self.documents.get(prefix)
         if doc is None:
             try:
@@ -247,11 +237,9 @@ class DocumentsController:
     # ------------------------------------------------------------------
     def iter_links(self) -> Iterable[tuple[str, str]]:
         """Yield ``(child_rid, parent_rid)`` pairs for requirements."""
-
         return iter_links(self.service.root)
 
     @property
     def root(self) -> Path:
         """Return the filesystem root backing the requirements service."""
-
         return self.service.root

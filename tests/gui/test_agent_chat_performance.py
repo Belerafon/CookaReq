@@ -155,7 +155,7 @@ def test_transcript_panels_reused_between_switches(tmp_path, wx_app):
             cache_after.panels_by_entry[key] for key in cache_after.order
         ]
         assert len(second_panels) == len(first_panels)
-        for original, restored in zip(first_panels, second_panels):
+        for original, restored in zip(first_panels, second_panels, strict=False):
             assert restored is original
     finally:
         destroy_panel(frame, panel)

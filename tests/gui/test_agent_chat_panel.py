@@ -4,7 +4,7 @@ from pathlib import Path
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from collections.abc import Callable, Mapping, Sequence
 
 from app.confirm import ConfirmDecision, reset_requirement_update_preference, set_confirm, set_requirement_update_confirm
@@ -33,11 +33,18 @@ from app import i18n
 
 import pytest
 
+if TYPE_CHECKING:  # pragma: no cover - imported for type checking only
+    import wx
+else:  # pragma: no cover - runtime stub to satisfy static analysis
+    wx = None  # type: ignore[assignment]
+
 
 pytestmark = [pytest.mark.gui, pytest.mark.integration, pytest.mark.gui_smoke]
 
 
 HISTORY_FILENAME = "agent_chats.sqlite"
+
+_ = i18n._
 
 
 def history_db_path(tmp_path: Path) -> Path:
@@ -249,8 +256,6 @@ def collapsible_label(pane) -> str:
 
 
 def collect_message_bubbles(window: "wx.Window") -> list[MessageBubble]:
-    import wx  # noqa: PLC0415 - GUI helper
-
     bubbles: list[MessageBubble] = []
     for child in window.GetChildren():
         if isinstance(child, MessageBubble):
@@ -470,7 +475,7 @@ def test_attachment_summary_compact_format(tmp_path, wx_app):
         # Compact stats should show file name and three segments joined with slashes.
         assert "•" in text
         assert text.count("/") == 2
-        assert text.endswith("%") or text.endswith(i18n._("n/a"))
+        assert text.endswith(("%", i18n._("n/a")))
 
         tooltip_obj = label.GetToolTip()
         assert tooltip_obj is not None
@@ -1545,7 +1550,6 @@ def test_turn_card_attaches_tools_to_stream_only_response(wx_app):
 
 def test_turn_card_shows_reasoning(wx_app):
     wx = pytest.importorskip("wx")
-    from app.i18n import _
 
     frame = wx.Frame(None)
     try:
@@ -1589,7 +1593,6 @@ def test_turn_card_shows_reasoning(wx_app):
 
 def test_turn_card_orders_sections(wx_app):
     wx = pytest.importorskip("wx")
-    from app.i18n import _
 
     frame = wx.Frame(None)
     try:
@@ -1635,9 +1638,11 @@ def test_turn_card_orders_sections(wx_app):
         assert len(bubbles) == 3
 
         user_bubble = next(b for b in bubbles if "You" in bubble_header_text(b))
+        assert "You" in bubble_header_text(user_bubble)
         agent_bubble = next(
             b for b in bubbles if "Agent" in bubble_header_text(b)
         )
+        assert bubble_body_text(agent_bubble)
         tool_bubble = next(
             b for b in bubbles if "Tool" in bubble_header_text(b)
         )
@@ -2192,7 +2197,6 @@ def test_message_bubble_destroy_ignores_pending_width_update(monkeypatch, wx_app
 
 
 def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
-    from app.i18n import _
     from app.ui.agent_chat_panel import ThreadedAgentCommandExecutor
 
     class BlockingAgent:
@@ -2302,7 +2306,6 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
 
 
 def test_agent_chat_panel_cancellation_preserves_llm_step(tmp_path, wx_app):
-    from app.i18n import _
     from app.ui.agent_chat_panel import ThreadedAgentCommandExecutor
 
     class StepAgent:
@@ -2394,7 +2397,6 @@ def test_agent_chat_panel_cancellation_preserves_llm_step(tmp_path, wx_app):
 
 
 def test_agent_chat_panel_streams_tool_results(tmp_path, wx_app):
-    from app.i18n import _
 
     class StreamingAgent:
         def __init__(self) -> None:
@@ -2645,6 +2647,7 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         cache = panel._transcript_view._conversation_cache[conversation.conversation_id]
         entry_index = conversation.entries.index(entry)
         entry_key = f"{conversation.conversation_id}:{entry_index}"
+        assert entry_key in cache
         timeline = build_conversation_timeline(conversation)
         tool_events = timeline.entries[entry_index].agent_turn.tool_calls
         assert any(event.llm_request for event in tool_events), "expected llm request payload"
@@ -2666,9 +2669,11 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         assert "Now I will translate the selected requirements" in bubble_body_text(
             step_bubble
         )
+        assert bubble_body_text(agent_bubble)
         user_bubble = next(
             bubble for bubble in bubbles if "You" in bubble_header_text(bubble)
         )
+        assert bubble_body_text(user_bubble)
 
         context_pane = find_collapsible_by_name(
             panel, f"context:{entry_key}"
@@ -2800,7 +2805,6 @@ def test_agent_chat_panel_ready_status_reflects_tokens(tmp_path, wx_app):
         context_window=4000,
     )
 
-    from app.i18n import _
 
     try:
         prompt_tokens = TokenCountResult.exact(1000)
@@ -2883,7 +2887,6 @@ def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):
 def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
-    from app.i18n import _
 
     bad_file = history_db_path(tmp_path)
     bad_file.write_text("{not sqlite}")
@@ -2910,7 +2913,6 @@ def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
 def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
-    from app.i18n import _
 
     legacy_file = history_db_path(tmp_path)
     conn = sqlite3.connect(str(legacy_file))
@@ -3023,7 +3025,6 @@ def test_handle_streamed_tool_results_coalesces_renders(
 def test_agent_chat_panel_rejects_entries_without_token_info(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel
-    from app.i18n import _
 
     legacy_file = history_db_path(tmp_path)
     store = HistoryStore(legacy_file)
@@ -3361,7 +3362,6 @@ def test_agent_chat_panel_handles_tokenizer_failure(tmp_path, wx_app, monkeypatc
         ):
             return {"ok": True, "error": None, "result": text}
 
-    from app.i18n import _
 
     elapsed_text = install_monotonic_stub(monkeypatch, elapsed_seconds=5)
 
@@ -3528,7 +3528,6 @@ def test_wait_status_reports_full_prompt_tokens(tmp_path, wx_app, monkeypatch):
         assert total_tokens.tokens == expected_total
         assert total_tokens.model == model_name
 
-        from app.i18n import _
 
         details = summarize_token_usage(total_tokens, panel._context_token_limit())
         expected_label = _("{base} — {details}").format(

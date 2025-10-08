@@ -9,7 +9,7 @@ testing and keeps the LLM contract consistent across components.
 from __future__ import annotations
 
 from textwrap import dedent
-from typing import Any, Mapping
+from typing import Any
 
 from ..core.model import Priority, RequirementType, Status, Verification
 from ..services.user_documents import (

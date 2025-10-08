@@ -171,15 +171,12 @@ class Navigation:
 
     def update_recent_menu(self) -> None:
         """Refresh menu showing recently opened directories."""
-
         self._rebuild_recent_menu()
 
     def get_field_for_id(self, item_id: int) -> str | None:
         """Return field name associated with menu ``item_id``."""
-
         return self._column_items.get(item_id)
 
     def get_recent_path(self, item_id: int) -> Path | None:
         """Return path associated with recent-menu ``item_id``."""
-
         return self._recent_items.get(item_id)

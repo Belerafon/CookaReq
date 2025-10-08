@@ -1,7 +1,4 @@
 """User-interface helpers for managing batch agent runs."""
-
-from __future__ import annotations
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -48,6 +45,7 @@ class AgentBatchSection:
         runner: AgentBatchRunner | None = None,
         target_provider: Callable[[], Sequence[BatchTarget]] | None = None,
     ) -> None:
+        """Bind batch controls to the panel, creating a runner when needed."""
         self._panel = panel
         self._controls = controls
         self._target_provider = target_provider
@@ -67,10 +65,12 @@ class AgentBatchSection:
     # ------------------------------------------------------------------
     @property
     def runner(self) -> AgentBatchRunner:
+        """Expose the batch runner handling work execution."""
         return self._runner
 
     # ------------------------------------------------------------------
     def start_batch(self) -> None:
+        """Start processing the configured batch queue if idle."""
         if self._panel.is_running:
             return
         runner = self._runner
@@ -99,6 +99,7 @@ class AgentBatchSection:
 
     # ------------------------------------------------------------------
     def stop_batch(self) -> None:
+        """Cancel all pending work and stop any active agent run."""
         runner = self._runner
         if not runner.items:
             return
@@ -111,12 +112,12 @@ class AgentBatchSection:
 
     # ------------------------------------------------------------------
     def request_skip_current(self) -> None:
+        """Skip the currently running batch item if possible."""
         self._runner.request_skip_current()
 
     # ------------------------------------------------------------------
     def close_panel(self) -> None:
         """Reset the batch queue and hide the panel."""
-
         runner = self._runner
         if runner.is_running:
             dialog = wx.MessageDialog(
@@ -141,6 +142,7 @@ class AgentBatchSection:
         success: bool,
         error: str | None,
     ) -> None:
+        """Record completion state for ``conversation_id`` and refresh controls."""
         self._runner.handle_completion(
             conversation_id=conversation_id,
             success=success,
@@ -150,11 +152,13 @@ class AgentBatchSection:
 
     # ------------------------------------------------------------------
     def notify_cancellation(self, *, conversation_id: str) -> None:
+        """Record cancellation for ``conversation_id`` and refresh controls."""
         self._runner.handle_cancellation(conversation_id=conversation_id)
         self.update_ui()
 
     # ------------------------------------------------------------------
     def update_ui(self) -> None:
+        """Synchronize button state, status text, and progress indicators."""
         panel = self._controls.panel
         runner = self._runner
         status_label = self._controls.status_label

@@ -1,5 +1,4 @@
 """Helpers for validating chat attachments."""
-
 from __future__ import annotations
 
 from typing import Iterable
@@ -15,7 +14,6 @@ def looks_like_plain_text(
     allowed_controls: Iterable[str] | None = None,
 ) -> bool:
     """Heuristically determine whether ``text`` represents plain UTF-8 content."""
-
     if not text:
         return True
 

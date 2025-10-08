@@ -459,7 +459,6 @@ class TraceMatrixFrame(wx.Frame):
     # sizing ----------------------------------------------------------
     def _configure_grid_dimensions(self, table: TraceMatrixTable) -> None:
         """Adapt grid label and cell sizes to the current dataset."""
-
         row_label_min = self.FromDIP(220)
         row_label_max = self.FromDIP(420)
         column_min = self.FromDIP(90)

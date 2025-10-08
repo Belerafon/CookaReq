@@ -165,7 +165,6 @@ def _read_json(path: Path) -> dict:
 
 def rid_for(doc: Document, item_id: int) -> str:
     """Return requirement identifier for ``item_id`` within ``doc``."""
-
     return f"{doc.prefix}{item_id}"
 
 
@@ -182,7 +181,6 @@ def _canonical_rid(docs: Mapping[str, Document], rid: str) -> str | None:
 
 def parse_rid(rid: str) -> tuple[str, int]:
     """Split ``rid`` into document prefix and numeric id."""
-
     match = RID_RE.match(rid)
     if not match:
         raise ValueError(f"invalid requirement id: {rid}")
@@ -192,14 +190,12 @@ def parse_rid(rid: str) -> tuple[str, int]:
 
 def item_path(directory: str | Path, doc: Document, item_id: int) -> Path:
     """Return filesystem path for ``item_id`` inside ``doc`` using new naming."""
-
     directory_path = Path(directory)
     return directory_path / "items" / canonical_item_name(item_id)
 
 
 def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
     """Save requirement ``data`` within ``doc`` and return file path."""
-
     root = Path(directory).parent
     docs = load_documents(root)
     from .links import validate_item_links  # local import to avoid cycle
@@ -218,7 +214,6 @@ def save_item(directory: str | Path, doc: Document, data: dict) -> Path:
 
 def load_item(directory: str | Path, doc: Document, item_id: int) -> tuple[dict, float]:
     """Load requirement ``item_id`` from ``doc`` and return data with mtime."""
-
     path = item_path(directory, doc, item_id)
     if not path.exists():
         raise FileNotFoundError(path)
@@ -229,7 +224,6 @@ def load_item(directory: str | Path, doc: Document, item_id: int) -> tuple[dict,
 
 def list_item_ids(directory: str | Path, doc: Document) -> set[int]:
     """Return numeric ids of requirements present in ``doc``."""
-
     items_dir = Path(directory) / "items"
     ids: set[int] = set()
     if not items_dir.is_dir():
@@ -244,7 +238,6 @@ def list_item_ids(directory: str | Path, doc: Document) -> set[int]:
 
 def next_item_id(directory: str | Path, doc: Document) -> int:
     """Return the next available numeric id for ``doc``."""
-
     ids = list_item_ids(directory, doc)
     return max(ids, default=0) + 1
 
@@ -294,7 +287,6 @@ def load_requirements(
     current fingerprint state) in the same way as ``search_requirements`` and
     other high level helpers.
     """
-
     root_path = Path(root)
     if docs is None and not root_path.is_dir():
         raise FileNotFoundError(root_path)
@@ -577,7 +569,6 @@ def move_requirement(
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
     """Relocate requirement ``rid`` under ``new_prefix`` keeping referential integrity."""
-
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
     (

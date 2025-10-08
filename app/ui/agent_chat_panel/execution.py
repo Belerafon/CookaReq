@@ -34,7 +34,6 @@ class ThreadedAgentCommandExecutor:
     @property
     def pool(self) -> ThreadPoolExecutor:
         """Expose the underlying thread pool."""
-
         return self._pool
 
     def submit(self, func: Callable[[], Any]) -> Future[Any]:
@@ -74,7 +73,6 @@ class _AgentRunHandle:
         self,
     ) -> tuple[dict[str, Any], ...] | None:
         """Return an immutable snapshot of collected tool payloads."""
-
         if not self.streamed_tool_results:
             return None
         return clone_streamed_tool_results(self.streamed_tool_results)

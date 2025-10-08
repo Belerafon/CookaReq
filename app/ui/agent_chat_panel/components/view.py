@@ -1,4 +1,4 @@
-"""View layer for the agent chat panel widgets."""
+"""Helpers for constructing and updating the agent chat panel view."""
 
 from __future__ import annotations
 
@@ -43,6 +43,7 @@ class AgentChatView:
         layout_builder: AgentChatLayoutBuilder,
         status_help_text: str,
     ) -> None:
+        """Capture collaborators used to build and refresh the view."""
         self._panel = panel
         self._layout_builder = layout_builder
         self._status_help_text = status_help_text
@@ -52,7 +53,6 @@ class AgentChatView:
     @property
     def state(self) -> AgentChatViewState:
         """Return the current view state."""
-
         if self._state is None:
             raise RuntimeError("AgentChatView is not initialized")
         return self._state
@@ -60,7 +60,6 @@ class AgentChatView:
     # ------------------------------------------------------------------
     def build(self) -> AgentChatViewState:
         """Construct widgets and store the resulting handles."""
-
         layout = self._layout_builder.build(status_help_text=self._status_help_text)
         self._state = AgentChatViewState(layout=layout)
         return self._state
@@ -75,7 +74,6 @@ class AgentChatView:
         callbacks: WaitStateCallbacks,
     ) -> None:
         """Reflect busy state in the view."""
-
         state = self.state
         primary_btn = state.layout.primary_action_button
         idle_label_text = state.layout.primary_action_idle_label
@@ -132,7 +130,6 @@ class AgentChatView:
     # ------------------------------------------------------------------
     def update_status_label(self, label: str) -> None:
         """Update the text shown in the status area."""
-
         self.state.layout.status_label.SetLabel(label)
 
     # ------------------------------------------------------------------
@@ -143,7 +140,6 @@ class AgentChatView:
         context_limit: int | None,
     ) -> None:
         """Show running timer alongside prompt token summary."""
-
         minutes, seconds = divmod(int(elapsed), 60)
         base = _("Waiting for agent… {time}").format(
             time=f"{minutes:02d}:{seconds:02d}",
@@ -165,7 +161,6 @@ class AgentChatView:
         context_limit: int | None,
     ) -> str:
         """Return label for the ready state."""
-
         base = _("Ready")
         if tokens is None:
             return base
@@ -182,7 +177,6 @@ class AgentChatView:
         disabled_bitmap: wx.Bitmap | None,
     ) -> None:
         """Attach the idle-state bitmaps to the primary action button."""
-
         if not bitmap or not bitmap.IsOk():
             return
 
@@ -209,7 +203,6 @@ class AgentChatView:
     # ------------------------------------------------------------------
     def _clear_primary_action_bitmaps(self, button: wx.Button) -> None:
         """Remove bitmaps from the primary action button."""
-
         null_bitmap = wx.NullBitmap
         for attr in (
             "SetBitmap",
@@ -234,7 +227,6 @@ class AgentChatView:
         disabled_bitmap: wx.Bitmap | None,
     ) -> None:
         """Apply the requested primary action presentation."""
-
         if uses_bitmap and bitmap is not None:
             self._set_primary_action_bitmaps(button, bitmap, disabled_bitmap)
         else:
@@ -252,7 +244,6 @@ class AgentChatView:
         context_limit: int | None,
     ) -> str:
         """Return label for the initial running state."""
-
         if tokens is None:
             return _("Waiting for agent… {time}").format(time="00:00")
         details = summarize_token_usage(tokens, context_limit)

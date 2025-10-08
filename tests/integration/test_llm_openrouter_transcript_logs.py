@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Sequence
+from collections.abc import Sequence
 
 import pytest
 
@@ -95,7 +95,7 @@ def test_openrouter_transcript_logs(tmp_path, target_language):
     normalized_reasoning = normalise_reasoning_segments(response.reasoning)
     assert normalized_reasoning, "model did not return reasoning segments"
     types = [segment["type"] for segment in normalized_reasoning]
-    assert all(prev != curr for prev, curr in zip(types, types[1:]))
+    assert all(prev != curr for prev, curr in zip(types, types[1:], strict=False))
 
     conversation_history = ChatConversation.new()
     timestamp = utc_now_iso()

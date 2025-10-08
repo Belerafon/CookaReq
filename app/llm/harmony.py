@@ -29,7 +29,6 @@ def convert_tools_for_harmony(
     the flattened representation. This helper preserves non-function tools and
     performs a deep copy so the caller can safely mutate the result.
     """
-
     if not tools:
         return []
 
@@ -77,7 +76,6 @@ class HarmonyPrompt:
 
     def snapshot(self) -> Mapping[str, Any]:
         """Return a serialisable snapshot for logging and debugging."""
-
         return {
             "format": "harmony",
             "system_message": self.system_message,
@@ -97,7 +95,6 @@ def render_harmony_prompt(
     knowledge_cutoff: str = HARMONY_KNOWLEDGE_CUTOFF,
 ) -> HarmonyPrompt:
     """Render conversation *history* into a Harmony prompt string."""
-
     system_message = _render_system_message(
         reasoning_level=reasoning_level,
         current_date=current_date or date.today().isoformat(),

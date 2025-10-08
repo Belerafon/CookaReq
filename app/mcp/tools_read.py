@@ -1,3 +1,5 @@
+"""Read-oriented MCP tool implementations."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -24,7 +26,6 @@ def _normalize_rid_argument(
     rid: str | Sequence[str],
 ) -> tuple[list[str], str | list[str]]:
     """Return a deduplicated list of RIDs and a log-friendly representation."""
-
     if isinstance(rid, _SEQUENCE_STRING_TYPES):
         rid_value = str(rid).strip()
         if not rid_value:
@@ -59,7 +60,6 @@ def _prepare_field_selection(
     fields: Sequence[str] | None,
 ) -> tuple[list[str] | None, list[str] | None]:
     """Return normalized field names and a JSON-serialisable log copy."""
-
     if fields is None:
         return None, None
     if not isinstance(fields, Sequence) or isinstance(fields, _SEQUENCE_STRING_TYPES):
@@ -86,7 +86,6 @@ def _prepare_field_selection(
 
 def _apply_field_selection(data: Mapping[str, Any], fields: list[str] | None) -> dict:
     """Return ``data`` filtered by ``fields`` while preserving the RID."""
-
     rid = data.get("rid")
     if rid is None:
         raise KeyError("requirement payload missing rid")
@@ -158,6 +157,7 @@ def list_requirements(
     labels: Sequence[str] | None = None,
     fields: Sequence[str] | None = None,
 ) -> dict:
+    """Return a paginated requirements listing payload for MCP responses."""
     normalized_fields, logged_fields = _prepare_field_selection(fields)
     params = {
         "directory": str(directory),
@@ -197,6 +197,7 @@ def get_requirement(
     rid: str | Sequence[str],
     fields: Sequence[str] | None = None,
 ) -> dict:
+    """Return requirement details for one or more requirement identifiers."""
     normalized_fields, logged_fields = _prepare_field_selection(fields)
     params: dict[str, Any] = {
         "directory": str(directory),
@@ -285,6 +286,7 @@ def search_requirements(
     per_page: int = 50,
     fields: Sequence[str] | None = None,
 ) -> dict:
+    """Return search results from the MCP requirements store."""
     normalized_fields, logged_fields = _prepare_field_selection(fields)
     params = {
         "directory": str(directory),

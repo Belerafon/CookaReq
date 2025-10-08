@@ -1,12 +1,10 @@
 """Widgets used to render chat transcript entries."""
-
 from __future__ import annotations
 
 import hashlib
 import math
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any
 from collections.abc import Callable
 
 import wx
@@ -17,7 +15,6 @@ from ..text import normalize_for_display
 
 def _is_window_usable(window: wx.Window | None) -> bool:
     """Return True when the wx window can be safely accessed."""
-
     if window is None:
         return False
     try:
@@ -81,7 +78,6 @@ def _soften_user_highlight(
     highlight: wx.Colour, *, background: wx.Colour
 ) -> wx.Colour:
     """Return pastel variant of the system highlight colour."""
-
     if not background.IsOk():
         background = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
     weight = 0.7 if not _is_dark_colour(background) else 0.45
@@ -90,7 +86,6 @@ def _soften_user_highlight(
 
 def _agent_tint(base: wx.Colour) -> wx.Colour:
     """Add a soft green tint to the agent message background."""
-
     if not base.IsOk():
         base = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
     if _is_dark_colour(base):
@@ -122,6 +117,7 @@ _TOOL_ACCENT_COLOURS: tuple[wx.Colour, ...] = (
 def tool_bubble_palette(
     parent_background: wx.Colour, tool_name: str
 ) -> MessageBubblePalette:
+    """Compose colours for tool responses based on *parent_background*."""
     base = (
         parent_background
         if parent_background.IsOk()
@@ -164,6 +160,7 @@ class MessageBubble(wx.Panel):
         width_hint: int | None = None,
         on_width_change: Callable[[int], None] | None = None,
     ) -> None:
+        """Construct a chat bubble widget and prime rendering metadata."""
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
         self.SetDoubleBuffered(True)
@@ -195,7 +192,11 @@ class MessageBubble(wx.Panel):
         self._selection_getter: Callable[[], str] | None = None
         if allow_selection:
             self._copy_selection_menu_id = wx.Window.NewControlId()
-            self.Bind(wx.EVT_MENU, self._on_copy_selection, id=self._copy_selection_menu_id)
+            self.Bind(
+                wx.EVT_MENU,
+                self._on_copy_selection,
+                id=self._copy_selection_menu_id,
+            )
 
         palette = (
             palette
@@ -334,7 +335,11 @@ class MessageBubble(wx.Panel):
                 self._selection_getter = text_ctrl.GetStringSelection
         else:
             text_align_flag = wx.ALIGN_LEFT
-            self._text = wx.StaticText(bubble, label=display_text, style=text_align_flag)
+            self._text = wx.StaticText(
+                bubble,
+                label=display_text,
+                style=text_align_flag,
+            )
             self._text.SetForegroundColour(bubble_fg)
             self._text.SetBackgroundColour(bubble_bg)
             if message_font is not None and message_font.IsOk():
@@ -410,7 +415,6 @@ class MessageBubble(wx.Panel):
     # ------------------------------------------------------------------
     def update_header(self, role_label: str, timestamp: str) -> None:
         """Update the header label and timestamp."""
-
         header = self._header
         if not _is_window_usable(header):
             return
@@ -423,7 +427,6 @@ class MessageBubble(wx.Panel):
     # ------------------------------------------------------------------
     def update_text(self, text: str) -> None:
         """Refresh main message text without rebuilding the widget."""
-
         display_text = normalize_for_display(text)
         if display_text == self._text_value:
             return
@@ -443,22 +446,17 @@ class MessageBubble(wx.Panel):
     # ------------------------------------------------------------------
     def set_footer(self, footer_factory: FooterFactory | None) -> None:
         """Replace the optional footer contents."""
-
         bubble = self._bubble
         if not _is_window_usable(bubble):
             return
         existing = self._footer
         if isinstance(existing, wx.Window) and _is_window_usable(existing):
-            try:
+            with suppress(RuntimeError):
                 self._bubble_sizer.Detach(existing)
-            except RuntimeError:
-                pass
             existing.Destroy()
         elif isinstance(existing, wx.Sizer):
-            try:
+            with suppress(RuntimeError):
                 self._bubble_sizer.Detach(existing)
-            except RuntimeError:
-                pass
             existing.Clear(delete_windows=True)
         self._footer = None
         if footer_factory is None:
@@ -491,7 +489,6 @@ class MessageBubble(wx.Panel):
     # ------------------------------------------------------------------
     def set_explicit_width_hint(self, width_hint: int | None) -> None:
         """Apply explicit width hint without recreating the bubble."""
-
         if width_hint is not None:
             try:
                 hint = int(width_hint)
@@ -547,6 +544,7 @@ class MessageBubble(wx.Panel):
         return MessageBubblePalette(bubble_bg, bubble_fg, meta_colour)
 
     def Destroy(self) -> bool:  # type: ignore[override]
+        """Mark the bubble as destroyed before letting wx tear down state."""
         self._destroyed = True
         return super().Destroy()
 
@@ -730,7 +728,11 @@ class MessageBubble(wx.Panel):
 
         available_width = inner_viewport_width or inner_parent_width
         if available_width <= 0:
-            available_width = max(parent_width, inner_parent_width, inner_viewport_width)
+            available_width = max(
+                parent_width,
+                inner_parent_width,
+                inner_viewport_width,
+            )
         if available_width <= 0:
             return
 

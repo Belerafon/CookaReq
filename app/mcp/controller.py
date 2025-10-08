@@ -41,7 +41,6 @@ class MCPController:
         token_model: str | None,
     ) -> None:
         """Launch the MCP server with ``settings``."""
-
         token = settings.token if settings.require_token else ""
         start_server(
             settings.host,
@@ -68,12 +67,10 @@ class MCPController:
 
     def is_running(self) -> bool:
         """Return ``True`` if MCP server is currently running."""
-
         return server_is_running()
 
     def check(self, settings: MCPSettings) -> MCPCheckResult:
         """Probe the MCP server health endpoint."""
-
         headers = {}
         if settings.require_token and settings.token:
             headers["Authorization"] = f"Bearer {settings.token}"

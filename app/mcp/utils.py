@@ -1,5 +1,4 @@
 """Shared helpers for MCP tools."""
-
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
@@ -66,7 +65,6 @@ def log_tool(
         Maximum number of characters from the result to include in the log.
         ``None`` disables truncation.
     """
-
     entry = {
         "timestamp": utc_now_iso(),
         "tool": tool,
@@ -102,7 +100,6 @@ def mcp_error(
     details: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a structured error payload for MCP responses."""
-
     code_str = code.value if isinstance(code, ErrorCode) else str(code)
     err: dict[str, Any] = {"code": code_str, "message": message}
     if details:
@@ -112,7 +109,6 @@ def mcp_error(
 
 def _exception_chain(exc: BaseException) -> Iterator[BaseException]:
     """Yield *exc* and all linked exceptions from ``__cause__``/``__context__``."""
-
     seen: set[int] = set()
     queue: list[BaseException | None] = [exc]
     while queue:
@@ -136,7 +132,6 @@ def map_exception_to_error_code(exc: BaseException) -> ErrorCode:
     client, low-level HTTP stack or built-in connection exceptions are treated
     as :class:`ErrorCode.INTERNAL`, signalling that retrying later might help.
     """
-
     internal_failure = False
     for err in _exception_chain(exc):
         if isinstance(err, JSONDecodeError):
@@ -165,7 +160,6 @@ def map_exception_to_error_code(exc: BaseException) -> ErrorCode:
 
 def exception_to_mcp_error(exc: BaseException) -> dict[str, Any]:
     """Convert *exc* into an MCP-compatible error payload."""
-
     code = map_exception_to_error_code(exc)
     message = str(exc) or type(exc).__name__
     details: dict[str, Any] = {"type": type(exc).__name__}

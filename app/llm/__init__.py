@@ -10,7 +10,6 @@ if TYPE_CHECKING:  # pragma: no cover - typing helper
 
 def __getattr__(name: str) -> Any:
     """Lazily expose heavy modules to avoid import cycles."""
-
     if name == "LLMClient":
         from .client import LLMClient
 

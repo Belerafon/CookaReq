@@ -89,7 +89,6 @@ class AgentBatchRunner:
     @property
     def items(self) -> tuple[BatchItem, ...]:
         """Return immutable snapshot of queued items."""
-
         return tuple(self._items)
 
     # ------------------------------------------------------------------
@@ -110,7 +109,6 @@ class AgentBatchRunner:
     # ------------------------------------------------------------------
     def reset(self) -> None:
         """Clear the queue without notifying the controller."""
-
         self._items.clear()
         self._prompt = None
         self._active_index = None
@@ -121,7 +119,6 @@ class AgentBatchRunner:
     # ------------------------------------------------------------------
     def start(self, prompt: str, targets: Sequence[BatchTarget]) -> bool:
         """Initialise queue with *targets* and launch the first run."""
-
         normalized = prompt.strip()
         if not normalized:
             return False
@@ -142,7 +139,6 @@ class AgentBatchRunner:
     # ------------------------------------------------------------------
     def cancel_all(self) -> None:
         """Request cancellation of the active item and mark queue as cancelled."""
-
         if not self._items:
             return
 
@@ -156,7 +152,6 @@ class AgentBatchRunner:
     # ------------------------------------------------------------------
     def request_skip_current(self) -> None:
         """Request cancellation of current item while keeping queue running."""
-
         if not self._running:
             return
         self._cancel_mode = CancelMode.SKIP_CURRENT
@@ -170,7 +165,6 @@ class AgentBatchRunner:
         error: str | None,
     ) -> None:
         """Update queue state after controller finalises the prompt."""
-
         if not conversation_id:
             return
         item = self._item_by_conversation(conversation_id)
@@ -190,7 +184,6 @@ class AgentBatchRunner:
     # ------------------------------------------------------------------
     def handle_cancellation(self, *, conversation_id: str | None) -> None:
         """React to cancelled prompt and continue if needed."""
-
         if not conversation_id:
             return
         item = self._item_by_conversation(conversation_id)
@@ -211,7 +204,6 @@ class AgentBatchRunner:
     # ------------------------------------------------------------------
     def progress_counts(self) -> tuple[int, int]:
         """Return tuple ``(completed, total)`` ignoring skipped entries."""
-
         total = len(self._items)
         completed = sum(
             1

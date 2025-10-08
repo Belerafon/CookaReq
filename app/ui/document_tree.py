@@ -67,7 +67,6 @@ class DocumentTree(wx.Panel):
 
     def select(self, prefix: str) -> None:
         """Select tree item corresponding to ``prefix`` if present."""
-
         node = self._node_for_prefix.get(prefix)
         if node:
             self.tree.SelectItem(node)
@@ -75,7 +74,6 @@ class DocumentTree(wx.Panel):
 
     def get_selected_prefix(self) -> str | None:
         """Return prefix associated with the currently selected node."""
-
         item = self.tree.GetSelection()
         if not item.IsOk():
             return None

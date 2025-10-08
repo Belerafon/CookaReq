@@ -89,7 +89,6 @@ class ItemPayload:
 
     def validate(self) -> None:
         """Ensure payload contains supported values."""
-
         errors: list[str] = []
         for field_name, enum_cls, message in (
             ("type", RequirementType, _("unknown requirement type: {value}")),
@@ -121,7 +120,6 @@ class ItemPayload:
 
     def to_payload(self) -> dict[str, Any]:
         """Convert dataclass into dictionary suitable for persistence."""
-
         data = asdict(self)
         if self.revision is None:
             data.pop("revision", None)
@@ -160,7 +158,6 @@ def _service_for(
     context: ApplicationContext, directory: str | Path
 ) -> RequirementsService:
     """Return requirements service rooted at ``directory``."""
-
     factory = context.requirements_service_factory
     return factory(Path(directory))
 
@@ -463,7 +460,6 @@ def build_item_payload(
     args: argparse.Namespace, base: Mapping[str, Any] | None
 ) -> dict[str, Any]:
     """Combine CLI arguments and base data into payload for creation."""
-
     base_data: Mapping[str, Any] = base or {}
     values: dict[str, Any] = {}
     for field_def in fields(ItemPayload):
@@ -493,7 +489,6 @@ def cmd_doc_create(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
     """Create new document within requirements root."""
-
     service = _service_for(context, args.directory)
     doc = service.create_document(
         prefix=args.prefix,
@@ -507,7 +502,6 @@ def cmd_doc_list(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
     """List documents configured under requirements root."""
-
     service = _service_for(context, args.directory)
     docs = service.load_documents(refresh=True)
     for prefix in sorted(docs):
@@ -519,7 +513,6 @@ def cmd_doc_delete(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
     """Delete document ``prefix`` and its descendants."""
-
     service = _service_for(context, args.directory)
     if getattr(args, "dry_run", False):
         doc_list, item_list = service.plan_delete_document(args.prefix)
@@ -548,7 +541,6 @@ def cmd_doc_delete(
 
 def add_doc_arguments(p: argparse.ArgumentParser) -> None:
     """Configure parser for ``doc`` subcommands."""
-
     sub = p.add_subparsers(dest="doc_command", required=True)
 
     create = sub.add_parser("create", help=_("create document"))
@@ -601,7 +593,6 @@ def cmd_item_edit(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
     """Update an existing requirement without changing its RID."""
-
     prefix, item_id = parse_rid(args.rid)
     service = _service_for(context, args.directory)
     try:
@@ -648,7 +639,6 @@ def cmd_item_move(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
     """Move existing item ``rid`` to document ``new_prefix``."""
-
     service = _service_for(context, args.directory)
     try:
         current = service.get_requirement(args.rid)
@@ -699,7 +689,6 @@ def cmd_item_delete(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
     """Delete requirement ``rid`` and update references."""
-
     service = _service_for(context, args.directory)
     if getattr(args, "dry_run", False):
         exists, refs = service.plan_delete_requirement(args.rid)
@@ -734,7 +723,6 @@ def cmd_item_delete(
 
 def _add_item_payload_arguments(parser: argparse.ArgumentParser) -> None:
     """Add common requirement field arguments to ``parser``."""
-
     parser.add_argument("--title", help=_("item title"))
     parser.add_argument("--statement", help=_("item statement"))
     parser.add_argument(
@@ -774,7 +762,6 @@ def _add_item_payload_arguments(parser: argparse.ArgumentParser) -> None:
 
 def add_item_arguments(p: argparse.ArgumentParser) -> None:
     """Configure parser for ``item`` subcommands."""
-
     sub = p.add_subparsers(dest="item_command", required=True)
 
     add_p = sub.add_parser("add", help=_("create new item"))
@@ -829,7 +816,6 @@ def cmd_link(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
     """Add links from requirement ``rid`` to ``parents``."""
-
     service = _service_for(context, args.directory)
     try:
         prefix, item_id = parse_rid(args.rid)
@@ -888,7 +874,6 @@ def cmd_link(
 
 def add_link_arguments(p: argparse.ArgumentParser) -> None:
     """Configure parser for the ``link`` command."""
-
     p.add_argument("directory", help=_("requirements root"))
     p.add_argument("rid", help=_("requirement identifier"))
     p.add_argument("parents", nargs="+", help=_("parent requirement identifiers"))
@@ -921,7 +906,6 @@ def cmd_trace(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
     """Export traceability matrix in the requested format."""
-
     row_axis = _build_axis_config(args, "row")
     column_axis = _build_axis_config(args, "column")
 
@@ -965,7 +949,6 @@ def cmd_export_requirements(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
     """Export requirements into Markdown, HTML, or PDF."""
-
     selected_docs = tuple(_flatten_arg_list(getattr(args, "documents", []))) or None
 
     try:
@@ -1011,7 +994,6 @@ def cmd_export_requirements(
 
 def add_export_arguments(p: argparse.ArgumentParser) -> None:
     """Configure parser for the ``export`` command."""
-
     sub = p.add_subparsers(dest="export_command", required=True)
 
     req = sub.add_parser("requirements", help=_("export requirements"))
@@ -1038,7 +1020,6 @@ def add_export_arguments(p: argparse.ArgumentParser) -> None:
 
 def add_trace_arguments(p: argparse.ArgumentParser) -> None:
     """Configure parser for the ``trace`` command."""
-
     p.add_argument("directory", help=_("requirements root"))
     p.add_argument(
         "-r",

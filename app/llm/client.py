@@ -34,7 +34,6 @@ class LLMClient:
 
     def __init__(self, settings: LLMSettings) -> None:
         """Initialize client with LLM configuration ``settings``."""
-
         import openai
 
         self.settings = settings
@@ -61,12 +60,10 @@ class LLMClient:
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
         """Perform a minimal request to verify connectivity."""
-
         return self._check_llm()
 
     async def check_llm_async(self) -> dict[str, Any]:
         """Asynchronous counterpart to :meth:`check_llm`."""
-
         return await asyncio.to_thread(self._check_llm)
 
     # ------------------------------------------------------------------
@@ -78,7 +75,6 @@ class LLMClient:
         cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Interpret *text* into an assistant reply with optional tool calls."""
-
         conversation: list[Mapping[str, Any]] = list(history or [])
         conversation.append({"role": "user", "content": text})
         return self.respond(conversation, cancellation=cancellation)
@@ -91,7 +87,6 @@ class LLMClient:
         cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Asynchronous counterpart to :meth:`parse_command`."""
-
         conversation: list[Mapping[str, Any]] = list(history or [])
         conversation.append({"role": "user", "content": text})
         return await self.respond_async(conversation, cancellation=cancellation)
@@ -104,7 +99,6 @@ class LLMClient:
         cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Send the full *conversation* to the model and return its reply."""
-
         return self._respond(list(conversation or []), cancellation=cancellation)
 
     async def respond_async(
@@ -114,7 +108,6 @@ class LLMClient:
         cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Asynchronous counterpart to :meth:`respond`."""
-
         return await asyncio.to_thread(
             self._respond,
             list(conversation or []),
@@ -338,7 +331,6 @@ class LLMClient:
 
     def _apply_reasoning_defaults(self, request_args: dict[str, Any]) -> None:
         """Inject reasoning flags so compatible models emit their thoughts."""
-
         request_args.pop("reasoning_effort", None)
         raw_extra = request_args.get("extra_body")
         if isinstance(raw_extra, Mapping):
@@ -498,7 +490,6 @@ class LLMClient:
         request_messages: Sequence[Mapping[str, Any]] | None,
     ) -> tuple[LLMToolCall, ...]:
         """Fill missing get_requirement arguments using workspace context."""
-
         if not tool_calls:
             return ()
 
@@ -553,7 +544,6 @@ class LLMClient:
     # ------------------------------------------------------------------
     def _chat_completion(self, **request_args: Any) -> Any:
         """Call the chat completions endpoint with normalized arguments."""
-
         try:
             return self._client.chat.completions.create(**request_args)
         except TypeError as exc:

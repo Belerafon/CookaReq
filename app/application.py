@@ -1,7 +1,8 @@
 """Composition root building shared dependencies for CookaReq."""
-
 from __future__ import annotations
+
 from collections.abc import Callable
+
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from .config import ConfigManager
@@ -41,7 +42,7 @@ class LocalAgentFactory(Protocol):
         confirm_override: ConfirmCallback | None = None,
         confirm_requirement_update_override: RequirementUpdateConfirmCallback
         | None = None,
-    ) -> "LocalAgent":
+    ) -> LocalAgent:
         """Build an agent for ``settings`` optionally overriding confirmations."""
         raise NotImplementedError
 
@@ -66,9 +67,10 @@ class ApplicationContext:
         config_factory: Callable[[str], ConfigManager] | None = None,
         requirement_model_factory: Callable[[], RequirementModel] | None = None,
         requirements_service_cls: type[RequirementsService] = RequirementsService,
-        local_agent_cls: type["LocalAgent"] | None = None,
+        local_agent_cls: type[LocalAgent] | None = None,
         mcp_controller_cls: type[MCPController] = MCPController,
     ) -> None:
+        """Initialise the dependency container shared across frontends."""
         self._app_name = app_name
         self._config_factory = config_factory or (lambda name: ConfigManager(name))
         self._requirement_model_factory = (
@@ -89,7 +91,6 @@ class ApplicationContext:
     @property
     def config(self) -> ConfigManager:
         """Return lazily initialised :class:`ConfigManager`."""
-
         if self._config is None:
             self._config = self._config_factory(self._app_name)
         return self._config
@@ -97,7 +98,6 @@ class ApplicationContext:
     @property
     def requirement_model(self) -> RequirementModel:
         """Return shared :class:`RequirementModel` instance."""
-
         if self._requirement_model is None:
             self._requirement_model = self._requirement_model_factory()
         return self._requirement_model
@@ -105,7 +105,6 @@ class ApplicationContext:
     @property
     def requirements_service_factory(self) -> RequirementsServiceFactory:
         """Return factory constructing :class:`RequirementsService` objects."""
-
         if self._requirements_service_factory is None:
             service_cls = self._requirements_service_cls
 
@@ -118,7 +117,6 @@ class ApplicationContext:
     @property
     def local_agent_factory(self) -> LocalAgentFactory:
         """Return factory creating :class:`LocalAgent` instances."""
-
         if self._local_agent_factory is None:
             agent_cls = self._local_agent_cls
             if agent_cls is None:
@@ -132,7 +130,7 @@ class ApplicationContext:
                 confirm_override: ConfirmCallback | None = None,
                 confirm_requirement_update_override: RequirementUpdateConfirmCallback
                 | None = None,
-            ) -> "LocalAgent":
+            ) -> LocalAgent:
                 kwargs: dict[str, object] = {"settings": settings}
                 if confirm_override is not None:
                     kwargs["confirm"] = confirm_override
@@ -148,7 +146,6 @@ class ApplicationContext:
     @property
     def mcp_controller_factory(self) -> MCPControllerFactory:
         """Return factory creating :class:`MCPController` instances."""
-
         if self._mcp_controller_factory is None:
             controller_cls = self._mcp_controller_cls
 
@@ -159,9 +156,8 @@ class ApplicationContext:
         return self._mcp_controller_factory
 
     @classmethod
-    def for_gui(cls, *, app_name: str = "CookaReq") -> "ApplicationContext":
+    def for_gui(cls, *, app_name: str = "CookaReq") -> ApplicationContext:
         """Return context configured for the wx-based GUI."""
-
         from .confirm import wx_confirm, wx_confirm_requirement_update
 
         return cls(
@@ -171,9 +167,8 @@ class ApplicationContext:
         )
 
     @classmethod
-    def for_cli(cls, *, app_name: str = "CookaReq") -> "ApplicationContext":
+    def for_cli(cls, *, app_name: str = "CookaReq") -> ApplicationContext:
         """Return context configured for non-interactive CLI usage."""
-
         from .confirm import auto_confirm, auto_confirm_requirement_update
 
         return cls(

@@ -43,7 +43,6 @@ class ConfirmPreferencesMixin:
         value: RequirementConfirmPreference | str | None,
     ) -> RequirementConfirmPreference:
         """Convert *value* into a recognised confirmation preference."""
-
         if isinstance(value, RequirementConfirmPreference):
             return value
         if isinstance(value, str):
@@ -162,7 +161,6 @@ class ConfirmPreferencesMixin:
     @property
     def confirmation_preference(self) -> str:
         """Return current confirmation policy as a string key."""
-
         return self._confirm_preference.value
 
 

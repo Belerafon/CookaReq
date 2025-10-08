@@ -1,4 +1,4 @@
-"""Service helpers for managing user-provided documentation files."""
+"""Utilities for exposing curated views over user-provided documentation."""
 
 from __future__ import annotations
 
@@ -22,9 +22,10 @@ class UserDocumentEntry:
     size_bytes: int | None = None
     token_count: TokenCountResult | None = None
     percent_of_context: float | None = None
-    children: list["UserDocumentEntry"] = field(default_factory=list)
+    children: list[UserDocumentEntry] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
+        """Serialise the entry and its children into primitive structures."""
         payload: dict[str, object] = {
             "name": self.name,
             "path": self.relative_path.as_posix(),
@@ -52,6 +53,7 @@ class UserDocumentsService:
         token_model: str | None = None,
         max_read_bytes: int = DEFAULT_MAX_READ_BYTES,
     ) -> None:
+        """Validate configuration and capture the resolved root path."""
         if max_context_tokens <= 0:
             raise ValueError("max_context_tokens must be positive")
         if max_read_bytes <= 0:
@@ -68,7 +70,6 @@ class UserDocumentsService:
     # ------------------------------------------------------------------
     def list_tree(self) -> dict[str, object]:
         """Return a structured description of the documentation directory."""
-
         if self.root.exists():
             entry = self._build_directory(self.root, Path("."))
         else:
@@ -99,7 +100,6 @@ class UserDocumentsService:
         max_bytes: int | None = None,
     ) -> dict[str, object]:
         """Return a chunk of the target file capped at ``max_bytes`` bytes."""
-
         file_path = self._ensure_file(relative_path)
         if start_line < 1:
             raise ValueError("start_line must be >= 1")
@@ -163,7 +163,6 @@ class UserDocumentsService:
         exist_ok: bool = False,
     ) -> Path:
         """Create a new file under the documents root with optional content."""
-
         target = self._resolve_path(relative_path)
         if target.exists():
             if target.is_dir():
@@ -180,7 +179,6 @@ class UserDocumentsService:
     # ------------------------------------------------------------------
     def delete_file(self, relative_path: str | Path) -> None:
         """Remove a file inside the documents root."""
-
         target = self._ensure_file(relative_path)
         target.unlink()
 

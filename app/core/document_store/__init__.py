@@ -81,7 +81,6 @@ class Document:
         **extra: Any,
     ) -> None:
         """Create a document definition."""
-
         if extra:
             unexpected = ", ".join(sorted(extra))
             raise TypeError(f"unexpected keyword argument(s): {unexpected}")

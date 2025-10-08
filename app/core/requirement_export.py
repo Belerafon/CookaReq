@@ -95,7 +95,6 @@ def build_requirement_export(
     prefixes: Sequence[str] | None = None,
 ) -> RequirementExport:
     """Load requirements and assemble a deterministic export representation."""
-
     root_path = Path(root)
     docs = load_documents(root_path)
     if not docs and not root_path.is_dir():
@@ -146,7 +145,6 @@ def _format_markdown_block(text: str) -> list[str]:
 
 def render_requirements_markdown(export: RequirementExport, *, title: str | None = None) -> str:
     """Render export data as Markdown."""
-
     heading = title or "Requirements export"
     parts: list[str] = [f"# {heading}", ""]
     parts.append(
@@ -233,7 +231,6 @@ def _html_paragraphs(value: str) -> str:
 
 def render_requirements_html(export: RequirementExport, *, title: str | None = None) -> str:
     """Render export data as standalone HTML."""
-
     heading = title or "Requirements export"
     parts: list[str] = [
         "<!DOCTYPE html>",
@@ -365,7 +362,6 @@ def _pdf_text(value: str) -> str:
 
 def render_requirements_pdf(export: RequirementExport, *, title: str | None = None) -> bytes:
     """Render export data as a PDF document."""
-
     buffer = BytesIO()
     heading = title or "Requirements export"
     styles = _ensure_stylesheet()

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from app.llm.request_builder import PreparedChatRequest
 from app.llm.types import LLMResponse

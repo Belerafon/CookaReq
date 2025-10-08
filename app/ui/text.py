@@ -23,7 +23,6 @@ _DIRECT_TRANSLATIONS: dict[str, str] = {
 
 def normalize_for_display(value: str) -> str:
     """Return *value* with punctuation normalised for safer rendering."""
-
     if not value:
         return value
 

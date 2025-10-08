@@ -24,7 +24,6 @@ def normalize_timestamp(value: str | None) -> str:
     while datetime strings are converted to ``YYYY-MM-DD HH:MM:SS`` format with
     microseconds discarded. Invalid values raise :class:`ValueError`.
     """
-
     if not value:
         return ""
 

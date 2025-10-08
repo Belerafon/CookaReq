@@ -31,9 +31,11 @@ class ConsoleFormatter(logging.Formatter):
     """Console formatter that surfaces structured payloads when available."""
 
     def __init__(self) -> None:
+        """Set up the formatter with the standard console template."""
         super().__init__("%(levelname)s: %(message)s")
 
     def format(self, record: logging.LogRecord) -> str:
+        """Render *record* optionally appending the structured payload."""
         base = super().format(record)
         payload = _extract_console_payload(record)
         if payload is None:
@@ -49,7 +51,6 @@ class ConsoleFormatter(logging.Formatter):
 
 def _extract_console_payload(record: logging.LogRecord) -> Any | None:
     """Return payload that should be appended to console output."""
-
     extra_json = getattr(record, "json", None)
     if not isinstance(extra_json, dict):
         return None
@@ -68,7 +69,6 @@ def _rotate_if_already_full(
     handler: RotatingFileHandler, existing_size: int
 ) -> None:
     """Rotate *handler* if the pre-existing log already reaches the limit."""
-
     max_bytes = getattr(handler, "maxBytes", 0) or 0
     if max_bytes <= 0 or existing_size < max_bytes:
         return
@@ -138,6 +138,7 @@ class JsonlHandler(RotatingFileHandler):
         encoding: str = "utf-8",
         delay: bool = False,
     ) -> None:
+        """Initialise handler ensuring the log directory exists."""
         path = Path(filename)
         path.parent.mkdir(parents=True, exist_ok=True)
         if max_bytes is None:
@@ -154,14 +155,12 @@ class JsonlHandler(RotatingFileHandler):
 
 def _default_log_dir() -> Path:
     """Return default directory for application logs."""
-
     base = Path.home() / _DEFAULT_HOME_DIR
     return base / _DEFAULT_LOG_SUBDIR
 
 
 def _resolve_log_dir(log_dir: str | Path | None) -> Path:
     """Resolve effective log directory creating it if necessary."""
-
     if log_dir is not None:
         path = Path(log_dir).expanduser()
     else:
@@ -173,7 +172,6 @@ def _resolve_log_dir(log_dir: str | Path | None) -> Path:
 
 def configure_logging(level: int = logging.INFO, *, log_dir: str | Path | None = None) -> None:
     """Configure application logger once."""
-
     global _log_dir
 
     if logger.handlers:
@@ -220,7 +218,6 @@ def configure_logging(level: int = logging.INFO, *, log_dir: str | Path | None =
 
 def get_log_directory() -> Path:
     """Return directory where CookaReq writes log files."""
-
     if _log_dir is None:
         configure_logging()
     assert _log_dir is not None
@@ -229,7 +226,6 @@ def get_log_directory() -> Path:
 
 def get_log_file_paths() -> tuple[Path, Path]:
     """Return paths to text and JSONL log files, configuring logging if needed."""
-
     if _log_dir is None:
         configure_logging()
     assert _log_dir is not None
@@ -238,7 +234,6 @@ def get_log_file_paths() -> tuple[Path, Path]:
 
 def open_log_directory() -> bool:
     """Open the log directory in the system file browser."""
-
     directory = get_log_directory()
     try:  # pragma: no cover - platform-dependent side effect
         if sys.platform.startswith("win"):

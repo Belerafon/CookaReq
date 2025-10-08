@@ -262,21 +262,18 @@ class EditorPanel(wx.Panel):
 
     def FitInside(self) -> None:  # noqa: N802 - wxWidgets API casing
         """Recalculate the scrollable area of the editor form."""
-
         self._content_panel.FitInside()
         self._content_panel.Layout()
         super().Layout()
 
     def Layout(self) -> bool:  # noqa: N802 - wxWidgets API casing
         """Layout both the scrollable content and the outer panel."""
-
         self._content_panel.Layout()
         return super().Layout()
 
     # helpers -------------------------------------------------------------
     def set_service(self, service: RequirementsService | None) -> None:
         """Configure requirements service used by the editor."""
-
         self._service = service
         self._document = None
         self._known_ids = None
@@ -286,7 +283,6 @@ class EditorPanel(wx.Panel):
 
     def set_document(self, prefix: str | None) -> None:
         """Select active document ``prefix`` for ID validation."""
-
         self._doc_prefix = prefix
         self.extra["doc_prefix"] = prefix or ""
         self._document = None
@@ -459,7 +455,6 @@ class EditorPanel(wx.Panel):
 
     def _lookup_link_metadata(self, rid: str) -> dict[str, Any] | None:
         """Return cached metadata for ``rid`` or load it from storage."""
-
         rid = rid.strip()
         if not rid:
             return None
@@ -495,7 +490,6 @@ class EditorPanel(wx.Panel):
         self, links: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Enrich serialized ``links`` with cached metadata when available."""
-
         enriched: list[dict[str, Any]] = []
         for entry in links:
             rid = str(entry.get("rid", "")).strip()
@@ -516,7 +510,6 @@ class EditorPanel(wx.Panel):
 
     def _format_link_note(self, link: dict[str, Any]) -> str:
         """Return human-readable text for ``link`` entry."""
-
         rid = str(link.get("rid", "")).strip()
         title = str(link.get("title", "")).strip()
         doc_title = str(link.get("doc_title", "")).strip()
@@ -631,7 +624,6 @@ class EditorPanel(wx.Panel):
     # basic operations -------------------------------------------------
     def new_requirement(self) -> None:
         """Reset UI fields to create a new requirement."""
-
         with self._bulk_update():
             for ctrl in self.fields.values():
                 ctrl.ChangeValue("")
@@ -682,7 +674,6 @@ class EditorPanel(wx.Panel):
         mtime: float | None = None,
     ) -> None:
         """Populate editor fields from ``data``."""
-
         if isinstance(data, Requirement):
             self.extra["doc_prefix"] = data.doc_prefix
             self.extra["rid"] = data.rid
@@ -756,7 +747,6 @@ class EditorPanel(wx.Panel):
 
     def clone(self, new_id: int) -> None:
         """Copy current requirement into a new one with ``new_id``."""
-
         with self._bulk_update():
             self.fields["id"].ChangeValue(str(new_id))
             self.fields["modified_at"].ChangeValue("")
@@ -775,7 +765,6 @@ class EditorPanel(wx.Panel):
     # data helpers -----------------------------------------------------
     def get_data(self) -> Requirement:
         """Collect form data into a :class:`Requirement`."""
-
         id_value = self.fields["id"].GetValue().strip()
         if not id_value:
             raise ValueError(_("ID is required"))
@@ -1093,7 +1082,6 @@ class EditorPanel(wx.Panel):
 
     def save(self, prefix: str) -> Path:
         """Persist editor contents within document ``prefix`` and return path."""
-
         service = self._require_service()
         try:
             doc = service.get_document(prefix)
@@ -1135,7 +1123,6 @@ class EditorPanel(wx.Panel):
 
     def _snapshot_state(self) -> dict[str, Any]:
         """Return immutable snapshot of current editor contents."""
-
         fields_state = {
             name: ctrl.GetValue()
             for name, ctrl in self.fields.items()
@@ -1161,19 +1148,16 @@ class EditorPanel(wx.Panel):
 
     def mark_clean(self) -> None:
         """Store current state as the latest saved baseline."""
-
         self._saved_state = self._snapshot_state()
 
     def is_dirty(self) -> bool:
         """Return True when editor content differs from saved baseline."""
-
         if self._saved_state is None:
             return False
         return self._snapshot_state() != self._saved_state
 
     def discard_changes(self) -> None:
         """Revert editor fields to the latest stored version."""
-
         handled = False
         if self._on_discard_callback:
             handled = bool(self._on_discard_callback())
@@ -1241,7 +1225,6 @@ class EditorPanel(wx.Panel):
 
     def add_attachment(self, path: str, note: str = "") -> None:
         """Append attachment with ``path`` and optional ``note``."""
-
         self.attachments.append({"path": path, "note": note})
         if hasattr(self, "attachments_list"):
             idx = self.attachments_list.InsertItem(

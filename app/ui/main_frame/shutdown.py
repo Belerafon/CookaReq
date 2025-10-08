@@ -20,7 +20,6 @@ class MainFrameShutdownMixin:
 
     def register_auxiliary_frame(self: MainFrame, frame: wx.Frame) -> None:
         """Ensure ``frame`` is configured to follow the main window lifecycle."""
-
         if frame is None:
             return
         def _ensure_destroy(event: wx.CloseEvent) -> None:  # pragma: no cover - GUI event
@@ -34,7 +33,6 @@ class MainFrameShutdownMixin:
 
     def _request_exit_main_loop(self: MainFrame) -> None:
         """Ask wx to terminate the main loop if it is still running."""
-
         app = wx.GetApp()
         if not app:
             return

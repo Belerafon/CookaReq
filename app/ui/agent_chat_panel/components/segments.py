@@ -1,4 +1,4 @@
-"""Segment-based widgets for the agent chat transcript."""
+"""Widgets and helpers for rendering transcript segments inside the chat panel."""
 
 from __future__ import annotations
 
@@ -49,10 +49,8 @@ class _LabeledCollapsiblePane(wx.CollapsiblePane):
             return
         callback = getattr(self, "_cookareq_on_expand", None)
         if callable(callback):
-            try:
+            with suppress(Exception):
                 callback()
-            except Exception:
-                pass
 
 
 def _format_context_messages(
@@ -403,6 +401,7 @@ class MessageSegmentPanel(wx.Panel):
         segment_kind: Literal["user", "agent"],
         on_layout_hint: Callable[[str, int], None] | None,
     ) -> None:
+        """Initialise panel bookkeeping for a chat segment."""
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
         self.SetForegroundColour(parent.GetForegroundColour())
@@ -427,6 +426,7 @@ class MessageSegmentPanel(wx.Panel):
         regenerate_enabled: bool,
         on_regenerate: Callable[[], None] | None,
     ) -> None:
+        """Populate the panel with widgets for the supplied ``payload``."""
         self._capture_collapsed_state()
         self._collapsible.clear()
         sizer = self.GetSizer()
@@ -590,10 +590,7 @@ class MessageSegmentPanel(wx.Panel):
         summary = details.summary
         tool_name = summary.tool_name or "Tool"
         status = summary.status or "returned data"
-        heading = "Tool call {tool} — {status}".format(
-            tool=normalize_for_display(tool_name),
-            status=normalize_for_display(status),
-        )
+        heading = f"Tool call {normalize_for_display(tool_name)} — {normalize_for_display(status)}"
 
         bullet_lines = self._collect_tool_bullet_lines(summary)
         text_lines = [heading]
@@ -639,15 +636,11 @@ class MessageSegmentPanel(wx.Panel):
 
         if summary.cost:
             add_bullet_line(
-                "Cost: {cost}".format(
-                    cost=normalize_for_display(summary.cost)
-                )
+                f"Cost: {normalize_for_display(summary.cost)}"
             )
         if summary.error_message:
             add_bullet_line(
-                "Error: {message}".format(
-                    message=normalize_for_display(summary.error_message)
-                )
+                f"Error: {normalize_for_display(summary.error_message)}"
             )
 
         for bullet in summary.bullet_lines:
@@ -834,10 +827,8 @@ class MessageSegmentPanel(wx.Panel):
         for key, state in list(self._deferred_payloads.items()):
             pane = state.pane
             if isinstance(pane, wx.CollapsiblePane):
-                try:
+                with suppress(RuntimeError):
                     self._collapsed_state[key] = pane.IsCollapsed()
-                except RuntimeError:
-                    pass
                 handler = state.handler
                 if handler is not None:
                     with suppress(RuntimeError):
@@ -848,10 +839,8 @@ class MessageSegmentPanel(wx.Panel):
         self._deferred_payloads.clear()
         for key, pane in list(self._collapsible.items()):
             if isinstance(pane, wx.CollapsiblePane):
-                try:
+                with suppress(RuntimeError):
                     self._collapsed_state[key] = pane.IsCollapsed()
-                except RuntimeError:
-                    continue
 
     # ------------------------------------------------------------------
     def _register_collapsible(self, key: str, pane: wx.CollapsiblePane) -> None:
@@ -866,8 +855,10 @@ class MessageSegmentPanel(wx.Panel):
         text_ctrl: wx.TextCtrl,
         raw_payload: Any,
     ) -> None:
-        loader = lambda: self._ensure_deferred_payload_loaded(key)
-        setattr(pane, "_cookareq_on_expand", loader)
+        def loader() -> None:
+            self._ensure_deferred_payload_loaded(key)
+
+        pane._cookareq_on_expand = loader  # type: ignore[attr-defined]
         self._deferred_payloads[key] = _DeferredPayloadState(
             pane=pane,
             text_ctrl=text_ctrl,
@@ -890,10 +881,8 @@ class MessageSegmentPanel(wx.Panel):
     def _apply_deferred_text(
         self, state: _DeferredPayloadState, text: str
     ) -> None:
-        try:
+        with suppress(RuntimeError):
             state.text_ctrl.ChangeValue(text)
-        except RuntimeError:
-            pass
         for mirror in list(state.mirrors):
             with suppress(RuntimeError):
                 mirror.ChangeValue(text)
@@ -933,10 +922,8 @@ class MessageSegmentPanel(wx.Panel):
             state.cached_text = text
             state.loading = False
             self._apply_deferred_text(state, text)
-            try:
+            with suppress(RuntimeError):
                 state.text_ctrl.ShowPosition(0)
-            except RuntimeError:
-                pass
 
             handler_ref = state.handler
             if handler_ref is not None:
@@ -985,10 +972,8 @@ class MessageSegmentPanel(wx.Panel):
         self._layout_hints[key] = width
         if self._on_layout_hint is None:
             return
-        try:
+        with suppress(Exception):
             self._on_layout_hint(key, width)
-        except Exception:
-            pass
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -1008,10 +993,8 @@ class MessageSegmentPanel(wx.Panel):
         handler = self._regenerate_handler
         if handler is None:
             return
-        try:
+        with suppress(Exception):
             handler()
-        except Exception:
-            pass
 class TurnCard(wx.Panel):
     """Container combining message and diagnostic segments for an entry."""
 
@@ -1023,6 +1006,7 @@ class TurnCard(wx.Panel):
         entry_index: int,
         on_layout_hint: Callable[[str, int], None] | None,
     ) -> None:
+        """Prepare sub-panels used to render a conversation entry."""
         super().__init__(parent)
         self.SetBackgroundColour(parent.GetBackgroundColour())
         self.SetForegroundColour(parent.GetForegroundColour())
@@ -1055,16 +1039,15 @@ class TurnCard(wx.Panel):
         on_regenerate: Callable[[], None] | None,
         regenerate_enabled: bool,
     ) -> None:
+        """Render transcript ``segments`` and capture regenerated state."""
         self._capture_system_state()
         previous_notice = self._regenerated_notice
         sizer = self.GetSizer()
         sizer.Clear(delete_windows=False)
         self._regenerated_notice = None
         if previous_notice is not None:
-            try:
+            with suppress(RuntimeError):
                 previous_notice.Destroy()
-            except RuntimeError:
-                pass
 
         prompt_segment = next(
             (segment for segment in segments if segment.kind == "user"),
@@ -1137,10 +1120,8 @@ class TurnCard(wx.Panel):
         for key, pane in list(self._system_sections.items()):
             if isinstance(pane, wx.CollapsiblePane):
                 self._collapsed_state[key] = pane.IsCollapsed()
-                try:
+                with suppress(RuntimeError):
                     pane.Destroy()
-                except RuntimeError:
-                    pass
         self._system_sections.clear()
 
     # ------------------------------------------------------------------

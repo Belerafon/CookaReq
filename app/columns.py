@@ -1,4 +1,4 @@
-"""Shared column metadata reused by GUI and configuration."""
+"""Column selection utilities for requirements list views."""
 
 from __future__ import annotations
 
@@ -62,13 +62,11 @@ DEFAULT_COLUMN_WIDTHS = MappingProxyType(_DEFAULT_COLUMN_WIDTHS)
 
 def available_columns() -> list[str]:
     """Return toggleable columns for requirement lists."""
-
     return list(AVAILABLE_COLUMNS)
 
 
 def sanitize_columns(columns: Sequence[str]) -> list[str]:
     """Filter ``columns`` to valid, unique entries preserving order."""
-
     seen: set[str] = set()
     sanitized: list[str] = []
     for name in columns:
@@ -80,7 +78,6 @@ def sanitize_columns(columns: Sequence[str]) -> list[str]:
 
 def default_column_width(field: str) -> int:
     """Return a sensible default width for ``field`` in requirement lists."""
-
     width = _DEFAULT_COLUMN_WIDTHS.get(field)
     if width is not None:
         return width

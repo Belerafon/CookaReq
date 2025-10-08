@@ -1,11 +1,10 @@
 """Utilities for parsing LLM responses."""
-
 from __future__ import annotations
 
 import json
 import re
 from dataclasses import asdict, dataclass, is_dataclass
-from typing import Any, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 
 from ..telemetry import log_debug_payload, log_event
 from ..util.cancellation import CancellationEvent, OperationCancelledError
@@ -20,6 +19,9 @@ from .reasoning import (
 from .types import LLMReasoningSegment, LLMToolCall
 from .utils import extract_mapping
 from .validation import ToolValidationError
+
+if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    from ..settings import LLMSettings
 
 __all__ = [
     "LLMResponseParser",
@@ -40,7 +42,6 @@ class _ToolArgumentRecovery:
 
 def _extract_tool_argument_mapping(arguments: Any) -> Mapping[str, Any] | None:
     """Return a mapping for tool arguments without relying on ``__dict__``."""
-
     if isinstance(arguments, Mapping):
         return arguments
     for attr in ("model_dump", "dict"):
@@ -67,7 +68,6 @@ def _extract_tool_argument_mapping(arguments: Any) -> Mapping[str, Any] | None:
 
 def _stringify_tool_arguments(arguments: Any) -> str:
     """Coerce tool arguments into a JSON text payload without dropping data."""
-
     if isinstance(arguments, str):
         return arguments or "{}"
     if isinstance(arguments, bytes):
@@ -131,7 +131,6 @@ def _stringify_tool_arguments(arguments: Any) -> str:
 
 def normalise_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
     """Normalize tool call payloads into the OpenAI function schema."""
-
     if not tool_calls:
         return []
     if isinstance(tool_calls, Mapping):  # pragma: no cover - defensive
@@ -183,7 +182,8 @@ def normalise_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
 class LLMResponseParser:
     """Convert raw LLM payloads into internal response structures."""
 
-    def __init__(self, settings: "LLMSettings", message_format: str) -> None:
+    def __init__(self, settings: LLMSettings, message_format: str) -> None:
+        """Capture parser configuration shared across conversion helpers."""
         from ..settings import LLMSettings  # local import to avoid cycles
 
         if not isinstance(settings, LLMSettings):  # pragma: no cover - defensive
@@ -193,6 +193,7 @@ class LLMResponseParser:
 
     # ------------------------------------------------------------------
     def format_invalid_completion_error(self, prefix: str, completion: Any) -> str:
+        """Return a user-facing error message summarizing a malformed completion."""
         summary = self._summarize_completion_payload(completion)
         hint = (
             "Verify that the configured base URL "
@@ -214,6 +215,7 @@ class LLMResponseParser:
         return message
 
     def _summarize_completion_payload(self, completion: Any) -> str:
+        """Build a concise diagnostic summary for unexpected completion payloads."""
         def _clip(text: str, limit: int = 120) -> str:
             snippet = str(text).strip()
             if len(snippet) <= limit:
@@ -268,6 +270,7 @@ class LLMResponseParser:
         *,
         cancellation: CancellationEvent | None,
     ) -> tuple[str, list[dict[str, Any]], list[dict[str, str]]]:
+        """Consume streamed chat chunks into text, tool calls, and reasoning entries."""
         message_parts: list[str] = []
         tool_chunks: dict[tuple[int, object], dict[str, Any]] = {}
         order: list[tuple[int, object]] = []
@@ -418,6 +421,7 @@ class LLMResponseParser:
         self,
         completion: Any,
     ) -> tuple[str, list[dict[str, Any]], list[dict[str, str]]]:
+        """Extract assistant text, tool payloads, and reasoning notes from a response."""
         choices = getattr(completion, "choices", None)
         if not choices:
             raise ToolValidationError(
@@ -468,6 +472,7 @@ class LLMResponseParser:
         reasoning_accumulator: list[dict[str, str]] | None = None,
         tool_payload_sink: list[Any] | None = None,
     ) -> str:
+        """Unpack a message payload while capturing reasoning and tool metadata."""
         if isinstance(message, str):
             return message
         message_map = extract_mapping(message)
@@ -533,6 +538,7 @@ class LLMResponseParser:
         reasoning_accumulator: list[dict[str, str]] | None,
         tool_payload_sink: list[Any] | None,
     ) -> str:
+        """Flatten mixed content items into text while recording reasoning fragments."""
         if not content:
             return ""
         if isinstance(content, str):
@@ -611,6 +617,7 @@ class LLMResponseParser:
         *,
         reasoning_accumulator: list[dict[str, str]] | None,
     ) -> str:
+        """Remove ``<think>`` blocks and convert them into reasoning fragments."""
         if not text:
             return text
         lowered = text.lower()
@@ -676,6 +683,7 @@ class LLMResponseParser:
     def parse_harmony_output(
         self, completion: Any
     ) -> tuple[str, list[dict[str, Any]]]:
+        """Convert Harmony-style completions into assistant text and tool calls."""
         output = getattr(completion, "output", None)
         if output is None:
             completion_map = extract_mapping(completion)
@@ -735,6 +743,7 @@ class LLMResponseParser:
 
     # ------------------------------------------------------------------
     def parse_tool_calls(self, tool_calls: Any) -> tuple[LLMToolCall, ...]:
+        """Normalise arbitrary tool call payloads into :class:`LLMToolCall` objects."""
         if not tool_calls:
             return ()
 
@@ -821,6 +830,7 @@ class LLMResponseParser:
         call_id: str,
         tool_name: str,
     ) -> Mapping[str, Any]:
+        """Coerce a tool call payload into a JSON-safe mapping."""
         mapping_candidate = None
         if isinstance(payload, Mapping):
             mapping_candidate = payload
@@ -868,6 +878,7 @@ class LLMResponseParser:
 
     # ------------------------------------------------------------------
     def _extract_reasoning_tool_calls(self, payload: Any) -> list[dict[str, Any]]:
+        """Collect tool call structures embedded within reasoning fragments."""
         entries = extract_reasoning_entries(payload)
         fragments: dict[str, dict[str, Any]] = {}
         order: list[str] = []
@@ -940,6 +951,7 @@ class LLMResponseParser:
         aggregated: list[dict[str, Any]],
         fragments: Sequence[ReasoningFragment],
     ) -> None:
+        """Append normalized reasoning fragments to the accumulator."""
         for fragment in fragments:
             text = fragment.text
             if not text:
@@ -955,6 +967,7 @@ class LLMResponseParser:
     def finalize_reasoning_segments(
         self, segments: Sequence[Mapping[str, Any]]
     ) -> tuple[LLMReasoningSegment, ...]:
+        """Merge, deduplicate, and normalize reasoning fragments for storage."""
         finalized: list[LLMReasoningSegment] = []
         seen: set[tuple[str, str, str, str]] = set()
 
@@ -997,6 +1010,7 @@ class LLMResponseParser:
         choice_index: int,
         tool_index: int | None = None,
     ) -> None:
+        """Merge streaming tool call fragments into an ordered accumulator."""
         call_map = extract_mapping(tool_call)
         call_id = getattr(tool_call, "id", None)
         if call_map is not None and call_id is None:
@@ -1065,6 +1079,7 @@ class LLMResponseParser:
         *,
         choice_index: int,
     ) -> None:
+        """Accumulate streaming ``function_call`` deltas into the tool buffer."""
         func_map = extract_mapping(function_call)
         call_id = None
         if func_map is not None:
@@ -1111,6 +1126,7 @@ class LLMResponseParser:
         call_id: str,
         tool_name: str,
     ) -> Any:
+        """Decode JSON arguments and trigger recovery when parsing fails."""
         text = arguments_text or "{}"
         try:
             return json.loads(text)
@@ -1136,6 +1152,7 @@ class LLMResponseParser:
             ) from exc
 
     def _recover_tool_arguments(self, arguments_text: str) -> _ToolArgumentRecovery | None:
+        """Attempt to salvage structured arguments from concatenated JSON fragments."""
         stripped = (arguments_text or "").strip()
         if not stripped:
             return None
@@ -1195,6 +1212,7 @@ class LLMResponseParser:
         tool_name: str,
         error: json.JSONDecodeError,
     ) -> None:
+        """Log telemetry when tool arguments cannot be parsed or repaired."""
         text = arguments_text or ""
         preview, stripped = self._arguments_preview(text)
         classification: str | None = None
@@ -1232,6 +1250,7 @@ class LLMResponseParser:
         error: json.JSONDecodeError,
         recovery: _ToolArgumentRecovery,
     ) -> None:
+        """Log telemetry describing recovered tool argument fragments."""
         text = arguments_text or ""
         preview, _ = self._arguments_preview(text)
         error_info = {
@@ -1272,6 +1291,7 @@ class LLMResponseParser:
     def _arguments_preview(
         arguments_text: str, *, limit: int = 200
     ) -> tuple[str, str]:
+        """Return a short preview and stripped form of a tool argument string."""
         text = arguments_text or ""
         stripped = text.strip()
         preview = (

@@ -35,7 +35,6 @@ def summarize_tool_results(
     tool_results: Sequence[Any] | None,
 ) -> tuple[ToolCallSummary, ...]:
     """Generate summaries for tool payloads returned by the agent."""
-
     from .history_utils import history_json_safe, sort_tool_payloads
 
     summaries: list[ToolCallSummary] = []

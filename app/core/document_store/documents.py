@@ -15,7 +15,6 @@ def _read_json(path: Path) -> dict:
 
 def stable_color(name: str) -> str:
     """Return a pastel color generated from ``name``."""
-
     from hashlib import sha256
 
     digest = sha256(name.encode("utf-8")).hexdigest()
@@ -27,13 +26,11 @@ def stable_color(name: str) -> str:
 
 def label_color(label: LabelDef) -> str:
     """Return explicit label color or a generated one."""
-
     return label.color or stable_color(label.key)
 
 
 def load_document(directory: str | Path) -> Document:
     """Load document configuration from ``directory``."""
-
     directory_path = Path(directory)
     prefix = directory_path.name
     path = directory_path / "document.json"
@@ -60,7 +57,6 @@ def load_document(directory: str | Path) -> Document:
 
 def save_document(directory: str | Path, doc: Document) -> Path:
     """Persist ``doc`` configuration into ``directory``."""
-
     directory_path = Path(directory)
     expected_prefix = directory_path.name
     if doc.prefix != expected_prefix:
@@ -85,7 +81,6 @@ def save_document(directory: str | Path, doc: Document) -> Path:
 
 def load_documents(root: str | Path) -> dict[str, Document]:
     """Load all document configurations under ``root``."""
-
     root_path = Path(root)
     docs: dict[str, Document] = {}
     if not root_path.is_dir():
@@ -102,7 +97,6 @@ def is_ancestor(
     child_prefix: str, ancestor_prefix: str, docs: Mapping[str, Document]
 ) -> bool:
     """Return ``True`` if ``ancestor_prefix`` is an ancestor of ``child_prefix``."""
-
     if child_prefix == ancestor_prefix:
         return True
     current = docs.get(child_prefix)
@@ -117,7 +111,6 @@ def collect_label_defs(
     prefix: str, docs: Mapping[str, Document]
 ) -> tuple[list[LabelDef], bool]:
     """Return label definitions and freeform flag for ``prefix``."""
-
     labels: list[LabelDef] = []
     allow_freeform = False
     chain: list[Document] = []
@@ -136,7 +129,6 @@ def collect_label_defs(
 
 def collect_labels(prefix: str, docs: Mapping[str, Document]) -> tuple[set[str], bool]:
     """Return allowed label keys and freeform flag for ``prefix``."""
-
     defs, freeform = collect_label_defs(prefix, docs)
     return {d.key for d in defs}, freeform
 
@@ -145,7 +137,6 @@ def validate_labels(
     prefix: str, labels: list[str], docs: Mapping[str, Document]
 ) -> str | None:
     """Validate ``labels`` for items under document ``prefix``."""
-
     allowed, freeform = collect_labels(prefix, docs)
     if labels and not freeform:
         unknown = [lbl for lbl in labels if lbl not in allowed]

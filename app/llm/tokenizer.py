@@ -33,7 +33,6 @@ class TokenCountResult:
         reason: str | None = None,
     ) -> TokenCountResult:
         """Return a successful, precise token count."""
-
         return cls(tokens=max(tokens, 0), approximate=False, model=model, reason=reason)
 
     @classmethod
@@ -45,7 +44,6 @@ class TokenCountResult:
         reason: str | None = None,
     ) -> TokenCountResult:
         """Return an approximate token count."""
-
         return cls(tokens=max(tokens, 0), approximate=True, model=model, reason=reason)
 
     @classmethod
@@ -56,12 +54,10 @@ class TokenCountResult:
         reason: str | None = None,
     ) -> TokenCountResult:
         """Return a result indicating that tokenisation failed."""
-
         return cls(tokens=None, approximate=False, model=model, reason=reason)
 
     def to_dict(self) -> dict[str, object]:
         """Serialise the result for JSON storage."""
-
         payload: dict[str, object] = {}
         if self.tokens is not None:
             payload["tokens"] = int(self.tokens)
@@ -75,7 +71,6 @@ class TokenCountResult:
     @classmethod
     def from_dict(cls, payload: Mapping[str, object]) -> TokenCountResult:
         """Create :class:`TokenCountResult` from a mapping."""
-
         tokens_value = payload.get("tokens")
         tokens: int | None
         if isinstance(tokens_value, bool):
@@ -104,7 +99,6 @@ _TIKTOKEN_CACHE: object | None = None
 
 def _load_tiktoken() -> object | None:
     """Return the cached :mod:`tiktoken` module when available."""
-
     global _TIKTOKEN_CACHE
     if _TIKTOKEN_CACHE is not None:
         return None if _TIKTOKEN_CACHE is False else _TIKTOKEN_CACHE
@@ -123,7 +117,6 @@ def _load_tiktoken() -> object | None:
 
 def _whitespace_count(text: str) -> int:
     """Return a rough token estimate by splitting on whitespace."""
-
     stripped = text.strip()
     if not stripped:
         return 0
@@ -137,7 +130,6 @@ def count_text_tokens(text: object, *, model: str | None = None) -> TokenCountRe
     specific encoding.  Unknown models fall back to ``cl100k_base``.  If neither
     strategy works, a simple whitespace-based approximation is returned.
     """
-
     try:
         text_value = "" if text is None else str(text)
     except Exception as exc:  # pragma: no cover - defensive
@@ -190,7 +182,6 @@ def count_text_tokens(text: object, *, model: str | None = None) -> TokenCountRe
 
 def combine_token_counts(results: Iterable[TokenCountResult | None]) -> TokenCountResult:
     """Aggregate multiple token counts into a single result."""
-
     total = 0
     have_value = False
     approximate = False

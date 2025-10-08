@@ -1,5 +1,6 @@
 import asyncio
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 import pytest
 
@@ -107,7 +108,7 @@ def test_execute_tool_calls_logs_full_exchange(
         agent._execute_tool_calls_core((tool_call,))
     )
 
-    assert not messages[0]["content"] == ""
+    assert messages[0]["content"] != ""
     assert error_payload is None
     assert successful and successful[0]["ok"] is True
 

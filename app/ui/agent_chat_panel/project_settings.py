@@ -22,9 +22,8 @@ class AgentProjectSettings:
     custom_system_prompt: str = ""
     documents_path: str = ""
 
-    def normalized(self) -> "AgentProjectSettings":
+    def normalized(self) -> AgentProjectSettings:
         """Return settings with whitespace-normalised fields."""
-
         return AgentProjectSettings(
             custom_system_prompt=self.custom_system_prompt.strip(),
             documents_path=normalize_documents_path(self.documents_path),
@@ -32,7 +31,6 @@ class AgentProjectSettings:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise settings into a JSON-compatible mapping."""
-
         normalized = self.normalized()
         return {
             "version": 4,
@@ -43,7 +41,6 @@ class AgentProjectSettings:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> AgentProjectSettings:
         """Create :class:`AgentProjectSettings` from *payload* data."""
-
         prompt = payload.get("custom_system_prompt", "")
         if not isinstance(prompt, str):
             prompt = ""
@@ -58,7 +55,6 @@ class AgentProjectSettings:
 
 def load_agent_project_settings(path: Path) -> AgentProjectSettings:
     """Load project settings from *path* returning defaults on failure."""
-
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -75,11 +71,11 @@ def load_agent_project_settings(path: Path) -> AgentProjectSettings:
 
 def save_agent_project_settings(path: Path, settings: AgentProjectSettings) -> None:
     """Persist *settings* to *path* using a temporary file."""
-
     payload = settings.to_dict()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload_text = json.dumps(payload, ensure_ascii=False, indent=2)
+    tmp_path.write_text(payload_text, encoding="utf-8")
     tmp_path.replace(path)
 
 

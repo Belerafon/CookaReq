@@ -28,31 +28,26 @@ _TRANSLATION: NullTranslations = NullTranslations()
 
 def get_translation() -> NullTranslations:
     """Return the currently active translation object."""
-
     return _TRANSLATION
 
 
 def gettext(message: str) -> str:
     """Translate *message* using the active gettext catalogue."""
-
     return _TRANSLATION.gettext(message)
 
 
 def ngettext(singular: str, plural: str, number: int) -> str:
     """Translate pluralisable message based on *number*."""
-
     return _TRANSLATION.ngettext(singular, plural, number)
 
 
 def pgettext(context: str, message: str) -> str:
     """Translate *message* for the supplied *context*."""
-
     return _TRANSLATION.pgettext(context, message)
 
 
 def npgettext(context: str, singular: str, plural: str, number: int) -> str:
     """Translate pluralisable message tied to *context*."""
-
     return _TRANSLATION.npgettext(context, singular, plural, number)
 
 
@@ -66,7 +61,6 @@ def translate_resource(message: str | Iterable[str]) -> str:
     the fragments are joined with a single space before translation so that the
     catalogue sees the full sentence.
     """
-
     if isinstance(message, str):
         combined = message
     else:
@@ -80,7 +74,6 @@ def install(
     languages: Iterable[str] | None = None,
 ) -> NullTranslations:
     """Load translations for *domain* and make them globally available."""
-
     localedir_path = Path(localedir)
     requested = _prepare_language_list(languages)
     translation = _gettext.translation(

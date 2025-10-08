@@ -30,7 +30,6 @@ class DetachedEditorFrame(wx.Frame):
         on_close: Callable[[DetachedEditorFrame], None] | None = None,
     ) -> None:
         """Create frame initialized with ``requirement`` contents."""
-
         title = self._format_title(requirement, doc_prefix)
         super().__init__(parent, title=title)
         background_source = self._resolve_background_source(parent)
@@ -72,7 +71,6 @@ class DetachedEditorFrame(wx.Frame):
     # ------------------------------------------------------------------
     def _resolve_background_source(self, parent: wx.Window | None) -> wx.Window | None:
         """Return a widget whose colours should be mirrored by this frame."""
-
         if parent is None:
             return None
         try:
@@ -89,7 +87,6 @@ class DetachedEditorFrame(wx.Frame):
         self, target: wx.Window, source: wx.Window | None
     ) -> None:
         """Copy background colour to ``target`` falling back to system defaults."""
-
         if source is not None:
             inherit_background(target, source)
             return
@@ -108,7 +105,6 @@ class DetachedEditorFrame(wx.Frame):
     @property
     def key(self) -> tuple[str, int]:
         """Return dictionary key representing this editor instance."""
-
         return self.doc_prefix, self.requirement_id
 
     def reload(
@@ -119,7 +115,6 @@ class DetachedEditorFrame(wx.Frame):
         allow_freeform: bool,
     ) -> None:
         """Load ``requirement`` replacing current contents."""
-
         self.doc_prefix = requirement.doc_prefix or doc_prefix or self.doc_prefix
         self.requirement_id = requirement.id
         self._labels = list(labels)
@@ -133,14 +128,12 @@ class DetachedEditorFrame(wx.Frame):
     # ------------------------------------------------------------------
     def _handle_save(self) -> None:
         """Delegate saving to owning frame and keep focus on success."""
-
         if self._on_save(self):
             # Reload handled by callback; nothing else to do on success.
             return
 
     def _handle_cancel(self) -> bool:
         """Close the frame when the editor requests to discard changes."""
-
         self._closing_via_cancel = True
         closed = self.Close()
         if not closed:
@@ -150,7 +143,6 @@ class DetachedEditorFrame(wx.Frame):
 
     def _on_close_window(self, event: wx.CloseEvent) -> None:
         """Confirm closing when editor has unsaved changes."""
-
         if self._closing_via_cancel:
             self._closing_via_cancel = False
             if self._on_close:
@@ -167,13 +159,11 @@ class DetachedEditorFrame(wx.Frame):
 
     def _update_title(self, requirement: Requirement) -> None:
         """Refresh window title based on ``requirement`` metadata."""
-
         self.SetTitle(self._format_title(requirement, self.doc_prefix))
 
     @staticmethod
     def _format_title(requirement: Requirement, doc_prefix: str) -> str:
         """Return localized title string for ``requirement``."""
-
         rid = getattr(requirement, "rid", "") or f"{doc_prefix}-{requirement.id:04d}".strip("-")
         base = requirement.title.strip() if getattr(requirement, "title", "") else ""
         if base:

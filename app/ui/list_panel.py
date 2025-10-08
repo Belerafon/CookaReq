@@ -26,7 +26,6 @@ from .requirement_model import RequirementModel
 
 def _apply_item_selection(list_ctrl: wx.ListCtrl, index: int, selected: bool) -> None:
     """Set ``index`` selection on ``list_ctrl`` while swallowing backend quirks."""
-
     select_flag = getattr(wx, "LIST_STATE_SELECTED", 0x0002)
     focus_flag = getattr(wx, "LIST_STATE_FOCUSED", 0x0001)
     mask = select_flag | focus_flag
@@ -295,12 +294,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     # ColumnSorterMixin requirement
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
         """Return internal ``wx.ListCtrl`` for sorting mixin."""
-
         return self.list
 
     def GetSortImages(self):  # pragma: no cover - default arrows
         """Return image ids for sort arrows (unused)."""
-
         return (-1, -1)
 
     def set_handlers(
@@ -325,7 +322,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self, controller: DocumentsController | None
     ) -> None:
         """Set documents controller used for persistence."""
-
         self._docs_controller = controller
         self._doc_titles = {}
         self._link_display_cache.clear()
@@ -337,7 +333,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def set_active_document(self, prefix: str | None) -> None:
         """Record currently active document prefix for persistence."""
-
         self._current_doc_prefix = prefix
 
     def _label_color(self, name: str) -> str:
@@ -592,7 +587,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _default_column_width(self, field: str) -> int:
         """Return sensible default width for a given column field."""
-
         return columns.default_column_width(field)
 
     def load_column_order(self, config: ConfigManager) -> None:
@@ -677,12 +671,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def set_label_filter(self, labels: list[str]) -> None:
         """Apply label filter to the model."""
-
         self.apply_filters({"labels": labels})
 
     def set_search_query(self, query: str, fields: Sequence[str] | None = None) -> None:
         """Apply text ``query`` with optional field restriction."""
-
         filters = {"query": query}
         if fields is not None:
             filters["fields"] = list(fields)
@@ -822,14 +814,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         When ``select_id`` is provided, the list selects the matching
         requirement and scrolls to it after reloading the contents.
         """
-
         self._refresh()
         if select_id is not None:
             self.focus_requirement(select_id)
 
     def focus_requirement(self, req_id: int) -> None:
         """Select and ensure visibility of requirement ``req_id``."""
-
         target_index: int | None = None
         try:
             count = self.list.GetItemCount()
@@ -858,17 +848,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _set_item_selected(self, index: int, selected: bool) -> None:
         """Apply selection state without propagating backend errors."""
-
         _apply_item_selection(self.list, index, selected)
 
     def record_link(self, parent_rid: str, child_id: int) -> None:
         """Record that ``child_id`` links to ``parent_rid``."""
-
         self.derived_map.setdefault(parent_rid, []).append(child_id)
 
     def recalc_derived_map(self, requirements: list[Requirement]) -> None:
         """Rebuild derived requirements map from ``requirements``."""
-
         derived_map: dict[str, list[int]] = {}
         for req in requirements:
             for parent in getattr(req, "links", []):
@@ -949,7 +936,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _reset_context_menu_flag(self) -> None:
         """Allow opening the context menu again after the current popup closes."""
-
         self._context_menu_open = False
 
     def _create_context_menu(self, index: int, column: int | None):
@@ -980,14 +966,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             menu.AppendSubMenu(status_menu, label)
         field = self._field_from_column(column)
         edit_item = None
-        if field and field != "title":
-            if field != "status":
-                edit_item = menu.Append(wx.ID_ANY, _("Edit {field}").format(field=field))
-                menu.Bind(
-                    wx.EVT_MENU,
-                    lambda _evt, c=column: self._on_edit_field(c),
-                    edit_item,
-                )
+        if field and field not in {"title", "status"}:
+            edit_item = menu.Append(wx.ID_ANY, _("Edit {field}").format(field=field))
+            menu.Bind(
+                wx.EVT_MENU,
+                lambda _evt, c=column: self._on_edit_field(c),
+                edit_item,
+            )
         if clone_item and self._on_clone and req_id is not None:
             menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_clone(i), clone_item)
         if len(selected_ids) > 1:
@@ -1042,7 +1027,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def get_selected_ids(self) -> list[int]:
         """Return identifiers of currently selected requirements."""
-
         ordered: list[int] = []
         seen: set[int] = set()
         for req_id in self._indices_to_ids(self._get_selected_indices()):
@@ -1135,7 +1119,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _ordered_unique_ids(self, req_ids: Sequence[int]) -> list[int]:
         """Return ``req_ids`` without duplicates preserving order."""
-
         unique: list[int] = []
         seen: set[int] = set()
         for req_id in req_ids:
@@ -1170,7 +1153,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _show_labels_dialog(self, req_ids: Sequence[int]) -> None:
         """Open dialog to adjust labels for ``req_ids``."""
-
         unique_order = self._ordered_unique_ids(req_ids)
         if not unique_order:
             return
@@ -1221,7 +1203,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _set_labels(self, req_ids: Sequence[int], labels: Sequence[str]) -> None:
         """Apply ``labels`` to requirements identified by ``req_ids``."""
-
         unique_order = self._ordered_unique_ids(req_ids)
         if not unique_order:
             return
@@ -1291,7 +1272,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _persist_requirement(self, req: Requirement) -> None:
         """Persist edited ``req`` if controller and document are available."""
-
         if not self._docs_controller or not self._current_doc_prefix:
             return
         try:

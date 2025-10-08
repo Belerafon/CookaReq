@@ -23,7 +23,6 @@ _MISSING = object()
 
 def _default_config_path(app_name: str) -> Path:
     """Return platform-appropriate config path for *app_name*."""
-
     base = os.environ.get("XDG_CONFIG_HOME")
     root = Path(base) if base else Path.home() / ".config"
     return root / app_name / "config.json"
@@ -108,6 +107,7 @@ class ConfigManager:
         app_name: str = "CookaReq",
         path: Path | str | None = None,
     ) -> None:
+        """Initialise configuration manager and load persisted state."""
         self._path = Path(path) if path is not None else _default_config_path(app_name)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._settings = AppSettings()
@@ -178,7 +178,6 @@ class ConfigManager:
     # persistence
     def flush(self) -> None:
         """Persist configuration to disk."""
-
         payload = {
             "settings": self._serialize_overrides(),
             "raw": {key: deepcopy(value) for key, value in self._raw.items()},
@@ -191,6 +190,7 @@ class ConfigManager:
     # ------------------------------------------------------------------
     # schema access helpers
     def get_value(self, name: str, default: Any = _MISSING) -> Any:
+        """Return configuration value by *name* honouring overrides."""
         binding = self._binding_for(name)
         if binding is not None:
             value = deepcopy(
@@ -206,6 +206,7 @@ class ConfigManager:
         raise KeyError(name)
 
     def set_value(self, name: str, value: Any) -> None:
+        """Set configuration entry *name* to *value*."""
         binding = self._binding_for(name)
         if binding is not None:
             self._set_override(binding, value)
@@ -215,6 +216,7 @@ class ConfigManager:
     # ------------------------------------------------------------------
     # columns
     def get_column_width(self, index: int, default: int = -1) -> int:
+        """Return persisted width for column *index* or *default* when unset."""
         key = f"col_width_{index}"
         value = self._raw.get(key, _MISSING)
         if value is _MISSING:
@@ -225,9 +227,11 @@ class ConfigManager:
             return int(default)
 
     def set_column_width(self, index: int, width: int) -> None:
+        """Persist width *width* for column *index*."""
         self._raw[f"col_width_{index}"] = int(width)
 
     def get_column_order(self) -> list[str]:
+        """Return configured ordering of visible columns."""
         raw = self._raw.get("col_order")
         if isinstance(raw, str):
             candidates = raw.split(",")
@@ -238,25 +242,31 @@ class ConfigManager:
         return [str(entry) for entry in candidates if str(entry)]
 
     def set_column_order(self, fields: Sequence[str]) -> None:
+        """Persist ordering for visible *fields*."""
         self._raw["col_order"] = [str(field) for field in fields]
 
     def get_columns(self) -> list[str]:
+        """Return sanitised list of configured columns."""
         return sanitize_columns(self.get_value("list_columns"))
 
     def set_columns(self, fields: list[str]) -> None:
+        """Persist sanitized *fields* as visible columns and flush to disk."""
         self.set_value("list_columns", sanitize_columns(fields))
         self.flush()
 
     # ------------------------------------------------------------------
     # recent directories
     def get_recent_dirs(self) -> list[str]:
+        """Return history of recently opened directories."""
         return list(self.get_value("recent_dirs"))
 
     def set_recent_dirs(self, dirs: list[str]) -> None:
+        """Persist list of recent directories and flush to disk."""
         self.set_value("recent_dirs", list(dirs))
         self.flush()
 
     def add_recent_dir(self, path: Path) -> list[str]:
+        """Add *path* to the MRU directory list returning the updated value."""
         dirs = self.get_recent_dirs()
         p = str(path)
         if p in dirs:
@@ -269,32 +279,40 @@ class ConfigManager:
     # ------------------------------------------------------------------
     # flags and language
     def get_auto_open_last(self) -> bool:
+        """Return whether the last document should open automatically."""
         return bool(self.get_value("auto_open_last"))
 
     def set_auto_open_last(self, value: bool) -> None:
+        """Persist auto-open preference and flush."""
         self.set_value("auto_open_last", bool(value))
         self.flush()
 
     def get_remember_sort(self) -> bool:
+        """Return whether table sorting should be remembered."""
         return bool(self.get_value("remember_sort"))
 
     def set_remember_sort(self, value: bool) -> None:
+        """Persist remember-sort preference and flush."""
         self.set_value("remember_sort", bool(value))
         self.flush()
 
     def get_language(self) -> str | None:
+        """Return configured UI language code."""
         return self.get_value("language")
 
     def set_language(self, language: str | None) -> None:
+        """Persist UI *language* preference and flush."""
         self.set_value("language", language)
         self.flush()
 
     # ------------------------------------------------------------------
     # MCP server settings
     def get_mcp_settings(self) -> MCPSettings:
+        """Return deep copy of stored MCP configuration."""
         return self._settings.mcp.model_copy(deep=True)
 
     def set_mcp_settings(self, settings: MCPSettings) -> None:
+        """Persist MCP *settings* and rebuild derived state."""
         self._overrides["mcp"] = settings.model_dump(mode="python")
         self._rebuild_settings()
         self.flush()
@@ -302,9 +320,11 @@ class ConfigManager:
     # ------------------------------------------------------------------
     # LLM client settings
     def get_llm_settings(self) -> LLMSettings:
+        """Return deep copy of stored LLM configuration."""
         return self._settings.llm.model_copy(deep=True)
 
     def set_llm_settings(self, settings: LLMSettings) -> None:
+        """Persist LLM *settings* and rebuild derived state."""
         self._overrides["llm"] = settings.model_dump(mode="python")
         self._rebuild_settings()
         self.flush()
@@ -312,17 +332,21 @@ class ConfigManager:
     # ------------------------------------------------------------------
     # composite dataclasses
     def get_ui_settings(self) -> UISettings:
+        """Return deep copy of UI settings payload."""
         return self._settings.ui.model_copy(deep=True)
 
     def set_ui_settings(self, settings: UISettings) -> None:
+        """Persist UI *settings* and rebuild derived state."""
         self._overrides["ui"] = settings.model_dump(mode="python")
         self._rebuild_settings()
         self.flush()
 
     def get_app_settings(self) -> AppSettings:
+        """Return deep copy of the composite application settings."""
         return self._settings.model_copy(deep=True)
 
     def set_app_settings(self, settings: AppSettings) -> None:
+        """Persist full *settings* payload splitting it into sub-sections."""
         self.set_llm_settings(settings.llm)
         self.set_mcp_settings(settings.mcp)
         self.set_ui_settings(settings.ui)
@@ -330,9 +354,11 @@ class ConfigManager:
     # ------------------------------------------------------------------
     # sort settings
     def get_sort_settings(self) -> tuple[int, bool]:
+        """Return stored sort column index and ascending flag."""
         return int(self.get_value("sort_column")), bool(self.get_value("sort_ascending"))
 
     def set_sort_settings(self, column: int, ascending: bool) -> None:
+        """Persist sort configuration for list presentations."""
         self.set_value("sort_column", int(column))
         self.set_value("sort_ascending", bool(ascending))
         self.flush()
@@ -340,54 +366,67 @@ class ConfigManager:
     # ------------------------------------------------------------------
     # log console
     def get_log_sash(self, default: int) -> int:
+        """Return stored log console sash position with *default* fallback."""
         return int(self.get_value("log_sash", default=default))
 
     def set_log_sash(self, pos: int) -> None:
+        """Persist log console sash position and flush."""
         self.set_value("log_sash", int(pos))
         self.flush()
 
     def set_log_shown(self, shown: bool) -> None:
+        """Persist log console visibility flag."""
         self.set_value("log_shown", bool(shown))
         self.flush()
 
     def get_log_level(self) -> int:
+        """Return configured log level with INFO fallback."""
         level = int(self.get_value("log_level"))
         if level not in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR):
             return logging.INFO
         return level
 
     def set_log_level(self, level: int) -> None:
+        """Persist chosen log *level* and flush."""
         self.set_value("log_level", int(level))
         self.flush()
 
     def get_agent_chat_shown(self) -> bool:
+        """Return whether the agent chat panel is visible."""
         return bool(self.get_value("agent_chat_shown"))
 
     def set_agent_chat_shown(self, shown: bool) -> None:
+        """Persist agent chat visibility flag and flush."""
         self.set_value("agent_chat_shown", bool(shown))
         self.flush()
 
     def get_agent_chat_sash(self, default: int) -> int:
+        """Return stored agent chat sash position with *default* fallback."""
         return int(self.get_value("agent_chat_sash", default=default))
 
     def set_agent_chat_sash(self, pos: int) -> None:
+        """Persist agent chat sash position and flush."""
         self.set_value("agent_chat_sash", int(pos))
         self.flush()
 
     def get_agent_history_sash(self, default: int) -> int:
+        """Return stored agent history sash position with *default* fallback."""
         return int(self.get_value("agent_history_sash", default=default))
 
     def get_agent_confirm_mode(self) -> str:
+        """Return mode controlling confirmation prompts."""
         value = str(self.get_value("agent_confirm_mode", default="prompt"))
         if value not in {"prompt", "never"}:
             return "prompt"
         return value
 
     def set_agent_history_sash(self, pos: int) -> None:
+        """Persist agent history sash position and flush."""
         self.set_value("agent_history_sash", int(pos))
         self.flush()
 
     def set_agent_confirm_mode(self, mode: str) -> None:
+        """Persist confirmation *mode* coercing invalid values to ``"prompt"``."""
         if mode not in {"prompt", "never"}:
             mode = "prompt"
         self.set_value("agent_confirm_mode", mode)
@@ -396,37 +435,47 @@ class ConfigManager:
     # ------------------------------------------------------------------
     # requirement editor panel
     def get_editor_sash(self, default: int) -> int:
+        """Return stored editor sash position with *default* fallback."""
         return int(self.get_value("editor_sash_pos", default=default))
 
     def set_editor_sash(self, pos: int) -> None:
+        """Persist editor sash position and flush."""
         self.set_value("editor_sash_pos", int(pos))
         self.flush()
 
     def get_editor_shown(self) -> bool:
+        """Return whether the editor panel is visible."""
         return bool(self.get_value("editor_shown"))
 
     def set_editor_shown(self, shown: bool) -> None:
+        """Persist editor visibility flag and flush."""
         self.set_value("editor_shown", bool(shown))
         self.flush()
 
     def get_doc_tree_collapsed(self) -> bool:
+        """Return whether the document tree is collapsed."""
         return bool(self.get_value("doc_tree_collapsed"))
 
     def set_doc_tree_collapsed(self, collapsed: bool) -> None:
+        """Persist collapsed state for the document tree and flush."""
         self.set_value("doc_tree_collapsed", bool(collapsed))
         self.flush()
 
     def get_doc_tree_shown(self) -> bool:
+        """Return whether the document tree is currently shown."""
         return not self.get_doc_tree_collapsed()
 
     def set_doc_tree_shown(self, shown: bool) -> None:
+        """Toggle document tree collapsed flag based on *shown*."""
         self.set_doc_tree_collapsed(not shown)
 
     def get_doc_tree_sash(self, default: int) -> int:
+        """Return clamped sash position for the document tree."""
         value = int(self.get_value("sash_pos", default=default))
         return max(value, 0)
 
     def set_doc_tree_sash(self, pos: int) -> None:
+        """Persist document tree sash position and flush."""
         self.set_value("sash_pos", int(pos))
         self.flush()
 
@@ -443,6 +492,7 @@ class ConfigManager:
         *,
         editor_splitter: wx.SplitterWindow | None = None,
     ) -> None:
+        """Restore persisted window geometry and splitter positions."""
         w = max(400, min(int(self.get_value("win_w")), 3000))
         h = max(300, min(int(self.get_value("win_h")), 2000))
         frame.SetSize((w, h))
@@ -509,6 +559,7 @@ class ConfigManager:
         agent_chat_sash: int | None = None,
         agent_history_sash: int | None = None,
     ) -> None:
+        """Persist current window geometry, splitter positions and column layout."""
         w, h = frame.GetSize()
         x, y = frame.GetPosition()
         self.set_value("win_w", int(w))

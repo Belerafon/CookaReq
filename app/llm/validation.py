@@ -7,5 +7,3 @@ __all__ = ["ToolValidationError"]
 
 class ToolValidationError(ValueError):
     """Raised when the agent cannot interpret an LLM tool invocation."""
-
-    pass

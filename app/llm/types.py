@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 __all__ = [
     "LLMToolCall",
@@ -34,12 +35,10 @@ class LLMReasoningSegment:
     @property
     def text_with_whitespace(self) -> str:
         """Return ``text`` including preserved edge whitespace."""
-
         return f"{self.leading_whitespace}{self.text}{self.trailing_whitespace}"
 
     def preview(self, limit: int = 160) -> str:
         """Return a truncated representation retaining edge whitespace."""
-
         if limit <= 0:
             return ""
         return self.text_with_whitespace[:limit]

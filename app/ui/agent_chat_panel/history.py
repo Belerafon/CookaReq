@@ -33,13 +33,11 @@ class AgentChatHistory:
     @property
     def conversations(self) -> list[ChatConversation]:
         """Return the in-memory conversations."""
-
         return self._conversations
 
     # ------------------------------------------------------------------
     def get_conversation(self, conversation_id: str) -> ChatConversation | None:
         """Return conversation matching *conversation_id* when present."""
-
         for conversation in self._conversations:
             if conversation.conversation_id == conversation_id:
                 return conversation
@@ -49,26 +47,22 @@ class AgentChatHistory:
     @property
     def active_id(self) -> str | None:
         """Return identifier of the currently selected conversation."""
-
         return self._active_id
 
     # ------------------------------------------------------------------
     @property
     def path(self) -> Path:
         """Expose backing store path so callers can surface it in the UI."""
-
         return self._store.path
 
     # ------------------------------------------------------------------
     def set_conversations(self, conversations: Sequence[ChatConversation]) -> None:
         """Replace the in-memory conversation list."""
-
         self._conversations = list(conversations)
 
     # ------------------------------------------------------------------
     def set_active_id(self, conversation_id: str | None) -> None:
         """Set active conversation id notifying listeners on change."""
-
         previous = self._active_id
         self._active_id = conversation_id
         if conversation_id is not None:
@@ -84,7 +78,6 @@ class AgentChatHistory:
     # ------------------------------------------------------------------
     def persist_active_selection(self) -> None:
         """Persist the currently selected conversation id."""
-
         try:
             self._store.save_active_id(self._active_id)
         except Exception:  # pragma: no cover - defensive logging
@@ -96,7 +89,6 @@ class AgentChatHistory:
     # ------------------------------------------------------------------
     def load(self) -> tuple[list[ChatConversation], str | None]:
         """Populate memory state from disk and report the loaded payload."""
-
         previous = self._active_id
         conversations, active_id = self._store.load()
         self._conversations = list(conversations)
@@ -112,7 +104,6 @@ class AgentChatHistory:
     # ------------------------------------------------------------------
     def save(self) -> None:
         """Persist current state to disk logging failures defensively."""
-
         try:
             self._store.save(self._conversations, self._active_id)
         except Exception:  # pragma: no cover - defensive logging
@@ -128,7 +119,6 @@ class AgentChatHistory:
         persist_existing: bool = False,
     ) -> bool:
         """Switch history store to *path* returning ``True`` on change."""
-
         conversations: Iterable[ChatConversation] | None = (
             self._conversations if persist_existing else None
         )
@@ -142,7 +132,6 @@ class AgentChatHistory:
     # ------------------------------------------------------------------
     def ensure_conversation_entries(self, conversation: ChatConversation) -> None:
         """Ensure entries for *conversation* are available in memory."""
-
         if conversation.entries_loaded:
             return
         try:

@@ -2272,6 +2272,15 @@ msgstr "Загрузка…"
 msgid "Documentation disabled"
 msgstr "Документация отключена"
 
+msgid " — default read limit: {limit} KiB"
+msgstr " — лимит чтения по умолчанию: {limit} КиБ"
+
+msgid "Browse…"
+msgstr "Обзор…"
+
+msgid "Default from MCP settings: {path}"
+msgstr "Значение из настроек MCP: {path}"
+
 msgid "Base path is required for relative folders"
 msgstr "Для относительных путей нужна папка требований"
 
@@ -2283,3 +2292,36 @@ msgstr "{path} (не существует)"
 
 msgid "Select documentation folder"
 msgstr "Выберите папку документации"
+
+msgid "Documentation directory visible to MCP tools. Example: share\nRelative paths are resolved from the active requirements folder.\nLeave empty to disable documentation access."
+msgstr "Каталог документации, доступный инструментам MCP. Пример: share\nОтносительные пути вычисляются от активной папки требований.\nОставьте пустым, чтобы отключить доступ к документации."
+
+msgid "Documentation folder"
+msgstr "Папка документации"
+
+msgid "Documentation folder (optional). Relative paths resolve against the current requirements directory when one is open."
+msgstr "Папка документации (необязательно). Относительные пути вычисляются относительно текущего каталога требований, если он открыт."
+
+msgid "Documentation folder access disabled."
+msgstr "Доступ к папке документации отключён."
+
+msgid "Documentation folder pending: {path} (open a requirements folder)"
+msgstr "Папка документации ожидает: {path} (откройте каталог требований)"
+
+msgid "Documentation folder: {path}"
+msgstr "Папка документации: {path}"
+
+msgid "Documentation root: {path}"
+msgstr "Корневая папка документации: {path}"
+
+msgid "Documentation root: {path} (missing)"
+msgstr "Корневая папка документации: {path} (нет)"
+
+msgid "Maximum amount of documentation text (in KiB) streamed by `read_user_document` when the model omits `max_bytes`. Increase only when necessary; higher limits mean longer MCP responses and more context usage."
+msgstr "Максимальный объём текста документации (в КиБ), который `read_user_document` передаёт, если модель не указывает `max_bytes`. Увеличивайте только при необходимости: больший лимит означает более долгие ответы MCP и больший расход контекста."
+
+msgid "Project override: {path}"
+msgstr "Переопределение проекта: {path}"
+
+msgid "Read chunk limit (KiB)"
+msgstr "Лимит чтения блока (КиБ)"

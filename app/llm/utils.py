@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
-from typing import Any, Mapping
+from typing import Any
 
 __all__ = ["extract_mapping"]
 
 
 def extract_mapping(obj: Any) -> Mapping[str, Any] | None:
     """Return a mapping representation of *obj* when possible."""
-
     if isinstance(obj, Mapping):
         return obj
     for attr in ("model_dump", "dict"):

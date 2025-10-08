@@ -2,7 +2,6 @@
 
 The agent intentionally leaves MCP business validation to the server: tool calls are logged and forwarded without local argument checks so that the MCP layer remains the single authority over tool semantics.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -17,7 +16,6 @@ from ..confirm import (
     confirm as default_confirm,
     confirm_requirement_update as default_update_confirm,
 )
-from ..services.requirements import parse_rid
 from ..llm.context import extract_selected_rids_from_text
 from ..llm.client import LLMClient
 from ..llm.reasoning import normalise_reasoning_segments
@@ -40,7 +38,6 @@ class SupportsAgentLLM(Protocol):
 
     async def check_llm_async(self) -> Mapping[str, Any]:
         """Verify that the LLM backend is reachable."""
-
     async def respond_async(
         self,
         conversation: Sequence[Mapping[str, Any]] | None,
@@ -49,22 +46,18 @@ class SupportsAgentLLM(Protocol):
     ) -> LLMResponse:
         """Return an assistant reply for *conversation*."""
 
-
 @runtime_checkable
 class SupportsAgentMCP(Protocol):
     """Interface expected from MCP clients used by :class:`LocalAgent`."""
 
     async def check_tools_async(self) -> Mapping[str, Any]:
         """Verify that MCP tools are reachable."""
-
     async def ensure_ready_async(self) -> None:
         """Raise an exception when the MCP server is not ready."""
-
     async def call_tool_async(
         self, name: str, arguments: Mapping[str, Any]
     ) -> Mapping[str, Any]:
         """Invoke MCP tool *name* with *arguments*."""
-
 
 class LocalAgent:
     """High-level agent aggregating LLM and MCP clients."""
@@ -133,7 +126,6 @@ class LocalAgent:
     @classmethod
     def _preview(cls, text: str, limit: int | None = None) -> str:
         """Return a trimmed preview of *text* for logging."""
-
         limit = limit or cls._MESSAGE_PREVIEW_LIMIT
         snippet = text.strip()
         if len(snippet) > limit:
@@ -143,7 +135,6 @@ class LocalAgent:
     @staticmethod
     def _summarize_tool_calls(tool_calls: Sequence[LLMToolCall]) -> list[dict[str, Any]]:
         """Return lightweight metadata about planned tool calls."""
-
         summary: list[dict[str, Any]] = []
         for call in tool_calls:
             args = call.arguments if isinstance(call.arguments, Mapping) else {}
@@ -159,7 +150,6 @@ class LocalAgent:
     @staticmethod
     def _tool_call_debug_payload(call: LLMToolCall) -> dict[str, Any]:
         """Return detailed payload describing *call* for debug logging."""
-
         arguments: Any
         if isinstance(call.arguments, Mapping):
             arguments = dict(call.arguments)
@@ -176,7 +166,6 @@ class LocalAgent:
         messages: Sequence[Mapping[str, Any]] | None,
     ) -> list[dict[str, Any]]:
         """Return a shallow copy of *messages* suitable for logging."""
-
         if not messages:
             return []
         prepared: list[dict[str, Any]] = []
@@ -187,7 +176,6 @@ class LocalAgent:
 
     def _log_step(self, step: int, response: LLMResponse) -> dict[str, Any]:
         """Record intermediate agent step for diagnostics."""
-
         normalized_reasoning = normalise_reasoning_segments(response.reasoning)
         payload = {
             "step": step,
@@ -224,7 +212,6 @@ class LocalAgent:
     @classmethod
     def _summarize_result(cls, result: Mapping[str, Any]) -> dict[str, Any]:
         """Return compact metadata about final agent outcome."""
-
         payload: dict[str, Any] = {}
         ok_value = result.get("ok")
         if isinstance(ok_value, bool):
@@ -260,7 +247,6 @@ class LocalAgent:
         error_template: Mapping[str, Any]
     ) -> str:
         """Compose a human-readable fallback message from *error_template*."""
-
         message = str(error_template.get("message") or "").strip()
         details = error_template.get("details")
         detail_parts: list[str] = []
@@ -289,7 +275,6 @@ class LocalAgent:
 
     def _record_request_messages(self, response: LLMResponse) -> None:
         """Append request snapshot from *response* to diagnostic log."""
-
         snapshot = getattr(response, "request_messages", None)
         if not snapshot:
             return
@@ -304,7 +289,6 @@ class LocalAgent:
         self, result: Mapping[str, Any]
     ) -> dict[str, Any]:
         """Attach captured LLM request messages to ``result`` when available."""
-
         prepared = dict(result)
         diagnostic_payload: dict[str, Any] = {}
         existing = prepared.get("diagnostic")
@@ -333,7 +317,6 @@ class LocalAgent:
     @staticmethod
     def _extract_mcp_error(exc: Exception) -> dict[str, Any]:
         """Return structured MCP error payload derived from *exc*."""
-
         payload = getattr(exc, "error_payload", None)
         if isinstance(payload, Mapping):
             return dict(payload)
@@ -345,13 +328,11 @@ class LocalAgent:
     @staticmethod
     def _raise_if_cancelled(cancellation: CancellationEvent | None) -> None:
         """Abort execution when *cancellation* has been triggered."""
-
         raise_if_cancelled(cancellation)
 
     @staticmethod
     def _normalise_max_thought_steps(value: int | None) -> int | None:
         """Return sanitized upper bound for agent iterations."""
-
         if value is None:
             return LocalAgent.DEFAULT_MAX_THOUGHT_STEPS
         if isinstance(value, bool):  # pragma: no cover - defensive guard
@@ -367,13 +348,11 @@ class LocalAgent:
     @property
     def max_thought_steps(self) -> int | None:
         """Return currently configured step cap (``None`` means unlimited)."""
-
         return self._max_thought_steps
 
     @staticmethod
     def _normalise_max_consecutive_tool_errors(value: int | None) -> int | None:
         """Return sanitised cap for consecutive tool failures."""
-
         if value is None:
             return LocalAgent.DEFAULT_MAX_CONSECUTIVE_TOOL_ERRORS
         if isinstance(value, bool):  # pragma: no cover - defensive guard
@@ -393,13 +372,11 @@ class LocalAgent:
     @property
     def max_consecutive_tool_errors(self) -> int | None:
         """Return cap for consecutive tool failures (``None`` disables limit)."""
-
         return self._max_consecutive_tool_errors
 
     @staticmethod
     def _run_sync(coro: Awaitable[Any]) -> Any:
         """Execute asynchronous helpers from synchronous entry points."""
-
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -569,23 +546,19 @@ class LocalAgent:
     # ------------------------------------------------------------------
     def check_llm(self) -> dict[str, Any]:
         """Delegate to :class:`LLMClient.check_llm`."""
-
         return self._run_sync(self._llm.check_llm_async())
 
     async def check_llm_async(self) -> dict[str, Any]:
         """Asynchronous variant of :meth:`check_llm`."""
-
         return await self._llm.check_llm_async()
 
     # ------------------------------------------------------------------
     def check_tools(self) -> dict[str, Any]:
         """Delegate to :class:`MCPClient.check_tools`."""
-
         return self._run_sync(self._mcp.check_tools_async())
 
     async def check_tools_async(self) -> dict[str, Any]:
         """Asynchronous variant of :meth:`check_tools`."""
-
         return await self._mcp.check_tools_async()
 
     # ------------------------------------------------------------------
@@ -600,7 +573,6 @@ class LocalAgent:
         on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Drive an agent loop that may invoke MCP tools before replying."""
-
         context_messages = self._prepare_context_messages(context)
         conversation = self._prepare_conversation(
             text,
@@ -643,7 +615,6 @@ class LocalAgent:
         on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Asynchronous variant of :meth:`run_command`."""
-
         context_messages = await self._prepare_context_messages_async(context)
         conversation = self._prepare_conversation(
             text,
@@ -1007,7 +978,6 @@ class LocalAgent:
         payload: Mapping[str, Any],
     ) -> None:
         """Deliver intermediate MCP *payload* to the provided *callback*."""
-
         if callback is None:
             return
         try:
@@ -1027,7 +997,6 @@ class LocalAgent:
         reasoning_segments: Sequence[LLMReasoningSegment] | None = None,
     ) -> dict[str, Any]:
         """Return final result payload when tool failures exceed the cap."""
-
         prepared: dict[str, Any] = {}
         if isinstance(payload, Mapping):
             prepared.update(payload)
@@ -1065,10 +1034,7 @@ class LocalAgent:
             "result": response.content.strip(),
         }
         segments: Sequence[LLMReasoningSegment]
-        if reasoning_segments:
-            segments = reasoning_segments
-        else:
-            segments = response.reasoning
+        segments = reasoning_segments or response.reasoning
         normalized_reasoning = normalise_reasoning_segments(segments)
         if normalized_reasoning:
             payload["reasoning"] = normalized_reasoning
@@ -1078,7 +1044,6 @@ class LocalAgent:
 
     def _normalise_tool_arguments(self, call: LLMToolCall) -> Any:
         """Return JSON-compatible representation of tool arguments."""
-
         try:
             return json.loads(self._format_tool_arguments(call.arguments))
         except (TypeError, ValueError, json.JSONDecodeError):
@@ -1094,7 +1059,6 @@ class LocalAgent:
         include_arguments: bool = True,
     ) -> dict[str, Any]:
         """Attach identifying metadata for *call* to the tool *payload*."""
-
         prepared = dict(payload)
         prepared.setdefault("tool_name", call.name)
         prepared.setdefault("tool_call_id", call.id)
@@ -1186,7 +1150,6 @@ class AgentLoopRunner:
 
     async def run(self) -> dict[str, Any]:
         """Execute the main loop until completion or enforced abort."""
-
         while not self.should_abort():
             self._agent._raise_if_cancelled(self._cancellation)
             step_outcome = await self.step_llm()
@@ -1197,7 +1160,6 @@ class AgentLoopRunner:
 
     async def step_llm(self) -> _AgentLoopStep:
         """Perform a single LLM interaction."""
-
         try:
             response = await self._agent._llm.respond_async(
                 self._conversation,
@@ -1209,7 +1171,6 @@ class AgentLoopRunner:
 
     async def handle_tool_batch(self, response: LLMResponse) -> _AgentLoopStep:
         """Execute MCP tools requested by *response* when present."""
-
         self._register_response(response)
         self._conversation.append(self._agent._assistant_message(response))
         self._advance_step(response)
@@ -1243,7 +1204,6 @@ class AgentLoopRunner:
 
     def should_abort(self) -> bool:
         """Return ``True`` when the configured step cap has been reached."""
-
         return (
             self._agent._max_thought_steps is not None
             and self._step >= self._agent._max_thought_steps

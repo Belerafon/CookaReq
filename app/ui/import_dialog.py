@@ -56,6 +56,7 @@ class RequirementImportDialog(wx.Dialog):
         next_id: int,
         document_label: str | None = None,
     ) -> None:
+        """Initialise dialog state and construct interactive controls."""
         title = _("Import Requirements")
         super().__init__(parent, title=title, style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._base_allocator = SequentialIDAllocator(start=next_id, existing=existing_ids)
@@ -533,6 +534,7 @@ class RequirementImportDialog(wx.Dialog):
 
     # ------------------------------------------------------------------
     def get_plan(self) -> RequirementImportPlan | None:
+        """Return configured import plan or ``None`` when selection incomplete."""
         if not (self._dataset and self._current_config and self._selected_path and self._format):
             return None
         return RequirementImportPlan(

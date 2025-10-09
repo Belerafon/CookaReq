@@ -1,9 +1,11 @@
+"""Provide curated sets of requirement labels for quick project setup."""
 from __future__ import annotations
 
 from .document_store import LabelDef, stable_color
 
 
 def _preset(keys: list[str]) -> list[LabelDef]:
+    """Return label definitions for the provided identifier ``keys``."""
     def title_from_key(k: str) -> str:
         return k.replace("-", " ").replace("_", " ").title()
 

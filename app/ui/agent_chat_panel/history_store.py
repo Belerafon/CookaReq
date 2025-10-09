@@ -392,7 +392,7 @@ class HistoryStore:
             seen_positions.add(position)
 
         stale_positions = [
-            position for position in existing_payloads.keys() if position not in seen_positions
+            position for position in existing_payloads if position not in seen_positions
         ]
         if stale_positions:
             conn.executemany(

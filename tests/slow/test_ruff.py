@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.quality]
 
 
 def test_ruff_conformance():

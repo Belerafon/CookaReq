@@ -1,5 +1,4 @@
 """Panel displaying documents in a tree."""
-
 from __future__ import annotations
 
 from contextlib import suppress
@@ -23,6 +22,7 @@ class DocumentTree(wx.Panel):
         on_rename_document: Callable[[str], None] | None = None,
         on_delete_document: Callable[[str], None] | None = None,
     ) -> None:
+        """Initialise the tree widget and wire optional callbacks."""
         super().__init__(parent)
         self._on_select = on_select
         self._on_new_document = on_new_document

@@ -1,8 +1,10 @@
+"""Validate and manipulate requirement links across the document tree."""
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
 from typing import Any
+
 from collections.abc import Iterable, Mapping
 
 from ..model import Link, Requirement, requirement_fingerprint
@@ -24,6 +26,7 @@ from .items import (
 def validate_item_links(
     root: Path, doc: Document, data: Mapping[str, Any], docs: Mapping[str, Document]
 ) -> None:
+    """Ensure ``data`` describes links allowed by the current document layout."""
     rid_self = rid_for(doc, int(data["id"]))
     links = data.get("links")
     if links is None:

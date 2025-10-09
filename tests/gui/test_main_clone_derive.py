@@ -27,8 +27,14 @@ pytestmark = pytest.mark.gui
 class _StubMCP:
     """Lightweight stand-in for the MCP controller used by the frame."""
 
-    def start(self, settings) -> None:  # pragma: no cover - trivial stub
-        pass
+    def start(
+        self,
+        settings,
+        *,
+        max_context_tokens: int,
+        token_model: str | None,
+    ) -> None:  # pragma: no cover - trivial stub
+        del settings, max_context_tokens, token_model
 
     def stop(self) -> None:  # pragma: no cover - trivial stub
         pass

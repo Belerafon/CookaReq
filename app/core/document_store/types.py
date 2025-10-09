@@ -1,5 +1,4 @@
 """Common document store data structures and error types."""
-
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -13,15 +12,14 @@ if TYPE_CHECKING:  # pragma: no cover - imported for typing only
 class ValidationError(Exception):
     """Raised when requirement links or payload violate business rules."""
 
-
 class RequirementError(Exception):
     """Base class for requirement storage exceptions."""
-
 
 class DocumentNotFoundError(RequirementError):
     """Raised when a document prefix is unknown."""
 
     def __init__(self, prefix: str) -> None:
+        """Store missing document ``prefix`` for diagnostics."""
         self.prefix = prefix
         super().__init__(f"unknown document prefix: {prefix}")
 
@@ -30,6 +28,7 @@ class RequirementNotFoundError(RequirementError):
     """Raised when a requirement identifier cannot be located."""
 
     def __init__(self, rid: str) -> None:
+        """Record missing requirement identifier ``rid``."""
         self.rid = rid
         super().__init__(f"requirement {rid} not found")
 
@@ -38,6 +37,7 @@ class RequirementIDCollisionError(RequirementError):
     """Raised when attempting to reuse an existing requirement identifier."""
 
     def __init__(self, doc_prefix: str, req_id: int, *, rid: str | None = None) -> None:
+        """Capture conflicting identifier metadata for later reporting."""
         self.doc_prefix = doc_prefix
         self.req_id = req_id
         self.rid = rid or f"{doc_prefix}{req_id}"

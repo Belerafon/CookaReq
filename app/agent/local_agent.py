@@ -45,7 +45,6 @@ class SupportsAgentLLM(Protocol):
         cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Return an assistant reply for *conversation*."""
-
 @runtime_checkable
 class SupportsAgentMCP(Protocol):
     """Interface expected from MCP clients used by :class:`LocalAgent`."""
@@ -58,7 +57,6 @@ class SupportsAgentMCP(Protocol):
         self, name: str, arguments: Mapping[str, Any]
     ) -> Mapping[str, Any]:
         """Invoke MCP tool *name* with *arguments*."""
-
 @dataclass(slots=True)
 class ToolBatchOutcome:
     """Aggregated state collected while executing a batch of MCP calls."""
@@ -626,7 +624,7 @@ class LocalAgent:
         *,
         cancellation: CancellationEvent | None = None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
-    ) -> "ToolBatchOutcome":
+    ) -> ToolBatchOutcome:
         outcome = ToolBatchOutcome()
         for call in tool_calls:
             self._raise_if_cancelled(cancellation)
@@ -647,7 +645,7 @@ class LocalAgent:
         call: LLMToolCall,
         *,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
-    ) -> "ToolBatchOutcome":
+    ) -> ToolBatchOutcome:
         self._emit_tool_result(
             on_tool_result,
             self._prepare_tool_payload(
@@ -687,7 +685,7 @@ class LocalAgent:
         on_tool_result: Callable[[Mapping[str, Any]], None] | None,
         include_arguments: bool = True,
         debug_extra: Mapping[str, Any] | None = None,
-    ) -> "ToolBatchOutcome":
+    ) -> ToolBatchOutcome:
         prepared_payload = self._prepare_tool_payload(
             call,
             payload,
@@ -728,7 +726,7 @@ class LocalAgent:
         call: LLMToolCall,
         exc: Exception,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None,
-    ) -> "ToolBatchOutcome":
+    ) -> ToolBatchOutcome:
         error = self._extract_mcp_error(exc)
         log_event("ERROR", {"error": error})
         return self._finalise_tool_result(
@@ -743,7 +741,7 @@ class LocalAgent:
         call: LLMToolCall,
         result: Mapping[str, Any] | Any,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None,
-    ) -> "ToolBatchOutcome":
+    ) -> ToolBatchOutcome:
         if not isinstance(result, Mapping):
             return self._finalise_tool_result(
                 call,
@@ -1103,6 +1101,7 @@ class AgentLoopRunner:
         on_tool_result: Callable[[Mapping[str, Any]], None] | None,
         on_llm_step: Callable[[Mapping[str, Any]], None] | None,
     ) -> None:
+        """Capture loop dependencies and callbacks for subsequent execution."""
         self._agent = agent
         self._conversation = conversation
         self._cancellation = cancellation

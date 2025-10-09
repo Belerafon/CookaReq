@@ -1,12 +1,11 @@
 """Data structures used by the chat UI."""
-
 from __future__ import annotations
 
 import hashlib
 import json
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, TYPE_CHECKING
+from typing import Any
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from uuid import uuid4
 
@@ -16,13 +15,6 @@ from ..llm.tokenizer import (
     count_text_tokens,
 )
 from ..util.time import utc_now_iso
-
-if TYPE_CHECKING:  # pragma: no cover - imported for type checking only
-    from .agent_chat_panel.history_utils import (
-        extract_tool_results as _extract_tool_results_fn,
-        update_tool_results as _update_tool_results_fn,
-    )
-
 
 _DEFAULT_TOKEN_MODEL = "cl100k_base"
 _DEFAULT_MODEL_KEY = "__default__"
@@ -66,7 +58,6 @@ def _history_utils_module():  # pragma: no cover - trivial cache wrapper
 
 def extract_tool_results(raw_result: Any) -> list[Any] | None:
     """Expose lazy history helper to avoid circular imports."""
-
     return _history_utils_module().extract_tool_results(raw_result)
 
 
@@ -74,7 +65,6 @@ def update_tool_results(
     raw_result: Any | None, tool_results: Sequence[Any] | None
 ) -> Any | None:
     """Expose lazy history helper to avoid circular imports."""
-
     return _history_utils_module().update_tool_results(raw_result, tool_results)
 
 
@@ -86,10 +76,12 @@ class EntryTokenCacheRecord:
     tokens: TokenCountResult
 
     def to_dict(self) -> dict[str, Any]:
+        """Convert cache record to serialisable mapping."""
         return {"digest": self.digest, "tokens": self.tokens.to_dict()}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> EntryTokenCacheRecord:
+        """Create cache record from mapping raising for malformed payloads."""
         digest = payload.get("digest")
         if not isinstance(digest, str) or not digest:
             raise ValueError("missing digest in cached token payload")
@@ -207,6 +199,7 @@ class ChatEntry:
     )
 
     def __post_init__(self) -> None:  # pragma: no cover - trivial
+        """Normalise derived fields and cached token metadata."""
         if self.display_response is None:
             self.display_response = self.response
         self.ensure_token_info()
@@ -596,6 +589,7 @@ class ChatConversation:
 
     @property
     def entries(self) -> list[ChatEntry]:
+        """Return in-memory chat entries, loading them if necessary."""
         return self._entries
 
     @entries.setter
@@ -604,16 +598,19 @@ class ChatConversation:
 
     @property
     def entries_loaded(self) -> bool:
+        """Return ``True`` when entries have been materialised."""
         return self._entries_loaded
 
     def mark_entries_unloaded(
         self, loader: Callable[[], Sequence[ChatEntry]] | None = None
     ) -> None:
+        """Drop cached entries and optionally provide deferred loader."""
         self._entries = []
         self._entries_loaded = False
         self._entries_loader = loader
 
     def ensure_entries_loaded(self) -> None:
+        """Load entries using deferred loader when they are not available."""
         if self._entries_loaded:
             return
         loader = self._entries_loader
@@ -627,6 +624,7 @@ class ChatConversation:
         self._entries_loader = None
 
     def replace_entries(self, entries: Iterable[ChatEntry]) -> None:
+        """Replace stored entries and refresh preview metadata."""
         self._entries = list(entries)
         self._entries_loaded = True
         self.preview = self._derive_preview(self._entries)
@@ -691,6 +689,7 @@ class ChatConversation:
             self.preview = preview
 
     def recalculate_preview(self) -> None:
+        """Recompute preview text from the currently loaded entries."""
         self.ensure_entries_loaded()
         self.preview = self._derive_preview(self._entries)
 

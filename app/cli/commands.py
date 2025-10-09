@@ -155,7 +155,6 @@ def _flatten_arg_list(values: Any) -> list[str]:
 
 def _load_template(data_arg: str | Path | None) -> dict[str, Any] | None:
     """Read optional JSON template referenced by ``--data`` arguments."""
-
     if not data_arg:
         return {}
 

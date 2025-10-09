@@ -110,7 +110,6 @@ class Requirement:
         rid: str = "",
     ) -> Requirement:
         """Create a requirement instance from JSON-compatible mapping."""
-
         if not isinstance(data, Mapping):
             raise TypeError("requirement payload must be a mapping")
 
@@ -254,7 +253,6 @@ class Requirement:
 
     def to_mapping(self) -> dict[str, Any]:
         """Serialise the requirement into JSON-compatible mapping."""
-
         data = asdict(self)
         data.pop("doc_prefix", None)
         data.pop("rid", None)

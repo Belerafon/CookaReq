@@ -426,7 +426,7 @@ def test_qwen_reasoning_tool_call_extraction(tmp_path: Path, monkeypatch) -> Non
     client = LLMClient(settings.llm)
     history = [{"role": "user", "content": "ping"}]
     response = client.respond(history)
-    assert response.content == ""
+    assert response.content == "thinking"
     assert len(response.tool_calls) == 1
     call = response.tool_calls[0]
     assert call.name == "list_requirements"

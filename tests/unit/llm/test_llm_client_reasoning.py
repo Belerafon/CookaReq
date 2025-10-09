@@ -104,3 +104,49 @@ def test_tool_validation_error_exposes_full_reasoning(monkeypatch: pytest.Monkey
         {"type": "reasoning", "text": "First "},
         {"type": "analysis", "text": " Second"},
     ]
+
+
+def test_tool_call_response_uses_reasoning_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.llm.client.log_request", lambda payload: None)
+    monkeypatch.setattr("app.llm.client.log_response", lambda payload, **kwargs: None)
+    client = _make_client(monkeypatch)
+
+    parser = client._response_parser
+    monkeypatch.setattr(
+        parser,
+        "parse_tool_calls",
+        lambda payload, _parser=parser: _parser.__class__.parse_tool_calls(
+            _parser, payload
+        ),
+    )
+
+    reasoning_segment = LLMReasoningSegment(type="analysis", text="Готовлю перевод")
+    tool_payload = [
+        {
+            "id": "call-0",
+            "type": "function",
+            "function": {
+                "name": "get_requirement",
+                "arguments": '{"rid":["DEMO1"],"fields":["title"]}',
+            },
+        }
+    ]
+
+    def fake_parse_chat_completion(_completion):
+        return ("", tool_payload, [{"type": "analysis", "text": "ignored"}])
+
+    monkeypatch.setattr(
+        parser,
+        "parse_chat_completion",
+        fake_parse_chat_completion,
+    )
+    monkeypatch.setattr(
+        parser,
+        "finalize_reasoning_segments",
+        lambda entries: (reasoning_segment,),
+    )
+
+    response = client.respond([{"role": "user", "content": "hi"}])
+
+    assert response.content == "Готовлю перевод"
+    assert response.tool_calls and response.tool_calls[0].name == "get_requirement"

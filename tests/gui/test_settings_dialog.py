@@ -18,7 +18,14 @@ class IdleMCPController:
     def is_running(self) -> bool:
         return self.running
 
-    def start(self, _settings):
+    def start(
+        self,
+        _settings,
+        *,
+        max_context_tokens: int,
+        token_model: str | None,
+    ) -> None:
+        del max_context_tokens, token_model
         self.running = True
 
     def stop(self):
@@ -109,8 +116,14 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         def is_running(self) -> bool:
             return self.running
 
-        def start(self, settings):
-            self.calls.append(("start", settings))
+        def start(
+            self,
+            settings,
+            *,
+            max_context_tokens: int,
+            token_model: str | None,
+        ) -> None:
+            self.calls.append(("start", settings, max_context_tokens, token_model))
             self.running = True
 
         def stop(self):
@@ -154,8 +167,8 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
     assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('not running')}"
 
     dlg._on_start(wx.CommandEvent())
-    assert fake.calls[0][0] == "start"
-    settings = fake.calls[0][1]
+    action, settings, max_tokens, token_model = fake.calls[0]
+    assert action == "start"
     assert (
         settings.host,
         settings.port,
@@ -166,6 +179,8 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
         settings.require_token,
         settings.token,
     ) == ("localhost", 8123, "/tmp", "manuals", 24, None, False, "")
+    assert max_tokens == DEFAULT_MAX_CONTEXT_TOKENS
+    assert token_model == ""
     assert not dlg._start.IsEnabled()
     assert dlg._stop.IsEnabled()
     assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('running')}"
@@ -192,8 +207,14 @@ def test_mcp_check_status(monkeypatch, wx_app):
         def is_running(self):
             return False
 
-        def start(self, settings):
-            pass
+        def start(
+            self,
+            settings,
+            *,
+            max_context_tokens: int,
+            token_model: str | None,
+        ) -> None:
+            del settings, max_context_tokens, token_model
 
         def stop(self):
             pass

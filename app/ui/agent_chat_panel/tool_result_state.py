@@ -1,8 +1,9 @@
 """State helpers for streamed tool result payloads."""
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 
 def _ensure_mapping(payload: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
@@ -135,9 +136,7 @@ def _should_mark_completed(payload: Mapping[str, Any]) -> bool:
     }:
         return True
     ok_value = payload.get("ok")
-    if isinstance(ok_value, bool):
-        return True
-    return False
+    return isinstance(ok_value, bool)
 
 
 @dataclass(slots=True)
@@ -151,7 +150,8 @@ class StreamedToolResultState:
     completed_at: str | None = None
 
     @classmethod
-    def from_payload(cls, payload: Mapping[str, Any]) -> "StreamedToolResultState":
+    def from_payload(cls, payload: Mapping[str, Any]) -> StreamedToolResultState:
+        """Create state from fresh tool payload, normalising status updates."""
         candidate = _ensure_mapping(payload)
         state = cls(call_id=_extract_call_identifier(candidate), data=candidate)
         fallback = _normalise_status_update_payload(candidate)
@@ -166,7 +166,8 @@ class StreamedToolResultState:
         return state
 
     @classmethod
-    def from_serialized(cls, payload: Mapping[str, Any]) -> "StreamedToolResultState":
+    def from_serialized(cls, payload: Mapping[str, Any]) -> StreamedToolResultState:
+        """Create state from stored payload preserving timestamp ordering."""
         candidate = _ensure_mapping(payload)
         state = cls(call_id=_extract_call_identifier(candidate), data=candidate)
         updates = _coerce_status_updates_list(candidate.get("status_updates"))
@@ -179,6 +180,7 @@ class StreamedToolResultState:
         return state
 
     def merge_payload(self, payload: Mapping[str, Any]) -> None:
+        """Merge incremental payload data into the current state."""
         if not isinstance(payload, Mapping):
             return
         candidate = _ensure_mapping(payload)
@@ -199,6 +201,7 @@ class StreamedToolResultState:
         self._finalise_timestamps()
 
     def to_payload(self) -> dict[str, Any]:
+        """Return serialisable representation of the current tool state."""
         return dict(self.data)
 
     def _ingest_timestamps(
@@ -207,6 +210,7 @@ class StreamedToolResultState:
         *,
         preserve_existing: bool = False,
     ) -> None:
+        """Record timestamps from ``payload`` respecting ``preserve_existing``."""
         first_candidate = _pick_timestamp(
             payload, "first_observed_at", "started_at", "observed_at"
         )

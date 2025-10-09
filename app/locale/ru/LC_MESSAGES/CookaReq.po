@@ -2328,3 +2328,21 @@ msgstr "Переопределение проекта: {path}"
 
 msgid "Read chunk limit (KiB)"
 msgstr "Лимит чтения блока (КиБ)"
+
+msgid "Content preview: {preview}"
+msgstr "Предпросмотр содержимого: {preview}"
+
+msgid "failed to read template {path}: {error}\n"
+msgstr "не удалось прочитать шаблон {path}: {error}\n"
+
+msgid "invalid template JSON in {path}: {error}\n"
+msgstr "некорректный JSON шаблона в {path}: {error}\n"
+
+msgid "lines: {lines}, tokens: {tokens}, characters: {characters}"
+msgstr "строк: {lines}, токенов: {tokens}, символов: {characters}"
+
+msgid "template file not found: {path}\n"
+msgstr "файл шаблона не найден: {path}\n"
+
+msgid "template must be a JSON object: {path}\n"
+msgstr "шаблон должен быть JSON-объектом: {path}\n"

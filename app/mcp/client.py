@@ -30,6 +30,7 @@ class MCPNotReadyError(ConnectionError):
     """Raised when the MCP server fails a readiness probe."""
 
     def __init__(self, error_payload: Mapping[str, Any]):
+        """Store structured payload describing the failed readiness check."""
         message = error_payload.get("message") if isinstance(error_payload, Mapping) else None
         super().__init__(message or "MCP server is not ready")
         payload = dict(error_payload) if isinstance(error_payload, Mapping) else {}

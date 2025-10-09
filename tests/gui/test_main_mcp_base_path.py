@@ -20,7 +20,14 @@ class _StubMCP:
         self.stop_calls = 0
         self._running = False
 
-    def start(self, settings) -> None:  # pragma: no cover - simple recorder
+    def start(
+        self,
+        settings,
+        *,
+        max_context_tokens: int,
+        token_model: str | None,
+    ) -> None:  # pragma: no cover - simple recorder
+        del max_context_tokens, token_model
         self.start_calls.append(settings.base_path)
         self._running = True
 

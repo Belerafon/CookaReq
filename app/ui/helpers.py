@@ -1,5 +1,4 @@
 """Common helper widgets and functions for UI components."""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -196,6 +195,7 @@ class AutoHeightListCtrl(wx.ListCtrl):
         extra_padding: int = 4,
         **kwargs,
     ) -> None:
+        """Create list control limiting height to ``max_rows`` entries."""
         super().__init__(*args, **kwargs)
         self._max_rows = max_rows
         self._extra_padding = extra_padding
@@ -227,11 +227,13 @@ class AutoHeightListCtrl(wx.ListCtrl):
         return self._header_height
 
     def InvalidateBestSize(self) -> None:  # noqa: N802 - wxWidgets API casing
+        """Reset cached measurements prior to a size recalculation."""
         self._row_height = None
         self._header_height = None
         super().InvalidateBestSize()
 
     def DoGetBestSize(self) -> wx.Size:  # noqa: N802 - wxWidgets API casing
+        """Return size matching list contents while honouring ``max_rows``."""
         best = super().DoGetBestSize()
         count = self.GetItemCount()
         if count <= 0:

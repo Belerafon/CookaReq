@@ -1,5 +1,4 @@
 """Panel displaying requirements list and simple filters."""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
@@ -55,6 +54,7 @@ class RequirementsListCtrl(wx.ListCtrl):
     _MARQUEE_THRESHOLD = 3
 
     def __init__(self, *args, **kwargs) -> None:
+        """Initialise base list control wiring marquee interactions."""
         super().__init__(*args, **kwargs)
         self._marquee_origin: wx.Point | None = None
         self._marquee_active = False

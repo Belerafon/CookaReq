@@ -85,9 +85,9 @@ class MainFrameSettingsMixin:
                 ]
                 if len(values) != len(expected_fields):
                     mismatch_message = (
-                        "Settings dialog returned %s values, expected %s. "
+                        "Settings dialog returned "
+                        f"{len(values)} values, expected {len(expected_fields)}. "
                         "Update the dialog fields and handler to stay in sync."
-                        % (len(values), len(expected_fields))
                     )
                     logger.error(mismatch_message)
                     raise ValueError(mismatch_message)

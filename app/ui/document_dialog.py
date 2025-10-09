@@ -1,5 +1,4 @@
 """Dialogs for managing requirement documents."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -52,6 +51,7 @@ class DocumentPropertiesDialog(wx.Dialog):
         title: str = "",
         parent_prefix: str | None = None,
     ) -> None:
+        """Prepare dialog controls depending on ``mode`` and defaults."""
         if mode not in {"create", "rename"}:
             raise ValueError(f"unsupported mode: {mode}")
         heading = _("New document") if mode == "create" else _("Rename document")

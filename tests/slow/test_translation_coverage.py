@@ -6,7 +6,7 @@ from pathlib import Path
 import polib
 import pytest
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.quality]
 
 
 def test_po_files_have_no_missing_translations():

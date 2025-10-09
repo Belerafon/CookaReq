@@ -1,3 +1,4 @@
+"""Read and persist document metadata stored alongside requirement files."""
 from __future__ import annotations
 
 import json
@@ -5,7 +6,6 @@ from pathlib import Path
 from collections.abc import Mapping
 
 from .types import Document, LabelDef, ValidationError
-
 
 def _read_json(path: Path) -> dict:
     with path.open(encoding="utf-8") as fh:

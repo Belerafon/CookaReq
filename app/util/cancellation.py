@@ -1,5 +1,4 @@
 """Thread-safe cancellation primitives built on :class:`threading.Event`."""
-
 from __future__ import annotations
 
 import threading
@@ -10,13 +9,13 @@ __all__ = ["CancellationEvent", "OperationCancelledError", "raise_if_cancelled"]
 class OperationCancelledError(RuntimeError):
     """Raised when an in-flight operation is aborted via cancellation."""
 
-
 class CancellationEvent:
     """Lightweight wrapper around :class:`threading.Event` for cancellations."""
 
     __slots__ = ("_event",)
 
     def __init__(self) -> None:
+        """Create an unset cancellation flag backed by :class:`threading.Event`."""
         self._event = threading.Event()
 
     @property
@@ -47,6 +46,6 @@ class CancellationEvent:
 
 
 def raise_if_cancelled(cancellation: CancellationEvent | None) -> None:
-    """Convenience helper raising when *cancellation* has been signalled."""
+    """Raise :class:`OperationCancelledError` when cancellation is requested."""
     if cancellation is not None:
         cancellation.raise_if_cancelled()

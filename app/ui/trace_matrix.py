@@ -1,5 +1,4 @@
 """Graphical traceability matrix viewer."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -34,7 +33,6 @@ def _format_document_label(doc: Document) -> str:
 
 class TraceMatrixConfigDialog(wx.Dialog):
     """Collect row and column document selections from the user."""
-
     def __init__(
         self,
         parent: wx.Window | None,
@@ -44,6 +42,7 @@ class TraceMatrixConfigDialog(wx.Dialog):
         default_columns: str | None = None,
         direction: TraceDirection = TraceDirection.CHILD_TO_PARENT,
     ) -> None:
+        """Prepare dialog controls for selecting trace matrix axes."""
         if not documents:
             raise ValueError("documents cannot be empty")
 
@@ -102,6 +101,7 @@ class TraceMatrixConfigDialog(wx.Dialog):
             choice.SetSelection(0)
 
     def get_config(self) -> TraceMatrixConfig:
+        """Return :class:`TraceMatrixConfig` built from dialog selections."""
         row_index = self._rows_choice.GetSelection()
         column_index = self._columns_choice.GetSelection()
         if row_index == wx.NOT_FOUND or column_index == wx.NOT_FOUND:
@@ -117,10 +117,10 @@ class TraceMatrixConfigDialog(wx.Dialog):
 
 class TraceMatrixTable(gridlib.GridTableBase):
     """Virtual table exposing :class:`TraceMatrix` data to :class:`wx.grid.Grid`."""
-
     _LINK_SYMBOL = "\u25CF"
 
     def __init__(self, matrix: TraceMatrix) -> None:
+        """Initialise table with the provided :class:`TraceMatrix`."""
         super().__init__()
         self.update_matrix(matrix)
         self._link_colour = wx.Colour(102, 187, 106)
@@ -203,7 +203,6 @@ def _format_label(entry) -> str:
 @dataclass
 class _DetailsState:
     """Aggregated view of the currently selected matrix entries."""
-
     row_label: str = ""
     column_label: str = ""
     link_details: str = ""
@@ -211,8 +210,8 @@ class _DetailsState:
 
 class TraceMatrixDetailsPanel(wx.Panel):
     """Display contextual information about the current selection."""
-
     def __init__(self, parent: wx.Window) -> None:
+        """Create details panel hosting summary widgets."""
         super().__init__(parent)
         self._build_ui()
         self.show_message(_("Select a cell or header to view details."))
@@ -266,7 +265,6 @@ class TraceMatrixDetailsPanel(wx.Panel):
 
 class TraceMatrixFrame(wx.Frame):
     """Interactive traceability matrix window."""
-
     def __init__(
         self,
         parent: wx.Window | None,
@@ -274,6 +272,7 @@ class TraceMatrixFrame(wx.Frame):
         config: TraceMatrixConfig,
         matrix: TraceMatrix,
     ) -> None:
+        """Construct the frame and render the initial matrix state."""
         super().__init__(parent, title=_("Trace Matrix"))
         self.controller = controller
         self.config = config

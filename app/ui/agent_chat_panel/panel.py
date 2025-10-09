@@ -2115,12 +2115,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         for conversation_id, entry_ids in pending.items():
             force = entry_ids is None
             if conversation_id is None:
-                render_kwargs = dict(
-                    conversation=None,
-                    timeline=None,
-                    updated_entries=None,
-                    force=True,
-                )
+                render_kwargs = {
+                    "conversation": None,
+                    "timeline": None,
+                    "updated_entries": None,
+                    "force": True,
+                }
                 if immediate:
                     view.render_now(**render_kwargs)
                 else:
@@ -2148,12 +2148,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 continue
 
             updated_entries = None if force else sorted(entry_ids)
-            render_kwargs = dict(
-                conversation=conversation,
-                timeline=timeline,
-                updated_entries=updated_entries,
-                force=force,
-            )
+            render_kwargs = {
+                "conversation": conversation,
+                "timeline": timeline,
+                "updated_entries": updated_entries,
+                "force": force,
+            }
             if immediate:
                 view.render_now(**render_kwargs)
             else:

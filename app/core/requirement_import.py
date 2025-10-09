@@ -1,5 +1,4 @@
 """Utilities for importing requirements from tabular data sources."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -44,7 +43,6 @@ __all__ = [
 class RequirementImportError(Exception):
     """Raised when tabular data cannot be interpreted for import."""
 
-
 class RequirementImportRowError(RequirementImportError):
     """Raised for problems specific to a single source row."""
 
@@ -55,7 +53,6 @@ class RequirementImportRowError(RequirementImportError):
 
 class DuplicateIdentifierError(RequirementImportRowError):
     """Raised when a requirement id collides with existing data."""
-
 
 class TabularFileFormat(str, Enum):
     """Supported spreadsheet formats."""
@@ -73,20 +70,24 @@ class TabularDataset:
     _header_row: list[Any] | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
+        """Cache useful metadata derived from the original row sequence."""
         self._column_count = max((len(row) for row in self.rows), default=0)
         self._header_row = self.rows[0] if self.rows else None
 
     @property
     def column_count(self) -> int:
+        """Return number of columns detected in the dataset."""
         return self._column_count
 
     @property
     def header(self) -> list[str] | None:
+        """Return header row normalised to strings if present."""
         if self._header_row is None:
             return None
         return [_stringify(cell) for cell in self._header_row]
 
     def column_names(self, *, use_header: bool) -> list[str]:
+        """Return column labels, using ``header`` when available."""
         names: list[str] = []
         header = self.header if use_header else None
         for index in range(self._column_count):
@@ -99,10 +100,12 @@ class TabularDataset:
         return names
 
     def iter_rows(self, *, skip_header: bool = False) -> Iterable[list[Any]]:
+        """Yield dataset rows optionally omitting the header entry."""
         start = 1 if skip_header and self._header_row is not None else 0
         yield from self.rows[start:]
 
     def row_count(self, *, skip_header: bool = False) -> int:
+        """Return number of data rows, optionally excluding the header."""
         if not self.rows:
             return 0
         return len(self.rows) - (1 if skip_header and self._header_row is not None else 0)
@@ -156,6 +159,7 @@ class RequirementImportConfiguration:
     labels_separator: str = ","
 
     def __post_init__(self) -> None:
+        """Normalise user-provided mapping and ensure required fields are set."""
         normalized: dict[str, int | None] = {}
         for field_name, column in self.mapping.items():
             if field_name not in _FIELD_MAP:
@@ -195,16 +199,19 @@ class SequentialIDAllocator:
     """Allocate unique requirement identifiers while respecting existing ones."""
 
     def __init__(self, *, start: int, existing: Iterable[int] = ()) -> None:
+        """Initialise allocator with ``start`` boundary and already used ids."""
         self._used: set[int] = {int(value) for value in existing}
         self._next = max(start, max(self._used, default=0) + 1)
 
     def clone(self) -> SequentialIDAllocator:
+        """Return a detached allocator preserving the current allocation state."""
         clone = SequentialIDAllocator(start=self._next)
         clone._used = set(self._used)
         clone._next = self._next
         return clone
 
     def reserve(self, value: int) -> None:
+        """Mark ``value`` as used raising when it was already allocated."""
         if value in self._used:
             raise DuplicateIdentifierError(
                 f"requirement id {value} already exists", field="id"
@@ -214,6 +221,7 @@ class SequentialIDAllocator:
             self._next = value + 1
 
     def allocate(self) -> int:
+        """Return the next free identifier updating the internal cursor."""
         candidate = self._next
         while candidate in self._used:
             candidate += 1

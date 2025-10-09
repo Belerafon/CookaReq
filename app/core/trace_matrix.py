@@ -1,5 +1,4 @@
 """Build traceability matrices from the requirement store."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -66,6 +65,7 @@ class TraceMatrixCell:
 
     @property
     def suspect(self) -> bool:
+        """Return ``True`` when at least one link in the cell is suspect."""
         return any(link.suspect for link in self.links)
 
 
@@ -78,6 +78,7 @@ class TraceMatrixAxisEntry:
 
     @property
     def rid(self) -> str:
+        """Return the requirement identifier used on this axis entry."""
         return self.requirement.rid
 
 

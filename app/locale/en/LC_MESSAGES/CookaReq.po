@@ -2312,3 +2312,21 @@ msgstr "Project override: {path}"
 
 msgid "Read chunk limit (KiB)"
 msgstr "Read chunk limit (KiB)"
+
+msgid "Content preview: {preview}"
+msgstr "Content preview: {preview}"
+
+msgid "failed to read template {path}: {error}\n"
+msgstr "failed to read template {path}: {error}\n"
+
+msgid "invalid template JSON in {path}: {error}\n"
+msgstr "invalid template JSON in {path}: {error}\n"
+
+msgid "lines: {lines}, tokens: {tokens}, characters: {characters}"
+msgstr "lines: {lines}, tokens: {tokens}, characters: {characters}"
+
+msgid "template file not found: {path}\n"
+msgstr "template file not found: {path}\n"
+
+msgid "template must be a JSON object: {path}\n"
+msgstr "template must be a JSON object: {path}\n"

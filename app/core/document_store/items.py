@@ -1,3 +1,4 @@
+"""Provide CRUD helpers for requirement JSON documents on disk."""
 from __future__ import annotations
 
 import json
@@ -363,6 +364,7 @@ def list_requirements(
     labels: Sequence[str] | None = None,
     docs: Mapping[str, Document] | None = None,
 ) -> RequirementPage:
+    """Return a page of requirements filtered by status and labels."""
     root_path = Path(root)
     if docs is None and not root_path.is_dir():
         raise FileNotFoundError(root_path)
@@ -383,6 +385,7 @@ def search_requirements(
     per_page: int = 50,
     docs: Mapping[str, Document] | None = None,
 ) -> RequirementPage:
+    """Run a text search across requirements and return a paginated result."""
     root_path = Path(root)
     if docs is None and not root_path.is_dir():
         raise FileNotFoundError(root_path)
@@ -399,6 +402,7 @@ def get_requirement(
     *,
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
+    """Load requirement ``rid`` from disk ensuring suspect links are flagged."""
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
     prefix, item_id, doc, _directory, data, canonical_rid = _resolve_requirement(
@@ -416,6 +420,7 @@ def create_requirement(
     data: Mapping[str, Any],
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
+    """Create a requirement under ``prefix`` using raw JSON ``data``."""
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
     doc = docs_map.get(prefix)
@@ -495,6 +500,7 @@ def update_requirement_field(
     value: Any,
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
+    """Mutate a scalar field on requirement ``rid`` and persist the update."""
     if not isinstance(field, str) or not field:
         raise ValidationError("field must be a non-empty string")
     if field in READ_ONLY_FIELDS:
@@ -521,7 +527,7 @@ def set_requirement_labels(
     *,
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
-
+    """Replace the label list attached to requirement ``rid``."""
     def mutate(payload: dict[str, Any], _prefix: str, _doc: Document) -> None:
         if not isinstance(labels, Sequence) or isinstance(labels, (str, bytes)):
             raise ValidationError("labels must be a list of strings")
@@ -537,7 +543,7 @@ def set_requirement_attachments(
     *,
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
-
+    """Persist ``attachments`` for requirement ``rid`` after validation."""
     def mutate(payload: dict[str, Any], _prefix: str, _doc: Document) -> None:
         if not isinstance(attachments, Sequence) or isinstance(attachments, (str, bytes)):
             raise ValidationError("attachments must be a list")
@@ -553,7 +559,7 @@ def set_requirement_links(
     *,
     docs: Mapping[str, Document] | None = None,
 ) -> Requirement:
-
+    """Replace requirement links with ``links`` keeping suspect markers intact."""
     def mutate(payload: dict[str, Any], _prefix: str, _doc: Document) -> None:
         if not isinstance(links, Sequence) or isinstance(links, (str, bytes)):
             raise ValidationError("links must be a list")
@@ -678,6 +684,7 @@ def delete_requirement(
     *,
     docs: Mapping[str, Document] | None = None,
 ) -> str:
+    """Delete requirement ``rid`` and return its canonical identifier."""
     root_path = Path(root)
     docs_map = _ensure_documents(root_path, docs)
     (

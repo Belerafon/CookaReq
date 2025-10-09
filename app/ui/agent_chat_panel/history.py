@@ -4,14 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
-
 import logging
 
+from ..chat_entry import ChatConversation
 from .history_store import HistoryStore
-
-if TYPE_CHECKING:
-    from ..chat_entry import ChatConversation
 
 
 logger = logging.getLogger(__name__)
@@ -121,6 +117,13 @@ class AgentChatHistory:
         persist_existing: bool = False,
     ) -> bool:
         """Switch history store to *path* returning ``True`` on change."""
+        if persist_existing:
+            persist_existing = self.has_persistable_conversations()
+            if persist_existing:
+                target_store = HistoryStore(path)
+                if target_store.path == self._store.path or target_store.has_conversations():
+                    persist_existing = False
+
         conversations: Iterable[ChatConversation] | None = (
             self._conversations if persist_existing else None
         )
@@ -146,6 +149,22 @@ class AgentChatHistory:
             conversation.replace_entries(())
         else:
             conversation.replace_entries(entries)
+
+    # ------------------------------------------------------------------
+    def has_persistable_conversations(self) -> bool:
+        """Return ``True`` when in-memory conversations contain real data."""
+        for conversation in self._conversations:
+            if not isinstance(conversation, ChatConversation):
+                continue
+            if not conversation.entries_loaded:
+                return True
+            if conversation.entries:
+                return True
+            if conversation.preview and conversation.preview.strip():
+                return True
+            if conversation.title and conversation.title.strip():
+                return True
+        return False
 
 
 __all__ = ["AgentChatHistory"]

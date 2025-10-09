@@ -1,5 +1,6 @@
+from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel.history import AgentChatHistory
-from app.ui.chat_entry import ChatConversation
+from app.ui.chat_entry import ChatConversation, ChatEntry
 
 
 def test_agent_chat_history_round_trip(tmp_path):
@@ -53,3 +54,73 @@ def test_agent_chat_history_switch_path_persists_existing(tmp_path):
     conversations, active_id = restored.load()
     assert len(conversations) == 1
     assert active_id == new_conversation.conversation_id
+
+
+def _conversation_with_entry(title: str) -> ChatConversation:
+    conversation = ChatConversation.new()
+    conversation.title = title
+    entry = ChatEntry(
+        prompt="Q",
+        response="A",
+        tokens=1,
+        display_response="A",
+        token_info=TokenCountResult.exact(1, model="cl100k_base"),
+        prompt_at="2024-01-01T00:00:00Z",
+        response_at="2024-01-01T00:05:00Z",
+    )
+    conversation.replace_entries([entry])
+    return conversation
+
+
+def test_has_persistable_conversations_ignores_draft_only_state(tmp_path):
+    history = AgentChatHistory(history_path=tmp_path / "history.sqlite", on_active_changed=None)
+
+    assert history.has_persistable_conversations() is False
+
+    draft = ChatConversation.new()
+    history.set_conversations([draft])
+
+    assert history.has_persistable_conversations() is False
+
+    populated = _conversation_with_entry("Stored")
+    history.set_conversations([draft, populated])
+
+    assert history.has_persistable_conversations() is True
+
+
+def test_has_persistable_conversations_handles_lazy_entries(tmp_path):
+    history = AgentChatHistory(history_path=tmp_path / "history.sqlite", on_active_changed=None)
+
+    conversation = _conversation_with_entry("Lazy")
+    snapshot = [ChatEntry.from_dict(entry.to_dict()) for entry in conversation.entries]
+    conversation.mark_entries_unloaded(lambda: list(snapshot))
+
+    assert conversation.entries_loaded is False
+
+    history.set_conversations([conversation])
+
+    assert history.has_persistable_conversations() is True
+
+
+def test_switch_path_does_not_override_existing_target(tmp_path):
+    original = tmp_path / "global.sqlite"
+    history = AgentChatHistory(history_path=original, on_active_changed=None)
+    draft = ChatConversation.new()
+    history.set_conversations([draft])
+    history.set_active_id(draft.conversation_id)
+
+    target = tmp_path / "project.sqlite"
+    target_history = AgentChatHistory(history_path=target, on_active_changed=None)
+    existing = _conversation_with_entry("Existing")
+    target_history.set_conversations([existing])
+    target_history.set_active_id(existing.conversation_id)
+    target_history.save()
+
+    changed = history.set_path(target, persist_existing=True)
+
+    assert changed is True
+
+    conversations, active_id = history.load()
+    assert len(conversations) == 1
+    assert conversations[0].conversation_id == existing.conversation_id
+    assert active_id == existing.conversation_id

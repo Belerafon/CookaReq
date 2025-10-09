@@ -74,6 +74,19 @@ def test_save_active_id_updates_metadata_without_touching_entries(
     assert active_id == sample_conversation.conversation_id
 
 
+def test_has_conversations_detects_existing_payload(
+    tmp_path: Path, sample_conversation: ChatConversation
+) -> None:
+    history_path = tmp_path / "agent_chats.sqlite"
+    store = HistoryStore(history_path)
+
+    assert store.has_conversations() is False
+
+    store.save([sample_conversation], sample_conversation.conversation_id)
+
+    assert store.has_conversations() is True
+
+
 def test_set_path_persists_existing_payload(
     tmp_path: Path, sample_conversation: ChatConversation
 ) -> None:

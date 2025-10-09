@@ -55,12 +55,25 @@ class HistoryStore:
         if new_path == self._path:
             return False
         if persist_existing and conversations is not None:
+            conversation_list = list(conversations)
+            for conversation in conversation_list:
+                ensure_loaded = getattr(conversation, "ensure_entries_loaded", None)
+                if callable(ensure_loaded):
+                    try:
+                        ensure_loaded()
+                    except Exception:  # pragma: no cover - defensive logging
+                        logger.exception(
+                            "Failed to materialise entries before switching history path"
+                        )
+                        return False
+            target_store = type(self)(new_path)
             try:
-                self.save(conversations, active_id)
+                target_store.save(conversation_list, active_id)
             except Exception:  # pragma: no cover - defensive logging
                 logger.exception(
                     "Failed to persist conversations before switching history path"
                 )
+                return False
         self._path = new_path
         return True
 

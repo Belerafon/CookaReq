@@ -380,19 +380,38 @@ class SegmentListView:
 
     # ------------------------------------------------------------------
     def _attach_cards_in_order(self, cards: Sequence[TurnCard]) -> None:
-        existing_children = [child.GetWindow() for child in self._sizer.GetChildren()]
-        for index, card in enumerate(cards):
+        children: list[wx.Window] = []
+        index_lookup: dict[wx.Window, int] = {}
+        for child in self._sizer.GetChildren():
+            window = child.GetWindow()
+            if window is None:
+                continue
+            index_lookup[window] = len(children)
+            children.append(window)
+
+        def _refresh_lookup(start_index: int) -> None:
+            for offset in range(start_index, len(children)):
+                index_lookup[children[offset]] = offset
+
+        for desired_index, card in enumerate(cards):
             if card.GetContainingSizer() is self._sizer:
-                try:
-                    current_index = existing_children.index(card)
-                except ValueError:
-                    current_index = -1
-                if current_index != index:
+                current_index = index_lookup.get(card, -1)
+                if current_index != desired_index:
                     self._sizer.Detach(card)
-                    self._sizer.Insert(index, card, 0, wx.EXPAND)
+                    self._sizer.Insert(desired_index, card, 0, wx.EXPAND)
+                    if current_index >= 0:
+                        children.pop(current_index)
+                    children.insert(desired_index, card)
+                    refresh_from = desired_index if current_index < 0 else min(
+                        desired_index, current_index
+                    )
+                    _refresh_lookup(refresh_from)
             else:
-                self._sizer.Insert(index, card, 0, wx.EXPAND)
+                self._sizer.Insert(desired_index, card, 0, wx.EXPAND)
+                children.insert(desired_index, card)
+                _refresh_lookup(desired_index)
             card.Show()
+
         keep = set(cards)
         for child in list(self._sizer.GetChildren()):
             window = child.GetWindow()

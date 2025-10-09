@@ -313,27 +313,93 @@ class HistoryStore:
                 ),
             )
             if conversation.entries_loaded:
-                self._replace_entries(conn, conversation)
+                self._sync_entries(conn, conversation)
 
     # ------------------------------------------------------------------
-    def _replace_entries(
+    def _sync_entries(
         self, conn: sqlite3.Connection, conversation: ChatConversation
     ) -> None:
-        conn.execute(
-            "DELETE FROM entries WHERE conversation_id = ?",
+        rows = conn.execute(
+            """
+            SELECT position, payload
+            FROM entries
+            WHERE conversation_id = ?
+            """,
             (conversation.conversation_id,),
-        )
-        for position, entry in enumerate(conversation.entries):
-            payload = json.dumps(entry.to_dict(), ensure_ascii=False)
-            conn.execute(
-                """
-                INSERT INTO entries (conversation_id, position, payload)
-                VALUES (?, ?, ?)
-                """,
-                (
-                    conversation.conversation_id,
-                    position,
+        ).fetchall()
+
+        existing_payloads: dict[int, str] = {}
+        invalid_positions: list[object] = []
+
+        for row in rows:
+            raw_position = row["position"] if isinstance(row, sqlite3.Row) else row[0]
+            payload_raw = row["payload"] if isinstance(row, sqlite3.Row) else row[1]
+
+            try:
+                position = int(raw_position)
+            except (TypeError, ValueError):
+                invalid_positions.append(raw_position)
+                continue
+
+            if position < 0 or not isinstance(payload_raw, str):
+                invalid_positions.append(position)
+                continue
+
+            existing_payloads[position] = payload_raw
+
+        if invalid_positions:
+            payload = [
+                (conversation.conversation_id, pos)
+                for pos in invalid_positions
+                if pos is not None
+            ]
+            if payload:
+                conn.executemany(
+                    "DELETE FROM entries WHERE conversation_id = ? AND position = ?",
                     payload,
+                )
+
+        seen_positions: set[int] = set()
+        entries = conversation.entries
+        for position, entry in enumerate(entries):
+            payload = json.dumps(entry.to_dict(), ensure_ascii=False)
+            current = existing_payloads.get(position)
+            if current is None:
+                conn.execute(
+                    """
+                    INSERT INTO entries (conversation_id, position, payload)
+                    VALUES (?, ?, ?)
+                    """,
+                    (
+                        conversation.conversation_id,
+                        position,
+                        payload,
+                    ),
+                )
+            elif current != payload:
+                conn.execute(
+                    """
+                    UPDATE entries
+                    SET payload = ?
+                    WHERE conversation_id = ? AND position = ?
+                    """,
+                    (
+                        payload,
+                        conversation.conversation_id,
+                        position,
+                    ),
+                )
+            seen_positions.add(position)
+
+        stale_positions = [
+            position for position in existing_payloads.keys() if position not in seen_positions
+        ]
+        if stale_positions:
+            conn.executemany(
+                "DELETE FROM entries WHERE conversation_id = ? AND position = ?",
+                (
+                    (conversation.conversation_id, position)
+                    for position in stale_positions
                 ),
             )
 

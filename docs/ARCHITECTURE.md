@@ -84,7 +84,11 @@ so you know which modules are involved and which regressions to guard against.
   `client.py` issues requests with idempotent confirmation tokens, while
   `tools_read.py` and `tools_write.py` implement read/write primitives against
   the document store. `events.py` broadcasts completion notifications that let
-  the UI refresh without reloading the entire document tree.
+  the UI refresh without reloading the entire document tree. `server.py`
+  maintains a thread-safe cache of `RequirementsService` objects scoped by the
+  configured base directory so repeated tool calls reuse a single instance; the
+  cache is flushed automatically when the server stops or the base path
+  changes.
 
 ## Graphical interface
 

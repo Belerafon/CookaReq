@@ -8,10 +8,10 @@ from typing import Any
 
 from ..core.model import Requirement
 from ..services.requirements import (
-    RequirementsService,
     RequirementNotFoundError,
     RequirementPage,
 )
+from .server import get_requirements_service
 from .utils import ErrorCode, log_tool, mcp_error
 
 _SEQUENCE_STRING_TYPES = (str, bytes, bytearray)
@@ -167,7 +167,7 @@ def list_requirements(
         "labels": list(labels) if labels else None,
         "fields": logged_fields,
     }
-    service = RequirementsService(directory)
+    service = get_requirements_service(directory)
     try:
         page_data = service.list_requirements(
             page=page,
@@ -203,7 +203,7 @@ def get_requirement(
         "directory": str(directory),
         "fields": logged_fields,
     }
-    service = RequirementsService(directory)
+    service = get_requirements_service(directory)
     try:
         requested_rids, logged_rid = _normalize_rid_argument(rid)
     except ValueError as exc:
@@ -297,7 +297,7 @@ def search_requirements(
         "per_page": per_page,
         "fields": logged_fields,
     }
-    service = RequirementsService(directory)
+    service = get_requirements_service(directory)
     try:
         page_data = service.search_requirements(
             query=query,

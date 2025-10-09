@@ -28,12 +28,12 @@ from ..log import (
     get_log_directory,
     logger,
 )
+from ..services.requirements import RequirementsService
 from ..services.user_documents import (
     MAX_ALLOWED_READ_BYTES,
     UserDocumentsService,
 )
 from ..util.time import utc_now_iso
-from . import tools_documents, tools_read, tools_write
 from .paths import resolve_documents_root
 from .utils import ErrorCode, exception_to_mcp_error, mcp_error, sanitize
 
@@ -47,11 +47,66 @@ request_logger.propagate = False
 # FastAPI application that will host the MCP routes.  Additional routes may
 # be added by the GUI part of the application if needed.
 app = FastAPI()
+app.state.base_path = ""
 app.state.expected_token = ""
 app.state.log_dir = "."
 app.state.max_context_tokens = 0
 app.state.token_model = None
 app.state.documents_service: UserDocumentsService | None = None
+
+
+class RequirementsServiceCache:
+    """Thread-safe cache of :class:`RequirementsService` per base directory."""
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._services: dict[Path, RequirementsService] = {}
+        self._active_base: Path | None = None
+
+    @staticmethod
+    def _normalize(base_path: str | Path) -> Path:
+        path = Path(base_path or ".").expanduser()
+        return path.resolve()
+
+    def activate(self, base_path: str | Path) -> None:
+        """Switch the cache to *base_path* dropping stale entries when needed."""
+
+        target = self._normalize(base_path)
+        with self._lock:
+            if self._active_base != target:
+                self._services.clear()
+                self._active_base = target
+
+    def deactivate(self) -> None:
+        """Clear all cached services and forget the active base path."""
+
+        with self._lock:
+            self._services.clear()
+            self._active_base = None
+
+    def get(self, base_path: str | Path) -> RequirementsService:
+        """Return a cached service for *base_path* creating it on demand."""
+
+        target = self._normalize(base_path)
+        with self._lock:
+            service = self._services.get(target)
+            if service is None:
+                service = RequirementsService(target)
+                self._services[target] = service
+            return service
+
+
+app.state.requirements_service_cache = RequirementsServiceCache()
+
+
+def get_requirements_service(base_path: str | Path) -> RequirementsService:
+    """Return a cached :class:`RequirementsService` for ``base_path``."""
+
+    cache: RequirementsServiceCache = app.state.requirements_service_cache
+    return cache.get(base_path)
+
+
+from . import tools_documents, tools_read, tools_write  # noqa: E402  # isort: skip
 
 _TEXT_LOG_NAME = "server.log"
 _JSONL_LOG_NAME = "server.jsonl"
@@ -513,6 +568,8 @@ def start_server(
             f" ({MAX_ALLOWED_READ_BYTES // 1024} KiB)"
         )
 
+    cache: RequirementsServiceCache = app.state.requirements_service_cache
+    cache.activate(base_path)
     app.state.base_path = base_path
     documents_root = resolve_documents_root(base_path, documents_path)
     app.state.documents_root = str(documents_root) if documents_root else None
@@ -609,3 +666,6 @@ def stop_server() -> None:
     app.state.documents_service = None
     app.state.max_context_tokens = 0
     app.state.token_model = None
+    app.state.base_path = ""
+    cache: RequirementsServiceCache = app.state.requirements_service_cache
+    cache.deactivate()

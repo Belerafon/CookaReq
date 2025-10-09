@@ -59,6 +59,8 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app, tmp_path, gui_context
                 frame.mcp_settings.host,
                 frame.mcp_settings.port,
                 frame.mcp_settings.base_path,
+                frame.mcp_settings.documents_path,
+                frame.mcp_settings.documents_max_read_kb,
                 frame.mcp_settings.log_dir or "",
                 frame.mcp_settings.require_token,
                 frame.mcp_settings.token,
@@ -76,3 +78,62 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app, tmp_path, gui_context
     frame.Destroy()
     # restore default language for subsequent tests
     i18n.install(main_mod.APP_NAME, main_mod.LOCALE_DIR, ["en"])
+
+
+def test_open_settings_raises_on_value_mismatch(
+    monkeypatch, wx_app, tmp_path, gui_context
+):
+    wx = pytest.importorskip("wx")
+    import app.ui.main_frame as main_frame
+
+    config = ConfigManager(path=tmp_path / "language-mismatch.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+
+    frame = main_frame.MainFrame(None, context=gui_context, config=config)
+
+    class BrokenSettingsDialog:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def get_values(self):
+            return (
+                frame.auto_open_last,
+                frame.remember_sort,
+                frame.language,
+                frame.llm_settings.base_url,
+                frame.llm_settings.model,
+                getattr(
+                    frame.llm_settings.message_format,
+                    "value",
+                    frame.llm_settings.message_format,
+                ),
+                frame.llm_settings.api_key or "",
+                frame.llm_settings.max_retries,
+                frame.llm_settings.max_context_tokens,
+                frame.llm_settings.timeout_minutes,
+                frame.llm_settings.use_custom_temperature,
+                frame.llm_settings.temperature,
+                frame.llm_settings.stream,
+                frame.mcp_settings.auto_start,
+                frame.mcp_settings.host,
+                frame.mcp_settings.port,
+                frame.mcp_settings.base_path,
+                # deliberately omit documents fields to trigger mismatch
+                frame.mcp_settings.log_dir or "",
+                frame.mcp_settings.require_token,
+                frame.mcp_settings.token,
+            )
+
+        def Destroy(self):
+            pass
+
+    monkeypatch.setattr(main_frame, "SettingsDialog", BrokenSettingsDialog)
+
+    try:
+        with pytest.raises(ValueError, match="Settings dialog returned"):
+            frame.on_open_settings(None)
+    finally:
+        frame.Destroy()

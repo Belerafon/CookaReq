@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import wx
@@ -10,6 +11,9 @@ from ...settings import LLMSettings, MCPSettings
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .frame import MainFrame
+
+
+logger = logging.getLogger(__name__)
 
 
 class MainFrameSettingsMixin:
@@ -52,167 +56,127 @@ class MainFrameSettingsMixin:
             token=self.mcp_settings.token,
             mcp_controller_factory=self._mcp_factory,
         )
-        if dlg.ShowModal() == wx.ID_OK:
-            values = list(dlg.get_values())
-            expected_fields = [
-                "auto_open_last",
-                "remember_sort",
-                "language",
-                "base_url",
-                "model",
-                "message_format",
-                "api_key",
-                "max_retries",
-                "max_context_tokens",
-                "timeout_minutes",
-                "use_custom_temperature",
-                "temperature",
-                "stream",
-                "auto_start",
-                "host",
-                "port",
-                "base_path",
-                "documents_path",
-                "documents_max_read_kb",
-                "log_dir",
-                "require_token",
-                "token",
-            ]
-            fallbacks = {
-                "auto_open_last": self.auto_open_last,
-                "remember_sort": self.remember_sort,
-                "language": self.language,
-                "base_url": self.llm_settings.base_url,
-                "model": self.llm_settings.model,
-                "message_format": getattr(
-                    self.llm_settings.message_format,
-                    "value",
-                    self.llm_settings.message_format,
-                ),
-                "api_key": self.llm_settings.api_key or "",
-                "max_retries": self.llm_settings.max_retries,
-                "max_context_tokens": self.llm_settings.max_context_tokens,
-                "timeout_minutes": self.llm_settings.timeout_minutes,
-                "use_custom_temperature": self.llm_settings.use_custom_temperature,
-                "temperature": self.llm_settings.temperature,
-                "stream": self.llm_settings.stream,
-                "auto_start": self.mcp_settings.auto_start,
-                "host": self.mcp_settings.host,
-                "port": self.mcp_settings.port,
-                "base_path": self.mcp_settings.base_path,
-                "documents_path": self.mcp_settings.documents_path,
-                "documents_max_read_kb": self.mcp_settings.documents_max_read_kb,
-                "log_dir": self.mcp_settings.log_dir or "",
-                "require_token": self.mcp_settings.require_token,
-                "token": self.mcp_settings.token,
-            }
-            if len(values) == len(expected_fields) - 2:
-                values = (
-                    values[:17]
-                    + [
-                        fallbacks["documents_path"],
-                        fallbacks["documents_max_read_kb"],
-                    ]
-                    + values[17:]
+        try:
+            if dlg.ShowModal() == wx.ID_OK:
+                values = list(dlg.get_values())
+                expected_fields = [
+                    "auto_open_last",
+                    "remember_sort",
+                    "language",
+                    "base_url",
+                    "model",
+                    "message_format",
+                    "api_key",
+                    "max_retries",
+                    "max_context_tokens",
+                    "timeout_minutes",
+                    "use_custom_temperature",
+                    "temperature",
+                    "stream",
+                    "auto_start",
+                    "host",
+                    "port",
+                    "base_path",
+                    "documents_path",
+                    "documents_max_read_kb",
+                    "log_dir",
+                    "require_token",
+                    "token",
+                ]
+                if len(values) != len(expected_fields):
+                    mismatch_message = (
+                        "Settings dialog returned %s values, expected %s. "
+                        "Update the dialog fields and handler to stay in sync."
+                        % (len(values), len(expected_fields))
+                    )
+                    logger.error(mismatch_message)
+                    raise ValueError(mismatch_message)
+                (
+                    auto_open_last,
+                    remember_sort,
+                    language,
+                    base_url,
+                    model,
+                    message_format,
+                    api_key,
+                    max_retries,
+                    max_context_tokens,
+                    timeout_minutes,
+                    use_custom_temperature,
+                    temperature,
+                    stream,
+                    auto_start,
+                    host,
+                    port,
+                    base_path,
+                    documents_path,
+                    documents_max_read_kb,
+                    log_dir,
+                    require_token,
+                    token,
+                ) = values
+                previous_language = self.language
+                language_changed = previous_language != language
+                self.auto_open_last = auto_open_last
+                self.remember_sort = remember_sort
+                self.language = language
+                previous_mcp = self.mcp_settings
+                self.llm_settings = LLMSettings(
+                    base_url=base_url,
+                    model=model,
+                    message_format=message_format,
+                    api_key=api_key or None,
+                    max_retries=max_retries,
+                    max_context_tokens=max_context_tokens,
+                    timeout_minutes=timeout_minutes,
+                    use_custom_temperature=use_custom_temperature,
+                    temperature=temperature,
+                    stream=stream,
                 )
-            elif len(values) == len(expected_fields) - 1:
-                values = (
-                    values[:17]
-                    + [fallbacks["documents_path"]]
-                    + values[17:]
+                self.mcp_settings = MCPSettings(
+                    auto_start=auto_start,
+                    host=host,
+                    port=port,
+                    base_path=base_path,
+                    documents_path=documents_path,
+                    documents_max_read_kb=documents_max_read_kb,
+                    log_dir=log_dir or None,
+                    require_token=require_token,
+                    token=token,
                 )
-            mapping = {
-                field: values[index]
-                for index, field in enumerate(expected_fields[: len(values)])
-            }
-            final_values = [
-                mapping.get(field, fallbacks[field]) for field in expected_fields
-            ]
-            (
-                auto_open_last,
-                remember_sort,
-                language,
-                base_url,
-                model,
-                message_format,
-                api_key,
-                max_retries,
-                max_context_tokens,
-                timeout_minutes,
-                use_custom_temperature,
-                temperature,
-                stream,
-                auto_start,
-                host,
-                port,
-                base_path,
-                documents_path,
-                documents_max_read_kb,
-                log_dir,
-                require_token,
-                token,
-            ) = final_values
-            previous_language = self.language
-            language_changed = previous_language != language
-            self.auto_open_last = auto_open_last
-            self.remember_sort = remember_sort
-            self.language = language
-            previous_mcp = self.mcp_settings
-            self.llm_settings = LLMSettings(
-                base_url=base_url,
-                model=model,
-                message_format=message_format,
-                api_key=api_key or None,
-                max_retries=max_retries,
-                max_context_tokens=max_context_tokens,
-                timeout_minutes=timeout_minutes,
-                use_custom_temperature=use_custom_temperature,
-                temperature=temperature,
-                stream=stream,
-            )
-            self.mcp_settings = MCPSettings(
-                auto_start=auto_start,
-                host=host,
-                port=port,
-                base_path=base_path,
-                documents_path=documents_path,
-                documents_max_read_kb=documents_max_read_kb,
-                log_dir=log_dir or None,
-                require_token=require_token,
-                token=token,
-            )
-            self.config.set_auto_open_last(self.auto_open_last)
-            self.config.set_remember_sort(self.remember_sort)
-            self.config.set_language(self.language)
-            self.config.set_llm_settings(self.llm_settings)
-            self.config.set_mcp_settings(self.mcp_settings)
-            if hasattr(self, "agent_panel"):
-                self.agent_panel.set_documents_subdirectory(
-                    self.mcp_settings.documents_path
+                self.config.set_auto_open_last(self.auto_open_last)
+                self.config.set_remember_sort(self.remember_sort)
+                self.config.set_language(self.language)
+                self.config.set_llm_settings(self.llm_settings)
+                self.config.set_mcp_settings(self.mcp_settings)
+                if hasattr(self, "agent_panel"):
+                    self.agent_panel.set_documents_subdirectory(
+                        self.mcp_settings.documents_path
+                    )
+                auto_start_changed = (
+                    previous_mcp.auto_start != self.mcp_settings.auto_start
                 )
-            auto_start_changed = (
-                previous_mcp.auto_start != self.mcp_settings.auto_start
-            )
-            server_config_changed = (
-                previous_mcp.model_dump(exclude={"auto_start"})
-                != self.mcp_settings.model_dump(exclude={"auto_start"})
-            )
-            if auto_start_changed:
-                if self.mcp_settings.auto_start:
+                server_config_changed = (
+                    previous_mcp.model_dump(exclude={"auto_start"})
+                    != self.mcp_settings.model_dump(exclude={"auto_start"})
+                )
+                if auto_start_changed:
+                    if self.mcp_settings.auto_start:
+                        self.mcp.start(
+                            self.mcp_settings,
+                            max_context_tokens=self.llm_settings.max_context_tokens,
+                            token_model=self.llm_settings.model,
+                        )
+                    else:
+                        self.mcp.stop()
+                elif self.mcp_settings.auto_start and server_config_changed:
+                    self.mcp.stop()
                     self.mcp.start(
                         self.mcp_settings,
                         max_context_tokens=self.llm_settings.max_context_tokens,
                         token_model=self.llm_settings.model,
                     )
-                else:
-                    self.mcp.stop()
-            elif self.mcp_settings.auto_start and server_config_changed:
-                self.mcp.stop()
-                self.mcp.start(
-                    self.mcp_settings,
-                    max_context_tokens=self.llm_settings.max_context_tokens,
-                    token_model=self.llm_settings.model,
-                )
-            if language_changed:
-                self._apply_language()
-        dlg.Destroy()
+                if language_changed:
+                    self._apply_language()
+        finally:
+            dlg.Destroy()

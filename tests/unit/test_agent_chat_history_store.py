@@ -74,34 +74,42 @@ def test_save_active_id_updates_metadata_without_touching_entries(
     assert active_id == sample_conversation.conversation_id
 
 
-def test_set_path_persists_existing_payload(tmp_path: Path, sample_conversation: ChatConversation) -> None:
+def test_set_path_persists_existing_payload(
+    tmp_path: Path, sample_conversation: ChatConversation
+) -> None:
     history_path = tmp_path / "agent_chats.sqlite"
     new_path = tmp_path / "new_history.sqlite"
     store = HistoryStore(history_path)
     store.save([sample_conversation], sample_conversation.conversation_id)
 
+    conversations, active_id = store.load()
+    assert conversations
+    snapshot = conversations[0]
+    assert snapshot.conversation_id == sample_conversation.conversation_id
+    assert not snapshot.entries_loaded  # loader should be deferred
+
     changed = store.set_path(
         new_path,
         persist_existing=True,
-        conversations=[sample_conversation],
-        active_id=sample_conversation.conversation_id,
+        conversations=conversations,
+        active_id=active_id,
     )
+
     assert changed is True
+    assert store.path == new_path
+    assert new_path.exists()
 
-    conversations, active_id = store.load()
-    assert not conversations  # switched to empty database
-    assert active_id is None
+    migrated_conversations, migrated_active = store.load()
+    assert migrated_active == sample_conversation.conversation_id
+    assert len(migrated_conversations) == 1
 
-    store.save([sample_conversation], sample_conversation.conversation_id)
+    migrated = migrated_conversations[0]
+    assert migrated.conversation_id == sample_conversation.conversation_id
+    assert not migrated.entries_loaded
 
-    new_store = HistoryStore(new_path)
-    conversations, active_id = new_store.load()
-    assert len(conversations) == 1
-    assert active_id == sample_conversation.conversation_id
-
-    reloaded = conversations[0]
-    reloaded.ensure_entries_loaded()
-    assert reloaded.entries[0].prompt == sample_conversation.entries[0].prompt
+    migrated_entries = store.load_entries(sample_conversation.conversation_id)
+    assert len(migrated_entries) == 1
+    assert migrated_entries[0].prompt == sample_conversation.entries[0].prompt
 
 
 def _fetch_entry_rows(path: Path, conversation_id: str) -> list[sqlite3.Row]:

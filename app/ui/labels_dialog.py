@@ -223,14 +223,31 @@ class LabelsDialog(wx.Dialog):
                 self.list.SetItem(idx, 1, lbl.title)
         dlg.Destroy()
 
+    def _read_int(self, key: str, default: int) -> int:
+        """Return integer configuration value stored under ``key``."""
+
+        try:
+            value = self._config.get_value(key, default)
+        except KeyError:
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _write_int(self, key: str, value: int) -> None:
+        """Persist integer configuration value ``value`` under ``key``."""
+
+        self._config.set_value(key, int(value))
+
     def _load_layout(self) -> None:
-        w = self._config.read_int("labels_w", 300)
-        h = self._config.read_int("labels_h", 200)
+        w = self._read_int("labels_w", 300)
+        h = self._read_int("labels_h", 200)
         w = max(200, min(w, 1000))
         h = max(150, min(h, 800))
         self.SetSize((w, h))
-        x = self._config.read_int("labels_x", -1)
-        y = self._config.read_int("labels_y", -1)
+        x = self._read_int("labels_x", -1)
+        y = self._read_int("labels_y", -1)
         if x != -1 and y != -1:
             self.SetPosition((x, y))
             rect = self.GetRect()
@@ -253,10 +270,10 @@ class LabelsDialog(wx.Dialog):
     def _save_layout(self) -> None:
         w, h = self.GetSize()
         x, y = self.GetPosition()
-        self._config.write_int("labels_w", w)
-        self._config.write_int("labels_h", h)
-        self._config.write_int("labels_x", x)
-        self._config.write_int("labels_y", y)
+        self._write_int("labels_w", w)
+        self._write_int("labels_h", h)
+        self._write_int("labels_x", x)
+        self._write_int("labels_y", y)
         self._config.flush()
 
     def Destroy(self) -> bool:  # pragma: no cover - GUI side effect

@@ -48,7 +48,11 @@ so you know which modules are involved and which regressions to guard against.
 * **`RequirementsService`** — wraps the document store with caching, consistent
   path resolution and domain-specific errors (`DocumentNotFoundError`,
   `ValidationError`). Both the GUI and automation flows consume this service
-  instead of calling the core directly.
+  instead of calling the core directly. When documents allow freeform labels the
+  service automatically promotes every newly applied key into the owning
+  document (or the nearest ancestor that permits freeform labels), synthesising
+  a human-friendly title and deterministic colour before persisting the updated
+  `document.json`.
 * **`UserDocumentsService`** — indexes external documentation for the agent.
   It enforces size limits, token budgets and serialises directory snapshots so
   that LLM prompts only include manageable chunks.

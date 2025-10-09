@@ -10,6 +10,8 @@ from ..llm.tokenizer import TokenCountResult, combine_token_counts, count_text_t
 
 DEFAULT_MAX_READ_BYTES = 10_240
 MAX_ALLOWED_READ_BYTES = 524_288
+LARGE_FILE_TOKEN_ESTIMATE_BYTES = 1_048_576
+TOKEN_COUNT_SAMPLE_BYTES = 102_400
 
 
 @dataclass(slots=True)
@@ -210,10 +212,13 @@ class UserDocumentsService:
         )
 
     def _build_file(self, path: Path, relative: Path) -> UserDocumentEntry:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        tokens = count_text_tokens(text, model=self.token_model)
-        percent = self._percent_of_context(tokens.tokens)
         size = path.stat().st_size
+        if size > LARGE_FILE_TOKEN_ESTIMATE_BYTES:
+            tokens = self._estimate_tokens_for_large_file(path, size)
+        else:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            tokens = count_text_tokens(text, model=self.token_model)
+        percent = self._percent_of_context(tokens.tokens)
         return UserDocumentEntry(
             name=path.name,
             relative_path=relative,
@@ -221,6 +226,27 @@ class UserDocumentsService:
             size_bytes=size,
             token_count=tokens,
             percent_of_context=percent,
+        )
+
+    def _estimate_tokens_for_large_file(self, path: Path, size: int) -> TokenCountResult:
+        sample_size = min(TOKEN_COUNT_SAMPLE_BYTES, size)
+        with path.open("rb") as stream:
+            sample_bytes = stream.read(sample_size)
+        sample_text = sample_bytes.decode("utf-8", errors="replace")
+        sample_result = count_text_tokens(sample_text, model=self.token_model)
+        model = sample_result.model or self.token_model
+        reason_parts: list[str] = ["sampled_heuristic"]
+        if sample_result.reason:
+            reason_parts.append(sample_result.reason)
+        reason = "; ".join(reason_parts)
+        if sample_size == 0 or sample_result.tokens is None:
+            return TokenCountResult.unavailable(model=model, reason=reason)
+        ratio = size / sample_size
+        estimated_tokens = int(round(sample_result.tokens * ratio))
+        return TokenCountResult.approximate_result(
+            estimated_tokens,
+            model=model,
+            reason=reason,
         )
 
     def _render_tree(self, entry: UserDocumentEntry) -> str:

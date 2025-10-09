@@ -12,7 +12,19 @@ import wx.dataview as dv
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from ...i18n import _
-from ..helpers import create_copy_button, dip, inherit_background
+from ..helpers import (
+    apply_button_bitmaps,
+    clear_button_bitmaps,
+    colour_alpha,
+    colour_to_hex,
+    create_copy_button,
+    create_disabled_bitmap,
+    dip,
+    inherit_background,
+    render_svg_bitmap,
+    resolve_control_icon_colour,
+)
+from ..icon_templates import SELECT_ALL_ICON_SVG_TEMPLATE
 from ..splitter_utils import refresh_splitter_highlight, style_splitter
 from ..widgets import SectionContainer
 from ..widgets.marquee_dataview import MarqueeDataViewListCtrl
@@ -36,6 +48,7 @@ class AgentChatLayout:
     history_view: HistoryView
     history_list: MarqueeDataViewListCtrl
     new_chat_button: wx.Button
+    history_select_all_button: wx.Button
     conversation_label: wx.StaticText
     copy_conversation_button: wx.Window
     copy_log_button: wx.Window
@@ -114,7 +127,12 @@ class AgentChatLayoutBuilder:
         history_label = wx.StaticText(history_panel, label=_("Chats"))
         new_chat_btn = wx.Button(history_panel, label=_("New chat"))
         new_chat_btn.Bind(wx.EVT_BUTTON, panel._on_new_chat)
+        select_all_btn = self._create_select_all_history_button(history_panel)
+        select_all_btn.Bind(wx.EVT_BUTTON, panel._on_select_all_history)
         history_header.Add(history_label, 1, wx.ALIGN_CENTER_VERTICAL)
+        history_header.Add(
+            select_all_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing
+        )
         history_header.Add(new_chat_btn, 0, wx.ALIGN_CENTER_VERTICAL)
         history_style = dv.DV_MULTIPLE | dv.DV_ROW_LINES | dv.DV_VERT_RULES
         history_list = MarqueeDataViewListCtrl(history_panel, style=history_style)
@@ -405,6 +423,7 @@ class AgentChatLayoutBuilder:
             history_view=history_view,
             history_list=history_list,
             new_chat_button=new_chat_btn,
+            history_select_all_button=select_all_btn,
             conversation_label=conversation_label,
             copy_conversation_button=copy_conversation_btn,
             copy_log_button=copy_log_btn,
@@ -474,11 +493,9 @@ class AgentChatLayoutBuilder:
     ) -> None:
         """Apply the provided visual state to the primary action button."""
         if visual.uses_bitmap and visual.bitmap is not None:
-            self._apply_button_bitmaps(
-                button, visual.bitmap, visual.disabled_bitmap
-            )
+            apply_button_bitmaps(button, visual.bitmap, visual.disabled_bitmap)
         else:
-            self._clear_button_bitmaps(button)
+            clear_button_bitmaps(button)
         label = visual.label if visual.label else ""
         if button.GetLabel() != label:
             button.SetLabel(label)
@@ -559,11 +576,11 @@ class AgentChatLayoutBuilder:
             return None
         accent_colour, disabled_colour = colours
         normal_markup = svg_builder(accent_colour)
-        normal = self._render_svg_bitmap(normal_markup, icon_size)
+        normal = render_svg_bitmap(normal_markup, icon_size)
         if normal is None or not normal.IsOk():
             return None
         disabled_markup = svg_builder(disabled_colour)
-        disabled = self._render_svg_bitmap(disabled_markup, icon_size)
+        disabled = render_svg_bitmap(disabled_markup, icon_size)
         if disabled is None or not disabled.IsOk():
             return None
         return normal, disabled
@@ -599,68 +616,14 @@ class AgentChatLayoutBuilder:
         def _clamp(value: float) -> int:
             return max(0, min(int(round(value)), 255))
 
-        first_alpha = self._colour_alpha(first)
-        second_alpha = self._colour_alpha(second)
+        first_alpha = colour_alpha(first)
+        second_alpha = colour_alpha(second)
         return wx.Colour(
             _clamp(first.Red() * ratio + second.Red() * other),
             _clamp(first.Green() * ratio + second.Green() * other),
             _clamp(first.Blue() * ratio + second.Blue() * other),
             _clamp(first_alpha * ratio + second_alpha * other),
         )
-
-    # ------------------------------------------------------------------
-    def _colour_alpha(self, colour: wx.Colour) -> int:
-        """Return the alpha component of a colour, defaulting to fully opaque."""
-        alpha_getter = getattr(colour, "Alpha", None)
-        if callable(alpha_getter):
-            return int(alpha_getter())
-        if hasattr(colour, "GetAlpha") and callable(colour.GetAlpha):
-            return int(colour.GetAlpha())
-        return 255
-
-    # ------------------------------------------------------------------
-    def _apply_button_bitmaps(
-        self, button: wx.Button, bitmap: wx.Bitmap, disabled_bitmap: wx.Bitmap | None
-    ) -> None:
-        """Attach the provided bitmaps to a button."""
-        if not bitmap or not bitmap.IsOk():
-            return
-
-        for attr in (
-            "SetBitmap",
-            "SetBitmapCurrent",
-            "SetBitmapFocus",
-            "SetBitmapPressed",
-            "SetBitmapHover",
-        ):
-            setter = getattr(button, attr, None)
-            if callable(setter):
-                setter(bitmap)
-
-        if disabled_bitmap and disabled_bitmap.IsOk():
-            setter = getattr(button, "SetBitmapDisabled", None)
-            if callable(setter):
-                setter(disabled_bitmap)
-
-        margins = getattr(button, "SetBitmapMargins", None)
-        if callable(margins):
-            margins(0, 0)
-
-    # ------------------------------------------------------------------
-    def _clear_button_bitmaps(self, button: wx.Button) -> None:
-        """Remove any bitmaps associated with a button."""
-        null_bitmap = wx.NullBitmap
-        for attr in (
-            "SetBitmap",
-            "SetBitmapCurrent",
-            "SetBitmapFocus",
-            "SetBitmapPressed",
-            "SetBitmapHover",
-            "SetBitmapDisabled",
-        ):
-            setter = getattr(button, attr, None)
-            if callable(setter):
-                setter(null_bitmap)
 
     # ------------------------------------------------------------------
     def _harmonize_icon_button_sizes(
@@ -686,6 +649,36 @@ class AgentChatLayoutBuilder:
             button.InvalidateBestSize()
 
     # ------------------------------------------------------------------
+    def _create_select_all_history_button(self, parent: wx.Window) -> wx.Button:
+        """Return a compact icon button that selects every chat history row."""
+
+        panel = self._panel
+        icon_edge = dip(panel, PRIMARY_ACTION_ICON_EDGE)
+        icon_size = wx.Size(icon_edge, icon_edge)
+        inherit_background(parent, panel)
+
+        button = wx.Button(parent, label="", style=wx.BU_AUTODRAW | wx.BU_EXACTFIT)
+        inherit_background(button, parent)
+        button.SetToolTip(_("Select all chats"))
+
+        colour = resolve_control_icon_colour(parent)
+        opacity = max(0.0, min(colour_alpha(colour) / 255.0, 1.0))
+        svg_markup = SELECT_ALL_ICON_SVG_TEMPLATE.format(
+            stroke=colour_to_hex(colour),
+            stroke_opacity=f"{opacity:.3f}",
+        )
+
+        bitmap = render_svg_bitmap(svg_markup, icon_size)
+        if bitmap and bitmap.IsOk():
+            disabled_bitmap = create_disabled_bitmap(bitmap)
+            apply_button_bitmaps(button, bitmap, disabled_bitmap)
+            button.SetMinSize(icon_size)
+        else:
+            button.SetLabel(_("Select all chats"))
+        button.Enable(False)
+        return button
+
+    # ------------------------------------------------------------------
     def _create_attachment_button(
         self, parent: wx.Window
     ) -> tuple[wx.Button, bool]:
@@ -703,7 +696,7 @@ class AgentChatLayoutBuilder:
             return button, False
 
         normal_bitmap, disabled_bitmap = bitmaps
-        self._apply_button_bitmaps(button, normal_bitmap, disabled_bitmap)
+        apply_button_bitmaps(button, normal_bitmap, disabled_bitmap)
         button.SetMinSize(icon_size)
         return button, True
 
@@ -725,7 +718,7 @@ class AgentChatLayoutBuilder:
             return button, False
 
         normal_bitmap, disabled_bitmap = bitmaps
-        self._apply_button_bitmaps(button, normal_bitmap, disabled_bitmap)
+        apply_button_bitmaps(button, normal_bitmap, disabled_bitmap)
         button.SetMinSize(icon_size)
         return button, True
 
@@ -747,7 +740,7 @@ class AgentChatLayoutBuilder:
             return button, False
 
         normal_bitmap, disabled_bitmap = bitmaps
-        self._apply_button_bitmaps(button, normal_bitmap, disabled_bitmap)
+        apply_button_bitmaps(button, normal_bitmap, disabled_bitmap)
         button.SetMinSize(icon_size)
         return button, True
 
@@ -756,21 +749,19 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window, icon_size: wx.Size
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
         """Return bitmaps for the clear-input button or ``None`` if unavailable."""
-        colour = self._resolve_control_icon_colour(parent)
-
-        stroke = self._colour_to_hex(colour)
-        opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
+        colour = resolve_control_icon_colour(parent)
+        stroke = colour_to_hex(colour)
+        opacity = max(0.0, min(colour_alpha(colour) / 255.0, 1.0))
         svg_markup = _CLEAR_INPUT_ICON_SVG_TEMPLATE.format(
             stroke=stroke,
             stroke_opacity=f"{opacity:.3f}",
         )
 
-        bitmap = self._render_svg_bitmap(svg_markup, icon_size)
-        if bitmap is None:
+        bitmap = render_svg_bitmap(svg_markup, icon_size)
+        if bitmap is None or not bitmap.IsOk():
             return None
 
-        disabled_image = bitmap.ConvertToImage().ConvertToDisabled()
-        disabled_bitmap = wx.Bitmap(disabled_image)
+        disabled_bitmap = create_disabled_bitmap(bitmap) or bitmap
         return bitmap, disabled_bitmap
 
     # ------------------------------------------------------------------
@@ -778,20 +769,19 @@ class AgentChatLayoutBuilder:
         self, parent: wx.Window, icon_size: wx.Size
     ) -> tuple[wx.Bitmap, wx.Bitmap] | None:
         """Return bitmaps for the attachment button or ``None`` if unavailable."""
-        colour = self._resolve_control_icon_colour(parent)
-        stroke = self._colour_to_hex(colour)
-        opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
+        colour = resolve_control_icon_colour(parent)
+        stroke = colour_to_hex(colour)
+        opacity = max(0.0, min(colour_alpha(colour) / 255.0, 1.0))
         svg_markup = _ATTACHMENT_ICON_SVG_TEMPLATE.format(
             stroke=stroke,
             stroke_opacity=f"{opacity:.3f}",
         )
 
-        bitmap = self._render_svg_bitmap(svg_markup, icon_size)
-        if bitmap is None:
+        bitmap = render_svg_bitmap(svg_markup, icon_size)
+        if bitmap is None or not bitmap.IsOk():
             return None
 
-        disabled_image = bitmap.ConvertToImage().ConvertToDisabled()
-        disabled_bitmap = wx.Bitmap(disabled_image)
+        disabled_bitmap = create_disabled_bitmap(bitmap) or bitmap
         return bitmap, disabled_bitmap
 
     # ------------------------------------------------------------------
@@ -802,8 +792,8 @@ class AgentChatLayoutBuilder:
         highlight = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
         if not isinstance(highlight, wx.Colour) or not highlight.IsOk():
             highlight = wx.Colour(33, 114, 229)
-        fill = self._colour_to_hex(highlight)
-        opacity = max(0.0, min(self._colour_alpha(highlight) / 255.0, 1.0))
+        fill = colour_to_hex(highlight)
+        opacity = max(0.0, min(colour_alpha(highlight) / 255.0, 1.0))
         svg_markup = _INSTRUCTIONS_ICON_SVG_TEMPLATE.format(
             stroke=fill,
             stroke_opacity=f"{opacity:.3f}",
@@ -811,85 +801,18 @@ class AgentChatLayoutBuilder:
             fill_opacity=f"{opacity:.3f}",
         )
 
-        bitmap = self._render_svg_bitmap(svg_markup, icon_size)
-        if bitmap is None:
+        bitmap = render_svg_bitmap(svg_markup, icon_size)
+        if bitmap is None or not bitmap.IsOk():
             return None
 
-        disabled_image = bitmap.ConvertToImage().ConvertToDisabled()
-        disabled_bitmap = wx.Bitmap(disabled_image)
+        disabled_bitmap = create_disabled_bitmap(bitmap) or bitmap
         return bitmap, disabled_bitmap
-
-    # ------------------------------------------------------------------
-    def _resolve_control_icon_colour(self, parent: wx.Window) -> wx.Colour:
-        """Return a foreground colour suitable for monochrome control icons."""
-        colour = parent.GetForegroundColour()
-        if not isinstance(colour, wx.Colour) or not colour.IsOk():
-            colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
-        if not colour.IsOk():
-            colour = wx.Colour(86, 99, 122)
-        return colour
-
-    # ------------------------------------------------------------------
-    def _render_svg_bitmap(self, svg_markup: str, icon_size: wx.Size) -> wx.Bitmap | None:
-        """Render SVG markup into a bitmap using available wx backends."""
-        bitmap = self._render_svg_with_bitmap_bundle(svg_markup, icon_size)
-        if bitmap is None:
-            bitmap = self._render_svg_with_wxsvg(svg_markup, icon_size)
-        return bitmap
-
-    # ------------------------------------------------------------------
-    def _render_svg_with_bitmap_bundle(
-        self, svg_markup: str, icon_size: wx.Size
-    ) -> wx.Bitmap | None:
-        """Render SVG markup through :mod:`wx.BitmapBundle` if supported."""
-        if not hasattr(wx, "BitmapBundle"):
-            return None
-        from_svg = getattr(wx.BitmapBundle, "FromSVG", None)
-        if from_svg is None:
-            return None
-
-        try:
-            bundle = from_svg(svg_markup.encode("utf-8"), icon_size)
-        except (TypeError, ValueError, RuntimeError):
-            return None
-        if not bundle or not bundle.IsOk():
-            return None
-
-        bitmap = bundle.GetBitmap(icon_size)
-        if not bitmap or not bitmap.IsOk():
-            return None
-        return bitmap
-
-    # ------------------------------------------------------------------
-    def _render_svg_with_wxsvg(
-        self, svg_markup: str, icon_size: wx.Size
-    ) -> wx.Bitmap | None:
-        """Render SVG markup via :mod:`wx.svg` as a compatibility fallback."""
-        try:
-            import wx.svg as wxsvg
-        except Exception:  # pragma: no cover - defensive against missing module
-            return None
-
-        create_from_string = getattr(wxsvg.SVGimage, "CreateFromString", None)
-        if create_from_string is None:
-            return None
-
-        image = create_from_string(svg_markup)
-        if image is None or not image.IsOk():
-            return None
-
-        width = max(icon_size.GetWidth(), 1)
-        height = max(icon_size.GetHeight(), 1)
-        bitmap = image.Render(width, height)
-        if not bitmap or not bitmap.IsOk():
-            return None
-        return bitmap
 
     # ------------------------------------------------------------------
     def _build_primary_action_arrow_svg(self, colour: wx.Colour) -> str:
         """Return SVG markup for the idle-state upward arrow."""
-        fill = self._colour_to_hex(colour)
-        opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
+        fill = colour_to_hex(colour)
+        opacity = max(0.0, min(colour_alpha(colour) / 255.0, 1.0))
         return _PRIMARY_ACTION_ARROW_ICON_SVG_TEMPLATE.format(
             fill=fill,
             fill_opacity=f"{opacity:.3f}",
@@ -898,22 +821,14 @@ class AgentChatLayoutBuilder:
     # ------------------------------------------------------------------
     def _build_primary_action_stop_svg(self, colour: wx.Colour) -> str:
         """Return SVG markup for the running-state stop icon."""
-        fill = self._colour_to_hex(colour)
-        opacity = max(0.0, min(self._colour_alpha(colour) / 255.0, 1.0))
+        fill = colour_to_hex(colour)
+        opacity = max(0.0, min(colour_alpha(colour) / 255.0, 1.0))
         return _PRIMARY_ACTION_STOP_ICON_SVG_TEMPLATE.format(
             fill=fill,
             fill_opacity=f"{opacity:.3f}",
         )
 
     # ------------------------------------------------------------------
-    def _colour_to_hex(self, colour: wx.Colour) -> str:
-        """Convert a colour to a ``#RRGGBB`` hex string."""
-        red = max(0, min(int(colour.Red()), 255))
-        green = max(0, min(int(colour.Green()), 255))
-        blue = max(0, min(int(colour.Blue()), 255))
-        return f"#{red:02X}{green:02X}{blue:02X}"
-
-
 _PRIMARY_ACTION_ARROW_ICON_SVG_TEMPLATE = dedent(
     """
     <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

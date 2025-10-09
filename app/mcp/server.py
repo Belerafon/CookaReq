@@ -537,7 +537,11 @@ def start_server(
     _uvicorn_server.install_signal_handlers = False
 
     def _run() -> None:
-        _uvicorn_server.run()
+        try:
+            _uvicorn_server.run()
+        except Exception:  # pragma: no cover - relies on uvicorn internals
+            logger.exception("MCP server terminated with an unhandled exception")
+            raise
 
     _server_thread = threading.Thread(target=_run, daemon=True)
     _server_thread.start()

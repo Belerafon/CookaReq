@@ -254,6 +254,7 @@ class MainFrame(
                 documents_subdirectory=self.mcp_settings.documents_path,
             ),
         )
+        self._setup_agent_documents_hooks()
         self._init_mcp_tool_listener()
         self._hide_agent_section()
         history_sash = self.config.get_agent_history_sash(
@@ -351,6 +352,7 @@ class MainFrame(
                 documents_subdirectory=self.mcp_settings.documents_path,
             )
             self._init_mcp_tool_listener()
+            self._setup_agent_documents_hooks()
             history_sash = self.config.get_agent_history_sash(
                 self.agent_panel.default_history_sash()
             )

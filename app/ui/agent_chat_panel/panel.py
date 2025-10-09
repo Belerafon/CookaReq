@@ -393,6 +393,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._documents_root_listener = callback
         self._notify_documents_root_listener()
 
+    def on_documents_context_changed(self) -> None:
+        """Refresh UI sections dependent on documentation context."""
+        self._update_conversation_header()
+
     @property
     def conversations(self) -> list[ChatConversation]:
         """Expose current conversations managed by the history component."""

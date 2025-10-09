@@ -8,6 +8,9 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import wx
 
@@ -30,6 +33,76 @@ if TYPE_CHECKING:  # pragma: no cover - import for type checking only
 logger = logging.getLogger("cookareq.ui.main_frame.agent")
 
 
+@dataclass(frozen=True, slots=True)
+class _DocumentsTreeRequest:
+    """Describe a snapshot request for the documentation tree."""
+
+    documents_root: Path
+    max_context_tokens: int
+    token_model: str | None
+    max_read_bytes: int
+
+
+@dataclass(slots=True)
+class _DocumentsTreeCacheEntry:
+    """Store the latest documentation tree snapshot and its timestamp."""
+
+    request: _DocumentsTreeRequest
+    snapshot: dict[str, object]
+    built_at: datetime
+
+
+@dataclass(slots=True)
+class _DocumentsTreeErrorEntry:
+    """Capture the most recent failure while building the documentation tree."""
+
+    request: _DocumentsTreeRequest
+    message: str
+    occurred_at: datetime
+
+
+@dataclass(slots=True)
+class _DocumentsTreeWorkerResult:
+    """Result payload returned by the background worker."""
+
+    job_id: int
+    request: _DocumentsTreeRequest
+    snapshot: dict[str, object] | None
+    error: str | None
+    built_at: datetime
+
+
+def _run_documents_tree_job(
+    job_id: int, request: _DocumentsTreeRequest
+) -> _DocumentsTreeWorkerResult:
+    """Build the documentation tree snapshot for *request*."""
+
+    try:
+        service = UserDocumentsService(
+            request.documents_root,
+            max_context_tokens=request.max_context_tokens,
+            token_model=request.token_model,
+            max_read_bytes=request.max_read_bytes,
+        )
+        snapshot = service.list_tree()
+        return _DocumentsTreeWorkerResult(
+            job_id=job_id,
+            request=request,
+            snapshot=snapshot,
+            error=None,
+            built_at=datetime.now(timezone.utc),
+        )
+    except Exception as exc:  # pragma: no cover - defensive worker catch
+        message = getattr(exc, "message", None) or str(exc)
+        return _DocumentsTreeWorkerResult(
+            job_id=job_id,
+            request=request,
+            snapshot=None,
+            error=message,
+            built_at=datetime.now(timezone.utc),
+        )
+
+
 def _short_repr(value: Any, *, limit: int = 200) -> str:
     """Return shortened ``repr`` for logging purposes."""
     try:
@@ -46,6 +119,14 @@ class MainFrameAgentMixin:
 
     _mcp_tool_listener_remove: Callable[[], None] | None = None
     _mcp_tool_listener_callback: Callable[[ToolResultEvent], None] | None = None
+    _documents_tree_executor: ThreadPoolExecutor | None = None
+    _documents_tree_future: Future[_DocumentsTreeWorkerResult] | None = None
+    _documents_tree_cache: _DocumentsTreeCacheEntry | None = None
+    _documents_tree_error: _DocumentsTreeErrorEntry | None = None
+    _documents_tree_job_id: int = 0
+    _documents_tree_pending_job_id: int | None = None
+    _documents_tree_current_request: _DocumentsTreeRequest | None = None
+    _documents_tree_listener_panel: wx.Window | None = None
 
     def _create_agent(
         self: MainFrame,
@@ -134,6 +215,7 @@ class MainFrameAgentMixin:
     def _on_window_destroy(self: MainFrame, event: wx.WindowDestroyEvent) -> None:
         if event.GetEventObject() is self:
             self._teardown_mcp_tool_listener()
+            self._shutdown_user_documents_cache()
         event.Skip()
 
     def _selected_requirement_ids_for_agent(self: MainFrame) -> list[int]:
@@ -289,6 +371,7 @@ class MainFrameAgentMixin:
         if panel is None:
             return []
 
+        self._setup_agent_documents_hooks()
         subdirectory = getattr(panel, "documents_subdirectory", "") or ""
         lines: list[str] = ["[User documentation]"]
         if not subdirectory:
@@ -327,23 +410,41 @@ class MainFrameAgentMixin:
             max_read_bytes = documents_max_read_kb * 1024
         max_read_bytes = max(1, min(MAX_ALLOWED_READ_BYTES, max_read_bytes))
 
-        try:
-            service = UserDocumentsService(
-                documents_root,
-                max_context_tokens=max_context_tokens,
-                token_model=token_model,
-                max_read_bytes=max_read_bytes,
-            )
-            snapshot = service.list_tree()
-        except Exception as exc:
+        request = _DocumentsTreeRequest(
+            documents_root=Path(documents_root),
+            max_context_tokens=max_context_tokens,
+            token_model=token_model,
+            max_read_bytes=max_read_bytes,
+        )
+
+        cache_entry = getattr(self, "_documents_tree_cache", None)
+        if cache_entry is not None and cache_entry.request == request:
+            lines.extend(self._format_documents_snapshot(cache_entry))
+            return lines
+
+        error_entry = getattr(self, "_documents_tree_error", None)
+        if error_entry is not None and error_entry.request == request:
             lines.append(
                 "Failed to enumerate documentation folder: "
-                f"{getattr(exc, 'message', None) or exc}"
+                f"{error_entry.message}"
             )
             return lines
 
+        self._invalidate_documents_cache_if_mismatch(request)
+        self._ensure_documents_tree_refresh(request)
+        lines.append("Documentation folder is loading…")
+        return lines
+
+    # ------------------------------------------------------------------
+    def _format_documents_snapshot(
+        self: MainFrame, entry: _DocumentsTreeCacheEntry
+    ) -> list[str]:
+        lines: list[str] = []
+        snapshot = entry.snapshot
+        request = entry.request
+        documents_root = request.documents_root
         lines.append(f"Resolved documentation root: {documents_root}")
-        read_limit = snapshot.get("max_read_bytes", max_read_bytes)
+        read_limit = snapshot.get("max_read_bytes", request.max_read_bytes)
         read_kib = snapshot.get("max_read_kib")
         if read_kib is None:
             read_kib = read_limit // 1024
@@ -361,8 +462,156 @@ class MainFrameAgentMixin:
             lines.append(tree_text)
         else:
             lines.append("Directory tree: (empty)")
-
+        built_at = entry.built_at.astimezone(timezone.utc)
+        lines.append(f"Snapshot generated at: {built_at.isoformat()}")
         return lines
+
+    # ------------------------------------------------------------------
+    def _invalidate_documents_cache_if_mismatch(
+        self: MainFrame, request: _DocumentsTreeRequest
+    ) -> None:
+        cache_entry = getattr(self, "_documents_tree_cache", None)
+        if cache_entry is not None and cache_entry.request != request:
+            self._documents_tree_cache = None
+        error_entry = getattr(self, "_documents_tree_error", None)
+        if error_entry is not None and error_entry.request != request:
+            self._documents_tree_error = None
+        current_request = getattr(self, "_documents_tree_current_request", None)
+        if current_request is not None and current_request != request:
+            self._documents_tree_current_request = None
+
+    # ------------------------------------------------------------------
+    def _ensure_documents_tree_refresh(
+        self: MainFrame, request: _DocumentsTreeRequest
+    ) -> None:
+        current_request = getattr(self, "_documents_tree_current_request", None)
+        pending_job = getattr(self, "_documents_tree_pending_job_id", None)
+        if current_request == request and pending_job is not None:
+            return
+
+        future = getattr(self, "_documents_tree_future", None)
+        if future is not None and not future.done():
+            future.cancel()
+
+        executor = getattr(self, "_documents_tree_executor", None)
+        if executor is None:
+            executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="CookaReqDocs"
+            )
+            self._documents_tree_executor = executor
+
+        job_id = getattr(self, "_documents_tree_job_id", 0) + 1
+        self._documents_tree_job_id = job_id
+        self._documents_tree_pending_job_id = job_id
+        self._documents_tree_current_request = request
+
+        worker_future: Future[_DocumentsTreeWorkerResult] = executor.submit(
+            _run_documents_tree_job, job_id, request
+        )
+        self._documents_tree_future = worker_future
+
+        def _deliver(fut: Future[_DocumentsTreeWorkerResult]) -> None:
+            try:
+                result = fut.result()
+            except Exception as exc:  # pragma: no cover - defensive
+                message = getattr(exc, "message", None) or str(exc)
+                result = _DocumentsTreeWorkerResult(
+                    job_id=job_id,
+                    request=request,
+                    snapshot=None,
+                    error=message,
+                    built_at=datetime.now(timezone.utc),
+                )
+            wx.CallAfter(self._handle_documents_tree_result, result)
+
+        worker_future.add_done_callback(_deliver)
+
+    # ------------------------------------------------------------------
+    def _handle_documents_tree_result(
+        self: MainFrame, result: _DocumentsTreeWorkerResult
+    ) -> None:
+        if getattr(self, "_shutdown_in_progress", False):
+            return
+        pending_job_id = getattr(self, "_documents_tree_pending_job_id", None)
+        if pending_job_id != result.job_id:
+            return
+        current_request = getattr(self, "_documents_tree_current_request", None)
+        if current_request != result.request:
+            return
+
+        self._documents_tree_pending_job_id = None
+        self._documents_tree_future = None
+
+        if result.error is None and result.snapshot is not None:
+            self._documents_tree_cache = _DocumentsTreeCacheEntry(
+                request=result.request,
+                snapshot=result.snapshot,
+                built_at=result.built_at,
+            )
+            self._documents_tree_error = None
+        else:
+            message = result.error or "Unknown error"
+            self._documents_tree_cache = None
+            self._documents_tree_error = _DocumentsTreeErrorEntry(
+                request=result.request,
+                message=message,
+                occurred_at=result.built_at,
+            )
+
+        panel = getattr(self, "agent_panel", None)
+        if panel is not None and hasattr(panel, "on_documents_context_changed"):
+            with suppress(Exception):
+                panel.on_documents_context_changed()
+
+    # ------------------------------------------------------------------
+    def _shutdown_user_documents_cache(self: MainFrame) -> None:
+        future = getattr(self, "_documents_tree_future", None)
+        if future is not None:
+            future.cancel()
+        self._documents_tree_future = None
+        executor = getattr(self, "_documents_tree_executor", None)
+        if executor is not None:
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:  # pragma: no cover - compatibility guard
+                executor.shutdown(wait=False)
+        self._documents_tree_executor = None
+        self._documents_tree_cache = None
+        self._documents_tree_error = None
+        self._documents_tree_pending_job_id = None
+        self._documents_tree_current_request = None
+
+    # ------------------------------------------------------------------
+    def _setup_agent_documents_hooks(self: MainFrame) -> None:
+        panel = getattr(self, "agent_panel", None)
+        if panel is None:
+            return
+        if getattr(self, "_documents_tree_listener_panel", None) is panel:
+            return
+        listener = getattr(panel, "set_documents_root_listener", None)
+        if callable(listener):
+            listener(self._on_agent_documents_root_changed)
+            self._documents_tree_listener_panel = panel
+
+    # ------------------------------------------------------------------
+    def _on_agent_documents_root_changed(
+        self: MainFrame, documents_root: Path | None
+    ) -> None:
+        self._invalidate_user_documents_cache()
+        if documents_root is None:
+            return
+        self._documents_tree_current_request = None
+
+    # ------------------------------------------------------------------
+    def _invalidate_user_documents_cache(self: MainFrame) -> None:
+        future = getattr(self, "_documents_tree_future", None)
+        if future is not None:
+            future.cancel()
+        self._documents_tree_future = None
+        self._documents_tree_cache = None
+        self._documents_tree_error = None
+        self._documents_tree_pending_job_id = None
+        self._documents_tree_current_request = None
 
     def _agent_context_for_requirement(
         self: MainFrame, requirement_id: int

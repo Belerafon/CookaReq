@@ -62,6 +62,14 @@ class DocumentsController:
         """Return labels and free-form flag for document ``prefix``."""
         return self.service.collect_label_defs(prefix)
 
+    def sync_labels_from_requirements(self, prefix: str) -> list[LabelDef]:
+        """Ensure that labels used by requirements are declared in metadata."""
+
+        promoted = self.service.sync_labels_from_requirements(prefix)
+        if promoted:
+            self.load_documents()
+        return promoted
+
     def build_trace_matrix(self, config: TraceMatrixConfig) -> TraceMatrix:
         """Construct traceability matrix for ``config`` using cached documents."""
         if not self.documents:

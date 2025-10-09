@@ -52,7 +52,9 @@ so you know which modules are involved and which regressions to guard against.
   service automatically promotes every newly applied key into the owning
   document (or the nearest ancestor that permits freeform labels), synthesising
   a human-friendly title and deterministic colour before persisting the updated
-  `document.json`.
+  `document.json`. The GUI may additionally request a retroactive promotion that
+  scans existing requirements and registers previously ad-hoc labels so that
+  historical datasets gain the same metadata guarantees.
 * **`UserDocumentsService`** — indexes external documentation for the agent.
   It enforces size limits, token budgets and serialises directory snapshots so
   that LLM prompts only include manageable chunks. Token counters read small

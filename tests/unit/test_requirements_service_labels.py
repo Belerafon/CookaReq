@@ -49,6 +49,23 @@ def test_set_labels_promotes_new_definitions(tmp_path: Path) -> None:
     assert any(defn.key == "beta" for defn in stored.labels.defs)
 
 
+def test_sync_labels_from_requirements_promotes_existing_usage(tmp_path: Path) -> None:
+    root = tmp_path
+    doc = Document(prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True))
+    save_document(root / "SYS", doc)
+    requirement = _base_requirement("SYS")
+    requirement.labels = ["legacy", "color"]
+    save_item(root / "SYS", doc, requirement.to_mapping())
+
+    service = RequirementsService(root)
+    promoted = service.sync_labels_from_requirements("SYS")
+
+    assert {definition.key for definition in promoted} == {"legacy", "color"}
+    refreshed = service.get_document("SYS")
+    keys = {definition.key for definition in refreshed.labels.defs}
+    assert {"legacy", "color"}.issubset(keys)
+
+
 def test_set_labels_uses_nearest_freeform_ancestor(tmp_path: Path) -> None:
     root = tmp_path
     parent = Document(prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True))

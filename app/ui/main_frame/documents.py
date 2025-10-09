@@ -559,8 +559,17 @@ class MainFrameDocumentsMixin:
             return
         doc = self.docs_controller.documents.get(prefix)
         if doc is None:
+            documents = self.docs_controller.load_documents()
+            doc = documents.get(prefix)
+        if doc is None:
             wx.MessageBox(_("Document not found"), _("Error"), wx.ICON_ERROR)
             return
+        promoted = self.docs_controller.sync_labels_from_requirements(prefix)
+        if promoted:
+            doc = self.docs_controller.documents.get(prefix)
+            if doc is None:
+                doc = self.docs_controller.load_documents().get(prefix)
+
         labels = [LabelDef(ld.key, ld.title, ld.color) for ld in doc.labels.defs]
         dlg = LabelsDialog(self, labels)
         if dlg.ShowModal() == wx.ID_OK:

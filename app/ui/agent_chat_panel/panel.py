@@ -206,6 +206,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if pool is not None:
                 self._executor_pool = pool
         self._new_chat_btn: wx.Button | None = None
+        self._select_all_history_btn: wx.Button | None = None
         self._conversation_label: wx.StaticText | None = None
         self._primary_action_btn: wx.Button | None = None
         self._bottom_panel: wx.Panel | None = None
@@ -478,6 +479,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self.history_list = layout.history_list
         self._history_view = layout.history_view
         self._new_chat_btn = layout.new_chat_button
+        self._select_all_history_btn = layout.history_select_all_button
         self._conversation_label = layout.conversation_label
         self._copy_conversation_btn = layout.copy_conversation_button
         self._copy_transcript_log_btn = layout.copy_log_button
@@ -2974,9 +2976,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _update_history_controls(self) -> None:
         has_conversations = bool(self.conversations)
-        self.history_list.Enable(has_conversations and not self._session.is_running)
+        enable_history = has_conversations and not self._session.is_running
+        self.history_list.Enable(enable_history)
         if self._new_chat_btn is not None:
             self._new_chat_btn.Enable(not self._session.is_running)
+        if self._select_all_history_btn is not None:
+            self._select_all_history_btn.Enable(enable_history)
 
     def _on_new_chat(self, _event: wx.Event) -> None:
         if self._session.is_running:
@@ -2984,6 +2989,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._create_conversation(persist=True)
         self.input.SetValue("")
         self.input.SetFocus()
+
+    # ------------------------------------------------------------------
+    def _on_select_all_history(self, _event: wx.Event) -> None:
+        if self._session.is_running:
+            return
+        if self._history_view is None:
+            return
+        self._history_view.select_all()
+        if isinstance(self.history_list, wx.Window):
+            self.history_list.SetFocus()
 
     def _handle_regenerate_request(
         self, conversation_id: str, entry: ChatEntry

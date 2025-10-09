@@ -16,7 +16,18 @@ from ..core.model import Requirement, Status
 from ..i18n import _
 from ..log import logger
 from . import locale
-from .helpers import dip, inherit_background
+from .helpers import (
+    apply_button_bitmaps,
+    clear_button_bitmaps,
+    colour_alpha,
+    colour_to_hex,
+    create_disabled_bitmap,
+    dip,
+    inherit_background,
+    render_svg_bitmap,
+    resolve_control_icon_colour,
+)
+from .icon_templates import SELECT_ALL_ICON_SVG_TEMPLATE
 from .label_selection_dialog import LabelSelectionDialog
 from .enums import ENUMS
 from .filter_dialog import FilterDialog
@@ -238,6 +249,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         top_flag = getattr(wx, "TOP", 0)
         align_center = getattr(wx, "ALIGN_CENTER_VERTICAL", 0)
         btn_row = wx.BoxSizer(orient)
+        self._select_all_btn = self._create_select_all_button()
         self.filter_btn = wx.Button(self, label=_("Filters"))
         bmp = wx.ArtProvider.GetBitmap(
             getattr(wx, "ART_CLOSE", "wxART_CLOSE"),
@@ -252,6 +264,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.reset_btn.SetToolTip(_("Clear filters"))
         self.reset_btn.Hide()
         self.filter_summary = wx.StaticText(self, label="")
+        btn_row.Add(self._select_all_btn, 0, right, vertical_pad)
         btn_row.Add(self.filter_btn, 0, right, vertical_pad)
         btn_row.Add(self.reset_btn, 0, right, vertical_pad)
         btn_row.Add(self.filter_summary, 0, align_center, 0)
@@ -290,6 +303,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self.list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
         self.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter)
         self.reset_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.reset_filters())
+        self._select_all_btn.Bind(
+            wx.EVT_BUTTON, self._on_select_all_requirements
+        )
 
     # ColumnSorterMixin requirement
     def GetListCtrl(self):  # pragma: no cover - simple forwarding
@@ -750,6 +766,42 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             with suppress(Exception):  # pragma: no cover - some stubs lack Layout
                 self.Layout()
 
+    def _create_select_all_button(self) -> wx.Button:
+        """Create icon-first button that selects every requirement row."""
+
+        icon_edge = dip(self, 16)
+        icon_size = wx.Size(icon_edge, icon_edge)
+        button = wx.Button(self, label="", style=wx.BU_AUTODRAW | wx.BU_EXACTFIT)
+        inherit_background(button, self)
+        button.SetToolTip(_("Select all requirements"))
+
+        colour = resolve_control_icon_colour(self)
+        opacity = max(0.0, min(colour_alpha(colour) / 255.0, 1.0))
+        svg_markup = SELECT_ALL_ICON_SVG_TEMPLATE.format(
+            stroke=colour_to_hex(colour),
+            stroke_opacity=f"{opacity:.3f}",
+        )
+
+        bitmap = render_svg_bitmap(svg_markup, icon_size)
+        if bitmap and bitmap.IsOk():
+            disabled_bitmap = create_disabled_bitmap(bitmap)
+            apply_button_bitmaps(button, bitmap, disabled_bitmap)
+            button.SetMinSize(icon_size)
+        else:
+            button.SetLabel(_("Select all requirements"))
+            clear_button_bitmaps(button)
+        button.Enable(False)
+        return button
+
+    def _update_select_all_button(self) -> None:
+        """Enable or disable the select-all button based on list contents."""
+
+        button = getattr(self, "_select_all_btn", None)
+        if button is None:
+            return
+        has_items = self.list.GetItemCount() > 0
+        button.Enable(has_items)
+
     def _refresh(self) -> None:
         """Reload list control from the model."""
         items = self.model.get_visible()
@@ -807,6 +859,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
                 self.list.SetItem(index, col, str(value))
+        self._update_select_all_button()
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.
@@ -817,6 +870,22 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._refresh()
         if select_id is not None:
             self.focus_requirement(select_id)
+
+    def _on_select_all_requirements(self, _event: wx.Event) -> None:
+        """Select all rows in the requirements list."""
+
+        count = self.list.GetItemCount()
+        if count <= 0:
+            return
+        self.list.Freeze()
+        try:
+            for idx in range(count):
+                _apply_item_selection(self.list, idx, True)
+        finally:
+            self.list.Thaw()
+        with suppress(Exception):
+            self.list.Focus(0)
+            self.list.EnsureVisible(0)
 
     def focus_requirement(self, req_id: int) -> None:
         """Select and ensure visibility of requirement ``req_id``."""

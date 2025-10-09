@@ -113,6 +113,31 @@ class HistoryView:
         return rows
 
     # ------------------------------------------------------------------
+    def select_all(self) -> None:
+        """Select every conversation in the history list."""
+
+        preparation = self._prepare_for_interaction()
+        if not preparation.allowed:
+            return
+
+        self._list.Freeze()
+        self._suppress_selection = True
+        try:
+            select_all = getattr(self._list, "SelectAll", None)
+            if callable(select_all):
+                select_all()
+            else:
+                count = self._list.GetItemCount()
+                for row in range(count):
+                    item = self._list.RowToItem(row)
+                    if item.IsOk():
+                        self._list.Select(item)
+        finally:
+            self._suppress_selection = False
+            self._list.Thaw()
+        self._list.SetFocus()
+
+    # ------------------------------------------------------------------
     def on_splitter_size(self, event: wx.SizeEvent) -> None:
         event.Skip()
         if self._sash_goal is None:

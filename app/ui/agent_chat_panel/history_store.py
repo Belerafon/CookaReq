@@ -191,6 +191,22 @@ class HistoryStore:
             raise
 
     # ------------------------------------------------------------------
+    def has_conversations(self) -> bool:
+        """Return ``True`` when at least one conversation exists on disk."""
+        try:
+            with self._connect() as conn:
+                self._ensure_schema(conn)
+                row = conn.execute(
+                    "SELECT 1 FROM conversations LIMIT 1"
+                ).fetchone()
+        except sqlite3.Error:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to inspect chat history contents at %s", self._path
+            )
+            return False
+        return row is not None
+
+    # ------------------------------------------------------------------
     def _connect(self) -> sqlite3.Connection:
         path = self._path
         path.parent.mkdir(parents=True, exist_ok=True)

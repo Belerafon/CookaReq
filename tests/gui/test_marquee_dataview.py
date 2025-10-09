@@ -10,7 +10,7 @@ import pytest
 from app.ui.widgets.marquee_dataview import MarqueeDataViewListCtrl
 
 
-pytestmark = [pytest.mark.gui, pytest.mark.gui_smoke]
+pytestmark = pytest.mark.gui
 
 
 def _row_rect(control: MarqueeDataViewListCtrl, row: int) -> wx.Rect:

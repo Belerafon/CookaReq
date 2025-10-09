@@ -5,7 +5,7 @@ import pytest
 from app.llm.constants import DEFAULT_LLM_TEMPERATURE, DEFAULT_MAX_CONTEXT_TOKENS
 from app.mcp.controller import MCPCheckResult, MCPStatus
 
-pytestmark = [pytest.mark.gui, pytest.mark.integration, pytest.mark.gui_smoke]
+pytestmark = [pytest.mark.gui, pytest.mark.integration]
 
 
 class IdleMCPController:
@@ -35,6 +35,7 @@ class IdleMCPController:
         return MCPCheckResult(self.state, f"{self.state.value}")
 
 
+@pytest.mark.gui_smoke
 def test_available_translations_contains_locales():
     pytest.importorskip("wx")
     from app.ui.settings_dialog import available_translations
@@ -45,6 +46,7 @@ def test_available_translations_contains_locales():
     assert {"en", "ru"}.issubset(codes)
 
 
+@pytest.mark.gui_smoke
 def test_settings_dialog_returns_language(wx_app):
     pytest.importorskip("wx")
     from app.ui.settings_dialog import SettingsDialog

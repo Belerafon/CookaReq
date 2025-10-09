@@ -15,7 +15,7 @@ from app.core.model import (
 from app.services.requirements import RequirementsService
 from app.ui.controllers import DocumentsController
 
-pytestmark = [pytest.mark.gui, pytest.mark.gui_smoke]
+pytestmark = pytest.mark.gui
 
 
 def _req(req_id: int, title: str, **kwargs) -> Requirement:
@@ -34,6 +34,7 @@ def _req(req_id: int, title: str, **kwargs) -> Requirement:
     return Requirement(**base)
 
 
+@pytest.mark.gui_smoke
 def test_list_panel_real_widgets(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
@@ -62,6 +63,7 @@ def test_list_panel_real_widgets(wx_app):
     frame.Destroy()
 
 
+@pytest.mark.gui_smoke
 def test_reset_button_visibility_gui(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

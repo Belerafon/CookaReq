@@ -173,7 +173,7 @@ GUI suites rely on `pytest-xvfb` and can be executed explicitly:
 pytest -q tests/gui/test_gui.py tests/gui/test_list_panel_gui.py
 ```
 
-Marker selections are available for quick focus areas, e.g. `pytest -m smoke -q`, `pytest -m gui_full -q`, or `pytest --suite service -q`.
+Marker selections are available for quick focus areas, e.g. `pytest -m smoke -q`, `pytest -m gui_full -q`, или `pytest --suite gui-smoke -q`.
 
 ### Real LLM integration tests
 

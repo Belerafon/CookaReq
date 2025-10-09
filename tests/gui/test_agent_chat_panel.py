@@ -39,7 +39,7 @@ else:  # pragma: no cover - runtime stub to satisfy static analysis
     wx = None  # type: ignore[assignment]
 
 
-pytestmark = [pytest.mark.gui, pytest.mark.integration, pytest.mark.gui_smoke]
+pytestmark = [pytest.mark.gui, pytest.mark.integration]
 
 
 HISTORY_FILENAME = "agent_chats.sqlite"
@@ -631,6 +631,7 @@ def test_project_settings_override_documents_path(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+@pytest.mark.gui_smoke
 def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
@@ -783,6 +784,7 @@ def test_agent_response_normalizes_dash_characters(tmp_path, wx_app):
     destroy_panel(frame, panel)
 
 
+@pytest.mark.gui_smoke
 def test_agent_chat_panel_handles_error(tmp_path, wx_app):
     class FailingAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
@@ -2196,6 +2198,7 @@ def test_message_bubble_destroy_ignores_pending_width_update(monkeypatch, wx_app
     frame.Destroy()
 
 
+@pytest.mark.gui_smoke
 def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
     from app.ui.agent_chat_panel import ThreadedAgentCommandExecutor
 
@@ -2764,6 +2767,7 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         destroy_panel(frame, panel)
 
 
+@pytest.mark.gui_smoke
 def test_agent_chat_panel_activity_indicator_layout(tmp_path, wx_app):
     class IdleAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):  # pragma: no cover - defensive

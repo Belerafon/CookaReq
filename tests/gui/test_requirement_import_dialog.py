@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 
-pytestmark = [pytest.mark.gui, pytest.mark.gui_smoke]
+pytestmark = pytest.mark.gui
 
 
 def _select_path(dialog, path):
@@ -16,6 +16,7 @@ def _select_path(dialog, path):
     dialog._on_file_selected(SimpleNamespace(GetPath=lambda: str(path)))
 
 
+@pytest.mark.gui_smoke
 def test_import_dialog_csv_autopreview_enables_ok(wx_app, tmp_path):
     _wx = pytest.importorskip("wx")
     from app.ui.import_dialog import RequirementImportDialog
@@ -56,6 +57,7 @@ def test_import_dialog_csv_autopreview_enables_ok(wx_app, tmp_path):
         wx_app.Yield()
 
 
+@pytest.mark.gui_smoke
 def test_import_dialog_requires_statement_mapping(wx_app, tmp_path):
     _wx = pytest.importorskip("wx")
     from app.ui.import_dialog import RequirementImportDialog

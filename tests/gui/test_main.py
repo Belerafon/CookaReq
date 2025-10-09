@@ -7,9 +7,10 @@ from typing import ClassVar
 
 import pytest
 
-pytestmark = [pytest.mark.gui, pytest.mark.gui_smoke]
+pytestmark = pytest.mark.gui
 
 
+@pytest.mark.gui_smoke
 def test_main_runs(monkeypatch):
     class DummyApp:
         def __init__(self):

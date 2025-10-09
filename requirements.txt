@@ -7,7 +7,6 @@ uvicorn
 mcp
 jsonpatch
 openai
-openpyxl>=3.1
 pydantic
 polib>=1.2
 markdown>=3.9

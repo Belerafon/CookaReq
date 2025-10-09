@@ -1,4 +1,4 @@
-"""Dialog for configuring requirement import from CSV and Excel files."""
+"""Dialog for configuring requirement import from CSV and TSV files."""
 
 from __future__ import annotations
 
@@ -18,13 +18,10 @@ from ..core.requirement_import import (
     RequirementImportResult,
     SequentialIDAllocator,
     TabularDataset,
-    TabularFileFormat,
     build_requirements,
     detect_format,
     importable_fields,
-    list_excel_sheets,
     load_csv_dataset,
-    load_excel_dataset,
 )
 from ..i18n import _
 from ..log import logger
@@ -38,9 +35,7 @@ class RequirementImportPlan:
     path: Path
     dataset: TabularDataset
     configuration: RequirementImportConfiguration
-    format: TabularFileFormat
-    delimiter: str | None = None
-    sheet: str | None = None
+    delimiter: str
 
 
 class RequirementImportDialog(wx.Dialog):
@@ -63,9 +58,7 @@ class RequirementImportDialog(wx.Dialog):
         self._document_label = document_label or ""
         self._selected_path: Path | None = None
         self._dataset: TabularDataset | None = None
-        self._format: TabularFileFormat | None = None
         self._delimiter = ","
-        self._sheet: str | None = None
         self._current_config: RequirementImportConfiguration | None = None
         self._current_preview: RequirementImportResult | None = None
         self._auto_mapping = True
@@ -81,19 +74,13 @@ class RequirementImportDialog(wx.Dialog):
     def _create_controls(self) -> None:
         self.file_picker = wx.FilePickerCtrl(
             self,
-            message=_("Select CSV or Excel file"),
-            wildcard=_(
-                "CSV and Excel files (*.csv;*.tsv;*.xlsx;*.xlsm)|*.csv;*.tsv;*.xlsx;*.xlsm|All files|*.*"
-            ),
+            message=_("Select CSV file"),
+            wildcard=_("CSV and TSV files (*.csv;*.tsv)|*.csv;*.tsv|All files|*.*"),
         )
         self.delimiter_label = wx.StaticText(self, label=_("Field delimiter"))
         self.delimiter_ctrl = wx.TextCtrl(self, value=self._delimiter, size=(60, -1))
         self.header_checkbox = wx.CheckBox(self, label=_("First row is a header"))
         self.header_checkbox.SetValue(True)
-        self.sheet_label = wx.StaticText(self, label=_("Worksheet"))
-        self.sheet_choice = wx.Choice(self)
-        self.sheet_label.Hide()
-        self.sheet_choice.Hide()
 
         self.mapping_box = wx.StaticBox(self, label=_("Column mapping"))
         self.mapping_panel = wx.ScrolledWindow(self.mapping_box, style=wx.VSCROLL)
@@ -141,7 +128,6 @@ class RequirementImportDialog(wx.Dialog):
         self.file_picker.Bind(wx.EVT_FILEPICKER_CHANGED, self._on_file_selected)
         self.delimiter_ctrl.Bind(wx.EVT_TEXT, self._on_delimiter_changed)
         self.header_checkbox.Bind(wx.EVT_CHECKBOX, self._on_header_toggled)
-        self.sheet_choice.Bind(wx.EVT_CHOICE, self._on_sheet_changed)
         for choice in self.mapping_controls.values():
             choice.Bind(wx.EVT_CHOICE, self._on_mapping_changed)
 
@@ -155,16 +141,14 @@ class RequirementImportDialog(wx.Dialog):
             )
             main_sizer.Add(doc_text, 0, wx.BOTTOM, 6)
 
-        file_sizer = wx.FlexGridSizer(cols=4, hgap=8, vgap=6)
-        file_sizer.AddGrowableCol(1, 1)
+        file_sizer = wx.FlexGridSizer(cols=3, hgap=8, vgap=6)
+        file_sizer.AddGrowableCol(0, 1)
         file_sizer.Add(self.file_picker, 0, wx.EXPAND)
-        file_sizer.Add((0, 0))
         file_sizer.Add(self.delimiter_label, 0, wx.ALIGN_CENTER_VERTICAL)
         file_sizer.Add(self.delimiter_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
+        file_sizer.Add((0, 0))
         file_sizer.Add(self.header_checkbox, 0, wx.ALIGN_CENTER_VERTICAL)
         file_sizer.Add((0, 0))
-        file_sizer.Add(self.sheet_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        file_sizer.Add(self.sheet_choice, 0, wx.ALIGN_CENTER_VERTICAL | wx.EXPAND)
         main_sizer.Add(file_sizer, 0, wx.EXPAND | wx.ALL, 10)
 
         mapping_sizer = wx.StaticBoxSizer(self.mapping_box, wx.VERTICAL)
@@ -216,56 +200,20 @@ class RequirementImportDialog(wx.Dialog):
             self._clear_dataset()
             return
         try:
-            file_format = detect_format(path)
+            detect_format(path)
         except RequirementImportError as exc:
             self._show_error(str(exc))
             self._clear_dataset()
             return
-        self._format = file_format
         self._selected_path = path
-        if file_format is TabularFileFormat.CSV:
-            self.delimiter_label.Show()
-            self.delimiter_ctrl.Show()
-            self.sheet_label.Hide()
-            self.sheet_choice.Hide()
-        else:
-            self.delimiter_label.Hide()
-            self.delimiter_ctrl.Hide()
-            self._populate_sheets(path)
         self._auto_mapping = True
         self._load_dataset()
         self.Layout()
 
-    def _populate_sheets(self, path: Path) -> None:
-        try:
-            sheets = list_excel_sheets(path)
-        except RequirementImportError as exc:
-            self._show_error(str(exc))
-            self.sheet_label.Hide()
-            self.sheet_choice.Hide()
-            return
-        self.sheet_choice.Clear()
-        for sheet in sheets:
-            self.sheet_choice.Append(sheet)
-        if sheets:
-            self.sheet_choice.SetSelection(0)
-            self._sheet = sheets[0]
-            self.sheet_label.Show()
-            self.sheet_choice.Show()
-        else:
-            self.sheet_label.Hide()
-            self.sheet_choice.Hide()
-
-    def _on_sheet_changed(self, _event: wx.CommandEvent) -> None:
-        selection = self.sheet_choice.GetStringSelection()
-        self._sheet = selection or None
-        self._load_dataset()
-
     def _on_delimiter_changed(self, _event: wx.CommandEvent) -> None:
         value = self.delimiter_ctrl.GetValue()
         self._delimiter = value or ","
-        if self._format is TabularFileFormat.CSV:
-            self._load_dataset()
+        self._load_dataset()
 
     def _on_header_toggled(self, _event: wx.CommandEvent) -> None:
         self._update_mapping_options()
@@ -279,13 +227,10 @@ class RequirementImportDialog(wx.Dialog):
 
     # ------------------------------------------------------------------
     def _load_dataset(self) -> None:
-        if not self._selected_path or self._format is None:
+        if not self._selected_path:
             return
         try:
-            if self._format is TabularFileFormat.CSV:
-                dataset = load_csv_dataset(self._selected_path, delimiter=self._delimiter or ",")
-            else:
-                dataset = load_excel_dataset(self._selected_path, sheet=self._sheet)
+            dataset = load_csv_dataset(self._selected_path, delimiter=self._delimiter or ",")
         except RequirementImportError as exc:
             logger.warning("Failed to load import dataset: %s", exc)
             self._show_error(str(exc))
@@ -535,14 +480,12 @@ class RequirementImportDialog(wx.Dialog):
     # ------------------------------------------------------------------
     def get_plan(self) -> RequirementImportPlan | None:
         """Return configured import plan or ``None`` when selection incomplete."""
-        if not (self._dataset and self._current_config and self._selected_path and self._format):
+        if not (self._dataset and self._current_config and self._selected_path):
             return None
         return RequirementImportPlan(
             path=self._selected_path,
             dataset=self._dataset,
             configuration=self._current_config,
-            format=self._format,
-            delimiter=self._delimiter if self._format is TabularFileFormat.CSV else None,
-            sheet=self._sheet if self._format is TabularFileFormat.EXCEL else None,
+            delimiter=self._delimiter or ",",
         )
 

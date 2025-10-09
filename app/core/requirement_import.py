@@ -1,9 +1,9 @@
-"""Utilities for importing requirements from tabular data sources."""
+"""Utilities for importing requirements from tabular CSV/TSV data sources."""
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass, field
 from enum import Enum
-import csv
 from pathlib import Path
 import re
 from typing import Any
@@ -17,11 +17,6 @@ from .model import (
     Verification,
 )
 
-try:  # pragma: no cover - import guarded for environments without Excel support
-    from openpyxl import load_workbook
-except Exception:  # pragma: no cover - fallback when openpyxl is missing
-    load_workbook = None  # type: ignore[assignment]
-
 __all__ = [
     "ImportFieldSpec",
     "RequirementImportConfiguration",
@@ -34,9 +29,7 @@ __all__ = [
     "build_requirements",
     "detect_format",
     "importable_fields",
-    "list_excel_sheets",
     "load_csv_dataset",
-    "load_excel_dataset",
 ]
 
 
@@ -58,7 +51,6 @@ class TabularFileFormat(str, Enum):
     """Supported spreadsheet formats."""
 
     CSV = "csv"
-    EXCEL = "excel"
 
 
 @dataclass(slots=True)
@@ -235,8 +227,6 @@ def detect_format(path: str | Path) -> TabularFileFormat:
     suffix = Path(path).suffix.lower()
     if suffix in {".csv", ".tsv"}:
         return TabularFileFormat.CSV
-    if suffix in {".xlsx", ".xlsm", ".xltx", ".xltm"}:
-        return TabularFileFormat.EXCEL
     raise RequirementImportError(f"unsupported file format: {suffix or 'unknown'}")
 
 
@@ -257,42 +247,6 @@ def load_csv_dataset(path: str | Path, *, delimiter: str = ",") -> TabularDatase
         for row in reader:
             rows.append(list(row))
     return TabularDataset(rows)
-
-
-def list_excel_sheets(path: str | Path) -> list[str]:
-    """Return sheet names available within an Excel workbook."""
-    if load_workbook is None:
-        raise RequirementImportError("openpyxl is not available")
-    workbook = load_workbook(filename=Path(path), read_only=True, data_only=True)
-    try:
-        return list(workbook.sheetnames)
-    finally:
-        workbook.close()
-
-
-def load_excel_dataset(
-    path: str | Path,
-    *,
-    sheet: str | None = None,
-) -> TabularDataset:
-    """Load Excel sheet into a :class:`TabularDataset`."""
-    if load_workbook is None:
-        raise RequirementImportError("openpyxl is not available")
-    workbook = load_workbook(filename=Path(path), read_only=True, data_only=True)
-    try:
-        if sheet:
-            if sheet not in workbook.sheetnames:
-                raise RequirementImportError(f"sheet not found: {sheet}")
-            worksheet = workbook[sheet]
-        else:
-            worksheet = workbook.active
-        rows: list[list[Any]] = []
-        for row in worksheet.iter_rows(values_only=True):
-            rows.append(list(row))
-        return TabularDataset(rows)
-    finally:
-        workbook.close()
-
 
 def _stringify(value: Any) -> str:
     if value is None:

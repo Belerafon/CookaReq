@@ -6,26 +6,27 @@ import pytest
 
 from app.core.requirement_import import (
     RequirementImportConfiguration,
+    RequirementImportError,
     SequentialIDAllocator,
     TabularDataset,
+    TabularFileFormat,
     build_requirements,
     detect_format,
-    TabularFileFormat,
-    list_excel_sheets,
     load_csv_dataset,
-    load_excel_dataset,
 )
 
 
-def test_detect_format_csv_and_excel(tmp_path: Path) -> None:
+def test_detect_format_csv_and_reject_unknown(tmp_path: Path) -> None:
     csv_file = tmp_path / "requirements.csv"
     csv_file.write_text("id,title\n1,Sample\n", encoding="utf-8")
     xlsx_file = tmp_path / "requirements.xlsx"
     xlsx_file.touch()
     assert detect_format(csv_file) == TabularFileFormat.CSV
     assert detect_format("requirements.csv") == TabularFileFormat.CSV
-    assert detect_format(xlsx_file) == TabularFileFormat.EXCEL
-    assert detect_format("requirements.xlsx") == TabularFileFormat.EXCEL
+    with pytest.raises(RequirementImportError):
+        detect_format(xlsx_file)
+    with pytest.raises(RequirementImportError):
+        detect_format("requirements.xlsx")
 
 
 def test_load_csv_dataset(tmp_path: Path) -> None:
@@ -92,24 +93,4 @@ def test_build_requirements_reports_errors() -> None:
     assert "statement" in result.issues[0].message
     assert [req.id for req in result.requirements] == [1]
 
-
-def test_load_excel_dataset(tmp_path: Path) -> None:
-    openpyxl = pytest.importorskip("openpyxl")
-    Workbook = openpyxl.Workbook
-
-    path = tmp_path / "data.xlsx"
-    wb = Workbook()
-    ws = wb.active
-    ws.append(["statement", "owner"])
-    ws.append(["Hello", "Alice"])
-    wb.create_sheet("Extra")
-    wb.save(path)
-    wb.close()
-
-    sheets = list_excel_sheets(path)
-    assert "Extra" in sheets
-
-    dataset = load_excel_dataset(path)
-    assert dataset.row_count(skip_header=True) == 1
-    assert dataset.header == ["statement", "owner"]
 

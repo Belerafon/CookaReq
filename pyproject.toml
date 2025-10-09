@@ -10,7 +10,6 @@ dependencies = [
     "uvicorn",
     "mcp",
     "openai",
-    "openpyxl",
     "markdown",
     "reportlab",
 ]

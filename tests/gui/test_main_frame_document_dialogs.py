@@ -14,7 +14,7 @@ from app.ui.document_dialog import DocumentProperties
 from app.ui.main_frame import MainFrame
 
 
-pytestmark = [pytest.mark.gui, pytest.mark.gui_smoke]
+pytestmark = pytest.mark.gui
 
 
 @pytest.fixture
@@ -69,6 +69,7 @@ def _install_dialog_stub(monkeypatch, results, properties=None):
     return instances
 
 
+@pytest.mark.gui_smoke
 def test_on_new_document_cancel_destroys_dialog(main_frame, tmp_path, monkeypatch):
     """Cancellation should still destroy the dialog between invocations."""
 
@@ -89,6 +90,7 @@ def test_on_new_document_cancel_destroys_dialog(main_frame, tmp_path, monkeypatc
     main_frame._refresh_documents.assert_not_called()
 
 
+@pytest.mark.gui_smoke
 def test_on_new_document_create_uses_controller(main_frame, tmp_path, monkeypatch):
     """Successful creation should call controller, refresh view and destroy dialog."""
 
@@ -120,6 +122,7 @@ def test_on_new_document_create_uses_controller(main_frame, tmp_path, monkeypatc
     assert dialogs[0].destroyed
 
 
+@pytest.mark.gui_smoke
 def test_on_rename_document_updates_controller(main_frame, monkeypatch):
     """Renaming should update controller and always destroy the dialog."""
 

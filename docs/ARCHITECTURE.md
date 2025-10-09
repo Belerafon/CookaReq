@@ -173,10 +173,8 @@ so you know which modules are involved and which regressions to guard against.
 
 * Suites are documented in `tests/README.md`. Common commands:
   * `pytest --suite core -q` — unit and fast integration coverage without GUI.
-  * `pytest --suite service -q` — service layer and CLI scenarios.
-  * `pytest --suite gui-smoke -q` — fast GUI smoke (currently red: the
-    `AgentChatPanel` ↔ `DetachedEditorFrame` path needs repair).
-  * `pytest --suite gui-full -q` — full GUI regression (slow).
+* `pytest --suite gui-smoke -q` — fast GUI smoke (17 высоко-приоритетных сценариев).
+* `pytest --suite gui-full -q` — full GUI regression (slow).
   * `COOKAREQ_RUN_REAL_LLM_TESTS=1 pytest --suite real-llm tests/integration/test_llm_openrouter_integration.py::test_openrouter_check_llm -q`
     — live OpenRouter integration.
 * For manual GUI checks, run `python tools/run_wx.py app/ui/debug_scenarios.py --scenario main-frame` to start the frame under a
@@ -184,8 +182,9 @@ so you know which modules are involved and which regressions to guard against.
 
 ## Known gaps and risks
 
-* `pytest --suite gui-smoke -q` is failing; schedule time to restore it before
-  large UI changes.
+* `pytest --suite gui-smoke -q` покрывает минимальный happy-path. Следите, чтобы
+  `pytest.mark.gui_smoke` оставался только на критичных тестах; иначе прогон
+  перестанет быть лёгким.
 * `ThreadedAgentCommandExecutor` uses a single worker. Long LLM calls block
   subsequent commands; scaling will require coordination changes with the UI.
 * The MCP server reads its requirement base path from configuration. Invalid

@@ -5,9 +5,10 @@ from contextlib import suppress
 import pytest
 
 
-pytestmark = [pytest.mark.gui, pytest.mark.gui_smoke]
+pytestmark = pytest.mark.gui
 
 
+@pytest.mark.gui_smoke
 def test_editor_panel_dirty_detection_fields(wx_app):
     pytest.importorskip("wx")
     import wx
@@ -50,6 +51,7 @@ def test_editor_panel_mark_clean_resets_dirty(wx_app):
         frame.Destroy()
 
 
+@pytest.mark.gui_smoke
 def test_editor_panel_discard_changes_without_storage_restores_form_state(wx_app):
     pytest.importorskip("wx")
     import wx
@@ -132,6 +134,7 @@ def test_editor_panel_buttons_place_cancel_after_save(wx_app):
         frame.Destroy()
 
 
+@pytest.mark.gui_smoke
 def test_detached_editor_cancel_closes_window_without_saving(wx_app, tmp_path):
     pytest.importorskip("wx")
     import wx

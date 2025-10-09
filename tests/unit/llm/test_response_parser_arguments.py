@@ -208,6 +208,30 @@ def test_normalise_tool_calls_uses_model_dump_for_openai_objects() -> None:
     assert parsed[0].arguments["value"] == "Русификация"
 
 
+def test_parse_tool_calls_recovers_unescaped_newlines() -> None:
+    parser = _parser()
+    arguments_text = (
+        '{"rid":"DEMO6","field":"statement","value":"Первая строка\n\nВторая строка"}'
+    )
+    tool_calls = [
+        {
+            "id": "call-0",
+            "type": "function",
+            "function": {
+                "name": "update_requirement_field",
+                "arguments": arguments_text,
+            },
+        }
+    ]
+
+    parsed = parser.parse_tool_calls(tool_calls)
+
+    assert parsed[0].arguments["rid"] == "DEMO6"
+    assert parsed[0].arguments["field"] == "statement"
+    assert parsed[0].arguments["value"].startswith("Первая строка")
+    assert "\n\n" in parsed[0].arguments["value"]
+
+
 def test_normalise_tool_calls_handles_response_function_tool_call() -> None:
     parser = _parser()
     tool_call = ResponseFunctionToolCall(

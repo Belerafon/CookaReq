@@ -998,8 +998,23 @@ class LLMResponseParser:
                     leading_whitespace=fragment.leading_whitespace,
                     trailing_whitespace=fragment.trailing_whitespace,
                 )
-            )
+        )
         return tuple(finalized)
+
+    def render_reasoning_fallback(
+        self, segments: Sequence[LLMReasoningSegment]
+    ) -> str:
+        """Render reasoning segments into a conversational fallback message."""
+        if not segments:
+            return ""
+        parts: list[str] = []
+        for segment in segments:
+            combined = segment.text_with_whitespace
+            if combined.strip():
+                parts.append(combined)
+        if not parts:
+            return ""
+        return "".join(parts).strip()
 
     # ------------------------------------------------------------------
     def _append_stream_tool_call(
@@ -1129,7 +1144,7 @@ class LLMResponseParser:
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
-            recovery = self._recover_tool_arguments(text)
+            recovery = self._recover_tool_arguments(text, error=exc)
             if recovery is not None:
                 self._log_recovered_tool_arguments(
                     text,
@@ -1149,11 +1164,20 @@ class LLMResponseParser:
                 "LLM returned invalid JSON for tool arguments",
             ) from exc
 
-    def _recover_tool_arguments(self, arguments_text: str) -> _ToolArgumentRecovery | None:
+    def _recover_tool_arguments(
+        self,
+        arguments_text: str,
+        *,
+        error: json.JSONDecodeError,
+    ) -> _ToolArgumentRecovery | None:
         """Attempt to salvage structured arguments from concatenated JSON fragments."""
         stripped = (arguments_text or "").strip()
         if not stripped:
             return None
+
+        relaxed = self._recover_control_character_arguments(stripped, error=error)
+        if relaxed is not None:
+            return relaxed
         decoder = json.JSONDecoder()
         fragments: list[Any] = []
         idx = 0
@@ -1200,6 +1224,31 @@ class LLMResponseParser:
             fragments=len(fragments),
             recovered_fragment_index=last_contributing_index,
             empty_fragment_count=empty_mappings,
+        )
+
+    def _recover_control_character_arguments(
+        self,
+        arguments_text: str,
+        *,
+        error: json.JSONDecodeError,
+    ) -> _ToolArgumentRecovery | None:
+        """Attempt to decode arguments allowing unescaped control characters."""
+        message = (error.msg or "").lower()
+        if "control character" not in message:
+            return None
+        try:
+            decoded = json.loads(arguments_text, strict=False)
+        except json.JSONDecodeError:
+            return None
+        mapping = extract_mapping(decoded)
+        if not mapping:
+            return None
+        return _ToolArgumentRecovery(
+            arguments=dict(mapping),
+            classification="unescaped_control_chars",
+            fragments=1,
+            recovered_fragment_index=0,
+            empty_fragment_count=0,
         )
 
     def _log_invalid_tool_arguments(

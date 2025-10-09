@@ -70,8 +70,11 @@ so you know which modules are involved and which regressions to guard against.
 * **LLM package (`app/llm/`)** — `client.py` wraps OpenRouter, `request_builder.py`
   assembles prompt payloads, `validation.py` and `response_parser.py` normalise
   model outputs, `context.py` selects relevant requirements and user documents,
-  and `tokenizer.py` estimates prompt size. The package is designed so new
-  providers can be introduced behind the same `LLMClient` API.
+  and `tokenizer.py` estimates prompt size. The parser also tolerates malformed
+  tool arguments (concatenated fragments, unescaped control characters) and can
+  synthesise assistant text from reasoning segments when the model responds with
+  tool calls only. The package is designed so new providers can be introduced
+  behind the same `LLMClient` API.
 * **MCP server (`app/mcp/`)** — `server.py` exposes HTTP endpoints for tool
   execution, `controller.py` launches and monitors the server from the GUI,
   `client.py` issues requests with idempotent confirmation tokens, while

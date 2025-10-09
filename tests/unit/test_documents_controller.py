@@ -71,6 +71,24 @@ def test_load_documents_and_items(tmp_path: Path):
     assert labels and labels[0].key == "ui" and labels[0].color == "#123456"
 
 
+def test_sync_labels_from_requirements_refreshes_cache(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True))
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = _req(1)
+    requirement.labels = ["legacy"]
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    model = RequirementModel()
+    controller = _controller(tmp_path, model)
+    controller.load_documents()
+    promoted = controller.sync_labels_from_requirements("SYS")
+
+    assert [definition.key for definition in promoted] == ["legacy"]
+    refreshed = controller.documents["SYS"]
+    assert any(defn.key == "legacy" for defn in refreshed.labels.defs)
+
+
 def test_next_id_save_and_delete(tmp_path: Path):
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"

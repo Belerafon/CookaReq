@@ -227,6 +227,21 @@ class RequirementsService:
             self._ensure_documents(refresh=True)
         return requirement
 
+    def sync_labels_from_requirements(self, prefix: str) -> list[LabelDef]:
+        """Promote missing labels observed on requirements for ``prefix``."""
+
+        docs = self._ensure_documents()
+        requirements = doc_store.load_requirements(
+            self.root, prefixes=[prefix], docs=docs
+        )
+        observed: list[str] = []
+        for requirement in requirements:
+            observed.extend(requirement.labels)
+        promoted = self._promote_label_definitions(prefix, observed, docs)
+        if promoted:
+            self._ensure_documents(refresh=True)
+        return promoted
+
     def set_requirement_attachments(
         self,
         rid: str,
@@ -284,12 +299,12 @@ class RequirementsService:
         prefix: str,
         labels: Sequence[str],
         docs: Mapping[str, Document],
-    ) -> bool:
+    ) -> list[LabelDef]:
         """Ensure that labels applied to ``prefix`` are defined in metadata."""
 
         defs, allow_freeform = doc_store.collect_label_defs(prefix, docs)
         if not allow_freeform:
-            return False
+            return []
 
         known = {definition.key for definition in defs}
         new_keys: list[str] = []
@@ -303,7 +318,7 @@ class RequirementsService:
             if label not in known:
                 new_keys.append(label)
         if not new_keys:
-            return False
+            return []
 
         chain: list[Document] = []
         current = docs.get(prefix)
@@ -315,19 +330,20 @@ class RequirementsService:
 
         target = next((doc for doc in chain if doc.labels.allow_freeform), None)
         if target is None:
-            return False
+            return []
 
+        created: list[LabelDef] = []
         for key in new_keys:
-            target.labels.defs.append(
-                LabelDef(
-                    key=key,
-                    title=self._format_label_title(key),
-                    color=doc_store.stable_color(key),
-                )
+            definition = LabelDef(
+                key=key,
+                title=self._format_label_title(key),
+                color=doc_store.stable_color(key),
             )
+            target.labels.defs.append(definition)
+            created.append(definition)
 
         doc_store.save_document(self.root / target.prefix, target)
-        return True
+        return created
 
     @staticmethod
     def _format_label_title(key: str) -> str:

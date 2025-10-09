@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -211,12 +212,20 @@ class RequirementsService:
     def set_requirement_labels(self, rid: str, labels: Sequence[str]) -> Requirement:
         """Replace labels associated with ``rid`` ensuring validation."""
         docs = self._ensure_documents()
-        return doc_store.set_requirement_labels(
+        try:
+            prefix, _ = doc_store.parse_rid(rid)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+        promoted = self._promote_label_definitions(prefix, labels, docs)
+        requirement = doc_store.set_requirement_labels(
             self.root,
             rid,
             labels=labels,
             docs=docs,
         )
+        if promoted:
+            self._ensure_documents(refresh=True)
+        return requirement
 
     def set_requirement_attachments(
         self,
@@ -268,6 +277,75 @@ class RequirementsService:
         """Return label definitions and freeform flag for ``prefix``."""
         docs = self._ensure_documents()
         return doc_store.collect_label_defs(prefix, docs)
+
+    # ------------------------------------------------------------------
+    def _promote_label_definitions(
+        self,
+        prefix: str,
+        labels: Sequence[str],
+        docs: Mapping[str, Document],
+    ) -> bool:
+        """Ensure that labels applied to ``prefix`` are defined in metadata."""
+
+        defs, allow_freeform = doc_store.collect_label_defs(prefix, docs)
+        if not allow_freeform:
+            return False
+
+        known = {definition.key for definition in defs}
+        new_keys: list[str] = []
+        seen: set[str] = set()
+        for label in labels:
+            if not isinstance(label, str):
+                continue
+            if label in seen:
+                continue
+            seen.add(label)
+            if label not in known:
+                new_keys.append(label)
+        if not new_keys:
+            return False
+
+        chain: list[Document] = []
+        current = docs.get(prefix)
+        while current is not None:
+            chain.append(current)
+            if not current.parent:
+                break
+            current = docs.get(current.parent)
+
+        target = next((doc for doc in chain if doc.labels.allow_freeform), None)
+        if target is None:
+            return False
+
+        for key in new_keys:
+            target.labels.defs.append(
+                LabelDef(
+                    key=key,
+                    title=self._format_label_title(key),
+                    color=doc_store.stable_color(key),
+                )
+            )
+
+        doc_store.save_document(self.root / target.prefix, target)
+        return True
+
+    @staticmethod
+    def _format_label_title(key: str) -> str:
+        """Return a human-friendly title derived from ``key``."""
+
+        key = key.strip()
+        if not key:
+            return key
+        parts = [segment for segment in re.split(r"[_\-\s]+", key) if segment]
+        if not parts:
+            return key
+        transformed: list[str] = []
+        for segment in parts:
+            if segment.isupper():
+                transformed.append(segment)
+            else:
+                transformed.append(segment.capitalize())
+        return " ".join(transformed)
 
     def validate_labels(self, prefix: str, labels: Sequence[str]) -> str | None:
         """Validate ``labels`` for ``prefix`` returning an error message if any."""

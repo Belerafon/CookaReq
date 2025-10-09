@@ -8,11 +8,11 @@ from collections.abc import Mapping, Sequence
 
 from ..core.model import Requirement
 from ..services.requirements import (
-    RequirementsService,
     DocumentNotFoundError,
     RequirementNotFoundError,
     ValidationError,
 )
+from .server import get_requirements_service
 from .utils import ErrorCode, log_tool, mcp_error
 
 
@@ -25,7 +25,7 @@ def _result_payload(req: Requirement) -> dict:
 def create_requirement(directory: str | Path, *, prefix: str, data: Mapping[str, Any]) -> dict:
     """Create a new requirement under *prefix* document."""
     params = {"directory": str(directory), "prefix": prefix, "data": dict(data)}
-    service = RequirementsService(directory)
+    service = get_requirements_service(directory)
     try:
         req = service.create_requirement(prefix=prefix, data=data)
     except DocumentNotFoundError as exc:
@@ -61,7 +61,7 @@ def update_requirement_field(
         "field": field,
         "value": value,
     }
-    service = RequirementsService(directory)
+    service = get_requirements_service(directory)
     before_snapshot: dict[str, Any] | None = None
     try:
         previous = service.get_requirement(rid)
@@ -130,7 +130,7 @@ def set_requirement_labels(
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, "labels must be an array of strings"),
         )
-    service = RequirementsService(directory)
+    service = get_requirements_service(directory)
     try:
         req = service.set_requirement_labels(rid, labels=labels)
     except RequirementNotFoundError as exc:
@@ -171,7 +171,7 @@ def set_requirement_attachments(
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, "attachments must be an array"),
         )
-    service = RequirementsService(directory)
+    service = get_requirements_service(directory)
     try:
         req = service.set_requirement_attachments(rid, attachments=attachments)
     except RequirementNotFoundError as exc:
@@ -212,7 +212,7 @@ def set_requirement_links(
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, "links must be an array"),
         )
-    service = RequirementsService(directory)
+    service = get_requirements_service(directory)
     try:
         req = service.set_requirement_links(rid, links=links)
     except RequirementNotFoundError as exc:
@@ -239,7 +239,7 @@ def set_requirement_links(
 def delete_requirement(directory: str | Path, rid: str) -> dict:
     """Delete requirement *rid* from the document store."""
     params = {"directory": str(directory), "rid": rid}
-    service = RequirementsService(directory)
+    service = get_requirements_service(directory)
     try:
         canonical = service.delete_requirement(rid)
     except ValueError as exc:
@@ -281,7 +281,7 @@ def link_requirements(
         "derived_rid": derived_rid,
         "link_type": link_type,
     }
-    service = RequirementsService(directory)
+    service = get_requirements_service(directory)
     try:
         req = service.link_requirements(
             source_rid=source_rid,

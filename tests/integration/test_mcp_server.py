@@ -6,9 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from app.core.document_store import Document, save_document
 from app.mcp.server import app as mcp_app
-from app.mcp.server import start_server, stop_server
+from app.mcp.server import get_requirements_service, start_server, stop_server
 from app.log import get_log_directory
+from app.mcp.tools_read import list_requirements
 from tests.mcp_utils import _request, _wait_until_ready
 
 _TEST_CONTEXT_LIMIT = 8192
@@ -134,5 +136,45 @@ def test_custom_documents_read_limit_in_state(tmp_path: Path):
         service = mcp_app.state.documents_service
         assert service is not None
         assert service.max_read_bytes == 64 * 1024
+    finally:
+        stop_server()
+
+
+def test_requirements_service_cache_reuse_and_reset(tmp_path: Path) -> None:
+    port = 8133
+    stop_server()
+    start_server(
+        port=port,
+        base_path=str(tmp_path),
+        max_context_tokens=_TEST_CONTEXT_LIMIT,
+        token_model=_TEST_MODEL,
+    )
+    try:
+        _wait_until_ready(port)
+        first = get_requirements_service(tmp_path)
+        second = get_requirements_service(tmp_path)
+        assert first is second
+
+        doc = Document(prefix="SYS", title="System")
+        save_document(tmp_path / "SYS", doc)
+        list_requirements(tmp_path)
+        assert get_requirements_service(tmp_path) is first
+    finally:
+        stop_server()
+
+    new_root = tmp_path / "other"
+    new_root.mkdir()
+    port = 8134
+    stop_server()
+    start_server(
+        port=port,
+        base_path=str(new_root),
+        max_context_tokens=_TEST_CONTEXT_LIMIT,
+        token_model=_TEST_MODEL,
+    )
+    try:
+        _wait_until_ready(port)
+        replacement = get_requirements_service(new_root)
+        assert replacement is not first
     finally:
         stop_server()

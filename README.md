@@ -5,7 +5,7 @@ CookaReq (Cook a requirement) is a wxPython desktop workspace for curating struc
 ## Highlights
 
 - Manage hierarchical requirement documents with revision tracking, preset label palettes, attachments, and move/copy helpers.
-- Import large batches from CSV/TSV/Excel through a column-mapping wizard with previews, automatic ID allocation, and delimiter/sheet controls.
+- Import large batches from CSV/TSV through a column-mapping wizard with previews, automatic ID allocation, and delimiter controls.
 - Rich navigation UI: filterable document tree, configurable list view, Markdown preview, detachable editor and per-requirement history.
 - Built-in agent console that streams thoughts, tool calls, confirmations, and reasoning traces; persists transcripts to project-scoped SQLite files, offers timeline/log clipboard exports, and automates batch prompts over selected requirements.
 - Structured logging and telemetry (`~/.cookareq/logs` by default) with redaction of sensitive fields and rotating JSON/Text logs for diagnostics.
@@ -76,7 +76,7 @@ Key workspace areas:
 3. **Editor & history** that exposes attachments, links, revision bumps, and detachable editing windows.
 4. **Agent console** that streams LLM messages, tool calls, confirmation prompts, and token counters while logging telemetry events. Conversations persist to `.cookareq/agent_chats.sqlite`, load entries on demand, and surface reasoning/tool timelines with clipboard-friendly plain and log transcripts alongside a batch queue for running the same prompt across multiple requirements.
 
-Additional dialogs provide filter presets, label management, derivation graph visualisation, CSV/Excel import with preview/mapping, trace matrix export, settings, and a log viewer backed by the structured log files.
+Additional dialogs provide filter presets, label management, derivation graph visualisation, CSV import with preview/mapping, trace matrix export, settings, and a log viewer backed by the structured log files.
 
 ### Configuration and logs
 

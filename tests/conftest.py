@@ -12,6 +12,7 @@ from collections.abc import Mapping, Sequence
 import pytest
 
 from tests.env_utils import load_dotenv_variables
+from tests.suite_utils import auto_opt_in_real_llm_suite
 from app.application import ApplicationContext
 
 if TYPE_CHECKING:  # pragma: no cover - typing hints for wx fixtures
@@ -205,6 +206,8 @@ def pytest_configure(config: pytest.Config) -> None:
     suite_name = config.getoption("--suite")
     if suite_name is None:
         return
+    if suite_name == "real-llm":
+        auto_opt_in_real_llm_suite(search_from=Path(__file__).resolve())
     config.stash[_SUITE_STASH_KEY] = SUITES[suite_name]
     config.addinivalue_line(
         "markers",

@@ -4,9 +4,12 @@ from pathlib import Path
 
 import pytest
 
+from app.llm.tokenizer import count_text_tokens
 from app.services.user_documents import (
     DEFAULT_MAX_READ_BYTES,
+    LARGE_FILE_TOKEN_ESTIMATE_BYTES,
     MAX_ALLOWED_READ_BYTES,
+    TOKEN_COUNT_SAMPLE_BYTES,
     UserDocumentsService,
 )
 
@@ -137,4 +140,28 @@ def test_handles_unicode_and_space_paths(tmp_path: Path) -> None:
     chunk = service.read_file("ТЗ/План работ.txt", max_bytes=128)
     assert "первая строка" in chunk["content"]
     assert chunk["path"] == "ТЗ/План работ.txt"
+
+
+def test_large_files_use_sampling_heuristic(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+    block = ("sample text for estimation " * 16) + "\n"
+    repeats = (LARGE_FILE_TOKEN_ESTIMATE_BYTES // len(block)) + 20
+    content = block * repeats
+    target = service.create_file("bulk/huge.txt", content=content)
+
+    payload = service.list_tree()
+    bulk_dir = next(item for item in payload["entries"] if item["name"] == "bulk")
+    huge_entry = next(item for item in bulk_dir["children"] if item["name"] == "huge.txt")
+
+    token_meta = huge_entry["token_count"]
+    assert token_meta["approximate"] is True
+    assert "sampled_heuristic" in token_meta["reason"]
+
+    size = target.stat().st_size
+    with target.open("rb") as stream:
+        sample = stream.read(TOKEN_COUNT_SAMPLE_BYTES)
+    sample_tokens = count_text_tokens(sample.decode("utf-8", errors="replace"))
+    assert sample_tokens.tokens is not None
+    expected = int(round(sample_tokens.tokens * (size / len(sample))))
+    assert token_meta["tokens"] == expected
 

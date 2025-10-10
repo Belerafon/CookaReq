@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from app.confirm import ConfirmDecision, reset_requirement_update_preference, set_confirm, set_requirement_update_confirm
 from app.llm.spec import SYSTEM_PROMPT
 from app.llm.tokenizer import TokenCountResult
-from app.ui.agent_chat_panel.token_usage import summarize_token_usage
+from app.ui.agent_chat_panel.token_usage import summarize_token_usage, format_token_quantity
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.agent_chat_panel.panel import AttachmentValidationError, MAX_ATTACHMENT_BYTES
 from app.ui.agent_chat_panel.components.segments import (
@@ -358,6 +358,30 @@ def destroy_panel(frame, panel):
     frame.Destroy()
 
 
+def test_agent_chat_panel_header_shows_conversation_tokens(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        breakdown = panel._compute_context_token_breakdown()
+        label = panel._conversation_label.GetLabel()
+
+        total_tokens = breakdown.total
+        context_limit = panel._context_token_limit()
+        tokens_text = panel._format_tokens_for_status(
+            total_tokens, limit=context_limit
+        )
+        assert tokens_text in label
+
+        system_tokens = format_token_quantity(breakdown.system)
+        assert system_tokens in label
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_attachment_rejects_files_over_limit(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, *_args, **_kwargs):
@@ -639,21 +663,30 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
 
     wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
 
-    baseline_total = panel._compute_context_token_breakdown().total
+    baseline_breakdown = panel._compute_context_token_breakdown()
+    baseline_conversation = baseline_breakdown.total
     baseline_label = panel._conversation_label.GetLabel()
 
     panel.input.SetValue("run")
     panel._on_send(None)
     flush_wx_events(wx)
 
-    updated_total = panel._compute_context_token_breakdown().total
+    updated_breakdown = panel._compute_context_token_breakdown()
+    updated_conversation = updated_breakdown.total
     updated_label = panel._conversation_label.GetLabel()
     assert updated_label != baseline_label
-    assert (updated_total.tokens or 0) >= (baseline_total.tokens or 0)
-    expected_tokens = panel._format_tokens_for_status(updated_total)
+    assert (updated_conversation.tokens or 0) >= (
+        baseline_conversation.tokens or 0
+    )
+    context_limit = panel._context_token_limit()
+    expected_tokens = panel._format_tokens_for_status(
+        updated_conversation,
+        limit=context_limit,
+    )
     assert expected_tokens in updated_label
     expected_percent = panel._format_context_percentage(
-        updated_total, panel._context_token_limit()
+        updated_conversation,
+        context_limit,
     )
     assert expected_percent in updated_label
 

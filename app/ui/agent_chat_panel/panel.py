@@ -1375,9 +1375,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return f"~{formatted}"
         return formatted
 
-    def _format_tokens_for_status(self, tokens: TokenCountResult) -> str:
+    def _format_tokens_for_status(
+        self, tokens: TokenCountResult, *, limit: int | None = None
+    ) -> str:
         tokens_text = format_token_quantity(tokens)
-        limit = self._context_token_limit()
+        if limit is None:
+            limit = self._context_token_limit()
         if limit is not None:
             limit_tokens = TokenCountResult.exact(
                 limit,
@@ -1387,7 +1390,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             tokens_text = _("{used} / {limit}").format(
                 used=tokens_text,
                 limit=limit_text,
-            )
+        )
         return tokens_text
 
     def _update_conversation_header(self) -> None:
@@ -1398,10 +1401,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         breakdown = self._compute_context_token_breakdown()
         total_tokens = breakdown.total
-        tokens_text = self._format_tokens_for_status(total_tokens)
-        percent_text = self._format_context_percentage(
-            total_tokens, self._context_token_limit()
-        )
+        context_limit = self._context_token_limit()
+        tokens_text = self._format_tokens_for_status(total_tokens, limit=context_limit)
+        percent_text = self._format_context_percentage(total_tokens, context_limit)
 
         stats_text = _("Tokens: {tokens} • Context window: {usage}").format(
             tokens=tokens_text,

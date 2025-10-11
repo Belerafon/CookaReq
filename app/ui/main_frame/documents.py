@@ -329,6 +329,63 @@ class MainFrameDocumentsMixin:
         self.splitter.UpdateSize()
         return True
 
+    def _ensure_document_map(self: MainFrame) -> dict[str, object]:
+        """Return cached documents ensuring the controller is populated."""
+        controller = getattr(self, "docs_controller", None)
+        if controller is None:
+            return {}
+        docs = getattr(controller, "documents", None) or {}
+        if docs:
+            return docs
+        try:
+            return controller.load_documents()
+        except Exception:  # pragma: no cover - defensive guard
+            return {}
+
+    @staticmethod
+    def _format_document_choice(document: object) -> str:
+        """Return human-friendly label for ``document`` entries."""
+        prefix = getattr(document, "prefix", "") or ""
+        title = getattr(document, "title", "") or ""
+        prefix_text = prefix.strip()
+        title_text = title.strip()
+        if prefix_text and title_text and prefix_text != title_text:
+            return f"{prefix_text}: {title_text}"
+        if prefix_text:
+            return prefix_text
+        if title_text:
+            return title_text
+        return prefix or title or ""
+
+    def _build_parent_choices(
+        self: MainFrame,
+        *,
+        exclude_descendants_of: str | None = None,
+    ) -> list[tuple[str | None, str]]:
+        """Return list of selectable document parents."""
+        choices: list[tuple[str | None, str]] = [(None, _("(top-level)"))]
+        controller = getattr(self, "docs_controller", None)
+        docs = self._ensure_document_map()
+        if not docs:
+            return choices
+        service = getattr(controller, "service", None)
+        for prefix in sorted(docs):
+            if exclude_descendants_of:
+                if prefix == exclude_descendants_of:
+                    continue
+                if service and service.is_ancestor(prefix, exclude_descendants_of):
+                    continue
+            document = docs[prefix]
+            label = self._format_document_choice(document)
+            choices.append((prefix, label))
+        if exclude_descendants_of and controller:
+            doc = docs.get(exclude_descendants_of)
+            if doc and doc.parent and all(value != doc.parent for value, _ in choices):
+                parent_doc = docs.get(doc.parent)
+                if parent_doc:
+                    choices.append((doc.parent, self._format_document_choice(parent_doc)))
+        return choices
+
     def on_new_document(self: MainFrame, parent_prefix: str | None) -> None:
         """Create a new document under ``parent_prefix``."""
         if not (self.docs_controller and self.current_dir):
@@ -336,10 +393,17 @@ class MainFrameDocumentsMixin:
             return
         from . import DocumentPropertiesDialog
 
+        parent_choices = self._build_parent_choices()
+        if parent_prefix and all(value != parent_prefix for value, _ in parent_choices):
+            docs = self._ensure_document_map()
+            doc = docs.get(parent_prefix)
+            if doc is not None:
+                parent_choices.append((parent_prefix, self._format_document_choice(doc)))
         dlg = DocumentPropertiesDialog(
             self,
             mode="create",
             parent_prefix=parent_prefix,
+            parent_choices=parent_choices,
         )
         props = None
         try:
@@ -354,7 +418,7 @@ class MainFrameDocumentsMixin:
             doc = self.docs_controller.create_document(
                 props.prefix,
                 props.title,
-                parent=parent_prefix,
+                parent=props.parent,
             )
         except ValueError as exc:
             wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
@@ -371,12 +435,14 @@ class MainFrameDocumentsMixin:
             return
         from . import DocumentPropertiesDialog
 
+        parent_choices = self._build_parent_choices(exclude_descendants_of=prefix)
         dlg = DocumentPropertiesDialog(
             self,
             mode="rename",
             prefix=doc.prefix,
             title=doc.title,
             parent_prefix=doc.parent,
+            parent_choices=parent_choices,
         )
         props = None
         try:
@@ -391,6 +457,7 @@ class MainFrameDocumentsMixin:
             self.docs_controller.rename_document(
                 prefix,
                 title=props.title,
+                parent=props.parent,
             )
         except ValueError as exc:
             wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)

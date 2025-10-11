@@ -23,9 +23,9 @@ This file collects instructions and a short overview of the "CookaReq" applicati
 ## GUI testing memo
 
 - The test fixtures start a real `wx.App`, launch `pyvirtualdisplay` when needed, isolate `wx.Config`, and attach markers automatically.
-- Most scenarios (`tests/test_gui.py`, `tests/test_list_panel_gui.py`) instantiate real windows (`MainFrame`, `EditorPanel`, `ListPanel`) and assert interactions with actual wx widgets and events.
+- Most scenarios under `tests/gui/` (например, `test_main_frame_document_dialogs.py` и `test_list_panel_gui.py`) поднимают настоящие окна (`MainFrame`, `EditorPanel`, `ListPanel`) и проверяют взаимодействие с живыми виджетами wx.
 - Dedicated startup checks (`tests/test_main_runs.py`) run on mocks—they do not replace the full GUI suite.
-- Whenever you touch the GUI, run the full GUI test set under a virtual display: `pytest -q tests/test_gui.py tests/test_list_panel_gui.py` (or the entire suite if you are unsure).
+- При любых правках GUI запускайте быстрый smoke-набор под виртуальным дисплеем: `pytest --suite gui-smoke -q`. Для точечной отладки добавляйте пути к файлам, например `pytest --suite gui-smoke -q tests/gui/test_main_frame_document_dialogs.py tests/gui/test_list_panel_gui.py`. Перед релизом или крупными изменениями гоняйте полный прогон `pytest --suite gui-full -q`.
 - Layout changes in the agent chat transcript have a focused smoke check in `tests/gui/test_agent_chat_panel.py`; run `pytest --suite gui-smoke -q tests/gui/test_agent_chat_panel.py` when iterating on that panel so regressions stay local and quick to debug.
 - For ad-hoc GUI experiments outside the pytest fixtures, run scripts through `python tools/run_wx.py your_script.py` (pass additional arguments after `--`). The helper starts a `pyvirtualdisplay` session automatically so `wx` code runs even without a real `$DISPLAY`.
 

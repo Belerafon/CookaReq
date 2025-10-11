@@ -58,7 +58,7 @@ class DocumentPropertiesDialog(wx.Dialog):
         """Prepare dialog controls depending on ``mode`` and defaults."""
         if mode not in {"create", "rename"}:
             raise ValueError(f"unsupported mode: {mode}")
-        heading = _("New document") if mode == "create" else _("Rename document")
+        heading = _("New document") if mode == "create" else _("Edit document")
         super().__init__(parent, title=heading)
         self._mode = mode
         self._result: DocumentProperties | None = None

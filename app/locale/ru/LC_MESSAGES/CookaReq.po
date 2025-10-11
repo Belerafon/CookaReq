@@ -502,8 +502,8 @@ msgstr "Удалить"
 msgid "Remove all labels?"
 msgstr "Удалить все метки?"
 
-msgid "Rename"
-msgstr "Переименовать"
+msgid "Edit"
+msgstr "Изменить"
 
 msgid "Require token"
 msgstr "Требуется токен"
@@ -1145,8 +1145,8 @@ msgstr ""
 "Запоминать последний столбец и направление сортировки требований.\n"
 "Позволяет сохранять порядок списка между сеансами."
 
-msgid "Rename document"
-msgstr "Переименовать документ"
+msgid "Edit document"
+msgstr "Изменить документ"
 
 msgid "Requirement {rid}"
 msgstr "Требование {rid}"

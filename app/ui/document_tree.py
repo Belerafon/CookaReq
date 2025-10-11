@@ -125,7 +125,7 @@ class DocumentTree(wx.Panel):
             return -1
 
         new_item = menu.Append(_next_menu_id(), _("New document"))
-        rename_item = menu.Append(_next_menu_id(), _("Rename"))
+        rename_item = menu.Append(_next_menu_id(), _("Edit"))
         delete_item = menu.Append(_next_menu_id(), _("Delete"))
 
         def _bind(item: wx.MenuItem, handler: Callable[[wx.CommandEvent], None]) -> None:

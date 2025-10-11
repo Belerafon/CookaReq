@@ -493,8 +493,8 @@ msgstr "Remove"
 msgid "Remove all labels?"
 msgstr "Remove all labels?"
 
-msgid "Rename"
-msgstr "Rename"
+msgid "Edit"
+msgstr "Edit"
 
 msgid "Require token"
 msgstr "Require token"
@@ -1128,8 +1128,8 @@ msgstr ""
 "Remember the last column and direction used to sort requirements.\n"
 "Keeps the list ordering consistent between sessions."
 
-msgid "Rename document"
-msgstr "Rename document"
+msgid "Edit document"
+msgstr "Edit document"
 
 msgid "Requirement {rid}"
 msgstr "Requirement {rid}"

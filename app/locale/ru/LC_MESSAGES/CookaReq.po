@@ -503,7 +503,7 @@ msgid "Remove all labels?"
 msgstr "Удалить все метки?"
 
 msgid "Rename"
-msgstr "Переименовать"
+msgstr "Изменить"
 
 msgid "Require token"
 msgstr "Требуется токен"
@@ -1146,7 +1146,7 @@ msgstr ""
 "Позволяет сохранять порядок списка между сеансами."
 
 msgid "Rename document"
-msgstr "Переименовать документ"
+msgstr "Изменить документ"
 
 msgid "Requirement {rid}"
 msgstr "Требование {rid}"

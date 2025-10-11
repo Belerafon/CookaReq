@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from collections.abc import Iterable
 
+_UNSET = object()
+
 from ...services.requirements import (
     RequirementsService,
     Document,
@@ -223,6 +225,7 @@ class DocumentsController:
         prefix: str,
         *,
         title: str | None = None,
+        parent: str | None | object = _UNSET,
     ) -> Document:
         """Update metadata of document ``prefix``."""
         doc = self.documents.get(prefix)
@@ -233,9 +236,25 @@ class DocumentsController:
                 raise ValueError(f"unknown document prefix: {prefix}") from exc
             self.documents[prefix] = doc
         updated = False
-        if title is not None:
+        if title is not None and title != doc.title:
             doc.title = title
             updated = True
+        if parent is not _UNSET:
+            new_parent = parent
+            if isinstance(new_parent, str):
+                new_parent = new_parent.strip() or None
+            if new_parent == doc.prefix:
+                raise ValueError("document cannot be its own parent")
+            if new_parent:
+                if new_parent not in self.documents:
+                    self.load_documents()
+                if new_parent not in self.documents:
+                    raise ValueError(f"unknown parent document: {new_parent}")
+                if self.service.is_ancestor(new_parent, doc.prefix):
+                    raise ValueError("document cannot be moved under its own descendant")
+            if doc.parent != new_parent:
+                doc.parent = new_parent
+                updated = True
         if not updated:
             return doc
         self.service.save_document(doc)

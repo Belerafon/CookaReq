@@ -308,6 +308,46 @@ def test_rename_document_rejects_unknown(tmp_path: Path) -> None:
         controller.rename_document("SYS", title="Missing")
 
 
+def test_rename_document_updates_parent(tmp_path: Path) -> None:
+    root = Document(prefix="ROOT", title="Root")
+    child = Document(prefix="CH", title="Child", parent="ROOT")
+    target = Document(prefix="NEW", title="New Parent")
+    save_document(tmp_path / "ROOT", root)
+    save_document(tmp_path / "CH", child)
+    save_document(tmp_path / "NEW", target)
+    model = RequirementModel()
+    controller = _controller(tmp_path, model)
+    controller.load_documents()
+    updated = controller.rename_document("CH", parent="NEW")
+    assert updated.parent == "NEW"
+    stored = load_document(tmp_path / "CH")
+    assert stored.parent == "NEW"
+
+
+def test_rename_document_rejects_descendant_as_parent(tmp_path: Path) -> None:
+    root = Document(prefix="ROOT", title="Root")
+    child = Document(prefix="CH", title="Child", parent="ROOT")
+    grand = Document(prefix="SUB", title="Sub", parent="CH")
+    save_document(tmp_path / "ROOT", root)
+    save_document(tmp_path / "CH", child)
+    save_document(tmp_path / "SUB", grand)
+    model = RequirementModel()
+    controller = _controller(tmp_path, model)
+    controller.load_documents()
+    with pytest.raises(ValueError):
+        controller.rename_document("ROOT", parent="CH")
+
+
+def test_rename_document_rejects_missing_parent(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+    model = RequirementModel()
+    controller = _controller(tmp_path, model)
+    controller.load_documents()
+    with pytest.raises(ValueError):
+        controller.rename_document("SYS", parent="MISSING")
+
+
 def test_rename_document_without_changes_returns_existing(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc)

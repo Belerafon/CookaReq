@@ -1,6 +1,8 @@
 """Dialogs for managing requirement documents."""
 from __future__ import annotations
 
+from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 import re
 
@@ -19,6 +21,7 @@ class DocumentProperties:
 
     prefix: str
     title: str
+    parent: str | None = None
 
 
 FIELD_HELP = {
@@ -34,7 +37,7 @@ FIELD_HELP = {
     ),
     "parent": _(
         "Parent document that determines where this entry sits in the hierarchy. The top level is shown as '(top-level)'."
-        " The parent is chosen automatically when creating a child document and cannot be edited from this dialog."
+        " Select a parent to place the document under it or choose '(top-level)' to keep it at the root."
     ),
 }
 
@@ -50,6 +53,7 @@ class DocumentPropertiesDialog(wx.Dialog):
         prefix: str = "",
         title: str = "",
         parent_prefix: str | None = None,
+        parent_choices: Sequence[tuple[str | None, str]] | None = None,
     ) -> None:
         """Prepare dialog controls depending on ``mode`` and defaults."""
         if mode not in {"create", "rename"}:
@@ -88,8 +92,20 @@ class DocumentPropertiesDialog(wx.Dialog):
 
         parent_label = wx.StaticText(self, label=_("Parent"))
         grid.Add(parent_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        parent_value = parent_prefix or _("(top-level)")
-        grid.Add(wx.StaticText(self, label=parent_value), 0, wx.ALIGN_CENTER_VERTICAL)
+        choices: list[tuple[str | None, str]]
+        if parent_choices:
+            choices = list(parent_choices)
+        else:
+            choices = [(None, _("(top-level)"))]
+        self._parent_values = [value for value, _ in choices]
+        parent_labels = [label for _, label in choices]
+        self.parent_ctrl = wx.Choice(self, choices=parent_labels)
+        default_selection = 0
+        if parent_prefix is not None:
+            with suppress(ValueError):
+                default_selection = self._parent_values.index(parent_prefix)
+        self.parent_ctrl.SetSelection(default_selection)
+        grid.Add(self.parent_ctrl, 0, wx.ALIGN_CENTER_VERTICAL | wx.EXPAND)
         grid.Add(
             make_help_button(self, FIELD_HELP["parent"], dialog_parent=self),
             0,
@@ -129,7 +145,12 @@ class DocumentPropertiesDialog(wx.Dialog):
                 return
         if not title:
             title = prefix
-        self._result = DocumentProperties(prefix=prefix, title=title)
+        parent_value = None
+        if hasattr(self, "parent_ctrl"):
+            selection = self.parent_ctrl.GetSelection()
+            if 0 <= selection < len(self._parent_values):
+                parent_value = self._parent_values[selection]
+        self._result = DocumentProperties(prefix=prefix, title=title, parent=parent_value)
         self.EndModal(wx.ID_OK)
 
     def get_properties(self) -> DocumentProperties | None:

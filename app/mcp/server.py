@@ -313,6 +313,14 @@ def search_requirements(
 
 
 @register_tool()
+def list_labels(prefix: str) -> dict:
+    """Return label definitions available to document ``prefix``."""
+
+    directory = app.state.base_path
+    return tools_read.list_labels(directory, prefix=prefix)
+
+
+@register_tool()
 def create_requirement(prefix: str, data: Mapping[str, object]) -> dict:
     """Create a requirement in the configured directory."""
     directory = app.state.base_path
@@ -361,6 +369,68 @@ def delete_requirement(rid: str) -> dict | None:
     """Delete a requirement."""
     directory = app.state.base_path
     return tools_write.delete_requirement(directory, rid)
+
+
+@register_tool()
+def create_label(
+    prefix: str,
+    *,
+    key: str,
+    title: str | None = None,
+    color: str | None = None,
+) -> dict:
+    """Create a label definition for document ``prefix``."""
+
+    directory = app.state.base_path
+    return tools_write.create_label(
+        directory,
+        prefix=prefix,
+        key=key,
+        title=title,
+        color=color,
+    )
+
+
+@register_tool()
+def update_label(
+    prefix: str,
+    *,
+    key: str,
+    new_key: str | None = None,
+    title: str | None = None,
+    color: str | None = None,
+    propagate: bool = False,
+) -> dict:
+    """Update label ``key`` for document ``prefix``."""
+
+    directory = app.state.base_path
+    return tools_write.update_label(
+        directory,
+        prefix=prefix,
+        key=key,
+        new_key=new_key,
+        title=title,
+        color=color,
+        propagate=propagate,
+    )
+
+
+@register_tool()
+def delete_label(
+    prefix: str,
+    *,
+    key: str,
+    remove_from_requirements: bool = False,
+) -> dict:
+    """Delete label ``key`` from document ``prefix``."""
+
+    directory = app.state.base_path
+    return tools_write.delete_label(
+        directory,
+        prefix=prefix,
+        key=key,
+        remove_from_requirements=remove_from_requirements,
+    )
 
 
 @register_tool()

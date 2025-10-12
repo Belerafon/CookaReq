@@ -54,7 +54,13 @@ so you know which modules are involved and which regressions to guard against.
   a human-friendly title and deterministic colour before persisting the updated
   `document.json`. The GUI may additionally request a retroactive promotion that
   scans existing requirements and registers previously ad-hoc labels so that
-  historical datasets gain the same metadata guarantees.
+  historical datasets gain the same metadata guarantees. The service also
+  centralises label maintenance: `update_document_labels()` replaces the full
+  definition list while recording rename propagation decisions and optional
+  requirement clean-up. Thin wrappers (`add_label_definition()`,
+  `update_label_definition()`, `remove_label_definition()`) power the MCP tools
+  and GUI, ensuring that document metadata and requirement payloads stay in sync
+  when keys change or disappear.
 * **`UserDocumentsService`** — indexes external documentation for the agent.
   It enforces size limits, token budgets and serialises directory snapshots so
   that LLM prompts only include manageable chunks. Token counters read small
@@ -87,7 +93,9 @@ so you know which modules are involved and which regressions to guard against.
   execution, `controller.py` launches and monitors the server from the GUI,
   `client.py` issues requests with idempotent confirmation tokens, while
   `tools_read.py` and `tools_write.py` implement read/write primitives against
-  the document store. `events.py` broadcasts completion notifications that let
+  the document store. Label management tools (`list_labels`, `create_label`,
+  `update_label`, `delete_label`) reuse the same service helpers so renames can
+  optionally cascade to requirement payloads. `events.py` broadcasts completion notifications that let
   the UI refresh without reloading the entire document tree. `server.py`
   maintains a thread-safe cache of `RequirementsService` objects scoped by the
   configured base directory so repeated tool calls reuse a single instance; the
@@ -115,7 +123,9 @@ so you know which modules are involved and which regressions to guard against.
   and exposes filtered views to the list panel, keeping UI updates fast.
 * **Dialogs and helpers** — confirmation flows, error dialogs and settings live
   in `app/confirm.py`, `app/ui/error_dialog.py`, `app/ui/settings_dialog.py` and
-  related modules.
+  related modules. `LabelsDialog` coordinates label edits by capturing rename
+  propagation choices and deletion clean-up flags before the controller forwards
+  the plan to `RequirementsService.update_document_labels()`.
 
 ## Cross-cutting infrastructure
 

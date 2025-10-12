@@ -236,6 +236,134 @@ def set_requirement_links(
     return log_tool("set_requirement_links", params, _result_payload(req))
 
 
+def create_label(
+    directory: str | Path,
+    *,
+    prefix: str,
+    key: str,
+    title: str | None = None,
+    color: str | None = None,
+) -> dict:
+    """Create a new label definition for ``prefix`` document."""
+
+    params = {
+        "directory": str(directory),
+        "prefix": prefix,
+        "key": key,
+        "title": title,
+        "color": color,
+    }
+    service = get_requirements_service(directory)
+    try:
+        definition = service.add_label_definition(
+            prefix,
+            key=key,
+            title=title,
+            color=color,
+        )
+    except DocumentNotFoundError as exc:
+        return log_tool("create_label", params, mcp_error(ErrorCode.NOT_FOUND, str(exc)))
+    except ValidationError as exc:
+        return log_tool(
+            "create_label",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+        )
+    except Exception as exc:  # pragma: no cover - defensive guard
+        return log_tool("create_label", params, mcp_error(ErrorCode.INTERNAL, str(exc)))
+
+    payload = {"key": definition.key, "title": definition.title, "color": definition.color}
+    return log_tool("create_label", params, payload)
+
+
+def update_label(
+    directory: str | Path,
+    *,
+    prefix: str,
+    key: str,
+    new_key: str | None = None,
+    title: str | None = None,
+    color: str | None = None,
+    propagate: bool = False,
+) -> dict:
+    """Update label ``key`` for ``prefix`` document."""
+
+    params = {
+        "directory": str(directory),
+        "prefix": prefix,
+        "key": key,
+        "new_key": new_key,
+        "title": title,
+        "color": color,
+        "propagate": propagate,
+    }
+    service = get_requirements_service(directory)
+    try:
+        definition = service.update_label_definition(
+            prefix,
+            key=key,
+            new_key=new_key,
+            title=title,
+            color=color,
+            propagate=propagate,
+        )
+    except DocumentNotFoundError as exc:
+        return log_tool("update_label", params, mcp_error(ErrorCode.NOT_FOUND, str(exc)))
+    except ValidationError as exc:
+        return log_tool(
+            "update_label",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+        )
+    except Exception as exc:  # pragma: no cover - defensive guard
+        return log_tool("update_label", params, mcp_error(ErrorCode.INTERNAL, str(exc)))
+
+    propagated = bool(new_key and new_key != key and propagate)
+    payload = {
+        "key": definition.key,
+        "title": definition.title,
+        "color": definition.color,
+        "propagated": propagated,
+    }
+    return log_tool("update_label", params, payload)
+
+
+def delete_label(
+    directory: str | Path,
+    *,
+    prefix: str,
+    key: str,
+    remove_from_requirements: bool = False,
+) -> dict:
+    """Delete label ``key`` from ``prefix`` document."""
+
+    params = {
+        "directory": str(directory),
+        "prefix": prefix,
+        "key": key,
+        "remove_from_requirements": remove_from_requirements,
+    }
+    service = get_requirements_service(directory)
+    try:
+        service.remove_label_definition(
+            prefix,
+            key,
+            remove_from_requirements=remove_from_requirements,
+        )
+    except DocumentNotFoundError as exc:
+        return log_tool("delete_label", params, mcp_error(ErrorCode.NOT_FOUND, str(exc)))
+    except ValidationError as exc:
+        return log_tool(
+            "delete_label",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+        )
+    except Exception as exc:  # pragma: no cover - defensive guard
+        return log_tool("delete_label", params, mcp_error(ErrorCode.INTERNAL, str(exc)))
+
+    return log_tool("delete_label", params, {"removed": True, "key": key})
+
+
 def delete_requirement(directory: str | Path, rid: str) -> dict:
     """Delete requirement *rid* from the document store."""
     params = {"directory": str(directory), "rid": rid}

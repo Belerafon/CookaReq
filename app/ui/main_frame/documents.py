@@ -640,13 +640,20 @@ class MainFrameDocumentsMixin:
         labels = [LabelDef(ld.key, ld.title, ld.color) for ld in doc.labels.defs]
         dlg = LabelsDialog(self, labels)
         if dlg.ShowModal() == wx.ID_OK:
-            doc.labels.defs = dlg.get_labels()
-            self.docs_controller.service.save_document(doc)
-            labels_all, freeform = self.docs_controller.collect_labels(
-                prefix
-            )
-            self.panel.update_labels_list(labels_all, freeform)
-            self.editor.update_labels_list(labels_all, freeform)
+            try:
+                self.docs_controller.update_document_labels(
+                    prefix,
+                    original=labels,
+                    updated=dlg.get_labels(),
+                    rename_choices=dlg.get_key_changes(),
+                    removal_choices=dlg.get_removed_labels(),
+                )
+            except ValidationError as exc:
+                wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
+            else:
+                labels_all, freeform = self.docs_controller.collect_labels(prefix)
+                self.panel.update_labels_list(labels_all, freeform)
+                self.editor.update_labels_list(labels_all, freeform)
         dlg.Destroy()
 
     def on_show_derivation_graph(self: MainFrame, _event: wx.Event) -> None:

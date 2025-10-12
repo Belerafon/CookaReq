@@ -7,7 +7,7 @@ from app.core.document_store import (
     LabelDef,
     save_document,
 )
-from app.mcp import tools_write
+from app.mcp import tools_read, tools_write
 
 
 def _base_req() -> dict:
@@ -188,3 +188,130 @@ def test_set_links_rejects_string_payload(tmp_path: Path) -> None:
     res = tools_write.set_requirement_links(tmp_path, created["rid"], "oops")
 
     assert res["error"]["code"] == "VALIDATION_ERROR"
+
+
+def _load_document_labels(tmp_path: Path, prefix: str) -> list[dict]:
+    data = json.loads((tmp_path / prefix / "document.json").read_text(encoding="utf-8"))
+    return data.get("labels", {}).get("defs", [])
+
+
+def _load_requirement_labels(tmp_path: Path, prefix: str, item_id: int) -> list[str]:
+    path = tmp_path / prefix / "items" / f"{item_id}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload.get("labels", [])
+
+
+def test_create_label_registers_definition(tmp_path: Path) -> None:
+    save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc"))
+
+    result = tools_write.create_label(
+        tmp_path,
+        prefix="SYS",
+        key="qa",
+        title="Quality",
+        color="#123456",
+    )
+
+    assert result == {"key": "qa", "title": "Quality", "color": "#123456"}
+    defs = _load_document_labels(tmp_path, "SYS")
+    assert any(entry["key"] == "qa" and entry["title"] == "Quality" for entry in defs)
+
+
+def test_update_label_propagates_when_requested(tmp_path: Path) -> None:
+    save_document(
+        tmp_path / "SYS",
+        Document(prefix="SYS", title="Doc", labels=DocumentLabels(defs=[LabelDef("legacy", "Legacy")])),
+    )
+    created = tools_write.create_requirement(
+        tmp_path,
+        prefix="SYS",
+        data={**_base_req(), "labels": ["legacy"]},
+    )
+
+    res = tools_write.update_label(
+        tmp_path,
+        prefix="SYS",
+        key="legacy",
+        new_key="modern",
+        title="Modern",
+        propagate=True,
+    )
+
+    assert res["key"] == "modern"
+    assert res["propagated"] is True
+    assert _load_requirement_labels(tmp_path, "SYS", 1) == ["modern"]
+
+
+def test_update_label_without_propagation_leaves_requirements(tmp_path: Path) -> None:
+    save_document(
+        tmp_path / "SYS",
+        Document(prefix="SYS", title="Doc", labels=DocumentLabels(defs=[LabelDef("legacy", "Legacy")])),
+    )
+    tools_write.create_requirement(
+        tmp_path,
+        prefix="SYS",
+        data={**_base_req(), "labels": ["legacy"]},
+    )
+
+    res = tools_write.update_label(
+        tmp_path,
+        prefix="SYS",
+        key="legacy",
+        new_key="modern",
+        title="Modern",
+        propagate=False,
+    )
+
+    assert res["key"] == "modern"
+    assert res["propagated"] is False
+    assert _load_requirement_labels(tmp_path, "SYS", 1) == ["legacy"]
+
+
+def test_delete_label_removes_from_requirements(tmp_path: Path) -> None:
+    save_document(
+        tmp_path / "SYS",
+        Document(prefix="SYS", title="Doc", labels=DocumentLabels(defs=[LabelDef("obsolete", "Obsolete")])),
+    )
+    tools_write.create_requirement(
+        tmp_path,
+        prefix="SYS",
+        data={**_base_req(), "labels": ["obsolete"]},
+    )
+
+    res = tools_write.delete_label(
+        tmp_path,
+        prefix="SYS",
+        key="obsolete",
+        remove_from_requirements=True,
+    )
+
+    assert res == {"removed": True, "key": "obsolete"}
+    assert _load_document_labels(tmp_path, "SYS") == []
+    assert _load_requirement_labels(tmp_path, "SYS", 1) == []
+
+
+def test_list_labels_reports_inheritance(tmp_path: Path) -> None:
+    save_document(
+        tmp_path / "SYS",
+        Document(
+            prefix="SYS",
+            title="System",
+            labels=DocumentLabels(defs=[LabelDef("core", "Core", "#010101")]),
+        ),
+    )
+    save_document(
+        tmp_path / "SW",
+        Document(
+            prefix="SW",
+            title="Software",
+            parent="SYS",
+            labels=DocumentLabels(defs=[LabelDef("child", "Child")]),
+        ),
+    )
+
+    payload = tools_read.list_labels(tmp_path, prefix="SW")
+
+    assert payload["prefix"] == "SW"
+    keys = {entry["key"]: entry for entry in payload["labels"]}
+    assert "core" in keys and keys["core"]["defined_in"] == "SYS"
+    assert "child" in keys and keys["child"]["defined_in"] == "SW"

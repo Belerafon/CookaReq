@@ -293,6 +293,49 @@ class RequirementsService:
         docs = self._ensure_documents()
         return doc_store.collect_label_defs(prefix, docs)
 
+    def describe_label_definitions(self, prefix: str) -> dict[str, object]:
+        """Return detailed metadata about labels available to ``prefix``."""
+
+        docs = self._ensure_documents()
+        document = docs.get(prefix)
+        if document is None:
+            raise DocumentNotFoundError(prefix)
+
+        chain: list[Document] = []
+        current: Document | None = document
+        effective_freeform = False
+        while current is not None:
+            chain.append(current)
+            effective_freeform = effective_freeform or current.labels.allow_freeform
+            parent_prefix = current.parent
+            if not parent_prefix:
+                break
+            current = docs.get(parent_prefix)
+            if current is None:
+                # Reload documents to handle out-of-date caches gracefully.
+                current = doc_store.load_document(self.root / parent_prefix)
+                docs[parent_prefix] = current
+
+        entries: list[dict[str, object]] = []
+        for source in reversed(chain):
+            for definition in source.labels.defs:
+                entries.append(
+                    {
+                        "key": definition.key,
+                        "title": definition.title,
+                        "color": doc_store.label_color(definition),
+                        "defined_in": source.prefix,
+                        "editable": source.prefix == prefix,
+                    }
+                )
+
+        return {
+            "prefix": prefix,
+            "document_allow_freeform": document.labels.allow_freeform,
+            "effective_allow_freeform": effective_freeform,
+            "labels": entries,
+        }
+
     # ------------------------------------------------------------------
     def _promote_label_definitions(
         self,
@@ -372,6 +415,213 @@ class RequirementsService:
         """Return ``True`` when ``ancestor_prefix`` is in the lineage of ``child_prefix``."""
         docs = self._ensure_documents()
         return doc_store.is_ancestor(child_prefix, ancestor_prefix, docs)
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _normalise_label_definition(label: LabelDef) -> LabelDef:
+        """Return sanitized clone of ``label`` ensuring defaults are applied."""
+
+        key = label.key.strip()
+        if not key:
+            raise ValidationError("label key cannot be empty")
+        title = label.title.strip() or key
+        color = label.color.strip() if isinstance(label.color, str) else None
+        if color == "":
+            color = None
+        return LabelDef(key=key, title=title, color=color)
+
+    def _descendant_prefixes(self, prefix: str, docs: Mapping[str, Document]) -> list[str]:
+        """Return prefixes where ``prefix`` is an ancestor (including itself)."""
+
+        affected: list[str] = []
+        for candidate in docs:
+            if doc_store.is_ancestor(candidate, prefix, docs):
+                affected.append(candidate)
+        return affected
+
+    def update_document_labels(
+        self,
+        prefix: str,
+        *,
+        original: Sequence[LabelDef],
+        updated: Sequence[LabelDef],
+        rename_choices: Mapping[str, tuple[str, bool]] | None = None,
+        removal_choices: Mapping[str, bool] | None = None,
+    ) -> list[LabelDef]:
+        """Persist label definitions for ``prefix`` and apply side effects.
+
+        ``rename_choices`` maps original keys to ``(new_key, propagate)`` pairs
+        indicating whether requirement payloads should be updated.  ``removal_choices``
+        records whether deleted labels should be stripped from existing
+        requirements.
+        """
+
+        rename_choices = dict(rename_choices or {})
+        removal_choices = dict(removal_choices or {})
+
+        normalized: list[LabelDef] = []
+        seen: set[str] = set()
+        for definition in updated:
+            sanitized = self._normalise_label_definition(definition)
+            if sanitized.key in seen:
+                raise ValidationError(f"duplicate label key: {sanitized.key}")
+            seen.add(sanitized.key)
+            normalized.append(sanitized)
+
+        document = self.get_document(prefix)
+        document.labels.defs = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in normalized]
+        self.save_document(document)
+
+        docs = self._ensure_documents()
+        updated_keys = {lbl.key for lbl in normalized}
+        original_keys = {lbl.key for lbl in original}
+
+        rename_map: dict[str, str] = {}
+        for old_key, (new_key_raw, propagate) in rename_choices.items():
+            if not propagate:
+                continue
+            if new_key_raw is None:
+                continue
+            new_key = new_key_raw.strip()
+            if not new_key or new_key == old_key:
+                continue
+            if old_key not in original_keys:
+                continue
+            rename_map[old_key] = new_key
+
+        removed_keys = {key for key in original_keys if key not in updated_keys}
+        removal_targets = {
+            key
+            for key in removed_keys
+            if removal_choices.get(key, False)
+        }
+
+        if not rename_map and not removal_targets:
+            return normalized
+
+        affected_prefixes = self._descendant_prefixes(prefix, docs)
+        for candidate in affected_prefixes:
+            requirements = doc_store.load_requirements(
+                self.root, prefixes=[candidate], docs=docs
+            )
+            for requirement in requirements:
+                if not requirement.labels:
+                    continue
+                changed = False
+                new_labels: list[str] = []
+                for label in requirement.labels:
+                    replacement = rename_map.get(label)
+                    if replacement is not None:
+                        new_labels.append(replacement)
+                        if replacement != label:
+                            changed = True
+                        continue
+                    if label in removal_targets:
+                        changed = True
+                        continue
+                    new_labels.append(label)
+                if changed:
+                    doc_store.set_requirement_labels(
+                        self.root,
+                        requirement.rid,
+                        labels=new_labels,
+                        docs=docs,
+                    )
+
+        return normalized
+
+    def add_label_definition(
+        self,
+        prefix: str,
+        *,
+        key: str,
+        title: str | None = None,
+        color: str | None = None,
+    ) -> LabelDef:
+        """Append a new label definition to ``prefix`` document."""
+
+        document = self.get_document(prefix)
+        original = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in document.labels.defs]
+        new_label = LabelDef(key=key, title=title or key, color=color)
+        updated = [*original, new_label]
+        normalized = self.update_document_labels(
+            prefix,
+            original=original,
+            updated=updated,
+            rename_choices={},
+            removal_choices={},
+        )
+        return next(defn for defn in normalized if defn.key == new_label.key)
+
+    def update_label_definition(
+        self,
+        prefix: str,
+        *,
+        key: str,
+        new_key: str | None = None,
+        title: str | None = None,
+        color: str | None = None,
+        propagate: bool = False,
+    ) -> LabelDef:
+        """Update ``key`` label definition for ``prefix`` document."""
+
+        document = self.get_document(prefix)
+        original = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in document.labels.defs]
+        updated: list[LabelDef] = []
+        target: LabelDef | None = None
+        for definition in document.labels.defs:
+            if definition.key == key:
+                target = LabelDef(
+                    key=new_key if new_key is not None else definition.key,
+                    title=title if title is not None else definition.title,
+                    color=color if color is not None else definition.color,
+                )
+                updated.append(target)
+            else:
+                updated.append(LabelDef(definition.key, definition.title, definition.color))
+
+        if target is None:
+            raise ValidationError(f"label {key} does not exist")
+
+        rename_choices: dict[str, tuple[str, bool]] = {}
+        if new_key is not None and new_key.strip() and new_key.strip() != key:
+            rename_choices[key] = (new_key, propagate)
+
+        normalized = self.update_document_labels(
+            prefix,
+            original=original,
+            updated=updated,
+            rename_choices=rename_choices,
+            removal_choices={},
+        )
+        return next(defn for defn in normalized if defn.key == (new_key or key))
+
+    def remove_label_definition(
+        self,
+        prefix: str,
+        key: str,
+        *,
+        remove_from_requirements: bool = False,
+    ) -> None:
+        """Remove label ``key`` from ``prefix`` metadata."""
+
+        document = self.get_document(prefix)
+        original = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in document.labels.defs]
+        updated = [
+            LabelDef(definition.key, definition.title, definition.color)
+            for definition in document.labels.defs
+            if definition.key != key
+        ]
+        if len(updated) == len(original):
+            raise ValidationError(f"label {key} does not exist")
+
+        self.update_document_labels(
+            prefix,
+            original=original,
+            updated=updated,
+            rename_choices={},
+            removal_choices={key: remove_from_requirements},
+        )
 
     def list_requirements(
         self,

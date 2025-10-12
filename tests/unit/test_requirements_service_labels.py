@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.core.document_store import Document, DocumentLabels
+from app.core.document_store import Document, DocumentLabels, LabelDef
 from app.core.document_store.documents import load_document, save_document
 from app.core.document_store.items import save_item
 from app.core.model import Requirement, RequirementType, Status, Priority, Verification
@@ -102,3 +102,103 @@ def test_set_labels_respects_disabled_freeform(tmp_path: Path) -> None:
 
     persisted = load_document(tmp_path / "SYS")
     assert all(defn.key != "new_label" for defn in persisted.labels.defs)
+
+
+def test_update_document_labels_renames_with_propagation(tmp_path: Path) -> None:
+    root = tmp_path
+    doc = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(defs=[LabelDef("legacy", "Legacy", "#112233")]),
+    )
+    save_document(root / "SYS", doc)
+    requirement = _base_requirement("SYS")
+    requirement.labels = ["legacy"]
+    save_item(root / "SYS", doc, requirement.to_mapping())
+
+    service = RequirementsService(root)
+    service.update_document_labels(
+        "SYS",
+        original=[LabelDef("legacy", "Legacy", "#112233")],
+        updated=[LabelDef("modern", "Modern", "#445566")],
+        rename_choices={"legacy": ("modern", True)},
+        removal_choices={},
+    )
+
+    refreshed = service.get_requirement("SYS1")
+    assert refreshed.labels == ["modern"]
+    doc_refreshed = service.get_document("SYS")
+    assert [definition.key for definition in doc_refreshed.labels.defs] == ["modern"]
+
+
+def test_update_document_labels_rename_without_propagation(tmp_path: Path) -> None:
+    root = tmp_path
+    doc = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(defs=[LabelDef("legacy", "Legacy", None)]),
+    )
+    save_document(root / "SYS", doc)
+    requirement = _base_requirement("SYS")
+    requirement.labels = ["legacy"]
+    save_item(root / "SYS", doc, requirement.to_mapping())
+
+    service = RequirementsService(root)
+    service.update_document_labels(
+        "SYS",
+        original=[LabelDef("legacy", "Legacy", None)],
+        updated=[LabelDef("modern", "Modern", None)],
+        rename_choices={"legacy": ("modern", False)},
+        removal_choices={},
+    )
+
+    refreshed = service.get_requirement("SYS1")
+    assert refreshed.labels == ["legacy"]
+    doc_refreshed = service.get_document("SYS")
+    assert [definition.key for definition in doc_refreshed.labels.defs] == ["modern"]
+
+
+def test_update_document_labels_removal_cleans_requirements(tmp_path: Path) -> None:
+    root = tmp_path
+    doc = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(defs=[LabelDef("obsolete", "Obsolete", None)]),
+    )
+    save_document(root / "SYS", doc)
+    requirement = _base_requirement("SYS")
+    requirement.labels = ["obsolete"]
+    save_item(root / "SYS", doc, requirement.to_mapping())
+
+    service = RequirementsService(root)
+    service.update_document_labels(
+        "SYS",
+        original=[LabelDef("obsolete", "Obsolete", None)],
+        updated=[],
+        rename_choices={},
+        removal_choices={"obsolete": True},
+    )
+
+    refreshed = service.get_requirement("SYS1")
+    assert refreshed.labels == []
+    assert service.get_document("SYS").labels.defs == []
+
+
+def test_describe_label_definitions_includes_inheritance(tmp_path: Path) -> None:
+    root = tmp_path
+    parent = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(defs=[LabelDef("core", "Core", "#111111")]),
+    )
+    child = Document(prefix="SW", title="Software", parent="SYS")
+    save_document(root / "SYS", parent)
+    save_document(root / "SW", child)
+
+    service = RequirementsService(root)
+    listing = service.describe_label_definitions("SW")
+
+    assert listing["prefix"] == "SW"
+    assert listing["effective_allow_freeform"] is False
+    labels = listing["labels"]
+    assert any(entry["key"] == "core" and entry["defined_in"] == "SYS" for entry in labels)

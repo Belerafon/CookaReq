@@ -184,6 +184,8 @@ class MessageBubble(wx.Panel):
         self._bubble_max_width_ratio = 0.85
         self._bubble_margin = self.FromDIP(48)
         self._content_padding = self.FromDIP(12)
+        self._max_visible_text_lines = 28
+        self._text_vertical_padding = self.FromDIP(6)
         self._copy_menu_id = wx.Window.NewControlId()
         self.Bind(wx.EVT_MENU, self._on_copy, id=self._copy_menu_id)
         self._allow_selection = allow_selection
@@ -316,7 +318,7 @@ class MessageBubble(wx.Panel):
                     wx.TE_MULTILINE
                     | wx.TE_READONLY
                     | wx.TE_WORDWRAP
-                    | wx.TE_NO_VSCROLL
+                    | wx.VSCROLL
                     | wx.BORDER_NONE
                 )
                 text_ctrl = wx.TextCtrl(bubble, value=display_text, style=style)
@@ -333,6 +335,7 @@ class MessageBubble(wx.Panel):
 
                 self._selection_checker = has_selection
                 self._selection_getter = text_ctrl.GetStringSelection
+                self._refresh_textctrl_height()
         else:
             text_align_flag = wx.ALIGN_LEFT
             self._text = wx.StaticText(
@@ -437,6 +440,7 @@ class MessageBubble(wx.Panel):
             control.Wrap(self.FromDIP(320))
         elif isinstance(control, wx.TextCtrl):
             control.ChangeValue(display_text)
+            self._refresh_textctrl_height()
         else:
             from .markdown_view import MarkdownContent
 
@@ -602,8 +606,7 @@ class MessageBubble(wx.Panel):
                 self._wrap_width = width
                 self._text.Wrap(width)
         elif isinstance(self._text, wx.TextCtrl):
-            self._text.SetMinSize(wx.Size(width, -1))
-            self._text.Layout()
+            self._refresh_textctrl_height(width=width)
         self._cached_width_constraints = None
 
     def _create_copy_button(self, parent: wx.Window) -> wx.Window:
@@ -863,6 +866,66 @@ class MessageBubble(wx.Panel):
             if not _is_window_usable(ancestor):
                 return 0
         return 0
+
+    def _refresh_textctrl_height(self, width: int | None = None) -> None:
+        text_ctrl = getattr(self, "_text", None)
+        if not isinstance(text_ctrl, wx.TextCtrl):
+            return
+        if not _is_window_usable(text_ctrl):
+            return
+
+        try:
+            current_min = text_ctrl.GetMinSize()
+        except RuntimeError:
+            current_min = wx.Size(0, 0)
+
+        width_hint = width if width is not None and width > 0 else current_min.width
+        if width_hint <= 0:
+            width_hint = self.FromDIP(160)
+
+        try:
+            text_ctrl.SetMinSize(wx.Size(width_hint, current_min.height))
+            text_ctrl.SetInitialSize(wx.Size(width_hint, current_min.height))
+        except RuntimeError:
+            return
+
+        try:
+            char_height = text_ctrl.GetCharHeight()
+        except RuntimeError:
+            char_height = 0
+        if char_height <= 0:
+            try:
+                _, char_height = text_ctrl.GetTextExtent("Ag")
+            except RuntimeError:
+                char_height = 0
+        if char_height <= 0:
+            char_height = max(self.FromDIP(14), 1)
+
+        try:
+            line_count = text_ctrl.GetNumberOfLines()
+        except RuntimeError:
+            line_count = 1
+        line_count = max(line_count, 1)
+
+        max_lines = max(int(self._max_visible_text_lines), 1)
+        padding = max(int(self._text_vertical_padding), 0)
+        full_height = line_count * char_height + padding
+        capped_height = max_lines * char_height + padding
+        target_height = full_height if line_count <= max_lines else capped_height
+
+        try:
+            text_ctrl.SetMinSize(wx.Size(width_hint, target_height))
+            text_ctrl.SetInitialSize(wx.Size(width_hint, target_height))
+            text_ctrl.SetMaxSize(wx.Size(-1, capped_height))
+        except RuntimeError:
+            return
+
+        with suppress(RuntimeError):
+            text_ctrl.Layout()
+        parent = text_ctrl.GetParent()
+        if parent is not None and _is_window_usable(parent):
+            with suppress(RuntimeError):
+                parent.Layout()
 
     def _estimate_content_width(self) -> int:
         if not self._text_value:

@@ -247,6 +247,7 @@ class UISettings(BaseModel):
 
     columns: list[str] = Field(default_factory=lambda: list(DEFAULT_LIST_COLUMNS))
     recent_dirs: list[str] = Field(default_factory=list)
+    last_documents: dict[str, str] = Field(default_factory=dict)
     auto_open_last: bool = False
     remember_sort: bool = False
     language: str | None = None

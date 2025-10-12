@@ -39,6 +39,7 @@ class FieldBinding:
 FIELD_BINDINGS: dict[str, FieldBinding] = {
     "list_columns": FieldBinding("ui", "columns"),
     "recent_dirs": FieldBinding("ui", "recent_dirs"),
+    "last_documents": FieldBinding("ui", "last_documents"),
     "auto_open_last": FieldBinding("ui", "auto_open_last"),
     "remember_sort": FieldBinding("ui", "remember_sort"),
     "language": FieldBinding("ui", "language"),
@@ -275,6 +276,55 @@ class ConfigManager:
         del dirs[5:]
         self.set_recent_dirs(dirs)
         return dirs
+
+    def _normalise_directory_key(self, path: Path | str) -> str:
+        """Return canonical key for persisting directory-specific state."""
+        candidate = Path(path)
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate
+        return str(resolved)
+
+    # ------------------------------------------------------------------
+    # document persistence
+    def get_last_documents(self) -> dict[str, str]:
+        """Return mapping of directories to last opened document prefixes."""
+        raw = self.get_value("last_documents")
+        if not isinstance(raw, dict):
+            return {}
+        result: dict[str, str] = {}
+        for directory, prefix in raw.items():
+            if not directory or not prefix:
+                continue
+            if not isinstance(directory, str) or not isinstance(prefix, str):
+                continue
+            result[directory] = prefix
+        return result
+
+    def get_last_document(self, path: Path | str) -> str | None:
+        """Return remembered document prefix for *path* if available."""
+        key = self._normalise_directory_key(path)
+        return self.get_last_documents().get(key)
+
+    def set_last_document(self, path: Path | str, prefix: str | None) -> None:
+        """Persist last opened document *prefix* for directory *path*."""
+        key = self._normalise_directory_key(path)
+        documents = self.get_last_documents()
+        if prefix:
+            if documents.get(key) == prefix:
+                return
+            documents[key] = prefix
+        else:
+            if key not in documents:
+                return
+            documents.pop(key, None)
+        self.set_value("last_documents", documents)
+        self.flush()
+
+    def clear_last_document(self, path: Path | str) -> None:
+        """Forget remembered document for directory *path*."""
+        self.set_last_document(path, None)
 
     # ------------------------------------------------------------------
     # flags and language

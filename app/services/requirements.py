@@ -439,6 +439,51 @@ class RequirementsService:
                 affected.append(candidate)
         return affected
 
+    def _propagate_label_definition_renames(
+        self,
+        prefix: str,
+        renames: Mapping[str, str],
+        docs: Mapping[str, Document],
+    ) -> bool:
+        """Rename inherited label definitions across descendant documents."""
+
+        if not renames:
+            return False
+
+        changed_any = False
+        for candidate in self._descendant_prefixes(prefix, docs):
+            if candidate == prefix:
+                continue
+
+            document = docs.get(candidate)
+            if document is None:
+                continue
+
+            updated: dict[str, LabelDef] = {}
+            order: list[str] = []
+            changed_document = False
+            for definition in document.labels.defs:
+                replacement = renames.get(definition.key)
+                if replacement is not None:
+                    changed_document = True
+                    key = replacement
+                else:
+                    key = definition.key
+
+                clone = LabelDef(key, definition.title, definition.color)
+                if key not in updated:
+                    order.append(key)
+                updated[key] = clone
+
+            if not changed_document:
+                continue
+
+            document.labels.defs = [updated[key] for key in order]
+            doc_store.save_document(self.root / document.prefix, document)
+            changed_any = True
+
+        return changed_any
+
     def update_document_labels(
         self,
         prefix: str,
@@ -472,11 +517,7 @@ class RequirementsService:
         document.labels.defs = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in normalized]
         self.save_document(document)
 
-        docs = self._ensure_documents()
-        updated_keys = {lbl.key for lbl in normalized}
-        original_keys = {lbl.key for lbl in original}
-
-        rename_map: dict[str, str] = {}
+        propagate_renames: dict[str, str] = {}
         for old_key, (new_key_raw, propagate) in rename_choices.items():
             if not propagate:
                 continue
@@ -485,6 +526,17 @@ class RequirementsService:
             new_key = new_key_raw.strip()
             if not new_key or new_key == old_key:
                 continue
+            propagate_renames[old_key] = new_key
+
+        docs = self._ensure_documents()
+        if self._propagate_label_definition_renames(prefix, propagate_renames, docs):
+            docs = self._ensure_documents(refresh=True)
+
+        updated_keys = {lbl.key for lbl in normalized}
+        original_keys = {lbl.key for lbl in original}
+
+        rename_map: dict[str, str] = {}
+        for old_key, new_key in propagate_renames.items():
             if old_key not in original_keys:
                 continue
             rename_map[old_key] = new_key

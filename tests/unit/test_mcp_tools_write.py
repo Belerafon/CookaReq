@@ -138,6 +138,71 @@ def test_set_labels_accepts_inherited_label(tmp_path: Path) -> None:
     assert res["labels"] == ["ui"]
 
 
+def test_set_labels_promotes_new_keys_across_updates(tmp_path: Path) -> None:
+    save_document(
+        tmp_path / "SYS",
+        Document(
+            prefix="SYS",
+            title="Doc",
+            labels=DocumentLabels(allow_freeform=True),
+        ),
+    )
+    created = tools_write.create_requirement(tmp_path, prefix="SYS", data=_base_req())
+
+    first = tools_write.set_requirement_labels(
+        tmp_path, created["rid"], ["alpha_tag", "beta"]
+    )
+    assert first["labels"] == ["alpha_tag", "beta"]
+    defs_after_first = _load_document_labels(tmp_path, "SYS")
+    assert {entry["key"] for entry in defs_after_first} == {"alpha_tag", "beta"}
+    alpha = next(entry for entry in defs_after_first if entry["key"] == "alpha_tag")
+    assert alpha["title"] == "Alpha Tag"
+
+    second = tools_write.set_requirement_labels(
+        tmp_path, created["rid"], ["beta", "gamma_plus"]
+    )
+    assert second["labels"] == ["beta", "gamma_plus"]
+    defs_after_second = _load_document_labels(tmp_path, "SYS")
+    keys_after_second = {entry["key"] for entry in defs_after_second}
+    assert {"alpha_tag", "beta", "gamma_plus"} == keys_after_second
+    gamma = next(entry for entry in defs_after_second if entry["key"] == "gamma_plus")
+    assert gamma["title"] == "Gamma Plus"
+    assert sum(1 for entry in defs_after_second if entry["key"] == "beta") == 1
+
+    cleared = tools_write.set_requirement_labels(tmp_path, created["rid"], [])
+    assert cleared["labels"] == []
+    defs_after_cleared = _load_document_labels(tmp_path, "SYS")
+    assert {entry["key"] for entry in defs_after_cleared} == {
+        "alpha_tag",
+        "beta",
+        "gamma_plus",
+    }
+
+
+def test_set_labels_promotes_to_freeform_ancestor(tmp_path: Path) -> None:
+    save_document(
+        tmp_path / "SYS",
+        Document(
+            prefix="SYS",
+            title="Doc",
+            labels=DocumentLabels(allow_freeform=True),
+        ),
+    )
+    save_document(
+        tmp_path / "SW",
+        Document(prefix="SW", title="Software", parent="SYS"),
+    )
+    created = tools_write.create_requirement(tmp_path, prefix="SW", data=_base_req())
+
+    result = tools_write.set_requirement_labels(tmp_path, created["rid"], ["ui_ready"])
+
+    assert result["labels"] == ["ui_ready"]
+    parent_defs = _load_document_labels(tmp_path, "SYS")
+    assert any(entry["key"] == "ui_ready" for entry in parent_defs)
+    child_defs = _load_document_labels(tmp_path, "SW")
+    assert child_defs == []
+
+
 def test_set_attachments_rejects_string_payload(tmp_path: Path) -> None:
     save_document(tmp_path / "SYS", Document(prefix="SYS", title="Doc"))
     created = tools_write.create_requirement(tmp_path, prefix="SYS", data=_base_req())

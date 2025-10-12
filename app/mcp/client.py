@@ -56,6 +56,9 @@ class MCPClient:
         "set_requirement_links",
         "delete_requirement",
         "link_requirements",
+        "create_label",
+        "update_label",
+        "delete_label",
     }
 
     def __init__(

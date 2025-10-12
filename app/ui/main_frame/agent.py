@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -28,6 +28,9 @@ if TYPE_CHECKING:  # pragma: no cover - import for type checking only
 
 
 logger = logging.getLogger("cookareq.ui.main_frame.agent")
+
+
+_LABEL_TOOL_NAMES = {"create_label", "update_label", "delete_label"}
 
 
 def _short_repr(value: Any, *, limit: int = 200) -> str:
@@ -130,6 +133,160 @@ class MainFrameAgentMixin:
             self._on_agent_tool_results(event.payloads)
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to apply MCP tool result event")
+
+    @staticmethod
+    def _extract_label_prefix(arguments: Mapping[str, Any] | None) -> str | None:
+        if not isinstance(arguments, Mapping):
+            return None
+        prefix = arguments.get("prefix")
+        if isinstance(prefix, str):
+            text = prefix.strip()
+            if text:
+                return text
+        return None
+
+    def _apply_label_tool_changes(
+        self: MainFrame, changes: Mapping[str, dict[str, Any]]
+    ) -> list[Requirement]:
+        if not changes:
+            return []
+        controller = getattr(self, "docs_controller", None)
+        if controller is None or not hasattr(controller, "service"):
+            return []
+
+        try:
+            controller.load_documents()
+        except Exception:
+            logger.exception("Failed to refresh documents after label tool update")
+
+        service = getattr(controller, "service", None)
+        if service is None:
+            return []
+
+        current_prefix = getattr(self, "current_doc_prefix", None)
+        active_refresh_needed = False
+        if current_prefix:
+            for prefix in changes:
+                if not prefix:
+                    continue
+                if current_prefix == prefix:
+                    active_refresh_needed = True
+                    break
+                try:
+                    if service.is_ancestor(current_prefix, prefix):
+                        active_refresh_needed = True
+                        break
+                except Exception:
+                    logger.exception(
+                        "Failed to evaluate document ancestry for label change: %s -> %s",
+                        current_prefix,
+                        prefix,
+                    )
+                    break
+
+        if active_refresh_needed and current_prefix:
+            try:
+                labels, freeform = controller.collect_labels(current_prefix)
+            except Exception:
+                logger.exception(
+                    "Failed to collect labels for %s after agent update", current_prefix
+                )
+            else:
+                try:
+                    self.panel.update_labels_list(labels, freeform)
+                    self.editor.update_labels_list(labels, freeform)
+                except Exception:
+                    logger.exception("Failed to refresh label controls after agent update")
+
+        model = getattr(self, "model", None)
+        if model is None:
+            return []
+
+        mutated_by_id: dict[int, Requirement] = {}
+        for prefix, change in changes.items():
+            if not prefix:
+                continue
+            rename_map = change.get("rename_map") or {}
+            removal_keys: Collection[str] = change.get("removal_keys") or set()
+            if not rename_map and not removal_keys:
+                continue
+            mutated = self._update_requirement_labels_for_prefix(
+                prefix,
+                rename_map,
+                removal_keys,
+                service,
+                model,
+            )
+            for requirement in mutated:
+                mutated_by_id[requirement.id] = requirement
+
+        if not mutated_by_id:
+            return []
+
+        try:
+            model.update_many(list(mutated_by_id.values()))
+        except Exception:
+            logger.exception("Failed to update requirement model after label change")
+            return []
+
+        return list(mutated_by_id.values())
+
+    def _update_requirement_labels_for_prefix(
+        self: MainFrame,
+        prefix: str,
+        rename_map: Mapping[str, str],
+        removal_keys: Collection[str],
+        service: Any,
+        model: Any,
+    ) -> list[Requirement]:
+        if not rename_map and not removal_keys:
+            return []
+        try:
+            removal_set = {key for key in removal_keys if isinstance(key, str) and key}
+        except TypeError:
+            removal_set = set()
+        affected: list[Requirement] = []
+        try:
+            requirements = model.get_all()
+        except Exception:
+            logger.exception("Failed to retrieve requirements while updating labels")
+            return []
+
+        for requirement in requirements:
+            req_prefix = getattr(requirement, "doc_prefix", "")
+            if not req_prefix:
+                continue
+            try:
+                if not service.is_ancestor(req_prefix, prefix):
+                    continue
+            except Exception:
+                logger.exception(
+                    "Failed to check ancestry for label update: %s -> %s",
+                    req_prefix,
+                    prefix,
+                )
+                continue
+            labels = getattr(requirement, "labels", None)
+            if not labels:
+                continue
+            changed = False
+            new_labels: list[str] = []
+            for label in labels:
+                replacement = rename_map.get(label)
+                if replacement is not None:
+                    new_labels.append(replacement)
+                    if replacement != label:
+                        changed = True
+                    continue
+                if label in removal_set:
+                    changed = True
+                    continue
+                new_labels.append(label)
+            if changed:
+                requirement.labels = new_labels
+                affected.append(requirement)
+
+        return affected
 
     def _on_window_destroy(self: MainFrame, event: wx.WindowDestroyEvent) -> None:
         if event.GetEventObject() is self:
@@ -444,6 +601,7 @@ class MainFrameAgentMixin:
 
         updated: list[Requirement] = []
         removed_ids: list[int] = []
+        label_changes: dict[str, dict[str, Any]] = {}
         for payload in tool_results:
             if not isinstance(payload, Mapping):
                 logger.warning(
@@ -470,6 +628,40 @@ class MainFrameAgentMixin:
                 )
                 continue
             result_payload = payload.get("result")
+            arguments_payload = payload.get("tool_arguments")
+            if not isinstance(arguments_payload, Mapping):
+                raw_arguments = payload.get("arguments")
+                arguments_payload = raw_arguments if isinstance(raw_arguments, Mapping) else None
+            if tool_name in _LABEL_TOOL_NAMES:
+                prefix = self._extract_label_prefix(arguments_payload)
+                if not prefix:
+                    logger.warning(
+                        "Agent label tool payload missing prefix: %s",
+                        _short_repr(payload),
+                    )
+                    continue
+                change = label_changes.setdefault(
+                    prefix,
+                    {"rename_map": {}, "removal_keys": set()},
+                )
+                if tool_name == "update_label" and isinstance(arguments_payload, Mapping):
+                    if bool(arguments_payload.get("propagate")):
+                        key_raw = arguments_payload.get("key")
+                        new_key_raw = arguments_payload.get("new_key")
+                        key = str(key_raw).strip() if isinstance(key_raw, str) else None
+                        new_key = (
+                            str(new_key_raw).strip() if isinstance(new_key_raw, str) else None
+                        )
+                        if key and new_key and new_key != key:
+                            rename_map = change.setdefault("rename_map", {})
+                            rename_map[key] = new_key
+                elif tool_name == "delete_label" and isinstance(arguments_payload, Mapping):
+                    if bool(arguments_payload.get("remove_from_requirements")):
+                        key_raw = arguments_payload.get("key")
+                        if isinstance(key_raw, str) and key_raw.strip():
+                            removal = change.setdefault("removal_keys", set())
+                            removal.add(key_raw.strip())
+                continue
             if tool_name in {
                 "update_requirement_field",
                 "set_requirement_labels",
@@ -517,6 +709,19 @@ class MainFrameAgentMixin:
             changes_applied = True
             if getattr(self, "_selected_requirement_id", None) == req_id:
                 removed_selection = True
+
+        label_updated: list[Requirement] = []
+        if label_changes:
+            label_updated = self._apply_label_tool_changes(label_changes)
+            if label_updated:
+                changes_applied = True
+                if selected_updated is None:
+                    selected_id = getattr(self, "_selected_requirement_id", None)
+                    if isinstance(selected_id, int):
+                        for requirement in label_updated:
+                            if requirement.id == selected_id:
+                                selected_updated = requirement
+                                break
 
         if not changes_applied:
             return

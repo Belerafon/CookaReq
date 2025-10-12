@@ -180,6 +180,11 @@ so you know which modules are involved and which regressions to guard against.
    (`app/mcp/server.py`).
 4. On success, `events.notify_tool_success` informs subscribers (UI, telemetry)
    so the requirement model refreshes without reloading everything from disk.
+5. Label maintenance tools (`create_label`, `update_label`, `delete_label`)
+   follow the same path: the main frame refreshes document metadata to keep the
+   label dialogs in sync and applies propagated renames/removals to the
+   in-memory requirements so the editor and list widgets reflect the latest
+   state immediately.
 
 ## Persistence and operational environment
 

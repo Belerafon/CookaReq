@@ -302,3 +302,175 @@ def test_agent_streaming_tool_updates_refresh_list_during_run(tmp_path, wx_app):
         frame.agent_panel._cleanup_executor()
         frame.Destroy()
         wx_app.Yield()
+
+
+@pytest.mark.gui_smoke
+def test_agent_label_creation_updates_available_labels(tmp_path, wx_app):
+    _wx = pytest.importorskip("wx")
+
+    repository = _copy_sample_repository(tmp_path)
+    frame = _create_main_frame(tmp_path)
+
+    try:
+        wx_app.Yield()
+        frame._load_directory(repository)
+        wx_app.Yield()
+
+        prefix = frame.current_doc_prefix
+        assert prefix
+
+        requirement = frame.model.get_visible()[0]
+        frame._selected_requirement_id = requirement.id
+        frame.editor.load(requirement)
+        wx_app.Yield()
+
+        initial_keys = [label.key for label in frame.editor._label_defs]
+        new_key = "safety"
+        assert new_key not in initial_keys
+
+        frame.docs_controller.service.add_label_definition(
+            prefix,
+            key=new_key,
+            title="Safety",
+            color="#336699",
+        )
+
+        notify_tool_success(
+            "create_label",
+            base_path=frame.mcp_settings.base_path,
+            arguments={
+                "directory": str(repository),
+                "prefix": prefix,
+                "key": new_key,
+                "title": "Safety",
+                "color": "#336699",
+            },
+            result={"key": new_key, "title": "Safety", "color": "#336699"},
+        )
+        wx_app.Yield()
+        wx_app.Yield()
+
+        updated_keys = [label.key for label in frame.editor._label_defs]
+        assert new_key in updated_keys
+
+        panel_keys = [label.key for label in frame.panel._labels]
+        assert new_key in panel_keys
+
+        defs, _ = frame.docs_controller.collect_labels(prefix)
+        assert any(label.key == new_key for label in defs)
+    finally:
+        frame.Destroy()
+        wx_app.Yield()
+
+
+@pytest.mark.gui_smoke
+def test_agent_label_rename_propagation_updates_requirements(tmp_path, wx_app):
+    _wx = pytest.importorskip("wx")
+
+    repository = _copy_sample_repository(tmp_path)
+    frame = _create_main_frame(tmp_path)
+
+    try:
+        wx_app.Yield()
+        frame._load_directory(repository)
+        wx_app.Yield()
+
+        prefix = frame.current_doc_prefix
+        assert prefix
+
+        requirement = frame.model.get_visible()[0]
+        frame._selected_requirement_id = requirement.id
+        frame.editor.load(requirement)
+        wx_app.Yield()
+
+        base_label = "safety"
+        frame.docs_controller.service.add_label_definition(
+            prefix,
+            key=base_label,
+            title="Safety",
+            color="#336699",
+        )
+        notify_tool_success(
+            "create_label",
+            base_path=frame.mcp_settings.base_path,
+            arguments={
+                "directory": str(repository),
+                "prefix": prefix,
+                "key": base_label,
+                "title": "Safety",
+                "color": "#336699",
+            },
+            result={"key": base_label, "title": "Safety", "color": "#336699"},
+        )
+        wx_app.Yield()
+        wx_app.Yield()
+
+        updated_req = frame.docs_controller.service.set_requirement_labels(
+            requirement.rid, labels=[base_label]
+        )
+        payload = updated_req.to_mapping()
+        payload["rid"] = updated_req.rid
+
+        notify_tool_success(
+            "set_requirement_labels",
+            base_path=frame.mcp_settings.base_path,
+            arguments={
+                "directory": str(repository),
+                "rid": requirement.rid,
+                "labels": [base_label],
+            },
+            result=payload,
+        )
+        wx_app.Yield()
+        wx_app.Yield()
+
+        with_labels = frame.model.get_by_id(requirement.id)
+        assert with_labels is not None
+        assert with_labels.labels == [base_label]
+
+        new_label = "safety_new"
+        frame.docs_controller.service.update_label_definition(
+            prefix,
+            key=base_label,
+            new_key=new_label,
+            title="Safety Updated",
+            propagate=True,
+        )
+        notify_tool_success(
+            "update_label",
+            base_path=frame.mcp_settings.base_path,
+            arguments={
+                "directory": str(repository),
+                "prefix": prefix,
+                "key": base_label,
+                "new_key": new_label,
+                "title": "Safety Updated",
+                "propagate": True,
+            },
+            result={
+                "key": new_label,
+                "title": "Safety Updated",
+                "color": "#4477aa",
+                "propagated": True,
+            },
+        )
+        wx_app.Yield()
+        wx_app.Yield()
+
+        renamed = frame.model.get_by_id(requirement.id)
+        assert renamed is not None
+        assert renamed.labels == [new_label]
+
+        editor_labels = list(frame.editor.extra.get("labels", []))
+        assert editor_labels == [new_label]
+
+        panel_keys = [label.key for label in frame.panel._labels]
+        assert new_label in panel_keys
+        assert base_label not in panel_keys
+
+        defs, _ = frame.docs_controller.collect_labels(prefix)
+        assert any(label.key == new_label for label in defs)
+        assert all(label.key != base_label for label in defs)
+    finally:
+        frame.Destroy()
+        wx_app.Yield()

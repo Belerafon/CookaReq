@@ -279,6 +279,8 @@ class MessageBubble(wx.Panel):
             else:
                 message_font = base_font
 
+        self._text_base_style: int | None = None
+
         if allow_selection:
             if render_markdown:
                 from .markdown_view import MarkdownContent
@@ -314,13 +316,13 @@ class MessageBubble(wx.Panel):
                 self._selection_checker = markdown.HasSelection
                 self._selection_getter = markdown.GetSelectionText
             else:
-                style = (
+                base_style = (
                     wx.TE_MULTILINE
                     | wx.TE_READONLY
                     | wx.TE_WORDWRAP
-                    | wx.VSCROLL
                     | wx.BORDER_NONE
                 )
+                style = base_style
                 text_ctrl = wx.TextCtrl(bubble, value=display_text, style=style)
                 text_ctrl.SetBackgroundColour(bubble_bg)
                 text_ctrl.SetForegroundColour(bubble_fg)
@@ -328,6 +330,7 @@ class MessageBubble(wx.Panel):
                 if message_font is not None and message_font.IsOk():
                     text_ctrl.SetFont(message_font)
                 self._text = text_ctrl
+                self._text_base_style = base_style
 
                 def has_selection(tc: wx.TextCtrl = text_ctrl) -> bool:
                     start, end = tc.GetSelection()
@@ -913,6 +916,11 @@ class MessageBubble(wx.Panel):
         capped_height = max_lines * char_height + padding
         target_height = full_height if line_count <= max_lines else capped_height
 
+        self._apply_textctrl_scrollbar_policy(
+            text_ctrl,
+            needs_scrollbar=line_count > max_lines,
+        )
+
         try:
             text_ctrl.SetMinSize(wx.Size(width_hint, target_height))
             text_ctrl.SetInitialSize(wx.Size(width_hint, target_height))
@@ -926,6 +934,34 @@ class MessageBubble(wx.Panel):
         if parent is not None and _is_window_usable(parent):
             with suppress(RuntimeError):
                 parent.Layout()
+
+    def _apply_textctrl_scrollbar_policy(
+        self, text_ctrl: wx.TextCtrl, *, needs_scrollbar: bool
+    ) -> None:
+        base_style = self._text_base_style
+        if base_style is None:
+            try:
+                base_style = text_ctrl.GetWindowStyleFlag()
+            except RuntimeError:
+                return
+            else:
+                self._text_base_style = base_style
+        try:
+            current_style = text_ctrl.GetWindowStyleFlag()
+        except RuntimeError:
+            return
+
+        desired_style = base_style | (wx.VSCROLL if needs_scrollbar else 0)
+        if current_style == desired_style:
+            return
+        try:
+            text_ctrl.SetWindowStyleFlag(desired_style)
+        except RuntimeError:
+            return
+        with suppress(RuntimeError):
+            text_ctrl.Refresh()
+        with suppress(RuntimeError):
+            text_ctrl.Update()
 
     def _estimate_content_width(self) -> int:
         if not self._text_value:

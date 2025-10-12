@@ -41,6 +41,11 @@ class LabelsDialog(wx.Dialog):
         self._labels: list[LabelDef] = [
             LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels
         ]
+        self._original_key_lookup: dict[str, str] = {
+            lbl.key: lbl.key for lbl in self._labels
+        }
+        self._key_changes: dict[str, tuple[str, bool]] = {}
+        self._removed_labels: dict[str, bool] = {}
         cfg = getattr(parent, "config", None)
         if cfg is None:
             cfg = ConfigManager()
@@ -59,6 +64,9 @@ class LabelsDialog(wx.Dialog):
 
         self.color_picker = wx.ColourPickerCtrl(self)
         self.color_picker.Disable()
+
+        self.add_btn = wx.Button(self, label=_("Add"))
+        self.add_btn.Bind(wx.EVT_BUTTON, self._on_add_label)
 
         self.add_presets = wx.Button(self, label=_("Add presets"))
         self.add_presets.Bind(wx.EVT_BUTTON, self._on_show_presets_menu)
@@ -80,6 +88,7 @@ class LabelsDialog(wx.Dialog):
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         sizer.Add(self.color_picker, 0, wx.ALL | wx.ALIGN_RIGHT, 5)
         btn_row = wx.BoxSizer(wx.HORIZONTAL)
+        btn_row.Add(self.add_btn, 0, wx.ALL, 5)
         btn_row.Add(self.add_presets, 0, wx.ALL, 5)
         btn_row.Add(self.edit_btn, 0, wx.ALL, 5)
         btn_row.Add(self.delete_btn, 0, wx.ALL, 5)
@@ -142,12 +151,18 @@ class LabelsDialog(wx.Dialog):
             idx = self.list.GetNextSelected(idx)
         return indices
 
+    def _get_original_key(self, key: str) -> str:
+        """Return the original key associated with ``key``."""
+
+        return self._original_key_lookup.get(key, key)
+
     def _on_add_preset_set(self, key: str) -> None:  # pragma: no cover - GUI event
         existing = {lbl.key for lbl in self._labels}
         added = False
         for preset in PRESET_SETS.get(key, []):
             if preset.key not in existing:
                 self._labels.append(LabelDef(preset.key, preset.title, preset.color))
+                self._original_key_lookup.setdefault(preset.key, preset.key)
                 added = True
         if added:
             self._populate()
@@ -163,6 +178,52 @@ class LabelsDialog(wx.Dialog):
         self.PopupMenu(menu)
         menu.Destroy()
 
+    def _ask_remove_from_requirements(self, keys: list[str]) -> bool | None:
+        """Return user's preference for removing ``keys`` from requirements."""
+
+        if not keys:
+            return False
+        if len(keys) == 1:
+            message = _(
+                "Also remove the '{key}' label from existing requirements?"
+            ).format(key=keys[0])
+        else:
+            message = _(
+                "Also remove these {count} labels from existing requirements?"
+            ).format(count=len(keys))
+        dialog = wx.MessageDialog(
+            self,
+            message,
+            _("Update requirements"),
+            style=wx.ICON_QUESTION | wx.YES_NO | wx.CANCEL,
+        )
+        try:
+            result = dialog.ShowModal()
+        finally:
+            dialog.Destroy()
+        if result == wx.ID_CANCEL:
+            return None
+        return result == wx.ID_YES
+
+    def _on_add_label(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+        dlg = _LabelEditDialog(self, "", "")
+        try:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            new_key, new_title = dlg.get_values()
+            if not new_key:
+                wx.MessageBox(_("Label key cannot be empty"), _("Error"), wx.ICON_ERROR)
+                return
+            if any(label.key == new_key for label in self._labels):
+                wx.MessageBox(_("Label already exists"), _("Error"), wx.ICON_ERROR)
+                return
+            definition = LabelDef(new_key, new_title or new_key, None)
+            self._labels.append(definition)
+            self._original_key_lookup.setdefault(new_key, new_key)
+            self._populate()
+        finally:
+            dlg.Destroy()
+
     def _on_delete_selected(
         self,
         _event: wx.Event,
@@ -170,20 +231,52 @@ class LabelsDialog(wx.Dialog):
         indices = self._get_selected_indices()
         if not indices:
             return
+        selected_keys = [self._labels[i].key for i in indices]
+        original_keys = [self._get_original_key(key) for key in selected_keys]
+        choice = self._ask_remove_from_requirements(original_keys)
+        if choice is None:
+            return
+        for original in original_keys:
+            self._removed_labels[original] = choice
+            self._key_changes.pop(original, None)
+        for key in selected_keys:
+            original = self._original_key_lookup.pop(key, key)
+            self._removed_labels.setdefault(original, choice)
         for i in sorted(indices, reverse=True):
             del self._labels[i]
         self._populate()
         self.color_picker.Disable()
 
     def _on_clear_all(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
-        if confirm(_("Remove all labels?")):
-            self._labels.clear()
-            self._populate()
-            self.color_picker.Disable()
+        if not self._labels:
+            return
+        if not confirm(_("Remove all labels?")):
+            return
+        original_keys = [self._get_original_key(label.key) for label in self._labels]
+        choice = self._ask_remove_from_requirements(original_keys)
+        if choice is None:
+            return
+        for original in original_keys:
+            self._removed_labels[original] = choice
+            self._key_changes.pop(original, None)
+        self._labels.clear()
+        self._original_key_lookup.clear()
+        self._populate()
+        self.color_picker.Disable()
 
     def get_labels(self) -> list[LabelDef]:
         """Return updated labels."""
         return [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
+
+    def get_key_changes(self) -> dict[str, tuple[str, bool]]:
+        """Return mapping of original keys to rename decisions."""
+
+        return dict(self._key_changes)
+
+    def get_removed_labels(self) -> dict[str, bool]:
+        """Return mapping of removed label keys to requirement cleanup choice."""
+
+        return dict(self._removed_labels)
 
     # --- new methods -------------------------------------------------
 
@@ -205,23 +298,65 @@ class LabelsDialog(wx.Dialog):
         if idx == -1:
             return
         lbl = self._labels[idx]
+        old_key = lbl.key
+        original_key = self._get_original_key(old_key)
         dlg = _LabelEditDialog(self, lbl.key, lbl.title)
-        if dlg.ShowModal() == wx.ID_OK:
+        try:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
             new_key, new_title = dlg.get_values()
             if not new_key:
-                dlg.Destroy()
+                wx.MessageBox(_("Label key cannot be empty"), _("Error"), wx.ICON_ERROR)
                 return
             existing = {
                 label.key for i, label in enumerate(self._labels) if i != idx
             }
             if new_key in existing:
                 wx.MessageBox(_("Label already exists"), _("Error"), style=wx.ICON_ERROR)
+                return
+            if new_key != old_key:
+                decision = self._ask_rename_requirements(original_key, new_key)
+                if decision is None:
+                    return
             else:
-                lbl.key = new_key
-                lbl.title = new_title or new_key
-                self.list.SetItem(idx, 0, lbl.key)
-                self.list.SetItem(idx, 1, lbl.title)
-        dlg.Destroy()
+                decision = False
+            lbl.key = new_key
+            lbl.title = new_title or new_key
+            self.list.SetItem(idx, 0, lbl.key)
+            self.list.SetItem(idx, 1, lbl.title)
+            if new_key != old_key:
+                self._original_key_lookup.pop(old_key, None)
+                self._original_key_lookup[new_key] = original_key
+                self._removed_labels.pop(original_key, None)
+                if new_key == original_key:
+                    self._key_changes.pop(original_key, None)
+                else:
+                    self._key_changes[original_key] = (new_key, decision)
+            else:
+                if original_key in self._key_changes:
+                    self._key_changes.pop(original_key, None)
+        finally:
+            dlg.Destroy()
+
+    def _ask_rename_requirements(self, old_key: str, new_key: str) -> bool | None:
+        """Prompt whether requirements should be updated for rename."""
+
+        message = _(
+            "Update requirements using '{old}' to '{new}'?"
+        ).format(old=old_key, new=new_key)
+        dialog = wx.MessageDialog(
+            self,
+            message,
+            _("Update requirements"),
+            style=wx.ICON_QUESTION | wx.YES_NO | wx.CANCEL,
+        )
+        try:
+            result = dialog.ShowModal()
+        finally:
+            dialog.Destroy()
+        if result == wx.ID_CANCEL:
+            return None
+        return result == wx.ID_YES
 
     def _read_int(self, key: str, default: int) -> int:
         """Return integer configuration value stored under ``key``."""

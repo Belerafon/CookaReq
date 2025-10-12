@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 from pathlib import Path
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 
 _UNSET = object()
 
@@ -71,6 +71,26 @@ class DocumentsController:
         if promoted:
             self.load_documents()
         return promoted
+
+    def update_document_labels(
+        self,
+        prefix: str,
+        *,
+        original: Sequence[LabelDef],
+        updated: Sequence[LabelDef],
+        rename_choices: Mapping[str, tuple[str, bool]],
+        removal_choices: Mapping[str, bool],
+    ) -> None:
+        """Persist label changes for ``prefix`` and refresh caches."""
+
+        self.service.update_document_labels(
+            prefix,
+            original=original,
+            updated=updated,
+            rename_choices=rename_choices,
+            removal_choices=removal_choices,
+        )
+        self.load_documents()
 
     def build_trace_matrix(self, config: TraceMatrixConfig) -> TraceMatrix:
         """Construct traceability matrix for ``config`` using cached documents."""

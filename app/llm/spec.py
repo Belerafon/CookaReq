@@ -67,6 +67,10 @@ SYSTEM_PROMPT = (
         `create_requirement` adds a new requirement; provide a `prefix` (for example, `SYS`) and a `data` object containing at least title, statement, type, status, owner, priority, source and verification. Optional fields may also be included.
         `delete_requirement` removes an existing requirement by RID; use it only when the user explicitly requests deletion.
         `link_requirements` creates hierarchy links; pass `source_rid`, `derived_rid` and `link_type` (currently `parent`).
+        Use `list_labels` to review label definitions visible to a document; provide the document prefix via `prefix`.
+        Use `create_label` to add a definition (`prefix`, `key`, optional `title` and hex `color`).
+        Use `update_label` to adjust an existing definition; set `new_key`, `title` and/or `color` as needed. When renaming a key set `propagate` to true to update all requirements, or false to leave requirement payloads unchanged.
+        Use `delete_label` to remove a label definition; provide `prefix`, `key`, and set `remove_from_requirements` to true when the label should disappear from every requirement automatically.
         The workspace may expose an optional user documentation directory. When it is configured, the workspace context includes a `[User documentation]` section with the rendered tree and metadata. Use the specialised tools below to inspect or modify those files. Never assume the directory exists; handle missing roots gracefully and report when the operator needs to configure it.
         `list_user_documents` enumerates the directory tree, returning token statistics (including percentage of the maximum context window) for each entry along with a text tree representation.
         `read_user_document` streams a slice of a file as numbered lines. Always respect the configured byte budget: stay within the workspace limit (default {default_read_kib} KiB, never exceeding {max_read_kib} KiB) and consult the `[User documentation]` context block for the precise value. Provide a smaller `max_bytes` when you only need a fragment. Start counting at line 1 by default; provide `start_line` when resuming from a later offset. Examine the `truncated` flag to determine whether additional reads are required.
@@ -502,6 +506,120 @@ TOOLS: list[dict[str, Any]] = [
                     },
                 },
                 "required": ["rid", "links"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_labels",
+            "description": "List label definitions available to a document prefix",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prefix": {
+                        "type": "string",
+                        "description": "Document prefix whose labels should be listed (for example, SYS).",
+                    },
+                },
+                "required": ["prefix"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_label",
+            "description": "Create a label definition for a document",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prefix": {
+                        "type": "string",
+                        "description": "Document prefix that will receive the new label (for example, SYS).",
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "Unique label key to register.",
+                    },
+                    "title": {
+                        "type": ["string", "null"],
+                        "description": "Optional human-friendly label title.",
+                    },
+                    "color": {
+                        "type": ["string", "null"],
+                        "description": "Optional HTML colour (for example, '#336699').",
+                    },
+                },
+                "required": ["prefix", "key"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_label",
+            "description": "Update an existing label definition",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prefix": {
+                        "type": "string",
+                        "description": "Document prefix owning the label (for example, SYS).",
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "Current label key to update.",
+                    },
+                    "new_key": {
+                        "type": ["string", "null"],
+                        "description": "Replacement key; omit or set null to keep the current key.",
+                    },
+                    "title": {
+                        "type": ["string", "null"],
+                        "description": "Optional new label title.",
+                    },
+                    "color": {
+                        "type": ["string", "null"],
+                        "description": "Optional new HTML colour (for example, '#ff8800').",
+                    },
+                    "propagate": {
+                        "type": "boolean",
+                        "description": "Set true to rename the label across every requirement when the key changes.",
+                        "default": False,
+                    },
+                },
+                "required": ["prefix", "key"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_label",
+            "description": "Delete a label definition",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prefix": {
+                        "type": "string",
+                        "description": "Document prefix owning the label (for example, SYS).",
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "Label key to remove.",
+                    },
+                    "remove_from_requirements": {
+                        "type": "boolean",
+                        "description": "Set true to strip the label from every requirement that currently uses it.",
+                        "default": False,
+                    },
+                },
+                "required": ["prefix", "key"],
                 "additionalProperties": False,
             },
         },

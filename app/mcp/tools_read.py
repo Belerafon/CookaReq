@@ -8,6 +8,7 @@ from typing import Any
 
 from ..core.model import Requirement
 from ..services.requirements import (
+    DocumentNotFoundError,
     RequirementNotFoundError,
     RequirementPage,
 )
@@ -321,3 +322,17 @@ def search_requirements(
         params,
         _page_to_payload(page_data, normalized_fields),
     )
+
+
+def list_labels(directory: str | Path, *, prefix: str) -> dict:
+    """Return label definitions accessible to document ``prefix``."""
+
+    params = {"directory": str(directory), "prefix": prefix}
+    service = get_requirements_service(directory)
+    try:
+        payload = service.describe_label_definitions(prefix)
+    except DocumentNotFoundError as exc:
+        return log_tool("list_labels", params, mcp_error(ErrorCode.NOT_FOUND, str(exc)))
+    except Exception as exc:  # pragma: no cover - defensive guard
+        return log_tool("list_labels", params, mcp_error(ErrorCode.INTERNAL, str(exc)))
+    return log_tool("list_labels", params, payload)

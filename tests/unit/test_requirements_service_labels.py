@@ -131,6 +131,82 @@ def test_update_document_labels_renames_with_propagation(tmp_path: Path) -> None
     assert [definition.key for definition in doc_refreshed.labels.defs] == ["modern"]
 
 
+def test_update_label_definition_propagates_to_descendants(tmp_path: Path) -> None:
+    root = tmp_path
+    parent = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(defs=[LabelDef("SA", "Safety", "#224466")]),
+    )
+    child = Document(
+        prefix="HLR",
+        title="High level",
+        parent="SYS",
+        labels=DocumentLabels(defs=[LabelDef("SA", "Subsystem Safety", "#abcdef")]),
+    )
+
+    service = RequirementsService(root)
+    service.save_document(parent)
+    service.save_document(child)
+
+    parent_req = _base_requirement("SYS")
+    parent_req.labels = ["SA"]
+    save_item(root / "SYS", parent, parent_req.to_mapping())
+
+    child_req = _base_requirement("HLR")
+    child_req.labels = ["SA"]
+    save_item(root / "HLR", child, child_req.to_mapping())
+
+    service.update_label_definition("SYS", key="SA", new_key="SAFE", propagate=True)
+
+    refreshed_parent = service.get_document("SYS")
+    assert [definition.key for definition in refreshed_parent.labels.defs] == ["SAFE"]
+
+    refreshed_child = service.get_document("HLR")
+    assert [definition.key for definition in refreshed_child.labels.defs] == ["SAFE"]
+    assert refreshed_child.labels.defs[0].color == "#abcdef"
+
+    defs, _ = service.collect_label_defs("HLR")
+    assert all(definition.key != "SA" for definition in defs)
+
+    assert service.get_requirement("SYS1").labels == ["SAFE"]
+    assert service.get_requirement("HLR1").labels == ["SAFE"]
+
+
+def test_update_label_definition_without_propagation_keeps_descendants(tmp_path: Path) -> None:
+    root = tmp_path
+    parent = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(defs=[LabelDef("SA", "Safety", "#224466")]),
+    )
+    child = Document(
+        prefix="HLR",
+        title="High level",
+        parent="SYS",
+        labels=DocumentLabels(defs=[LabelDef("SA", "Subsystem Safety", "#abcdef")]),
+    )
+
+    service = RequirementsService(root)
+    service.save_document(parent)
+    service.save_document(child)
+
+    child_req = _base_requirement("HLR")
+    child_req.labels = ["SA"]
+    save_item(root / "HLR", child, child_req.to_mapping())
+
+    service.update_label_definition("SYS", key="SA", new_key="SAFE", propagate=False)
+
+    refreshed_child = service.get_document("HLR")
+    assert [definition.key for definition in refreshed_child.labels.defs] == ["SA"]
+
+    defs, _ = service.collect_label_defs("HLR")
+    assert any(definition.key == "SA" for definition in defs)
+    assert any(definition.key == "SAFE" for definition in defs)
+
+    assert service.get_requirement("HLR1").labels == ["SA"]
+
+
 def test_update_document_labels_rename_without_propagation(tmp_path: Path) -> None:
     root = tmp_path
     doc = Document(

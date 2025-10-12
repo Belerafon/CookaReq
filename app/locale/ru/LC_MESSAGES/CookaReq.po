@@ -103,6 +103,9 @@ msgstr "Изменить {field}"
 msgid "Select {field}"
 msgstr "Выберите {field}"
 
+msgid "Select all"
+msgstr "Выбрать всё"
+
 msgid "Edit"
 msgstr "Редактирование"
 

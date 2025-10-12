@@ -1000,6 +1000,21 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 lambda _evt, i=req_id: self._on_derive(i),
                 derive_item,
             )
+        base_count = menu.GetMenuItemCount()
+        total_items = 0
+        try:
+            total_items = self.list.GetItemCount()
+        except Exception:
+            total_items = 0
+        if total_items:
+            select_all_item = menu.Insert(0, wx.ID_SELECTALL, _("Select all"))
+            if base_count:
+                menu.InsertSeparator(1)
+            menu.Bind(
+                wx.EVT_MENU,
+                lambda _evt: self._select_all_requirements(),
+                id=select_all_item.GetId(),
+            )
         return menu, clone_item, delete_item, edit_item
 
     def _build_status_menu(self, selected_ids: Sequence[int]) -> wx.Menu | None:
@@ -1024,6 +1039,27 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             indices.append(idx)
             idx = self.list.GetNextSelected(idx)
         return indices
+
+    def _select_all_requirements(self) -> None:
+        try:
+            count = self.list.GetItemCount()
+        except Exception:
+            return
+        if count <= 0:
+            return
+        existing = self._get_selected_indices()
+        focus_index = existing[0] if existing else 0
+        for idx in range(count):
+            self._set_item_selected(idx, True)
+        if hasattr(self.list, "Focus") and 0 <= focus_index < count:
+            with suppress(Exception):
+                self.list.Focus(focus_index)
+        if hasattr(self.list, "EnsureVisible") and 0 <= focus_index < count:
+            with suppress(Exception):
+                self.list.EnsureVisible(focus_index)
+        if hasattr(self.list, "SetFocus"):
+            with suppress(Exception):
+                self.list.SetFocus()
 
     def get_selected_ids(self) -> list[int]:
         """Return identifiers of currently selected requirements."""

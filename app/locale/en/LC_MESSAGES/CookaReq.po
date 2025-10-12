@@ -231,6 +231,9 @@ msgstr "Select requirements folder"
 msgid "Select {field}"
 msgstr "Select {field}"
 
+msgid "Select all"
+msgstr "Select all"
+
 msgid "Settings"
 msgstr "Settings"
 

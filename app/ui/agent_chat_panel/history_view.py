@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from typing import NamedTuple, TYPE_CHECKING, Any
 
 import wx
@@ -274,6 +275,15 @@ class HistoryView:
         if not conversations:
             return
         menu = wx.Menu()
+        try:
+            total = self._list.GetItemCount()
+        except Exception:
+            total = 0
+        select_item: wx.MenuItem | None = None
+        if total:
+            select_item = menu.Append(wx.ID_SELECTALL, _("Select all"))
+            menu.Bind(wx.EVT_MENU, self._on_select_all_rows, select_item)
+            menu.AppendSeparator()
         label = _("Delete chat") if len(rows) == 1 else _("Delete selected chats")
         delete_item = menu.Append(wx.ID_ANY, label)
 
@@ -286,6 +296,51 @@ class HistoryView:
             self._list.PopupMenu(menu)
         finally:
             menu.Destroy()
+
+    # ------------------------------------------------------------------
+    def _on_select_all_rows(self, event: wx.CommandEvent) -> None:
+        event.Skip()
+        self._select_all_rows()
+
+    # ------------------------------------------------------------------
+    def _select_all_rows(self) -> None:
+        try:
+            count = self._list.GetItemCount()
+        except Exception:
+            return
+        if count <= 0:
+            return
+        existing = self.selected_rows()
+        focus_row = existing[0] if existing else 0
+        self._suppress_selection = True
+        try:
+            if hasattr(self._list, "SelectAll"):
+                with suppress(Exception):
+                    self._list.SelectAll()
+            else:
+                for row in range(count):
+                    item = self._list.RowToItem(row)
+                    if not item or not item.IsOk():
+                        continue
+                    with suppress(Exception):
+                        self._list.Select(item)
+        finally:
+            if hasattr(wx, "CallAfter"):
+                wx.CallAfter(self._resume_selection_events)
+            else:
+                self._resume_selection_events()
+        if hasattr(self._list, "EnsureVisible") and 0 <= focus_row < count:
+            item = self._list.RowToItem(focus_row)
+            if item and item.IsOk():
+                with suppress(Exception):
+                    self._list.EnsureVisible(item)
+        if hasattr(self._list, "SetFocus"):
+            with suppress(Exception):
+                self._list.SetFocus()
+
+    # ------------------------------------------------------------------
+    def _resume_selection_events(self) -> None:
+        self._suppress_selection = False
 
     # ------------------------------------------------------------------
     def _on_select_history(self, event: dv.DataViewEvent) -> None:

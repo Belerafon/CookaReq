@@ -71,9 +71,9 @@ so you know which modules are involved and which regressions to guard against.
   local agent and the MCP controller. Both GUI and CLI entry points rely on the
   context for consistent wiring.
 * **`ConfigManager`** — lives in `app/config.py` and persists UI state and
-  integration settings (`llm`, `mcp`, panels, splitter positions) in
-  `~/.config/CookaReq/config.json`. It bridges Pydantic settings (`app/settings.py`)
-  and runtime wx widgets.
+  integration settings (`llm`, `mcp`, panels, splitter positions, last opened
+  document per directory) in `~/.config/CookaReq/config.json`. It bridges
+  Pydantic settings (`app/settings.py`) and runtime wx widgets.
 
 ## Agent, LLM and MCP layers
 

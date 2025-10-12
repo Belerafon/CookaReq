@@ -174,12 +174,17 @@ class MainFrameDocumentsMixin:
         self._sync_mcp_base_path(path)
         has_docs = bool(docs)
         if docs:
-            first = sorted(docs)[0]
-            self.current_doc_prefix = first
-            self.panel.set_active_document(first)
-            self.editor.set_document(first)
-            self._load_document_contents(first)
-            self.doc_tree.select(first)
+            remembered = self.config.get_last_document(path)
+            if remembered and remembered in docs:
+                target_prefix = remembered
+            else:
+                target_prefix = sorted(docs)[0]
+            self.current_doc_prefix = target_prefix
+            self.panel.set_active_document(target_prefix)
+            self.editor.set_document(target_prefix)
+            self._load_document_contents(target_prefix)
+            self.doc_tree.select(target_prefix)
+            self.config.set_last_document(path, target_prefix)
         else:
             self.current_doc_prefix = None
             self.panel.set_active_document(None)
@@ -187,6 +192,7 @@ class MainFrameDocumentsMixin:
             self.panel.set_requirements([], {})
             self.editor.update_labels_list([])
             self.panel.update_labels_list([], False)
+            self.config.clear_last_document(path)
         if hasattr(self, "navigation"):
             self.navigation.set_manage_labels_enabled(has_docs)
         self._update_requirements_label()
@@ -225,6 +231,8 @@ class MainFrameDocumentsMixin:
             if force_reload or target != self.current_doc_prefix:
                 self.current_doc_prefix = None
             self.doc_tree.select(target)
+            if target and self.current_dir:
+                self.config.set_last_document(self.current_dir, target)
         else:
             self.current_doc_prefix = None
             self.panel.set_active_document(None)
@@ -235,6 +243,8 @@ class MainFrameDocumentsMixin:
             self._selected_requirement_id = None
             self._clear_editor_panel()
             self._update_requirements_label()
+            if self.current_dir:
+                self.config.clear_last_document(self.current_dir)
         if hasattr(self, "navigation"):
             self.navigation.set_manage_labels_enabled(bool(docs))
 
@@ -510,6 +520,8 @@ class MainFrameDocumentsMixin:
         self.panel.set_active_document(prefix)
         self.editor.set_document(prefix)
         self._load_document_contents(prefix)
+        if self.current_dir:
+            self.config.set_last_document(self.current_dir, prefix)
 
     def on_import_requirements(self: MainFrame, _event: wx.Event) -> None:
         """Open the import dialog and persist selected requirements."""

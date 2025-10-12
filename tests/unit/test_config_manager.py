@@ -66,6 +66,7 @@ def _recent_dirs_factory(tmp_path):
     [
         ("list_columns", DEFAULT_LIST_COLUMNS),
         ("recent_dirs", []),
+        ("last_documents", {}),
         ("auto_open_last", False),
         ("remember_sort", False),
         ("language", None),
@@ -104,6 +105,7 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
     [
         pytest.param("list_columns", _list_columns_factory, _list_columns_factory, id="list_columns"),
         pytest.param("recent_dirs", _recent_dirs_factory, _recent_dirs_factory, id="recent_dirs"),
+        pytest.param("last_documents", _const({"/tmp": "DOC"}), _const({"/tmp": "DOC"}), id="last_documents"),
         pytest.param("auto_open_last", _const(True), _const(True), id="auto_open_last"),
         pytest.param("remember_sort", _const(True), _const(True), id="remember_sort"),
         pytest.param("language", _const("fr"), _const("fr"), id="language-set"),
@@ -180,6 +182,44 @@ def test_get_columns_filters_unknown_entries(tmp_path, wx_app):
     cfg.set_value("list_columns", ["invalid", "labels", "id", "labels"])
 
     assert cfg.get_columns() == ["labels", "id"]
+
+
+def test_set_last_document_persists_selection(tmp_path, wx_app):
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
+    directory = tmp_path / "project"
+    directory.mkdir()
+
+    cfg.set_last_document(directory, "DOC-1")
+
+    assert cfg.get_last_document(directory) == "DOC-1"
+    reloaded = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
+    assert reloaded.get_last_document(directory) == "DOC-1"
+    assert reloaded.get_last_documents() == {str(directory.resolve()): "DOC-1"}
+
+
+def test_last_document_clearing_removes_mapping(tmp_path, wx_app):
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
+    directory = tmp_path / "project"
+    directory.mkdir()
+    cfg.set_last_document(directory, "DOC-2")
+
+    cfg.clear_last_document(directory)
+
+    assert cfg.get_last_document(directory) is None
+    reloaded = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
+    assert reloaded.get_last_documents() == {}
+
+
+def test_last_document_normalises_paths(tmp_path, wx_app):
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
+    directory = tmp_path / "project"
+    directory.mkdir()
+    alias = directory / "."
+
+    cfg.set_last_document(alias, "DOC-3")
+
+    assert cfg.get_last_document(directory) == "DOC-3"
+    assert cfg.get_last_document(str(directory)) == "DOC-3"
 
 
 def test_schema_override_default(tmp_path, wx_app):

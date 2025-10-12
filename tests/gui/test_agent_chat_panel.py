@@ -2197,6 +2197,46 @@ def test_message_bubble_respects_scrolled_viewport_width(wx_app):
         frame.Destroy()
 
 
+def test_message_bubble_user_textctrl_enables_vertical_scroll(wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.widgets.chat_message import MessageBubble
+
+    frame = wx.Frame(None, size=wx.Size(800, 600))
+    long_text = "\n".join(
+        f"строка {index}: {('длинное сообщение ' * 4).strip()}"
+        for index in range(120)
+    )
+    bubble = MessageBubble(
+        frame,
+        role_label="User",
+        timestamp="",
+        text=long_text,
+        align="right",
+        allow_selection=True,
+        render_markdown=False,
+    )
+
+    sizer = wx.BoxSizer(wx.VERTICAL)
+    sizer.Add(bubble, 1, wx.EXPAND | wx.ALL, bubble.FromDIP(8))
+    frame.SetSizer(sizer)
+    frame.Layout()
+    frame.Show()
+    flush_wx_events(wx, count=15)
+
+    try:
+        assert isinstance(bubble._text, wx.TextCtrl)
+        assert bubble._text.HasFlag(wx.VSCROLL)
+
+        char_height = max(bubble._text.GetCharHeight(), 1)
+        visible_height = bubble._text.GetSize().height
+        total_lines = bubble._text.GetNumberOfLines()
+
+        assert total_lines > visible_height // char_height
+        assert visible_height >= char_height * 3
+    finally:
+        frame.Destroy()
+
+
 def test_message_bubble_destroy_ignores_pending_width_update(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.widgets.chat_message import MessageBubble

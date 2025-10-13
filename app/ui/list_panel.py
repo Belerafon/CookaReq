@@ -1,8 +1,8 @@
 """Panel displaying requirements list and simple filters."""
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from contextlib import suppress
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager, suppress
 from enum import Enum
 from typing import TYPE_CHECKING
 from dataclasses import replace
@@ -1040,6 +1040,69 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             idx = self.list.GetNextSelected(idx)
         return indices
 
+    @contextmanager
+    def _suspend_selection_events(self) -> Iterator[bool]:
+        """Temporarily block selection events from bubbling to observers."""
+
+        evt_handler_cls = getattr(wx, "EvtHandler", None)
+        push = getattr(self.list, "PushEventHandler", None)
+        pop = getattr(self.list, "PopEventHandler", None)
+        if evt_handler_cls is None or not callable(push) or not callable(pop):
+            yield False
+            return
+
+        blocker = evt_handler_cls()
+
+        def _block(event: wx.Event) -> None:
+            event.StopPropagation()
+
+        try:
+            blocker.Bind(wx.EVT_LIST_ITEM_SELECTED, _block)
+            blocker.Bind(wx.EVT_LIST_ITEM_DESELECTED, _block)
+        except Exception:
+            yield False
+            return
+
+        try:
+            push(blocker)
+        except Exception:
+            yield False
+            return
+
+        try:
+            yield True
+        finally:
+            with suppress(Exception):
+                pop(True)
+
+    def _post_selection_event(self, index: int) -> None:
+        """Notify listeners about a selection change for ``index``."""
+
+        if index < 0:
+            return
+        list_id = getattr(self.list, "GetId", None)
+        if not callable(list_id):
+            return
+        event_type = getattr(wx, "wxEVT_LIST_ITEM_SELECTED", None)
+        event_cls = getattr(wx, "ListEvent", None)
+        post_event = getattr(wx, "PostEvent", None)
+        if event_type is None or event_cls is None or post_event is None:
+            return
+        try:
+            event = event_cls(event_type, list_id())
+        except Exception:
+            return
+        event.SetEventObject(self.list)
+        try:
+            event.m_itemIndex = index
+        except Exception:
+            pass
+        get_item = getattr(self.list, "GetItem", None)
+        if callable(get_item):
+            with suppress(Exception):
+                event.m_item = get_item(index)
+        post_event(self.list, event)
+
     def _select_all_requirements(self) -> None:
         try:
             count = self.list.GetItemCount()
@@ -1048,9 +1111,43 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if count <= 0:
             return
         existing = self._get_selected_indices()
+        existing_set = set(existing)
+        if existing_set and len(existing_set) >= count:
+            return
         focus_index = existing[0] if existing else 0
-        for idx in range(count):
-            self._set_item_selected(idx, True)
+        should_emit_event = not existing_set
+        with self._suspend_selection_events() as events_blocked:
+            handled = False
+            if hasattr(self.list, "SelectAll"):
+                select_all = getattr(self.list, "SelectAll")
+                if callable(select_all):
+                    try:
+                        select_all()
+                        handled = True
+                    except Exception:
+                        handled = False
+            if not handled:
+                thaw_handler: Callable[[], None] | None = None
+                freeze = getattr(self.list, "Freeze", None)
+                thaw = getattr(self.list, "Thaw", None)
+                if callable(freeze) and callable(thaw):
+                    try:
+                        freeze()
+                    except Exception:
+                        thaw = None
+                    else:
+                        thaw_handler = thaw
+                try:
+                    for idx in range(count):
+                        if idx in existing_set:
+                            continue
+                        self._set_item_selected(idx, True)
+                finally:
+                    if thaw_handler is not None:
+                        with suppress(Exception):
+                            thaw_handler()
+        if should_emit_event and events_blocked and 0 <= focus_index < count:
+            self._post_selection_event(focus_index)
         if hasattr(self.list, "Focus") and 0 <= focus_index < count:
             with suppress(Exception):
                 self.list.Focus(focus_index)

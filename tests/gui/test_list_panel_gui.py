@@ -85,6 +85,66 @@ def _flush_events(wx, count: int = 5) -> None:
         wx.Yield()
 
 
+@pytest.mark.gui
+def test_select_all_suppresses_bulk_selection_events(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_requirements([_req(i, f"Req {i}") for i in range(1, 21)])
+    panel.list.Select(0)
+    _flush_events(wx, 5)
+
+    events: list[int] = []
+
+    def handler(evt: wx.ListEvent) -> None:
+        events.append(evt.GetIndex())
+        evt.Skip()
+
+    panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, handler)
+
+    panel._select_all_requirements()
+    _flush_events(wx, 10)
+
+    assert events == []
+
+    frame.Destroy()
+
+
+@pytest.mark.gui
+def test_select_all_posts_single_event_when_none_selected(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_requirements([_req(i, f"Req {i}") for i in range(1, 11)])
+
+    events: list[int] = []
+
+    def handler(evt: wx.ListEvent) -> None:
+        events.append(evt.GetIndex())
+        evt.Skip()
+
+    panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, handler)
+
+    panel._select_all_requirements()
+    _flush_events(wx, 10)
+
+    assert events == [0]
+
+    frame.Destroy()
+
+
 def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

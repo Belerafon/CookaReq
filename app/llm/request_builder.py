@@ -181,12 +181,9 @@ class LLMRequestBuilder:
         for message in trim_result.kept_messages:
             role = message.get("role")
             if role == "system":
-                content = message.get("content")
-                if isinstance(content, str) and content:
-                    if self._is_context_snapshot(content):
-                        system_parts.append(content)
-                        continue
-                    ordered_messages.append(message)
+                content = self._normalise_system_content(message.get("content"))
+                if content:
+                    system_parts.append(content)
                 continue
             ordered_messages.append(message)
         return system_parts, ordered_messages, trim_result
@@ -332,6 +329,16 @@ class LLMRequestBuilder:
     def _is_context_snapshot(self, content: str) -> bool:
         stripped = content.lstrip()
         return stripped.startswith("[Workspace context]")
+
+    def _normalise_system_content(self, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = value if isinstance(value, str) else str(value)
+        if not text.strip():
+            return None
+        if self._is_context_snapshot(text):
+            return text
+        return text
 
     def _trim_history(
         self,

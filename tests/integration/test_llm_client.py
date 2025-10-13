@@ -290,12 +290,14 @@ def test_parse_command_includes_history(tmp_path: Path, monkeypatch) -> None:
     assert call.name == "list_requirements"
     assert call.arguments == {}
     messages = captured["messages"]
-    assert messages[0] == {"role": "system", "content": SYSTEM_PROMPT}
+    system_message = messages[0]
+    assert system_message["role"] == "system"
+    assert system_message["content"].startswith(SYSTEM_PROMPT)
+    assert "drop me" in system_message["content"]
     assert messages[-1] == {"role": "user", "content": "follow up"}
     assert messages[1:-1] == [
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "hi"},
-        {"role": "system", "content": "drop me"},
     ]
 
 
@@ -337,7 +339,8 @@ def test_parse_command_preserves_assistant_reasoning(
     client.parse_command("follow up", history=history)
 
     messages = captured["messages"]
-    assert messages[0] == {"role": "system", "content": SYSTEM_PROMPT}
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"].startswith(SYSTEM_PROMPT)
     assistant_message = messages[1]
     assert assistant_message["role"] == "assistant"
     assert assistant_message["content"].strip() == "previous reply"
@@ -1307,7 +1310,8 @@ def test_respond_accepts_tool_history(tmp_path: Path, monkeypatch) -> None:
     assert isinstance(response, LLMResponse)
     assert response.content == "Done"
     messages = captured["messages"]
-    assert messages[0] == {"role": "system", "content": SYSTEM_PROMPT}
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"].startswith(SYSTEM_PROMPT)
     assert messages[1:] == [
         {"role": "user", "content": "list"},
         {

@@ -537,8 +537,8 @@ class MainFrameAgentMixin:
         if not rid:
             rid = str(requirement.id)
 
-        lines: list[str] = ["[Requirement focus]"]
-        lines.append(f"Target RID: {rid}")
+        lines: list[str] = ["[User selection]"]
+        lines.append(f"User selection RID: {rid}")
         if requirement.title:
             lines.append(f"Title: {requirement.title.strip()}")
         statement = requirement.statement.strip()

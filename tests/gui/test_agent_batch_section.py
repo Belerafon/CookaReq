@@ -30,9 +30,13 @@ def test_agent_batch_section_handles_start_and_stop(wx_app):
             ]
             self.layout_refreshes = 0
             self.cancelled_runs: int = 0
+            self.batch_resets = 0
 
         def _refresh_bottom_panel_layout(self) -> None:
             self.layout_refreshes += 1
+
+        def _reset_batch_conversation_tracking(self) -> None:
+            self.batch_resets += 1
 
         @property
         def is_running(self) -> bool:
@@ -109,6 +113,7 @@ def test_agent_batch_section_handles_start_and_stop(wx_app):
     assert runner.started is not None
     assert runner.is_running
     assert "Batch started" in panel.status_label.GetLabel()
+    assert panel.batch_resets == 1
 
     section.stop_batch()
     assert runner.cancelled

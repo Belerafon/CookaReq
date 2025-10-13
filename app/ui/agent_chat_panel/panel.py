@@ -193,6 +193,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             else (lambda: None)
         )
         self._executor_pool: ThreadPoolExecutor | None = None
+        self._last_batch_conversation_id: str | None = None
         if command_executor is None:
             pool = ThreadPoolExecutor(
                 max_workers=1,
@@ -668,7 +669,35 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self._batch_section = None
 
     def _create_batch_conversation(self) -> ChatConversation:
-        return self._create_conversation(persist=False)
+        active_id = self.active_conversation_id
+        last_batch_id = self._last_batch_conversation_id
+        if last_batch_id is not None and not any(
+            conversation.conversation_id == last_batch_id
+            for conversation in self.conversations
+        ):
+            last_batch_id = None
+            self._last_batch_conversation_id = None
+
+        conversation = ChatConversation.new()
+        self.conversations.append(conversation)
+
+        should_activate = False
+        if active_id is None:
+            should_activate = True
+        elif last_batch_id is None:
+            should_activate = True
+        elif active_id == last_batch_id:
+            should_activate = True
+
+        if should_activate:
+            self._set_active_conversation_id(conversation.conversation_id)
+
+        self._last_batch_conversation_id = conversation.conversation_id
+        self._notify_history_changed()
+        return conversation
+
+    def _reset_batch_conversation_tracking(self) -> None:
+        self._last_batch_conversation_id = None
 
     def _prepare_batch_conversation(
         self, conversation: ChatConversation, target: BatchTarget
@@ -2983,7 +3012,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _update_history_controls(self) -> None:
         has_conversations = bool(self.conversations)
-        self.history_list.Enable(has_conversations and not self._session.is_running)
+        self.history_list.Enable(has_conversations)
         if self._new_chat_btn is not None:
             self._new_chat_btn.Enable(not self._session.is_running)
 

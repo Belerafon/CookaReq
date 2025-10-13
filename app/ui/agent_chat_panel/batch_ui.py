@@ -89,6 +89,7 @@ class AgentBatchSection:
                 _("Select at least one requirement in the list to run a batch")
             )
             return
+        self._panel._reset_batch_conversation_tracking()
         if not runner.start(prompt_text, targets):
             self._panel.status_label.SetLabel(_("Unable to start batch queue"))
             return

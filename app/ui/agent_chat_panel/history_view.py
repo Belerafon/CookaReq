@@ -304,6 +304,8 @@ class HistoryView:
 
     # ------------------------------------------------------------------
     def _select_all_rows(self) -> None:
+        if self._is_running():
+            return
         try:
             count = self._list.GetItemCount()
         except Exception:
@@ -347,7 +349,7 @@ class HistoryView:
         if self._suppress_selection:
             event.Skip()
             return
-        preparation = self._prepare_for_interaction()
+        preparation = self._prepare_for_interaction(safe=True)
         if not preparation.allowed:
             event.Skip()
             return
@@ -373,7 +375,7 @@ class HistoryView:
 
     # ------------------------------------------------------------------
     def _on_mouse_down(self, event: wx.MouseEvent) -> None:
-        preparation = self._prepare_for_interaction()
+        preparation = self._prepare_for_interaction(safe=True)
         if not preparation.allowed:
             event.Skip()
             return
@@ -402,8 +404,10 @@ class HistoryView:
         event.Skip()
 
     # ------------------------------------------------------------------
-    def _prepare_for_interaction(self) -> HistoryInteractionPreparation:
-        if self._is_running():
+    def _prepare_for_interaction(
+        self, *, safe: bool = False
+    ) -> HistoryInteractionPreparation:
+        if self._is_running() and not safe:
             return HistoryInteractionPreparation(False, False)
         callback = self._prepare_interaction
         if callback is None:

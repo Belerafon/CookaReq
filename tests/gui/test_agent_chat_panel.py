@@ -358,6 +358,97 @@ def destroy_panel(frame, panel):
     frame.Destroy()
 
 
+def test_history_list_remains_interactive_during_agent_run(
+    tmp_path, wx_app, monkeypatch
+):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        flush_wx_events(wx)
+        panel._create_conversation(persist=False)
+        flush_wx_events(wx)
+        assert panel.history_list.GetItemCount() >= 2
+
+        panel._session.begin_run(tokens=TokenCountResult.exact(0))
+        assert panel._session.is_running
+        assert panel.history_list.IsEnabled()
+
+        target_row = 0
+        target_id = panel.conversations[target_row].conversation_id
+        panel.history_list.SelectRow(target_row)
+        item = panel.history_list.RowToItem(target_row)
+
+        class _FakeSelectionEvent:
+            def __init__(self, data_view_item):
+                self._item = data_view_item
+                self.skipped = False
+
+            def GetItem(self):
+                return self._item
+
+            def Skip(self):
+                self.skipped = True
+
+        panel._history_view._on_select_history(_FakeSelectionEvent(item))
+        assert panel.active_conversation_id == target_id
+
+        popup_calls: list[wx.Menu] = []
+
+        def fake_popup(menu):
+            popup_calls.append(menu)
+
+        monkeypatch.setattr(panel.history_list, "PopupMenu", fake_popup)
+        panel._history_view._show_context_menu(target_row)
+        assert popup_calls == []
+    finally:
+        panel._session.finalize_run()
+        destroy_panel(frame, panel)
+
+
+def test_batch_conversation_creation_respects_manual_selection(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        flush_wx_events(wx)
+        panel._reset_batch_conversation_tracking()
+        first_batch = panel._create_batch_conversation()
+        flush_wx_events(wx)
+        assert panel.active_conversation_id == first_batch.conversation_id
+
+        panel._activate_conversation_by_index(
+            0, refresh_history=False, _source="history_row"
+        )
+        flush_wx_events(wx)
+        selected_id = panel.active_conversation_id
+        assert selected_id == panel.conversations[0].conversation_id
+
+        second_batch = panel._create_batch_conversation()
+        flush_wx_events(wx)
+        assert panel.active_conversation_id == selected_id
+        assert second_batch.conversation_id != selected_id
+
+        previous_batch_index = panel.conversations.index(first_batch)
+        panel._activate_conversation_by_index(
+            previous_batch_index, refresh_history=False, _source="history_row"
+        )
+        flush_wx_events(wx)
+        assert panel.active_conversation_id == first_batch.conversation_id
+
+        third_batch = panel._create_batch_conversation()
+        flush_wx_events(wx)
+        assert panel.active_conversation_id == third_batch.conversation_id
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_header_shows_conversation_tokens(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, *_args, **_kwargs):

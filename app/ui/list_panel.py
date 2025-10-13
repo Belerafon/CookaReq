@@ -1048,9 +1048,39 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if count <= 0:
             return
         existing = self._get_selected_indices()
+        existing_set = set(existing)
+        if existing_set and len(existing_set) >= count:
+            return
         focus_index = existing[0] if existing else 0
-        for idx in range(count):
-            self._set_item_selected(idx, True)
+        handled = False
+        if hasattr(self.list, "SelectAll"):
+            select_all = getattr(self.list, "SelectAll")
+            if callable(select_all):
+                try:
+                    select_all()
+                    handled = True
+                except Exception:
+                    handled = False
+        if not handled:
+            thaw_handler: Callable[[], None] | None = None
+            freeze = getattr(self.list, "Freeze", None)
+            thaw = getattr(self.list, "Thaw", None)
+            if callable(freeze) and callable(thaw):
+                try:
+                    freeze()
+                except Exception:
+                    thaw = None
+                else:
+                    thaw_handler = thaw
+            try:
+                for idx in range(count):
+                    if idx in existing_set:
+                        continue
+                    self._set_item_selected(idx, True)
+            finally:
+                if thaw_handler is not None:
+                    with suppress(Exception):
+                        thaw_handler()
         if hasattr(self.list, "Focus") and 0 <= focus_index < count:
             with suppress(Exception):
                 self.list.Focus(focus_index)

@@ -29,6 +29,7 @@ def test_agent_batch_section_handles_start_and_stop(wx_app):
                 BatchTarget(requirement_id=1, rid="REQ-1", title="Sample"),
             ]
             self.layout_refreshes = 0
+            self.cancelled_runs: int = 0
 
         def _refresh_bottom_panel_layout(self) -> None:
             self.layout_refreshes += 1
@@ -36,6 +37,10 @@ def test_agent_batch_section_handles_start_and_stop(wx_app):
         @property
         def is_running(self) -> bool:
             return self._is_running
+
+        def cancel_agent_run(self):
+            self.cancelled_runs += 1
+            return None
 
     panel = DummyPanel(frame)
 
@@ -108,6 +113,7 @@ def test_agent_batch_section_handles_start_and_stop(wx_app):
     section.stop_batch()
     assert runner.cancelled
     assert "Batch cancellation requested" in panel.status_label.GetLabel()
+    assert panel.cancelled_runs == 1
 
     section.close_panel()
     assert runner.reset_called

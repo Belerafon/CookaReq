@@ -931,18 +931,25 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self.input.SetValue("")
         self.input.SetFocus()
 
-    def _on_stop(self, _event: wx.Event) -> None:
-        """Cancel the in-flight agent request, if any."""
+    def cancel_agent_run(self) -> _AgentRunHandle | None:
+        """Abort the current agent run and reconcile the transcript."""
         coordinator = self._coordinator
         if coordinator is None:
-            return
-        if self._batch_section is not None:
-            self._batch_section.request_skip_current()
+            return None
         handle = coordinator.cancel_active_run()
         if handle is None:
-            return
+            return None
         self._set_wait_state(False)
         self._finalize_cancelled_run(handle)
+        return handle
+
+    def _on_stop(self, _event: wx.Event) -> None:
+        """Cancel the in-flight agent request, if any."""
+        if self._batch_section is not None:
+            self._batch_section.request_skip_current()
+        handle = self.cancel_agent_run()
+        if handle is None:
+            return
         self._view.update_status_label(_("Generation cancelled"))
         self.input.SetValue(handle.prompt)
         self.input.SetInsertionPointEnd()

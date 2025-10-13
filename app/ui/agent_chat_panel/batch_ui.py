@@ -104,9 +104,7 @@ class AgentBatchSection:
         if not runner.items:
             return
         runner.cancel_all()
-        coordinator = self._panel.coordinator
-        if coordinator is not None:
-            coordinator.stop()
+        self._panel.cancel_agent_run()
         self._panel.status_label.SetLabel(_("Batch cancellation requested"))
         self.update_ui()
 

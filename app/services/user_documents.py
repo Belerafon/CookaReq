@@ -120,34 +120,43 @@ class UserDocumentsService:
         file_path = self._ensure_file(relative_path)
         if start_line < 1:
             raise ValueError("start_line must be >= 1")
-        if max_bytes is None:
-            max_bytes = self.max_read_bytes
-        if max_bytes <= 0 or max_bytes > self.max_read_bytes:
-            raise ValueError(
-                f"max_bytes must be within 1..{self.max_read_bytes}"
-            )
+
+        requested_bytes = (
+            self.max_read_bytes if max_bytes is None else int(max_bytes)
+        )
+        if requested_bytes <= 0:
+            raise ValueError("max_bytes must be positive")
+
+        chunk_limit = min(requested_bytes, self.max_read_bytes)
+        clamped = chunk_limit < requested_bytes
 
         collected: list[str] = []
         consumed = 0
         current_line = 0
         end_line = start_line - 1
         truncated = False
+        truncated_mid_line = False
+        prefix_bytes = 0
+        file_size = file_path.stat().st_size
+
         with file_path.open("r", encoding="utf-8", errors="replace") as stream:
             for raw_line in stream:
                 current_line += 1
-                if current_line < start_line:
-                    continue
                 encoded = raw_line.encode("utf-8")
-                remaining = max_bytes - consumed
+                if current_line < start_line:
+                    prefix_bytes += len(encoded)
+                    continue
+                remaining = chunk_limit - consumed
                 if remaining <= 0:
                     truncated = True
                     break
                 if len(encoded) > remaining:
                     segment = encoded[:remaining].decode("utf-8", errors="ignore")
                     collected.append(f"{current_line:>6}: {segment}")
-                    consumed = max_bytes
+                    consumed = chunk_limit
                     end_line = current_line
                     truncated = True
+                    truncated_mid_line = True
                     break
                 collected.append(f"{current_line:>6}: {raw_line.rstrip('\n')}\n")
                 consumed += len(encoded)
@@ -155,13 +164,14 @@ class UserDocumentsService:
             else:
                 truncated = False
 
-            # Determine if there is more content after finishing the loop.
             if not truncated:
                 remainder = stream.read(1)
                 if remainder:
                     truncated = True
 
         content = "".join(collected)
+        remaining_bytes = max(file_size - prefix_bytes - consumed, 0)
+
         return {
             "path": self._relative_path(file_path).as_posix(),
             "start_line": start_line,
@@ -169,6 +179,11 @@ class UserDocumentsService:
             "bytes_consumed": consumed,
             "content": content,
             "truncated": truncated,
+            "bytes_requested": requested_bytes,
+            "chunk_limit_bytes": chunk_limit,
+            "clamped_to_limit": clamped,
+            "bytes_remaining": remaining_bytes,
+            "truncated_mid_line": truncated_mid_line,
         }
 
     # ------------------------------------------------------------------

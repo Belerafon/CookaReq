@@ -214,6 +214,24 @@ def test_configured_read_limit_enforced(tmp_path: Path, free_tcp_port: int):
             {"path": "long.txt", "max_bytes": 2048},
         )
         assert status == 200
-        assert payload["error"]["code"] == "VALIDATION_ERROR"
+        assert payload["clamped_to_limit"] is True
+        assert payload["bytes_requested"] == 2048
+        assert payload["chunk_limit_bytes"] == 1024
+        assert "Served" in payload.get("notice", "")
+        hint = payload.get("continuation_hint", {})
+        assert hint.get("max_chunk_bytes") == 1024
+        next_line = payload["end_line"] + 1 if payload["end_line"] >= payload["start_line"] else payload["start_line"]
+        assert hint.get("next_start_line") == next_line
+        assert hint.get("bytes_remaining") >= 0
+        assert hint.get("truncated_mid_line") in (True, False)
+        if payload.get("truncated_mid_line"):
+            assert hint.get("line_exceeded_chunk_limit") is True
+        suggested = hint.get("suggested_call")
+        if hint.get("bytes_remaining"):
+            assert suggested is not None
+            assert suggested["name"] == "read_user_document"
+            assert suggested["arguments"]["path"] == "long.txt"
+            assert suggested["arguments"]["start_line"] == next_line
+            assert suggested["arguments"]["max_bytes"] == 1024
     finally:
         stop_server()

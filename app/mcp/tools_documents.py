@@ -13,21 +13,6 @@ def _missing_root_error(tool: str, params: dict[str, Any]) -> dict[str, Any]:
         params,
         mcp_error(ErrorCode.NOT_FOUND, "documents root not configured"),
     )
-
-
-def _normalize_max_bytes(service: UserDocumentsService, value: int | None) -> int:
-    limit = service.max_read_bytes
-    if value is None:
-        return limit
-    if value <= 0:
-        raise ValueError("max_bytes must be greater than zero")
-    if value > limit:
-        raise ValueError(
-            f"max_bytes must not exceed {limit} bytes",
-        )
-    return value
-
-
 def list_user_documents(service: UserDocumentsService | None) -> dict[str, Any]:
     """Return a serialized tree of available user documents."""
     params: dict[str, Any] = {}
@@ -59,8 +44,7 @@ def read_user_document(
     if service is None:
         return _missing_root_error("read_user_document", params)
     try:
-        resolved_max = _normalize_max_bytes(service, max_bytes)
-        payload = service.read_file(path, start_line=start_line, max_bytes=resolved_max)
+        payload = service.read_file(path, start_line=start_line, max_bytes=max_bytes)
     except FileNotFoundError:
         return log_tool(
             "read_user_document",
@@ -85,6 +69,67 @@ def read_user_document(
             params,
             mcp_error(ErrorCode.VALIDATION_ERROR, str(exc) or "invalid arguments"),
         )
+    if payload.get("clamped_to_limit"):
+        requested = payload.get("bytes_requested")
+        consumed = payload.get("bytes_consumed")
+        remaining = payload.get("bytes_remaining")
+        end_line = payload.get("end_line")
+        limit = service.max_read_bytes
+        mid_line = bool(payload.get("truncated_mid_line"))
+        next_line = start_line
+        if isinstance(end_line, int) and end_line >= start_line:
+            next_line = end_line + 1
+        remaining_int = int(remaining) if isinstance(remaining, int) else 0
+        requested_int = int(requested) if isinstance(requested, int) else limit
+        consumed_int = int(consumed) if isinstance(consumed, int) else 0
+        message_parts: list[str] = [
+            (
+                f"Served {consumed_int} bytes out of the {requested_int} requested."
+            ),
+            f"{limit} bytes is the maximum chunk size per call.",
+        ]
+        continuation: dict[str, Any] = {
+            "bytes_remaining": remaining_int,
+            "next_start_line": next_line,
+            "max_chunk_bytes": limit,
+            "truncated_mid_line": mid_line,
+        }
+        if mid_line:
+            continuation["line_exceeded_chunk_limit"] = True
+        if remaining_int > 0:
+            if mid_line:
+                message_parts.append(
+                    "The last displayed line was cut mid-way because it exceeds"
+                    " the per-call byte limit. Raising the limit is required to"
+                    " capture the remainder of that line."
+                )
+            message_parts.append(
+                "Continue by calling `read_user_document` with "
+                f"`start_line={next_line}` and `max_bytes<={limit}`."
+            )
+            continuation["suggested_call"] = {
+                "name": "read_user_document",
+                "arguments": {
+                    "path": path,
+                    "start_line": next_line,
+                    "max_bytes": limit,
+                },
+            }
+            message_parts.append(
+                f"Approximately {remaining_int} bytes remain after this chunk."
+            )
+        else:
+            if mid_line:
+                message_parts.append(
+                    "The file ended inside the partially displayed line."
+                )
+            else:
+                message_parts.append(
+                    "The file ended within this chunk; no additional data remains."
+                )
+        message = " ".join(message_parts)
+        payload["notice"] = message
+        payload["continuation_hint"] = continuation
     return log_tool("read_user_document", params, payload)
 
 

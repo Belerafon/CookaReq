@@ -59,3 +59,5 @@ def test_system_prompt_mentions_user_document_guidance() -> None:
     assert "default 10 KiB" in prompt
     assert "never exceeding 512 KiB" in prompt
     assert "encoding" in prompt
+    assert "clamped_to_limit" in prompt
+    assert "continuation_hint" in prompt

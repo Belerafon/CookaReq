@@ -87,7 +87,7 @@ class AgentChatView:
         input_ctrl = state.layout.input_control
         activity = state.layout.activity_indicator
 
-        input_ctrl.Enable(not active)
+        input_ctrl.Enable(True)
         primary_btn.Enable(True)
         send_tooltip = _("Send")
         stop_tooltip = _("Stop")

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import Deque
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -124,6 +126,16 @@ class _PendingAttachment:
         return {"role": "user", "content": self.message_content}
 
 
+@dataclass(slots=True)
+class _QueuedPrompt:
+    """Message queued while the agent finishes the current turn."""
+
+    conversation_id: str
+    prompt: str
+    prompt_at: str
+    queued_at: str
+
+
 class _PanelWaitCallbacks(WaitStateCallbacks):
     """Bridge view wait state callbacks back to the panel."""
 
@@ -238,6 +250,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             persistent_preference = RequirementConfirmPreference.PROMPT
         self._persistent_confirm_preference = persistent_preference
         self._pending_attachment: _PendingAttachment | None = None
+        self._prompt_queue: Deque[_QueuedPrompt] = deque()
+        self._queued_prompt_panel: wx.Panel | None = None
+        self._queued_prompt_label: wx.StaticText | None = None
+        self._queued_prompt_cancel: wx.Button | None = None
         self._confirm_preference = persistent_preference
         self._auto_confirm_overrides: dict[str, Any] | None = None
         self._confirm_choice: wx.Choice | None = None
@@ -500,6 +516,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._attachment_button = layout.attachment_button
         self._attachment_summary = layout.attachment_summary
         self.input = layout.input_control
+        self._queued_prompt_panel = layout.queued_panel
+        self._queued_prompt_label = layout.queued_message
+        self._queued_prompt_cancel = layout.queued_cancel_button
+        layout.queued_cancel_button.Bind(wx.EVT_BUTTON, self._on_cancel_queued_prompt)
         self._primary_action_btn = layout.primary_action_button
         self._batch_controls = layout.batch_controls
         self.activity = layout.activity_indicator
@@ -517,6 +537,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         wx.CallAfter(self._adjust_vertical_splitter)
         wx.CallAfter(self._update_project_settings_ui)
         wx.CallAfter(self._update_attachment_summary)
+        wx.CallAfter(self._update_queued_prompt_banner)
 
     def _observe_history_columns(self, history_list: wx.Window) -> None:
         """Start monitoring the history list so column drags repaint rows."""
@@ -810,15 +831,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _on_send(self, _event: wx.Event) -> None:
         """Send prompt to agent."""
-        if self._session.is_running:
-            return
-
         text = self.input.GetValue().strip()
         if not text:
             return
-
+        prompt_at = utc_now_iso()
+        conversation = self._ensure_active_conversation()
         self.input.SetValue("")
-        self._submit_prompt(text)
+        if self._session.is_running:
+            self._queue_prompt(conversation, text, prompt_at=prompt_at)
+            return
+        self._submit_prompt(text, prompt_at=prompt_at)
 
     def _on_primary_action(self, event: wx.Event) -> None:
         """Dispatch the main action button based on session state."""
@@ -1179,6 +1201,139 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         head = max(1, (limit - 1) // 2)
         tail = max(1, limit - head - 1)
         return f"{name[:head]}…{name[-tail:]}"
+
+    def _queue_prompt(
+        self,
+        conversation: ChatConversation,
+        prompt: str,
+        *,
+        prompt_at: str,
+    ) -> None:
+        """Store ``prompt`` so it runs after the active agent turn finishes."""
+        queued_entry = _QueuedPrompt(
+            conversation_id=conversation.conversation_id,
+            prompt=prompt,
+            prompt_at=prompt_at,
+            queued_at=utc_now_iso(),
+        )
+        self._prompt_queue.append(queued_entry)
+        self._update_queued_prompt_banner()
+        self._refresh_bottom_panel_layout()
+        self._view.update_status_label(
+            _("Message queued — it will run after the current response."),
+        )
+
+    def _format_queued_preview(self, prompt: str, limit: int = 120) -> str:
+        """Return compact single-line preview for a queued prompt."""
+        if not prompt:
+            return _("(empty message)")
+        normalised = normalize_for_display(prompt)
+        collapsed = " ".join(normalised.split())
+        if len(collapsed) <= limit:
+            return collapsed
+        return f"{collapsed[: limit - 1]}…"
+
+    def _queued_conversation_label(self, conversation_id: str) -> str:
+        """Return human-friendly label for queued prompt destination."""
+        conversation = self._get_conversation_by_id(conversation_id)
+        if conversation is None:
+            return _("Archived chat")
+        self._session.history.ensure_conversation_entries(conversation)
+        title, _last_activity = self._format_conversation_row(conversation)
+        return title
+
+    def _update_queued_prompt_banner(self) -> None:
+        """Refresh the queued prompt summary shown above controls."""
+        panel = self._queued_prompt_panel
+        label = self._queued_prompt_label
+        cancel = self._queued_prompt_cancel
+        if panel is None or label is None:
+            return
+
+        # Drop entries for conversations that no longer exist.
+        while self._prompt_queue:
+            candidate = self._prompt_queue[0]
+            if self._get_conversation_by_id(candidate.conversation_id) is None:
+                self._prompt_queue.popleft()
+            else:
+                break
+
+        if not self._prompt_queue:
+            label.SetLabel("")
+            self._set_tooltip(label, None)
+            if cancel is not None:
+                cancel.Enable(False)
+            if panel.IsShown():
+                panel.Hide()
+                self._refresh_bottom_panel_layout()
+            return
+
+        entry = self._prompt_queue[0]
+        conversation_name = self._queued_conversation_label(entry.conversation_id)
+        preview = self._format_queued_preview(entry.prompt)
+        remaining = len(self._prompt_queue) - 1
+        if remaining > 0:
+            label_text = _("Next for {chat}: {prompt} (+{count} more)").format(
+                chat=conversation_name,
+                prompt=preview,
+                count=remaining,
+            )
+        else:
+            label_text = _("Next for {chat}: {prompt}").format(
+                chat=conversation_name,
+                prompt=preview,
+            )
+        label.SetLabel(label_text)
+        tooltip = _(
+            "Queued at {time} for chat {chat}:\n{prompt}",
+        ).format(time=entry.queued_at, chat=conversation_name, prompt=entry.prompt)
+        self._set_tooltip(label, tooltip)
+        if cancel is not None:
+            cancel.Enable(True)
+        if not panel.IsShown():
+            panel.Show()
+            self._refresh_bottom_panel_layout()
+        else:
+            panel.GetParent().Layout()
+
+    def _schedule_prompt_queue_flush(self) -> None:
+        """Process the next queued message when the agent becomes idle."""
+        if not self._prompt_queue:
+            return
+        wx.CallAfter(self._process_next_queued_prompt)
+
+    def _process_next_queued_prompt(self) -> None:
+        """Submit the next queued prompt if the agent is idle."""
+        if self._session.is_running:
+            return
+        while self._prompt_queue:
+            entry = self._prompt_queue.popleft()
+            conversation = self._get_conversation_by_id(entry.conversation_id)
+            if conversation is None:
+                continue
+            coordinator = self._coordinator
+            if coordinator is None:
+                self._prompt_queue.appendleft(entry)
+                break
+            self._set_active_conversation_id(conversation.conversation_id)
+            self._view.update_status_label(
+                _("Sending queued message for {chat}…").format(
+                    chat=self._queued_conversation_label(conversation.conversation_id),
+                )
+            )
+            coordinator.submit_prompt(entry.prompt, prompt_at=entry.prompt_at)
+            break
+        self._update_queued_prompt_banner()
+        self._refresh_bottom_panel_layout()
+
+    def _on_cancel_queued_prompt(self, _event: wx.Event | None = None) -> None:
+        """Remove the oldest queued prompt before it reaches the agent."""
+        if not self._prompt_queue:
+            return
+        self._prompt_queue.popleft()
+        self._view.update_status_label(_("Queued message removed."))
+        self._update_queued_prompt_banner()
+        self._refresh_bottom_panel_layout()
 
     # ------------------------------------------------------------------
     def _set_wait_state(
@@ -1582,6 +1737,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         if should_render:
             self._render_transcript()
+        self._schedule_prompt_queue_flush()
 
     def _process_result(
         self, result: Any
@@ -1982,6 +2138,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         entry = handle.pending_entry
         if entry is None:
             self._request_transcript_refresh(force=True, immediate=True)
+            self._schedule_prompt_queue_flush()
             return
         conversation = self._get_conversation_by_id(handle.conversation_id)
         if conversation is None:
@@ -1994,6 +2151,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 batch_section.notify_cancellation(
                     conversation_id=handle.conversation_id
                 )
+            self._schedule_prompt_queue_flush()
             return
 
         cancellation_message = _("Generation cancelled")
@@ -2069,6 +2227,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             batch_section.notify_cancellation(
                 conversation_id=handle.conversation_id
             )
+        self._schedule_prompt_queue_flush()
 
     def _notify_history_changed(self) -> None:
         """Propagate history updates through the session events."""

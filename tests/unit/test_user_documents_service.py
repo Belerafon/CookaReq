@@ -80,6 +80,24 @@ def test_create_file_rejects_existing_paths_without_flag(tmp_path: Path) -> None
         service.create_file("report.txt", content="overwrite")
 
 
+def test_create_file_supports_custom_encoding(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+    content = "Привет мир"
+
+    created = service.create_file(
+        "notes/cyrillic.txt",
+        content=content,
+        encoding="cp1251",
+    )
+
+    assert created.exists()
+    assert created.read_bytes() == content.encode("cp1251")
+    assert created.read_text(encoding="cp1251") == content
+
+    with pytest.raises(LookupError):
+        service.create_file("notes/unknown.txt", content="x", encoding="bad-encoding")
+
+
 def test_delete_file_and_traversal_guard(tmp_path: Path) -> None:
     service = create_service(tmp_path)
     created = service.create_file("folder/data.txt", content="payload")

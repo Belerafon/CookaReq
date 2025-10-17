@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..services.user_documents import UserDocumentsService
+from ..services.user_documents import UserDocumentsService, normalise_text_encoding
 from .utils import ErrorCode, log_tool, mcp_error
 
 
@@ -94,17 +94,26 @@ def create_user_document(
     *,
     content: str = "",
     exist_ok: bool = False,
+    encoding: str | None = None,
 ) -> dict[str, Any]:
     """Persist a document under the configured root, optionally replacing it."""
     params: dict[str, Any] = {
         "path": path,
         "exist_ok": exist_ok,
-        "bytes": len(content.encode("utf-8")),
     }
+    if encoding is not None:
+        params["encoding"] = encoding
     if service is None:
         return _missing_root_error("create_user_document", params)
     try:
-        created = service.create_file(path, content=content, exist_ok=exist_ok)
+        normalized_encoding = normalise_text_encoding(encoding)
+        encoded_bytes = content.encode(normalized_encoding)
+        created = service.create_file(
+            path,
+            content=content,
+            exist_ok=exist_ok,
+            encoding=normalized_encoding,
+        )
     except FileExistsError:
         return log_tool(
             "create_user_document",
@@ -123,9 +132,25 @@ def create_user_document(
             params,
             mcp_error(ErrorCode.UNAUTHORIZED, "access outside documents root denied"),
         )
+    except LookupError as exc:
+        return log_tool(
+            "create_user_document",
+            params,
+            mcp_error(ErrorCode.VALIDATION_ERROR, str(exc)),
+        )
+    except UnicodeEncodeError as exc:
+        return log_tool(
+            "create_user_document",
+            params,
+            mcp_error(
+                ErrorCode.VALIDATION_ERROR,
+                f"content cannot be encoded with {normalized_encoding}: {exc.reason}",
+            ),
+        )
     payload = {
         "path": created.relative_to(service.root).as_posix(),
-        "bytes_written": len(content.encode("utf-8")),
+        "bytes_written": len(encoded_bytes),
+        "encoding": normalized_encoding,
     }
     return log_tool("create_user_document", params, payload)
 

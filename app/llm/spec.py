@@ -74,7 +74,7 @@ SYSTEM_PROMPT = (
         The workspace may expose an optional user documentation directory. When it is configured, the workspace context includes a `[User documentation]` section with the rendered tree and metadata. Use the specialised tools below to inspect or modify those files. Never assume the directory exists; handle missing roots gracefully and report when the operator needs to configure it.
         `list_user_documents` enumerates the directory tree, returning token statistics (including percentage of the maximum context window) for each entry along with a text tree representation.
         `read_user_document` streams a slice of a file as numbered lines. Always respect the configured byte budget: stay within the workspace limit (default {default_read_kib} KiB, never exceeding {max_read_kib} KiB) and consult the `[User documentation]` context block for the precise value. Provide a smaller `max_bytes` when you only need a fragment. Start counting at line 1 by default; provide `start_line` when resuming from a later offset. Examine the `truncated` flag to determine whether additional reads are required.
-        `create_user_document` writes a new UTF-8 file within the documentation root. Pass `exist_ok` only when intentionally overwriting an existing file. Always explain to the user when content is being created and report the byte count written.
+        `create_user_document` writes a new text file within the documentation root. It defaults to UTF-8 but accepts an optional `encoding` argument that must match Python codec names (for example, `utf-8`, `cp1251`). Pass `exist_ok` only when intentionally overwriting an existing file. Always explain to the user when content is being created and report the byte count and encoding used.
         `delete_user_document` permanently removes a file. Only invoke it when the user explicitly confirms deletion and be mindful that directories cannot be removed with this tool.
         When the user references a requirement, always use its requirement identifier (RID) exactly as shown in the workspace context using the `<prefix><number>` format (case-sensitive). Context summaries show entries as `<RID> — <title>` (the title may be omitted); the RID is the concatenation of the prefix and number (for example, `HLR1`). Highlighted selections are listed on a single `Selected requirement RIDs:` line (for example, `Selected requirement RIDs: SYS2, SYS3`). When the line lists multiple RIDs, call `get_requirement` once using the array form of the `rid` argument in the same order, removing duplicates if necessary. When the user refers to the highlighted or selected requirement(s), resolve them using the RID(s) from that line. Never pass only the numeric `id`.
         Examples:
@@ -734,11 +734,17 @@ TOOLS: list[dict[str, Any]] = [
                     },
                     "content": {
                         "type": "string",
-                        "description": "UTF-8 text to write into the file (defaults to empty).",
+                        "description": "Text to persist in the file (encoded with the selected encoding, UTF-8 when omitted).",
                     },
                     "exist_ok": {
                         "type": "boolean",
                         "description": "Allow overwriting an existing file when true (defaults to false).",
+                    },
+                    "encoding": {
+                        "type": "string",
+                        "description": (
+                            "Optional text encoding (Python codec name such as 'utf-8', 'cp1251'); defaults to UTF-8."
+                        ),
                     },
                 },
                 "required": ["path"],

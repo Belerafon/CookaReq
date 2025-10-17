@@ -484,6 +484,7 @@ def create_user_document(
     *,
     content: str = "",
     exist_ok: bool = False,
+    encoding: str | None = None,
 ) -> dict:
     """Create a user document relative to the configured root."""
     service = _documents_service()
@@ -492,6 +493,7 @@ def create_user_document(
         path,
         content=content,
         exist_ok=exist_ok,
+        encoding=encoding,
     )
 
 

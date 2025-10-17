@@ -66,7 +66,11 @@ def test_create_user_document_arguments_use_preview(monkeypatch) -> None:
             "content": content,
             "exist_ok": True,
         },
-        "result": {"path": "docs/new.txt", "bytes_written": len(content.encode("utf-8"))},
+        "result": {
+            "path": "docs/new.txt",
+            "bytes_written": len(content.encode("utf-8")),
+            "encoding": "utf-8",
+        },
         "ok": True,
     }
 

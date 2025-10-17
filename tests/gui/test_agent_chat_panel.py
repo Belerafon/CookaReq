@@ -566,6 +566,108 @@ def test_input_modifier_enter_submits_prompt(tmp_path, wx_app, modifier):
         destroy_panel(frame, panel)
 
 
+def test_send_during_active_run_queues_prompt(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        flush_wx_events(wx)
+        panel._ensure_active_conversation()
+        panel._session.begin_run(tokens=TokenCountResult.exact(0))
+
+        sent_prompts: list[str] = []
+
+        def fake_submit(prompt: str, *, prompt_at: str | None = None) -> None:
+            sent_prompts.append(prompt)
+
+        panel._submit_prompt = fake_submit  # type: ignore[assignment]
+        panel.input.SetValue("queued follow-up")
+        panel._on_send(None)
+        flush_wx_events(wx)
+
+        assert sent_prompts == []
+        assert len(panel._prompt_queue) == 1
+        banner = panel._queued_prompt_panel
+        assert banner is not None and banner.IsShown()
+        summary = panel._queued_prompt_label
+        assert summary is not None
+        tooltip = summary.GetToolTip()
+        assert tooltip is not None
+        assert "queued follow-up" in tooltip.GetTip()
+    finally:
+        if panel._session.is_running:
+            panel._session.finalize_run()
+        destroy_panel(frame, panel)
+
+
+def test_cancel_queued_prompt_hides_banner(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        flush_wx_events(wx)
+        panel._ensure_active_conversation()
+        panel._session.begin_run(tokens=TokenCountResult.exact(0))
+        panel.input.SetValue("queued follow-up")
+        panel._on_send(None)
+        flush_wx_events(wx)
+
+        panel._on_cancel_queued_prompt(None)
+        flush_wx_events(wx)
+
+        assert len(panel._prompt_queue) == 0
+        banner = panel._queued_prompt_panel
+        assert banner is not None and not banner.IsShown()
+        summary = panel._queued_prompt_label
+        assert summary is not None and summary.GetLabel() == ""
+    finally:
+        if panel._session.is_running:
+            panel._session.finalize_run()
+        destroy_panel(frame, panel)
+
+
+def test_queued_prompt_submits_after_completion(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    class StubCoordinator:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str | None]] = []
+
+        def submit_prompt(self, prompt: str, *, prompt_at: str | None = None) -> None:
+            self.calls.append((prompt, prompt_at))
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        flush_wx_events(wx)
+        panel._ensure_active_conversation()
+        panel._session.begin_run(tokens=TokenCountResult.exact(0))
+        coordinator = StubCoordinator()
+        panel._coordinator = coordinator  # type: ignore[assignment]
+
+        panel.input.SetValue("follow-up")
+        panel._on_send(None)
+        flush_wx_events(wx)
+
+        panel._session.finalize_run()
+        panel._process_next_queued_prompt()
+
+        assert coordinator.calls and coordinator.calls[0][0] == "follow-up"
+        assert len(panel._prompt_queue) == 0
+        banner = panel._queued_prompt_panel
+        assert banner is not None and not banner.IsShown()
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_attachment_summary_compact_format(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, *_args, **_kwargs):

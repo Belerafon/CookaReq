@@ -47,6 +47,9 @@ class AgentChatLayout:
     attachment_button: wx.Button
     attachment_summary: wx.StaticText
     input_control: wx.TextCtrl
+    queued_panel: wx.Panel
+    queued_message: wx.StaticText
+    queued_cancel_button: wx.Button
     primary_action_button: wx.Button
     primary_action_idle_label: str
     primary_action_idle_uses_bitmap: bool
@@ -223,6 +226,26 @@ class AgentChatLayoutBuilder:
             input_ctrl.SetHint(_("Describe what you need the agent to do"))
         input_ctrl.Bind(wx.EVT_KEY_DOWN, panel._on_input_key_down)
 
+        queued_panel = wx.Panel(bottom_inner)
+        inherit_background(queued_panel, bottom_inner)
+        queued_panel.Hide()
+        queued_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        queued_label = wx.StaticText(
+            queued_panel,
+            label=_("Next message queued"),
+        )
+        queued_value = wx.StaticText(
+            queued_panel,
+            label="",
+            style=wx.ST_ELLIPSIZE_MIDDLE,
+        )
+        queued_cancel = wx.Button(queued_panel, label=_("Cancel"))
+        queued_cancel.SetToolTip(_("Remove the queued message"))
+        queued_sizer.Add(queued_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
+        queued_sizer.Add(queued_value, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
+        queued_sizer.Add(queued_cancel, 0, wx.ALIGN_CENTER_VERTICAL)
+        queued_panel.SetSizer(queued_sizer)
+
         button_row = wx.BoxSizer(wx.HORIZONTAL)
         run_batch_btn = wx.Button(bottom_inner, label=_("Run batch"))
         stop_batch_btn = wx.Button(bottom_inner, label=_("Stop batch"))
@@ -368,6 +391,8 @@ class AgentChatLayoutBuilder:
         bottom_sizer.AddSpacer(spacing)
         bottom_sizer.Add(batch_panel, 0, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
+        bottom_sizer.Add(queued_panel, 0, wx.EXPAND)
+        bottom_sizer.AddSpacer(spacing)
         bottom_sizer.Add(controls_row, 0, wx.EXPAND)
         bottom_sizer.AddSpacer(spacing)
         bottom_inner.SetSizer(bottom_sizer)
@@ -432,6 +457,9 @@ class AgentChatLayoutBuilder:
             confirm_choice=confirm_choice,
             confirm_entries=confirm_entries,
             confirm_choice_index=confirm_choice_index,
+            queued_panel=queued_panel,
+            queued_message=queued_value,
+            queued_cancel_button=queued_cancel,
         )
 
     # ------------------------------------------------------------------

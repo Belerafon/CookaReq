@@ -322,7 +322,7 @@ class MessageBubble(wx.Panel):
                     | wx.TE_WORDWRAP
                     | wx.BORDER_NONE
                 )
-                style = base_style
+                style = base_style | wx.TE_NO_VSCROLL
                 text_ctrl = wx.TextCtrl(bubble, value=display_text, style=style)
                 text_ctrl.SetBackgroundColour(bubble_bg)
                 text_ctrl.SetForegroundColour(bubble_fg)
@@ -945,13 +945,17 @@ class MessageBubble(wx.Panel):
             except RuntimeError:
                 return
             else:
+                base_style &= ~(wx.VSCROLL | wx.TE_NO_VSCROLL)
                 self._text_base_style = base_style
         try:
             current_style = text_ctrl.GetWindowStyleFlag()
         except RuntimeError:
             return
 
-        desired_style = base_style | (wx.VSCROLL if needs_scrollbar else 0)
+        if needs_scrollbar:
+            desired_style = (base_style | wx.VSCROLL) & ~wx.TE_NO_VSCROLL
+        else:
+            desired_style = (base_style | wx.TE_NO_VSCROLL) & ~wx.VSCROLL
         if current_style == desired_style:
             return
         try:

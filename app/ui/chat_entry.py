@@ -188,6 +188,7 @@ class ChatEntry:
     prompt_at: str | None = None
     response_at: str | None = None
     context_messages: tuple[dict[str, Any], ...] | None = None
+    tool_messages: tuple[dict[str, Any], ...] | None = None
     reasoning: tuple[dict[str, Any], ...] | None = None
     diagnostic: dict[str, Any] | None = None
     regenerated: bool = False
@@ -208,6 +209,35 @@ class ChatEntry:
                 self.raw_result,
                 self.raw_result.get("tool_results"),
             )
+        tool_messages = self.tool_messages
+        if tool_messages:
+            if isinstance(tool_messages, Sequence) and not isinstance(
+                tool_messages, (str, bytes, bytearray)
+            ):
+                iterable: Sequence[Any] = tool_messages
+            else:
+                iterable = (tool_messages,)
+            normalised_messages: list[dict[str, Any]] = []
+            for message in iterable:
+                if not isinstance(message, Mapping):
+                    continue
+                role_value = message.get("role")
+                role = str(role_value).strip() if role_value is not None else "tool"
+                if not role:
+                    role = "tool"
+                content_value = message.get("content")
+                content = str(content_value) if content_value is not None else ""
+                tool_message: dict[str, Any] = {"role": role, "content": content}
+                call_value = message.get("tool_call_id")
+                if isinstance(call_value, str) and call_value.strip():
+                    tool_message["tool_call_id"] = call_value.strip()
+                name_value = message.get("name")
+                if isinstance(name_value, str) and name_value.strip():
+                    tool_message["name"] = name_value.strip()
+                normalised_messages.append(tool_message)
+            self.tool_messages = tuple(normalised_messages) if normalised_messages else None
+        else:
+            self.tool_messages = None
         hints = self.layout_hints
         if not isinstance(hints, dict):
             self.layout_hints = {}
@@ -419,6 +449,32 @@ class ChatEntry:
             if prepared:
                 context_messages = tuple(prepared)
 
+        tool_messages_raw = payload.get("tool_messages")
+        tool_messages: tuple[dict[str, Any], ...] | None = None
+        if isinstance(tool_messages_raw, Sequence) and not isinstance(
+            tool_messages_raw, (str, bytes, bytearray)
+        ):
+            prepared_messages: list[dict[str, Any]] = []
+            for item in tool_messages_raw:
+                if not isinstance(item, Mapping):
+                    continue
+                role_value = item.get("role")
+                role = str(role_value).strip() if role_value is not None else "tool"
+                if not role:
+                    role = "tool"
+                content_value = item.get("content")
+                content = str(content_value) if content_value is not None else ""
+                message: dict[str, Any] = {"role": role, "content": content}
+                call_value = item.get("tool_call_id")
+                if isinstance(call_value, str) and call_value.strip():
+                    message["tool_call_id"] = call_value.strip()
+                name_value = item.get("name")
+                if isinstance(name_value, str) and name_value.strip():
+                    message["name"] = name_value.strip()
+                prepared_messages.append(message)
+            if prepared_messages:
+                tool_messages = tuple(prepared_messages)
+
         reasoning_raw = payload.get("reasoning")
         reasoning: tuple[dict[str, Any], ...] | None = None
         if isinstance(reasoning_raw, Sequence) and not isinstance(
@@ -472,6 +528,7 @@ class ChatEntry:
             prompt_at=prompt_at,
             response_at=response_at,
             context_messages=context_messages,
+            tool_messages=tool_messages,
             reasoning=reasoning,
             diagnostic=diagnostic,
             regenerated=regenerated,
@@ -493,6 +550,9 @@ class ChatEntry:
             "response_at": self.response_at,
             "context_messages": [dict(message) for message in self.context_messages]
             if self.context_messages is not None
+            else None,
+            "tool_messages": [dict(message) for message in self.tool_messages]
+            if self.tool_messages is not None
             else None,
             "reasoning": [dict(segment) for segment in self.reasoning]
             if self.reasoning is not None

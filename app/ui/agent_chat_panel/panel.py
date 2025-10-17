@@ -1,6 +1,7 @@
 """Panel providing conversational interface to the local agent."""
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections import deque
@@ -1624,6 +1625,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         elapsed = 0.0
         final_tokens: TokenCountResult | None = None
         tool_results: list[Any] | None = None
+        tool_messages: tuple[dict[str, Any], ...] | None = None
         should_render = False
         success = True
         error_text: str | None = None
@@ -1664,8 +1666,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 resolved_tool_results = normalise_tool_payloads(merged_tool_results)
             raw_result = update_tool_results(raw_result, resolved_tool_results)
             tool_results = resolved_tool_results
+            tool_messages = self._build_tool_messages(tool_results)
+            assistant_text = latest_response or conversation_text
             response_tokens = count_text_tokens(
-                conversation_text,
+                assistant_text,
                 model=self._token_model(),
             )
             final_tokens = combine_token_counts(
@@ -1680,7 +1684,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     conversation,
                     pending_entry,
                     prompt=prompt,
-                    response=conversation_text,
+                    response=assistant_text,
                     display_response=display_text,
                     raw_result=raw_result,
                     token_info=final_tokens,
@@ -1689,11 +1693,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     context_messages=handle.context_messages,
                     history_snapshot=handle.history_snapshot,
                     reasoning_segments=reasoning_segments,
+                    tool_messages=tool_messages,
                 )
             else:
                 self._append_history(
                     prompt,
-                    conversation_text,
+                    assistant_text,
                     display_text,
                     raw_result,
                     final_tokens,
@@ -1702,6 +1707,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     context_messages=handle.context_messages,
                     history_snapshot=handle.history_snapshot,
                     reasoning_segments=reasoning_segments,
+                    tool_messages=tool_messages,
                 )
             handle.pending_entry = None
             handle.streamed_tool_results.clear()
@@ -1881,6 +1887,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 messages.append({"role": "user", "content": entry.prompt})
             if entry.response:
                 messages.append({"role": "assistant", "content": entry.response})
+            tool_messages = getattr(entry, "tool_messages", None)
+            if tool_messages:
+                for tool_message in tool_messages:
+                    formatted = self._format_tool_message(tool_message)
+                    if formatted is not None:
+                        messages.append(formatted)
         return tuple(messages)
 
     def _prepare_context_messages(
@@ -1914,6 +1926,126 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if not cloned:
             return None
         return tuple(cloned)
+
+    @staticmethod
+    def _clone_tool_messages(
+        tool_messages: Sequence[Mapping[str, Any]] | None,
+    ) -> tuple[dict[str, Any], ...] | None:
+        if not tool_messages:
+            return None
+        cloned: list[dict[str, Any]] = []
+        for message in tool_messages:
+            if not isinstance(message, Mapping):
+                continue
+            cloned_message: dict[str, Any] = {}
+            role_value = message.get("role")
+            role = str(role_value).strip() if role_value is not None else "tool"
+            cloned_message["role"] = role or "tool"
+            content_value = message.get("content")
+            cloned_message["content"] = (
+                str(content_value) if content_value is not None else ""
+            )
+            call_value = message.get("tool_call_id")
+            if isinstance(call_value, str) and call_value.strip():
+                cloned_message["tool_call_id"] = call_value.strip()
+            name_value = message.get("name")
+            if isinstance(name_value, str) and name_value.strip():
+                cloned_message["name"] = name_value.strip()
+            cloned.append(cloned_message)
+        if not cloned:
+            return None
+        return tuple(cloned)
+
+    @staticmethod
+    def _format_tool_message(message: Mapping[str, Any]) -> dict[str, Any] | None:
+        if not isinstance(message, Mapping):
+            return None
+        role_value = message.get("role")
+        role = str(role_value).strip() if role_value is not None else "tool"
+        content_value = message.get("content")
+        if content_value is None:
+            content = ""
+        else:
+            content = str(content_value)
+        formatted: dict[str, Any] = {"role": role or "tool", "content": content}
+        call_value = message.get("tool_call_id")
+        if isinstance(call_value, str) and call_value.strip():
+            formatted["tool_call_id"] = call_value.strip()
+        name_value = message.get("name")
+        if isinstance(name_value, str) and name_value.strip():
+            formatted["name"] = name_value.strip()
+        return formatted
+
+    @staticmethod
+    def _extract_tool_identifier(payload: Mapping[str, Any]) -> str | None:
+        for key in ("tool_call_id", "call_id", "id"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        nested_tool = payload.get("tool")
+        if isinstance(nested_tool, Mapping):
+            identifier = AgentChatPanel._extract_tool_identifier(nested_tool)
+            if identifier:
+                return identifier
+        nested_call = payload.get("call")
+        if isinstance(nested_call, Mapping):
+            identifier = AgentChatPanel._extract_tool_identifier(nested_call)
+            if identifier:
+                return identifier
+        return None
+
+    @staticmethod
+    def _extract_tool_name(payload: Mapping[str, Any]) -> str | None:
+        for key in ("tool_name", "name"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        nested_tool = payload.get("tool")
+        if isinstance(nested_tool, Mapping):
+            name = AgentChatPanel._extract_tool_name(nested_tool)
+            if name:
+                return name
+        nested_call = payload.get("call")
+        if isinstance(nested_call, Mapping):
+            name = AgentChatPanel._extract_tool_name(nested_call)
+            if name:
+                return name
+        return None
+
+    @staticmethod
+    def _prepare_tool_message_payload(payload: Any) -> dict[str, Any] | None:
+        if isinstance(payload, Mapping):
+            prepared = history_json_safe(payload)
+            if isinstance(prepared, Mapping):
+                return dict(prepared)
+            return dict(payload)
+        prepared = history_json_safe(payload)
+        if isinstance(prepared, Mapping):
+            return dict(prepared)
+        return {"value": prepared}
+
+    def _build_tool_messages(
+        self, tool_results: Sequence[Any] | None
+    ) -> tuple[dict[str, Any], ...] | None:
+        if not tool_results:
+            return None
+        messages: list[dict[str, Any]] = []
+        for payload in tool_results:
+            prepared_payload = self._prepare_tool_message_payload(payload)
+            if not prepared_payload:
+                continue
+            identifier = self._extract_tool_identifier(prepared_payload) or ""
+            name = self._extract_tool_name(prepared_payload)
+            content = json.dumps(prepared_payload, ensure_ascii=False, default=str)
+            message: dict[str, Any] = {"role": "tool", "content": content}
+            if identifier:
+                message["tool_call_id"] = identifier
+            if name:
+                message["name"] = name
+            messages.append(message)
+        if not messages:
+            return None
+        return tuple(messages)
 
     def _add_pending_entry(
         self,
@@ -1951,6 +2083,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         context_messages: tuple[dict[str, Any], ...] | None = None,
         history_snapshot: tuple[dict[str, Any], ...] | None = None,
         reasoning_segments: tuple[dict[str, str], ...] | None = None,
+        tool_messages: tuple[dict[str, Any], ...] | None = None,
     ) -> None:
         conversation = self._ensure_active_conversation()
         self._session.history.ensure_conversation_entries(conversation)
@@ -1966,6 +2099,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         tokens = token_info.tokens or 0
         context_clone = self._clone_context_messages(context_messages)
+        tool_message_clone = self._clone_tool_messages(tool_messages)
         reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
         if not reasoning_clone:
             reasoning_clone = None
@@ -1980,6 +2114,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             prompt_at=prompt_at,
             response_at=response_at,
             context_messages=context_clone,
+            tool_messages=tool_message_clone,
             reasoning=reasoning_clone,
             diagnostic=self._build_entry_diagnostic(
                 prompt=prompt_text,
@@ -2013,6 +2148,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         context_messages: tuple[dict[str, Any], ...] | None,
         history_snapshot: tuple[dict[str, Any], ...] | None = None,
         reasoning_segments: tuple[dict[str, str], ...] | None = None,
+        tool_messages: tuple[dict[str, Any], ...] | None = None,
     ) -> None:
         self._session.history.ensure_conversation_entries(conversation)
         prompt_text = normalize_for_display(prompt)
@@ -2031,6 +2167,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         entry.response_at = response_at
         context_clone = self._clone_context_messages(context_messages)
         entry.context_messages = context_clone
+        entry.tool_messages = self._clone_tool_messages(tool_messages)
         reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
         entry.reasoning = reasoning_clone or None
         resolved_tool_results = extract_tool_results(raw_result)
@@ -2164,6 +2301,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if tool_results_payload
             else None
         )
+        tool_messages = self._build_tool_messages(tool_results)
         response_text = handle.latest_llm_response or ""
         reasoning_segments: tuple[dict[str, str], ...] | None = (
             handle.latest_reasoning_segments
@@ -2216,6 +2354,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             context_messages=handle.context_messages,
             history_snapshot=handle.history_snapshot,
             reasoning_segments=reasoning_segments,
+            tool_messages=tool_messages,
         )
         handle.pending_entry = None
         handle.streamed_tool_results.clear()

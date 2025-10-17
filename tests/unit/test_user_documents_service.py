@@ -70,6 +70,10 @@ def test_read_file_applies_line_numbers_and_limits(tmp_path: Path) -> None:
     assert result["bytes_consumed"] <= 40
     assert result["truncated"] is True
     assert "     5:" in result["content"]
+    assert result["bytes_requested"] == 40
+    assert result["chunk_limit_bytes"] == 40
+    assert result["bytes_remaining"] >= 0
+    assert "truncated_mid_line" in result
 
 
 def test_create_file_rejects_existing_paths_without_flag(tmp_path: Path) -> None:
@@ -118,8 +122,10 @@ def test_read_file_rejects_invalid_arguments(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError):
         service.read_file(target.name, start_line=0)
-    with pytest.raises(ValueError):
-        service.read_file(target.name, max_bytes=service.max_read_bytes + 1)
+    result = service.read_file(target.name, max_bytes=service.max_read_bytes + 1)
+    assert result["clamped_to_limit"] is True
+    assert result["chunk_limit_bytes"] == service.max_read_bytes
+    assert result["bytes_requested"] == service.max_read_bytes + 1
 
 
 def test_custom_max_read_bytes_respected(tmp_path: Path) -> None:
@@ -128,8 +134,10 @@ def test_custom_max_read_bytes_respected(tmp_path: Path) -> None:
     payload = service.list_tree()
     assert payload["max_read_bytes"] == limit
     sample = service.create_file("info.txt", content="data")
-    with pytest.raises(ValueError):
-        service.read_file(sample.name, max_bytes=limit + 1)
+    result = service.read_file(sample.name, max_bytes=limit + 1)
+    assert result["clamped_to_limit"] is True
+    assert result["chunk_limit_bytes"] == limit
+    assert result["bytes_requested"] == limit + 1
 
 
 def test_max_read_bytes_upper_bound_enforced(tmp_path: Path) -> None:

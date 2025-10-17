@@ -407,8 +407,10 @@ class HistoryView:
     def _prepare_for_interaction(
         self, *, safe: bool = False
     ) -> HistoryInteractionPreparation:
-        if self._is_running() and not safe:
+        if self._is_running():
             return HistoryInteractionPreparation(False, False)
+        if safe:
+            return HistoryInteractionPreparation(True, False)
         callback = self._prepare_interaction
         if callback is None:
             return HistoryInteractionPreparation(True, False)

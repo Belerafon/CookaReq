@@ -67,7 +67,11 @@ so you know which modules are involved and which regressions to guard against.
   files fully, while files above 1 MiB are sampled (100 KiB) and extrapolated to
   avoid loading entire archives into memory just to display metadata. File
   creation accepts an explicit text encoding (any Python codec name) so MCP
-  tools can persist non-UTF-8 artefacts while still defaulting to UTF-8.
+  tools can persist non-UTF-8 artefacts while still defaulting to UTF-8. When a
+  caller requests more than the per-call byte allowance, `read_file()` clamps
+  the slice to the configured limit and reports `clamped_to_limit`,
+  `bytes_remaining` and the effective chunk size so higher layers (MCP tools,
+  agent UI) can guide follow-up reads without surfacing validation errors.
 * **`ApplicationContext`** — defined in `app/application.py`. It wires up
   factories for configuration management, requirement models, services, the
   local agent and the MCP controller. Both GUI and CLI entry points rely on the

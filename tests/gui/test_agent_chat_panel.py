@@ -1401,6 +1401,114 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_preserves_tool_messages_in_history(tmp_path, wx_app):
+    class ToolRecordingAgent:
+        def __init__(self) -> None:
+            self.history_snapshots: list[tuple[dict[str, Any], ...] | None] = []
+            self.calls = 0
+
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            self.calls += 1
+            if history is None:
+                self.history_snapshots.append(None)
+            else:
+                try:
+                    snapshot = tuple(dict(message) for message in history)
+                except Exception:
+                    snapshot = tuple(history)
+                self.history_snapshots.append(snapshot)
+
+            tool_payload = {
+                "tool_call_id": "call-1",
+                "call_id": "call-1",
+                "tool_name": "demo_tool",
+                "tool_arguments": {"query": text},
+                "result": {"ok": True},
+            }
+
+            if self.calls == 1:
+                if on_llm_step is not None:
+                    on_llm_step(
+                        {
+                            "step": 1,
+                            "response": {
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": "call-1",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "demo_tool",
+                                            "arguments": json.dumps({"query": text}),
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    )
+                if on_tool_result is not None:
+                    on_tool_result(dict(tool_payload))
+                if on_llm_step is not None:
+                    on_llm_step(
+                        {
+                            "step": 2,
+                            "response": {"content": "Final answer"},
+                        }
+                    )
+                return {
+                    "ok": True,
+                    "result": "Final answer",
+                    "tool_results": [dict(tool_payload)],
+                }
+
+            return "Second response"
+
+    agent = ToolRecordingAgent()
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent)
+
+    try:
+        panel.input.SetValue("first")
+        panel._on_send(None)
+        flush_wx_events(wx, count=6)
+
+        assert panel.history
+        entry = panel.history[0]
+        assert entry.tool_messages
+        first_tool_message = entry.tool_messages[0]
+        assert first_tool_message["tool_call_id"] == "call-1"
+        payload = json.loads(first_tool_message["content"])
+        assert payload["tool_call_id"] == "call-1"
+        assert payload["tool_name"] == "demo_tool"
+
+        panel.input.SetValue("second")
+        panel._on_send(None)
+        flush_wx_events(wx, count=4)
+
+        assert len(agent.history_snapshots) >= 2
+        second_history = agent.history_snapshots[1]
+        assert second_history is not None
+        history_messages = list(second_history)
+        assert history_messages[0]["role"] == "user"
+        assert history_messages[1]["role"] == "assistant"
+        tool_message = history_messages[2]
+        assert tool_message["role"] == "tool"
+        assert tool_message["tool_call_id"] == "call-1"
+        history_payload = json.loads(tool_message["content"])
+        assert history_payload["tool_call_id"] == "call-1"
+        assert history_payload["tool_name"] == "demo_tool"
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):

@@ -82,6 +82,7 @@ def test_read_user_document_returns_chunk(documents_server):
     )
     assert status == 200
     assert payload["path"] == "guides/intro.txt"
+    assert payload["encoding"] in {"utf-8", "ascii"}
     assert payload["content"].strip().endswith("Welcome to the docs")
     assert payload["truncated"] is False
 
@@ -160,6 +161,7 @@ def test_share_directory_is_readable(tmp_path: Path, free_tcp_port: int) -> None
         )
         assert status == 200
         assert payload["path"] == "guide.txt"
+        assert payload["encoding"] in {"utf-8", "ascii"}
         assert "Shared" in payload["content"]
     finally:
         stop_server()

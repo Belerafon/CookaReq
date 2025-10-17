@@ -731,6 +731,27 @@ def summarize_specific_tool(
         return lines, consumed_args, None
 
     if tool_name == "read_user_document":
+        if isinstance(result, Mapping):
+            encoding = result.get("encoding")
+            if encoding:
+                lines.append(
+                    _("Encoding: {encoding}").format(
+                        encoding=format_value_snippet(encoding)
+                    )
+                )
+                consumed_result.add("encoding")
+            source_raw = result.get("encoding_source")
+            if isinstance(source_raw, str):
+                source = source_raw.strip().lower()
+                if source == "fallback":
+                    lines.append(
+                        _("Encoding detection fell back to {encoding}.").format(
+                            encoding=format_value_snippet(encoding)
+                        )
+                    )
+                elif source == "empty":
+                    lines.append(_("File is empty; default encoding applied."))
+            consumed_result.update({"encoding_source", "encoding_confidence"})
         if isinstance(result, Mapping) and "content" in result:
             preview = _summarize_document_content_preview(result.get("content"))
             lines.append(

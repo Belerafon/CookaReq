@@ -6,6 +6,7 @@ license = { file = "LICENSE" }
 dependencies = [
     "wxPython",
     "jsonschema",
+    "charset-normalizer",
     "fastapi",
     "uvicorn",
     "mcp",

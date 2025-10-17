@@ -25,6 +25,9 @@ def test_read_user_document_summary_uses_compact_preview(monkeypatch) -> None:
         "tool_arguments": {"path": "docs/sample.txt"},
         "result": {
             "path": "docs/sample.txt",
+            "encoding": "utf-8",
+            "encoding_source": "detected",
+            "encoding_confidence": 1.0,
             "start_line": 1,
             "end_line": 2,
             "bytes_consumed": len(content.encode("utf-8")),
@@ -36,6 +39,10 @@ def test_read_user_document_summary_uses_compact_preview(monkeypatch) -> None:
 
     summary = summarize_tool_payload(1, payload)
     assert summary is not None
+    encoding_line = next(
+        line for line in summary.bullet_lines if line.startswith("Encoding:")
+    )
+    assert "utf-8" in encoding_line
     preview_line = next(
         line for line in summary.bullet_lines if line.startswith("Content preview:")
     )

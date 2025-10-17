@@ -6,6 +6,7 @@ fastapi
 uvicorn
 mcp
 jsonpatch
+charset-normalizer>=3.3
 openai
 pydantic
 polib>=1.2

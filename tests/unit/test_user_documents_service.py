@@ -65,6 +65,9 @@ def test_read_file_applies_line_numbers_and_limits(tmp_path: Path) -> None:
 
     result = service.read_file(target.name, start_line=5, max_bytes=40)
 
+    assert result["encoding"]
+    assert result["encoding_source"] in {"detected", "fallback", "empty"}
+    assert "encoding_confidence" in result
     assert result["start_line"] == 5
     assert result["end_line"] >= 5
     assert result["bytes_consumed"] <= 40
@@ -126,6 +129,7 @@ def test_read_file_rejects_invalid_arguments(tmp_path: Path) -> None:
     assert result["clamped_to_limit"] is True
     assert result["chunk_limit_bytes"] == service.max_read_bytes
     assert result["bytes_requested"] == service.max_read_bytes + 1
+    assert result["encoding"]
 
 
 def test_custom_max_read_bytes_respected(tmp_path: Path) -> None:
@@ -166,6 +170,24 @@ def test_handles_unicode_and_space_paths(tmp_path: Path) -> None:
     chunk = service.read_file("ТЗ/План работ.txt", max_bytes=128)
     assert "первая строка" in chunk["content"]
     assert chunk["path"] == "ТЗ/План работ.txt"
+    assert chunk["encoding"]
+
+
+def test_read_file_detects_legacy_encodings(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+    content = "Привет мир"
+    created = service.create_file(
+        "legacy/cp1251.txt",
+        content=content,
+        encoding="cp1251",
+    )
+
+    assert created.exists()
+    chunk = service.read_file("legacy/cp1251.txt", max_bytes=128)
+    assert chunk["encoding"] == "cp1251"
+    assert chunk["encoding_source"] == "detected"
+    assert chunk["encoding_confidence"] is None or chunk["encoding_confidence"] >= 0
+    assert "Привет" in chunk["content"]
 
 
 def test_large_files_use_sampling_heuristic(tmp_path: Path) -> None:

@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import codecs
+import unicodedata
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
+
+from charset_normalizer import from_bytes
 
 from ..llm.tokenizer import TokenCountResult, combine_token_counts, count_text_tokens
 
@@ -13,6 +17,49 @@ DEFAULT_MAX_READ_BYTES = 10_240
 MAX_ALLOWED_READ_BYTES = 524_288
 LARGE_FILE_TOKEN_ESTIMATE_BYTES = 1_048_576
 TOKEN_COUNT_SAMPLE_BYTES = 102_400
+ENCODING_DETECTION_SAMPLE_BYTES = 1_048_576
+_GOOD_UNICODE_CATEGORIES = {
+    "Lu",
+    "Ll",
+    "Lt",
+    "Lm",
+    "Lo",
+    "Nd",
+    "Nl",
+    "No",
+    "Zs",
+    "Po",
+    "Pc",
+    "Pd",
+    "Ps",
+    "Pe",
+    "Pi",
+    "Pf",
+    "Sc",
+    "Sm",
+}
+_LANGUAGE_ENCODING_PRIORITIES: dict[str, tuple[str, ...]] = {
+    "russian": ("utf-8", "utf_8", "cp1251", "koi8_r", "cp866", "cp1125"),
+    "ukrainian": ("utf-8", "utf_8", "cp1251", "koi8_r", "cp866"),
+    "belarusian": ("utf-8", "utf_8", "cp1251", "koi8_r", "cp866"),
+    "bulgarian": ("utf-8", "utf_8", "cp1251", "koi8_r", "cp866"),
+    "serbian": ("utf-8", "utf_8", "cp1251", "cp1250", "latin_1"),
+    "macedonian": ("utf-8", "utf_8", "cp1251"),
+    "english": ("utf-8", "utf_8", "cp1252", "latin_1", "ascii"),
+    "german": ("utf-8", "utf_8", "cp1252", "latin_1"),
+    "french": ("utf-8", "utf_8", "cp1252", "latin_1"),
+    "spanish": ("utf-8", "utf_8", "cp1252", "latin_1"),
+    "portuguese": ("utf-8", "utf_8", "cp1252", "latin_1"),
+    "italian": ("utf-8", "utf_8", "cp1252", "latin_1"),
+    "polish": ("utf-8", "utf_8", "cp1250", "latin_2"),
+    "czech": ("utf-8", "utf_8", "cp1250", "latin_2"),
+    "slovak": ("utf-8", "utf_8", "cp1250", "latin_2"),
+    "hungarian": ("utf-8", "utf_8", "cp1250", "latin_2"),
+    "greek": ("utf-8", "utf_8", "cp1253"),
+    "hebrew": ("utf-8", "utf_8", "cp1255"),
+    "arabic": ("utf-8", "utf_8", "cp1256"),
+    "thai": ("utf-8", "utf_8", "cp874"),
+}
 
 
 def normalise_text_encoding(value: str | None) -> str:
@@ -27,6 +74,94 @@ def normalise_text_encoding(value: str | None) -> str:
         return codecs.lookup(text).name
     except LookupError as exc:  # pragma: no cover - passthrough for callers
         raise LookupError(f"Unknown encoding: {value}") from exc
+
+
+def detect_file_encoding(path: Path) -> EncodingDetectionResult:
+    """Inspect ``path`` and return the most likely text encoding."""
+
+    fallback = normalise_text_encoding("utf-8")
+    try:
+        with path.open("rb") as stream:
+            sample = stream.read(ENCODING_DETECTION_SAMPLE_BYTES)
+    except OSError:
+        return EncodingDetectionResult(fallback, None, "fallback")
+    if not sample:
+        return EncodingDetectionResult(fallback, None, "empty")
+
+    try:
+        candidates = list(from_bytes(sample))
+    except Exception:  # pragma: no cover - defensive
+        return EncodingDetectionResult(fallback, None, "fallback")
+
+    best_encoding: str | None = None
+    best_confidence: float | None = None
+    best_score = float("-inf")
+
+    for match in candidates:
+        encoding_name = getattr(match, "encoding", None)
+        if not encoding_name:
+            continue
+        try:
+            normalized = normalise_text_encoding(encoding_name)
+        except LookupError:
+            continue
+        try:
+            decoded = sample.decode(normalized, errors="strict")
+        except UnicodeDecodeError:
+            continue
+        total = len(decoded)
+        if total == 0:
+            continue
+        good = 0
+        symbols = 0
+        controls = 0
+        for ch in decoded:
+            category = unicodedata.category(ch)
+            if category in _GOOD_UNICODE_CATEGORIES:
+                good += 1
+            elif category.startswith("S"):
+                symbols += 1
+            elif category.startswith("C"):
+                controls += 1
+        letter_ratio = good / total
+        symbol_ratio = symbols / total
+        control_ratio = controls / total
+        confidence = getattr(match, "coherence", None)
+        if confidence is None:
+            percent = getattr(match, "percent_coherence", None)
+            if percent is not None:
+                confidence = float(percent) / 100.0
+        score = (confidence or 0.0) + (letter_ratio * 0.2) - (symbol_ratio * 0.15) - (
+            control_ratio * 0.3
+        )
+        language = getattr(match, "language", None)
+        language_bonus = 0.0
+        language_key = None
+        if isinstance(language, str):
+            language_key = language.strip().lower()
+            if language_key and language_key != "unknown":
+                language_bonus += 0.05
+        if language_key:
+            preferences = _LANGUAGE_ENCODING_PRIORITIES.get(language_key)
+            if preferences:
+                try:
+                    index = preferences.index(normalized)
+                except ValueError:
+                    pass
+                else:
+                    language_bonus += max(len(preferences) - index, 1) * 0.02
+        alphabets = getattr(match, "alphabets", None)
+        if alphabets and any("Box Drawing" in str(alpha) for alpha in alphabets):
+            language_bonus -= 0.05
+        score += language_bonus
+        if score > best_score:
+            best_score = score
+            best_encoding = normalized
+            best_confidence = confidence
+
+    if best_encoding:
+        return EncodingDetectionResult(best_encoding, best_confidence, "detected")
+    return EncodingDetectionResult(fallback, None, "fallback")
 
 
 @dataclass(slots=True)
@@ -57,6 +192,15 @@ class UserDocumentEntry:
         if self.children:
             payload["children"] = [child.to_dict() for child in self.children]
         return payload
+
+
+@dataclass(slots=True)
+class EncodingDetectionResult:
+    """Outcome of attempting to determine a file's text encoding."""
+
+    encoding: str
+    confidence: float | None
+    source: Literal["detected", "fallback", "empty"]
 
 
 class UserDocumentsService:
@@ -130,6 +274,8 @@ class UserDocumentsService:
         chunk_limit = min(requested_bytes, self.max_read_bytes)
         clamped = chunk_limit < requested_bytes
 
+        detection = detect_file_encoding(file_path)
+        encoding = detection.encoding
         collected: list[str] = []
         consumed = 0
         current_line = 0
@@ -139,10 +285,10 @@ class UserDocumentsService:
         prefix_bytes = 0
         file_size = file_path.stat().st_size
 
-        with file_path.open("r", encoding="utf-8", errors="replace") as stream:
+        with file_path.open("r", encoding=encoding, errors="replace") as stream:
             for raw_line in stream:
                 current_line += 1
-                encoded = raw_line.encode("utf-8")
+                encoded = raw_line.encode(encoding, errors="replace")
                 if current_line < start_line:
                     prefix_bytes += len(encoded)
                     continue
@@ -151,7 +297,7 @@ class UserDocumentsService:
                     truncated = True
                     break
                 if len(encoded) > remaining:
-                    segment = encoded[:remaining].decode("utf-8", errors="ignore")
+                    segment = encoded[:remaining].decode(encoding, errors="ignore")
                     collected.append(f"{current_line:>6}: {segment}")
                     consumed = chunk_limit
                     end_line = current_line
@@ -174,6 +320,9 @@ class UserDocumentsService:
 
         return {
             "path": self._relative_path(file_path).as_posix(),
+            "encoding": encoding,
+            "encoding_source": detection.source,
+            "encoding_confidence": detection.confidence,
             "start_line": start_line,
             "end_line": end_line,
             "bytes_consumed": consumed,
@@ -245,10 +394,12 @@ class UserDocumentsService:
 
     def _build_file(self, path: Path, relative: Path) -> UserDocumentEntry:
         size = path.stat().st_size
+        detection = detect_file_encoding(path)
+        encoding = detection.encoding
         if size > LARGE_FILE_TOKEN_ESTIMATE_BYTES:
-            tokens = self._estimate_tokens_for_large_file(path, size)
+            tokens = self._estimate_tokens_for_large_file(path, size, encoding)
         else:
-            text = path.read_text(encoding="utf-8", errors="replace")
+            text = path.read_text(encoding=encoding, errors="replace")
             tokens = count_text_tokens(text, model=self.token_model)
         percent = self._percent_of_context(tokens.tokens)
         return UserDocumentEntry(
@@ -260,11 +411,13 @@ class UserDocumentsService:
             percent_of_context=percent,
         )
 
-    def _estimate_tokens_for_large_file(self, path: Path, size: int) -> TokenCountResult:
+    def _estimate_tokens_for_large_file(
+        self, path: Path, size: int, encoding: str
+    ) -> TokenCountResult:
         sample_size = min(TOKEN_COUNT_SAMPLE_BYTES, size)
         with path.open("rb") as stream:
             sample_bytes = stream.read(sample_size)
-        sample_text = sample_bytes.decode("utf-8", errors="replace")
+        sample_text = sample_bytes.decode(encoding, errors="replace")
         sample_result = count_text_tokens(sample_text, model=self.token_model)
         model = sample_result.model or self.token_model
         reason_parts: list[str] = ["sampled_heuristic"]

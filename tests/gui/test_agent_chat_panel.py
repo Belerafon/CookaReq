@@ -3109,6 +3109,54 @@ def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
     destroy_panel(frame, panel)
 
 
+def test_primary_action_button_visible_without_bitmaps(
+    tmp_path, wx_app, monkeypatch
+):
+    wx = pytest.importorskip("wx")
+    from app.ui.agent_chat_panel.layout import AgentChatLayoutBuilder
+
+    class DummyAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            return {"ok": True, "error": None, "result": {}}
+
+    monkeypatch.setattr(
+        AgentChatLayoutBuilder,
+        "_render_primary_action_bitmaps",
+        lambda self, parent, icon_size, svg_builder: None,
+    )
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, DummyAgent())
+    try:
+        layout = panel._layout
+        assert layout is not None
+        button = layout.primary_action_button
+        frame.SetClientSize((800, 600))
+        frame.Show()
+        frame.SendSizeEvent()
+        flush_wx_events(wx)
+
+        assert button.IsShown()
+        min_size = button.GetMinSize()
+        assert min_size.GetWidth() > 0
+        assert min_size.GetHeight() > 0
+
+        button.InvalidateBestSize()
+        best_size = button.GetBestSize()
+        assert best_size.GetWidth() > 0
+        assert best_size.GetHeight() > 0
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_rejects_unknown_history_version(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel

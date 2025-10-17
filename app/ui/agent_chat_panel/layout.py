@@ -451,6 +451,10 @@ class AgentChatLayoutBuilder:
             if visual.min_size is not None:
                 width = max(width, visual.min_size.GetWidth())
                 height = max(height, visual.min_size.GetHeight())
+        if idle_visual.min_size is None and stop_visual.min_size is None:
+            fallback_edge = dip(button, PRIMARY_ACTION_ICON_EDGE)
+            width = max(width, fallback_edge)
+            height = max(height, fallback_edge)
         edge = max(width, height)
         button.SetMinSize(wx.Size(edge, edge))
 
@@ -464,9 +468,75 @@ class AgentChatLayoutBuilder:
         self._apply_primary_action_visual(button, visual)
         button.InvalidateBestSize()
         size = button.GetBestSize()
-        if not size.IsFullySpecified():
-            return wx.Size(max(size.width, 0), max(size.height, 0))
+        if (
+            not size.IsFullySpecified()
+            or size.width <= 0
+            or size.height <= 0
+        ):
+            return self._fallback_primary_action_size(button)
         return size
+
+    # ------------------------------------------------------------------
+    def _fallback_primary_action_size(self, button: wx.Button) -> wx.Size:
+        """Estimate a positive button size when :meth:`GetBestSize` fails."""
+        label = button.GetLabel()
+        if label:
+            label_size = self._measure_primary_action_label(button, label)
+            if (
+                label_size is not None
+                and label_size.width > 0
+                and label_size.height > 0
+            ):
+                return label_size
+
+        fallback_edge = dip(button, PRIMARY_ACTION_ICON_EDGE)
+        return wx.Size(max(fallback_edge, 1), max(fallback_edge, 1))
+
+    # ------------------------------------------------------------------
+    def _measure_primary_action_label(
+        self, button: wx.Button, label: str
+    ) -> wx.Size | None:
+        """Measure label bounds using text helpers available on the button."""
+        sizer_creator = getattr(button, "CreateTextSizer", None)
+        if callable(sizer_creator):
+            try:
+                sizer = sizer_creator(label)
+            except Exception:
+                sizer = None
+            if sizer is not None:
+                getter = getattr(sizer, "GetMinSize", None)
+                if callable(getter):
+                    try:
+                        sizer_size = getter()
+                    except Exception:
+                        sizer_size = None
+                    if isinstance(sizer_size, wx.Size):
+                        width = int(max(sizer_size.GetWidth(), 0))
+                        height = int(max(sizer_size.GetHeight(), 0))
+                        if width > 0 and height > 0:
+                            return wx.Size(width, height)
+
+        try:
+            extent = button.GetTextExtent(label)
+        except Exception:
+            return None
+
+        width: int
+        height: int
+        if isinstance(extent, (tuple, list)) and len(extent) >= 2:
+            width = int(extent[0])
+            height = int(extent[1])
+        else:
+            width = int(getattr(extent, "width", 0))
+            height = int(getattr(extent, "height", 0))
+
+        width = max(width, 0)
+        height = max(height, 0)
+        if width <= 0 or height <= 0:
+            return None
+
+        padding = dip(button, 6)
+        return wx.Size(width + max(padding, 0), height + max(padding, 0))
 
     # ------------------------------------------------------------------
     def _apply_primary_action_visual(

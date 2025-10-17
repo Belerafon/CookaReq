@@ -349,7 +349,7 @@ class HistoryView:
         if self._suppress_selection:
             event.Skip()
             return
-        preparation = self._prepare_for_interaction(safe=True)
+        preparation = self._prepare_for_interaction()
         if not preparation.allowed:
             event.Skip()
             return
@@ -375,7 +375,7 @@ class HistoryView:
 
     # ------------------------------------------------------------------
     def _on_mouse_down(self, event: wx.MouseEvent) -> None:
-        preparation = self._prepare_for_interaction(safe=True)
+        preparation = self._prepare_for_interaction()
         if not preparation.allowed:
             event.Skip()
             return

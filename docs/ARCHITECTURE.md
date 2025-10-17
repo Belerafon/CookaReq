@@ -62,10 +62,11 @@ so you know which modules are involved and which regressions to guard against.
   and GUI, ensuring that document metadata and requirement payloads stay in sync
   when keys change or disappear.
 * **`UserDocumentsService`** — indexes external documentation for the agent.
-  It enforces size limits, token budgets and serialises directory snapshots so
-  that LLM prompts only include manageable chunks. Token counters read small
-  files fully, while files above 1 MiB are sampled (100 KiB) and extrapolated to
-  avoid loading entire archives into memory just to display metadata.
+  It enforces size limits, honours per-call text encodings for reads and writes,
+  and serialises directory snapshots so that LLM prompts only include manageable
+  chunks. Token counters read small files fully, while files above 1 MiB are
+  sampled (100 KiB) and extrapolated to avoid loading entire archives into
+  memory just to display metadata.
 * **`ApplicationContext`** — defined in `app/application.py`. It wires up
   factories for configuration management, requirement models, services, the
   local agent and the MCP controller. Both GUI and CLI entry points rely on the

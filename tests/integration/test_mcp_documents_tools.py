@@ -23,6 +23,7 @@ def documents_server(tmp_path: Path, free_tcp_port: int):
     guides.mkdir(parents=True)
     (guides / "intro.txt").write_text("Welcome to the docs", encoding="utf-8")
     (docs_dir / "empty.txt").write_text("", encoding="utf-8")
+    (guides / "legacy.txt").write_text("Привет", encoding="cp1251")
 
     stop_server()
     start_server(
@@ -84,6 +85,20 @@ def test_read_user_document_returns_chunk(documents_server):
     assert payload["path"] == "guides/intro.txt"
     assert payload["content"].strip().endswith("Welcome to the docs")
     assert payload["truncated"] is False
+    assert payload["encoding"] == "utf-8"
+
+
+def test_read_user_document_allows_custom_encoding(documents_server):
+    port, _ = documents_server
+    status, payload = _call_tool(
+        port,
+        "read_user_document",
+        {"path": "guides/legacy.txt", "encoding": "cp1251"},
+    )
+    assert status == 200
+    assert payload["encoding"] == "cp1251"
+    assert "Привет" in payload["content"]
+    assert payload["bytes_consumed"] == len("Привет".encode("cp1251"))
 
 
 def test_create_user_document_writes_file(documents_server):
@@ -95,9 +110,30 @@ def test_create_user_document_writes_file(documents_server):
     )
     assert status == 200
     assert payload["path"] == "notes/new.txt"
+    assert payload["encoding"] == "utf-8"
+    assert payload["bytes_written"] == len("hello".encode("utf-8"))
     created_file = docs_dir / "notes" / "new.txt"
     assert created_file.exists()
     assert created_file.read_text(encoding="utf-8") == "hello"
+
+
+def test_create_user_document_allows_custom_encoding(documents_server):
+    port, docs_dir = documents_server
+    status, payload = _call_tool(
+        port,
+        "create_user_document",
+        {
+            "path": "notes/legacy.txt",
+            "content": "Привет",
+            "exist_ok": False,
+            "encoding": "cp1251",
+        },
+    )
+    assert status == 200
+    assert payload["encoding"] == "cp1251"
+    assert payload["bytes_written"] == len("Привет".encode("cp1251"))
+    created_file = docs_dir / "notes" / "legacy.txt"
+    assert created_file.read_bytes() == "Привет".encode("cp1251")
 
 
 def test_delete_user_document_removes_file(documents_server):
@@ -112,6 +148,39 @@ def test_delete_user_document_removes_file(documents_server):
     assert status == 200
     assert payload["deleted"] is True
     assert not target.exists()
+
+
+def test_read_user_document_rejects_unknown_encoding(documents_server):
+    port, _ = documents_server
+    status, payload = _call_tool(
+        port,
+        "read_user_document",
+        {"path": "guides/intro.txt", "encoding": "does-not-exist"},
+    )
+    assert status == 200
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_create_user_document_rejects_unknown_encoding(documents_server):
+    port, _ = documents_server
+    status, payload = _call_tool(
+        port,
+        "create_user_document",
+        {"path": "bad.txt", "encoding": "does-not-exist"},
+    )
+    assert status == 200
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_create_user_document_rejects_unencodable_content(documents_server):
+    port, _ = documents_server
+    status, payload = _call_tool(
+        port,
+        "create_user_document",
+        {"path": "notes/euro.txt", "encoding": "cp1251", "content": "漢"},
+    )
+    assert status == 200
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
 
 
 def test_tools_require_configured_root(tmp_path: Path, free_tcp_port: int):

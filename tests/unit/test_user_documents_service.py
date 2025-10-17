@@ -70,6 +70,7 @@ def test_read_file_applies_line_numbers_and_limits(tmp_path: Path) -> None:
     assert result["bytes_consumed"] <= 40
     assert result["truncated"] is True
     assert "     5:" in result["content"]
+    assert result["encoding"] == "utf-8"
 
 
 def test_create_file_rejects_existing_paths_without_flag(tmp_path: Path) -> None:
@@ -78,6 +79,28 @@ def test_create_file_rejects_existing_paths_without_flag(tmp_path: Path) -> None
 
     with pytest.raises(FileExistsError):
         service.create_file("report.txt", content="overwrite")
+
+
+def test_create_file_uses_requested_encoding(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+
+    created = service.create_file(
+        "notes/legacy.txt",
+        content="Привет",
+        encoding="cp1251",
+    )
+
+    assert created.read_bytes() == "Привет".encode("cp1251")
+    assert created.read_text(encoding="cp1251") == "Привет"
+    with pytest.raises(UnicodeDecodeError):
+        created.read_text(encoding="utf-8")
+
+
+def test_create_file_rejects_unknown_encoding(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+
+    with pytest.raises(ValueError):
+        service.create_file("legacy.txt", encoding="charset-does-not-exist")
 
 
 def test_delete_file_and_traversal_guard(tmp_path: Path) -> None:
@@ -102,6 +125,35 @@ def test_read_file_rejects_invalid_arguments(tmp_path: Path) -> None:
         service.read_file(target.name, start_line=0)
     with pytest.raises(ValueError):
         service.read_file(target.name, max_bytes=service.max_read_bytes + 1)
+
+
+def test_read_file_supports_custom_encoding(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+    target = service.root / "legacy.txt"
+    target.write_text("Привет", encoding="cp1251")
+
+    chunk = service.read_file(target.name, encoding="cp1251", max_bytes=64)
+
+    assert chunk["encoding"] == "cp1251"
+    assert "Привет" in chunk["content"]
+    assert chunk["bytes_consumed"] == len("Привет".encode("cp1251"))
+
+
+def test_read_file_normalises_encoding_names(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+    target = service.create_file("sample.txt", content="payload")
+
+    chunk = service.read_file(target.name, encoding="  UTF-8  ")
+
+    assert chunk["encoding"] == "utf-8"
+
+
+def test_read_file_rejects_unknown_encoding(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+    target = service.create_file("sample.txt", content="data")
+
+    with pytest.raises(ValueError):
+        service.read_file(target.name, encoding="invalid-charset")
 
 
 def test_custom_max_read_bytes_respected(tmp_path: Path) -> None:

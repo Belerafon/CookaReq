@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +13,23 @@ DEFAULT_MAX_READ_BYTES = 10_240
 MAX_ALLOWED_READ_BYTES = 524_288
 LARGE_FILE_TOKEN_ESTIMATE_BYTES = 1_048_576
 TOKEN_COUNT_SAMPLE_BYTES = 102_400
+DEFAULT_DOCUMENT_ENCODING = "utf-8"
+
+
+def normalise_document_encoding(value: str | None) -> str:
+    """Resolve ``value`` into a canonical codec name understood by Python."""
+
+    if value is None:
+        return DEFAULT_DOCUMENT_ENCODING
+    if not isinstance(value, str):
+        raise ValueError("encoding must be a string")
+    alias = value.strip()
+    if not alias:
+        raise ValueError("encoding must be a non-empty string")
+    try:
+        return codecs.lookup(alias).name
+    except LookupError as exc:
+        raise ValueError(f"unknown encoding: {value}") from exc
 
 
 @dataclass(slots=True)
@@ -100,6 +118,7 @@ class UserDocumentsService:
         *,
         start_line: int = 1,
         max_bytes: int | None = None,
+        encoding: str | None = None,
     ) -> dict[str, object]:
         """Return a chunk of the target file capped at ``max_bytes`` bytes."""
         file_path = self._ensure_file(relative_path)
@@ -112,23 +131,31 @@ class UserDocumentsService:
                 f"max_bytes must be within 1..{self.max_read_bytes}"
             )
 
+        resolved_encoding = normalise_document_encoding(encoding)
+
         collected: list[str] = []
         consumed = 0
         current_line = 0
         end_line = start_line - 1
         truncated = False
-        with file_path.open("r", encoding="utf-8", errors="replace") as stream:
+        with file_path.open(
+            "r", encoding=resolved_encoding, errors="replace"
+        ) as stream:
             for raw_line in stream:
                 current_line += 1
                 if current_line < start_line:
                     continue
-                encoded = raw_line.encode("utf-8")
+                encoded = raw_line.encode(
+                    resolved_encoding, errors="replace"
+                )
                 remaining = max_bytes - consumed
                 if remaining <= 0:
                     truncated = True
                     break
                 if len(encoded) > remaining:
-                    segment = encoded[:remaining].decode("utf-8", errors="ignore")
+                    segment = encoded[:remaining].decode(
+                        resolved_encoding, errors="ignore"
+                    )
                     collected.append(f"{current_line:>6}: {segment}")
                     consumed = max_bytes
                     end_line = current_line
@@ -154,6 +181,7 @@ class UserDocumentsService:
             "bytes_consumed": consumed,
             "content": content,
             "truncated": truncated,
+            "encoding": resolved_encoding,
         }
 
     # ------------------------------------------------------------------
@@ -163,6 +191,7 @@ class UserDocumentsService:
         *,
         content: str = "",
         exist_ok: bool = False,
+        encoding: str | None = None,
     ) -> Path:
         """Create a new file under the documents root with optional content."""
         target = self._resolve_path(relative_path)
@@ -174,7 +203,8 @@ class UserDocumentsService:
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
         mode = "w" if exist_ok else "x"
-        with target.open(mode, encoding="utf-8") as stream:
+        resolved_encoding = normalise_document_encoding(encoding)
+        with target.open(mode, encoding=resolved_encoding) as stream:
             stream.write(content)
         return target
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +13,20 @@ DEFAULT_MAX_READ_BYTES = 10_240
 MAX_ALLOWED_READ_BYTES = 524_288
 LARGE_FILE_TOKEN_ESTIMATE_BYTES = 1_048_576
 TOKEN_COUNT_SAMPLE_BYTES = 102_400
+
+
+def normalise_text_encoding(value: str | None) -> str:
+    """Return a canonical encoding name, defaulting to UTF-8."""
+
+    if value is None:
+        return "utf-8"
+    text = str(value).strip()
+    if not text:
+        return "utf-8"
+    try:
+        return codecs.lookup(text).name
+    except LookupError as exc:  # pragma: no cover - passthrough for callers
+        raise LookupError(f"Unknown encoding: {value}") from exc
 
 
 @dataclass(slots=True)
@@ -163,6 +178,7 @@ class UserDocumentsService:
         *,
         content: str = "",
         exist_ok: bool = False,
+        encoding: str | None = None,
     ) -> Path:
         """Create a new file under the documents root with optional content."""
         target = self._resolve_path(relative_path)
@@ -174,7 +190,8 @@ class UserDocumentsService:
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
         mode = "w" if exist_ok else "x"
-        with target.open(mode, encoding="utf-8") as stream:
+        normalized_encoding = normalise_text_encoding(encoding)
+        with target.open(mode, encoding=normalized_encoding) as stream:
             stream.write(content)
         return target
 
@@ -306,6 +323,7 @@ class UserDocumentsService:
         except ValueError as exc:  # pragma: no cover - path traversal guard
             raise PermissionError("Attempted to access path outside of documents root") from exc
         return candidate
+
 
     def _ensure_file(self, relative_path: str | Path) -> Path:
         path = self._resolve_path(relative_path)

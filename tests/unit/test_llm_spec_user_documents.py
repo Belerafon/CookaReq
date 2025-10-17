@@ -43,9 +43,19 @@ def test_read_user_document_schema_enforces_limits() -> None:
     assert start_line["minimum"] == 1
 
 
+def test_create_user_document_schema_includes_encoding() -> None:
+    entry = _tool_entry("create_user_document")
+    params = entry["parameters"]  # type: ignore[index]
+    properties = params["properties"]  # type: ignore[index]
+    assert "encoding" in properties
+    encoding = properties["encoding"]  # type: ignore[index]
+    assert "Python codec" in encoding["description"]
+
+
 def test_system_prompt_mentions_user_document_guidance() -> None:
     prompt = SYSTEM_PROMPT
     assert "list_user_documents" in prompt
     assert "read_user_document" in prompt
     assert "default 10 KiB" in prompt
     assert "never exceeding 512 KiB" in prompt
+    assert "encoding" in prompt

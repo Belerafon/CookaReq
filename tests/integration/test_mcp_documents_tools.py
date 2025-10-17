@@ -91,13 +91,35 @@ def test_create_user_document_writes_file(documents_server):
     status, payload = _call_tool(
         port,
         "create_user_document",
-        {"path": "notes/new.txt", "content": "hello", "exist_ok": False},
+        {
+            "path": "notes/new.txt",
+            "content": "Привет",
+            "exist_ok": False,
+            "encoding": "cp1251",
+        },
     )
     assert status == 200
     assert payload["path"] == "notes/new.txt"
+    assert payload["encoding"] == "cp1251"
     created_file = docs_dir / "notes" / "new.txt"
     assert created_file.exists()
-    assert created_file.read_text(encoding="utf-8") == "hello"
+    assert created_file.read_bytes() == "Привет".encode("cp1251")
+
+
+def test_create_user_document_rejects_unknown_encoding(documents_server):
+    port, _ = documents_server
+    status, payload = _call_tool(
+        port,
+        "create_user_document",
+        {
+            "path": "notes/new.txt",
+            "content": "text",
+            "encoding": "unknown-encoding",
+        },
+    )
+    assert status == 200
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
+    assert "Unknown encoding" in payload["error"]["message"]
 
 
 def test_delete_user_document_removes_file(documents_server):
@@ -112,6 +134,35 @@ def test_delete_user_document_removes_file(documents_server):
     assert status == 200
     assert payload["deleted"] is True
     assert not target.exists()
+
+
+def test_share_directory_is_readable(tmp_path: Path, free_tcp_port: int) -> None:
+    port = free_tcp_port
+    base_dir = tmp_path / "workspace"
+    share_dir = base_dir / "share"
+    share_dir.mkdir(parents=True)
+    (share_dir / "guide.txt").write_text("Shared", encoding="utf-8")
+
+    stop_server()
+    start_server(
+        port=port,
+        base_path=str(base_dir),
+        documents_path="share",
+        max_context_tokens=_TEST_CONTEXT_LIMIT,
+        token_model=_TEST_MODEL,
+    )
+    _wait_until_ready(port)
+    try:
+        status, payload = _call_tool(
+            port,
+            "read_user_document",
+            {"path": "guide.txt", "max_bytes": 128},
+        )
+        assert status == 200
+        assert payload["path"] == "guide.txt"
+        assert "Shared" in payload["content"]
+    finally:
+        stop_server()
 
 
 def test_tools_require_configured_root(tmp_path: Path, free_tcp_port: int):

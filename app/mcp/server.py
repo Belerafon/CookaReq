@@ -467,6 +467,7 @@ def read_user_document(
     *,
     start_line: int = 1,
     max_bytes: int | None = None,
+    encoding: str | None = None,
 ) -> dict:
     """Read a chunk from a user-provided document."""
     service = _documents_service()
@@ -475,6 +476,7 @@ def read_user_document(
         path,
         start_line=start_line,
         max_bytes=max_bytes,
+        encoding=encoding,
     )
 
 
@@ -484,6 +486,7 @@ def create_user_document(
     *,
     content: str = "",
     exist_ok: bool = False,
+    encoding: str | None = None,
 ) -> dict:
     """Create a user document relative to the configured root."""
     service = _documents_service()
@@ -492,6 +495,7 @@ def create_user_document(
         path,
         content=content,
         exist_ok=exist_ok,
+        encoding=encoding,
     )
 
 

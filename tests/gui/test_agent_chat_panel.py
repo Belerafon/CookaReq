@@ -2328,6 +2328,37 @@ def test_message_bubble_user_textctrl_enables_vertical_scroll(wx_app):
         frame.Destroy()
 
 
+def test_message_bubble_user_textctrl_hides_vertical_scroll_for_short_text(wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.widgets.chat_message import MessageBubble
+
+    frame = wx.Frame(None, size=wx.Size(800, 600))
+    bubble = MessageBubble(
+        frame,
+        role_label="User",
+        timestamp="",
+        text="короткий текст",
+        align="right",
+        allow_selection=True,
+        render_markdown=False,
+    )
+
+    sizer = wx.BoxSizer(wx.VERTICAL)
+    sizer.Add(bubble, 1, wx.EXPAND | wx.ALL, bubble.FromDIP(8))
+    frame.SetSizer(sizer)
+    frame.Layout()
+    frame.Show()
+    flush_wx_events(wx, count=10)
+
+    try:
+        assert isinstance(bubble._text, wx.TextCtrl)
+        assert not bubble._text.HasFlag(wx.VSCROLL)
+        assert bubble._text.HasFlag(wx.TE_NO_VSCROLL)
+        assert not bubble._text.HasScrollbar(wx.VERTICAL)
+    finally:
+        frame.Destroy()
+
+
 def test_message_bubble_destroy_ignores_pending_width_update(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.widgets.chat_message import MessageBubble

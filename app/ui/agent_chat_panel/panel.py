@@ -1520,6 +1520,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     history_counts.append(entry.ensure_prompt_token_usage(model))
                 if entry.response:
                     history_counts.append(entry.ensure_response_token_usage(model))
+                tool_messages = getattr(entry, "tool_messages", None)
+                if tool_messages:
+                    for message in tool_messages:
+                        if not isinstance(message, Mapping):
+                            continue
+                        history_counts.append(
+                            count_context_message_tokens(message, model)
+                        )
         if history_counts:
             history_tokens = combine_token_counts(history_counts)
         else:

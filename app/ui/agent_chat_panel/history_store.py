@@ -163,14 +163,31 @@ class HistoryStore:
         self,
         conversations: Iterable[ChatConversation],
         active_id: str | None,
+        *,
+        dirty_ids: Iterable[str] | None = None,
+        structure_dirty: bool = False,
     ) -> None:
         """Persist *conversations* to the configured history path."""
+        conversations_list = list(conversations)
+        if dirty_ids is None:
+            dirty_conversations = {
+                conv.conversation_id for conv in conversations_list
+            }
+        else:
+            dirty_conversations = {
+                conv_id for conv_id in dirty_ids if isinstance(conv_id, str)
+            }
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)
                 with conn:
                     self._set_active_id(conn, active_id)
-                    self._sync_conversations(conn, list(conversations))
+                    self._sync_conversations(
+                        conn,
+                        conversations_list,
+                        dirty_ids=dirty_conversations,
+                        structure_dirty=structure_dirty,
+                    )
         except sqlite3.Error:
             logger.exception("Failed to persist agent chat history to %s", self._path)
             raise
@@ -298,7 +315,12 @@ class HistoryStore:
 
     # ------------------------------------------------------------------
     def _sync_conversations(
-        self, conn: sqlite3.Connection, conversations: list[ChatConversation]
+        self,
+        conn: sqlite3.Connection,
+        conversations: list[ChatConversation],
+        *,
+        dirty_ids: set[str],
+        structure_dirty: bool,
     ) -> None:
         existing_ids = {
             row["id"]
@@ -314,34 +336,38 @@ class HistoryStore:
 
         for position, conversation in enumerate(conversations):
             preview = conversation.preview
-            conn.execute(
-                """
-                INSERT INTO conversations (
-                    id,
-                    position,
-                    title,
-                    created_at,
-                    updated_at,
-                    preview
+            conversation_id = conversation.conversation_id
+            is_new = conversation_id not in existing_ids
+            should_update_row = structure_dirty or is_new or conversation_id in dirty_ids
+            if should_update_row:
+                conn.execute(
+                    """
+                    INSERT INTO conversations (
+                        id,
+                        position,
+                        title,
+                        created_at,
+                        updated_at,
+                        preview
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        position = excluded.position,
+                        title = excluded.title,
+                        created_at = excluded.created_at,
+                        updated_at = excluded.updated_at,
+                        preview = excluded.preview
+                    """,
+                    (
+                        conversation_id,
+                        position,
+                        conversation.title,
+                        conversation.created_at,
+                        conversation.updated_at,
+                        preview,
+                    ),
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    position = excluded.position,
-                    title = excluded.title,
-                    created_at = excluded.created_at,
-                    updated_at = excluded.updated_at,
-                    preview = excluded.preview
-                """,
-                (
-                    conversation.conversation_id,
-                    position,
-                    conversation.title,
-                    conversation.created_at,
-                    conversation.updated_at,
-                    preview,
-                ),
-            )
-            if conversation.entries_loaded:
+            if conversation.entries_loaded and (is_new or conversation_id in dirty_ids):
                 self._sync_entries(conn, conversation)
 
     # ------------------------------------------------------------------

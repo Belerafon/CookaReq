@@ -227,6 +227,49 @@ def test_sync_entries_removes_stale_rows(tmp_path: Path) -> None:
     rows_after = _fetch_entry_rows(history_path, conversation.conversation_id)
     assert len(rows_after) == 1
     assert rows_after[0]["rowid"] == first_rowid
+
+
+def test_save_with_dirty_ids_skips_clean_conversations(
+    tmp_path: Path, sample_conversation: ChatConversation
+) -> None:
+    history_path = tmp_path / "agent.sqlite"
+    store = HistoryStore(history_path)
+
+    secondary = ChatConversation.new()
+    secondary.title = "Second"
+    secondary_entry = ChatEntry.from_dict(sample_conversation.entries[0].to_dict())
+    secondary.replace_entries([secondary_entry])
+    secondary.updated_at = secondary_entry.response_at or secondary.updated_at
+
+    store.save(
+        [sample_conversation, secondary],
+        secondary.conversation_id,
+    )
+
+    sample_conversation.entries[0].response = "Edited"
+    sample_conversation.entries[0].display_response = "Edited"
+    sample_conversation.updated_at = "2024-01-01T00:10:00Z"
+
+    calls: list[str] = []
+    original_sync_entries = store._sync_entries
+
+    def _record_sync(conn, conversation):  # type: ignore[no-untyped-def]
+        calls.append(conversation.conversation_id)
+        return original_sync_entries(conn, conversation)
+
+    store._sync_entries = _record_sync  # type: ignore[assignment]
+    try:
+        store.save(
+            [sample_conversation, secondary],
+            secondary.conversation_id,
+            dirty_ids={sample_conversation.conversation_id},
+        )
+    finally:
+        store._sync_entries = original_sync_entries  # type: ignore[assignment]
+
+    assert calls == [sample_conversation.conversation_id]
+
+
 def test_load_entries_prunes_corrupted_payload(
     tmp_path: Path, sample_conversation: ChatConversation, caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -416,6 +416,15 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         """Expose current conversations managed by the history component."""
         return self._session.history.conversations
 
+    def _mark_conversation_dirty(self, conversation: ChatConversation | None) -> None:
+        """Tell the history manager that *conversation* changed."""
+        self._session.history.mark_conversation_dirty(conversation)
+
+    def _register_conversation(self, conversation: ChatConversation) -> None:
+        """Append *conversation* to the list and flag it for persistence."""
+        self.conversations.append(conversation)
+        self._mark_conversation_dirty(conversation)
+
     @property
     def active_conversation_id(self) -> str | None:
         """Return identifier of the active conversation."""
@@ -453,7 +462,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         history.set_conversations(cleaned)
         conversations = history.conversations
         draft = ChatConversation.new()
-        conversations.append(draft)
+        self._register_conversation(draft)
         history.set_active_id(draft.conversation_id)
         self._timeline_cache = ConversationTimelineCache()
         self._pending_transcript_refresh.clear()
@@ -701,7 +710,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self._last_batch_conversation_id = None
 
         conversation = ChatConversation.new()
-        self.conversations.append(conversation)
+        self._register_conversation(conversation)
 
         should_activate = False
         if active_id is None:
@@ -729,6 +738,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             rid = str(target.requirement_id)
         base_title = _("Batch • {rid}").format(rid=rid)
         conversation.title = base_title
+        self._mark_conversation_dirty(conversation)
         self._notify_history_changed()
 
     def _build_batch_context(
@@ -2068,6 +2078,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             context_messages=self._clone_context_messages(context_messages),
         )
         conversation.append_entry(entry)
+        self._mark_conversation_dirty(conversation)
         return entry
 
     def _append_history(
@@ -2130,6 +2141,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             ),
         )
         conversation.append_entry(entry)
+        self._mark_conversation_dirty(conversation)
         self._save_history_to_store()
         self._notify_history_changed()
 
@@ -2190,6 +2202,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         conversation.updated_at = response_at
         conversation.ensure_title()
         conversation.recalculate_preview()
+        self._mark_conversation_dirty(conversation)
         self._save_history_to_store()
         self._notify_history_changed()
         entry_id = self._entry_identifier(conversation, entry)
@@ -2220,6 +2233,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         else:
             conversation.updated_at = conversation.created_at
         conversation.recalculate_preview()
+        self._mark_conversation_dirty(conversation)
         return RemovedConversationEntry(
             index=index,
             entry=removed,
@@ -2248,6 +2262,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         conversation.updated_at = removal.previous_updated_at
         conversation.ensure_title()
         conversation.recalculate_preview()
+        self._mark_conversation_dirty(conversation)
         self._save_history_to_store()
         self._notify_history_changed()
         self._timeline_cache.invalidate_conversation(conversation.conversation_id)
@@ -3232,7 +3247,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _create_conversation(self, *, persist: bool) -> ChatConversation:
         conversation = ChatConversation.new()
-        self.conversations.append(conversation)
+        self._register_conversation(conversation)
         self._set_active_conversation_id(conversation.conversation_id)
         self._notify_history_changed()
         if persist:

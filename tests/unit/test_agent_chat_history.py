@@ -32,6 +32,47 @@ def test_agent_chat_history_round_trip(tmp_path):
     assert loaded_events == [(None, conversation.conversation_id)]
 
 
+def test_agent_chat_history_skips_clean_saves(monkeypatch, tmp_path):
+    history = AgentChatHistory(history_path=tmp_path / "history.sqlite", on_active_changed=None)
+    conversation = ChatConversation.new()
+    history.set_conversations([conversation])
+    history.set_active_id(conversation.conversation_id)
+
+    calls: list[dict[str, object]] = []
+
+    def _capture_save(conversations, active_id, *, dirty_ids=None, structure_dirty=False):  # type: ignore[unused-argument]
+        calls.append(
+            {
+                "ids": {conv.conversation_id for conv in conversations},
+                "dirty": set(dirty_ids or (conv.conversation_id for conv in conversations)),
+                "structure": structure_dirty,
+            }
+        )
+
+    monkeypatch.setattr(history._store, "save", _capture_save)
+
+    history.save()
+    assert len(calls) == 1
+    assert calls[0]["dirty"] == {conversation.conversation_id}
+
+    calls.clear()
+    history.save()
+    assert calls == []
+
+    history.mark_conversation_dirty(conversation)
+    history.save()
+
+    assert len(calls) == 1
+    assert calls[0]["dirty"] == {conversation.conversation_id}
+
+    calls.clear()
+    history.mark_structure_dirty()
+    history.save()
+
+    assert len(calls) == 1
+    assert calls[0]["structure"] is True
+
+
 def test_agent_chat_history_switch_path_persists_existing(tmp_path):
     original = tmp_path / "first.sqlite"
     history = AgentChatHistory(history_path=original, on_active_changed=None)

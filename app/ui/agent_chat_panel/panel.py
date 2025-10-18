@@ -1831,8 +1831,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             reasoning_segments,
         )
 
+    @staticmethod
     def _normalise_reasoning_segments(
-        self, raw_segments: Any
+        raw_segments: Any
     ) -> tuple[dict[str, str], ...]:
         if not raw_segments:
             return ()
@@ -1884,9 +1885,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _conversation_messages_for(
         self, conversation: ChatConversation
-    ) -> tuple[dict[str, str], ...]:
+    ) -> tuple[dict[str, Any], ...]:
         self._session.history.ensure_conversation_entries(conversation)
-        messages: list[dict[str, str]] = []
+        messages: list[dict[str, Any]] = []
         custom_prompt = self._custom_system_prompt()
         if custom_prompt:
             messages.append({"role": "system", "content": custom_prompt})
@@ -1895,14 +1896,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 continue
             if entry.prompt:
                 messages.append({"role": "user", "content": entry.prompt})
-            if entry.response:
-                messages.append({"role": "assistant", "content": entry.response})
-            tool_messages = getattr(entry, "tool_messages", None)
-            if tool_messages:
-                for tool_message in tool_messages:
-                    formatted = self._format_tool_message(tool_message)
-                    if formatted is not None:
-                        messages.append(formatted)
+            entry_messages = self._entry_conversation_messages(entry)
+            if entry_messages:
+                messages.extend(entry_messages)
         return tuple(messages)
 
     def _prepare_context_messages(
@@ -1967,6 +1963,96 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         return tuple(cloned)
 
     @staticmethod
+    def _entry_conversation_messages(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
+        """Return assistant/tool message sequence reconstructed from ``entry``."""
+
+        tool_messages: tuple[dict[str, Any], ...] | None = None
+        raw_tool_messages = getattr(entry, "tool_messages", None)
+        if raw_tool_messages:
+            tool_messages = AgentChatPanel._clone_tool_messages(raw_tool_messages)
+
+        diagnostic = getattr(entry, "diagnostic", None)
+        diagnostic_mapping = diagnostic if isinstance(diagnostic, Mapping) else None
+        steps = AgentChatPanel._sanitize_llm_step_sequence(
+            diagnostic_mapping.get("llm_steps") if diagnostic_mapping else None
+        )
+        if not steps:
+            raw_result = getattr(entry, "raw_result", None)
+            if isinstance(raw_result, Mapping):
+                diagnostic_raw = raw_result.get("diagnostic")
+                if isinstance(diagnostic_raw, Mapping):
+                    steps = AgentChatPanel._sanitize_llm_step_sequence(
+                        diagnostic_raw.get("llm_steps")
+                    )
+
+        ordered_messages: list[dict[str, Any]] = []
+        tool_messages_by_call: dict[str, list[dict[str, Any]]] = {}
+        orphan_tool_messages: list[dict[str, Any]] = []
+        if tool_messages:
+            for message in tool_messages:
+                call_identifier = message.get("tool_call_id")
+                cloned_message = dict(message)
+                if isinstance(call_identifier, str) and call_identifier:
+                    tool_messages_by_call.setdefault(call_identifier, []).append(
+                        cloned_message
+                    )
+                else:
+                    orphan_tool_messages.append(cloned_message)
+
+        for step in steps:
+            assistant_message = AgentChatPanel._assistant_message_from_step(step)
+            if assistant_message is None:
+                continue
+            ordered_messages.append(assistant_message)
+            tool_calls = assistant_message.get("tool_calls")
+            if not isinstance(tool_calls, Sequence):
+                continue
+            for call in tool_calls:
+                if not isinstance(call, Mapping):
+                    continue
+                call_identifier = call.get("id")
+                if not isinstance(call_identifier, str) or not call_identifier:
+                    continue
+                queued_messages = tool_messages_by_call.pop(call_identifier, [])
+                ordered_messages.extend(dict(message) for message in queued_messages)
+
+        if entry.response:
+            response_text = entry.response
+            existing_texts = {
+                message.get("content")
+                for message in ordered_messages
+                if isinstance(message, Mapping)
+                and message.get("role") == "assistant"
+                and isinstance(message.get("content"), str)
+            }
+            if response_text not in existing_texts:
+                final_message: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": response_text,
+                }
+                reasoning_segments = AgentChatPanel._normalise_reasoning_segments(
+                    getattr(entry, "reasoning", None)
+                )
+                if reasoning_segments:
+                    final_message["reasoning"] = [
+                        dict(segment) for segment in reasoning_segments
+                    ]
+                ordered_messages.append(final_message)
+
+        if tool_messages_by_call:
+            for remaining in tool_messages_by_call.values():
+                ordered_messages.extend(dict(message) for message in remaining)
+        if orphan_tool_messages:
+            ordered_messages.extend(dict(message) for message in orphan_tool_messages)
+
+        if not ordered_messages and entry.response:
+            ordered_messages.append({"role": "assistant", "content": entry.response})
+            if tool_messages:
+                ordered_messages.extend(dict(message) for message in tool_messages)
+
+        return tuple(ordered_messages)
+
+    @staticmethod
     def _format_tool_message(message: Mapping[str, Any]) -> dict[str, Any] | None:
         if not isinstance(message, Mapping):
             return None
@@ -1985,6 +2071,90 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if isinstance(name_value, str) and name_value.strip():
             formatted["name"] = name_value.strip()
         return formatted
+
+    @staticmethod
+    def _assistant_message_from_step(
+        step: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if not isinstance(step, Mapping):
+            return None
+        response = step.get("response")
+        if not isinstance(response, Mapping):
+            return None
+        content_value = response.get("content")
+        content = str(content_value) if content_value is not None else ""
+        message: dict[str, Any] = {"role": "assistant", "content": content}
+        reasoning_segments = AgentChatPanel._normalise_reasoning_segments(
+            response.get("reasoning")
+        )
+        if reasoning_segments:
+            message["reasoning"] = [dict(segment) for segment in reasoning_segments]
+        tool_calls = AgentChatPanel._normalise_step_tool_calls(
+            response.get("tool_calls")
+        )
+        if tool_calls:
+            message["tool_calls"] = tool_calls
+        return message
+
+    @staticmethod
+    def _normalise_step_tool_calls(raw_calls: Any) -> list[dict[str, Any]]:
+        if not raw_calls:
+            return []
+        if isinstance(raw_calls, Mapping):
+            candidates: Sequence[Any] = [raw_calls]
+        elif isinstance(raw_calls, Sequence) and not isinstance(
+            raw_calls, (str, bytes, bytearray)
+        ):
+            candidates = raw_calls
+        else:
+            candidates = [raw_calls]
+
+        tool_calls: list[dict[str, Any]] = []
+        for index, entry in enumerate(candidates):
+            if not isinstance(entry, Mapping):
+                continue
+            call_identifier = (
+                entry.get("id")
+                or entry.get("tool_call_id")
+                or entry.get("call_id")
+                or f"tool_call_{index}"
+            )
+            function_payload = entry.get("function")
+            name = None
+            arguments: Any | None = None
+            if isinstance(function_payload, Mapping):
+                name = function_payload.get("name")
+                arguments = function_payload.get("arguments")
+            if name is None:
+                name = entry.get("name")
+            if arguments is None:
+                arguments = entry.get("arguments")
+            if name is None:
+                continue
+            arguments_text = AgentChatPanel._serialise_tool_call_arguments(arguments)
+            tool_calls.append(
+                {
+                    "id": str(call_identifier),
+                    "type": "function",
+                    "function": {"name": str(name), "arguments": arguments_text},
+                }
+            )
+        return tool_calls
+
+    @staticmethod
+    def _serialise_tool_call_arguments(arguments: Any) -> str:
+        if isinstance(arguments, str):
+            text = arguments.strip()
+            return text or "{}"
+        if isinstance(arguments, Mapping):
+            return json.dumps(arguments, ensure_ascii=False, default=str)
+        if arguments is None:
+            return "{}"
+        try:
+            text = json.dumps(arguments, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            return "{}"
+        return text.strip() or "{}"
 
     @staticmethod
     def _extract_tool_identifier(payload: Mapping[str, Any]) -> str | None:

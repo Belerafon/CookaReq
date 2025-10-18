@@ -3909,6 +3909,9 @@ def test_wait_status_reports_full_prompt_tokens(tmp_path, wx_app, monkeypatch):
         system_text: 100,
         "history prompt": 10,
         "history response": 20,
+        "tool": 8,
+        "history tool": 6,
+        "tool payload": 24,
         "context-role": 5,
         "context message": 15,
         "user prompt": 30,
@@ -3934,6 +3937,13 @@ def test_wait_status_reports_full_prompt_tokens(tmp_path, wx_app, monkeypatch):
                 token_info=TokenCountResult.exact(0, model=model_name),
                 prompt_at="2024-01-01T00:00:00Z",
                 response_at="2024-01-01T00:01:00Z",
+                tool_messages=(
+                    {
+                        "role": "tool",
+                        "name": "history tool",
+                        "content": "tool payload",
+                    },
+                ),
             )
         )
 
@@ -3972,6 +3982,9 @@ def test_wait_status_reports_full_prompt_tokens(tmp_path, wx_app, monkeypatch):
                 system_text,
                 "history prompt",
                 "history response",
+                "tool",
+                "history tool",
+                "tool payload",
                 "context-role",
                 "context message",
                 "user prompt",

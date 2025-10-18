@@ -10,6 +10,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Literal, TYPE_CHECKING
 
 from ...llm.spec import SYSTEM_PROMPT
+from ..text import normalize_for_display
 from .history_utils import (
     history_json_safe,
     looks_like_tool_payload,
@@ -580,6 +581,8 @@ def _build_stream_step_response(
     if not text:
         return None
 
+    normalised_text = normalize_for_display(text)
+
     timestamp_raw = response_payload.get("timestamp")
     timestamp_value = (
         timestamp_raw.strip()
@@ -599,8 +602,8 @@ def _build_stream_step_response(
         step_index = fallback_index
 
     return AgentResponse(
-        text=text,
-        display_text=text,
+        text=normalised_text,
+        display_text=normalised_text,
         timestamp=timestamp,
         step_index=step_index,
         is_final=False,

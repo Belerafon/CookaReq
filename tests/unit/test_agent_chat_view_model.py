@@ -6,6 +6,7 @@ import pytest
 
 from app.ui.agent_chat_panel.view_model import build_conversation_timeline
 from app.ui.chat_entry import ChatConversation, ChatEntry
+from app.ui.text import normalize_for_display
 
 
 VALIDATION_ERROR_MESSAGE = (
@@ -528,9 +529,13 @@ def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
 
 
 def test_streamed_responses_in_turn() -> None:
+    final_raw_text = "Final result with non‑breaking hyphen"
+    final_display_text = normalize_for_display(final_raw_text)
+
     entry = ChatEntry(
         prompt="do work",
-        response="Final result",
+        response=final_raw_text,
+        display_response=final_display_text,
         tokens=1,
         prompt_at="2025-10-01T08:00:00+00:00",
         response_at="2025-10-01T08:05:00+00:00",
@@ -562,7 +567,7 @@ def test_streamed_responses_in_turn() -> None:
                     {
                         "step": 2,
                         "response": {
-                            "content": "Final result",
+                            "content": final_raw_text,
                         },
                     },
                 ]
@@ -583,11 +588,15 @@ def test_streamed_responses_in_turn() -> None:
 
     final_event = turn.final_response
     assert final_event is not None
-    assert final_event.text == "Final result"
+    assert final_event.text == final_raw_text
+    assert final_event.display_text == final_display_text
     assert final_event.is_final is True
+    assert "\u2011" not in final_event.display_text
 
     # the streaming step with the same text as the final response is deduplicated
-    assert all(resp.text != final_event.text for resp in turn.streamed_responses)
+    assert len(turn.streamed_responses) == 1
+    assert all(resp.display_text != final_event.display_text for resp in turn.streamed_responses)
+    assert all("\u2011" not in resp.display_text for resp in turn.streamed_responses)
 
 
 def test_promotes_last_stream_when_final_missing() -> None:

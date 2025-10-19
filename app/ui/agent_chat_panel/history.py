@@ -191,6 +191,59 @@ class AgentChatHistory:
             self._structure_dirty = True
 
     # ------------------------------------------------------------------
+    def prune_empty_conversations(
+        self, *, verify_with_store: bool = False
+    ) -> bool:
+        """Drop conversations that look empty returning ``True`` when changed."""
+
+        if not self._conversations:
+            return False
+
+        def _metadata_is_empty(conversation: ChatConversation) -> bool:
+            preview = conversation.preview or ""
+            if preview.strip():
+                return False
+            title = conversation.title or ""
+            if title.strip():
+                return False
+            updated = conversation.updated_at or ""
+            created = conversation.created_at or ""
+            if updated and created and updated != created:
+                return False
+            return True
+
+        candidates: list[ChatConversation] = [
+            conv for conv in self._conversations if _metadata_is_empty(conv)
+        ]
+        if not candidates:
+            return False
+
+        removable_ids = {conv.conversation_id for conv in candidates}
+        if verify_with_store:
+            confirmed = self._store.conversations_with_entries(removable_ids)
+            removable_ids.difference_update(confirmed)
+        if not removable_ids:
+            return False
+
+        kept = [
+            conv
+            for conv in self._conversations
+            if conv.conversation_id not in removable_ids
+        ]
+        self.set_conversations(kept)
+
+        if self._active_id and self.get_conversation(self._active_id) is None:
+            previous = self._active_id
+            fallback_id = kept[-1].conversation_id if kept else None
+            self._active_id = fallback_id
+            if (
+                self._on_active_changed is not None
+                and previous != fallback_id
+            ):
+                self._on_active_changed(previous, fallback_id)
+        return True
+
+    # ------------------------------------------------------------------
     def ensure_conversation_entries(self, conversation: ChatConversation) -> None:
         """Ensure entries for *conversation* are available in memory."""
         if conversation.entries_loaded:

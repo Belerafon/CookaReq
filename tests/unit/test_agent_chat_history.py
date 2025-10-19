@@ -165,3 +165,34 @@ def test_switch_path_does_not_override_existing_target(tmp_path):
     assert len(conversations) == 1
     assert conversations[0].conversation_id == existing.conversation_id
     assert active_id == existing.conversation_id
+
+
+def test_prune_empty_conversations_skips_materialisation(monkeypatch, tmp_path):
+    history_path = tmp_path / "history.sqlite"
+    seed = AgentChatHistory(history_path=history_path, on_active_changed=None)
+    empty = ChatConversation.new()
+    stored = _conversation_with_entry("Stored")
+    seed.set_conversations([empty, stored])
+    seed.set_active_id(empty.conversation_id)
+    seed.save()
+
+    history = AgentChatHistory(history_path=history_path, on_active_changed=None)
+    conversations, _ = history.load()
+
+    assert len(conversations) == 2
+    loaded = history.get_conversation(stored.conversation_id)
+    assert loaded is not None
+    assert loaded.entries_loaded is False
+
+    def _fail_load_entries(conversation_id):  # type: ignore[unused-argument]
+        raise AssertionError("should not load entries")
+
+    monkeypatch.setattr(history._store, "load_entries", _fail_load_entries)
+
+    changed = history.prune_empty_conversations(verify_with_store=True)
+
+    assert changed is True
+    remaining = history.conversations
+    assert len(remaining) == 1
+    assert remaining[0].conversation_id == stored.conversation_id
+    assert remaining[0].entries_loaded is False

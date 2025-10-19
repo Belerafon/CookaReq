@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Literal, TYPE_CHECKING
 
@@ -179,6 +179,105 @@ class _CachedTimeline:
     entry_map: dict[str, TranscriptEntry]
 
 
+@dataclass(slots=True)
+class _CachedValue:
+    source: Any
+    value: Any
+
+
+@dataclass(slots=True)
+class _EntryPayloadNormaliser:
+    """Cache normalised payloads derived from a chat entry."""
+
+    history_cache: dict[int, _CachedValue] = field(default_factory=dict)
+    sequence_cache: dict[int, _CachedValue] = field(default_factory=dict)
+    tool_cache: dict[int, _CachedValue] = field(default_factory=dict)
+
+    def history(self, payload: Any) -> Any:
+        key = id(payload)
+        record = self.history_cache.get(key)
+        if record is not None and record.source is payload:
+            return record.value
+        value = history_json_safe(payload)
+        self.history_cache[key] = _CachedValue(payload, value)
+        return value
+
+    def mapping_sequence(
+        self, sequence: Sequence[Any] | None
+    ) -> tuple[dict[str, Any], ...]:
+        if not sequence:
+            return ()
+        key = id(sequence)
+        record = self.sequence_cache.get(key)
+        if record is not None and record.source is sequence:
+            return record.value
+        sanitized: list[dict[str, Any]] = []
+        for item in sequence:
+            if not isinstance(item, Mapping):
+                continue
+            safe_item = self.history(item)
+            if isinstance(safe_item, Mapping):
+                sanitized.append(dict(safe_item))
+        result = tuple(sanitized)
+        self.sequence_cache[key] = _CachedValue(sequence, result)
+        return result
+
+    def tool_payloads(self, source: Any) -> tuple[Mapping[str, Any], ...]:
+        if source is None:
+            return ()
+        key = id(source)
+        record = self.tool_cache.get(key)
+        if record is not None and record.source is source:
+            return record.value
+        payloads = normalise_tool_payloads(source)
+        if not payloads:
+            result: tuple[Mapping[str, Any], ...] = ()
+        else:
+            result = tuple(
+                payload for payload in payloads if isinstance(payload, Mapping)
+            )
+        self.tool_cache[key] = _CachedValue(source, result)
+        return result
+
+
+def _history_json_cached(
+    payload: Any, normaliser: _EntryPayloadNormaliser | None
+) -> Any:
+    if normaliser is None:
+        return history_json_safe(payload)
+    return normaliser.history(payload)
+
+
+def _mapping_sequence_cached(
+    sequence: Sequence[Any] | None,
+    normaliser: _EntryPayloadNormaliser | None,
+) -> tuple[dict[str, Any], ...]:
+    if normaliser is None:
+        if not sequence:
+            return ()
+        sanitized: list[dict[str, Any]] = []
+        for item in sequence:
+            if isinstance(item, Mapping):
+                safe_item = history_json_safe(item)
+                if isinstance(safe_item, Mapping):
+                    sanitized.append(dict(safe_item))
+        return tuple(sanitized)
+    return normaliser.mapping_sequence(sequence)
+
+
+def _tool_payloads_cached(
+    source: Any, normaliser: _EntryPayloadNormaliser | None
+) -> tuple[Mapping[str, Any], ...]:
+    if normaliser is None:
+        payloads = normalise_tool_payloads(source)
+        if not payloads:
+            return ()
+        return tuple(
+            payload for payload in payloads if isinstance(payload, Mapping)
+        )
+    return normaliser.tool_payloads(source)
+
+
 def _resolve_entry_index(conversation_id: str, entry_id: str) -> int | None:
     prefix = f"{conversation_id}:"
     if not entry_id.startswith(prefix):
@@ -198,12 +297,14 @@ class ConversationTimelineCache:
         self._cache: dict[str, _CachedTimeline] = {}
         self._dirty_entries: dict[str, set[str]] = {}
         self._full_invalidations: set[str] = set()
+        self._entry_normalisers: dict[str, dict[str, _EntryPayloadNormaliser]] = {}
 
     # ------------------------------------------------------------------
     def invalidate_conversation(self, conversation_id: str | None) -> None:
         """Mark *conversation_id* as requiring a full timeline rebuild."""
         if conversation_id:
             self._full_invalidations.add(conversation_id)
+            self._entry_normalisers.pop(conversation_id, None)
 
     # ------------------------------------------------------------------
     def invalidate_entries(
@@ -216,6 +317,9 @@ class ConversationTimelineCache:
         for entry_id in entry_ids:
             if entry_id:
                 pending.add(entry_id)
+                normalisers = self._entry_normalisers.get(conversation_id)
+                if normalisers is not None:
+                    normalisers.pop(entry_id, None)
 
     # ------------------------------------------------------------------
     def forget(self, conversation_id: str) -> None:
@@ -223,12 +327,25 @@ class ConversationTimelineCache:
         self._cache.pop(conversation_id, None)
         self._dirty_entries.pop(conversation_id, None)
         self._full_invalidations.discard(conversation_id)
+        self._entry_normalisers.pop(conversation_id, None)
 
     # ------------------------------------------------------------------
     def peek(self, conversation_id: str) -> ConversationTimeline | None:
         """Return cached timeline for *conversation_id* without recalculation."""
         cached = self._cache.get(conversation_id)
         return cached.timeline if cached is not None else None
+
+    def _normaliser_for(
+        self, conversation_id: str, entry_id: str
+    ) -> _EntryPayloadNormaliser:
+        normalisers = self._entry_normalisers.setdefault(
+            conversation_id, {}
+        )
+        normaliser = normalisers.get(entry_id)
+        if normaliser is None:
+            normaliser = _EntryPayloadNormaliser()
+            normalisers[entry_id] = normaliser
+        return normaliser
 
     # ------------------------------------------------------------------
     def timeline_for(self, conversation: ChatConversation) -> ConversationTimeline:
@@ -243,11 +360,32 @@ class ConversationTimelineCache:
         )
 
         if requires_full_refresh:
-            timeline = build_conversation_timeline(conversation)
+            existing = self._entry_normalisers.get(conversation_id, {})
+            new_normalisers: dict[str, _EntryPayloadNormaliser] = {}
+            entries: list[TranscriptEntry] = []
+            for entry_index, entry in enumerate(conversation.entries):
+                entry_id = f"{conversation_id}:{entry_index}"
+                normaliser = existing.get(entry_id)
+                if normaliser is None:
+                    normaliser = _EntryPayloadNormaliser()
+                new_normalisers[entry_id] = normaliser
+                entries.append(
+                    _build_transcript_entry(
+                        conversation,
+                        entry_index,
+                        entry,
+                        normaliser=normaliser,
+                    )
+                )
+            timeline = ConversationTimeline(
+                conversation_id=conversation.conversation_id,
+                entries=tuple(entries),
+            )
             self._cache[conversation_id] = _CachedTimeline(
                 timeline=timeline,
                 entry_map={entry.entry_id: entry for entry in timeline.entries},
             )
+            self._entry_normalisers[conversation_id] = new_normalisers
             self._full_invalidations.discard(conversation_id)
             return timeline
 
@@ -266,7 +404,13 @@ class ConversationTimelineCache:
                 fallback_to_full = True
                 break
             entry = conversation.entries[index]
-            rebuilt = _build_transcript_entry(conversation, index, entry)
+            normaliser = self._normaliser_for(conversation_id, entry_id)
+            rebuilt = _build_transcript_entry(
+                conversation,
+                index,
+                entry,
+                normaliser=normaliser,
+            )
             if rebuilt.entry_id != entry_id:
                 fallback_to_full = True
                 break
@@ -277,11 +421,29 @@ class ConversationTimelineCache:
             updated = True
 
         if fallback_to_full:
-            timeline = build_conversation_timeline(conversation)
+            entries: list[TranscriptEntry] = []
+            new_normalisers: dict[str, _EntryPayloadNormaliser] = {}
+            for entry_index, entry in enumerate(conversation.entries):
+                entry_id = f"{conversation_id}:{entry_index}"
+                normaliser = self._normaliser_for(conversation_id, entry_id)
+                new_normalisers[entry_id] = normaliser
+                entries.append(
+                    _build_transcript_entry(
+                        conversation,
+                        entry_index,
+                        entry,
+                        normaliser=normaliser,
+                    )
+                )
+            timeline = ConversationTimeline(
+                conversation_id=conversation.conversation_id,
+                entries=tuple(entries),
+            )
             self._cache[conversation_id] = _CachedTimeline(
                 timeline=timeline,
                 entry_map={entry.entry_id: entry for entry in timeline.entries},
             )
+            self._entry_normalisers[conversation_id] = new_normalisers
             self._full_invalidations.discard(conversation_id)
             return timeline
 
@@ -303,11 +465,15 @@ def _build_transcript_entry(
     conversation: ChatConversation,
     entry_index: int,
     entry: ChatEntry,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
 ) -> TranscriptEntry:
     entry_id = f"{conversation.conversation_id}:{entry_index}"
     prompt = _build_prompt(entry)
-    context_messages = _build_context_messages(entry)
-    agent_turn = _build_agent_turn(entry_id, entry_index, entry)
+    context_messages = _build_context_messages(entry, normaliser=normaliser)
+    agent_turn = _build_agent_turn(
+        entry_id, entry_index, entry, normaliser=normaliser
+    )
     layout_hints = _sanitize_layout_hints(entry.layout_hints)
     can_regenerate = _can_regenerate_entry(
         entry_index, len(conversation.entries), entry
@@ -420,35 +586,42 @@ def _build_prompt(entry: ChatEntry) -> PromptMessage | None:
     return PromptMessage(text=text, timestamp=timestamp)
 
 
-def _build_context_messages(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
+def _build_context_messages(
+    entry: ChatEntry,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
+) -> tuple[dict[str, Any], ...]:
     messages_raw = entry.context_messages or _extract_request_context(entry)
     if not messages_raw:
         return ()
-    messages: list[dict[str, Any]] = []
-    for message in messages_raw:
-        if isinstance(message, Mapping):
-            safe_message = history_json_safe(message)
-            if isinstance(safe_message, Mapping):
-                messages.append(dict(safe_message))
-    return tuple(messages)
+    return _mapping_sequence_cached(messages_raw, normaliser)
 
 
 def _build_agent_turn(
     entry_id: str,
     entry_index: int,
     entry: ChatEntry,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
 ) -> AgentTurn | None:
     timestamp = _build_timestamp(entry.response_at, source="response_at")
     final_response = _build_final_response(entry, timestamp)
     streamed_responses, latest_stream_timestamp = _build_streamed_responses(
-        entry, final_response
+        entry,
+        final_response,
+        normaliser=normaliser,
     )
-    reasoning_segments = _sanitize_reasoning_segments(entry.reasoning)
-    llm_request = _build_llm_request_snapshot(entry)
+    reasoning_segments = _sanitize_reasoning_segments(
+        entry.reasoning, normaliser=normaliser
+    )
+    llm_request = _build_llm_request_snapshot(entry, normaliser=normaliser)
     tool_calls, latest_tool_timestamp = _build_tool_calls(
-        entry_id, entry_index, entry
+        entry_id,
+        entry_index,
+        entry,
+        normaliser=normaliser,
     )
-    raw_payload = history_json_safe(entry.raw_result)
+    raw_payload = _history_json_cached(entry.raw_result, normaliser)
 
     if final_response is None and streamed_responses:
         promoted = streamed_responses[-1]
@@ -529,9 +702,12 @@ def _build_final_response(
 
 
 def _build_streamed_responses(
-    entry: ChatEntry, final_response: AgentResponse | None
+    entry: ChatEntry,
+    final_response: AgentResponse | None,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
 ) -> tuple[tuple[AgentResponse, ...], TimestampInfo | None]:
-    payloads = _collect_llm_step_payloads(entry)
+    payloads = _collect_llm_step_payloads(entry, normaliser=normaliser)
     if not payloads:
         return (), None
 
@@ -613,23 +789,22 @@ def _build_stream_step_response(
 
 def _sanitize_reasoning_segments(
     segments_raw: Sequence[dict[str, Any]] | None,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
 ) -> tuple[dict[str, Any], ...]:
     if not segments_raw:
         return ()
-    segments: list[dict[str, Any]] = []
-    for segment in segments_raw:
-        if not isinstance(segment, Mapping):
-            continue
-        safe_segment = history_json_safe(segment)
-        if isinstance(safe_segment, Mapping):
-            segments.append(dict(safe_segment))
-    return tuple(segments)
+    return _mapping_sequence_cached(segments_raw, normaliser)
 
 
 def _build_llm_request_snapshot(
     entry: ChatEntry,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
 ) -> LlmRequestSnapshot | None:
-    messages, sequence = _extract_llm_request_details(entry)
+    messages, sequence = _extract_llm_request_details(
+        entry, normaliser=normaliser
+    )
     if not messages:
         return None
     return LlmRequestSnapshot(messages=messages, sequence=sequence)
@@ -639,8 +814,10 @@ def _build_tool_calls(
     entry_id: str,
     entry_index: int,
     entry: ChatEntry,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
 ) -> tuple[tuple[ToolCallDetails, ...], TimestampInfo | None]:
-    payloads = _iter_tool_payloads(entry.raw_result)
+    payloads = _iter_tool_payloads(entry.raw_result, normaliser=normaliser)
     if not payloads:
         return (), None
 
@@ -649,7 +826,7 @@ def _build_tool_calls(
     latest_timestamp: TimestampInfo | None = None
     for tool_index, payload in enumerate(payloads, start=1):
         summary = summarize_tool_payload(tool_index, payload)
-        safe_payload = history_json_safe(payload)
+        safe_payload = _history_json_cached(payload, normaliser)
         if summary is None:
             summary = ToolCallSummary(
                 index=tool_index,
@@ -670,12 +847,14 @@ def _build_tool_calls(
 
         safe_snapshot: Mapping[str, Any] | None = None
         if isinstance(raw_snapshot, Mapping):
-            snapshot_candidate = history_json_safe(raw_snapshot)
+            snapshot_candidate = _history_json_cached(raw_snapshot, normaliser)
             if isinstance(snapshot_candidate, Mapping):
                 safe_snapshot = dict(snapshot_candidate)
 
         condensed_raw_source = safe_snapshot or raw_snapshot
-        condensed_raw = _compose_tool_raw_data(condensed_raw_source)
+        condensed_raw = _compose_tool_raw_data(
+            condensed_raw_source, normaliser=normaliser
+        )
 
         raw_sections: dict[str, Any] = {}
         if isinstance(condensed_raw, Mapping):
@@ -683,13 +862,17 @@ def _build_tool_calls(
 
         tool_result_section: Mapping[str, Any] | None = None
         if isinstance(safe_payload, Mapping):
-            tool_result_section = _compose_tool_result_section(safe_payload)
+            tool_result_section = _compose_tool_result_section(
+                safe_payload, normaliser=normaliser
+            )
         if tool_result_section is not None:
             raw_sections["tool_result"] = tool_result_section
 
         if raw_sections:
             deduplicated_sections = _deduplicate_tool_raw_sections(raw_sections)
-            condensed_candidate = history_json_safe(deduplicated_sections)
+            condensed_candidate = _history_json_cached(
+                deduplicated_sections, normaliser
+            )
             if isinstance(condensed_candidate, Mapping):
                 condensed_raw = dict(condensed_candidate)
             else:
@@ -697,7 +880,9 @@ def _build_tool_calls(
         else:
             condensed_raw = None
 
-        llm_request = _extract_tool_llm_request(condensed_raw, safe_snapshot)
+        llm_request = _extract_tool_llm_request(
+            condensed_raw, safe_snapshot, normaliser=normaliser
+        )
 
         call_timestamp_raw = _extract_tool_timestamp(payload)
         if call_timestamp_raw:
@@ -728,7 +913,11 @@ def _build_tool_calls(
     return tuple(tool_calls), latest_timestamp
 
 
-def _compose_tool_raw_data(raw_snapshot: Any) -> Mapping[str, Any] | None:
+def _compose_tool_raw_data(
+    raw_snapshot: Any,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
+) -> Mapping[str, Any] | None:
     """Prepare JSON-safe raw sections for a tool call."""
     if not isinstance(raw_snapshot, Mapping):
         return None
@@ -738,7 +927,7 @@ def _compose_tool_raw_data(raw_snapshot: Any) -> Mapping[str, Any] | None:
     for key in ("llm_request", "llm_response", "llm_error", "step"):
         if key not in raw_snapshot:
             continue
-        candidate = history_json_safe(raw_snapshot.get(key))
+        candidate = _history_json_cached(raw_snapshot.get(key), normaliser)
         if _has_meaningful_payload(candidate):
             sections[key] = candidate
 
@@ -746,7 +935,7 @@ def _compose_tool_raw_data(raw_snapshot: Any) -> Mapping[str, Any] | None:
     if isinstance(diagnostics_payload, Mapping):
         diagnostics_section: dict[str, Any] = {}
         for diag_key, value in diagnostics_payload.items():
-            candidate = history_json_safe(value)
+            candidate = _history_json_cached(value, normaliser)
             if _has_meaningful_payload(candidate):
                 diagnostics_section[diag_key] = candidate
         if diagnostics_section:
@@ -758,6 +947,8 @@ def _compose_tool_raw_data(raw_snapshot: Any) -> Mapping[str, Any] | None:
 def _extract_tool_llm_request(
     sections: Mapping[str, Any] | None,
     snapshot: Mapping[str, Any] | None,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
 ) -> dict[str, Any] | None:
     """Return a JSON-safe LLM request payload for a tool call."""
     for source in (sections, snapshot):
@@ -766,17 +957,21 @@ def _extract_tool_llm_request(
         request_payload = source.get("llm_request")
         if not isinstance(request_payload, Mapping):
             continue
-        safe_payload = history_json_safe(request_payload)
+        safe_payload = _history_json_cached(request_payload, normaliser)
         if isinstance(safe_payload, Mapping) and safe_payload:
             return dict(safe_payload)
     return None
 
 
-def _compose_tool_result_section(tool_payload: Any) -> Mapping[str, Any] | None:
+def _compose_tool_result_section(
+    tool_payload: Any,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
+) -> Mapping[str, Any] | None:
     if not isinstance(tool_payload, Mapping):
         return None
 
-    safe_payload = history_json_safe(tool_payload)
+    safe_payload = _history_json_cached(tool_payload, normaliser)
     if not isinstance(safe_payload, Mapping):
         return None
 
@@ -803,7 +998,7 @@ def _compose_tool_result_section(tool_payload: Any) -> Mapping[str, Any] | None:
             tool_section["call_ids"] = identifiers
 
     for key in ("tool_arguments", "arguments", "args"):
-        candidate = history_json_safe(safe_payload.get(key))
+        candidate = _history_json_cached(safe_payload.get(key), normaliser)
         if isinstance(candidate, Mapping) and _has_meaningful_payload(candidate):
             tool_section["arguments"] = candidate
             break
@@ -818,30 +1013,36 @@ def _compose_tool_result_section(tool_payload: Any) -> Mapping[str, Any] | None:
     if agent_status:
         status_section["state"] = agent_status
     if "ok" in safe_payload:
-        ok_value = history_json_safe(safe_payload.get("ok"))
+        ok_value = _history_json_cached(safe_payload.get("ok"), normaliser)
         if _has_meaningful_payload(ok_value) or ok_value is False:
             status_section["ok"] = ok_value
-    stop_reason = history_json_safe(safe_payload.get("agent_stop_reason"))
+    stop_reason = _history_json_cached(
+        safe_payload.get("agent_stop_reason"), normaliser
+    )
     if _has_meaningful_payload(stop_reason):
         status_section["stop_reason"] = stop_reason
     if status_section:
         sections["status"] = status_section
 
-    status_updates = history_json_safe(safe_payload.get("status_updates"))
+    status_updates = _history_json_cached(
+        safe_payload.get("status_updates"), normaliser
+    )
     if _has_meaningful_payload(status_updates):
         sections["status_updates"] = status_updates
 
-    error_payload = history_json_safe(safe_payload.get("error"))
+    error_payload = _history_json_cached(safe_payload.get("error"), normaliser)
     if _has_meaningful_payload(error_payload):
         sections["error"] = error_payload
 
-    result_payload = history_json_safe(safe_payload.get("result"))
+    result_payload = _history_json_cached(
+        safe_payload.get("result"), normaliser
+    )
     if _has_meaningful_payload(result_payload):
         sections["result"] = result_payload
 
     context_section: dict[str, Any] = {}
     for key in ("message_preview", "response_snapshot", "reasoning"):
-        candidate = history_json_safe(safe_payload.get(key))
+        candidate = _history_json_cached(safe_payload.get(key), normaliser)
         if _has_meaningful_payload(candidate):
             context_section[key] = candidate
     if context_section:
@@ -1377,36 +1578,43 @@ def _iter_llm_request_sources(entry: ChatEntry) -> Iterable[Mapping[str, Any]]:
 
 def _extract_llm_request_details(
     entry: ChatEntry,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
 ) -> tuple[tuple[dict[str, Any], ...], tuple[dict[str, Any], ...] | None]:
     messages: tuple[dict[str, Any], ...] = ()
     sequence: tuple[dict[str, Any], ...] | None = None
 
     for source in _iter_llm_request_sources(entry):
         candidate_messages = _sanitize_message_list(
-            source.get("llm_request_messages")
+            source.get("llm_request_messages"),
+            normaliser=normaliser,
         )
         if candidate_messages:
             messages = candidate_messages
         candidate_sequence = _sanitize_request_sequence(
-            source.get("llm_request_messages_sequence")
+            source.get("llm_request_messages_sequence"),
+            normaliser=normaliser,
         )
         if candidate_sequence is None:
             candidate_sequence = _sanitize_request_sequence(
-                source.get("llm_requests")
+                source.get("llm_requests"),
+                normaliser=normaliser,
             )
         if candidate_sequence:
             sequence = candidate_sequence
             if not messages:
                 last_messages = candidate_sequence[-1].get("messages")
                 if isinstance(last_messages, Sequence):
-                    fallback_messages = _sanitize_message_list(last_messages)
+                    fallback_messages = _sanitize_message_list(
+                        last_messages, normaliser=normaliser
+                    )
                     if fallback_messages:
                         messages = fallback_messages
         if messages and sequence is not None:
             break
 
     if not messages:
-        messages = _fallback_llm_request_messages(entry)
+        messages = _fallback_llm_request_messages(entry, normaliser=normaliser)
         if messages and sequence is None:
             sequence = (
                 {
@@ -1418,25 +1626,23 @@ def _extract_llm_request_details(
     if not messages:
         return (), None
 
-    prepared_messages: list[dict[str, Any]] = []
-    for message in messages:
-        if not isinstance(message, Mapping):
-            continue
-        safe_message = history_json_safe(message)
-        if isinstance(safe_message, Mapping):
-            prepared_messages.append(dict(safe_message))
+    prepared_messages = [
+        dict(item) for item in _mapping_sequence_cached(messages, normaliser)
+    ]
     prepared_sequence: tuple[dict[str, Any], ...] | None = None
     if sequence is not None:
         sequence_items: list[dict[str, Any]] = []
         for item in sequence:
             if not isinstance(item, Mapping):
                 continue
-            safe_item = history_json_safe(item)
+            safe_item = _history_json_cached(item, normaliser)
             if not isinstance(safe_item, Mapping):
                 continue
             record = dict(safe_item)
             messages_payload = record.get("messages")
-            sanitized_messages = _sanitize_message_list(messages_payload)
+            sanitized_messages = _sanitize_message_list(
+                messages_payload, normaliser=normaliser
+            )
             if sanitized_messages:
                 record["messages"] = tuple(dict(msg) for msg in sanitized_messages)
             elif "messages" in record:
@@ -1449,31 +1655,33 @@ def _extract_llm_request_details(
 
 def _sanitize_message_list(
     value: Any,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
 ) -> tuple[dict[str, Any], ...]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
         return ()
-    sanitized: list[dict[str, Any]] = []
-    for message in value:
-        if isinstance(message, Mapping):
-            safe = history_json_safe(message)
-            if isinstance(safe, Mapping):
-                sanitized.append(dict(safe))
-    return tuple(sanitized)
+    return _mapping_sequence_cached(value, normaliser)
 
 
-def _sanitize_request_sequence(value: Any) -> tuple[dict[str, Any], ...] | None:
+def _sanitize_request_sequence(
+    value: Any,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
+) -> tuple[dict[str, Any], ...] | None:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
         return None
     sanitized: list[dict[str, Any]] = []
     for item in value:
         if not isinstance(item, Mapping):
             continue
-        safe_item = history_json_safe(item)
+        safe_item = _history_json_cached(item, normaliser)
         if not isinstance(safe_item, Mapping):
             continue
         record = dict(safe_item)
         messages_payload = record.get("messages")
-        sanitized_messages = _sanitize_message_list(messages_payload)
+        sanitized_messages = _sanitize_message_list(
+            messages_payload, normaliser=normaliser
+        )
         if sanitized_messages:
             record["messages"] = tuple(dict(msg) for msg in sanitized_messages)
         elif "messages" in record:
@@ -1482,7 +1690,11 @@ def _sanitize_request_sequence(value: Any) -> tuple[dict[str, Any], ...] | None:
     return tuple(sanitized) if sanitized else None
 
 
-def _fallback_llm_request_messages(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
+def _fallback_llm_request_messages(
+    entry: ChatEntry,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
+) -> tuple[dict[str, Any], ...]:
     messages: list[dict[str, Any]] = []
     system_prompt = str(SYSTEM_PROMPT).strip()
     if system_prompt:
@@ -1490,7 +1702,7 @@ def _fallback_llm_request_messages(entry: ChatEntry) -> tuple[dict[str, Any], ..
     if entry.context_messages:
         for message in entry.context_messages:
             if isinstance(message, Mapping):
-                safe_message = history_json_safe(message)
+                safe_message = _history_json_cached(message, normaliser)
                 if isinstance(safe_message, Mapping):
                     messages.append(dict(safe_message))
     prompt_text = (entry.prompt or "").strip()
@@ -1500,7 +1712,11 @@ def _fallback_llm_request_messages(entry: ChatEntry) -> tuple[dict[str, Any], ..
 
 
 # ---------------------------------------------------------------------------
-def _collect_llm_step_payloads(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
+def _collect_llm_step_payloads(
+    entry: ChatEntry,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
+) -> tuple[dict[str, Any], ...]:
     ordered: list[tuple[int, int | None, str, dict[str, Any]]] = []
     index_by_key: dict[str, int] = {}
     auto_counter = 0
@@ -1512,7 +1728,7 @@ def _collect_llm_step_payloads(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
         ):
             continue
         for step_payload in steps:
-            safe_step = history_json_safe(step_payload)
+            safe_step = _history_json_cached(step_payload, normaliser)
             if not isinstance(safe_step, Mapping):
                 continue
             record = dict(safe_step)
@@ -1958,8 +2174,12 @@ def _collect_llm_tool_requests(entry: ChatEntry) -> dict[str, Mapping[str, Any]]
     return snapshots
 
 
-def _iter_tool_payloads(tool_source: Any) -> Iterable[Mapping[str, Any]]:
-    payloads = normalise_tool_payloads(tool_source)
+def _iter_tool_payloads(
+    tool_source: Any,
+    *,
+    normaliser: _EntryPayloadNormaliser | None = None,
+) -> Iterable[Mapping[str, Any]]:
+    payloads = _tool_payloads_cached(tool_source, normaliser)
     if not payloads:
         return ()
     result: list[Mapping[str, Any]] = []

@@ -417,6 +417,9 @@ class MessageSegmentPanel(wx.Panel):
         self._regenerate_button: wx.Button | None = None
         self._regenerate_handler: Callable[[], None] | None = None
         self._deferred_payloads: dict[str, _DeferredPayloadState] = {}
+        self._last_payload: PromptSegment | AgentSegment | None = None
+        self._last_regenerate_enabled: bool | None = None
+        self._has_rendered = False
 
     # ------------------------------------------------------------------
     def update(
@@ -427,12 +430,18 @@ class MessageSegmentPanel(wx.Panel):
         on_regenerate: Callable[[], None] | None,
     ) -> None:
         """Populate the panel with widgets for the supplied ``payload``."""
+        same_payload = self._has_rendered and payload == self._last_payload
+        self._regenerate_handler = on_regenerate
+        if same_payload:
+            self._last_regenerate_enabled = regenerate_enabled
+            self.enable_regenerate(regenerate_enabled)
+            return
+
         self._capture_collapsed_state()
         self._collapsible.clear()
         sizer = self.GetSizer()
         sizer.Clear(delete_windows=True)
         self._regenerate_button = None
-        self._regenerate_handler = on_regenerate
 
         if self._segment_kind == "user":
             assert isinstance(payload, PromptSegment)
@@ -446,12 +455,21 @@ class MessageSegmentPanel(wx.Panel):
                 regenerate_enabled=regenerate_enabled,
                 on_regenerate=on_regenerate,
             )
+        self._last_payload = payload
+        self._last_regenerate_enabled = regenerate_enabled
+        self._has_rendered = True
         self.Layout()
 
     # ------------------------------------------------------------------
     def enable_regenerate(self, enabled: bool) -> None:
         if self._regenerate_button is not None:
             self._regenerate_button.Enable(enabled)
+
+    # ------------------------------------------------------------------
+    def set_regenerate_handler(
+        self, handler: Callable[[], None] | None
+    ) -> None:
+        self._regenerate_handler = handler
 
     # ------------------------------------------------------------------
     def _build_user_segment(self, payload: PromptSegment) -> None:
@@ -1030,6 +1048,11 @@ class TurnCard(wx.Panel):
         self._system_sections: dict[str, wx.CollapsiblePane] = {}
         self._collapsed_state: dict[str, bool] = {}
         self._regenerated_notice: wx.StaticText | None = None
+        self._last_prompt_segment: PromptSegment | None = None
+        self._last_agent_segment: AgentSegment | None = None
+        self._last_system_segments: dict[str, SystemMessage] = {}
+        self._notice_visible = False
+        self._layout_initialized = False
 
     # ------------------------------------------------------------------
     def update(
@@ -1040,15 +1063,7 @@ class TurnCard(wx.Panel):
         regenerate_enabled: bool,
     ) -> None:
         """Render transcript ``segments`` and capture regenerated state."""
-        self._capture_system_state()
-        previous_notice = self._regenerated_notice
         sizer = self.GetSizer()
-        sizer.Clear(delete_windows=False)
-        self._regenerated_notice = None
-        if previous_notice is not None:
-            with suppress(RuntimeError):
-                previous_notice.Destroy()
-
         prompt_segment = next(
             (segment for segment in segments if segment.kind == "user"),
             None,
@@ -1057,62 +1072,170 @@ class TurnCard(wx.Panel):
             (segment for segment in segments if segment.kind == "agent"),
             None,
         )
-        system_segments = [
-            segment for segment in segments if segment.kind == "system"
-        ]
+        system_entries: list[tuple[str, SystemMessage, str]] = []
+        for index, system_segment in enumerate(segments, start=1):
+            if system_segment.kind != "system":
+                continue
+            text = _summarize_system_message(system_segment.payload)
+            if not text:
+                continue
+            key = f"system:{self._entry_id}:{len(system_entries) + 1}"
+            system_entries.append((key, system_segment.payload, text))
 
-        if prompt_segment is not None:
+        prompt_payload = (
+            prompt_segment.payload if prompt_segment is not None else None
+        )
+        agent_payload = (
+            agent_segment.payload if agent_segment is not None else None
+        )
+
+        system_map: dict[str, SystemMessage] = {
+            key: payload for key, payload, _ in system_entries
+        }
+
+        def _is_window_alive(window: wx.Window | None) -> bool:
+            if not isinstance(window, wx.Window):
+                return False
+            checker = getattr(window, "IsBeingDeleted", None)
+            if callable(checker) and checker():
+                return False
+            return True
+
+        system_changed = False
+        if len(system_map) != len(self._last_system_segments):
+            system_changed = True
+        else:
+            for key, payload in system_map.items():
+                if self._last_system_segments.get(key) != payload:
+                    system_changed = True
+                    break
+                if not _is_window_alive(self._system_sections.get(key)):
+                    system_changed = True
+                    break
+
+        notice_should_exist = False
+        if isinstance(agent_payload, AgentSegment):
+            turn = agent_payload.turn
+            if (
+                turn is not None
+                and turn.final_response is not None
+                and turn.final_response.regenerated
+            ):
+                notice_should_exist = True
+
+        prompt_presence_changed = (
+            (prompt_payload is not None) != (self._last_prompt_segment is not None)
+        )
+        agent_presence_changed = (
+            (agent_payload is not None) != (self._last_agent_segment is not None)
+        )
+
+        layout_needs_rebuild = (
+            not self._layout_initialized
+            or prompt_presence_changed
+            or agent_presence_changed
+            or system_changed
+            or notice_should_exist != self._notice_visible
+        )
+
+        if layout_needs_rebuild:
+            sizer.Clear(delete_windows=False)
+
+        if not notice_should_exist and self._regenerated_notice is not None:
+            with suppress(RuntimeError):
+                self._regenerated_notice.Hide()
+
+        if system_changed:
+            self._capture_system_state()
+
+        if prompt_payload is not None:
             self._user_panel.update(
-                prompt_segment.payload,
+                prompt_payload,
                 regenerate_enabled=regenerate_enabled,
                 on_regenerate=None,
             )
             self._user_panel.Show()
-            sizer.Add(self._user_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
         else:
             self._user_panel.Hide()
 
-        if (
-            agent_segment is not None
-            and isinstance(agent_segment.payload, AgentSegment)
-            and agent_segment.payload.turn is not None
-            and agent_segment.payload.turn.final_response is not None
-            and agent_segment.payload.turn.final_response.regenerated
-        ):
-            notice = wx.StaticText(self, label=_("Response was regenerated"))
-            sizer.Add(notice, 0, wx.ALL, self.FromDIP(4))
-            self._regenerated_notice = notice
-
-        if agent_segment is not None:
+        if isinstance(agent_payload, AgentSegment):
             self._agent_panel.update(
-                agent_segment.payload,
+                agent_payload,
                 regenerate_enabled=regenerate_enabled,
                 on_regenerate=on_regenerate,
             )
             self._agent_panel.enable_regenerate(regenerate_enabled)
+            self._agent_panel.set_regenerate_handler(on_regenerate)
             self._agent_panel.Show()
-            sizer.Add(self._agent_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
         else:
             self._agent_panel.Hide()
 
-        for index, system_segment in enumerate(system_segments, start=1):
-            text = _summarize_system_message(system_segment.payload)
-            if not text:
-                continue
-            key = f"system:{self._entry_id}:{index}"
-            pane = _build_collapsible_section(
-                self,
-                label=_("System message"),
-                content=text,
-                minimum_height=140,
-                collapsed=self._collapsed_state.get(key, True),
-                name=key,
-            )
+        notice = self._regenerated_notice
+        if notice_should_exist:
+            if not isinstance(notice, wx.StaticText):
+                notice = wx.StaticText(self, label=_("Response was regenerated"))
+                self._regenerated_notice = notice
+            notice.Show()
+        elif isinstance(notice, wx.StaticText):
+            notice.Hide()
+
+        current_sections = self._system_sections if not system_changed else {}
+        new_sections: dict[str, wx.CollapsiblePane] = {}
+        ordered_panes: list[wx.CollapsiblePane] = []
+        for key, payload, text in system_entries:
+            pane = current_sections.get(key)
+            if not _is_window_alive(pane):
+                pane = None
+            if pane is None:
+                pane = _build_collapsible_section(
+                    self,
+                    label=_("System message"),
+                    content=text,
+                    minimum_height=140,
+                    collapsed=self._collapsed_state.get(key, True),
+                    name=key,
+                )
             if pane is None:
                 continue
-            self._system_sections[key] = pane
-            sizer.Add(pane, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(4))
+            new_sections[key] = pane
+            ordered_panes.append(pane)
 
+        self._system_sections = new_sections
+
+        if layout_needs_rebuild:
+            if prompt_payload is not None:
+                existing = self._user_panel.GetContainingSizer()
+                if existing is not None:
+                    existing.Detach(self._user_panel)
+                sizer.Add(self._user_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
+            if notice_should_exist and isinstance(self._regenerated_notice, wx.Window):
+                existing_notice = self._regenerated_notice.GetContainingSizer()
+                if existing_notice is not None:
+                    existing_notice.Detach(self._regenerated_notice)
+                sizer.Add(self._regenerated_notice, 0, wx.ALL, self.FromDIP(4))
+            if isinstance(agent_payload, AgentSegment):
+                existing_agent = self._agent_panel.GetContainingSizer()
+                if existing_agent is not None:
+                    existing_agent.Detach(self._agent_panel)
+                sizer.Add(self._agent_panel, 0, wx.EXPAND | wx.ALL, self.FromDIP(4))
+            for pane in ordered_panes:
+                existing_pane = pane.GetContainingSizer()
+                if existing_pane is not None:
+                    existing_pane.Detach(pane)
+                sizer.Add(
+                    pane,
+                    0,
+                    wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
+                    self.FromDIP(4),
+                )
+
+        self._user_panel.enable_regenerate(regenerate_enabled)
+        self._agent_panel.enable_regenerate(regenerate_enabled)
+        self._notice_visible = notice_should_exist
+        self._last_prompt_segment = prompt_payload
+        self._last_agent_segment = agent_payload
+        self._last_system_segments = system_map
+        self._layout_initialized = True
         self.Layout()
 
     # ------------------------------------------------------------------

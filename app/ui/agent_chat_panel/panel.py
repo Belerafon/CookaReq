@@ -236,6 +236,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._history_column_widths: tuple[int, ...] | None = None
         self._history_column_refresh_scheduled = False
         self._latest_timeline: ConversationTimeline | None = None
+        self._last_rendered_conversation_id: str | None = None
         self._history_last_sash = 0
         self._vertical_sash_goal: int | None = None
         self._vertical_last_sash = 0
@@ -510,6 +511,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def focus_input(self) -> None:
         """Give keyboard focus to the input control."""
         self.input.SetFocus()
+
+    # ------------------------------------------------------------------
+    def _on_active_conversation_changed(
+        self,
+        previous_id: str | None,
+        new_id: str | None,
+    ) -> None:
+        super()._on_active_conversation_changed(previous_id, new_id)
+        if previous_id != new_id:
+            self._last_rendered_conversation_id = None
 
     # ------------------------------------------------------------------
     def _build_ui(self) -> None:
@@ -2660,7 +2671,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         active_id = active_conversation.conversation_id if active_conversation else None
 
         for conversation_id, entry_ids in pending.items():
-            force = entry_ids is None
+            force_request = entry_ids is None
             if conversation_id is None:
                 render_kwargs = {
                     "conversation": None,
@@ -2673,6 +2684,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 else:
                     view.schedule_render(**render_kwargs)
                 self._latest_timeline = None
+                self._last_rendered_conversation_id = None
                 self._update_transcript_selection_probe(
                     compose_transcript_text(None)
                 )
@@ -2691,27 +2703,47 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if conversation_id != active_id:
                 continue
 
-            if not force and not entry_ids:
+            if not force_request and not entry_ids:
                 continue
 
-            updated_entries = None if force else sorted(entry_ids)
+            if force_request:
+                updated_entries: Iterable[str] | None = [
+                    entry.entry_id for entry in timeline.entries
+                ]
+            else:
+                updated_entries = sorted(entry_ids)
+
+            should_force = force_request and (
+                conversation_id != self._last_rendered_conversation_id
+            )
             render_kwargs = {
                 "conversation": conversation,
                 "timeline": timeline,
                 "updated_entries": updated_entries,
-                "force": force,
+                "force": should_force,
             }
             if immediate:
                 view.render_now(**render_kwargs)
             else:
                 view.schedule_render(**render_kwargs)
             self._latest_timeline = timeline
+            self._last_rendered_conversation_id = conversation_id
             self._update_transcript_selection_probe(
                 compose_transcript_text(conversation, timeline=timeline)
             )
 
     def _render_transcript(self) -> None:
-        self._request_transcript_refresh(force=True, immediate=True)
+        active_conversation = self._get_active_conversation_loaded()
+        force_refresh = (
+            active_conversation is None
+            or active_conversation.conversation_id
+            != self._last_rendered_conversation_id
+        )
+        self._request_transcript_refresh(
+            conversation=active_conversation,
+            force=force_refresh,
+            immediate=True,
+        )
 
     def _update_transcript_selection_probe(self, text: str | None = None) -> None:
         probe = getattr(self, "_transcript_selection_probe", None)

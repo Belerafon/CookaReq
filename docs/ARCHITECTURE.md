@@ -120,13 +120,17 @@ so you know which modules are involved and which regressions to guard against.
   * `document_tree.py` and `list_panel.py` show documents and filtered lists of
     requirements.
   * `editor_panel.py` manages requirement editing and metadata updates.
-  * `agent_chat_panel/` displays the running agent transcript, batching controls
-    and confirmation toggles. Users can queue follow-up prompts while a run is
-    still executing; the panel surfaces the pending message in a cancellable
-    banner and automatically submits it once the agent finishes. Long-running commands execute through
-    `ThreadedAgentCommandExecutor` (a single-worker `ThreadPoolExecutor`).
-    `tool_result_state.py` keeps the merge logic for streamed tool results
-    linear and testable (timestamps, status updates, raw tool arguments).
+* `agent_chat_panel/` displays the running agent transcript, batching controls
+  and confirmation toggles. Users can queue follow-up prompts while a run is
+  still executing; the panel surfaces the pending message in a cancellable
+  banner and automatically submits it once the agent finishes. Long-running commands execute through
+  `ThreadedAgentCommandExecutor` (a single-worker `ThreadPoolExecutor`).
+  `tool_result_state.py` keeps the merge logic for streamed tool results
+  linear and testable (timestamps, status updates, raw tool arguments). The
+  transcript view (`SegmentListView`, `TurnCard`, `MessageSegmentPanel`) keeps
+  a timeline cache of normalised payloads and reuses wx widgets between
+  rerenders so large conversations (30+ messages) can refresh without tearing
+  down the layout on every frame.
   * `trace_matrix.py` and `derivation_graph.py` visualise relationships.
 * **Controllers** — under `app/ui/controllers/`, they translate wx events into
   service calls (`DocumentsController`, `MCPController`, etc.). Controllers take

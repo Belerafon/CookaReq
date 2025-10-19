@@ -159,6 +159,48 @@ class HistoryStore:
         return entries
 
     # ------------------------------------------------------------------
+    def conversations_with_entries(
+        self, conversation_ids: Sequence[str] | None = None
+    ) -> set[str]:
+        """Return identifiers of conversations that store at least one entry."""
+        try:
+            with self._connect() as conn:
+                self._ensure_schema(conn)
+                if conversation_ids is None:
+                    rows = conn.execute(
+                        "SELECT DISTINCT conversation_id FROM entries"
+                    ).fetchall()
+                else:
+                    identifiers = [
+                        conv_id
+                        for conv_id in conversation_ids
+                        if isinstance(conv_id, str) and conv_id
+                    ]
+                    if not identifiers:
+                        return set()
+                    placeholders = ",".join("?" for _ in identifiers)
+                    query = (
+                        "SELECT DISTINCT conversation_id FROM entries "
+                        f"WHERE conversation_id IN ({placeholders})"
+                    )
+                    rows = conn.execute(query, tuple(identifiers)).fetchall()
+        except sqlite3.Error:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to resolve conversations with entries from %s", self._path
+            )
+            return set()
+
+        ids: set[str] = set()
+        for row in rows:
+            if isinstance(row, sqlite3.Row):
+                value = row["conversation_id"]
+            else:
+                value = row[0] if row else None
+            if isinstance(value, str) and value:
+                ids.add(value)
+        return ids
+
+    # ------------------------------------------------------------------
     def save(
         self,
         conversations: Iterable[ChatConversation],

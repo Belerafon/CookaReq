@@ -280,6 +280,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._session.events.running_changed.connect(self._on_session_running_changed)
         self._session.events.tokens_changed.connect(self._on_session_tokens_changed)
         self._session.events.history_changed.connect(self._on_session_history_changed)
+        self._lazy_history_cleanup_pending = False
         self._initialize_history_state()
         self._build_ui()
         self._initialize_controller()
@@ -454,12 +455,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         """Load history immediately and ensure a fresh draft conversation."""
         history = self._session.history
         history.load()
-        cleaned: list[ChatConversation] = []
-        for conversation in list(history.conversations):
-            history.ensure_conversation_entries(conversation)
-            if conversation.entries:
-                cleaned.append(conversation)
-        history.set_conversations(cleaned)
+        history.prune_empty_conversations()
         conversations = history.conversations
         draft = ChatConversation.new()
         self._register_conversation(draft)
@@ -468,6 +464,28 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._pending_transcript_refresh.clear()
         self._latest_timeline = None
         self._notify_history_changed()
+        self._schedule_lazy_history_cleanup()
+
+    def _schedule_lazy_history_cleanup(self) -> None:
+        if self._lazy_history_cleanup_pending:
+            return
+
+        def _run_cleanup() -> None:
+            self._lazy_history_cleanup_pending = False
+            try:
+                removed = self._session.history.prune_empty_conversations(
+                    verify_with_store=True
+                )
+            except Exception:  # pragma: no cover - defensive logging
+                logger.exception("Failed to perform lazy history cleanup")
+                return
+            if not removed:
+                return
+            self._notify_history_changed()
+            self._refresh_history_list()
+
+        self._lazy_history_cleanup_pending = True
+        wx.CallAfter(_run_cleanup)
 
     def _save_history_to_store(self) -> None:
         self._session.save_history()

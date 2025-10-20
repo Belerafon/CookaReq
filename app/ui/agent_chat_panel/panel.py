@@ -1711,6 +1711,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             )
             if merged_tool_results is not None:
                 resolved_tool_results = normalise_tool_payloads(merged_tool_results)
+            if resolved_tool_results:
+                self._ensure_tool_result_identifiers(
+                    resolved_tool_results,
+                    prefix=f"{handle.run_id}-stream",
+                )
             raw_result = update_tool_results(raw_result, resolved_tool_results)
             tool_results = resolved_tool_results
             tool_messages = self._build_tool_messages(tool_results)
@@ -2264,6 +2269,46 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return None
         return tuple(messages)
 
+    @staticmethod
+    def _ensure_tool_result_identifiers(
+        payloads: Sequence[Any] | None,
+        *,
+        prefix: str,
+    ) -> None:
+        if not payloads:
+            return
+        counter = 0
+        for payload in payloads:
+            if not isinstance(payload, Mapping):
+                continue
+            call_identifier = payload.get("tool_call_id") or payload.get("call_id")
+            text: str | None
+            if isinstance(call_identifier, str):
+                text = call_identifier.strip()
+            elif call_identifier is None:
+                text = None
+            else:
+                text = str(call_identifier).strip()
+            if text:
+                if text != payload.get("tool_call_id"):
+                    try:
+                        if isinstance(payload, dict):
+                            payload["tool_call_id"] = text
+                        else:
+                            payload.__setitem__("tool_call_id", text)
+                    except Exception:  # pragma: no cover - defensive
+                        pass
+                continue
+            counter += 1
+            fallback = f"{prefix}-{counter}"
+            try:
+                if isinstance(payload, dict):
+                    payload.setdefault("tool_call_id", fallback)
+                else:
+                    payload.__setitem__("tool_call_id", fallback)
+            except Exception:  # pragma: no cover - defensive
+                continue
+
     def _add_pending_entry(
         self,
         conversation: ChatConversation,
@@ -2523,6 +2568,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if tool_results_payload
             else None
         )
+        if tool_results:
+            self._ensure_tool_result_identifiers(
+                tool_results, prefix=f"{handle.run_id}-stream"
+            )
         tool_messages = self._build_tool_messages(tool_results)
         response_text = handle.latest_llm_response or ""
         reasoning_segments: tuple[dict[str, str], ...] | None = (
@@ -3061,6 +3110,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return
 
         cloned_results = list(clone_streamed_tool_results(tool_results))
+        self._ensure_tool_result_identifiers(
+            cloned_results, prefix=f"{handle.run_id}-stream"
+        )
         entry.tool_results = cloned_results
         self._request_transcript_refresh(
             conversation=conversation,

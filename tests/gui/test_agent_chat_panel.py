@@ -2804,6 +2804,153 @@ def test_agent_chat_panel_cancellation_preserves_llm_step(tmp_path, wx_app):
         pool.shutdown(wait=True, cancel_futures=True)
 
 
+@pytest.mark.gui_smoke
+def test_agent_chat_panel_cancellation_persists_tool_history(tmp_path, wx_app):
+    from app.ui.agent_chat_panel import ThreadedAgentCommandExecutor
+
+    class StreamingAgent:
+        def __init__(self) -> None:
+            self.started = threading.Event()
+            self.streamed = threading.Event()
+            self.cancel_seen = threading.Event()
+
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            self.started.set()
+            payloads = [
+                {
+                    "tool_name": "update_requirement_field",
+                    "tool_call_id": "call-stop-0",
+                    "call_id": "call-stop-0",
+                    "tool_arguments": {
+                        "rid": "SYS-0002",
+                        "field": "title",
+                        "value": "Cancelled",
+                    },
+                    "agent_status": "running",
+                },
+                {
+                    "tool_name": "list_requirements",
+                    "tool_arguments": {
+                        "label": "security",
+                    },
+                    "agent_status": "running",
+                    "status_updates": [
+                        {"status": "running", "message": "Filtering requirements"}
+                    ],
+                },
+            ]
+            if callable(on_tool_result):
+                for payload in payloads:
+                    on_tool_result(payload)
+            self.streamed.set()
+            while cancellation is not None and not cancellation.wait(0.05):
+                pass
+            if cancellation is not None:
+                self.cancel_seen.set()
+                cancellation.raise_if_cancelled()
+            return {"ok": True, "error": None, "result": text.upper()}
+
+    agent = StreamingAgent()
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="TestAgentChat")
+    wx, frame, panel = create_panel(
+        tmp_path,
+        wx_app,
+        agent,
+        executor=ThreadedAgentCommandExecutor(pool),
+    )
+
+    try:
+        panel.input.SetValue("cancel tool stream")
+        panel._on_send(None)
+
+        assert agent.started.wait(1.0)
+        assert agent.streamed.wait(1.0)
+        flush_wx_events(wx, count=6)
+
+        panel._on_stop(None)
+
+        assert agent.cancel_seen.wait(1.0)
+        flush_wx_events(wx, count=6)
+
+        history = panel.history
+        assert len(history) == 1
+        entry = history[0]
+        tool_results = entry.raw_result.get("tool_results")
+        assert tool_results, "expected tool results in raw payload"
+        assert len(tool_results) == 2
+        tool_ids = {payload.get("tool_call_id") for payload in tool_results}
+        assert "call-stop-0" in tool_ids
+        stream_ids = {identifier for identifier in tool_ids if identifier != "call-stop-0"}
+        assert len(stream_ids) == 1
+        stream_id = next(iter(stream_ids))
+        assert isinstance(stream_id, str) and stream_id.endswith("-stream-1")
+        persisted_results = entry.tool_results
+        assert persisted_results
+        persisted_ids = {
+            payload.get("tool_call_id") for payload in persisted_results
+        }
+        assert "call-stop-0" in persisted_ids
+        persisted_stream_ids = {
+            identifier for identifier in persisted_ids if identifier != "call-stop-0"
+        }
+        assert persisted_stream_ids == {stream_id}
+        assert entry.tool_messages
+        message_ids = {message.get("tool_call_id") for message in entry.tool_messages}
+        assert message_ids == {"call-stop-0", stream_id}
+
+        metadata, conversations = read_history_database(history_db_path(tmp_path))
+        assert metadata.get("active_id") == conversations[0]["id"]
+        stored_entries = conversations[0]["entries"]
+        assert stored_entries and stored_entries[0]["raw_result"]["tool_results"]
+    finally:
+        destroy_panel(frame, panel)
+        pool.shutdown(wait=True, cancel_futures=True)
+
+    class PassiveAgent:
+        def run_command(self, *args, **kwargs):  # pragma: no cover - not used
+            return {"ok": True, "result": "noop"}
+
+    wx2, frame2, panel2 = create_panel(
+        tmp_path,
+        wx_app,
+        PassiveAgent(),
+        use_default_executor=True,
+    )
+
+    try:
+        conversations = panel2.conversations
+        saved = next((conv for conv in conversations if conv.entries), None)
+        assert saved is not None, "expected saved conversation in history"
+        panel2._session.history.ensure_conversation_entries(saved)
+        assert len(saved.entries) == 1
+        reloaded_entry = saved.entries[0]
+        reloaded_results = reloaded_entry.raw_result.get("tool_results")
+        assert reloaded_results
+        reloaded_ids = {payload.get("tool_call_id") for payload in reloaded_results}
+        assert reloaded_ids == {"call-stop-0", stream_id}
+        assert reloaded_entry.tool_results
+        persisted_reloaded_ids = {
+            payload.get("tool_call_id") for payload in reloaded_entry.tool_results
+        }
+        assert persisted_reloaded_ids == {"call-stop-0", stream_id}
+        assert reloaded_entry.tool_messages
+        reloaded_message_ids = {
+            message.get("tool_call_id") for message in reloaded_entry.tool_messages
+        }
+        assert reloaded_message_ids == {"call-stop-0", stream_id}
+    finally:
+        destroy_panel(frame2, panel2)
+
+
 def test_agent_chat_panel_streams_tool_results(tmp_path, wx_app):
 
     class StreamingAgent:

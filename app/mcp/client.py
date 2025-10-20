@@ -79,6 +79,7 @@ class MCPClient:
         self._last_ready_ok = False
         self._last_ready_error: dict[str, Any] | None = None
         self._base_url = self._build_base_url()
+        self._tool_schemas: dict[str, dict[str, Any]] | None = None
 
     # ------------------------------------------------------------------
     def _confirm_sensitive_tool(
@@ -793,4 +794,161 @@ class MCPClient:
         """Return MCP-formatted health check error payload."""
         payload = mcp_error(ErrorCode.INTERNAL, message, details)["error"]
         return payload
+
+    def _normalise_tool_schema_response(
+        self, payload: Mapping[str, Any]
+    ) -> dict[str, dict[str, Any]]:
+        tools_payload = payload.get("tools")
+        if not isinstance(tools_payload, Mapping):
+            return {}
+        normalised: dict[str, dict[str, Any]] = {}
+        for name, schema_payload in tools_payload.items():
+            if not isinstance(name, str) or not name:
+                continue
+            if not isinstance(schema_payload, Mapping):
+                continue
+            normalised[name] = {
+                key: value
+                for key, value in schema_payload.items()
+                if isinstance(key, str)
+            }
+        return normalised
+
+    # ------------------------------------------------------------------
+    def get_tool_schemas(self) -> dict[str, dict[str, Any]]:
+        """Return schemas advertised by the MCP server."""
+
+        if self._tool_schemas is not None:
+            return dict(self._tool_schemas)
+
+        headers = self._headers()
+        start = time.monotonic()
+        log_debug_payload(
+            "MCP_REQUEST",
+            {
+                "direction": "outbound",
+                "tool": "__schema__",
+                "http": {
+                    "host": self.settings.host,
+                    "port": self.settings.port,
+                    "path": "/mcp/schema",
+                    "headers": headers,
+                },
+            },
+        )
+        try:
+            resp = self._request_sync("GET", "/mcp/schema", headers=headers)
+            response_headers = list(resp.headers.items())
+            body = resp.text
+        except httpx.HTTPError as exc:  # pragma: no cover - network errors
+            error = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
+            log_event("MCP_SCHEMA", {"error": error}, start_time=start)
+            log_debug_payload(
+                "MCP_RESPONSE",
+                {
+                    "direction": "inbound",
+                    "tool": "__schema__",
+                    "error": error,
+                },
+            )
+            raise MCPNotReadyError(error) from exc
+
+        data = json.loads(body or "{}")
+        log_debug_payload(
+            "MCP_RESPONSE",
+            {
+                "direction": "inbound",
+                "tool": "__schema__",
+                "status": resp.status_code,
+                "headers": response_headers,
+                "body": body,
+            },
+        )
+        if resp.status_code != 200:
+            error = data.get("error")
+            if not isinstance(error, Mapping):
+                error = {
+                    "code": str(resp.status_code),
+                    "message": data.get("message", ""),
+                }
+            log_event("MCP_SCHEMA", {"error": error}, start_time=start)
+            raise MCPNotReadyError(error)
+
+        schemas = self._normalise_tool_schema_response(data)
+        log_event(
+            "MCP_SCHEMA",
+            {"tools": sorted(schemas)},
+            start_time=start,
+        )
+        self._tool_schemas = schemas
+        return dict(schemas)
+
+    # ------------------------------------------------------------------
+    async def get_tool_schemas_async(self) -> dict[str, dict[str, Any]]:
+        """Asynchronous counterpart to :meth:`get_tool_schemas`."""
+
+        if self._tool_schemas is not None:
+            return dict(self._tool_schemas)
+
+        headers = self._headers()
+        start = time.monotonic()
+        log_debug_payload(
+            "MCP_REQUEST",
+            {
+                "direction": "outbound",
+                "tool": "__schema__",
+                "http": {
+                    "host": self.settings.host,
+                    "port": self.settings.port,
+                    "path": "/mcp/schema",
+                    "headers": headers,
+                },
+            },
+        )
+        try:
+            resp = await self._request_async("GET", "/mcp/schema", headers=headers)
+            response_headers = list(resp.headers.items())
+            body = resp.text
+        except httpx.HTTPError as exc:  # pragma: no cover - network errors
+            error = mcp_error(ErrorCode.INTERNAL, str(exc))["error"]
+            log_event("MCP_SCHEMA", {"error": error}, start_time=start)
+            log_debug_payload(
+                "MCP_RESPONSE",
+                {
+                    "direction": "inbound",
+                    "tool": "__schema__",
+                    "error": error,
+                },
+            )
+            raise MCPNotReadyError(error) from exc
+
+        data = json.loads(body or "{}")
+        log_debug_payload(
+            "MCP_RESPONSE",
+            {
+                "direction": "inbound",
+                "tool": "__schema__",
+                "status": resp.status_code,
+                "headers": response_headers,
+                "body": body,
+            },
+        )
+        if resp.status_code != 200:
+            error = data.get("error")
+            if not isinstance(error, Mapping):
+                error = {
+                    "code": str(resp.status_code),
+                    "message": data.get("message", ""),
+                }
+            log_event("MCP_SCHEMA", {"error": error}, start_time=start)
+            raise MCPNotReadyError(error)
+
+        schemas = self._normalise_tool_schema_response(data)
+        log_event(
+            "MCP_SCHEMA",
+            {"tools": sorted(schemas)},
+            start_time=start,
+        )
+        self._tool_schemas = schemas
+        return dict(schemas)
 

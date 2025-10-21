@@ -2827,24 +2827,34 @@ def test_agent_chat_panel_cancellation_persists_tool_history(tmp_path, wx_app):
             self.started.set()
             payloads = [
                 {
-                    "tool_name": "update_requirement_field",
-                    "tool_call_id": "call-stop-0",
                     "call_id": "call-stop-0",
-                    "tool_arguments": {
+                    "tool_name": "update_requirement_field",
+                    "status": "running",
+                    "arguments": {
                         "rid": "SYS-0002",
                         "field": "title",
                         "value": "Cancelled",
                     },
-                    "agent_status": "running",
+                    "events": [
+                        {
+                            "kind": "started",
+                            "occurred_at": "2025-09-30T20:50:10+00:00",
+                        }
+                    ],
                 },
                 {
+                    "call_id": "call-stop-1",
                     "tool_name": "list_requirements",
-                    "tool_arguments": {
+                    "status": "running",
+                    "arguments": {
                         "label": "security",
                     },
-                    "agent_status": "running",
-                    "status_updates": [
-                        {"status": "running", "message": "Filtering requirements"}
+                    "events": [
+                        {
+                            "kind": "started",
+                            "occurred_at": "2025-09-30T20:50:12+00:00",
+                            "message": "Filtering requirements",
+                        }
                     ],
                 },
             ]
@@ -2887,25 +2897,32 @@ def test_agent_chat_panel_cancellation_persists_tool_history(tmp_path, wx_app):
         tool_results = entry.raw_result.get("tool_results")
         assert tool_results, "expected tool results in raw payload"
         assert len(tool_results) == 2
-        tool_ids = {payload.get("tool_call_id") for payload in tool_results}
+        tool_ids = {
+            payload.get("call_id") or payload.get("tool_call_id")
+            for payload in tool_results
+        }
         assert "call-stop-0" in tool_ids
+        expected_stream_ids = {"call-stop-1"}
         stream_ids = {identifier for identifier in tool_ids if identifier != "call-stop-0"}
-        assert len(stream_ids) == 1
-        stream_id = next(iter(stream_ids))
-        assert isinstance(stream_id, str) and stream_id.endswith("-stream-1")
+        assert stream_ids == expected_stream_ids
         persisted_results = entry.tool_results
         assert persisted_results
         persisted_ids = {
-            payload.get("tool_call_id") for payload in persisted_results
+            payload.get("call_id") or payload.get("tool_call_id")
+            for payload in persisted_results
         }
+        assert persisted_ids == {"call-stop-0", "call-stop-1"}
         assert "call-stop-0" in persisted_ids
         persisted_stream_ids = {
             identifier for identifier in persisted_ids if identifier != "call-stop-0"
         }
-        assert persisted_stream_ids == {stream_id}
+        assert persisted_stream_ids == expected_stream_ids
         assert entry.tool_messages
-        message_ids = {message.get("tool_call_id") for message in entry.tool_messages}
-        assert message_ids == {"call-stop-0", stream_id}
+        message_ids = {
+            message.get("tool_call_id") or message.get("call_id")
+            for message in entry.tool_messages
+        }
+        assert message_ids == {"call-stop-0", *expected_stream_ids}
 
         metadata, conversations = read_history_database(history_db_path(tmp_path))
         assert metadata.get("active_id") == conversations[0]["id"]
@@ -2935,18 +2952,23 @@ def test_agent_chat_panel_cancellation_persists_tool_history(tmp_path, wx_app):
         reloaded_entry = saved.entries[0]
         reloaded_results = reloaded_entry.raw_result.get("tool_results")
         assert reloaded_results
-        reloaded_ids = {payload.get("tool_call_id") for payload in reloaded_results}
-        assert reloaded_ids == {"call-stop-0", stream_id}
+        reloaded_ids = {
+            payload.get("call_id") or payload.get("tool_call_id")
+            for payload in reloaded_results
+        }
+        assert reloaded_ids == {"call-stop-0", *expected_stream_ids}
         assert reloaded_entry.tool_results
         persisted_reloaded_ids = {
-            payload.get("tool_call_id") for payload in reloaded_entry.tool_results
+            payload.get("call_id") or payload.get("tool_call_id")
+            for payload in reloaded_entry.tool_results
         }
-        assert persisted_reloaded_ids == {"call-stop-0", stream_id}
+        assert persisted_reloaded_ids == {"call-stop-0", *expected_stream_ids}
         assert reloaded_entry.tool_messages
         reloaded_message_ids = {
-            message.get("tool_call_id") for message in reloaded_entry.tool_messages
+            message.get("tool_call_id") or message.get("call_id")
+            for message in reloaded_entry.tool_messages
         }
-        assert reloaded_message_ids == {"call-stop-0", stream_id}
+        assert reloaded_message_ids == {"call-stop-0", *expected_stream_ids}
     finally:
         destroy_panel(frame2, panel2)
 

@@ -126,8 +126,21 @@ class _AgentRunRecorder:
         self, segments: Sequence[LLMReasoningSegment] | None
     ) -> None:
         normalised = normalise_reasoning_segments(segments)
-        if normalised:
-            self._reasoning.extend({"type": s["type"], "text": s["text"]} for s in normalised)
+        if not normalised:
+            return
+
+        for segment in normalised:
+            stored: dict[str, Any] = {
+                "type": segment.get("type", ""),
+                "text": segment.get("text", ""),
+            }
+            leading = segment.get("leading_whitespace")
+            if isinstance(leading, str) and leading:
+                stored["leading_whitespace"] = leading
+            trailing = segment.get("trailing_whitespace")
+            if isinstance(trailing, str) and trailing:
+                stored["trailing_whitespace"] = trailing
+            self._reasoning.append(stored)
 
     # ------------------------------------------------------------------
     def begin_tool(

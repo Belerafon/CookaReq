@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from typing import Any, Literal, Mapping, Sequence
 
 from ..util.time import utc_now_iso
@@ -360,7 +361,14 @@ class AgentRunPayload:
         ok = bool(payload.get("ok"))
         status_value = payload.get("status")
         status = "succeeded" if status_value == "succeeded" else "failed"
-        result_text = str(payload.get("result") or "")
+        result_value = payload.get("result")
+        if isinstance(result_value, str):
+            result_text = result_value
+        else:
+            try:
+                result_text = json.dumps(result_value, ensure_ascii=False)
+            except (TypeError, ValueError):
+                result_text = str(result_value or "")
         reasoning_payload = payload.get("reasoning")
         reasoning: list[Mapping[str, Any]] = []
         if isinstance(reasoning_payload, Sequence) and not isinstance(

@@ -215,6 +215,55 @@ def test_build_conversation_timeline_compiles_turn() -> None:
     assert entry_timeline.can_regenerate is True
 
 
+def test_build_conversation_timeline_deduplicates_reasoning_only_reply() -> None:
+    reasoning_segments = (
+        {
+            "type": "analysis",
+            "text": "Подбираю инструменты",
+            "leading_whitespace": "",
+            "trailing_whitespace": "",
+        },
+    )
+    payload = AgentRunPayload(
+        ok=True,
+        status="succeeded",
+        result_text="Подбираю инструменты",
+        reasoning=reasoning_segments,
+        tool_results=[],
+        llm_trace=LlmTrace(
+            steps=[
+                LlmStep(
+                    index=1,
+                    occurred_at="2025-09-30T21:00:00+00:00",
+                    request=(),
+                    response={"content": "Подбираю инструменты"},
+                )
+            ]
+        ),
+        diagnostic={},
+    )
+    entry = ChatEntry(
+        prompt="Что дальше?",
+        response="Подбираю инструменты",
+        tokens=10,
+        prompt_at="2025-09-30T20:59:58+00:00",
+        response_at="2025-09-30T21:00:00+00:00",
+        raw_result=payload.to_dict(),
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+
+    assert len(timeline.entries) == 1
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+    assert turn.final_response is None
+    assert turn.streamed_responses == ()
+    assert turn.reasoning == reasoning_segments
+    assert not turn.tool_calls
+    assert all(event.kind != "response" for event in turn.events)
+
+
 def test_tool_calls_sorted_by_timestamp() -> None:
     snapshots = (
         _tool_snapshot(

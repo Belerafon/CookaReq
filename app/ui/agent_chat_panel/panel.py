@@ -1819,7 +1819,22 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if payload is None:
             text = stringify_payload(result)
             normalised = normalize_for_display(text)
-            return normalised, normalised, None, (), ()
+            display_text = normalised
+            tool_results: tuple[ToolResultSnapshot, ...] = ()
+            if isinstance(result, Mapping):
+                tool_results = tuple(tool_snapshots_from(result.get("tool_results")))
+                error_payload = result.get("error")
+                if error_payload:
+                    display_text = normalize_for_display(
+                        format_error_message(error_payload, fallback=normalised)
+                    )
+                if display_text == normalised:
+                    result_payload = result.get("result")
+                    if result_payload is not None:
+                        display_text = normalize_for_display(
+                            stringify_payload(result_payload)
+                        )
+            return normalised, display_text, None, tool_results, ()
 
         reasoning_segments: tuple[dict[str, str], ...] = tuple(
             {
@@ -1840,20 +1855,23 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if display_text:
                 conversation_parts.append(display_text)
         else:
-            diagnostic_payload = payload.diagnostic or {}
-            error_payload = (
-                diagnostic_payload.get("error")
-                if isinstance(diagnostic_payload, Mapping)
-                else None
+            error_payload: Mapping[str, Any] | None = None
+            if payload.error is not None:
+                error_payload = payload.error.to_dict()
+            else:
+                diagnostic_payload = payload.diagnostic or {}
+                if isinstance(diagnostic_payload, Mapping):
+                    candidate = diagnostic_payload.get("error")
+                    if isinstance(candidate, Mapping):
+                        error_payload = candidate
+            error_text = format_error_message(
+                error_payload, fallback=base_text or _("Unknown error")
             )
-            error_text = format_error_message(error_payload)
             if error_text:
                 conversation_parts.append(error_text)
             if base_text and base_text not in conversation_parts:
                 conversation_parts.append(base_text)
-            display_text = error_text or base_text or normalize_for_display(
-                _("Agent run failed")
-            )
+            display_text = normalize_for_display(error_text or base_text or _("Agent run failed"))
 
         conversation_text = "\n\n".join(
             normalize_for_display(part)
@@ -2239,6 +2257,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         conversation.append_entry(entry)
         self._mark_conversation_dirty(conversation)
+        entry_id = self._entry_identifier(conversation, entry)
+        self._request_transcript_refresh(
+            conversation=conversation,
+            entry_ids=[entry_id] if entry_id else None,
+            force=entry_id is None,
+            immediate=True,
+        )
         return entry
 
     def _append_history(

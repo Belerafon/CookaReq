@@ -216,6 +216,26 @@ def _sanitize_mapping_sequence(
     return tuple(sanitized)
 
 
+def _render_reasoning_fallback(
+    segments: Sequence[Mapping[str, Any]] | None,
+) -> str:
+    if not segments:
+        return ""
+    parts: list[str] = []
+    for segment in segments:
+        if not isinstance(segment, Mapping):
+            continue
+        text = str(segment.get("text") or "")
+        leading = str(segment.get("leading_whitespace") or "")
+        trailing = str(segment.get("trailing_whitespace") or "")
+        combined = f"{leading}{text}{trailing}"
+        if combined.strip():
+            parts.append(combined)
+    if not parts:
+        return ""
+    return "".join(parts).strip()
+
+
 def _build_prompt(entry: ChatEntry) -> PromptMessage | None:
     text = entry.prompt or ""
     timestamp = _build_timestamp(entry.prompt_at, source="prompt_at")
@@ -253,13 +273,37 @@ def _build_agent_turn(
         final_text = entry.display_response or payload.result_text or entry.response or ""
         raw_payload = history_json_safe(payload.to_dict())
 
+    reasoning_fallback = _render_reasoning_fallback(reasoning_segments)
+    reasoning_display = normalize_for_display(reasoning_fallback)
+
     final_response = _build_final_response(
         final_text,
         response_timestamp,
         regenerated=bool(getattr(entry, "regenerated", False)),
     )
+
+    excluded_displays: set[str] = set()
+    if reasoning_display:
+        excluded_displays.add(reasoning_display)
+    if final_response is not None and reasoning_display:
+        final_display = normalize_for_display(
+            final_response.display_text or final_response.text or ""
+        )
+        if final_display == reasoning_display:
+            final_response = None
+        elif final_display:
+            excluded_displays.add(final_display)
+    elif final_response is not None:
+        final_display = normalize_for_display(
+            final_response.display_text or final_response.text or ""
+        )
+        if final_display:
+            excluded_displays.add(final_display)
+
     streamed_responses, latest_stream_timestamp = _build_streamed_responses(
-        llm_trace, final_response
+        llm_trace,
+        final_response,
+        excluded_displays,
     )
     tool_calls, latest_tool_timestamp = _build_tool_calls(
         entry_id, tool_snapshots, llm_trace
@@ -325,11 +369,10 @@ def _build_final_response(
 def _build_streamed_responses(
     trace: LlmTrace,
     final_response: AgentResponse | None,
+    excluded_displays: set[str],
 ) -> tuple[tuple[AgentResponse, ...], TimestampInfo | None]:
     if not trace.steps:
         return (), None
-
-    final_text = normalize_for_display(final_response.display_text) if final_response else ""
 
     responses: list[AgentResponse] = []
     latest_timestamp: TimestampInfo | None = None
@@ -339,7 +382,7 @@ def _build_streamed_responses(
         if not text:
             continue
         display_text = normalize_for_display(text)
-        if final_text and display_text == final_text:
+        if display_text and display_text in excluded_displays:
             continue
         timestamp = _build_timestamp(step.occurred_at, source="llm_step")
         response = AgentResponse(

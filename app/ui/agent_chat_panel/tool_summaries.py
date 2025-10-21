@@ -11,6 +11,7 @@ import json
 from ...agent.run_contract import ToolError, ToolResultSnapshot
 from ...i18n import _
 from ...llm.tokenizer import TokenCountResult, count_text_tokens
+from ..locale import field_label
 from ..text import normalize_for_display
 from .history_utils import history_json_safe
 from .time_formatting import format_entry_timestamp, parse_iso_timestamp
@@ -795,8 +796,18 @@ def summarize_generic_result(
 
 
 def prettify_key(key: Any) -> str:
+    if isinstance(key, str):
+        stripped = key.strip()
+        if stripped:
+            localized = field_label(stripped)
+            if localized:
+                return normalize_for_display(localized)
     text = normalize_for_display(str(key))
-    return text.replace("_", " ").capitalize()
+    cleaned = text.replace("_", " ").strip()
+    if not cleaned:
+        return ""
+    # Fallback to localized capitalization when the field is unknown.
+    return normalize_for_display(_(cleaned.capitalize()))
 
 
 def extract_rid(arguments: Any, result: Any) -> str | None:

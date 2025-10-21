@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -653,12 +655,15 @@ class MainFrameDocumentsMixin:
         dlg = LabelsDialog(self, labels)
         if dlg.ShowModal() == wx.ID_OK:
             try:
+                updated_labels = dlg.get_labels()
+                key_changes = dlg.get_key_changes()
+                removed_labels = dlg.get_removed_labels()
                 self.docs_controller.update_document_labels(
                     prefix,
                     original=labels,
-                    updated=dlg.get_labels(),
-                    rename_choices=dlg.get_key_changes(),
-                    removal_choices=dlg.get_removed_labels(),
+                    updated=updated_labels,
+                    rename_choices=key_changes,
+                    removal_choices=removed_labels,
                 )
             except ValidationError as exc:
                 wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
@@ -666,7 +671,104 @@ class MainFrameDocumentsMixin:
                 labels_all, freeform = self.docs_controller.collect_labels(prefix)
                 self.panel.update_labels_list(labels_all, freeform)
                 self.editor.update_labels_list(labels_all, freeform)
+                self._apply_label_updates_to_requirements(
+                    prefix,
+                    rename_choices=key_changes,
+                    removal_choices=removed_labels,
+                    labels=labels_all,
+                    allow_freeform=freeform,
+                )
         dlg.Destroy()
+
+    def _apply_label_updates_to_requirements(
+        self: MainFrame,
+        prefix: str,
+        *,
+        rename_choices: Mapping[str, tuple[str, bool]],
+        removal_choices: Mapping[str, bool],
+        labels: list[LabelDef],
+        allow_freeform: bool,
+    ) -> None:
+        """Update loaded requirements to reflect label renames and removals."""
+
+        if not getattr(self, "docs_controller", None):
+            return
+        if prefix != getattr(self, "current_doc_prefix", None):
+            return
+        model = getattr(self, "model", None)
+        panel = getattr(self, "panel", None)
+        if model is None or panel is None:
+            return
+
+        rename_map: dict[str, str] = {}
+        for original, (new_key_raw, propagate) in rename_choices.items():
+            if not propagate:
+                continue
+            new_key = (new_key_raw or "").strip()
+            if not new_key or new_key == original:
+                continue
+            rename_map[original] = new_key
+
+        removal_targets = {
+            key
+            for key, should_remove in removal_choices.items()
+            if should_remove
+        }
+
+        if not rename_map and not removal_targets:
+            return
+
+        updated: list = []
+        for requirement in model.get_all():
+            existing_labels = list(getattr(requirement, "labels", []) or [])
+            if not existing_labels:
+                continue
+            changed = False
+            new_labels: list[str] = []
+            for label in existing_labels:
+                replacement = rename_map.get(label)
+                if replacement is not None:
+                    new_labels.append(replacement)
+                    if replacement != label:
+                        changed = True
+                    continue
+                if label in removal_targets:
+                    changed = True
+                    continue
+                new_labels.append(label)
+            if changed:
+                updated.append(replace(requirement, labels=new_labels))
+
+        if not updated:
+            return
+
+        selected_id = getattr(self, "_selected_requirement_id", None)
+        model.update_many(updated)
+        panel.refresh(select_id=selected_id)
+
+        # Refresh detached editors working on the current document.
+        detached = list(getattr(self, "_detached_editors", {}).items())
+        if detached:
+            for key, frame in detached:
+                doc_prefix, req_id = key
+                if doc_prefix != prefix:
+                    continue
+                requirement = model.get_by_id(req_id)
+                if requirement is None:
+                    continue
+                if hasattr(frame, "editor") and frame.editor.is_dirty():
+                    frame.editor.update_labels_list(labels, allow_freeform)
+                    continue
+                frame.reload(requirement, prefix, labels, allow_freeform)
+
+        if selected_id is None:
+            return
+        current = model.get_by_id(selected_id)
+        if current is None:
+            return
+        if hasattr(self.editor, "is_dirty") and self.editor.is_dirty():
+            return
+        self.editor.load(current)
 
     def on_show_derivation_graph(self: MainFrame, _event: wx.Event) -> None:
         """Open window displaying requirement derivation graph."""

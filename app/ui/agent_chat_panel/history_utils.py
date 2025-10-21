@@ -34,103 +34,6 @@ def stringify_payload(payload: Any) -> str:
         return str(payload)
 
 
-def clone_streamed_tool_results(
-    tool_results: Sequence[Mapping[str, Any]] | None,
-) -> tuple[dict[str, Any], ...]:
-    """Return canonical copies of streamed tool snapshots."""
-    if not tool_results:
-        return ()
-    clones: list[dict[str, Any]] = []
-    for payload in tool_results:
-        snapshot = _snapshot_from_payload(payload)
-        if snapshot is not None:
-            clones.append(snapshot.to_dict())
-    return tuple(clones)
-
-
-def looks_like_tool_payload(payload: Mapping[str, Any]) -> bool:
-    """Return ``True`` if *payload* resembles a tool snapshot."""
-    if not isinstance(payload, Mapping):
-        return False
-    required_keys = {"call_id", "tool_name", "status"}
-    if required_keys.issubset(payload.keys()):
-        return True
-    try:
-        ToolResultSnapshot.from_dict(payload)
-    except Exception:
-        return False
-    return True
-
-
-def sort_tool_payloads(
-    payloads: Sequence[Mapping[str, Any]] | None,
-) -> list[dict[str, Any]]:
-    """Return tool payloads sorted by the earliest available timestamp."""
-    if not payloads:
-        return []
-    snapshots: list[dict[str, Any]] = []
-    for payload in payloads:
-        snapshot = _snapshot_from_payload(payload)
-        if snapshot is None:
-            continue
-        snapshots.append(snapshot.to_dict())
-
-    def timestamp_key(snapshot: dict[str, Any]) -> tuple[str, str]:
-        for key in ("started_at", "last_observed_at", "completed_at"):
-            value = snapshot.get(key)
-            if isinstance(value, str) and value.strip():
-                return (value, snapshot.get("call_id", ""))
-        return ("", snapshot.get("call_id", ""))
-
-    snapshots.sort(key=timestamp_key)
-    return snapshots
-
-
-def normalise_tool_payloads(tool_results: Any) -> list[dict[str, Any]] | None:
-    """Convert *tool_results* to canonical snapshot dictionaries."""
-    if tool_results is None:
-        return None
-    if isinstance(tool_results, Mapping) and "tool_results" in tool_results:
-        return normalise_tool_payloads(tool_results.get("tool_results"))
-    if isinstance(tool_results, Sequence) and not isinstance(
-        tool_results, (str, bytes, bytearray)
-    ):
-        candidates = tool_results
-    else:
-        candidates = (tool_results,)
-    snapshots: list[dict[str, Any]] = []
-    for entry in candidates:
-        snapshot = _snapshot_from_payload(entry)
-        if snapshot is not None:
-            snapshots.append(snapshot.to_dict())
-    if not snapshots:
-        return None
-    return snapshots
-
-
-def extract_tool_results(raw_result: Any) -> list[dict[str, Any]] | None:
-    """Return tool snapshots stored inside *raw_result*."""
-    if not isinstance(raw_result, Mapping):
-        return None
-    return normalise_tool_payloads(raw_result.get("tool_results"))
-
-
-def update_tool_results(
-    raw_result: Any | None, tool_results: Sequence[Any] | None
-) -> Any | None:
-    """Return ``raw_result`` with deterministic ``tool_results`` section."""
-    normalized = normalise_tool_payloads(tool_results)
-    if normalized is None:
-        if isinstance(raw_result, Mapping) and "tool_results" in raw_result:
-            updated = dict(raw_result)
-            updated.pop("tool_results", None)
-            return updated
-        return raw_result
-    base = dict(raw_result) if isinstance(raw_result, Mapping) else {}
-    base["tool_results"] = normalized
-    return base
-
-
 def format_value_snippet(value: Any) -> str:
     """Produce a human-friendly snippet for diagnostic payloads."""
     from .tool_summaries import format_value_snippet as _format_value_snippet
@@ -200,12 +103,6 @@ __all__ = [
     "agent_payload_from_mapping",
     "history_json_safe",
     "stringify_payload",
-    "clone_streamed_tool_results",
-    "looks_like_tool_payload",
-    "sort_tool_payloads",
-    "normalise_tool_payloads",
-    "extract_tool_results",
-    "update_tool_results",
     "format_value_snippet",
     "shorten_text",
     "tool_snapshot_dicts",

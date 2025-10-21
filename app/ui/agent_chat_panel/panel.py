@@ -57,6 +57,7 @@ from .history_utils import (
     history_json_safe,
     stringify_payload,
     tool_snapshot_dicts,
+    tool_snapshots_from,
 )
 from .log_export import compose_transcript_log_text, compose_transcript_text
 from .paths import (
@@ -2273,7 +2274,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
         if not reasoning_clone:
             reasoning_clone = None
-        resolved_tool_results = extract_tool_results(raw_result)
+        tool_snapshots = tool_snapshots_from(raw_result)
         entry = ChatEntry(
             prompt=prompt_text,
             response=response_text,
@@ -2293,7 +2294,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 display_response=display_text,
                 stored_response=response_text,
                 raw_result=raw_result,
-                tool_results=resolved_tool_results,
+                tool_results=tool_snapshots,
                 history_snapshot=history_snapshot,
                 context_snapshot=context_clone,
                 custom_system_prompt=self._custom_system_prompt(),
@@ -2341,7 +2342,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         entry.tool_messages = self._clone_tool_messages(tool_messages)
         reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
         entry.reasoning = reasoning_clone or None
-        resolved_tool_results = extract_tool_results(raw_result)
+        tool_snapshots = tool_snapshots_from(raw_result)
         existing_diagnostic = (
             entry.diagnostic if isinstance(entry.diagnostic, Mapping) else None
         )
@@ -2352,7 +2353,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             display_response=display_text,
             stored_response=response_text,
             raw_result=raw_result,
-            tool_results=resolved_tool_results,
+            tool_results=tool_snapshots,
             history_snapshot=history_snapshot,
             context_snapshot=context_clone,
             custom_system_prompt=self._custom_system_prompt(),
@@ -2809,6 +2810,24 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         return sanitized
 
     @classmethod
+    def _sanitize_planned_tool_calls(
+        cls, trace: LlmTrace
+    ) -> list[Any] | None:
+        planned: list[Any] = []
+        for step in trace.steps:
+            tool_calls = step.response.get("tool_calls")
+            if not tool_calls:
+                continue
+            safe_calls = history_json_safe(tool_calls)
+            if safe_calls is None:
+                continue
+            if isinstance(safe_calls, list):
+                planned = safe_calls
+            else:
+                planned = [safe_calls]
+        return planned or None
+
+    @classmethod
     def _merge_llm_step_sequences(
         cls,
         primary: list[dict[str, Any]],
@@ -2887,10 +2906,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             raw_result_safe if isinstance(raw_result_safe, Mapping) else None
         )
 
-        if isinstance(raw_result_mapping, Mapping):
-            diagnostic_raw = raw_result_mapping.get("diagnostic")
+        payload = agent_payload_from_mapping(raw_result_mapping)
+
+        tool_snapshots: list[ToolResultSnapshot] = []
+        if tool_results:
+            tool_snapshots.extend(tool_snapshots_from(tool_results))
+        elif payload is not None:
+            tool_snapshots.extend(payload.tool_results)
         else:
-            diagnostic_raw = None
+            tool_snapshots.extend(tool_snapshots_from(raw_result_mapping))
+        tool_payloads = tool_snapshot_dicts(tool_snapshots)
 
         previous_steps = cls._sanitize_llm_step_sequence(
             previous_diagnostic.get("llm_steps")
@@ -2899,28 +2924,56 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
 
         llm_request_sequence: list[dict[str, Any]] = []
-        if isinstance(diagnostic_raw, Mapping):
-            requests_raw = diagnostic_raw.get("llm_requests")
-            if isinstance(requests_raw, Sequence):
-                llm_request_sequence = cls._sanitize_llm_requests(requests_raw)
+        llm_request_messages: list[dict[str, Any]] = []
+        planned_tool_calls: list[Any] | None = None
+        llm_final_message: str | None = None
+        error_payload: Any | None = None
+        diagnostic_sections: Any | None = None
+        reasoning_payload: list[dict[str, Any]] | None = None
+        llm_trace_payload: dict[str, Any] | None = None
 
-        llm_step_details: list[dict[str, Any]] | None = None
-        if isinstance(diagnostic_raw, Mapping):
-            steps_raw = diagnostic_raw.get("llm_steps")
+        if payload is not None:
+            llm_trace_payload = payload.llm_trace.to_dict()
+            raw_sequence = [
+                {"step": step.index, "messages": step.request}
+                for step in payload.llm_trace.steps
+            ]
+            llm_request_sequence = cls._sanitize_llm_requests(raw_sequence)
+            if llm_request_sequence:
+                llm_request_messages = llm_request_sequence[-1]["messages"]
+            planned_tool_calls = cls._sanitize_planned_tool_calls(payload.llm_trace)
+            final_text = normalize_for_display(payload.result_text or "").strip()
+            llm_final_message = final_text or None
+            if payload.diagnostic:
+                error_payload = history_json_safe(payload.diagnostic.get("error"))
+                diagnostic_sections = history_json_safe(payload.diagnostic)
+            reasoning_payload = [
+                dict(segment)
+                for segment in cls._normalise_reasoning_segments(payload.reasoning)
+            ] or None
             current_steps = cls._sanitize_llm_step_sequence(
-                steps_raw if isinstance(steps_raw, Sequence) else None
+                [
+                    {
+                        "step": step.index,
+                        "occurred_at": step.occurred_at,
+                        "request": step.request,
+                        "response": step.response,
+                    }
+                    for step in payload.llm_trace.steps
+                ]
             )
-            if current_steps:
-                llm_step_details = current_steps
-
-        if llm_step_details is None and previous_steps:
-            llm_step_details = list(previous_steps)
-        elif llm_step_details and previous_steps:
-            cls._merge_llm_step_sequences(llm_step_details, previous_steps)
-
-        if llm_request_sequence:
-            llm_request_messages = llm_request_sequence[-1]["messages"]
         else:
+            current_steps = []
+            if isinstance(raw_result_mapping, Mapping):
+                diagnostic_raw = raw_result_mapping.get("diagnostic")
+                if isinstance(diagnostic_raw, Mapping):
+                    error_payload = history_json_safe(diagnostic_raw.get("error"))
+                    diagnostic_sections = history_json_safe(diagnostic_raw)
+
+        if not current_steps:
+            current_steps = previous_steps
+
+        if not llm_request_sequence:
             llm_request_messages = [
                 {"role": "system", "content": normalize_for_display(SYSTEM_PROMPT)},
                 *history_messages,
@@ -2931,69 +2984,32 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 {"step": 1, "messages": list(llm_request_messages)}
             ]
 
-        llm_message: str | None = None
-        error_payload: Any | None = None
-        planned_tool_calls: list[Any] | None = None
-        if raw_result_mapping:
-            result_value = raw_result_mapping.get("result")
-            if isinstance(result_value, str):
-                llm_message = normalize_for_display(result_value)
-            error_value = raw_result_mapping.get("error")
-            if error_value:
-                error_payload = history_json_safe(error_value)
-                if isinstance(error_payload, Mapping):
-                    details_payload = error_payload.get("details")
-                    if isinstance(details_payload, Mapping):
-                        raw_llm_message = details_payload.get("llm_message")
-                        if (
-                            llm_message in (None, "")
-                            and isinstance(raw_llm_message, str)
-                            and raw_llm_message.strip()
-                        ):
-                            llm_message = normalize_for_display(raw_llm_message)
-                        raw_tool_calls = details_payload.get("llm_tool_calls")
-                        if raw_tool_calls:
-                            safe_calls = history_json_safe(raw_tool_calls)
-                            if isinstance(safe_calls, list):
-                                planned_tool_calls = safe_calls or None
-                            elif safe_calls is not None:
-                                planned_tool_calls = [safe_calls]
-
-        tool_payloads = normalise_tool_payloads(tool_results)
-        if not tool_payloads and raw_result_mapping is not None:
-            tool_payloads = extract_tool_results(raw_result_mapping)
-        if (
-            not tool_payloads
-            and raw_result_mapping
-            and looks_like_tool_payload(raw_result_mapping)
-        ):
-            fallback_payloads = normalise_tool_payloads(raw_result_mapping)
-            if fallback_payloads:
-                tool_payloads = fallback_payloads
-        tool_payloads = tool_payloads or []
-
         diagnostic_payload = {
             "prompt_text": prompt_text,
             "prompt_at": prompt_at,
             "response_at": response_at,
-            "llm_request_messages": llm_request_messages,
             "history_messages": history_messages,
             "context_messages": context_messages,
-            "llm_final_message": llm_message,
+            "llm_request_messages": llm_request_messages,
+            "llm_request_messages_sequence": llm_request_sequence,
+            "llm_requests": llm_request_sequence,
+            "llm_trace": llm_trace_payload,
+            "llm_steps": current_steps,
+            "llm_final_message": llm_final_message,
             "llm_tool_calls": planned_tool_calls,
             "tool_exchanges": tool_payloads,
+            "tool_results": tool_payloads,
             "agent_response_text": display_text,
             "agent_stored_response": stored_text
             if stored_text != display_text
             else None,
             "raw_result": raw_result_safe,
             "error_payload": error_payload,
-            "llm_request_messages_sequence": llm_request_sequence,
-            "llm_requests": llm_request_sequence,
-            "llm_steps": llm_step_details,
             "custom_system_prompt": normalize_for_display(custom_system_prompt)
             if custom_system_prompt
             else None,
+            "reasoning": reasoning_payload,
+            "diagnostic": diagnostic_sections,
         }
 
         return history_json_safe(diagnostic_payload)

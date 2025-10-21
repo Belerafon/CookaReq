@@ -15,7 +15,8 @@ from tests.llm_utils import require_real_llm_tests_flag, settings_with_llm
 
 pytestmark = [pytest.mark.integration, pytest.mark.real_llm]
 
-DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+JSON_LOG_NAME = "cookareq.jsonl"
 
 VALIDATION_ERROR_MESSAGE = (
     "Invalid arguments for update_requirement_field: value: 'in_last_review' "
@@ -26,6 +27,20 @@ VALIDATION_ERROR_MESSAGE = (
 def _load_openrouter_key() -> str | None:
     secret = load_secret_from_env("OPEN_ROUTER", search_from=Path(__file__).resolve())
     return secret.get_secret_value() if secret else None
+
+
+def _read_json_lines(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [json.loads(line) for line in lines]
+
+
+def _new_log_entries(path: Path, previous_count: int) -> list[dict[str, object]]:
+    entries = _read_json_lines(path)
+    if previous_count >= len(entries):
+        return []
+    return entries[previous_count:]
 
 
 class _ValidationSnapshotLLM:
@@ -47,6 +62,7 @@ class _ValidationSnapshotLLM:
             conversation,
             cancellation=cancellation,
         )
+        should_raise = False
         for call in response.tool_calls:
             if call.name != "update_requirement_field":
                 continue
@@ -55,32 +71,39 @@ class _ValidationSnapshotLLM:
             value = arguments.get("value")
             if not rid or value != "in_last_review":
                 continue
-            exc = ToolValidationError(VALIDATION_ERROR_MESSAGE)
-            exc.llm_message = response.content or ""
-            exc.llm_request_messages = tuple(dict(message) for message in conversation)
-            exc.llm_tool_calls = tuple(
+            should_raise = True
+            break
+        if not response.tool_calls:
+            should_raise = True
+
+        if not should_raise:
+            return response
+
+        exc = ToolValidationError(VALIDATION_ERROR_MESSAGE)
+        exc.llm_message = response.content or ""
+        exc.llm_request_messages = tuple(dict(message) for message in conversation)
+        exc.llm_tool_calls = tuple(
+            {
+                "id": entry.id,
+                "type": "function",
+                "function": {
+                    "name": entry.name,
+                    "arguments": json.dumps(entry.arguments, ensure_ascii=False),
+                },
+            }
+            for entry in response.tool_calls
+        )
+        if response.reasoning:
+            exc.llm_reasoning = tuple(
                 {
-                    "id": entry.id,
-                    "type": "function",
-                    "function": {
-                        "name": entry.name,
-                        "arguments": json.dumps(entry.arguments, ensure_ascii=False),
-                    },
+                    "type": segment.type,
+                    "text": segment.text,
+                    "leading_whitespace": segment.leading_whitespace,
+                    "trailing_whitespace": segment.trailing_whitespace,
                 }
-                for entry in response.tool_calls
+                for segment in response.reasoning
             )
-            if response.reasoning:
-                exc.llm_reasoning = tuple(
-                    {
-                        "type": segment.type,
-                        "text": segment.text,
-                        "leading_whitespace": segment.leading_whitespace,
-                        "trailing_whitespace": segment.trailing_whitespace,
-                    }
-                    for segment in response.reasoning
-                )
-            raise exc
-        return response
+        raise exc
 
 
 class _PassiveMCP:
@@ -93,9 +116,14 @@ class _PassiveMCP:
     async def call_tool_async(self, name, arguments):  # pragma: no cover - guard
         raise AssertionError("Tool call should not be reached when validation fails")
 
+    async def get_tool_schemas_async(self) -> dict[str, object]:  # pragma: no cover - simple stub
+        return {}
+
 
 @pytest.mark.parametrize("target_language", ["испанский"], ids=["es"])
-def test_openrouter_collects_tool_validation_error_snapshot(tmp_path, target_language):
+def test_openrouter_collects_tool_validation_error_snapshot(
+    tmp_path: Path, real_llm_log_dir: Path, target_language: str
+) -> None:
     require_real_llm_tests_flag()
     key = _load_openrouter_key()
     if not key:
@@ -105,7 +133,14 @@ def test_openrouter_collects_tool_validation_error_snapshot(tmp_path, target_lan
     settings.llm.model = os.getenv("OPENROUTER_VALIDATION_MODEL", DEFAULT_MODEL)
     inner_client = LLMClient(settings.llm)
     client = _ValidationSnapshotLLM(inner_client)
-    agent = LocalAgent(llm=client, mcp=_PassiveMCP())
+    agent = LocalAgent(
+        llm=client,
+        mcp=_PassiveMCP(),
+        max_consecutive_tool_errors=1,
+    )
+
+    json_log_path = real_llm_log_dir / JSON_LOG_NAME
+    before_count = len(_read_json_lines(json_log_path))
 
     requirements = [
         ("DEMO1", "Demo introduction", "The demo shall show the CLI"),
@@ -141,3 +176,11 @@ def test_openrouter_collects_tool_validation_error_snapshot(tmp_path, target_lan
     snapshot_path = tmp_path / "llm_error_snapshot.json"
     snapshot_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     assert snapshot_path.exists()
+
+    new_entries = _new_log_entries(json_log_path, before_count)
+    assert any(entry.get("event") == "LLM_REQUEST" for entry in new_entries)
+    agent_result = next((entry for entry in new_entries if entry.get("event") == "AGENT_RESULT"), None)
+    assert agent_result is not None, "agent did not log final result"
+    payload = agent_result.get("payload", {}) if isinstance(agent_result.get("payload"), dict) else {}
+    assert payload.get("ok") is False
+    assert payload.get("status") == "failed"

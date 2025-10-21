@@ -525,6 +525,11 @@ class MessageSegmentPanel(wx.Panel):
         rendered: list[wx.Window] = []
         timestamp_info = turn.timestamp if turn is not None else None
         if turn is not None:
+            reasoning_section = self._create_reasoning_section(
+                container, payload, turn.reasoning
+            )
+            if reasoning_section is not None:
+                rendered.append(reasoning_section)
             for event in turn.events:
                 if event.kind == "response" and event.response is not None:
                     bubble = self._create_agent_message_bubble(
@@ -542,12 +547,6 @@ class MessageSegmentPanel(wx.Panel):
                         rendered.append(raw_section)
 
         if turn is not None:
-            reasoning_section = self._create_reasoning_section(
-                container, payload, turn.reasoning
-            )
-            if reasoning_section is not None:
-                rendered.append(reasoning_section)
-
             llm_section = self._create_llm_request_section(
                 container, payload, turn.llm_request
             )

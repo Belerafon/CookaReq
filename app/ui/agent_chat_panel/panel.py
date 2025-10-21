@@ -17,6 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import wx
 
+from ...agent.run_contract import AgentRunPayload, LlmTrace, ToolResultSnapshot
+
 from ...confirm import confirm
 from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT
@@ -51,14 +53,11 @@ from .execution import (
 from .history import AgentChatHistory
 from .history_view import HistoryView
 from .history_utils import (
-    clone_streamed_tool_results,
-    extract_tool_results,
+    agent_payload_from_mapping,
     history_json_safe,
-    looks_like_tool_payload,
-    normalise_tool_payloads,
-    sort_tool_payloads,
     stringify_payload,
-    update_tool_results,
+    tool_snapshot_dicts,
+    tool_snapshots_from,
 )
 from .log_export import compose_transcript_log_text, compose_transcript_text
 from .paths import (
@@ -1680,7 +1679,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             (
                 conversation_text,
                 display_text,
-                raw_result,
+                payload,
                 tool_results,
                 reasoning_segments,
             ) = self._process_result(result)
@@ -1701,24 +1700,32 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     display_text = latest_response
             if not reasoning_segments and handle.latest_reasoning_segments:
                 reasoning_segments = handle.latest_reasoning_segments
-            resolved_tool_results = normalise_tool_payloads(tool_results)
-            if not resolved_tool_results and handle.streamed_tool_results:
-                resolved_tool_results = normalise_tool_payloads(
-                    clone_streamed_tool_results(handle.streamed_tool_results)
-                )
-            merged_tool_results = self._merge_tool_result_timelines(
-                resolved_tool_results, handle.streamed_tool_results
-            )
-            if merged_tool_results is not None:
-                resolved_tool_results = normalise_tool_payloads(merged_tool_results)
-            if resolved_tool_results:
-                self._ensure_tool_result_identifiers(
-                    resolved_tool_results,
-                    prefix=f"{handle.run_id}-stream",
-                )
-            raw_result = update_tool_results(raw_result, resolved_tool_results)
-            tool_results = resolved_tool_results
-            tool_messages = self._build_tool_messages(tool_results)
+
+            streamed_snapshots = tuple(handle.tool_snapshots.values())
+            final_snapshots: tuple[ToolResultSnapshot, ...]
+            if tool_results:
+                final_snapshots = tool_results
+            elif streamed_snapshots:
+                final_snapshots = streamed_snapshots
+            else:
+                final_snapshots = ()
+
+            tool_payloads = tool_snapshot_dicts(final_snapshots)
+            tool_messages = self._build_tool_messages(final_snapshots)
+
+            if payload is not None:
+                raw_result = payload.to_dict()
+                if tool_payloads:
+                    raw_result["tool_results"] = tool_payloads
+                else:
+                    raw_result.pop("tool_results", None)
+            else:
+                raw_result = history_json_safe(result)
+                if isinstance(raw_result, dict):
+                    if tool_payloads:
+                        raw_result["tool_results"] = tool_payloads
+                    else:
+                        raw_result.pop("tool_results", None)
             assistant_text = latest_response or conversation_text
             response_tokens = count_text_tokens(
                 assistant_text,
@@ -1762,7 +1769,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     tool_messages=tool_messages,
                 )
             handle.pending_entry = None
-            handle.streamed_tool_results.clear()
+            handle.tool_snapshots.clear()
+            handle.tool_order.clear()
             handle.latest_llm_response = None
             handle.latest_reasoning_segments = None
             should_render = True
@@ -1802,73 +1810,79 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     ) -> tuple[
         str,
         str,
-        Any | None,
-        list[Any] | None,
+        AgentRunPayload | None,
+        tuple[ToolResultSnapshot, ...],
         tuple[dict[str, str], ...],
     ]:
         """Normalise agent result for storage and display."""
-        display_text = ""
-        conversation_parts: list[str] = []
-        raw_payload: Any | None = None
-        tool_results: list[Any] | None = None
-        reasoning_segments: tuple[dict[str, str], ...] = ()
-
-        if isinstance(result, Mapping):
-            raw_payload = history_json_safe(result)
-            if not result.get("ok", False):
+        payload = agent_payload_from_mapping(result)
+        if payload is None:
+            text = stringify_payload(result)
+            normalised = normalize_for_display(text)
+            display_text = normalised
+            tool_results: tuple[ToolResultSnapshot, ...] = ()
+            if isinstance(result, Mapping):
+                tool_results = tuple(tool_snapshots_from(result.get("tool_results")))
                 error_payload = result.get("error")
-                display_text = format_error_message(error_payload)
+                if error_payload:
+                    display_text = normalize_for_display(
+                        format_error_message(error_payload, fallback=normalised)
+                    )
+                if display_text == normalised:
+                    result_payload = result.get("result")
+                    if result_payload is not None:
+                        display_text = normalize_for_display(
+                            stringify_payload(result_payload)
+                        )
+            return normalised, display_text, None, tool_results, ()
+
+        reasoning_segments: tuple[dict[str, str], ...] = tuple(
+            {
+                "type": normalize_for_display(str(segment.get("type", ""))),
+                "text": normalize_for_display(str(segment.get("text", ""))),
+            }
+            for segment in payload.reasoning
+            if isinstance(segment, Mapping) and str(segment.get("text", "")).strip()
+        )
+
+        tool_results = tuple(payload.tool_results)
+
+        base_text = normalize_for_display(payload.result_text)
+        conversation_parts: list[str] = []
+
+        if payload.ok:
+            display_text = base_text
+            if display_text:
                 conversation_parts.append(display_text)
-                llm_detail_text: str | None = None
-                if isinstance(error_payload, Mapping):
-                    details_payload = error_payload.get("details")
-                    if isinstance(details_payload, Mapping):
-                        raw_llm_message = details_payload.get("llm_message")
-                        if isinstance(raw_llm_message, str):
-                            stripped = raw_llm_message.strip()
-                            if stripped:
-                                llm_detail_text = stripped
-                if (
-                    llm_detail_text
-                    and llm_detail_text not in conversation_parts
-                ):
-                    conversation_parts.append(llm_detail_text)
-                    if llm_detail_text not in display_text:
-                        if display_text:
-                            display_text = f"{display_text}\n\n{llm_detail_text}"
-                        else:
-                            display_text = llm_detail_text
+        else:
+            error_payload: Mapping[str, Any] | None = None
+            if payload.error is not None:
+                error_payload = payload.error.to_dict()
             else:
-                payload = result.get("result")
-                display_text = stringify_payload(payload)
-                if display_text:
-                    conversation_parts.append(display_text)
-
-            extras = result.get("tool_results")
-            tool_results = normalise_tool_payloads(extras)
-            if tool_results:
-                raw_payload = update_tool_results(raw_payload, tool_results)
-                extras_text = stringify_payload(tool_results)
-                if extras_text:
-                    conversation_parts.append(extras_text)
-            reasoning_segments = self._normalise_reasoning_segments(
-                result.get("reasoning")
+                diagnostic_payload = payload.diagnostic or {}
+                if isinstance(diagnostic_payload, Mapping):
+                    candidate = diagnostic_payload.get("error")
+                    if isinstance(candidate, Mapping):
+                        error_payload = candidate
+            error_text = format_error_message(
+                error_payload, fallback=base_text or _("Unknown error")
             )
-        else:
-            display_text = str(result)
-            conversation_parts.append(display_text)
+            if error_text:
+                conversation_parts.append(error_text)
+            if base_text and base_text not in conversation_parts:
+                conversation_parts.append(base_text)
+            display_text = normalize_for_display(error_text or base_text or _("Agent run failed"))
 
-        conversation_text = "\n\n".join(part for part in conversation_parts if part)
-        conversation_text = normalize_for_display(conversation_text)
-        if display_text:
-            display_text = normalize_for_display(display_text)
-        else:
-            display_text = conversation_text
+        conversation_text = "\n\n".join(
+            normalize_for_display(part)
+            for part in conversation_parts
+            if part.strip()
+        )
 
         return (
             conversation_text,
-            display_text,
-            raw_payload,
+            normalize_for_display(display_text),
+            payload,
             tool_results,
             reasoning_segments,
         )
@@ -2198,67 +2212,19 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return "{}"
         return text.strip() or "{}"
 
-    @staticmethod
-    def _extract_tool_identifier(payload: Mapping[str, Any]) -> str | None:
-        for key in ("tool_call_id", "call_id", "id"):
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        nested_tool = payload.get("tool")
-        if isinstance(nested_tool, Mapping):
-            identifier = AgentChatPanel._extract_tool_identifier(nested_tool)
-            if identifier:
-                return identifier
-        nested_call = payload.get("call")
-        if isinstance(nested_call, Mapping):
-            identifier = AgentChatPanel._extract_tool_identifier(nested_call)
-            if identifier:
-                return identifier
-        return None
-
-    @staticmethod
-    def _extract_tool_name(payload: Mapping[str, Any]) -> str | None:
-        for key in ("tool_name", "name"):
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        nested_tool = payload.get("tool")
-        if isinstance(nested_tool, Mapping):
-            name = AgentChatPanel._extract_tool_name(nested_tool)
-            if name:
-                return name
-        nested_call = payload.get("call")
-        if isinstance(nested_call, Mapping):
-            name = AgentChatPanel._extract_tool_name(nested_call)
-            if name:
-                return name
-        return None
-
-    @staticmethod
-    def _prepare_tool_message_payload(payload: Any) -> dict[str, Any] | None:
-        if isinstance(payload, Mapping):
-            prepared = history_json_safe(payload)
-            if isinstance(prepared, Mapping):
-                return dict(prepared)
-            return dict(payload)
-        prepared = history_json_safe(payload)
-        if isinstance(prepared, Mapping):
-            return dict(prepared)
-        return {"value": prepared}
-
     def _build_tool_messages(
-        self, tool_results: Sequence[Any] | None
+        self, tool_results: Sequence[ToolResultSnapshot] | None
     ) -> tuple[dict[str, Any], ...] | None:
         if not tool_results:
             return None
         messages: list[dict[str, Any]] = []
-        for payload in tool_results:
-            prepared_payload = self._prepare_tool_message_payload(payload)
-            if not prepared_payload:
+        for snapshot in tool_results:
+            if not isinstance(snapshot, ToolResultSnapshot):
                 continue
-            identifier = self._extract_tool_identifier(prepared_payload) or ""
-            name = self._extract_tool_name(prepared_payload)
-            content = json.dumps(prepared_payload, ensure_ascii=False, default=str)
+            payload = snapshot.to_dict()
+            identifier = snapshot.call_id
+            name = snapshot.tool_name
+            content = json.dumps(payload, ensure_ascii=False, default=str)
             message: dict[str, Any] = {"role": "tool", "content": content}
             if identifier:
                 message["tool_call_id"] = identifier
@@ -2268,46 +2234,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if not messages:
             return None
         return tuple(messages)
-
-    @staticmethod
-    def _ensure_tool_result_identifiers(
-        payloads: Sequence[Any] | None,
-        *,
-        prefix: str,
-    ) -> None:
-        if not payloads:
-            return
-        counter = 0
-        for payload in payloads:
-            if not isinstance(payload, Mapping):
-                continue
-            call_identifier = payload.get("tool_call_id") or payload.get("call_id")
-            text: str | None
-            if isinstance(call_identifier, str):
-                text = call_identifier.strip()
-            elif call_identifier is None:
-                text = None
-            else:
-                text = str(call_identifier).strip()
-            if text:
-                if text != payload.get("tool_call_id"):
-                    try:
-                        if isinstance(payload, dict):
-                            payload["tool_call_id"] = text
-                        else:
-                            payload.__setitem__("tool_call_id", text)
-                    except Exception:  # pragma: no cover - defensive
-                        pass
-                continue
-            counter += 1
-            fallback = f"{prefix}-{counter}"
-            try:
-                if isinstance(payload, dict):
-                    payload.setdefault("tool_call_id", fallback)
-                else:
-                    payload.__setitem__("tool_call_id", fallback)
-            except Exception:  # pragma: no cover - defensive
-                continue
 
     def _add_pending_entry(
         self,
@@ -2331,6 +2257,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         conversation.append_entry(entry)
         self._mark_conversation_dirty(conversation)
+        entry_id = self._entry_identifier(conversation, entry)
+        self._request_transcript_refresh(
+            conversation=conversation,
+            entry_ids=[entry_id] if entry_id else None,
+            force=entry_id is None,
+            immediate=True,
+        )
         return entry
 
     def _append_history(
@@ -2366,7 +2299,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
         if not reasoning_clone:
             reasoning_clone = None
-        resolved_tool_results = extract_tool_results(raw_result)
+        tool_snapshots = tool_snapshots_from(raw_result)
         entry = ChatEntry(
             prompt=prompt_text,
             response=response_text,
@@ -2386,7 +2319,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 display_response=display_text,
                 stored_response=response_text,
                 raw_result=raw_result,
-                tool_results=resolved_tool_results,
+                tool_results=tool_snapshots,
                 history_snapshot=history_snapshot,
                 context_snapshot=context_clone,
                 custom_system_prompt=self._custom_system_prompt(),
@@ -2434,7 +2367,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         entry.tool_messages = self._clone_tool_messages(tool_messages)
         reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
         entry.reasoning = reasoning_clone or None
-        resolved_tool_results = extract_tool_results(raw_result)
+        tool_snapshots = tool_snapshots_from(raw_result)
         existing_diagnostic = (
             entry.diagnostic if isinstance(entry.diagnostic, Mapping) else None
         )
@@ -2445,7 +2378,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             display_response=display_text,
             stored_response=response_text,
             raw_result=raw_result,
-            tool_results=resolved_tool_results,
+            tool_results=tool_snapshots,
             history_snapshot=history_snapshot,
             context_snapshot=context_clone,
             custom_system_prompt=self._custom_system_prompt(),
@@ -2533,7 +2466,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if removal is None:
             return
         handle.pending_entry = None
-        handle.streamed_tool_results.clear()
+        handle.tool_snapshots.clear()
+        handle.tool_order.clear()
         self._save_history_to_store()
         self._notify_history_changed()
 
@@ -2547,8 +2481,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         conversation = self._get_conversation_by_id(handle.conversation_id)
         if conversation is None:
             handle.pending_entry = None
-            handle.streamed_tool_results.clear()
-            handle.llm_steps.clear()
+            handle.tool_snapshots.clear()
+            handle.tool_order.clear()
+            handle.llm_trace_preview.clear()
             self._request_transcript_refresh(force=True, immediate=True)
             batch_section = self._batch_section
             if batch_section is not None:
@@ -2562,17 +2497,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         response_at = utc_now_iso()
         prompt_at = getattr(handle, "prompt_at", None) or response_at
         token_info = combine_token_counts([handle.prompt_tokens])
-        tool_results_payload = handle.prepare_tool_results_payload()
-        tool_results = (
-            normalise_tool_payloads(tool_results_payload)
-            if tool_results_payload
-            else None
-        )
-        if tool_results:
-            self._ensure_tool_result_identifiers(
-                tool_results, prefix=f"{handle.run_id}-stream"
-            )
-        tool_messages = self._build_tool_messages(tool_results)
+        tool_snapshots = tuple(handle.tool_snapshots.values())
+        tool_payloads = tool_snapshot_dicts(tool_snapshots)
+        tool_messages = self._build_tool_messages(tool_snapshots)
         response_text = handle.latest_llm_response or ""
         reasoning_segments: tuple[dict[str, str], ...] | None = (
             handle.latest_reasoning_segments
@@ -2581,8 +2508,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         if not response_text:
             last_step_payload: Mapping[str, Any] | None = None
-            if handle.llm_steps:
-                candidate = handle.llm_steps[-1]
+            if handle.llm_trace_preview:
+                candidate = handle.llm_trace_preview[-1]
                 if isinstance(candidate, Mapping):
                     last_step_payload = candidate
             if isinstance(last_step_payload, Mapping):
@@ -2599,18 +2526,29 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if response_text:
             combined_display = f"{response_text}\n\n{cancellation_message}"
 
-        raw_result = {
-            "ok": False,
+        diagnostic: dict[str, Any] = {
             "error": {
                 "type": "OperationCancelledError",
                 "message": cancellation_message,
                 "details": {"reason": "user_cancelled"},
-            },
+            }
         }
-        if handle.llm_steps:
-            raw_result["diagnostic"] = {"llm_steps": list(handle.llm_steps)}
+        if handle.llm_trace_preview:
+            diagnostic["llm_steps"] = list(handle.llm_trace_preview)
 
-        raw_result = update_tool_results(raw_result, tool_results)
+        payload = AgentRunPayload(
+            ok=False,
+            status="failed",
+            result_text=response_text,
+            reasoning=list(reasoning_segments or ()),
+            tool_results=[snapshot for snapshot in tool_snapshots],
+            llm_trace=LlmTrace(),
+            diagnostic=diagnostic,
+            tool_schemas=None,
+        )
+        raw_result = payload.to_dict()
+        if tool_payloads:
+            raw_result["tool_results"] = tool_payloads
 
         self._complete_pending_entry(
             conversation,
@@ -2628,8 +2566,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             tool_messages=tool_messages,
         )
         handle.pending_entry = None
-        handle.streamed_tool_results.clear()
-        handle.llm_steps.clear()
+        handle.tool_snapshots.clear()
+        handle.tool_order.clear()
+        handle.llm_trace_preview.clear()
         handle.latest_llm_response = None
         handle.latest_reasoning_segments = None
         batch_section = self._batch_section
@@ -2896,6 +2835,24 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         return sanitized
 
     @classmethod
+    def _sanitize_planned_tool_calls(
+        cls, trace: LlmTrace
+    ) -> list[Any] | None:
+        planned: list[Any] = []
+        for step in trace.steps:
+            tool_calls = step.response.get("tool_calls")
+            if not tool_calls:
+                continue
+            safe_calls = history_json_safe(tool_calls)
+            if safe_calls is None:
+                continue
+            if isinstance(safe_calls, list):
+                planned = safe_calls
+            else:
+                planned = [safe_calls]
+        return planned or None
+
+    @classmethod
     def _merge_llm_step_sequences(
         cls,
         primary: list[dict[str, Any]],
@@ -2974,10 +2931,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             raw_result_safe if isinstance(raw_result_safe, Mapping) else None
         )
 
-        if isinstance(raw_result_mapping, Mapping):
-            diagnostic_raw = raw_result_mapping.get("diagnostic")
+        payload = agent_payload_from_mapping(raw_result_mapping)
+
+        tool_snapshots: list[ToolResultSnapshot] = []
+        if tool_results:
+            tool_snapshots.extend(tool_snapshots_from(tool_results))
+        elif payload is not None:
+            tool_snapshots.extend(payload.tool_results)
         else:
-            diagnostic_raw = None
+            tool_snapshots.extend(tool_snapshots_from(raw_result_mapping))
+        tool_payloads = tool_snapshot_dicts(tool_snapshots)
 
         previous_steps = cls._sanitize_llm_step_sequence(
             previous_diagnostic.get("llm_steps")
@@ -2986,28 +2949,56 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
 
         llm_request_sequence: list[dict[str, Any]] = []
-        if isinstance(diagnostic_raw, Mapping):
-            requests_raw = diagnostic_raw.get("llm_requests")
-            if isinstance(requests_raw, Sequence):
-                llm_request_sequence = cls._sanitize_llm_requests(requests_raw)
+        llm_request_messages: list[dict[str, Any]] = []
+        planned_tool_calls: list[Any] | None = None
+        llm_final_message: str | None = None
+        error_payload: Any | None = None
+        diagnostic_sections: Any | None = None
+        reasoning_payload: list[dict[str, Any]] | None = None
+        llm_trace_payload: dict[str, Any] | None = None
 
-        llm_step_details: list[dict[str, Any]] | None = None
-        if isinstance(diagnostic_raw, Mapping):
-            steps_raw = diagnostic_raw.get("llm_steps")
+        if payload is not None:
+            llm_trace_payload = payload.llm_trace.to_dict()
+            raw_sequence = [
+                {"step": step.index, "messages": step.request}
+                for step in payload.llm_trace.steps
+            ]
+            llm_request_sequence = cls._sanitize_llm_requests(raw_sequence)
+            if llm_request_sequence:
+                llm_request_messages = llm_request_sequence[-1]["messages"]
+            planned_tool_calls = cls._sanitize_planned_tool_calls(payload.llm_trace)
+            final_text = normalize_for_display(payload.result_text or "").strip()
+            llm_final_message = final_text or None
+            if payload.diagnostic:
+                error_payload = history_json_safe(payload.diagnostic.get("error"))
+                diagnostic_sections = history_json_safe(payload.diagnostic)
+            reasoning_payload = [
+                dict(segment)
+                for segment in cls._normalise_reasoning_segments(payload.reasoning)
+            ] or None
             current_steps = cls._sanitize_llm_step_sequence(
-                steps_raw if isinstance(steps_raw, Sequence) else None
+                [
+                    {
+                        "step": step.index,
+                        "occurred_at": step.occurred_at,
+                        "request": step.request,
+                        "response": step.response,
+                    }
+                    for step in payload.llm_trace.steps
+                ]
             )
-            if current_steps:
-                llm_step_details = current_steps
-
-        if llm_step_details is None and previous_steps:
-            llm_step_details = list(previous_steps)
-        elif llm_step_details and previous_steps:
-            cls._merge_llm_step_sequences(llm_step_details, previous_steps)
-
-        if llm_request_sequence:
-            llm_request_messages = llm_request_sequence[-1]["messages"]
         else:
+            current_steps = []
+            if isinstance(raw_result_mapping, Mapping):
+                diagnostic_raw = raw_result_mapping.get("diagnostic")
+                if isinstance(diagnostic_raw, Mapping):
+                    error_payload = history_json_safe(diagnostic_raw.get("error"))
+                    diagnostic_sections = history_json_safe(diagnostic_raw)
+
+        if not current_steps:
+            current_steps = previous_steps
+
+        if not llm_request_sequence:
             llm_request_messages = [
                 {"role": "system", "content": normalize_for_display(SYSTEM_PROMPT)},
                 *history_messages,
@@ -3018,69 +3009,32 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 {"step": 1, "messages": list(llm_request_messages)}
             ]
 
-        llm_message: str | None = None
-        error_payload: Any | None = None
-        planned_tool_calls: list[Any] | None = None
-        if raw_result_mapping:
-            result_value = raw_result_mapping.get("result")
-            if isinstance(result_value, str):
-                llm_message = normalize_for_display(result_value)
-            error_value = raw_result_mapping.get("error")
-            if error_value:
-                error_payload = history_json_safe(error_value)
-                if isinstance(error_payload, Mapping):
-                    details_payload = error_payload.get("details")
-                    if isinstance(details_payload, Mapping):
-                        raw_llm_message = details_payload.get("llm_message")
-                        if (
-                            llm_message in (None, "")
-                            and isinstance(raw_llm_message, str)
-                            and raw_llm_message.strip()
-                        ):
-                            llm_message = normalize_for_display(raw_llm_message)
-                        raw_tool_calls = details_payload.get("llm_tool_calls")
-                        if raw_tool_calls:
-                            safe_calls = history_json_safe(raw_tool_calls)
-                            if isinstance(safe_calls, list):
-                                planned_tool_calls = safe_calls or None
-                            elif safe_calls is not None:
-                                planned_tool_calls = [safe_calls]
-
-        tool_payloads = normalise_tool_payloads(tool_results)
-        if not tool_payloads and raw_result_mapping is not None:
-            tool_payloads = extract_tool_results(raw_result_mapping)
-        if (
-            not tool_payloads
-            and raw_result_mapping
-            and looks_like_tool_payload(raw_result_mapping)
-        ):
-            fallback_payloads = normalise_tool_payloads(raw_result_mapping)
-            if fallback_payloads:
-                tool_payloads = fallback_payloads
-        tool_payloads = tool_payloads or []
-
         diagnostic_payload = {
             "prompt_text": prompt_text,
             "prompt_at": prompt_at,
             "response_at": response_at,
-            "llm_request_messages": llm_request_messages,
             "history_messages": history_messages,
             "context_messages": context_messages,
-            "llm_final_message": llm_message,
+            "llm_request_messages": llm_request_messages,
+            "llm_request_messages_sequence": llm_request_sequence,
+            "llm_requests": llm_request_sequence,
+            "llm_trace": llm_trace_payload,
+            "llm_steps": current_steps,
+            "llm_final_message": llm_final_message,
             "llm_tool_calls": planned_tool_calls,
             "tool_exchanges": tool_payloads,
+            "tool_results": tool_payloads,
             "agent_response_text": display_text,
             "agent_stored_response": stored_text
             if stored_text != display_text
             else None,
             "raw_result": raw_result_safe,
             "error_payload": error_payload,
-            "llm_request_messages_sequence": llm_request_sequence,
-            "llm_requests": llm_request_sequence,
-            "llm_steps": llm_step_details,
             "custom_system_prompt": normalize_for_display(custom_system_prompt)
             if custom_system_prompt
             else None,
+            "reasoning": reasoning_payload,
+            "diagnostic": diagnostic_sections,
         }
 
         return history_json_safe(diagnostic_payload)
@@ -3088,7 +3042,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _handle_streamed_tool_results(
         self,
         handle: _AgentRunHandle,
-        tool_results: Sequence[Mapping[str, Any]] | None,
+        tool_results: Sequence[ToolResultSnapshot] | None,
     ) -> None:
         """Update transcript with in-flight tool results for *handle*."""
         if handle.is_cancelled:
@@ -3109,10 +3063,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             )
             return
 
-        cloned_results = list(clone_streamed_tool_results(tool_results))
-        self._ensure_tool_result_identifiers(
-            cloned_results, prefix=f"{handle.run_id}-stream"
-        )
+        cloned_results = tool_snapshot_dicts(tool_results)
         entry.tool_results = cloned_results
         self._request_transcript_refresh(
             conversation=conversation,
@@ -3193,97 +3144,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         diagnostic["llm_steps"] = [record]
         return True
-
-    @staticmethod
-    def _merge_tool_result_timelines(
-        final_results: Sequence[Mapping[str, Any]] | None,
-        streamed_results: Sequence[Mapping[str, Any]] | None,
-    ) -> list[dict[str, Any]] | None:
-        if not final_results:
-            return None
-        timeline_by_id: dict[str, Mapping[str, Any]] = {}
-        if streamed_results:
-            for entry in streamed_results:
-                if not isinstance(entry, Mapping):
-                    continue
-                call_id = entry.get("call_id") or entry.get("tool_call_id")
-                if not call_id:
-                    continue
-                timeline_by_id[str(call_id)] = entry
-
-        merged: list[dict[str, Any]] = []
-
-        def _iter_status_updates(source: Any) -> Iterable[dict[str, Any]]:
-            if isinstance(source, Mapping):
-                yield dict(source)
-                return
-            if isinstance(source, Sequence) and not isinstance(
-                source, (str, bytes, bytearray)
-            ):
-                for entry in source:
-                    if isinstance(entry, Mapping):
-                        yield dict(entry)
-
-        def _deduplicate_status_updates(*sources: Any) -> list[dict[str, Any]]:
-            seen: set[tuple[Any, Any, Any]] = set()
-            combined_updates: list[dict[str, Any]] = []
-            for source in sources:
-                for entry in _iter_status_updates(source):
-                    fingerprint = (
-                        entry.get("raw"),
-                        entry.get("at"),
-                        entry.get("status"),
-                    )
-                    if fingerprint in seen:
-                        continue
-                    seen.add(fingerprint)
-                    combined_updates.append(entry)
-            return combined_updates
-
-        for payload in final_results:
-            if not isinstance(payload, Mapping):
-                continue
-            combined = dict(payload)
-            call_id = combined.get("call_id") or combined.get("tool_call_id")
-            timeline: Mapping[str, Any] | None = None
-            if call_id is not None:
-                timeline = timeline_by_id.get(str(call_id))
-            if timeline:
-                timeline_updates = timeline.get("status_updates")
-                if timeline_updates:
-                    existing_updates = combined.get("status_updates")
-                    merged_updates = _deduplicate_status_updates(
-                        existing_updates, timeline_updates
-                    )
-                    if merged_updates:
-                        combined["status_updates"] = merged_updates
-                    elif "status_updates" in combined:
-                        combined.pop("status_updates")
-                start = (
-                    timeline.get("started_at")
-                    or timeline.get("first_observed_at")
-                    or timeline.get("observed_at")
-                )
-                end = timeline.get("completed_at") or timeline.get("last_observed_at")
-                last_seen = timeline.get("last_observed_at") or end or start
-                if start and not combined.get("started_at"):
-                    combined["started_at"] = start
-                if start and not combined.get("first_observed_at"):
-                    combined["first_observed_at"] = start
-                if end and not combined.get("completed_at"):
-                    combined["completed_at"] = end
-                if last_seen and not combined.get("last_observed_at"):
-                    combined["last_observed_at"] = last_seen
-                if last_seen and not combined.get("observed_at"):
-                    combined["observed_at"] = last_seen
-            merged.append(combined)
-        if not merged:
-            return None
-        sorted_payloads = sort_tool_payloads(merged)
-        return [
-            dict(payload) if isinstance(payload, Mapping) else payload
-            for payload in sorted_payloads
-        ]
 
     def _compose_transcript_text(self) -> str:
         conversation = self._get_active_conversation_loaded()

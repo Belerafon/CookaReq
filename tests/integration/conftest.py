@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
+from app.log import LOG_DIR_ENV, configure_logging
 from app.mcp.server import start_server, stop_server
 from tests.mcp_utils import _wait_until_ready
+
+
+@pytest.fixture(scope="session")
+def real_llm_log_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Configure application logging to capture real LLM traffic to files."""
+
+    log_dir = tmp_path_factory.mktemp("real-llm-logs")
+    os.environ[LOG_DIR_ENV] = str(log_dir)
+    configure_logging(log_dir=log_dir)
+    return log_dir
 
 
 @pytest.fixture

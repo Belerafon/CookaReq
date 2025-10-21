@@ -23,7 +23,8 @@ REQUIRES_REAL_LLM = True
 
 pytestmark = [pytest.mark.integration, pytest.mark.real_llm]
 
-DEFAULT_FREE_REASONING_MODEL = "openai/gpt-oss-20b:free"
+JSON_LOG_NAME = "cookareq.jsonl"
+DEFAULT_REASONING_MODEL = "openai/gpt-oss-120b"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -36,7 +37,21 @@ def _select_reasoning_model() -> str:
     model = os.getenv("OPENROUTER_REASONING_MODEL")
     if model and model.strip():
         return model.strip()
-    return DEFAULT_FREE_REASONING_MODEL
+    return DEFAULT_REASONING_MODEL
+
+
+def _read_json_lines(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [json.loads(line) for line in lines]
+
+
+def _new_log_entries(path: Path, previous_count: int) -> list[dict[str, object]]:
+    entries = _read_json_lines(path)
+    if previous_count >= len(entries):
+        return []
+    return entries[previous_count:]
 
 
 def _load_requirement_summaries(ids: Sequence[int]) -> list[tuple[str, str, str]]:
@@ -66,7 +81,7 @@ def _compose_context(requirements: Sequence[tuple[str, str, str]]) -> str:
 
 
 @pytest.mark.parametrize("target_language", ["испанский"])
-def test_openrouter_transcript_logs(tmp_path, target_language):
+def test_openrouter_transcript_logs(tmp_path: Path, real_llm_log_dir: Path, target_language: str) -> None:
     require_real_llm_tests_flag()
     key = _load_openrouter_key()
     if not key:
@@ -75,6 +90,9 @@ def test_openrouter_transcript_logs(tmp_path, target_language):
     settings = settings_with_llm(tmp_path, api_key=key, stream=False)
     settings.llm.model = _select_reasoning_model()
     client = LLMClient(settings.llm)
+
+    json_log_path = real_llm_log_dir / JSON_LOG_NAME
+    before_count = len(_read_json_lines(json_log_path))
 
     requirement_payloads = _load_requirement_summaries((1, 2))
     system_message = _compose_context(requirement_payloads)
@@ -139,3 +157,9 @@ def test_openrouter_transcript_logs(tmp_path, target_language):
             assert (
                 encoded in log_text
             ), "reasoning text was not preserved in transcript log"
+
+    new_entries = _new_log_entries(json_log_path, before_count)
+    assert any(entry.get("event") == "LLM_REQUEST" for entry in new_entries)
+    response_entries = [entry for entry in new_entries if entry.get("event") == "LLM_RESPONSE"]
+    assert response_entries, "missing LLM_RESPONSE entries"
+    assert any(entry.get("payload", {}).get("reasoning") for entry in response_entries)

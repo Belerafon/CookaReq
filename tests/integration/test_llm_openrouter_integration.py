@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from app.llm.client import LLMClient
+from app.llm.reasoning import normalise_reasoning_segments
+from app.llm.validation import ToolValidationError
 from app.mcp.tools_read import get_requirement
 from tests.env_utils import load_secret_from_env
 from tests.llm_utils import require_real_llm_tests_flag, settings_with_llm
@@ -15,32 +17,72 @@ REQUIRES_REAL_LLM = True
 
 pytestmark = [pytest.mark.integration, pytest.mark.real_llm]
 
+JSON_LOG_NAME = "cookareq.jsonl"
+DEFAULT_REASONING_MODEL = "openai/gpt-oss-120b"
+
 
 def _load_openrouter_key() -> str | None:
     secret = load_secret_from_env("OPEN_ROUTER", search_from=Path(__file__).resolve())
     return secret.get_secret_value() if secret else None
 
 
+def _read_json_lines(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [json.loads(line) for line in lines]
+
+
+def _new_log_entries(path: Path, previous_count: int) -> list[dict[str, object]]:
+    entries = _read_json_lines(path)
+    if previous_count >= len(entries):
+        return []
+    return entries[previous_count:]
+
+
+def _select_reasoning_model() -> str:
+    """Return the OpenRouter model used for reasoning checks."""
+
+    model = os.getenv("OPENROUTER_REASONING_MODEL")
+    if model and model.strip():
+        return model.strip()
+    return DEFAULT_REASONING_MODEL
+
+
 @pytest.mark.parametrize("stream", [False, True], ids=["non_stream", "stream"])
-def test_openrouter_check_llm(tmp_path, stream):
+def test_openrouter_check_llm(tmp_path: Path, real_llm_log_dir: Path, stream: bool) -> None:
     require_real_llm_tests_flag()
     key = _load_openrouter_key()
     if not key:
         pytest.skip("OPEN_ROUTER key not available")
     settings = settings_with_llm(tmp_path, api_key=key, stream=stream)
     client = LLMClient(settings.llm)
+
+    json_log_path = real_llm_log_dir / JSON_LOG_NAME
+    before_count = len(_read_json_lines(json_log_path))
+
     result = client.check_llm()
     assert result["ok"] is True
 
+    new_entries = _new_log_entries(json_log_path, before_count)
+    request_entry = next((entry for entry in new_entries if entry.get("event") == "LLM_REQUEST"), None)
+    response_entry = next((entry for entry in new_entries if entry.get("event") == "LLM_RESPONSE"), None)
+    assert request_entry and isinstance(request_entry.get("payload"), dict)
+    assert response_entry and response_entry.get("payload", {}).get("ok") is True
+
 
 @pytest.mark.parametrize("stream", [False, True], ids=["non_stream", "stream"])
-def test_openrouter_handles_context_prompt(tmp_path, stream):
+def test_openrouter_handles_context_prompt(tmp_path: Path, real_llm_log_dir: Path, stream: bool) -> None:
     require_real_llm_tests_flag()
     key = _load_openrouter_key()
     if not key:
         pytest.skip("OPEN_ROUTER key not available")
     settings = settings_with_llm(tmp_path, api_key=key, stream=stream)
     client = LLMClient(settings.llm)
+
+    json_log_path = real_llm_log_dir / JSON_LOG_NAME
+    before_count = len(_read_json_lines(json_log_path))
+
     conversation = [
         {
             "role": "system",
@@ -57,20 +99,15 @@ def test_openrouter_handles_context_prompt(tmp_path, stream):
     ]
     response = client.respond(conversation)
     assert isinstance(response.content, str)
-DEFAULT_FREE_REASONING_MODEL = "openai/gpt-oss-20b:free"
 
-
-def _select_reasoning_model() -> str:
-    """Return the OpenRouter model used for reasoning checks."""
-
-    model = os.getenv("OPENROUTER_REASONING_MODEL")
-    if model and model.strip():
-        return model.strip()
-    return DEFAULT_FREE_REASONING_MODEL
+    new_entries = _new_log_entries(json_log_path, before_count)
+    assert any(entry.get("event") == "LLM_REQUEST" for entry in new_entries)
+    response_entry = next((entry for entry in new_entries if entry.get("event") == "LLM_RESPONSE"), None)
+    assert response_entry and isinstance(response_entry.get("payload"), dict)
 
 
 @pytest.mark.parametrize("stream", [False, True], ids=["non_stream", "stream"])
-def test_openrouter_reasoning_segments(tmp_path, stream):
+def test_openrouter_reasoning_segments(tmp_path: Path, real_llm_log_dir: Path, stream: bool) -> None:
     require_real_llm_tests_flag()
     key = _load_openrouter_key()
     if not key:
@@ -78,22 +115,42 @@ def test_openrouter_reasoning_segments(tmp_path, stream):
     settings = settings_with_llm(tmp_path, api_key=key, stream=stream)
     settings.llm.model = _select_reasoning_model()
     client = LLMClient(settings.llm)
+
+    json_log_path = real_llm_log_dir / JSON_LOG_NAME
+    before_count = len(_read_json_lines(json_log_path))
+
     conversation = [
         {"role": "system", "content": "You are a concise assistant."},
         {"role": "user", "content": "Summarize 2+2."},
     ]
-    response = client.respond(conversation)
-    assert response.reasoning
+    try:
+        response = client.respond(conversation)
+    except ToolValidationError as exc:
+        reasoning_source = exc.llm_reasoning or ()
+    else:
+        reasoning_source = response.reasoning
+    normalized_reasoning = normalise_reasoning_segments(reasoning_source)
+    assert normalized_reasoning, "model did not return reasoning segments"
+
+    new_entries = _new_log_entries(json_log_path, before_count)
+    response_entries = [entry for entry in new_entries if entry.get("event") == "LLM_RESPONSE"]
+    assert response_entries, "missing LLM_RESPONSE in logs"
+    assert any(entry.get("payload", {}).get("reasoning") for entry in response_entries)
 
 
-def test_openrouter_updates_selected_requirement_translations(tmp_path):
+def test_openrouter_updates_selected_requirement_translations(
+    tmp_path: Path, real_llm_log_dir: Path
+) -> None:
     require_real_llm_tests_flag()
     key = _load_openrouter_key()
     if not key:
         pytest.skip("OPEN_ROUTER key not available")
     settings = settings_with_llm(tmp_path, api_key=key, stream=False)
-    settings.llm.model = "gpt-oss-120b"
+    settings.llm.model = os.getenv("OPENROUTER_UPDATE_MODEL", DEFAULT_REASONING_MODEL)
     client = LLMClient(settings.llm)
+
+    json_log_path = real_llm_log_dir / JSON_LOG_NAME
+    before_count = len(_read_json_lines(json_log_path))
 
     context = (
         "[Workspace context]\n"
@@ -171,3 +228,17 @@ def test_openrouter_updates_selected_requirement_translations(tmp_path):
     assert arguments.get("rid") == "DEMO6"
     assert arguments.get("field") in {"title", "statement"}
     assert isinstance(arguments.get("value"), str) and arguments["value"].strip()
+
+    new_entries = _new_log_entries(json_log_path, before_count)
+    tool_logs = [
+        entry
+        for entry in new_entries
+        if entry.get("event") == "LLM_RESPONSE"
+        and isinstance(entry.get("payload"), dict)
+        and entry["payload"].get("tool_calls")
+    ]
+    assert tool_logs, "no tool call responses recorded in logs"
+    assert any(
+        any(call.get("name") == "update_requirement_field" for call in entry["payload"]["tool_calls"])
+        for entry in tool_logs
+    )

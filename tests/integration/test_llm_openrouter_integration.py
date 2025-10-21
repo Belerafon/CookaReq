@@ -57,7 +57,7 @@ def test_openrouter_handles_context_prompt(tmp_path, stream):
     ]
     response = client.respond(conversation)
     assert isinstance(response.content, str)
-DEFAULT_FREE_REASONING_MODEL = "deepseek/deepseek-v3.2-exp"
+DEFAULT_FREE_REASONING_MODEL = "openai/gpt-oss-20b:free"
 
 
 def _select_reasoning_model() -> str:

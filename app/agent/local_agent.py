@@ -1,14 +1,19 @@
 """Local agent that combines LLM parsing with MCP tool execution.
 
-The agent intentionally leaves MCP business validation to the server: tool calls are logged and forwarded without local argument checks so that the MCP layer remains the single authority over tool semantics.
+The agent exposes a deterministic contract: tool executions are captured as
+:class:`ToolResultSnapshot` objects while LLM interactions are recorded in an
+:class:`LlmTrace`.  The previous heuristic-based payload merging has been
+removed in favour of the structured :class:`AgentRunPayload` defined in
+``app/agent/run_contract.py``.
 """
 from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass, field
-from collections.abc import Awaitable, Callable, Mapping, Sequence
-from typing import Any, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import Any, Callable, Mapping, Sequence, Protocol, runtime_checkable
+
+from collections.abc import Awaitable
 
 from ..confirm import (
     ConfirmDecision,
@@ -16,8 +21,8 @@ from ..confirm import (
     confirm as default_confirm,
     confirm_requirement_update as default_update_confirm,
 )
-from ..llm.context import extract_selected_rids_from_text
 from ..llm.client import LLMClient
+from ..llm.context import extract_selected_rids_from_text
 from ..llm.reasoning import normalise_reasoning_segments
 from ..llm.types import LLMReasoningSegment, LLMResponse, LLMToolCall
 from ..llm.validation import ToolValidationError
@@ -30,6 +35,13 @@ from ..util.cancellation import (
     OperationCancelledError,
     raise_if_cancelled,
 )
+from ..util.time import utc_now_iso
+from .run_contract import (
+    AgentRunPayload,
+    LlmTrace,
+    ToolError,
+    ToolResultSnapshot,
+)
 
 
 @runtime_checkable
@@ -38,6 +50,7 @@ class SupportsAgentLLM(Protocol):
 
     async def check_llm_async(self) -> Mapping[str, Any]:
         """Verify that the LLM backend is reachable."""
+
     async def respond_async(
         self,
         conversation: Sequence[Mapping[str, Any]] | None,
@@ -45,25 +58,178 @@ class SupportsAgentLLM(Protocol):
         cancellation: CancellationEvent | None = None,
     ) -> LLMResponse:
         """Return an assistant reply for *conversation*."""
+
+
 @runtime_checkable
 class SupportsAgentMCP(Protocol):
     """Interface expected from MCP clients used by :class:`LocalAgent`."""
 
     async def check_tools_async(self) -> Mapping[str, Any]:
         """Verify that MCP tools are reachable."""
+
     async def ensure_ready_async(self) -> None:
         """Raise an exception when the MCP server is not ready."""
+
     async def call_tool_async(
         self, name: str, arguments: Mapping[str, Any]
     ) -> Mapping[str, Any]:
         """Invoke MCP tool *name* with *arguments*."""
-@dataclass(slots=True)
-class ToolBatchOutcome:
-    """Aggregated state collected while executing a batch of MCP calls."""
 
-    messages: list[dict[str, Any]] = field(default_factory=list)
-    error_payload: dict[str, Any] | None = None
-    successful_results: list[Mapping[str, Any]] = field(default_factory=list)
+    async def get_tool_schemas_async(self) -> Mapping[str, Any]:
+        """Return MCP-advertised tool schemas."""
+
+
+@dataclass(slots=True)
+class _ToolExecutionOutcome:
+    """Outcome of a single MCP call."""
+
+    message: Mapping[str, Any]
+    error_payload: Mapping[str, Any] | None
+
+
+@dataclass(slots=True)
+class _AgentIterationResult:
+    """Container describing the outcome of one loop iteration."""
+
+    response: LLMResponse
+    tool_error: Mapping[str, Any] | None
+    tool_messages: Sequence[Mapping[str, Any]]
+    final_payload: AgentRunPayload | None
+
+
+class _AgentRunRecorder:
+    """Collects deterministic artefacts for an agent run."""
+
+    def __init__(self, *, tool_schemas: Mapping[str, Any] | None = None) -> None:
+        self._snapshots: dict[str, ToolResultSnapshot] = {}
+        self._order: list[str] = []
+        self._llm_trace = LlmTrace()
+        self._reasoning: list[dict[str, Any]] = []
+        self._result_text = ""
+        self._ok = False
+        self._status: str = "failed"
+        self._diagnostic: dict[str, Any] = {}
+        self._tool_schemas = dict(tool_schemas) if tool_schemas else {}
+        self._error: ToolError | None = None
+
+    # ------------------------------------------------------------------
+    def record_llm_step(
+        self,
+        *,
+        index: int,
+        request_messages: Sequence[Mapping[str, Any]],
+        response: Mapping[str, Any],
+    ) -> None:
+        self._llm_trace.append(index=index, request=request_messages, response=response)
+
+    def extend_reasoning(
+        self, segments: Sequence[LLMReasoningSegment] | None
+    ) -> None:
+        normalised = normalise_reasoning_segments(segments)
+        if normalised:
+            self._reasoning.extend({"type": s["type"], "text": s["text"]} for s in normalised)
+
+    # ------------------------------------------------------------------
+    def begin_tool(
+        self, call: LLMToolCall, *, arguments: Any | None
+    ) -> ToolResultSnapshot:
+        snapshot = ToolResultSnapshot(
+            call_id=call.id,
+            tool_name=call.name,
+            status="running",
+            arguments=arguments,
+            schema=self._tool_schemas.get(call.name),
+        )
+        snapshot.mark_event("started")
+        self._snapshots[call.id] = snapshot
+        self._order.append(call.id)
+        return snapshot
+
+    def mark_tool_succeeded(
+        self, call: LLMToolCall, payload: Mapping[str, Any]
+    ) -> ToolResultSnapshot:
+        snapshot = self._snapshots[call.id]
+        snapshot.status = "succeeded"
+        snapshot.result = payload.get("result")
+        snapshot.error = None
+        snapshot.mark_event("completed")
+        metrics = payload.get("metrics")
+        if isinstance(metrics, Mapping):
+            duration = metrics.get("duration_seconds")
+            if isinstance(duration, (int, float)):
+                snapshot.metrics.duration_seconds = float(duration)
+            cost_payload = metrics.get("cost")
+            if isinstance(cost_payload, Mapping):
+                snapshot.metrics.cost = dict(cost_payload)
+        return snapshot
+
+    def mark_tool_failed(
+        self, call: LLMToolCall, error_payload: Mapping[str, Any]
+    ) -> ToolResultSnapshot:
+        snapshot = self._snapshots[call.id]
+        snapshot.status = "failed"
+        snapshot.result = None
+        snapshot.error = self._tool_error(error_payload)
+        snapshot.mark_event("failed")
+        return snapshot
+
+    def _tool_error(self, payload: Mapping[str, Any]) -> ToolError:
+        message = str(payload.get("message") or payload.get("code") or "Tool failed")
+        code_raw = payload.get("code") or payload.get("type")
+        code = str(code_raw) if code_raw is not None else None
+        details = payload.get("details")
+        if isinstance(details, Mapping):
+            detail_value: Mapping[str, Any] | None = dict(details)
+        else:
+            detail_value = None
+        return ToolError(message=message, code=code, details=detail_value)
+
+    # ------------------------------------------------------------------
+    def finalise_success(self, *, result_text: str) -> None:
+        self._ok = True
+        self._status = "succeeded"
+        self._result_text = result_text.strip()
+        self._error = None
+
+    def finalise_failure(
+        self,
+        *,
+        message: str = "",
+        error_payload: Mapping[str, Any] | None = None,
+        stop_reason: Mapping[str, Any] | None = None,
+    ) -> None:
+        self._ok = False
+        self._status = "failed"
+        self._result_text = message.strip()
+        if error_payload:
+            self._error = self._tool_error(error_payload)
+            self._diagnostic["error"] = dict(error_payload)
+        else:
+            self._error = None
+        if stop_reason:
+            self._diagnostic["stop_reason"] = dict(stop_reason)
+        if "llm_steps" not in self._diagnostic and self._llm_trace.steps:
+            self._diagnostic["llm_steps"] = [
+                step.to_dict() for step in self._llm_trace.steps
+            ]
+
+    def attach_diagnostic(self, key: str, value: Any) -> None:
+        self._diagnostic[key] = value
+
+    # ------------------------------------------------------------------
+    def to_payload(self) -> AgentRunPayload:
+        snapshots = [self._snapshots[call_id] for call_id in self._order]
+        return AgentRunPayload(
+            ok=self._ok,
+            status="succeeded" if self._status == "succeeded" else "failed",
+            result_text=self._result_text,
+            reasoning=list(self._reasoning),
+            tool_results=snapshots,
+            llm_trace=self._llm_trace,
+            error=self._error,
+            diagnostic=dict(self._diagnostic) if self._diagnostic else None,
+            tool_schemas=dict(self._tool_schemas) if self._tool_schemas else None,
+        )
 
 
 class LocalAgent:
@@ -116,12 +282,10 @@ class LocalAgent:
         if not isinstance(mcp, SupportsAgentMCP):
             raise TypeError(
                 "MCP client must implement async methods check_tools_async(), "
-                "ensure_ready_async(), and call_tool_async()."
+                "ensure_ready_async(), call_tool_async() and get_tool_schemas_async()."
             )
         self._llm: SupportsAgentLLM = llm
         self._mcp: SupportsAgentMCP = mcp
-        self._llm_requests: list[list[dict[str, Any]]] = []
-        self._llm_steps: list[dict[str, Any]] = []
         self._max_thought_steps: int | None = self._normalise_max_thought_steps(
             max_thought_steps
         )
@@ -139,267 +303,105 @@ class LocalAgent:
             return snippet[: limit - 1] + "\u2026"
         return snippet
 
-    @staticmethod
-    def _summarize_tool_calls(tool_calls: Sequence[LLMToolCall]) -> list[dict[str, Any]]:
-        """Return lightweight metadata about planned tool calls."""
-        summary: list[dict[str, Any]] = []
-        for call in tool_calls:
-            args = call.arguments if isinstance(call.arguments, Mapping) else {}
-            summary.append(
-                {
-                    "id": call.id,
-                    "name": call.name,
-                    "argument_keys": sorted(args.keys()) if isinstance(args, Mapping) else [],
-                }
+    # ------------------------------------------------------------------
+    def run_command(
+        self,
+        text: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+        context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
+        cancellation: CancellationEvent | None = None,
+        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> Mapping[str, Any]:
+        """Drive an agent loop that may invoke MCP tools before replying."""
+        return self._run_sync(
+            self.run_command_async(
+                text,
+                history=history,
+                context=context,
+                cancellation=cancellation,
+                on_tool_result=on_tool_result,
+                on_llm_step=on_llm_step,
             )
-        return summary
-
-    @staticmethod
-    def _tool_call_debug_payload(call: LLMToolCall) -> dict[str, Any]:
-        """Return detailed payload describing *call* for debug logging."""
-        arguments: Any
-        if isinstance(call.arguments, Mapping):
-            arguments = dict(call.arguments)
-        else:
-            arguments = call.arguments
-        return {
-            "id": call.id,
-            "name": call.name,
-            "arguments": arguments,
-        }
-
-    @staticmethod
-    def _normalise_request_messages(
-        messages: Sequence[Mapping[str, Any]] | None,
-    ) -> list[dict[str, Any]]:
-        """Return a shallow copy of *messages* suitable for logging."""
-        if not messages:
-            return []
-        prepared: list[dict[str, Any]] = []
-        for message in messages:
-            if isinstance(message, Mapping):
-                prepared.append(dict(message))
-        return prepared
-
-    def _log_step(self, step: int, response: LLMResponse) -> dict[str, Any]:
-        """Record intermediate agent step for diagnostics."""
-        normalized_reasoning = normalise_reasoning_segments(response.reasoning)
-        payload = {
-            "step": step,
-            "message_preview": self._preview(response.content),
-            "tool_calls": self._summarize_tool_calls(response.tool_calls),
-        }
-        if normalized_reasoning:
-            payload["reasoning"] = [
-                {
-                    "type": segment["type"],
-                    "preview": self._preview(segment["text"], limit=200),
-                }
-                for segment in normalized_reasoning
-            ]
-        detail_payload = {
-            "step": step,
-            "response": {
-                "content": response.content,
-                "tool_calls": [
-                    self._tool_call_debug_payload(call)
-                    for call in response.tool_calls
-                ],
-                "reasoning": normalized_reasoning,
-            },
-            "request_messages": self._normalise_request_messages(
-                response.request_messages
-            ),
-        }
-        log_event("AGENT_STEP", payload)
-        log_debug_payload("AGENT_STEP_DETAIL", detail_payload)
-        self._llm_steps.append(detail_payload)
-        return detail_payload
-
-    @classmethod
-    def _summarize_result(cls, result: Mapping[str, Any]) -> dict[str, Any]:
-        """Return compact metadata about final agent outcome."""
-        payload: dict[str, Any] = {}
-        ok_value = result.get("ok")
-        if isinstance(ok_value, bool):
-            payload["ok"] = ok_value
-        if "error" in result and result["error"]:
-            payload["error"] = result["error"]
-        if "result" in result and result["result"]:
-            payload["result_type"] = type(result["result"]).__name__
-            if isinstance(result["result"], str) and result["result"].strip():
-                payload["result_preview"] = cls._preview(result["result"])
-        if "tool_results" in result:
-            try:
-                payload["tool_results"] = len(result["tool_results"])
-            except TypeError:
-                payload["tool_results"] = result["tool_results"]
-        stop_reason = result.get("agent_stop_reason")
-        if isinstance(stop_reason, Mapping):
-            payload["agent_stop_reason"] = dict(stop_reason)
-        reasoning_segments = result.get("reasoning")
-        normalized_reasoning = normalise_reasoning_segments(reasoning_segments)
-        if normalized_reasoning:
-            payload["reasoning"] = [
-                {
-                    "type": segment["type"],
-                    "preview": cls._preview(segment["text"], limit=200),
-                }
-                for segment in normalized_reasoning
-            ]
-        return payload
-
-    def _record_request_messages(self, response: LLMResponse) -> None:
-        """Append request snapshot from *response* to diagnostic log."""
-        snapshot = getattr(response, "request_messages", None)
-        if not snapshot:
-            return
-        messages: list[dict[str, Any]] = []
-        for message in snapshot:
-            if isinstance(message, Mapping):
-                messages.append(dict(message))
-        if messages:
-            self._llm_requests.append(messages)
-
-    def _prepare_result_with_diagnostic(
-        self, result: Mapping[str, Any]
-    ) -> dict[str, Any]:
-        """Attach captured LLM request messages to ``result`` when available."""
-        prepared = dict(result)
-        diagnostic_payload: dict[str, Any] = {}
-        existing = prepared.get("diagnostic")
-        if isinstance(existing, Mapping):
-            diagnostic_payload.update(existing)
-        if self._llm_requests:
-            requests_payload = [
-                {
-                    "step": index + 1,
-                    "messages": [dict(message) for message in messages],
-                }
-                for index, messages in enumerate(self._llm_requests)
-            ]
-            diagnostic_payload["llm_requests"] = requests_payload
-        if self._llm_steps:
-            step_payloads: list[dict[str, Any]] = []
-            for entry in self._llm_steps:
-                if isinstance(entry, Mapping):
-                    step_payloads.append(dict(entry))
-            if step_payloads:
-                diagnostic_payload["llm_steps"] = step_payloads
-        if diagnostic_payload:
-            prepared["diagnostic"] = diagnostic_payload
-        return prepared
-
-    @staticmethod
-    def _extract_mcp_error(exc: Exception) -> dict[str, Any]:
-        """Return structured MCP error payload derived from *exc*."""
-        payload = getattr(exc, "error_payload", None)
-        if isinstance(payload, Mapping):
-            return dict(payload)
-        payload = getattr(exc, "error", None)
-        if isinstance(payload, Mapping):
-            return dict(payload)
-        return exception_to_mcp_error(exc)["error"]
-
-    @staticmethod
-    def _raise_if_cancelled(cancellation: CancellationEvent | None) -> None:
-        """Abort execution when *cancellation* has been triggered."""
-        raise_if_cancelled(cancellation)
-
-    @staticmethod
-    def _normalise_max_thought_steps(value: int | None) -> int | None:
-        """Return sanitized upper bound for agent iterations."""
-        if value is None:
-            return LocalAgent.DEFAULT_MAX_THOUGHT_STEPS
-        if isinstance(value, bool):  # pragma: no cover - defensive guard
-            raise TypeError("max_thought_steps must be an integer or None")
-        try:
-            numeric = int(value)
-        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
-            raise TypeError("max_thought_steps must be an integer or None") from exc
-        if numeric <= 0:
-            return LocalAgent.DEFAULT_MAX_THOUGHT_STEPS
-        return numeric
-
-    @property
-    def max_thought_steps(self) -> int | None:
-        """Return currently configured step cap (``None`` means unlimited)."""
-        return self._max_thought_steps
-
-    @staticmethod
-    def _normalise_max_consecutive_tool_errors(value: int | None) -> int | None:
-        """Return sanitised cap for consecutive tool failures."""
-        if value is None:
-            return LocalAgent.DEFAULT_MAX_CONSECUTIVE_TOOL_ERRORS
-        if isinstance(value, bool):  # pragma: no cover - defensive guard
-            raise TypeError(
-                "max_consecutive_tool_errors must be an integer or None"
-            )
-        try:
-            numeric = int(value)
-        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
-            raise TypeError(
-                "max_consecutive_tool_errors must be an integer or None"
-            ) from exc
-        if numeric <= 0:
-            return None
-        return numeric
-
-    @property
-    def max_consecutive_tool_errors(self) -> int | None:
-        """Return cap for consecutive tool failures (``None`` disables limit)."""
-        return self._max_consecutive_tool_errors
-
-    @staticmethod
-    def _run_sync(coro: Awaitable[Any]) -> Any:
-        """Execute asynchronous helpers from synchronous entry points."""
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(coro)
-        raise RuntimeError(
-            "Synchronous LocalAgent methods cannot run inside an active "
-            "asyncio event loop; use the async variants instead."
         )
 
-    @staticmethod
-    def _normalise_context(
-        context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
-    ) -> list[dict[str, Any]]:
-        if not context:
-            return []
-        if isinstance(context, Mapping):
-            role = context.get("role")
-            if role is None:
-                return []
-            return [
-                {
-                    "role": str(role),
-                    "content": ""
-                    if context.get("content") is None
-                    else str(context.get("content")),
-                }
-            ]
-        normalised: list[dict[str, Any]] = []
-        for message in context:
-            if not isinstance(message, Mapping):
-                continue
-            role = message.get("role")
-            if role is None:
-                continue
-            entry: dict[str, Any] = {
-                "role": str(role),
-                "content": ""
-                if message.get("content") is None
-                else str(message.get("content")),
-            }
-            if "tool_calls" in message and isinstance(
-                message.get("tool_calls"), Sequence
-            ):
-                entry["tool_calls"] = message.get("tool_calls")
-            normalised.append(entry)
-        return normalised
+    async def run_command_async(
+        self,
+        text: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+        context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
+        cancellation: CancellationEvent | None = None,
+        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> Mapping[str, Any]:
+        """Asynchronous variant of :meth:`run_command`."""
+        context_messages = await self._prepare_context_messages_async(context)
+        conversation = self._prepare_conversation(
+            text,
+            history,
+            context=context_messages,
+        )
+        log_event(
+            "AGENT_START",
+            {"history_count": len(history or []), "prompt": self._preview(text, 200)},
+        )
 
+        tool_schemas = await self._load_tool_schemas_async()
+        recorder = _AgentRunRecorder(tool_schemas=tool_schemas)
+
+        try:
+            payload = await self._run_loop_core(
+                conversation,
+                recorder=recorder,
+                cancellation=cancellation,
+                on_tool_result=on_tool_result,
+                on_llm_step=on_llm_step,
+            )
+        except OperationCancelledError:
+            log_event("AGENT_CANCELLED", {"reason": "user-request"})
+            raise
+        except Exception as exc:
+            err = exception_to_mcp_error(exc)["error"]
+            log_event("ERROR", {"error": err})
+            recorder.finalise_failure(message=str(exc), error_payload=err)
+            payload = recorder.to_payload()
+
+        log_event("AGENT_RESULT", self._summarise_payload(payload))
+        return payload.to_dict()
+
+    # ------------------------------------------------------------------
+    async def _run_loop_core(
+        self,
+        conversation: list[Mapping[str, Any]],
+        *,
+        recorder: _AgentRunRecorder,
+        cancellation: CancellationEvent | None = None,
+        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> AgentRunPayload:
+        runner = AgentLoopRunner(
+            agent=self,
+            recorder=recorder,
+            conversation=conversation,
+            cancellation=cancellation,
+            on_tool_result=on_tool_result,
+            on_llm_step=on_llm_step,
+        )
+        return await runner.run()
+
+    # ------------------------------------------------------------------
+    async def _load_tool_schemas_async(self) -> Mapping[str, Any]:
+        try:
+            schemas = await self._mcp.get_tool_schemas_async()
+        except Exception as exc:  # pragma: no cover - defensive logging
+            error_payload = exception_to_mcp_error(exc)["error"]
+            log_event("MCP_SCHEMA_ERROR", {"error": error_payload})
+            return {}
+        return schemas
+
+    # ------------------------------------------------------------------
     def _prepare_conversation(
         self,
         text: str,
@@ -430,7 +432,6 @@ class LocalAgent:
     async def _enrich_workspace_context_async(
         self, messages: Sequence[Mapping[str, Any]]
     ) -> None:
-        """Append summaries for selected requirements to workspace context messages."""
         for message in messages:
             role = message.get("role") if isinstance(message, Mapping) else None
             if role != "system":
@@ -478,7 +479,6 @@ class LocalAgent:
     async def _fetch_requirement_summaries_async(
         self, rids: Sequence[str]
     ) -> dict[str, str]:
-        """Return requirement statements or titles for the given ``rids``."""
         unique: list[str] = []
         seen: set[str] = set()
         for rid in rids:
@@ -520,140 +520,311 @@ class LocalAgent:
         return summaries
 
     # ------------------------------------------------------------------
-    def check_llm(self) -> dict[str, Any]:
-        """Delegate to :class:`LLMClient.check_llm`."""
-        return self._run_sync(self._llm.check_llm_async())
-
-    async def check_llm_async(self) -> dict[str, Any]:
-        """Asynchronous variant of :meth:`check_llm`."""
-        return await self._llm.check_llm_async()
+    @staticmethod
+    def _normalise_context(
+        context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        if not context:
+            return []
+        if isinstance(context, Mapping):
+            role = context.get("role")
+            if role is None:
+                return []
+            return [
+                {
+                    "role": str(role),
+                    "content": ""
+                    if context.get("content") is None
+                    else str(context.get("content")),
+                }
+            ]
+        normalised: list[dict[str, Any]] = []
+        for message in context:
+            if not isinstance(message, Mapping):
+                continue
+            role = message.get("role")
+            if role is None:
+                continue
+            entry: dict[str, Any] = {
+                "role": str(role),
+                "content": ""
+                if message.get("content") is None
+                else str(message.get("content")),
+            }
+            if "tool_calls" in message and isinstance(
+                message.get("tool_calls"), Sequence
+            ):
+                entry["tool_calls"] = message.get("tool_calls")
+            normalised.append(entry)
+        return normalised
 
     # ------------------------------------------------------------------
-    def check_tools(self) -> dict[str, Any]:
-        """Delegate to :class:`MCPClient.check_tools`."""
-        return self._run_sync(self._mcp.check_tools_async())
-
-    async def check_tools_async(self) -> dict[str, Any]:
-        """Asynchronous variant of :meth:`check_tools`."""
-        return await self._mcp.check_tools_async()
-
-    # ------------------------------------------------------------------
-    def run_command(
-        self,
-        text: str,
-        *,
-        history: Sequence[Mapping[str, Any]] | None = None,
-        context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
-        cancellation: CancellationEvent | None = None,
-        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
-        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
-    ) -> dict[str, Any]:
-        """Drive an agent loop that may invoke MCP tools before replying."""
-        return self._run_sync(
-            self.run_command_async(
-                text,
-                history=history,
-                context=context,
-                cancellation=cancellation,
-                on_tool_result=on_tool_result,
-                on_llm_step=on_llm_step,
-            )
-        )
-
-    async def run_command_async(
-        self,
-        text: str,
-        *,
-        history: Sequence[Mapping[str, Any]] | None = None,
-        context: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
-        cancellation: CancellationEvent | None = None,
-        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
-        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
-    ) -> dict[str, Any]:
-        """Asynchronous variant of :meth:`run_command`."""
-        context_messages = await self._prepare_context_messages_async(context)
-        conversation = self._prepare_conversation(
-            text,
-            history,
-            context=context_messages,
-        )
-        log_event(
-            "AGENT_START",
-            {"history_count": len(history or []), "prompt": self._preview(text, 200)},
-        )
-        self._llm_requests = []
-        self._llm_steps = []
+    @staticmethod
+    def _normalise_max_thought_steps(value: int | None) -> int | None:
+        if value is None:
+            return LocalAgent.DEFAULT_MAX_THOUGHT_STEPS
+        if isinstance(value, bool):  # pragma: no cover - defensive guard
+            raise TypeError("max_thought_steps must be an integer or None")
         try:
-            result = await self._run_loop_core(
-                conversation,
-                cancellation=cancellation,
-                on_tool_result=on_tool_result,
-                on_llm_step=on_llm_step,
+            numeric = int(value)
+        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+            raise TypeError("max_thought_steps must be an integer or None") from exc
+        if numeric <= 0:
+            return LocalAgent.DEFAULT_MAX_THOUGHT_STEPS
+        return numeric
+
+    @property
+    def max_thought_steps(self) -> int | None:
+        return self._max_thought_steps
+
+    @staticmethod
+    def _normalise_max_consecutive_tool_errors(value: int | None) -> int | None:
+        if value is None:
+            return LocalAgent.DEFAULT_MAX_CONSECUTIVE_TOOL_ERRORS
+        if isinstance(value, bool):  # pragma: no cover - defensive guard
+            raise TypeError(
+                "max_consecutive_tool_errors must be an integer or None"
             )
-        except OperationCancelledError:
-            log_event("AGENT_CANCELLED", {"reason": "user-request"})
-            raise
-        except Exception as exc:
-            err = exception_to_mcp_error(exc)["error"]
-            log_event("ERROR", {"error": err})
-            return self._prepare_result_with_diagnostic({"ok": False, "error": err})
-        log_event("AGENT_RESULT", self._summarize_result(result))
-        return self._prepare_result_with_diagnostic(result)
+        try:
+            numeric = int(value)
+        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+            raise TypeError(
+                "max_consecutive_tool_errors must be an integer or None"
+            ) from exc
+        if numeric <= 0:
+            return None
+        return numeric
+
+    @property
+    def max_consecutive_tool_errors(self) -> int | None:
+        return self._max_consecutive_tool_errors
 
     # ------------------------------------------------------------------
-    async def _run_loop_core(
-        self,
-        conversation: list[Mapping[str, Any]],
-        *,
-        cancellation: CancellationEvent | None = None,
-        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
-        on_llm_step: Callable[[Mapping[str, Any]], None] | None = None,
-    ) -> dict[str, Any]:
-        runner = AgentLoopRunner(
-            agent=self,
-            conversation=conversation,
-            cancellation=cancellation,
-            on_tool_result=on_tool_result,
-            on_llm_step=on_llm_step,
+    @staticmethod
+    def _run_sync(coro: Awaitable[Any]) -> Any:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        raise RuntimeError(
+            "Synchronous LocalAgent methods cannot run inside an active "
+            "asyncio event loop; use the async variants instead."
         )
-        return await runner.run()
 
-    async def _execute_tool_calls_core(
-        self,
-        tool_calls: Sequence[LLMToolCall],
-        *,
-        cancellation: CancellationEvent | None = None,
-        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
-    ) -> ToolBatchOutcome:
-        outcome = ToolBatchOutcome()
-        for call in tool_calls:
-            self._raise_if_cancelled(cancellation)
-            call_outcome = await self._run_single_tool_call(
-                call,
-                on_tool_result=on_tool_result,
-            )
-            outcome.messages.extend(call_outcome.messages)
-            outcome.successful_results.extend(call_outcome.successful_results)
-            if call_outcome.error_payload is not None:
-                outcome.error_payload = call_outcome.error_payload
-                break
-            self._raise_if_cancelled(cancellation)
-        return outcome
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _raise_if_cancelled(cancellation: CancellationEvent | None) -> None:
+        if cancellation is None:
+            return
+        raise_if_cancelled(cancellation)
 
-    async def _run_single_tool_call(
+    # ------------------------------------------------------------------
+    def _normalise_tool_arguments(self, call: LLMToolCall) -> Any:
+        try:
+            return json.loads(self._format_tool_arguments(call.arguments))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            if isinstance(call.arguments, Mapping):
+                return dict(call.arguments)
+            return call.arguments
+
+    @staticmethod
+    def _format_tool_arguments(arguments: Mapping[str, Any]) -> str:
+        return json.dumps(arguments, ensure_ascii=False, default=str)
+
+    @staticmethod
+    def _serialise_tool_payload(payload: Mapping[str, Any]) -> str:
+        return json.dumps(payload, ensure_ascii=False, default=str)
+
+    @staticmethod
+    def _extract_mcp_error(exc: Exception) -> Mapping[str, Any]:
+        payload = getattr(exc, "error_payload", None)
+        if isinstance(payload, Mapping):
+            return dict(payload)
+        payload = getattr(exc, "error", None)
+        if isinstance(payload, Mapping):
+            return dict(payload)
+        return exception_to_mcp_error(exc)["error"]
+
+    def _assistant_message(self, response: LLMResponse) -> dict[str, Any]:
+        message: dict[str, Any] = {
+            "role": "assistant",
+            "content": response.content,
+        }
+        reasoning_segments = normalise_reasoning_segments(response.reasoning)
+        if reasoning_segments:
+            message["reasoning"] = reasoning_segments
+        if response.tool_calls:
+            message["tool_calls"] = [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {
+                        "name": call.name,
+                        "arguments": self._format_tool_arguments(call.arguments),
+                    },
+                }
+                for call in response.tool_calls
+            ]
+        return message
+
+    def _tool_message(self, call: LLMToolCall, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "role": "tool",
+            "tool_call_id": call.id,
+            "name": call.name,
+            "content": self._serialise_tool_payload(payload),
+        }
+
+    def _conversation_tool_payload(
         self,
         call: LLMToolCall,
+        payload: Mapping[str, Any],
         *,
-        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
-    ) -> ToolBatchOutcome:
-        self._emit_tool_result(
-            on_tool_result,
-            self._prepare_tool_payload(
-                call,
-                {"agent_status": "running"},
-                include_arguments=True,
-            ),
+        include_arguments: bool = True,
+    ) -> dict[str, Any]:
+        prepared = dict(payload)
+        prepared.setdefault("tool_name", call.name)
+        prepared.setdefault("tool_call_id", call.id)
+        prepared.setdefault("call_id", call.id)
+        if include_arguments and "tool_arguments" not in prepared:
+            prepared["tool_arguments"] = self._normalise_tool_arguments(call)
+        return prepared
+
+    def _summarise_payload(self, payload: AgentRunPayload) -> Mapping[str, Any]:
+        summary: dict[str, Any] = {
+            "ok": payload.ok,
+            "status": payload.status,
+            "result_preview": self._preview(payload.result_text or "")
+            if payload.result_text
+            else "",
+            "tool_results": len(payload.tool_results),
+        }
+        return summary
+
+    def _emit_tool_snapshot(
+        self,
+        callback: Callable[[Mapping[str, Any]], None] | None,
+        snapshot: ToolResultSnapshot,
+    ) -> None:
+        if callback is None:
+            return
+        try:
+            callback(snapshot.to_dict())
+        except Exception as exc:  # pragma: no cover - defensive
+            log_event(
+                "AGENT_TOOL_STREAM_ERROR",
+                {"error": {"type": type(exc).__name__, "message": str(exc)}},
+            )
+
+    # ------------------------------------------------------------------
+    def _conversation_payload_from_error(
+        self,
+        call: LLMToolCall,
+        error_payload: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        return self._conversation_tool_payload(
+            call,
+            {"ok": False, "error": dict(error_payload)},
+            include_arguments=False,
         )
+
+
+@dataclass(slots=True)
+class _ValidationToolCallPayload:
+    call: LLMToolCall
+    assistant_fragment: dict[str, Any]
+    arguments_for_payload: Any | None
+
+
+class AgentLoopRunner:
+    """Stateful helper executing :class:`LocalAgent` iterations."""
+
+    def __init__(
+        self,
+        *,
+        agent: LocalAgent,
+        recorder: _AgentRunRecorder,
+        conversation: list[Mapping[str, Any]],
+        cancellation: CancellationEvent | None,
+        on_tool_result: Callable[[Mapping[str, Any]], None] | None,
+        on_llm_step: Callable[[Mapping[str, Any]], None] | None,
+    ) -> None:
+        self._agent = agent
+        self._recorder = recorder
+        self._conversation = conversation
+        self._cancellation = cancellation
+        self._on_tool_result = on_tool_result
+        self._on_llm_step = on_llm_step
+        self._step = 0
+        self._consecutive_tool_errors = 0
+        self._last_response: LLMResponse | None = None
+
+    async def run(self) -> AgentRunPayload:
+        while not self._reached_step_limit():
+            self._agent._raise_if_cancelled(self._cancellation)
+            iteration = await self._step_once()
+            if iteration.final_payload is not None:
+                return iteration.final_payload
+            if iteration.tool_error is None:
+                self._consecutive_tool_errors = 0
+                self._agent._raise_if_cancelled(self._cancellation)
+                continue
+            self._consecutive_tool_errors += 1
+            if self._should_abort_due_to_tool_errors():
+                return self._abort_due_to_tool_errors(iteration.tool_error)
+            self._agent._raise_if_cancelled(self._cancellation)
+        return self._abort_due_to_step_limit()
+
+    async def _step_once(self) -> _AgentIterationResult:
+        try:
+            response = await self._agent._llm.respond_async(
+                self._conversation,
+                cancellation=self._cancellation,
+            )
+        except ToolValidationError as exc:
+            return await self._handle_validation_error(exc)
+
+        return await self._handle_response(response)
+
+    async def _handle_response(
+        self, response: LLMResponse
+    ) -> _AgentIterationResult:
+        self._register_response(response)
+        self._conversation.append(self._agent._assistant_message(response))
+        self._advance_step(response)
+        if not response.tool_calls:
+            self._recorder.finalise_success(result_text=response.content)
+            return _AgentIterationResult(
+                response=response,
+                tool_error=None,
+                tool_messages=(),
+                final_payload=self._recorder.to_payload(),
+            )
+
+        messages: list[Mapping[str, Any]] = []
+        first_error: Mapping[str, Any] | None = None
+        for call in response.tool_calls:
+            self._agent._raise_if_cancelled(self._cancellation)
+            outcome = await self._run_single_tool_call(call)
+            messages.append(outcome.message)
+            if outcome.error_payload is not None:
+                first_error = outcome.error_payload
+                break
+            self._agent._raise_if_cancelled(self._cancellation)
+        self._conversation.extend(messages)
+        return _AgentIterationResult(
+            response=response,
+            tool_error=first_error,
+            tool_messages=tuple(messages),
+            final_payload=None,
+        )
+
+    async def _run_single_tool_call(
+        self, call: LLMToolCall
+    ) -> _ToolExecutionOutcome:
+        arguments = self._agent._normalise_tool_arguments(call)
+        snapshot = self._recorder.begin_tool(call, arguments=arguments)
+        self._agent._emit_tool_snapshot(self._on_tool_result, snapshot)
         log_event(
             "AGENT_TOOL_CALL",
             {
@@ -667,195 +838,205 @@ class LocalAgent:
             {
                 "call_id": call.id,
                 "tool_name": call.name,
-                "arguments": self._normalise_tool_arguments(call),
+                "arguments": arguments,
             },
         )
         try:
-            await self._mcp.ensure_ready_async()
-            result = await self._mcp.call_tool_async(call.name, call.arguments)
-        except Exception as exc:  # pragma: no cover - defensive network boundary
-            return self._log_tool_error(call, exc, on_tool_result)
-        return self._log_tool_success(call, result, on_tool_result)
+            result = await self._agent._mcp.call_tool_async(call.name, call.arguments)
+        except Exception as exc:
+            error_payload = self._agent._extract_mcp_error(exc)
+            snapshot = self._recorder.mark_tool_failed(call, error_payload)
+            self._agent._emit_tool_snapshot(self._on_tool_result, snapshot)
+            log_event("ERROR", {"error": error_payload})
+            prepared = self._agent._conversation_payload_from_error(call, error_payload)
+            message = self._agent._tool_message(call, prepared)
+            return _ToolExecutionOutcome(message=message, error_payload=prepared["error"])
 
-    def _finalise_tool_result(
-        self,
-        call: LLMToolCall,
-        payload: Mapping[str, Any],
-        *,
-        on_tool_result: Callable[[Mapping[str, Any]], None] | None,
-        include_arguments: bool = True,
-        debug_extra: Mapping[str, Any] | None = None,
-    ) -> ToolBatchOutcome:
-        prepared_payload = self._prepare_tool_payload(
-            call,
-            payload,
-            include_arguments=include_arguments,
-        )
-        ok = bool(prepared_payload.get("ok", False))
-        prepared_payload.setdefault(
-            "agent_status", "completed" if ok else "failed"
-        )
-        event_payload: dict[str, Any] = {
-            "call_id": call.id,
-            "tool_name": call.name,
-            "ok": ok,
-        }
-        if not ok and prepared_payload.get("error"):
-            event_payload["error"] = prepared_payload["error"]
-        log_event("AGENT_TOOL_RESULT", event_payload)
-        detail_payload: dict[str, Any] = {
-            "call_id": call.id,
-            "tool_name": call.name,
-            "ok": ok,
-            "arguments": self._normalise_tool_arguments(call),
-        }
-        if debug_extra:
-            detail_payload.update(dict(debug_extra))
-        log_debug_payload("AGENT_TOOL_RESULT_DETAIL", detail_payload)
-        self._emit_tool_result(on_tool_result, prepared_payload)
-        message = self._tool_message(call, prepared_payload)
-        if ok:
-            return ToolBatchOutcome(
-                messages=[message],
-                successful_results=[prepared_payload],
-            )
-        return ToolBatchOutcome(messages=[message], error_payload=prepared_payload)
+        prepared_payload = self._agent._conversation_tool_payload(call, result)
+        if result.get("ok") is True:
+            snapshot = self._recorder.mark_tool_succeeded(call, result)
+            self._agent._emit_tool_snapshot(self._on_tool_result, snapshot)
+            message = self._agent._tool_message(call, prepared_payload)
+            return _ToolExecutionOutcome(message=message, error_payload=None)
 
-    def _log_tool_error(
-        self,
-        call: LLMToolCall,
-        exc: Exception,
-        on_tool_result: Callable[[Mapping[str, Any]], None] | None,
-    ) -> ToolBatchOutcome:
-        error = self._extract_mcp_error(exc)
-        log_event("ERROR", {"error": error})
-        return self._finalise_tool_result(
-            call,
-            {"ok": False, "error": error},
-            on_tool_result=on_tool_result,
-            debug_extra={"error": error},
-        )
+        error_payload = result.get("error")
+        if not isinstance(error_payload, Mapping):
+            error_payload = {
+                "code": "UNKNOWN",
+                "message": "Tool returned failure without error payload",
+            }
+        snapshot = self._recorder.mark_tool_failed(call, error_payload)
+        self._agent._emit_tool_snapshot(self._on_tool_result, snapshot)
+        prepared = self._agent._conversation_payload_from_error(call, error_payload)
+        message = self._agent._tool_message(call, prepared)
+        return _ToolExecutionOutcome(message=message, error_payload=error_payload)
 
-    def _log_tool_success(
-        self,
-        call: LLMToolCall,
-        result: Mapping[str, Any] | Any,
-        on_tool_result: Callable[[Mapping[str, Any]], None] | None,
-    ) -> ToolBatchOutcome:
-        if not isinstance(result, Mapping):
-            return self._finalise_tool_result(
-                call,
+    def _register_response(self, response: LLMResponse) -> None:
+        self._last_response = response
+        request_messages: Sequence[Mapping[str, Any]]
+        if response.request_messages:
+            request_messages = [dict(m) for m in response.request_messages if isinstance(m, Mapping)]
+        else:
+            request_messages = list(self._conversation)
+        self._recorder.record_llm_step(
+            index=self._step + 1,
+            request_messages=request_messages,
+            response={
+                "content": response.content,
+                "tool_calls": [
+                    {
+                        "id": call.id,
+                        "name": call.name,
+                        "arguments": self._agent._normalise_tool_arguments(call),
+                    }
+                    for call in response.tool_calls
+                ],
+                "reasoning": [
+                    {"type": segment.type, "text": segment.text}
+                    for segment in response.reasoning
+                ],
+            },
+        )
+        self._recorder.extend_reasoning(response.reasoning)
+
+    def _advance_step(self, response: LLMResponse) -> None:
+        self._step += 1
+        if self._on_llm_step is None:
+            return
+        detail_payload = {
+            "step": self._step,
+            "message_preview": LocalAgent._preview(response.content),
+            "tool_calls": [
                 {
-                    "ok": False,
-                    "error": {
-                        "type": "ToolProtocolError",
-                        "message": "Tool returned unexpected payload",
-                    },
-                },
-                on_tool_result=on_tool_result,
-                debug_extra={"raw_result": result},
+                    "id": call.id,
+                    "name": call.name,
+                    "argument_keys": sorted(call.arguments.keys()),
+                }
+                for call in response.tool_calls
+            ],
+        }
+        reasoning_segments = normalise_reasoning_segments(response.reasoning)
+        if reasoning_segments:
+            detail_payload["reasoning"] = [
+                {
+                    "type": segment["type"],
+                    "preview": LocalAgent._preview(segment["text"], limit=200),
+                }
+                for segment in reasoning_segments
+            ]
+        try:
+            self._on_llm_step(detail_payload)
+        except Exception as exc:  # pragma: no cover - defensive
+            log_event(
+                "AGENT_STEP_STREAM_ERROR",
+                {"error": {"type": type(exc).__name__, "message": str(exc)}},
             )
 
-        return self._finalise_tool_result(
-            call,
-            result,
-            on_tool_result=on_tool_result,
-            debug_extra={"result": result},
-        )
+    def _reached_step_limit(self) -> bool:
+        limit = self._agent._max_thought_steps
+        return limit is not None and self._step >= limit
 
-    def _handle_tool_validation_error(
-        self,
-        exc: ToolValidationError,
-        conversation: list[Mapping[str, Any]],
-        *,
-        on_tool_result: Callable[[Mapping[str, Any]], None] | None = None,
-    ) -> tuple[LLMResponse, Mapping[str, Any] | None]:
+    def _should_abort_due_to_tool_errors(self) -> bool:
+        limit = self._agent._max_consecutive_tool_errors
+        return limit is not None and self._consecutive_tool_errors >= limit
+
+    def _abort_due_to_tool_errors(
+        self, error_payload: Mapping[str, Any]
+    ) -> AgentRunPayload:
+        stop_reason: dict[str, Any] = {
+            "type": "consecutive_tool_errors",
+            "count": self._consecutive_tool_errors,
+        }
+        limit = self._agent._max_consecutive_tool_errors
+        if limit is not None:
+            stop_reason["max_consecutive_tool_errors"] = limit
+        self._recorder.finalise_failure(
+            message="",
+            error_payload=error_payload,
+            stop_reason=stop_reason,
+        )
+        return self._recorder.to_payload()
+
+    def _abort_due_to_step_limit(self) -> AgentRunPayload:
+        limit = self._agent._max_thought_steps
+        message = (
+            "LLM did not finish interaction within allowed steps "
+            f"({limit})"
+        )
+        error_payload = exception_to_mcp_error(ToolValidationError(message))["error"]
+        self._recorder.finalise_failure(message=message, error_payload=error_payload)
+        return self._recorder.to_payload()
+
+    async def _handle_validation_error(
+        self, exc: ToolValidationError
+    ) -> _AgentIterationResult:
         message_text = getattr(exc, "llm_message", "") or ""
         raw_calls = getattr(exc, "llm_tool_calls", None)
         raw_request_messages = getattr(exc, "llm_request_messages", None)
         raw_reasoning = getattr(exc, "llm_reasoning", None)
         prepared_calls = self._prepare_invalid_tool_calls(raw_calls)
-        request_snapshot: tuple[dict[str, Any], ...] | None = None
-        normalized_reasoning = normalise_reasoning_segments(raw_reasoning)
-        reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
+        request_snapshot: list[dict[str, Any]] = []
         if isinstance(raw_request_messages, Sequence) and not isinstance(
             raw_request_messages, (str, bytes, bytearray)
         ):
-            prepared_messages: list[dict[str, Any]] = []
             for message in raw_request_messages:
                 if isinstance(message, Mapping):
-                    prepared_messages.append(dict(message))
-            if prepared_messages:
-                request_snapshot = tuple(prepared_messages)
-        if normalized_reasoning:
-            reasoning_segments = tuple(
-                LLMReasoningSegment(
-                    type=segment["type"],
-                    text=segment["text"],
-                )
-                for segment in normalized_reasoning
-            )
+                    request_snapshot.append(dict(message))
+        if not request_snapshot:
+            request_snapshot = list(self._conversation)
 
-        error_template = exception_to_mcp_error(exc)["error"]
-
-        assistant_tool_calls = [
-            prepared.assistant_fragment for prepared in prepared_calls
-        ]
-        synthetic_calls = [prepared.call for prepared in prepared_calls]
-        tool_messages: list[dict[str, Any]] = []
-        first_error_payload: dict[str, Any] | None = None
-
-        for prepared in prepared_calls:
-            payload: dict[str, Any] = {
-                "ok": False,
-                "error": dict(error_template),
-            }
-            arguments = prepared.arguments_for_payload
-            if isinstance(arguments, Mapping):
-                payload["tool_arguments"] = dict(arguments)
-            elif arguments is not None:
-                payload["tool_arguments"] = arguments
-
-            outcome = self._finalise_tool_result(
-                prepared.call,
-                payload,
-                on_tool_result=on_tool_result,
-                include_arguments=False,
-                debug_extra={
-                    "error": payload["error"],
-                    "tool_arguments": payload.get("tool_arguments"),
-                    "validation_error": True,
-                },
-            )
-            tool_messages.extend(outcome.messages)
-            if first_error_payload is None and outcome.error_payload is not None:
-                first_error_payload = outcome.error_payload
-
-        assistant_message: dict[str, Any] = {
-            "role": "assistant",
-            "content": message_text,
-        }
-        if assistant_tool_calls:
-            assistant_message["tool_calls"] = assistant_tool_calls
-        if normalized_reasoning:
-            assistant_message["reasoning"] = normalized_reasoning
-        conversation.append(assistant_message)
-
-        if tool_messages:
-            conversation.extend(tool_messages)
-        elif first_error_payload is None:
-            first_error_payload = {
-                "ok": False,
-                "error": dict(error_template),
-            }
+        reasoning_segments = normalise_reasoning_segments(raw_reasoning)
+        reasoning_tuple = tuple(
+            LLMReasoningSegment(type=segment["type"], text=segment["text"])
+            for segment in reasoning_segments
+        )
 
         synthetic_response = LLMResponse(
             content=message_text,
-            tool_calls=tuple(synthetic_calls),
-            request_messages=request_snapshot,
-            reasoning=reasoning_segments,
+            tool_calls=tuple(prepared.call for prepared in prepared_calls),
+            request_messages=tuple(request_snapshot),
+            reasoning=reasoning_tuple,
         )
-        return synthetic_response, first_error_payload
+
+        self._register_response(synthetic_response)
+
+        tool_messages: list[Mapping[str, Any]] = []
+        first_error_payload: Mapping[str, Any] | None = None
+        error_payload = exception_to_mcp_error(exc)["error"]
+        for prepared in prepared_calls:
+            snapshot = self._recorder.begin_tool(
+                prepared.call,
+                arguments=prepared.arguments_for_payload,
+            )
+            self._agent._emit_tool_snapshot(self._on_tool_result, snapshot)
+            snapshot = self._recorder.mark_tool_failed(
+                prepared.call,
+                error_payload,
+            )
+            self._agent._emit_tool_snapshot(self._on_tool_result, snapshot)
+            message = self._agent._tool_message(
+                prepared.call,
+                self._agent._conversation_tool_payload(
+                    prepared.call,
+                    {"ok": False, "error": dict(error_payload)},
+                    include_arguments=False,
+                ),
+            )
+            tool_messages.append(message)
+            if first_error_payload is None:
+                first_error_payload = error_payload
+
+        assistant_message = self._agent._assistant_message(synthetic_response)
+        self._conversation.append(assistant_message)
+        if tool_messages:
+            self._conversation.extend(tool_messages)
+        self._advance_step(synthetic_response)
+        return _AgentIterationResult(
+            response=synthetic_response,
+            tool_error=first_error_payload,
+            tool_messages=tuple(tool_messages),
+            final_payload=None,
+        )
 
     def _prepare_invalid_tool_calls(
         self, raw_calls: Sequence[Any] | None
@@ -935,372 +1116,3 @@ class LocalAgent:
             return json.loads(text)
         except Exception:
             return text
-
-    @staticmethod
-    def _emit_tool_result(
-        callback: Callable[[Mapping[str, Any]], None] | None,
-        payload: Mapping[str, Any],
-    ) -> None:
-        """Deliver intermediate MCP *payload* to the provided *callback*."""
-        if callback is None:
-            return
-        try:
-            prepared = dict(payload) if isinstance(payload, Mapping) else {"value": payload}
-            callback(prepared)
-        except Exception as exc:  # pragma: no cover - defensive
-            log_event(
-                "AGENT_TOOL_STREAM_ERROR",
-                {"error": {"type": type(exc).__name__, "message": str(exc)}},
-            )
-
-    def _prepare_consecutive_tool_error_result(
-        self,
-        payload: Mapping[str, Any] | None,
-        consecutive_errors: int,
-        *,
-        reasoning_segments: Sequence[LLMReasoningSegment] | None = None,
-    ) -> dict[str, Any]:
-        """Return final result payload when tool failures exceed the cap."""
-        prepared: dict[str, Any] = {}
-        if isinstance(payload, Mapping):
-            prepared.update(payload)
-        else:  # pragma: no cover - defensive guard
-            prepared["error"] = {
-                "type": "ConsecutiveToolError",
-                "message": "Tool call failed repeatedly",
-                "details": payload,
-            }
-        prepared["ok"] = False
-        stop_reason: dict[str, Any] = {
-            "type": "consecutive_tool_errors",
-            "count": consecutive_errors,
-        }
-        if self._max_consecutive_tool_errors is not None:
-            stop_reason["max_consecutive_tool_errors"] = (
-                self._max_consecutive_tool_errors
-            )
-        prepared["agent_stop_reason"] = stop_reason
-        normalized_reasoning = normalise_reasoning_segments(reasoning_segments)
-        if normalized_reasoning:
-            prepared.setdefault("reasoning", normalized_reasoning)
-        return prepared
-
-    def _success_result(
-        self,
-        response: LLMResponse,
-        tool_results: Sequence[Mapping[str, Any]] | None,
-        *,
-        reasoning_segments: Sequence[LLMReasoningSegment] | None = None,
-    ) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "ok": True,
-            "error": None,
-            "result": response.content.strip(),
-        }
-        segments: Sequence[LLMReasoningSegment]
-        segments = reasoning_segments or response.reasoning
-        normalized_reasoning = normalise_reasoning_segments(segments)
-        if normalized_reasoning:
-            payload["reasoning"] = normalized_reasoning
-        if tool_results:
-            payload["tool_results"] = [dict(result) for result in tool_results]
-        return payload
-
-    def _normalise_tool_arguments(self, call: LLMToolCall) -> Any:
-        """Return JSON-compatible representation of tool arguments."""
-        try:
-            return json.loads(self._format_tool_arguments(call.arguments))
-        except (TypeError, ValueError, json.JSONDecodeError):
-            if isinstance(call.arguments, Mapping):
-                return dict(call.arguments)
-            return call.arguments
-
-    def _prepare_tool_payload(
-        self,
-        call: LLMToolCall,
-        payload: Mapping[str, Any],
-        *,
-        include_arguments: bool = True,
-    ) -> dict[str, Any]:
-        """Attach identifying metadata for *call* to the tool *payload*."""
-        prepared = dict(payload)
-        prepared.setdefault("tool_name", call.name)
-        prepared.setdefault("tool_call_id", call.id)
-        prepared.setdefault("call_id", call.id)
-        if include_arguments and "tool_arguments" not in prepared:
-            prepared["tool_arguments"] = self._normalise_tool_arguments(call)
-        return prepared
-
-    def _assistant_message(self, response: LLMResponse) -> dict[str, Any]:
-        message: dict[str, Any] = {
-            "role": "assistant",
-            "content": response.content,
-        }
-        reasoning_segments = normalise_reasoning_segments(response.reasoning)
-        if reasoning_segments:
-            message["reasoning"] = reasoning_segments
-        if response.tool_calls:
-            message["tool_calls"] = [
-                {
-                    "id": call.id,
-                    "type": "function",
-                    "function": {
-                        "name": call.name,
-                        "arguments": self._format_tool_arguments(call.arguments),
-                    },
-                }
-                for call in response.tool_calls
-            ]
-        return message
-
-    def _tool_message(self, call: LLMToolCall, payload: Mapping[str, Any]) -> dict[str, Any]:
-        return {
-            "role": "tool",
-            "tool_call_id": call.id,
-            "name": call.name,
-            "content": self._serialise_tool_payload(payload),
-        }
-
-    @staticmethod
-    def _format_tool_arguments(arguments: Mapping[str, Any]) -> str:
-        return json.dumps(arguments, ensure_ascii=False, default=str)
-
-    @staticmethod
-    def _serialise_tool_payload(payload: Mapping[str, Any]) -> str:
-        return json.dumps(payload, ensure_ascii=False, default=str)
-
-
-@dataclass(slots=True)
-class _ValidationToolCallPayload:
-    """Prepared representation of invalid tool calls returned by the LLM."""
-
-    call: LLMToolCall
-    assistant_fragment: dict[str, Any]
-    arguments_for_payload: Any | None
-
-
-@dataclass(slots=True)
-class _AgentLoopStep:
-    """Container describing the outcome of a single agent iteration."""
-
-    response: LLMResponse
-    tool_error: Mapping[str, Any] | None
-    batch_results: list[Mapping[str, Any]]
-    final_result: dict[str, Any] | None
-
-
-class AgentLoopRunner:
-    """Stateful helper executing :class:`LocalAgent` iterations."""
-
-    def __init__(
-        self,
-        *,
-        agent: LocalAgent,
-        conversation: list[Mapping[str, Any]],
-        cancellation: CancellationEvent | None,
-        on_tool_result: Callable[[Mapping[str, Any]], None] | None,
-        on_llm_step: Callable[[Mapping[str, Any]], None] | None,
-    ) -> None:
-        """Capture loop dependencies and callbacks for subsequent execution."""
-        self._agent = agent
-        self._conversation = conversation
-        self._cancellation = cancellation
-        self._on_tool_result = on_tool_result
-        self._on_llm_step = on_llm_step
-        self._accumulated_results: list[Mapping[str, Any]] = []
-        self._last_response: LLMResponse | None = None
-        self._step = 0
-        self._consecutive_tool_errors = 0
-        self._reasoning_trace: list[LLMReasoningSegment] = []
-
-    async def run(self) -> dict[str, Any]:
-        """Execute the main loop until completion or enforced abort."""
-        while not self.should_abort():
-            self._agent._raise_if_cancelled(self._cancellation)
-            step_outcome = await self.step_llm()
-            final = self._finalise_step(step_outcome)
-            if final is not None:
-                return final
-        return self._abort_due_to_step_limit()
-
-    async def step_llm(self) -> _AgentLoopStep:
-        """Perform a single LLM interaction."""
-        try:
-            response = await self._agent._llm.respond_async(
-                self._conversation,
-                cancellation=self._cancellation,
-            )
-        except ToolValidationError as exc:
-            return self._handle_validation_error(exc)
-        return await self.handle_tool_batch(response)
-
-    async def handle_tool_batch(self, response: LLMResponse) -> _AgentLoopStep:
-        """Execute MCP tools requested by *response* when present."""
-        self._register_response(response)
-        self._conversation.append(self._agent._assistant_message(response))
-        self._advance_step(response)
-        if not response.tool_calls:
-            return _AgentLoopStep(
-                response=response,
-                tool_error=None,
-                batch_results=[],
-                final_result=self._agent._success_result(
-                    response,
-                    self._accumulated_results,
-                    reasoning_segments=self._reasoning_trace,
-                ),
-            )
-        batch_outcome = await self._agent._execute_tool_calls_core(
-            response.tool_calls,
-            cancellation=self._cancellation,
-            on_tool_result=self._on_tool_result,
-        )
-        self._conversation.extend(batch_outcome.messages)
-        return _AgentLoopStep(
-            response=response,
-            tool_error=batch_outcome.error_payload,
-            batch_results=batch_outcome.successful_results,
-            final_result=None,
-        )
-
-    def should_abort(self) -> bool:
-        """Return ``True`` when the configured step cap has been reached."""
-        return (
-            self._agent._max_thought_steps is not None
-            and self._step >= self._agent._max_thought_steps
-        )
-
-    def _handle_validation_error(self, exc: ToolValidationError) -> _AgentLoopStep:
-        response, tool_error = self._agent._handle_tool_validation_error(
-            exc,
-            self._conversation,
-            on_tool_result=self._on_tool_result,
-        )
-        self._register_response(response)
-        self._advance_step(response)
-        return _AgentLoopStep(
-            response=response,
-            tool_error=tool_error,
-            batch_results=[],
-            final_result=None,
-        )
-
-    def _register_response(self, response: LLMResponse) -> None:
-        self._last_response = response
-        self._agent._record_request_messages(response)
-        if response.reasoning:
-            self._reasoning_trace.extend(response.reasoning)
-
-    def _advance_step(self, response: LLMResponse) -> None:
-        self._step += 1
-        detail_payload = self._agent._log_step(self._step, response)
-        if self._on_llm_step is not None and isinstance(detail_payload, Mapping):
-            try:
-                self._on_llm_step(detail_payload)
-            except Exception as exc:  # pragma: no cover - defensive
-                log_event(
-                    "AGENT_STEP_STREAM_ERROR",
-                    {
-                        "error": {
-                            "type": type(exc).__name__,
-                            "message": str(exc),
-                        }
-                    },
-                )
-
-    def _finalise_step(self, outcome: _AgentLoopStep) -> dict[str, Any] | None:
-        self._accumulated_results.extend(outcome.batch_results)
-        if outcome.final_result is not None:
-            return outcome.final_result
-        if outcome.tool_error is None:
-            self._consecutive_tool_errors = 0
-            self._agent._raise_if_cancelled(self._cancellation)
-            return None
-        self._consecutive_tool_errors += 1
-        if self._should_stop_due_to_tool_errors():
-            return self._abort_due_to_consecutive_tool_errors(outcome.tool_error)
-        self._agent._raise_if_cancelled(self._cancellation)
-        return None
-
-    def _should_stop_due_to_tool_errors(self) -> bool:
-        limit = self._agent._max_consecutive_tool_errors
-        return limit is not None and self._consecutive_tool_errors >= limit
-
-    def _abort_due_to_consecutive_tool_errors(
-        self, payload: Mapping[str, Any] | None
-    ) -> dict[str, Any]:
-        abort_payload: dict[str, Any] = {
-            "reason": "tool-error-limit",
-            "consecutive_errors": self._consecutive_tool_errors,
-        }
-        limit = self._agent._max_consecutive_tool_errors
-        if limit is not None:
-            abort_payload["max_consecutive_tool_errors"] = limit
-        if isinstance(payload, Mapping):
-            abort_payload["tool_name"] = payload.get("tool_name")
-            abort_payload["tool_call_id"] = payload.get("tool_call_id")
-            error_payload = payload.get("error")
-            if isinstance(error_payload, Mapping):
-                abort_payload["error_type"] = error_payload.get("type")
-        log_event("AGENT_ABORTED", abort_payload)
-        return self._agent._prepare_consecutive_tool_error_result(
-            payload,
-            self._consecutive_tool_errors,
-            reasoning_segments=self._reasoning_trace,
-        )
-
-    def _abort_due_to_step_limit(self) -> dict[str, Any]:
-        assert (
-            self._agent._max_thought_steps is not None
-        ), "step limit abort triggered without a configured limit"
-        abort_payload: dict[str, Any] = {
-            "reason": "max-steps",
-            "max_steps": self._agent._max_thought_steps,
-        }
-        if self._last_response is not None:
-            if self._last_response.content:
-                abort_payload["last_message_preview"] = self._agent._preview(
-                    self._last_response.content
-                )
-            if self._last_response.tool_calls:
-                abort_payload["last_tool_calls"] = self._agent._summarize_tool_calls(
-                    self._last_response.tool_calls
-                )
-        log_event("AGENT_ABORTED", abort_payload)
-
-        message = (
-            "LLM did not finish interaction within allowed steps "
-            f"({self._agent._max_thought_steps})"
-        )
-        if self._last_response is not None:
-            if self._last_response.tool_calls:
-                call_descriptions: list[str] = []
-                for call in self._last_response.tool_calls:
-                    call_descriptions.append(
-                        f"{call.name} with arguments "
-                        f"{self._agent._format_tool_arguments(call.arguments)}"
-                    )
-                joined = "; ".join(call_descriptions)
-                message += f". Last response requested: {joined}"
-            elif self._last_response.content:
-                message += (
-                    f". Last message: {self._last_response.content.strip()}"
-                )
-        error = ToolValidationError(message)
-        if self._last_response is not None:
-            if self._last_response.content:
-                error.llm_message = self._last_response.content
-            if self._last_response.tool_calls:
-                error.llm_tool_calls = [
-                    {
-                        "id": call.id,
-                        "name": call.name,
-                        "arguments": self._agent._normalise_tool_arguments(call),
-                    }
-                    for call in self._last_response.tool_calls
-                ]
-        if self._accumulated_results:
-            error.tool_results = [
-                dict(result) for result in self._accumulated_results
-            ]
-        raise error

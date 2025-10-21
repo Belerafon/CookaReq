@@ -3,7 +3,8 @@ import json
 from typing import Any
 from collections.abc import Mapping
 
-from app.agent.local_agent import AgentLoopRunner, LocalAgent, ToolBatchOutcome
+from app.agent.local_agent import AgentLoopRunner, LocalAgent, _AgentRunRecorder
+from app.agent.run_contract import AgentRunPayload, ToolResultSnapshot
 from app.llm.types import LLMReasoningSegment, LLMResponse, LLMToolCall
 from app.llm.validation import ToolValidationError
 
@@ -24,27 +25,39 @@ class DummyMCP:
         return None
 
     async def call_tool_async(self, name: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:  # pragma: no cover - unused
-        return {"ok": True, "error": None}
+        return {"ok": True, "result": {}}
 
 
-def test_handle_tool_batch_returns_success(monkeypatch):
-    agent = LocalAgent(llm=DummyLLM(), mcp=DummyMCP())
-
-    runner = AgentLoopRunner(
+def _create_runner(agent: LocalAgent) -> AgentLoopRunner:
+    recorder = _AgentRunRecorder(tool_schemas=None)
+    return AgentLoopRunner(
         agent=agent,
+        recorder=recorder,
         conversation=[],
         cancellation=None,
         on_tool_result=None,
         on_llm_step=None,
     )
 
-    response = LLMResponse("Result", ())
-    outcome = asyncio.run(runner.handle_tool_batch(response))
 
-    assert outcome.final_result == {"ok": True, "error": None, "result": "Result"}
-    assert runner.should_abort() is False
+def _run(coro):
+    return asyncio.run(coro)
+
+
+def test_runner_returns_success_without_tools():
+    agent = LocalAgent(llm=DummyLLM(), mcp=DummyMCP())
+    runner = _create_runner(agent)
+
+    payload = _run(runner.run())
+
+    assert isinstance(payload, AgentRunPayload)
+    assert payload.ok is True
+    assert payload.status == "succeeded"
+    assert payload.result_text == "done"
+    assert payload.tool_results == []
+    assert len(payload.llm_trace.steps) == 1
     assert runner._step == 1
-    assert runner._conversation == [{"role": "assistant", "content": "Result"}]
+    assert runner._conversation == [{"role": "assistant", "content": "done"}]
 
 
 def test_step_llm_handles_validation_error(monkeypatch):
@@ -55,30 +68,16 @@ def test_step_llm_handles_validation_error(monkeypatch):
             raise exc
 
     agent = LocalAgent(llm=RaisingLLM(), mcp=DummyMCP())
+    runner = _create_runner(agent)
 
-    synthetic_response = LLMResponse("", ())
-    synthetic_error = {"tool_name": "demo"}
+    result = _run(runner._step_once())
 
-    def fake_handle(self, exc, conversation, *, on_tool_result=None, on_llm_step=None):
-        conversation.append({"role": "assistant", "content": "oops"})
-        return synthetic_response, synthetic_error
-
-    monkeypatch.setattr(LocalAgent, "_handle_tool_validation_error", fake_handle)
-
-    runner = AgentLoopRunner(
-        agent=agent,
-        conversation=[],
-        cancellation=None,
-        on_tool_result=None,
-        on_llm_step=None,
-    )
-
-    outcome = asyncio.run(runner.step_llm())
-
-    assert outcome.tool_error is synthetic_error
-    assert outcome.final_result is None
+    assert isinstance(result.tool_error, Mapping)
+    assert result.final_payload is None
     assert runner._step == 1
-    assert runner._conversation == [{"role": "assistant", "content": "oops"}]
+    assert runner._conversation
+    assert runner._conversation[0]["role"] == "assistant"
+    assert runner._conversation[0]["content"] == "bad"
 
 
 def test_runner_aborts_after_consecutive_tool_errors(monkeypatch):
@@ -104,51 +103,29 @@ def test_runner_aborts_after_consecutive_tool_errors(monkeypatch):
         max_consecutive_tool_errors=2,
     )
 
-    failure_payload = {
-        "ok": False,
-        "error": {"type": "Failure", "message": "boom"},
-        "tool_name": "fail_tool",
-        "tool_call_id": "call-1",
-    }
+    async def fail_call(name: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        return {
+            "ok": False,
+            "error": {"code": "Failure", "message": "boom"},
+        }
 
-    async def fake_execute(
-        self,
-        tool_calls,
-        *,
-        cancellation=None,
-        on_tool_result=None,
-    ):
-        return ToolBatchOutcome(
-            messages=[
-                {
-                    "role": "tool",
-                    "tool_call_id": "call-1",
-                    "name": "fail_tool",
-                    "content": "{}",
-                }
-            ],
-            error_payload=failure_payload,
-        )
+    monkeypatch.setattr(agent._mcp, "call_tool_async", fail_call)
 
-    monkeypatch.setattr(LocalAgent, "_execute_tool_calls_core", fake_execute)
+    runner = _create_runner(agent)
 
-    runner = AgentLoopRunner(
-        agent=agent,
-        conversation=[],
-        cancellation=None,
-        on_tool_result=None,
-        on_llm_step=None,
-    )
+    payload = _run(runner.run())
 
-    result = asyncio.run(runner.run())
-
-    assert result["ok"] is False
-    assert result["agent_stop_reason"] == {
+    assert payload.ok is False
+    assert payload.status == "failed"
+    assert payload.diagnostic is not None
+    assert payload.diagnostic["stop_reason"] == {
         "type": "consecutive_tool_errors",
         "count": 2,
         "max_consecutive_tool_errors": 2,
     }
     assert runner._consecutive_tool_errors == 2
+    assert len(payload.tool_results) == 2
+    assert all(snapshot.status == "failed" for snapshot in payload.tool_results)
 
 
 def test_reasoning_segments_survive_tool_roundtrip(monkeypatch):
@@ -179,45 +156,21 @@ def test_reasoning_segments_survive_tool_roundtrip(monkeypatch):
             return LLMResponse("final reply", ())
 
     agent = LocalAgent(llm=ToolReasoningLLM(), mcp=DummyMCP())
-
-    async def fake_execute(
-        self,
-        tool_calls,
-        *,
-        cancellation=None,
-        on_tool_result=None,
-    ):
-        return ToolBatchOutcome(
-            messages=[
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_calls[0].id,
-                    "name": tool_calls[0].name,
-                    "content": "{}",
-                }
-            ],
-            successful_results=[
-                {
-                    "ok": True,
-                    "tool_name": tool_calls[0].name,
-                }
-            ],
-        )
-
-    monkeypatch.setattr(LocalAgent, "_execute_tool_calls_core", fake_execute)
-
-    runner = AgentLoopRunner(
-        agent=agent,
-        conversation=[],
-        cancellation=None,
-        on_tool_result=None,
-        on_llm_step=None,
+    monkeypatch.setattr(
+        agent._mcp,
+        "call_tool_async",
+        lambda name, arguments: {
+            "ok": True,
+            "result": {"ok": True, "tool_name": name},
+        },
     )
 
-    result = asyncio.run(runner.run())
+    runner = _create_runner(agent)
 
-    assert result["result"] == "final reply"
-    assert result["reasoning"] == [
+    payload = _run(runner.run())
+
+    assert payload.result_text == "final reply"
+    assert payload.reasoning == [
         {"type": "analysis", "text": "gathering data"}
     ]
     assert runner._conversation
@@ -226,6 +179,8 @@ def test_reasoning_segments_survive_tool_roundtrip(monkeypatch):
     assert first_assistant["reasoning"] == [
         {"type": "analysis", "text": "gathering data"}
     ]
+    assert len(payload.tool_results) == 1
+    assert payload.tool_results[0].status == "succeeded"
 
 
 def test_validation_error_payloads_mirror_tool_execution():
@@ -249,25 +204,40 @@ def test_validation_error_payloads_mirror_tool_execution():
         {"role": "assistant", "content": "assistant reply"},
     )
 
-    recorded_payloads: list[Mapping[str, Any]] = []
+    recorded_snapshots: list[Mapping[str, Any]] = []
 
-    def recorder(payload: Mapping[str, Any]) -> None:
-        recorded_payloads.append(dict(payload))
+    def recorder(snapshot: Mapping[str, Any]) -> None:
+        recorded_snapshots.append(dict(snapshot))
 
-    conversation: list[Mapping[str, Any]] = []
-    response, first_error = agent._handle_tool_validation_error(
-        exc,
-        conversation,
+    recorder_instance = _AgentRunRecorder(tool_schemas=None)
+    runner = AgentLoopRunner(
+        agent=agent,
+        recorder=recorder_instance,
+        conversation=[],
+        cancellation=None,
         on_tool_result=recorder,
+        on_llm_step=None,
     )
 
-    assert response.content == "assistant reply"
-    assert len(response.tool_calls) == 2
-    assert len(recorded_payloads) == 2
-    assert recorded_payloads[0] == dict(first_error)
+    iteration = _run(runner._handle_validation_error(exc))
 
-    assert len(conversation) == 3
-    assistant_message = conversation[0]
+    assert isinstance(iteration.tool_error, Mapping)
+    assert iteration.tool_error.get("code") == "VALIDATION_ERROR"
+    assert iteration.tool_error.get("message") == "invalid"
+    details = iteration.tool_error.get("details", {})
+    assert isinstance(details, Mapping)
+    assert details.get("type") == "ToolValidationError"
+
+    assert len(recorded_snapshots) == 4  # begin + failure for each call
+    failed_snapshots = [
+        ToolResultSnapshot.from_dict(payload) for payload in recorded_snapshots[1::2]
+    ]
+    assert all(snapshot.status == "failed" for snapshot in failed_snapshots)
+    assert failed_snapshots[0].arguments == {"foo": 1}
+    assert failed_snapshots[1].arguments == "not json"
+
+    assert len(runner._conversation) == 3
+    assistant_message = runner._conversation[0]
     assert assistant_message["role"] == "assistant"
     tool_calls = assistant_message["tool_calls"]
     assert tool_calls[0]["function"]["arguments"] == json.dumps(
@@ -275,10 +245,7 @@ def test_validation_error_payloads_mirror_tool_execution():
     )
     assert tool_calls[1]["function"]["arguments"] == "not json"
 
-    first_tool_message = json.loads(conversation[1]["content"])
-    assert first_tool_message == recorded_payloads[0]
-    second_tool_message = json.loads(conversation[2]["content"])
-    assert second_tool_message == recorded_payloads[1]
-
-    assert recorded_payloads[0]["tool_arguments"] == {"foo": 1}
-    assert recorded_payloads[1]["tool_arguments"] == "not json"
+    first_tool_message = json.loads(runner._conversation[1]["content"])
+    second_tool_message = json.loads(runner._conversation[2]["content"])
+    assert first_tool_message["error"]["code"] == "VALIDATION_ERROR"
+    assert second_tool_message["error"]["code"] == "VALIDATION_ERROR"

@@ -93,6 +93,9 @@ class _PassiveMCP:
     async def call_tool_async(self, name, arguments):  # pragma: no cover - guard
         raise AssertionError("Tool call should not be reached when validation fails")
 
+    async def get_tool_schemas_async(self) -> dict[str, object]:  # pragma: no cover - simple stub
+        return {}
+
 
 @pytest.mark.parametrize("target_language", ["испанский"], ids=["es"])
 def test_openrouter_collects_tool_validation_error_snapshot(tmp_path, target_language):

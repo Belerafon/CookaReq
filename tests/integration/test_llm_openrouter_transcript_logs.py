@@ -23,7 +23,7 @@ REQUIRES_REAL_LLM = True
 
 pytestmark = [pytest.mark.integration, pytest.mark.real_llm]
 
-DEFAULT_FREE_REASONING_MODEL = "deepseek/deepseek-v3.2-exp"
+DEFAULT_FREE_REASONING_MODEL = "openai/gpt-oss-20b:free"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 

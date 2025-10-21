@@ -208,6 +208,36 @@ so you know which modules are involved and which regressions to guard against.
    in-memory requirements so the editor and list widgets reflect the latest
    state immediately.
 
+### Контракт данных агентского прогона
+
+`LocalAgent` формирует детерминированный объект `AgentRunPayload`
+(`app/agent/run_contract.py`) и передаёт его в UI как `raw_result` истории
+чата.
+
+* В поле `tool_results` попадают экземпляры `ToolResultSnapshot`, описывающие
+  каждое обращение к MCP: `tool_name`, аргументы (`tool_arguments`), статус
+  (`running`, `succeeded`, `failed`), метрики (`ToolMetrics`) и события
+  таймлайна (`ToolTimelineEvent`). Последний выполненный инструмент дублируется
+  в `last_tool`, а при сбое он же проксируется в плоские ключи `tool_name`,
+  `tool_arguments`, `tool_result` и `error` для обратной совместимости с
+  экспортом логов.
+* `llm_trace` содержит последовательность `LlmStep`: на каждый запрос LLM
+  сохраняются исходные сообщения, ответ и отметка времени. Дополнительно в
+  `diagnostic.llm_steps` и `diagnostic.llm_requests` откладываются снимки
+  исходных сообщений для отладки ошибок валидации инструментов.
+* Поле `diagnostic` агрегирует дополнительные сведения: ошибки MCP
+  (`diagnostic.error`), причины остановки (`diagnostic.stop_reason`), полные
+  снапшоты инструментов (`diagnostic.tool_results`) и вспомогательные данные,
+  необходимые UI (последовательность `llm_requests`, счётчики повторных ошибок
+  и т. п.).
+* `tool_schemas` содержит кэш объявлений MCP-инструментов, чтобы UI мог
+  локализовать аргументы и отображать корректные подсказки.
+
+Благодаря фиксированному контракту UI и тесты используют одни и те же данные —
+удалены эвристики вроде `_llm_steps`, `looks_like_tool_payload` и вспомогательные
+"мерджи" словарей; история чата сериализуется и восстанавливается без потери
+метаданных.
+
 ## Persistence and operational environment
 
 * Sample requirement packs under `requirements/DEMO` demonstrate the storage

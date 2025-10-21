@@ -77,12 +77,12 @@ class ToolError:
     """Structured tool failure payload."""
 
     message: str
-    code: str | None = None
+    code: Any | None = None
     details: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"message": self.message}
-        if self.code:
+        if self.code is not None:
             payload["code"] = self.code
         if self.details is not None:
             payload["details"] = dict(self.details)
@@ -94,8 +94,7 @@ class ToolError:
         message = str(message_raw) if message_raw is not None else ""
         if not message:
             raise ValueError("tool error payload is missing message")
-        code_raw = payload.get("code")
-        code = str(code_raw) if code_raw is not None else None
+        code = payload.get("code")
         details_payload = payload.get("details")
         details: Mapping[str, Any] | None
         if isinstance(details_payload, Mapping):
@@ -123,17 +122,29 @@ class ToolResultSnapshot:
     schema: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        arguments_payload: Any
+        if self.arguments is None:
+            arguments_payload = {}
+        elif isinstance(self.arguments, Mapping):
+            arguments_payload = dict(self.arguments)
+        else:
+            arguments_payload = self.arguments
         payload: dict[str, Any] = {
-            "call_id": self.call_id,
             "tool_name": self.tool_name,
+            "tool_arguments": arguments_payload,
+            "tool_call_id": self.call_id,
+            "call_id": self.call_id,
             "status": self.status,
+            "agent_status": self._agent_status_label(),
+            "ok": self.status == "succeeded",
         }
-        if self.arguments is not None:
-            payload["arguments"] = self.arguments
+        payload["error"] = (
+            self.error.to_dict() if self.error is not None else None
+        )
         if self.result is not None:
             payload["result"] = self.result
-        if self.error is not None:
-            payload["error"] = self.error.to_dict()
+        if arguments_payload is not self.arguments and self.arguments is not None:
+            payload["arguments"] = self.arguments
         if self.events:
             payload["events"] = [event.to_dict() for event in self.events]
         if self.started_at is not None:
@@ -149,11 +160,28 @@ class ToolResultSnapshot:
             payload["schema"] = dict(self.schema)
         return payload
 
+    def _agent_status_label(self) -> str:
+        match self.status:
+            case "succeeded":
+                return "completed"
+            case "failed":
+                return "failed"
+            case "running":
+                return "running"
+            case _:
+                return "pending"
+
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ToolResultSnapshot":
         status = payload.get("status")
         if status not in {"pending", "running", "succeeded", "failed"}:
-            raise ValueError(f"invalid tool status: {status!r}")
+            ok_flag = payload.get("ok")
+            if ok_flag is True:
+                status = "succeeded"
+            elif ok_flag is False or payload.get("error") is not None:
+                status = "failed"
+            else:
+                status = "pending"
         events_payload = payload.get("events")
         events: list[ToolTimelineEvent] = []
         if isinstance(events_payload, Sequence):
@@ -182,11 +210,18 @@ class ToolResultSnapshot:
         schema: Mapping[str, Any] | None = None
         if isinstance(schema_payload, Mapping):
             schema = dict(schema_payload)
+        call_id_value = payload.get("call_id") or payload.get("tool_call_id")
+        tool_name_value = payload.get("tool_name") or payload.get("name")
+        if not tool_name_value:
+            raise ValueError("tool snapshot payload missing tool_name")
+        arguments_value = payload.get("tool_arguments")
+        if arguments_value is None and "arguments" in payload:
+            arguments_value = payload.get("arguments")
         return cls(
-            call_id=str(payload.get("call_id") or ""),
-            tool_name=str(payload.get("tool_name") or ""),
+            call_id=str(call_id_value or ""),
+            tool_name=str(tool_name_value or ""),
             status=status,
-            arguments=payload.get("arguments"),
+            arguments=arguments_value,
             result=payload.get("result"),
             error=error,
             events=events,
@@ -338,22 +373,43 @@ class AgentRunPayload:
     error: ToolError | None = None
     diagnostic: Mapping[str, Any] | None = None
     tool_schemas: Mapping[str, Any] | None = None
+    last_tool: ToolResultSnapshot | None = None
+    agent_stop_reason: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "ok": self.ok,
             "status": self.status,
             "result": self.result_text,
-            "tool_results": [snapshot.to_dict() for snapshot in self.tool_results],
             "llm_trace": self.llm_trace.to_dict(),
             "reasoning": [dict(segment) for segment in self.reasoning],
         }
-        if self.error is not None:
-            payload["error"] = self.error.to_dict()
+        payload["error"] = (
+            self.error.to_dict() if self.error is not None else None
+        )
+        if self.tool_results:
+            payload["tool_results"] = [
+                snapshot.to_dict() for snapshot in self.tool_results
+            ]
         if self.diagnostic is not None:
             payload["diagnostic"] = dict(self.diagnostic)
         if self.tool_schemas is not None:
             payload["tool_schemas"] = dict(self.tool_schemas)
+        if self.agent_stop_reason is not None:
+            payload["agent_stop_reason"] = dict(self.agent_stop_reason)
+        if self.last_tool is not None:
+            last_tool_payload = self.last_tool.to_dict()
+            payload["last_tool"] = last_tool_payload
+            for key in ("tool_name", "tool_call_id", "call_id", "agent_status"):
+                value = last_tool_payload.get(key)
+                if value is not None:
+                    payload[key] = value
+            if "tool_arguments" in last_tool_payload:
+                payload["tool_arguments"] = last_tool_payload["tool_arguments"]
+            if not self.ok and "result" in last_tool_payload:
+                payload["tool_result"] = last_tool_payload["result"]
+            if payload.get("error") is None and "error" in last_tool_payload:
+                payload["error"] = last_tool_payload["error"]
         return payload
 
     @classmethod
@@ -361,14 +417,17 @@ class AgentRunPayload:
         ok = bool(payload.get("ok"))
         status_value = payload.get("status")
         status = "succeeded" if status_value == "succeeded" else "failed"
+        error_payload_raw = payload.get("error")
         result_value = payload.get("result")
         if isinstance(result_value, str):
             result_text = result_value
-        else:
+        elif result_value is not None:
             try:
                 result_text = json.dumps(result_value, ensure_ascii=False)
             except (TypeError, ValueError):
-                result_text = str(result_value or "")
+                result_text = str(result_value)
+        else:
+            result_text = ""
         reasoning_payload = payload.get("reasoning")
         reasoning: list[Mapping[str, Any]] = []
         if isinstance(reasoning_payload, Sequence) and not isinstance(
@@ -395,25 +454,157 @@ class AgentRunPayload:
             if isinstance(llm_trace_payload, Mapping)
             else LlmTrace()
         )
-        error_payload = payload.get("error")
+        error_payload = error_payload_raw
         error: ToolError | None = None
         if isinstance(error_payload, Mapping):
             try:
                 error = ToolError.from_dict(error_payload)
             except Exception:
                 error = None
+            if not result_text:
+                details_payload = error_payload.get("details")
+                if isinstance(details_payload, Mapping):
+                    message_candidate = details_payload.get("llm_message")
+                    if isinstance(message_candidate, str) and message_candidate.strip():
+                        result_text = message_candidate
+                if not result_text:
+                    message_candidate = error_payload.get("message")
+                    if isinstance(message_candidate, str):
+                        result_text = message_candidate
         diagnostic_payload = payload.get("diagnostic")
         diagnostic: Mapping[str, Any] | None
         if isinstance(diagnostic_payload, Mapping):
             diagnostic = dict(diagnostic_payload)
         else:
             diagnostic = None
+        if not llm_trace.steps and isinstance(diagnostic, Mapping):
+            request_entries = diagnostic.get("llm_requests")
+            if isinstance(request_entries, Sequence):
+                for index, entry in enumerate(request_entries, 1):
+                    if not isinstance(entry, Mapping):
+                        continue
+                    messages_payload = entry.get("messages")
+                    if not isinstance(messages_payload, Sequence):
+                        continue
+                    request_messages: list[Mapping[str, Any]] = []
+                    for message in messages_payload:
+                        if isinstance(message, Mapping):
+                            request_messages.append(dict(message))
+                    if not request_messages:
+                        continue
+                    step_value = entry.get("step")
+                    try:
+                        step_index = int(step_value)
+                    except (TypeError, ValueError):
+                        step_index = index
+                    llm_trace.steps.append(
+                        LlmStep(
+                            index=step_index,
+                            occurred_at=utc_now_iso(),
+                            request=tuple(request_messages),
+                            response={},
+                        )
+                    )
+        planned_call_entries: list[dict[str, Any]] = []
+        details_source: Mapping[str, Any] | None = None
+        if isinstance(error_payload_raw, Mapping):
+            details_candidate = error_payload_raw.get("details")
+            if isinstance(details_candidate, Mapping):
+                details_source = details_candidate
+        elif isinstance(diagnostic, Mapping):
+            possible_error = diagnostic.get("error")
+            if isinstance(possible_error, Mapping):
+                details_candidate = possible_error.get("details")
+                if isinstance(details_candidate, Mapping):
+                    details_source = details_candidate
+        if details_source is not None:
+            raw_calls = details_source.get("llm_tool_calls")
+            if isinstance(raw_calls, Sequence):
+                for entry in raw_calls:
+                    if not isinstance(entry, Mapping):
+                        continue
+                    fragment = dict(entry)
+                    function_payload = fragment.get("function")
+                    arguments_value: Any = {}
+                    name_value = ""
+                    if isinstance(function_payload, Mapping):
+                        name_value = str(function_payload.get("name") or "")
+                        arguments_value = function_payload.get("arguments")
+                    if not name_value and isinstance(fragment.get("name"), str):
+                        name_value = fragment.get("name")
+                    if isinstance(arguments_value, Mapping):
+                        arguments_value = dict(arguments_value)
+                    planned_call_entries.append(
+                        {
+                            "id": str(fragment.get("id") or ""),
+                            "type": "function",
+                            "function": {
+                                "name": name_value,
+                                "arguments": arguments_value,
+                            },
+                        }
+                    )
+        if planned_call_entries:
+            if llm_trace.steps:
+                last_step = llm_trace.steps[-1]
+                response_payload = dict(last_step.response)
+                response_payload["tool_calls"] = planned_call_entries
+                last_step.response = response_payload
+            else:
+                llm_trace.steps.append(
+                    LlmStep(
+                        index=1,
+                        occurred_at=utc_now_iso(),
+                        request=(),
+                        response={"tool_calls": planned_call_entries},
+                    )
+                )
         tool_schemas_payload = payload.get("tool_schemas")
         tool_schemas: Mapping[str, Any] | None
         if isinstance(tool_schemas_payload, Mapping):
             tool_schemas = dict(tool_schemas_payload)
         else:
             tool_schemas = None
+        agent_stop_payload = payload.get("agent_stop_reason")
+        agent_stop_reason: Mapping[str, Any] | None
+        if isinstance(agent_stop_payload, Mapping):
+            agent_stop_reason = dict(agent_stop_payload)
+        else:
+            agent_stop_reason = None
+        last_tool_payload = payload.get("last_tool")
+        last_tool: ToolResultSnapshot | None = None
+        if isinstance(last_tool_payload, Mapping):
+            try:
+                last_tool = ToolResultSnapshot.from_dict(last_tool_payload)
+            except Exception:
+                last_tool = None
+        if last_tool is None:
+            if tool_results:
+                last_tool = tool_results[-1]
+            else:
+                tool_name_value = payload.get("tool_name")
+                call_id_value = payload.get("call_id") or payload.get("tool_call_id")
+                if tool_name_value:
+                    synthetic_payload: dict[str, Any] = {
+                        "tool_name": tool_name_value,
+                        "call_id": call_id_value,
+                        "tool_call_id": call_id_value,
+                        "status": payload.get("status")
+                        if payload.get("status") in {"pending", "running", "succeeded", "failed"}
+                        else ("succeeded" if ok else "failed"),
+                        "tool_arguments": payload.get("tool_arguments"),
+                        "result": payload.get("tool_result", payload.get("result")),
+                        "error": payload.get("error"),
+                    }
+                    try:
+                        synthetic_snapshot = ToolResultSnapshot.from_dict(
+                            synthetic_payload
+                        )
+                    except Exception:
+                        synthetic_snapshot = None
+                    if synthetic_snapshot is not None:
+                        last_tool = synthetic_snapshot
+                        tool_results.append(synthetic_snapshot)
         return cls(
             ok=ok,
             status=status,
@@ -424,6 +615,8 @@ class AgentRunPayload:
             error=error,
             diagnostic=diagnostic,
             tool_schemas=tool_schemas,
+            last_tool=last_tool,
+            agent_stop_reason=agent_stop_reason,
         )
 
 

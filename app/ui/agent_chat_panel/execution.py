@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 from collections.abc import Callable
 
 from concurrent.futures import Future, ThreadPoolExecutor
 
+from ...agent.run_contract import ToolResultSnapshot
 from ...util.cancellation import CancellationEvent
 from ...llm.tokenizer import TokenCountResult
-from .history_utils import clone_streamed_tool_results
 
 
 class AgentCommandExecutor(Protocol):
@@ -54,10 +54,11 @@ class _AgentRunHandle:
     pending_entry: Any | None = None
     context_messages: tuple[dict[str, Any], ...] | None = None
     history_snapshot: tuple[dict[str, Any], ...] | None = None
-    streamed_tool_results: list[dict[str, Any]] = field(default_factory=list)
-    llm_steps: list[dict[str, Any]] = field(default_factory=list)
+    tool_snapshots: dict[str, ToolResultSnapshot] = field(default_factory=dict)
+    tool_order: list[str] = field(default_factory=list)
     latest_llm_response: str | None = None
     latest_reasoning_segments: tuple[dict[str, str], ...] | None = None
+    llm_trace_preview: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def is_cancelled(self) -> bool:
@@ -69,13 +70,24 @@ class _AgentRunHandle:
         if future is not None:
             future.cancel()
 
-    def prepare_tool_results_payload(
-        self,
-    ) -> tuple[dict[str, Any], ...] | None:
-        """Return an immutable snapshot of collected tool payloads."""
-        if not self.streamed_tool_results:
-            return None
-        return clone_streamed_tool_results(self.streamed_tool_results)
+    def record_tool_snapshot(
+        self, payload: Mapping[str, Any]
+    ) -> tuple[ToolResultSnapshot, ...]:
+        """Store *payload* as the latest snapshot for its call identifier."""
+        try:
+            snapshot = ToolResultSnapshot.from_dict(payload)
+        except Exception:
+            return tuple(self.tool_snapshots[identifier] for identifier in self.tool_order)
+
+        call_id = snapshot.call_id.strip()
+        if not call_id:
+            call_id = f"{self.run_id}:tool:{len(self.tool_order) + 1}"
+            snapshot.call_id = call_id
+
+        self.tool_snapshots[call_id] = snapshot
+        if call_id not in self.tool_order:
+            self.tool_order.append(call_id)
+        return tuple(self.tool_snapshots[identifier] for identifier in self.tool_order)
 
 
 __all__ = [

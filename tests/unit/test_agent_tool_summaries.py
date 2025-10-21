@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from app.agent.run_contract import ToolResultSnapshot
 from app.llm.tokenizer import TokenCountResult
-from app.ui.agent_chat_panel.tool_summaries import summarize_tool_payload
+from app.ui.agent_chat_panel.tool_summaries import summarize_tool_results
 
 
 def test_read_user_document_summary_uses_compact_preview(monkeypatch) -> None:
@@ -20,10 +21,12 @@ def test_read_user_document_summary_uses_compact_preview(monkeypatch) -> None:
     )
 
     content = "     1: First line\n     2: Second line\n"
-    payload = {
-        "tool_name": "read_user_document",
-        "tool_arguments": {"path": "docs/sample.txt"},
-        "result": {
+    snapshot = ToolResultSnapshot(
+        call_id="call-1",
+        tool_name="read_user_document",
+        status="succeeded",
+        arguments={"path": "docs/sample.txt"},
+        result={
             "path": "docs/sample.txt",
             "encoding": "utf-8",
             "encoding_source": "detected",
@@ -34,11 +37,11 @@ def test_read_user_document_summary_uses_compact_preview(monkeypatch) -> None:
             "content": content,
             "truncated": False,
         },
-        "ok": True,
-    }
+    )
 
-    summary = summarize_tool_payload(1, payload)
-    assert summary is not None
+    summary_tuple = summarize_tool_results([snapshot])
+    assert len(summary_tuple) == 1
+    summary = summary_tuple[0]
     encoding_line = next(
         line for line in summary.bullet_lines if line.startswith("Encoding:")
     )
@@ -66,23 +69,25 @@ def test_create_user_document_arguments_use_preview(monkeypatch) -> None:
     )
 
     content = "Alpha\nBeta\nGamma"
-    payload = {
-        "tool_name": "create_user_document",
-        "tool_arguments": {
+    snapshot = ToolResultSnapshot(
+        call_id="call-1",
+        tool_name="create_user_document",
+        status="succeeded",
+        arguments={
             "path": "docs/new.txt",
             "content": content,
             "exist_ok": True,
         },
-        "result": {
+        result={
             "path": "docs/new.txt",
             "bytes_written": len(content.encode("utf-8")),
             "encoding": "utf-8",
         },
-        "ok": True,
-    }
+    )
 
-    summary = summarize_tool_payload(1, payload)
-    assert summary is not None
+    summary_tuple = summarize_tool_results([snapshot])
+    assert len(summary_tuple) == 1
+    summary = summary_tuple[0]
     preview_line = next(
         line for line in summary.bullet_lines if line.startswith("Content preview:")
     )

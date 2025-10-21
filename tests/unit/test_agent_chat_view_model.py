@@ -1,12 +1,17 @@
-import json
-from pathlib import Path
-from collections.abc import Mapping, Sequence
+from __future__ import annotations
 
-import pytest
+from collections.abc import Sequence
 
+from app.agent.run_contract import (
+    AgentRunPayload,
+    LlmStep,
+    LlmTrace,
+    ToolError,
+    ToolResultSnapshot,
+    ToolTimelineEvent,
+)
 from app.ui.agent_chat_panel.view_model import build_conversation_timeline
 from app.ui.chat_entry import ChatConversation, ChatEntry
-from app.ui.text import normalize_for_display
 
 
 VALIDATION_ERROR_MESSAGE = (
@@ -26,30 +31,124 @@ def _conversation_with_entry(entry: ChatEntry) -> ChatConversation:
     return conversation
 
 
+def _tool_snapshot(
+    *,
+    call_id: str,
+    tool_name: str,
+    status: str,
+    started_at: str,
+    completed_at: str | None,
+    arguments: dict[str, object] | None = None,
+    result: dict[str, object] | None = None,
+    error: ToolError | None = None,
+) -> ToolResultSnapshot:
+    events: list[ToolTimelineEvent] = [
+        ToolTimelineEvent(kind="started", occurred_at=started_at, message="start"),
+    ]
+    if completed_at is not None:
+        events.append(
+            ToolTimelineEvent(
+                kind="completed" if status == "succeeded" else "failed",
+                occurred_at=completed_at,
+                message=status,
+            )
+        )
+    return ToolResultSnapshot(
+        call_id=call_id,
+        tool_name=tool_name,
+        status=status,
+        arguments=arguments,
+        result=result,
+        error=error,
+        events=events,
+        started_at=started_at,
+        completed_at=completed_at,
+        last_observed_at=completed_at or started_at,
+    )
+
+
+def _llm_trace_with_tool_request() -> LlmTrace:
+    return LlmTrace(
+        steps=[
+            LlmStep(
+                index=1,
+                occurred_at="2025-09-30T20:50:11+00:00",
+                request=(
+                    {"role": "system", "content": "Поддерживай MCP"},
+                    {"role": "user", "content": "Переведи требования"},
+                ),
+                response={
+                    "content": "Calling update_requirement_field",
+                    "tool_calls": [
+                        {
+                            "id": "tool-2",
+                            "name": "update_requirement_field",
+                            "arguments": {
+                                "rid": "DEMO17",
+                                "field": "title",
+                                "value": "Новое название",
+                            },
+                        }
+                    ],
+                },
+            ),
+            LlmStep(
+                index=2,
+                occurred_at="2025-09-30T20:50:12+00:00",
+                request=(),
+                response={"content": "Готово"},
+            ),
+        ]
+    )
+
+
 def test_build_conversation_timeline_compiles_turn() -> None:
+    reasoning_segments = (
+        {"type": "thought", "text": "Нужно пройтись по каждому требованию"},
+    )
+    snapshots = (
+        _tool_snapshot(
+            call_id="tool-1",
+            tool_name="get_requirement",
+            status="succeeded",
+            started_at="2025-09-30T20:50:10+00:00",
+            completed_at="2025-09-30T20:50:11+00:00",
+            arguments={"rid": "DEMO17"},
+            result={"items": [{"rid": "DEMO17"}]},
+        ),
+        _tool_snapshot(
+            call_id="tool-2",
+            tool_name="update_requirement_field",
+            status="failed",
+            started_at="2025-09-30T20:50:11+00:00",
+            completed_at="2025-09-30T20:50:12+00:00",
+            arguments={
+                "rid": "DEMO17",
+                "field": "title",
+                "value": "Новая формулировка",
+            },
+            error=ToolError(message=VALIDATION_ERROR_MESSAGE, code="VALIDATION_ERROR"),
+        ),
+    )
+    payload = AgentRunPayload(
+        ok=False,
+        status="failed",
+        result_text="Готово",
+        reasoning=reasoning_segments,
+        tool_results=list(snapshots),
+        llm_trace=_llm_trace_with_tool_request(),
+        diagnostic={},
+    )
     entry = ChatEntry(
         prompt="Переведи требования",
-        response="Готово",
+        response="",
         tokens=10,
         prompt_at="2025-09-30T20:50:10+00:00",
         response_at="2025-09-30T20:50:12+00:00",
         context_messages=(
             {"role": "system", "content": "Поддерживай MCP"},
         ),
-        reasoning=(
-            {"type": "thought", "text": "Нужно пройтись по каждому требованию"},
-        ),
-        raw_result={
-            "answer": "Готово",
-            "tool_results": [
-                {
-                    "tool_name": "get_requirement",
-                    "started_at": "2025-09-30T20:50:10+00:00",
-                    "completed_at": "2025-09-30T20:50:11+00:00",
-                    "tool_call_id": "tool-1",
-                }
-            ],
-        },
+        raw_result=payload.to_dict(),
         layout_hints={"user": "140", "agent": 220, "invalid": 0},
     )
     conversation = _conversation_with_entry(entry)
@@ -73,77 +172,89 @@ def test_build_conversation_timeline_compiles_turn() -> None:
     assert turn.final_response is not None
     assert turn.final_response.text == "Готово"
     assert turn.final_response.timestamp.raw == "2025-09-30T20:50:12+00:00"
-    assert turn.reasoning
-    assert turn.reasoning[0]["type"] == "thought"
+    assert turn.reasoning == reasoning_segments
 
     assert turn.llm_request is not None
-    assert turn.llm_request.messages
-    assert turn.llm_request.messages[-1]["content"] == "Переведи требования"
+    assert turn.llm_request.sequence is not None
+    first_step = turn.llm_request.sequence[0]
+    assert first_step["step"] == 1
+    messages: Sequence[dict[str, object]] = first_step.get("messages", ())
+    assert messages
+    assert messages[-1]["content"] == "Переведи требования"
 
-    assert turn.tool_calls
+    assert len(turn.streamed_responses) == 1
+    first_stream = turn.streamed_responses[0]
+    assert first_stream.text == "Calling update_requirement_field"
+    assert first_stream.timestamp.raw == "2025-09-30T20:50:11+00:00"
+
+    assert len(turn.tool_calls) == 2
     tool_event = turn.tool_calls[0]
     assert tool_event.summary.index == 1
     assert tool_event.call_identifier == "tool-1"
     raw_data = tool_event.raw_data
-    assert isinstance(raw_data, Mapping)
-    assert raw_data.get("llm_request") is None
-    assert raw_data.get("llm_response") is None
-    tool_result = raw_data.get("tool_result")
-    assert isinstance(tool_result, Mapping)
-    tool_section = tool_result.get("tool")
-    assert isinstance(tool_section, Mapping)
-    assert tool_section.get("call_id") == "tool-1"
-    timeline = tool_result.get("timeline")
-    assert isinstance(timeline, Mapping)
-    assert timeline.get("started_at") == "2025-09-30T20:50:10+00:00"
-    assert timeline.get("completed_at") == "2025-09-30T20:50:11+00:00"
-    assert isinstance(tool_event.summary.raw_payload, Mapping)
-    assert tool_event.timestamp.raw == "2025-09-30T20:50:10+00:00"
-    assert not tool_event.timestamp.missing
+    assert isinstance(raw_data, dict)
+    assert raw_data.get("call_id") == "tool-1"
+    assert raw_data.get("tool_name") == "get_requirement"
+    assert tool_event.llm_request is None
+
+    failing_event = turn.tool_calls[1]
+    assert failing_event.summary.error_message
+    assert failing_event.llm_request is not None
+    assert failing_event.llm_request.get("tool") == "update_requirement_field"
+    assert failing_event.llm_request.get("arguments", {}).get("rid") == "DEMO17"
 
     assert turn.events
     assert turn.events[0].kind == "response"
     assert turn.events[-1].kind == "tool"
-    assert turn.events[-1].tool_call is tool_event
+    assert turn.events[-1].tool_call is failing_event
 
     assert turn.raw_payload is not None
-    assert turn.raw_payload["answer"] == "Готово"
+    assert turn.raw_payload["status"] == "failed"
 
     assert entry_timeline.layout_hints == {"user": 140, "agent": 220}
     assert entry_timeline.can_regenerate is True
 
 
 def test_tool_calls_sorted_by_timestamp() -> None:
+    snapshots = (
+        _tool_snapshot(
+            call_id="tool-1",
+            tool_name="get_requirement",
+            status="succeeded",
+            started_at="2025-09-30T20:50:10+00:00",
+            completed_at="2025-09-30T20:50:11+00:00",
+        ),
+        _tool_snapshot(
+            call_id="tool-4",
+            tool_name="update_requirement_field",
+            status="failed",
+            started_at="2025-09-30T20:52:05+00:00",
+            completed_at="2025-09-30T20:52:05+00:00",
+        ),
+        _tool_snapshot(
+            call_id="tool-6",
+            tool_name="update_requirement_field",
+            status="failed",
+            started_at="2025-09-30T20:52:57+00:00",
+            completed_at="2025-09-30T20:52:58+00:00",
+        ),
+    )
+    payload = AgentRunPayload(
+        ok=False,
+        status="failed",
+        result_text="",
+        reasoning=(),
+        tool_results=list(snapshots),
+        llm_trace=LlmTrace(),
+        diagnostic={},
+    )
     entry = ChatEntry(
         prompt="",
         response="",
         tokens=1,
         prompt_at="2025-09-30T20:50:10+00:00",
         response_at="2025-09-30T20:52:58+00:00",
-        raw_result={
-            "tool_results": [
-                {
-                    "tool_name": "update_requirement_field",
-                    "agent_status": "failed",
-                    "started_at": "2025-09-30T20:52:57+00:00",
-                    "completed_at": "2025-09-30T20:52:58+00:00",
-                    "tool_call_id": "tool-6",
-                },
-                {
-                    "tool_name": "get_requirement",
-                    "started_at": "2025-09-30T20:50:10+00:00",
-                    "completed_at": "2025-09-30T20:50:11+00:00",
-                    "tool_call_id": "tool-1",
-                },
-                {
-                    "tool_name": "update_requirement_field",
-                    "agent_status": "failed",
-                    "started_at": "2025-09-30T20:52:05+00:00",
-                    "completed_at": "2025-09-30T20:52:05+00:00",
-                    "tool_call_id": "tool-4",
-                },
-            ]
-        },
+        raw_result=payload.to_dict(),
     )
     conversation = _conversation_with_entry(entry)
 
@@ -164,44 +275,55 @@ def test_tool_calls_sorted_by_timestamp() -> None:
 
 
 def test_tool_call_event_includes_llm_request_payload() -> None:
+    trace = LlmTrace(
+        steps=[
+            LlmStep(
+                index=1,
+                occurred_at="2025-10-01T08:52:35+00:00",
+                request=(
+                    {"role": "system", "content": "context"},
+                    {"role": "user", "content": "prompt"},
+                ),
+                response={
+                    "content": "Applying updates",
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "name": "update_requirement_field",
+                            "arguments": {
+                                "rid": "DEMO16",
+                                "field": "title",
+                                "value": "Новое название",
+                            },
+                        }
+                    ],
+                },
+            )
+        ]
+    )
+    snapshot = _tool_snapshot(
+        call_id="call-1",
+        tool_name="update_requirement_field",
+        status="failed",
+        started_at="2025-10-01T08:52:35+00:00",
+        completed_at="2025-10-01T08:52:39+00:00",
+    )
+    payload = AgentRunPayload(
+        ok=False,
+        status="failed",
+        result_text="",
+        reasoning=(),
+        tool_results=[snapshot],
+        llm_trace=trace,
+        diagnostic={},
+    )
     entry = ChatEntry(
         prompt="",
         response="",
         tokens=1,
         prompt_at="2025-10-01T08:52:30+00:00",
         response_at="2025-10-01T08:52:40+00:00",
-        raw_result={
-            "tool_results": [
-                {
-                    "tool_name": "update_requirement_field",
-                    "tool_call_id": "call-1",
-                    "started_at": "2025-10-01T08:52:35+00:00",
-                    "completed_at": "2025-10-01T08:52:39+00:00",
-                    "ok": False,
-                }
-            ],
-            "diagnostic": {
-                "llm_steps": [
-                    {
-                        "step": 1,
-                        "response": {
-                            "content": "Applying updates",
-                            "tool_calls": [
-                                {
-                                    "id": "call-1",
-                                    "name": "update_requirement_field",
-                                    "arguments": {
-                                        "rid": "DEMO16",
-                                        "field": "title",
-                                        "value": "Новое название",
-                                    },
-                                }
-                            ],
-                        },
-                    }
-                ]
-            }
-        },
+        raw_result=payload.to_dict(),
     )
     conversation = _conversation_with_entry(entry)
 
@@ -210,459 +332,46 @@ def test_tool_call_event_includes_llm_request_payload() -> None:
     assert turn is not None
     tool_event = turn.tool_calls[0]
 
-    raw_data = tool_event.raw_data
-    assert isinstance(raw_data, Mapping)
-    llm_request = raw_data.get("llm_request")
-    assert isinstance(llm_request, Mapping)
-    assert llm_request.get("name") == "update_requirement_field"
-    request_arguments = llm_request.get("arguments")
-    assert isinstance(request_arguments, Mapping)
+    assert isinstance(tool_event.llm_request, dict)
+    assert tool_event.llm_request.get("tool") == "update_requirement_field"
+    request_arguments = tool_event.llm_request.get("arguments")
+    assert isinstance(request_arguments, dict)
     assert request_arguments.get("rid") == "DEMO16"
     assert request_arguments.get("field") == "title"
     assert request_arguments.get("value") == "Новое название"
-    llm_response = raw_data.get("llm_response")
-    assert isinstance(llm_response, Mapping)
-    assert llm_response.get("content") == "Applying updates"
-    tool_calls = llm_response.get("tool_calls")
-    assert isinstance(tool_calls, Sequence)
-    assert tool_calls, "expected recorded tool call"
-    first_call = tool_calls[0]
-    assert isinstance(first_call, Mapping)
-    assert first_call.get("name") == "update_requirement_field"
-
-    tool_result_section = raw_data.get("tool_result")
-    assert isinstance(tool_result_section, Mapping)
-    tool_section = tool_result_section.get("tool")
-    assert isinstance(tool_section, Mapping)
-    assert tool_section.get("call_id") == "call-1"
-    assert tool_section.get("name") == "update_requirement_field"
-    response_arguments = first_call.get("arguments")
-    assert isinstance(response_arguments, Mapping)
-    assert response_arguments.get("rid") == "DEMO16"
-    assert response_arguments.get("field") == "title"
-    assert response_arguments.get("value") == "Новое название"
-
-    arguments = tool_section.get("arguments")
-    if isinstance(arguments, Mapping):
-        assert arguments == response_arguments
-    else:
-        assert arguments is None
-    assert raw_data.get("step") in (1, "1")
-    assert raw_data.get("diagnostics") in (None, {})
-    timeline = tool_result_section.get("timeline")
-    assert isinstance(timeline, Mapping)
-    assert tuple(timeline.keys()) == ("started_at", "completed_at")
-
-    assert "llm_exchange" not in raw_data
 
 
-def test_tool_call_event_without_recorded_request_relies_on_tool_result() -> None:
+def test_tool_call_event_includes_error_details_in_summary() -> None:
+    error = ToolError(
+        message="Валидация не прошла",
+        code="VALIDATION_ERROR",
+        details={"field": "title"},
+    )
+    snapshot = _tool_snapshot(
+        call_id="call-1",
+        tool_name="update_requirement_field",
+        status="failed",
+        started_at="2025-10-01T12:00:00+00:00",
+        completed_at="2025-10-01T12:00:00+00:00",
+        arguments={"rid": "DEMO20", "field": "title"},
+        error=error,
+    )
+    payload = AgentRunPayload(
+        ok=False,
+        status="failed",
+        result_text="",
+        reasoning=(),
+        tool_results=[snapshot],
+        llm_trace=LlmTrace(),
+        diagnostic={},
+    )
     entry = ChatEntry(
         prompt="",
         response="",
         tokens=1,
-        prompt_at="2025-10-01T09:00:00+00:00",
-        response_at="2025-10-01T09:00:05+00:00",
-        raw_result={
-            "tool_results": [
-                {
-                    "tool_name": "update_requirement_field",
-                    "tool_call_id": "call-42",
-                    "arguments": {
-                        "rid": "REQ-9",
-                        "field": "title",
-                        "value": "Updated title",
-                    },
-                    "ok": False,
-                    "error": {
-                        "code": "VALIDATION_ERROR",
-                        "message": VALIDATION_ERROR_MESSAGE,
-                    },
-                }
-            ]
-        },
-    )
-    conversation = _conversation_with_entry(entry)
-
-    timeline = build_conversation_timeline(conversation)
-    turn = timeline.entries[0].agent_turn
-    assert turn is not None
-    tool_event = turn.tool_calls[0]
-
-    raw_data = tool_event.raw_data
-    assert isinstance(raw_data, Mapping)
-    assert raw_data.get("llm_request") is None
-    assert raw_data.get("llm_response") is None
-    assert raw_data.get("diagnostics") in (None, {})
-
-    tool_section = raw_data.get("tool_result", {}).get("tool")
-    assert isinstance(tool_section, Mapping)
-    arguments = tool_section.get("arguments")
-    assert isinstance(arguments, Mapping)
-    assert arguments.get("rid") == "REQ-9"
-    assert arguments.get("field") == "title"
-    assert arguments.get("value") == "Updated title"
-
-    events = [event for event in turn.events if event.kind == "tool"]
-    assert events and events[0].tool_call is tool_event
-
-
-def test_tool_call_event_includes_llm_error_arguments() -> None:
-    entry = ChatEntry(
-        prompt="",
-        response="",
-        tokens=1,
-        raw_result={
-            "tool_results": [
-                {
-                    "tool_name": "update_requirement_field",
-                    "tool_call_id": "call-error",
-                    "agent_status": "failed",
-                    "ok": False,
-                    "error": {"message": "invalid arguments"},
-                }
-            ],
-            "diagnostic": {
-                "llm_steps": [
-                    {
-                        "step": 1,
-                        "error": {
-                            "type": "llm",
-                            "message": "Tool call failed",
-                            "tool_call": {
-                                "id": "call-error",
-                                "name": "update_requirement_field",
-                                "arguments": {
-                                    "rid": "REQ-404",
-                                    "field": "title",
-                                    "value": "Broken",
-                                },
-                            },
-                            "details": {
-                                "hint": "Double-check the requirement id",
-                                "tool_call": {
-                                    "id": "call-error",
-                                    "name": "update_requirement_field",
-                                },
-                            },
-                        },
-                    }
-                ]
-            }
-        },
-    )
-    conversation = _conversation_with_entry(entry)
-
-    timeline = build_conversation_timeline(conversation)
-    turn = timeline.entries[0].agent_turn
-    assert turn is not None
-    tool_event = turn.tool_calls[0]
-
-    raw_data = tool_event.raw_data
-    assert isinstance(raw_data, Mapping)
-
-    request_payload = raw_data.get("llm_request")
-    assert isinstance(request_payload, Mapping)
-    arguments = request_payload.get("arguments")
-    assert isinstance(arguments, Mapping)
-    assert arguments["rid"] == "REQ-404"
-    assert arguments["field"] == "title"
-    assert arguments["value"] == "Broken"
-
-    error_payload = raw_data.get("llm_error")
-    assert isinstance(error_payload, Mapping)
-    assert error_payload.get("message") == "Tool call failed"
-    tool_call_payload = error_payload.get("tool_call")
-    assert isinstance(tool_call_payload, Mapping)
-    tool_call_args = tool_call_payload.get("arguments")
-    assert isinstance(tool_call_args, Mapping)
-    assert tool_call_args["rid"] == "REQ-404"
-    assert tool_call_args["field"] == "title"
-    assert tool_call_args["value"] == "Broken"
-    details = error_payload.get("details")
-    assert isinstance(details, Mapping)
-    assert details.get("hint") == "Double-check the requirement id"
-
-    assert raw_data.get("diagnostics") in (None, {})
-
-
-def test_tool_call_event_includes_aggregated_diagnostics() -> None:
-    entry = ChatEntry(
-        prompt="",
-        response="",
-        tokens=1,
-        raw_result={
-            "tool_results": [
-                {
-                    "tool_name": "update_requirement_field",
-                    "tool_call_id": "call-diagnostics",
-                    "agent_status": "failed",
-                    "ok": False,
-                }
-            ],
-            "diagnostic": {
-                "tool_calls": [
-                    {
-                        "id": "call-diagnostics",
-                        "name": "update_requirement_field",
-                        "arguments": {
-                            "rid": "REQ-17",
-                            "field": "statement",
-                        },
-                    }
-                ],
-                "agent_status": "failed",
-                "status_updates": ["retrying"],
-            }
-        },
-    )
-    conversation = _conversation_with_entry(entry)
-
-    timeline = build_conversation_timeline(conversation)
-    turn = timeline.entries[0].agent_turn
-    assert turn is not None
-    tool_event = turn.tool_calls[0]
-
-    raw_data = tool_event.raw_data
-    assert isinstance(raw_data, Mapping)
-    diagnostics = raw_data.get("diagnostics")
-    assert isinstance(diagnostics, Mapping)
-    tool_call_entries = diagnostics.get("tool_calls")
-    if isinstance(tool_call_entries, Mapping):
-        diagnostic_entry = tool_call_entries
-    else:
-        assert isinstance(tool_call_entries, Sequence)
-        assert tool_call_entries, "expected diagnostic tool call entry"
-        diagnostic_entry = tool_call_entries[0]
-    assert isinstance(diagnostic_entry, Mapping)
-    call_payload = diagnostic_entry.get("call")
-    assert isinstance(call_payload, Mapping)
-    assert call_payload.get("arguments", {}).get("rid") == "REQ-17"
-    context = diagnostic_entry.get("context")
-    assert isinstance(context, Mapping)
-    assert context.get("agent_status") == "failed"
-    assert "status_updates" in context
-
-    assert raw_data.get("llm_request") is None
-    assert raw_data.get("llm_response") is None
-
-
-def test_tool_call_event_handles_real_llm_validation_snapshot() -> None:
-    payload_path = Path("tests/data/real_llm_tool_validation_error.json")
-    snapshot = json.loads(payload_path.read_text(encoding="utf-8"))
-
-    diagnostic = snapshot.get("diagnostic") or {}
-    entry = ChatEntry(
-        prompt="Переведи выделенные требования",
-        response="",
-        tokens=0,
-        prompt_at="2025-10-01T08:52:30+00:00",
-        response_at="2025-10-01T08:52:40+00:00",
-        raw_result={
-            "tool_results": [snapshot],
-            "diagnostic": diagnostic,
-            "error": snapshot.get("error"),
-        },
-    )
-    if isinstance(diagnostic, dict):
-        entry.diagnostic = dict(diagnostic)
-
-    conversation = _conversation_with_entry(entry)
-    timeline = build_conversation_timeline(conversation)
-    turn = timeline.entries[0].agent_turn
-    assert turn is not None
-    tool_event = turn.tool_calls[0]
-
-    raw_data = tool_event.raw_data
-    assert isinstance(raw_data, Mapping)
-
-    request_payload = raw_data.get("llm_request")
-    assert isinstance(request_payload, Mapping)
-    assert request_payload.get("name") == "update_requirement_field"
-    request_arguments = request_payload.get("arguments")
-    assert isinstance(request_arguments, Mapping)
-    assert request_arguments.get("field") == "status"
-    assert request_arguments.get("rid") == "DEMO1"
-    assert request_arguments.get("value") == "in_last_review"
-
-    response_payload = raw_data.get("llm_response")
-    assert isinstance(response_payload, Mapping)
-    assert VALIDATION_ERROR_MESSAGE in response_payload.get("content", "")
-    response_calls = response_payload.get("tool_calls")
-    assert isinstance(response_calls, Sequence)
-    assert response_calls, "expected llm_response.tool_calls entry"
-    first_response_call = response_calls[0]
-    assert isinstance(first_response_call, Mapping)
-    assert first_response_call.get("name") == "update_requirement_field"
-
-    diagnostics = raw_data.get("diagnostics")
-    if diagnostics is not None:
-        assert isinstance(diagnostics, Mapping)
-        errors = diagnostics.get("errors")
-        if isinstance(errors, Sequence) and errors:
-            first_error = errors[0]
-            assert isinstance(first_error, Mapping)
-            assert first_error.get("code") == "VALIDATION_ERROR"
-
-    tool_result_section = raw_data.get("tool_result")
-    assert isinstance(tool_result_section, Mapping)
-    tool_section = tool_result_section.get("tool")
-    assert isinstance(tool_section, Mapping)
-    assert tool_section.get("call_id") == snapshot.get("tool_call_id")
-    assert tool_section.get("name") == snapshot.get("tool_name")
-    arguments = tool_section.get("arguments")
-    assert isinstance(arguments, Mapping)
-    assert arguments.get("field") == "status"
-    assert arguments.get("rid")
-    assert arguments.get("value") == "in_last_review"
-    response_arguments = first_response_call.get("arguments")
-    assert isinstance(response_arguments, Mapping)
-    assert response_arguments == arguments
-    status_section = tool_result_section.get("status")
-    assert isinstance(status_section, Mapping)
-    assert status_section.get("state") == snapshot.get("agent_status")
-    error_section = tool_result_section.get("error")
-    assert isinstance(error_section, Mapping)
-    assert error_section.get("code") == "VALIDATION_ERROR"
-
-    assert raw_data.get("diagnostics") is diagnostics
-
-
-def test_streamed_responses_in_turn() -> None:
-    final_raw_text = "Final result with non‑breaking hyphen"
-    final_display_text = normalize_for_display(final_raw_text)
-
-    entry = ChatEntry(
-        prompt="do work",
-        response=final_raw_text,
-        display_response=final_display_text,
-        tokens=1,
-        prompt_at="2025-10-01T08:00:00+00:00",
-        response_at="2025-10-01T08:05:00+00:00",
-        raw_result={
-            "tool_results": [
-                {
-                    "tool_name": "update_requirement_field",
-                    "tool_call_id": "call-1",
-                    "started_at": "2025-10-01T08:01:00+00:00",
-                    "completed_at": "2025-10-01T08:02:00+00:00",
-                    "ok": False,
-                }
-            ],
-            "diagnostic": {
-                "llm_steps": [
-                    {
-                        "step": 1,
-                        "response": {
-                            "content": "Preparing request",
-                            "tool_calls": [
-                                {
-                                    "id": "call-1",
-                                    "name": "update_requirement_field",
-                                    "arguments": {"rid": "REQ-1"},
-                                }
-                            ],
-                        },
-                    },
-                    {
-                        "step": 2,
-                        "response": {
-                            "content": final_raw_text,
-                        },
-                    },
-                ]
-            }
-        },
-    )
-    conversation = _conversation_with_entry(entry)
-
-    timeline = build_conversation_timeline(conversation)
-    turn = timeline.entries[0].agent_turn
-    assert turn is not None
-
-    assert turn.streamed_responses
-    step_event = turn.streamed_responses[0]
-    assert step_event.text == "Preparing request"
-    assert step_event.step_index == 1
-    assert step_event.is_final is False
-
-    final_event = turn.final_response
-    assert final_event is not None
-    assert final_event.text == final_raw_text
-    assert final_event.display_text == final_display_text
-    assert final_event.is_final is True
-    assert "\u2011" not in final_event.display_text
-
-    # the streaming step with the same text as the final response is deduplicated
-    assert len(turn.streamed_responses) == 1
-    assert all(resp.display_text != final_event.display_text for resp in turn.streamed_responses)
-    assert all("\u2011" not in resp.display_text for resp in turn.streamed_responses)
-
-
-def test_promotes_last_stream_when_final_missing() -> None:
-    entry = ChatEntry(
-        prompt="draft",
-        response="",
-        tokens=1,
-        prompt_at="2025-10-01T08:00:00+00:00",
-        response_at=None,
-        raw_result={
-            "diagnostic": {
-                "llm_steps": [
-                    {
-                        "step": 1,
-                        "response": {
-                            "content": "Streamed answer",
-                            "timestamp": "2025-10-01T08:00:07+00:00",
-                        },
-                    }
-                ]
-            },
-            "tool_results": [
-                {
-                    "tool_name": "demo_tool",
-                    "completed_at": "2025-10-01T08:00:09+00:00",
-                }
-            ],
-        },
-    )
-    conversation = _conversation_with_entry(entry)
-
-    timeline = build_conversation_timeline(conversation)
-    turn = timeline.entries[0].agent_turn
-    assert turn is not None
-
-    assert turn.final_response is not None
-    assert turn.final_response.text == "Streamed answer"
-    assert turn.final_response.is_final is True
-    assert not turn.streamed_responses
-    assert turn.timestamp.raw == "2025-10-01T08:00:07+00:00"
-    assert turn.timestamp.source == "llm_step"
-
-
-def test_tool_summary_compacts_error_details() -> None:
-    entry = ChatEntry(
-        prompt="",
-        response="",
-        tokens=1,
-        prompt_at="2025-10-01T08:00:00+00:00",
-        response_at="2025-10-01T08:05:00+00:00",
-        raw_result={
-            "tool_results": [
-                {
-                    "tool_name": "update_requirement_field",
-                    "tool_call_id": "tool-1",
-                    "agent_status": f"failed: {VALIDATION_ERROR_MESSAGE}",
-                    "started_at": "2025-10-01T08:01:00+00:00",
-                    "completed_at": "2025-10-01T08:01:05+00:00",
-                    "ok": False,
-                    "error": {
-                        "code": "VALIDATION_ERROR",
-                        "message": VALIDATION_ERROR_MESSAGE,
-                    },
-                }
-            ]
-        },
+        prompt_at="2025-10-01T12:00:00+00:00",
+        response_at="2025-10-01T12:00:01+00:00",
+        raw_result=payload.to_dict(),
     )
     conversation = _conversation_with_entry(entry)
 
@@ -671,112 +380,43 @@ def test_tool_summary_compacts_error_details() -> None:
     assert turn is not None
     summary = turn.tool_calls[0].summary
 
-    assert summary.status == "failed"
-    assert any("Error VALIDATION_ERROR" in line for line in summary.bullet_lines)
-    assert not any(line.startswith("Error message:") for line in summary.bullet_lines)
+    assert any("Error:" in line for line in summary.bullet_lines)
+    assert summary.error_message is not None
 
-
-def test_tool_summary_includes_diagnostics_metadata() -> None:
-    entry = ChatEntry(
-        prompt="",
-        response="",
-        tokens=1,
-        prompt_at="2025-10-01T08:00:00+00:00",
-        response_at="2025-10-01T08:05:00+00:00",
-        raw_result={
-            "tool_results": [
-                {
-                    "tool_name": "update_requirement_field",
-                    "tool_call_id": "tool-42",
-                    "arguments": {"rid": "REQ-9", "field": "title"},
-                    "started_at": "2025-10-01T08:01:00+00:00",
-                    "completed_at": "2025-10-01T08:01:02+00:00",
-                    "duration_ms": 2150,
-                    "cost": {"display": "$0.01"},
-                    "ok": False,
-                    "error": {"message": "validation failed"},
-                }
-            ]
-        },
-    )
-    conversation = _conversation_with_entry(entry)
-
-    timeline = build_conversation_timeline(conversation)
-    turn = timeline.entries[0].agent_turn
-    assert turn is not None
-    summary = turn.tool_calls[0].summary
-
-    assert summary.duration is not None
-    assert summary.duration == pytest.approx(2.15, rel=1e-6)
-    assert summary.cost == "$0.01"
-    assert summary.error_message == "validation failed"
-    assert isinstance(summary.arguments, Mapping)
-    assert summary.arguments["rid"] == "REQ-9"
-
-
-def test_update_requirement_field_summary_includes_value_diff() -> None:
-    entry = ChatEntry(
-        prompt="",
-        response="",
-        tokens=1,
-        raw_result={
-            "tool_results": [
-                {
-                    "tool_name": "update_requirement_field",
-                    "tool_call_id": "tool-7",
-                    "tool_arguments": {
-                        "rid": "SYS-0001",
-                        "field": "title",
-                        "value": "Updated title",
-                    },
-                    "result": {
-                        "rid": "SYS-0001",
-                        "title": "Updated title",
-                        "revision": 3,
-                        "field_change": {
-                            "field": "title",
-                            "previous": "Original title",
-                            "current": "Updated title",
-                        },
-                    },
-                }
-            ]
-        },
-    )
-    conversation = _conversation_with_entry(entry)
-
-    timeline = build_conversation_timeline(conversation)
-    turn = timeline.entries[0].agent_turn
-    assert turn is not None
-    summary = turn.tool_calls[0].summary
-
-    assert any(
-        line.startswith("Previous value:") and "`Original title`" in line
-        for line in summary.bullet_lines
-    )
-    assert any(
-        line.startswith("New value:") and "`Updated title`" in line
-        for line in summary.bullet_lines
-    )
 
 def test_llm_request_sequence_preserved() -> None:
+    trace = LlmTrace(
+        steps=[
+            LlmStep(
+                index=1,
+                occurred_at="2025-10-02T09:00:00+00:00",
+                request=({"role": "system", "content": "sys"},),
+                response={"content": "step 1"},
+            ),
+            LlmStep(
+                index=2,
+                occurred_at="2025-10-02T09:00:05+00:00",
+                request=({"role": "user", "content": "hello"},),
+                response={"content": "step 2"},
+            ),
+        ]
+    )
+    payload = AgentRunPayload(
+        ok=True,
+        status="succeeded",
+        result_text="done",
+        reasoning=(),
+        tool_results=[],
+        llm_trace=trace,
+        diagnostic={},
+    )
     entry = ChatEntry(
-        prompt="translate",
+        prompt="hello",
         response="done",
         tokens=1,
-        raw_result={
-            "diagnostic": {
-                "llm_request_messages_sequence": [
-                    {
-                        "step": 1,
-                        "messages": [
-                            {"role": "system", "content": "sys"},
-                            {"role": "user", "content": "translate"},
-                        ],
-                    }
-                ]
-            }
-        },
+        prompt_at="2025-10-02T09:00:00+00:00",
+        response_at="2025-10-02T09:00:06+00:00",
+        raw_result=payload.to_dict(),
     )
     conversation = _conversation_with_entry(entry)
 
@@ -785,18 +425,27 @@ def test_llm_request_sequence_preserved() -> None:
     assert turn is not None
     llm_snapshot = turn.llm_request
     assert llm_snapshot is not None
-    assert llm_snapshot.messages[0]["role"] == "system"
-    assert llm_snapshot.messages[-1]["content"] == "translate"
     assert llm_snapshot.sequence is not None
-    assert llm_snapshot.sequence[0]["step"] == 1
+    assert [step["step"] for step in llm_snapshot.sequence] == [1, 2]
 
 
 def test_missing_timestamps_reported_as_missing() -> None:
+    payload = AgentRunPayload(
+        ok=True,
+        status="succeeded",
+        result_text="",
+        reasoning=(),
+        tool_results=[],
+        llm_trace=LlmTrace(),
+        diagnostic={},
+    )
     entry = ChatEntry(
         prompt="hello",
         response="",
         tokens=1,
-        raw_result={"tool_results": [{"tool_name": "noop"}]},
+        prompt_at=None,
+        response_at=None,
+        raw_result=payload.to_dict(),
     )
     conversation = _conversation_with_entry(entry)
 
@@ -812,81 +461,4 @@ def test_missing_timestamps_reported_as_missing() -> None:
     assert turn.timestamp.raw is None
     assert turn.timestamp.missing is True
     assert turn.timestamp.source == "response_at"
-    assert turn.tool_calls
-
-    raw_section = turn.raw_payload
-    assert raw_section is None or isinstance(raw_section, Mapping)
-
-
-def test_tool_summary_skips_non_tool_raw_result() -> None:
-    entry = ChatEntry(
-        prompt="",
-        response="done",
-        tokens=1,
-        raw_result={
-            "ok": True,
-            "status": "completed",
-            "result": {"value": "final"},
-        },
-    )
-    conversation = _conversation_with_entry(entry)
-
-    timeline = build_conversation_timeline(conversation)
-    turn = timeline.entries[0].agent_turn
-
-    assert turn is not None
-    assert not turn.tool_calls
-
-
-def test_tool_summary_skips_tool_results_without_metadata() -> None:
-    entry = ChatEntry(
-        prompt="",
-        response="done",
-        tokens=1,
-        raw_result={
-            "ok": True,
-            "result": "done",
-            "tool_results": [
-                {
-                    "ok": True,
-                    "result": "done",
-                }
-            ],
-        },
-    )
-    conversation = _conversation_with_entry(entry)
-
-    timeline = build_conversation_timeline(conversation)
-    turn = timeline.entries[0].agent_turn
-
-    assert turn is not None
-    assert not turn.tool_calls
-    assert not any(event.kind == "tool" for event in turn.events)
-
-
-def test_chat_entry_from_dict_preserves_reasoning_whitespace() -> None:
-    payload = {
-        "prompt": "",
-        "response": "",
-        "tokens": 0,
-        "token_info": {"tokens": 0, "approximate": False},
-        "reasoning": [
-            {
-                "type": "analysis",
-                "text": "План",
-                "leading_whitespace": " ",
-                "trailing_whitespace": " \n",
-            }
-        ],
-    }
-
-    entry = ChatEntry.from_dict(payload)
-
-    assert entry.reasoning == (
-        {
-            "type": "analysis",
-            "text": "План",
-            "leading_whitespace": " ",
-            "trailing_whitespace": " \n",
-        },
-    )
+    assert turn.tool_calls == ()

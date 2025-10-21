@@ -15,9 +15,9 @@ from ...llm.reasoning import normalise_reasoning_segments
 from ...llm.tokenizer import TokenCountResult, count_text_tokens
 from ...util.cancellation import CancellationEvent, OperationCancelledError
 from ...util.time import utc_now_iso
+from ...agent.run_contract import ToolResultSnapshot
 from .execution import AgentCommandExecutor, _AgentRunHandle
-from .history_utils import clone_streamed_tool_results, history_json_safe
-from .tool_result_state import StreamedToolResultState
+from .history_utils import history_json_safe
 
 if TYPE_CHECKING:
     from ..chat_entry import ChatConversation, ChatEntry
@@ -73,7 +73,7 @@ class AgentRunCallbacks:
     confirm_override_kwargs: Callable[[], dict[str, Any]]
     finalize_prompt: Callable[[str, Any, _AgentRunHandle], None]
     handle_streamed_tool_results: Callable[[
-        _AgentRunHandle, Sequence[Mapping[str, Any]] | None
+        _AgentRunHandle, Sequence[ToolResultSnapshot] | None
     ], None]
     handle_llm_step: Callable[[
         _AgentRunHandle, Mapping[str, Any] | None
@@ -82,31 +82,6 @@ class AgentRunCallbacks:
 
 class AgentRunController:
     """Coordinate asynchronous agent interactions for the chat panel."""
-
-    @staticmethod
-    def _merge_streamed_tool_result(
-        handle: _AgentRunHandle, payload: Mapping[str, Any]
-    ) -> None:
-        if not isinstance(payload, Mapping):
-            return
-
-        incoming_state = StreamedToolResultState.from_payload(payload)
-
-        if not incoming_state.call_id:
-            handle.streamed_tool_results.append(incoming_state.to_payload())
-            return
-
-        for index, existing in enumerate(handle.streamed_tool_results):
-            if not isinstance(existing, Mapping):
-                continue
-            existing_state = StreamedToolResultState.from_serialized(existing)
-            if existing_state.call_id != incoming_state.call_id:
-                continue
-            existing_state.merge_payload(payload)
-            handle.streamed_tool_results[index] = existing_state.to_payload()
-            return
-
-        handle.streamed_tool_results.append(incoming_state.to_payload())
 
     def __init__(
         self,
@@ -197,19 +172,14 @@ class AgentRunController:
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _capture_llm_step_payload(
+    def _prepare_llm_step_payload(
         handle: _AgentRunHandle,
         payload: Mapping[str, Any],
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         safe_payload_raw = history_json_safe(payload)
-        if isinstance(safe_payload_raw, Mapping):
-            safe_payload: dict[str, Any] = dict(safe_payload_raw)
-        else:
-            safe_payload = {
-                "step": payload.get("step"),
-                "payload": safe_payload_raw,
-            }
-        handle.llm_steps.append(safe_payload)
+        if not isinstance(safe_payload_raw, Mapping):
+            return None
+        record = dict(safe_payload_raw)
         response_payload = payload.get("response")
         if isinstance(response_payload, Mapping):
             content_value = response_payload.get("content")
@@ -221,7 +191,19 @@ class AgentRunController:
                 handle.latest_reasoning_segments = tuple(
                     dict(segment) for segment in reasoning_segments
                 )
-        return safe_payload
+        step_key = record.get("step")
+        identifier = str(step_key) if step_key is not None else None
+        if identifier is not None:
+            for index, existing in enumerate(handle.llm_trace_preview):
+                existing_step = existing.get("step")
+                if isinstance(existing_step, (int, float, str)) and str(existing_step) == identifier:
+                    handle.llm_trace_preview[index] = record
+                    break
+            else:
+                handle.llm_trace_preview.append(record)
+        else:
+            handle.llm_trace_preview.append(record)
+        return record
 
     # ------------------------------------------------------------------
     def _start_prompt(
@@ -275,45 +257,14 @@ class AgentRunController:
                         return
                     if not isinstance(payload, Mapping):
                         return
-                    try:
-                        prepared = dict(payload)
-                    except Exception:  # pragma: no cover - defensive
+                    safe_payload = history_json_safe(payload)
+                    if not isinstance(safe_payload, Mapping):
                         return
-                    observed_at = prepared.get("observed_at")
-                    if not isinstance(observed_at, str) or not observed_at.strip():
-                        observed_at = utc_now_iso()
-                        prepared["observed_at"] = observed_at
-                    existing_started = None
-                    for existing in handle.streamed_tool_results:
-                        if (
-                            existing.get("call_id") == prepared.get("call_id")
-                            or existing.get("tool_call_id")
-                            == prepared.get("tool_call_id")
-                        ):
-                            existing_started = (
-                                existing.get("started_at")
-                                or existing.get("first_observed_at")
-                            )
-                            break
-                    if existing_started:
-                        prepared.setdefault("started_at", existing_started)
-                        prepared.setdefault("first_observed_at", existing_started)
-                    else:
-                        prepared.setdefault("started_at", observed_at)
-                        prepared.setdefault("first_observed_at", observed_at)
-                    prepared["last_observed_at"] = observed_at
-                    agent_status = prepared.get("agent_status")
-                    if agent_status in {"completed", "failed"} or prepared.get("ok") in (
-                        True,
-                        False,
-                    ):
-                        prepared.setdefault("completed_at", observed_at)
-                    AgentRunController._merge_streamed_tool_result(handle, prepared)
-                    snapshot = clone_streamed_tool_results(handle.streamed_tool_results)
+                    ordered = handle.record_tool_snapshot(safe_payload)
                     wx.CallAfter(
                         self._callbacks.handle_streamed_tool_results,
                         handle,
-                        snapshot,
+                        ordered,
                     )
 
                 def on_llm_step(payload: Mapping[str, Any]) -> None:
@@ -321,7 +272,9 @@ class AgentRunController:
                         return
                     if not isinstance(payload, Mapping):
                         return
-                    safe_payload = self._capture_llm_step_payload(handle, payload)
+                    safe_payload = self._prepare_llm_step_payload(handle, payload)
+                    if safe_payload is None:
+                        return
                     wx.CallAfter(
                         self._callbacks.handle_llm_step,
                         handle,

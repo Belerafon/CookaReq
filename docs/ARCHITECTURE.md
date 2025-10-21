@@ -123,12 +123,18 @@ so you know which modules are involved and which regressions to guard against.
 * `agent_chat_panel/` displays the running agent transcript, batching controls
   and confirmation toggles. Users can queue follow-up prompts while a run is
   still executing; the panel surfaces the pending message in a cancellable
-  banner and automatically submits it once the agent finishes. Long-running commands execute through
-  `ThreadedAgentCommandExecutor` (a single-worker `ThreadPoolExecutor`).
-  `tool_result_state.py` keeps the merge logic for streamed tool results
-  linear and testable (timestamps, status updates, raw tool arguments). The
-  transcript view (`SegmentListView`, `TurnCard`, `MessageSegmentPanel`) keeps
-  a timeline cache of normalised payloads and reuses wx widgets between
+  banner and automatically submits it once the agent finishes. Long-running
+  commands execute through `ThreadedAgentCommandExecutor` (a single-worker
+  `ThreadPoolExecutor`). The panel relies on the structured payloads from
+  `app/agent/run_contract.py` instead of heuristically merging raw tool
+  dictionaries.
+* `app/agent/run_contract.py` defines the shared schema for tool snapshots and
+  LLM traces. Every streamed update carries a stable identifier, canonical
+  status, start/finish timestamps and an ordered timeline of events. The LLM
+  trace records each request/response pair so the UI can present the turn
+  without guessing which payload belongs to which step.
+* The transcript view (`SegmentListView`, `TurnCard`, `MessageSegmentPanel`)
+  keeps a timeline cache of normalised payloads and reuses wx widgets between
   rerenders so large conversations (30+ messages) can refresh without tearing
   down the layout on every frame.
   * `trace_matrix.py` and `derivation_graph.py` visualise relationships.

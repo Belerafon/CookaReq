@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 import json
 
+from ...agent.run_contract import ToolError, ToolResultSnapshot
 from ...i18n import _
 from ...llm.tokenizer import TokenCountResult, count_text_tokens
 from ..text import normalize_for_display
+from .history_utils import history_json_safe
 from .time_formatting import format_entry_timestamp, parse_iso_timestamp
 
 
@@ -35,202 +37,143 @@ class ToolCallSummary:
 def summarize_tool_results(
     tool_results: Sequence[Any] | None,
 ) -> tuple[ToolCallSummary, ...]:
-    """Generate summaries for tool payloads returned by the agent."""
-    from .history_utils import history_json_safe, sort_tool_payloads
+    """Generate summaries for deterministic tool snapshots."""
 
-    summaries: list[ToolCallSummary] = []
     if not tool_results:
-        return tuple(summaries)
+        return ()
 
-    ordered_payloads = sort_tool_payloads(tool_results)
-    for index, payload in enumerate(ordered_payloads, start=1):
-        if not isinstance(payload, Mapping):
-            continue
-        summary = summarize_tool_payload(index, payload)
-        if summary is None:
-            continue
-        safe_payload = history_json_safe(payload)
-        summaries.append(replace(summary, raw_payload=safe_payload))
+    snapshots: list[ToolResultSnapshot] = []
+    for value in tool_results:
+        snapshot = _snapshot_from_value(value)
+        if snapshot is not None:
+            snapshots.append(snapshot)
+
+    if not snapshots:
+        return ()
+
+    ordered = sorted(snapshots, key=_tool_snapshot_sort_key)
+    summaries = [
+        _summarize_snapshot(index, snapshot)
+        for index, snapshot in enumerate(ordered, start=1)
+    ]
     return tuple(summaries)
 
 
-def _normalise_timestamp(value: Any) -> str | None:
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        formatted = format_entry_timestamp(text)
-        if formatted:
-            return normalize_for_display(formatted)
-        return normalize_for_display(text)
-    return None
-
-
-def _coerce_float(value: Any) -> float | None:
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        try:
-            return float(text)
-        except ValueError:
-            return None
-    return None
-
-
-def _extract_duration_seconds(payload: Mapping[str, Any]) -> float | None:
-    for key in (
-        "duration_seconds",
-        "duration_secs",
-        "duration_sec",
-        "duration_s",
-        "duration",
-    ):
-        candidate = _coerce_float(payload.get(key))
-        if candidate is not None and candidate >= 0:
-            return candidate
-    duration_ms = _coerce_float(payload.get("duration_ms"))
-    if duration_ms is not None and duration_ms >= 0:
-        return duration_ms / 1000.0
-    start_raw = (
-        payload.get("started_at")
-        or payload.get("first_observed_at")
-        or payload.get("observed_at")
-    )
-    end_raw = (
-        payload.get("completed_at")
-        or payload.get("last_observed_at")
-        or payload.get("observed_at")
-    )
-    start = parse_iso_timestamp(start_raw)
-    end = parse_iso_timestamp(end_raw)
-    if start and end:
-        delta = (end - start).total_seconds()
-        if delta >= 0:
-            return delta
-    return None
-
-
-def _format_cost_value(value: Any) -> str | None:
-    if isinstance(value, (int, float)):
-        return normalize_for_display(f"{value}")
-    if isinstance(value, str):
-        text = value.strip()
-        if text:
-            return normalize_for_display(text)
-    return None
-
-
-def _coerce_cost_text(value: Any) -> str | None:
+def _snapshot_from_value(value: Any) -> ToolResultSnapshot | None:
+    if isinstance(value, ToolResultSnapshot):
+        return value
     if isinstance(value, Mapping):
-        for key in (
-            "display",
-            "formatted",
-            "text",
-            "label",
-            "value",
-            "total",
-            "amount",
-            "usd",
-        ):
-            text = _coerce_cost_text(value.get(key))
-            if text:
-                return text
-        return None
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
-        for item in value:
-            text = _coerce_cost_text(item)
-            if text:
-                return text
-        return None
-    text = _format_cost_value(value)
-    if text:
-        return text
-    if value is not None:
         try:
-            return format_value_snippet(value)
-        except Exception:  # pragma: no cover - defensive
+            return ToolResultSnapshot.from_dict(value)
+        except Exception:
             return None
     return None
 
 
-def _extract_cost_text(payload: Mapping[str, Any]) -> str | None:
-    for key in ("cost", "usage_cost", "price", "total_cost"):
-        if key in payload:
-            text = _coerce_cost_text(payload.get(key))
-            if text:
-                return text
-    return None
+def _tool_snapshot_sort_key(snapshot: ToolResultSnapshot) -> tuple[int, Any, str]:
+    for candidate in (
+        snapshot.started_at,
+        snapshot.last_observed_at,
+        snapshot.completed_at,
+    ):
+        if candidate:
+            parsed = parse_iso_timestamp(candidate)
+            if parsed is not None:
+                return (0, parsed, snapshot.call_id)
+    return (1, None, snapshot.call_id)
 
 
-def _extract_arguments(payload: Mapping[str, Any]) -> Any | None:
-    for key in ("tool_arguments", "arguments", "args"):
-        if key not in payload:
-            continue
-        candidate = payload.get(key)
-        if candidate is None:
-            continue
-        from .history_utils import history_json_safe  # local import to avoid cycle
-
-        return history_json_safe(candidate)
-    return None
-
-
-def _derive_error_message(payload: Mapping[str, Any]) -> str | None:
-    message = extract_error_message(payload.get("error"))
-    if not message:
-        extra_message = payload.get("error_message") or payload.get("message")
-        if isinstance(extra_message, str):
-            text = extra_message.strip()
-            if text:
-                message = shorten_text(normalize_for_display(text))
-    if not message:
-        agent_status = payload.get("agent_status")
-        if isinstance(agent_status, str):
-            status_text = agent_status.strip()
-            if status_text:
-                prefix, _, remainder = status_text.partition(":")
-                if prefix.strip().lower() == "failed":
-                    candidate = remainder.strip() or prefix.strip()
-                    if candidate:
-                        message = shorten_text(normalize_for_display(candidate))
-    return message or None
-
-
-def summarize_tool_payload(
-    index: int, payload: Mapping[str, Any]
-) -> ToolCallSummary | None:
-    tool_name = extract_tool_name(payload)
-    status = format_tool_status(payload)
-    bullet_lines = list(summarize_tool_details(payload))
-    duration_seconds = _extract_duration_seconds(payload)
-    cost_text = _extract_cost_text(payload)
-    error_text = _derive_error_message(payload)
-    arguments = _extract_arguments(payload)
-    started_at = _normalise_timestamp(
-        payload.get("started_at") or payload.get("first_observed_at")
-    )
-    completed_at = _normalise_timestamp(payload.get("completed_at"))
-    last_observed = _normalise_timestamp(
-        payload.get("last_observed_at") or payload.get("observed_at")
-    )
+def _summarize_snapshot(
+    index: int, snapshot: ToolResultSnapshot
+) -> ToolCallSummary:
+    arguments = _sanitize_arguments(snapshot.arguments)
+    raw_payload_safe = history_json_safe(snapshot.to_dict())
+    raw_payload: Any | None
+    if isinstance(raw_payload_safe, Mapping):
+        raw_payload = dict(raw_payload_safe)
+    else:
+        raw_payload = raw_payload_safe
+    bullet_lines = summarize_tool_details(snapshot, arguments)
     return ToolCallSummary(
         index=index,
-        tool_name=tool_name,
-        status=status,
+        tool_name=_normalise_tool_name(snapshot.tool_name),
+        status=_format_tool_status(snapshot.status),
         bullet_lines=tuple(bullet_lines),
-        started_at=started_at,
-        completed_at=completed_at,
-        last_observed_at=last_observed,
-        duration=duration_seconds,
-        cost=cost_text,
-        error_message=error_text,
+        started_at=_normalise_timestamp(snapshot.started_at),
+        completed_at=_normalise_timestamp(snapshot.completed_at),
+        last_observed_at=_normalise_timestamp(snapshot.last_observed_at),
+        raw_payload=raw_payload,
+        duration=snapshot.metrics.duration_seconds,
+        cost=_format_cost_text(snapshot.metrics.cost),
+        error_message=_format_error_message(snapshot.error),
         arguments=arguments,
     )
+
+
+def _normalise_tool_name(name: str) -> str:
+    text = normalize_for_display(name or "").strip()
+    if text:
+        return text
+    return normalize_for_display(_("Unnamed tool"))
+
+
+def _format_tool_status(status: str) -> str:
+    mapping = {
+        "pending": _("pending"),
+        "running": _("in progress…"),
+        "succeeded": _("completed"),
+        "failed": _("failed"),
+    }
+    label = mapping.get(status, _("returned data"))
+    return normalize_for_display(label)
+
+
+def _normalise_timestamp(value: str | None) -> str | None:
+    if not value:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    formatted = format_entry_timestamp(text)
+    if formatted:
+        return normalize_for_display(formatted)
+    return normalize_for_display(text)
+
+
+def _format_cost_text(cost: Mapping[str, Any] | None) -> str | None:
+    if not isinstance(cost, Mapping):
+        return None
+    for key in ("display", "formatted", "text", "label"):
+        value = cost.get(key)
+        if isinstance(value, str) and value.strip():
+            return normalize_for_display(value)
+    amount = cost.get("amount")
+    currency = cost.get("currency")
+    if isinstance(amount, (int, float)):
+        if isinstance(currency, str) and currency.strip():
+            return normalize_for_display(f"{amount} {currency}")
+        return normalize_for_display(str(amount))
+    return None
+
+
+def _format_error_message(error: ToolError | None) -> str | None:
+    if error is None:
+        return None
+    message = normalize_for_display(error.message or "").strip()
+    if not message and error.code:
+        message = normalize_for_display(str(error.code))
+    if not message:
+        return None
+    return shorten_text(message)
+
+
+def _sanitize_arguments(arguments: Any) -> Any | None:
+    if arguments is None:
+        return None
+    safe = history_json_safe(arguments)
+    if isinstance(safe, Mapping):
+        return dict(safe)
+    return safe
 
 
 def render_tool_summary_markdown(summary: ToolCallSummary) -> str:
@@ -283,47 +226,6 @@ def render_tool_summaries_plain(
     return "\n\n".join(blocks)
 
 
-def extract_tool_name(payload: Mapping[str, Any]) -> str:
-    for key in ("tool_name", "tool", "name"):
-        value = payload.get(key)
-        if isinstance(value, str):
-            text = value.strip()
-            if text:
-                return normalize_for_display(text)
-    return normalize_for_display(_("Unnamed tool"))
-
-
-def format_tool_status(payload: Mapping[str, Any]) -> str:
-    agent_status = payload.get("agent_status")
-    if isinstance(agent_status, str):
-        status_text = agent_status.strip()
-        if not status_text:
-            pass
-        else:
-            prefix, separator, remainder = status_text.partition(":")
-            normalized_prefix = prefix.strip().lower()
-            if normalized_prefix == "running":
-                return normalize_for_display(_("in progress…"))
-            if normalized_prefix == "completed":
-                return normalize_for_display(_("completed"))
-            if normalized_prefix == "failed":
-                return normalize_for_display(_("failed"))
-            normalized_full = status_text.lower()
-            if normalized_full == "running":
-                return normalize_for_display(_("in progress…"))
-            if normalized_full == "completed":
-                return normalize_for_display(_("completed"))
-            if normalized_full == "failed":
-                return normalize_for_display(_("failed"))
-            return normalize_for_display(shorten_text(status_text))
-    ok_value = payload.get("ok")
-    if ok_value is True:
-        return normalize_for_display(_("completed successfully"))
-    if ok_value is False:
-        return normalize_for_display(_("failed"))
-    return normalize_for_display(_("returned data"))
-
-
 def extract_error_message(error: Any) -> str:
     if not error:
         return ""
@@ -359,12 +261,12 @@ def extract_error_message(error: Any) -> str:
     return shorten_text(normalize_for_display(str(error)))
 
 
-def summarize_tool_details(payload: Mapping[str, Any]) -> list[str]:
-    tool_name = extract_tool_name(payload)
-    arguments = payload.get("tool_arguments")
-    result = payload.get("result")
+def summarize_tool_details(
+    snapshot: ToolResultSnapshot, arguments: Any
+) -> list[str]:
+    result = snapshot.result
     lines, consumed_args, consumed_result = summarize_specific_tool(
-        tool_name, arguments, result
+        snapshot.tool_name, arguments, result
     )
     extra_lines, displayed_argument_keys = summarize_generic_arguments(
         arguments, consumed_args
@@ -372,12 +274,30 @@ def summarize_tool_details(payload: Mapping[str, Any]) -> list[str]:
     lines.extend(extra_lines)
     if consumed_result is not None and "rid" in displayed_argument_keys:
         consumed_result.add("rid")
-    if payload.get("ok") is False:
-        lines.extend(summarize_error_details(payload.get("error")))
+    if snapshot.error is not None:
+        lines.extend(_summarize_tool_error(snapshot.error))
         return [line for line in lines if line]
     if consumed_result is not None:
         lines.extend(summarize_generic_result(result, consumed_result))
     return [line for line in lines if line]
+
+
+def _summarize_tool_error(error: ToolError) -> list[str]:
+    lines: list[str] = []
+    message = normalize_for_display(error.message or "").strip()
+    if message:
+        lines.append(_("Error: {message}").format(message=message))
+    if error.code:
+        code_text = normalize_for_display(str(error.code)).strip()
+        if code_text:
+            lines.append(_("Error code: {code}").format(code=code_text))
+    if error.details:
+        lines.append(
+            _("Error details: {details}").format(
+                details=format_value_snippet(error.details)
+            )
+        )
+    return lines
 
 
 def summarize_error_details(error: Any) -> list[str]:

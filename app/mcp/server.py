@@ -13,9 +13,12 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+import inspect
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -233,12 +236,242 @@ async def health() -> dict[str, str]:
 ToolCallable = Callable[..., dict | None]
 
 _TOOLS: dict[str, ToolCallable] = {}
+_TOOL_METADATA: dict[str, dict[str, Any]] = {}
+
+
+def _schema_copy(schema: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if schema is None:
+        return None
+    return deepcopy(dict(schema))
+
+
+_TOOL_ARGUMENT_SCHEMAS: dict[str, dict[str, Any]] = {
+    "list_requirements": {
+        "type": "object",
+        "properties": {
+            "page": {"type": "integer", "minimum": 1, "default": 1},
+            "per_page": {"type": "integer", "minimum": 1, "default": 50},
+            "status": {"type": ["string", "null"]},
+            "labels": {
+                "type": "array",
+                "items": {"type": "string"},
+                "uniqueItems": True,
+            },
+            "fields": {
+                "type": "array",
+                "items": {"type": "string"},
+                "uniqueItems": True,
+            },
+        },
+        "additionalProperties": False,
+    },
+    "get_requirement": {
+        "type": "object",
+        "properties": {
+            "rid": {
+                "oneOf": [
+                    {"type": "string"},
+                    {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "uniqueItems": True,
+                    },
+                ]
+            },
+            "fields": {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "uniqueItems": True,
+            },
+        },
+        "required": ["rid"],
+        "additionalProperties": False,
+    },
+    "search_requirements": {
+        "type": "object",
+        "properties": {
+            "query": {"type": ["string", "null"]},
+            "labels": {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "uniqueItems": True,
+            },
+            "status": {"type": ["string", "null"]},
+            "page": {"type": "integer", "minimum": 1, "default": 1},
+            "per_page": {"type": "integer", "minimum": 1, "default": 50},
+            "fields": {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "uniqueItems": True,
+            },
+        },
+        "additionalProperties": False,
+    },
+    "list_labels": {
+        "type": "object",
+        "properties": {
+            "prefix": {"type": "string"},
+        },
+        "required": ["prefix"],
+        "additionalProperties": False,
+    },
+    "create_requirement": {
+        "type": "object",
+        "properties": {
+            "prefix": {"type": "string"},
+            "data": {"type": "object"},
+        },
+        "required": ["prefix", "data"],
+        "additionalProperties": False,
+    },
+    "update_requirement_field": {
+        "type": "object",
+        "properties": {
+            "rid": {"type": "string"},
+            "field": {"type": "string"},
+            "value": {},
+        },
+        "required": ["rid", "field", "value"],
+        "additionalProperties": False,
+    },
+    "set_requirement_labels": {
+        "type": "object",
+        "properties": {
+            "rid": {"type": "string"},
+            "labels": {
+                "type": "array",
+                "items": {"type": "string"},
+                "uniqueItems": True,
+            },
+        },
+        "required": ["rid", "labels"],
+        "additionalProperties": False,
+    },
+    "set_requirement_attachments": {
+        "type": "object",
+        "properties": {
+            "rid": {"type": "string"},
+            "attachments": {
+                "type": "array",
+                "items": {"type": "object"},
+            },
+        },
+        "required": ["rid", "attachments"],
+        "additionalProperties": False,
+    },
+    "set_requirement_links": {
+        "type": "object",
+        "properties": {
+            "rid": {"type": "string"},
+            "links": {
+                "type": "array",
+                "items": {
+                    "oneOf": [
+                        {"type": "string"},
+                        {"type": "object"},
+                    ]
+                },
+            },
+        },
+        "required": ["rid", "links"],
+        "additionalProperties": False,
+    },
+    "delete_requirement": {
+        "type": "object",
+        "properties": {
+            "rid": {"type": "string"},
+        },
+        "required": ["rid"],
+        "additionalProperties": False,
+    },
+    "create_label": {
+        "type": "object",
+        "properties": {
+            "prefix": {"type": "string"},
+            "key": {"type": "string"},
+            "title": {"type": ["string", "null"]},
+            "color": {"type": ["string", "null"]},
+        },
+        "required": ["prefix", "key"],
+        "additionalProperties": False,
+    },
+    "update_label": {
+        "type": "object",
+        "properties": {
+            "prefix": {"type": "string"},
+            "key": {"type": "string"},
+            "new_key": {"type": ["string", "null"]},
+            "title": {"type": ["string", "null"]},
+            "color": {"type": ["string", "null"]},
+            "propagate": {"type": "boolean", "default": False},
+        },
+        "required": ["prefix", "key"],
+        "additionalProperties": False,
+    },
+    "delete_label": {
+        "type": "object",
+        "properties": {
+            "prefix": {"type": "string"},
+            "key": {"type": "string"},
+            "remove_from_requirements": {"type": "boolean", "default": False},
+        },
+        "required": ["prefix", "key"],
+        "additionalProperties": False,
+    },
+    "link_requirements": {
+        "type": "object",
+        "properties": {
+            "source_rid": {"type": "string"},
+            "derived_rid": {"type": "string"},
+            "link_type": {"type": "string"},
+        },
+        "required": ["source_rid", "derived_rid", "link_type"],
+        "additionalProperties": False,
+    },
+    "list_user_documents": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+    "read_user_document": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string"},
+            "start_line": {"type": "integer", "minimum": 1, "default": 1},
+            "max_bytes": {"type": ["integer", "null"], "minimum": 1},
+        },
+        "required": ["path"],
+        "additionalProperties": False,
+    },
+    "create_user_document": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string"},
+            "content": {"type": "string", "default": ""},
+            "exist_ok": {"type": "boolean", "default": False},
+            "encoding": {"type": ["string", "null"]},
+        },
+        "required": ["path"],
+        "additionalProperties": False,
+    },
+    "delete_user_document": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string"},
+        },
+        "required": ["path"],
+        "additionalProperties": False,
+    },
+}
 
 
 def register_tool(
     func: ToolCallable | None = None,
     *,
     name: str | None = None,
+    schema: Mapping[str, Any] | None = None,
+    result_schema: Mapping[str, Any] | None = None,
 ) -> ToolCallable | Callable[[ToolCallable], ToolCallable]:
     """Register *func* in the global tools registry.
 
@@ -252,6 +485,15 @@ def register_tool(
         if tool_name in _TOOLS:
             raise ValueError(f"duplicate MCP tool registered: {tool_name}")
         _TOOLS[tool_name] = target
+        description = inspect.getdoc(target) or ""
+        entry: dict[str, Any] = {"name": tool_name, "description": description}
+        schema_payload = _schema_copy(schema)
+        if schema_payload is not None:
+            entry["arguments_schema"] = schema_payload
+        result_payload = _schema_copy(result_schema)
+        if result_payload is not None:
+            entry["result_schema"] = result_payload
+        _TOOL_METADATA[tool_name] = entry
         return target
 
     if func is not None:
@@ -259,7 +501,7 @@ def register_tool(
     return decorator
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["list_requirements"])
 def list_requirements(
     *,
     page: int = 1,
@@ -280,7 +522,7 @@ def list_requirements(
     )
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["get_requirement"])
 def get_requirement(
     rid: str | Sequence[str], fields: list[str] | None = None
 ) -> dict:
@@ -289,7 +531,7 @@ def get_requirement(
     return tools_read.get_requirement(directory, rid, fields=fields)
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["search_requirements"])
 def search_requirements(
     *,
     query: str | None = None,
@@ -312,7 +554,7 @@ def search_requirements(
     )
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["list_labels"])
 def list_labels(prefix: str) -> dict:
     """Return label definitions available to document ``prefix``."""
 
@@ -320,14 +562,14 @@ def list_labels(prefix: str) -> dict:
     return tools_read.list_labels(directory, prefix=prefix)
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["create_requirement"])
 def create_requirement(prefix: str, data: Mapping[str, object]) -> dict:
     """Create a requirement in the configured directory."""
     directory = app.state.base_path
     return tools_write.create_requirement(directory, prefix=prefix, data=data)
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["update_requirement_field"])
 def update_requirement_field(rid: str, *, field: str, value: Any) -> dict:
     """Update a single field of a requirement."""
     directory = app.state.base_path
@@ -339,14 +581,14 @@ def update_requirement_field(rid: str, *, field: str, value: Any) -> dict:
     )
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["set_requirement_labels"])
 def set_requirement_labels(rid: str, labels: Sequence[str]) -> dict:
     """Replace labels of a requirement."""
     directory = app.state.base_path
     return tools_write.set_requirement_labels(directory, rid, labels)
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["set_requirement_attachments"])
 def set_requirement_attachments(
     rid: str, attachments: Sequence[Mapping[str, Any]]
 ) -> dict:
@@ -355,7 +597,7 @@ def set_requirement_attachments(
     return tools_write.set_requirement_attachments(directory, rid, attachments)
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["set_requirement_links"])
 def set_requirement_links(
     rid: str, links: Sequence[Mapping[str, Any] | str]
 ) -> dict:
@@ -364,14 +606,14 @@ def set_requirement_links(
     return tools_write.set_requirement_links(directory, rid, links)
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["delete_requirement"])
 def delete_requirement(rid: str) -> dict | None:
     """Delete a requirement."""
     directory = app.state.base_path
     return tools_write.delete_requirement(directory, rid)
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["create_label"])
 def create_label(
     prefix: str,
     *,
@@ -391,7 +633,7 @@ def create_label(
     )
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["update_label"])
 def update_label(
     prefix: str,
     *,
@@ -415,7 +657,7 @@ def update_label(
     )
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["delete_label"])
 def delete_label(
     prefix: str,
     *,
@@ -433,7 +675,7 @@ def delete_label(
     )
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["link_requirements"])
 def link_requirements(
     *,
     source_rid: str,
@@ -454,14 +696,14 @@ def _documents_service() -> UserDocumentsService | None:
     return app.state.documents_service
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["list_user_documents"])
 def list_user_documents() -> dict:
     """Return the structure of the configured user documentation directory."""
     service = _documents_service()
     return tools_documents.list_user_documents(service)
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["read_user_document"])
 def read_user_document(
     path: str,
     *,
@@ -478,7 +720,7 @@ def read_user_document(
     )
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["create_user_document"])
 def create_user_document(
     path: str,
     *,
@@ -497,11 +739,26 @@ def create_user_document(
     )
 
 
-@register_tool()
+@register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["delete_user_document"])
 def delete_user_document(path: str) -> dict:
     """Delete a user document relative to the configured root."""
     service = _documents_service()
     return tools_documents.delete_user_document(service, path)
+
+
+# --------------------------- MCP metadata ---------------------------------
+
+
+@app.get("/mcp/schema")
+async def describe_tools() -> dict[str, Any]:
+    """Return registered MCP tool schemas for LocalAgent synchronisation."""
+
+    return {
+        "tools": {
+            name: dict(metadata)
+            for name, metadata in sorted(_TOOL_METADATA.items())
+        }
+    }
 
 
 # --------------------------- MCP endpoint ----------------------------------

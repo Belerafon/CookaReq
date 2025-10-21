@@ -4,11 +4,11 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from functools import lru_cache
 from typing import Any
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from uuid import uuid4
 
+from ..agent.run_contract import ToolResultSnapshot
 from ..llm.tokenizer import (
     TokenCountResult,
     combine_token_counts,
@@ -49,23 +49,26 @@ def _hash_context_messages(
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
-@lru_cache(maxsize=1)
-def _history_utils_module():  # pragma: no cover - trivial cache wrapper
-    from .agent_chat_panel import history_utils
-
-    return history_utils
-
-
-def extract_tool_results(raw_result: Any) -> list[Any] | None:
-    """Expose lazy history helper to avoid circular imports."""
-    return _history_utils_module().extract_tool_results(raw_result)
-
-
-def update_tool_results(
-    raw_result: Any | None, tool_results: Sequence[Any] | None
-) -> Any | None:
-    """Expose lazy history helper to avoid circular imports."""
-    return _history_utils_module().update_tool_results(raw_result, tool_results)
+def _normalise_tool_results_payload(value: Any) -> list[dict[str, Any]]:
+    """Convert *value* into deterministic tool snapshot payloads."""
+    if value is None:
+        return []
+    if isinstance(value, Mapping):
+        candidates: Sequence[Any] = (value,)
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        candidates = value
+    else:
+        return []
+    snapshots: list[dict[str, Any]] = []
+    for item in candidates:
+        if not isinstance(item, Mapping):
+            continue
+        try:
+            snapshot = ToolResultSnapshot.from_dict(item)
+        except Exception:
+            continue
+        snapshots.append(snapshot.to_dict())
+    return snapshots
 
 
 @dataclass(frozen=True)
@@ -204,11 +207,15 @@ class ChatEntry:
         if self.display_response is None:
             self.display_response = self.response
         self.ensure_token_info()
-        if isinstance(self.raw_result, Mapping) and "tool_results" in self.raw_result:
-            self.raw_result = update_tool_results(
-                self.raw_result,
-                self.raw_result.get("tool_results"),
-            )
+        if isinstance(self.raw_result, Mapping):
+            tool_results_raw = self.raw_result.get("tool_results")
+            normalised_results = _normalise_tool_results_payload(tool_results_raw)
+            updated = dict(self.raw_result)
+            if normalised_results:
+                updated["tool_results"] = normalised_results
+            else:
+                updated.pop("tool_results", None)
+            self.raw_result = updated
         tool_messages = self.tool_messages
         if tool_messages:
             if isinstance(tool_messages, Sequence) and not isinstance(
@@ -302,20 +309,45 @@ class ChatEntry:
         self._sanitize_token_cache()
 
     @property
-    def tool_results(self) -> list[Any] | None:
-        """Return MCP tool payloads associated with this entry."""
-        results = extract_tool_results(self.raw_result)
-        if not results:
+    def tool_results(self) -> list[dict[str, Any]] | None:
+        """Return deterministic tool snapshots associated with this entry."""
+        raw_result = self.raw_result
+        if not isinstance(raw_result, Mapping):
             return None
-        if isinstance(self.raw_result, Mapping):
-            normalised = update_tool_results(self.raw_result, results)
-            if normalised is not self.raw_result:
-                self.raw_result = normalised
-        return results
+        payload = raw_result.get("tool_results")
+        normalised = _normalise_tool_results_payload(payload)
+        if not normalised:
+            if "tool_results" in raw_result:
+                updated = dict(raw_result)
+                updated.pop("tool_results", None)
+                self.raw_result = updated
+            return None
+        if payload != normalised:
+            updated = dict(raw_result)
+            updated["tool_results"] = normalised
+            self.raw_result = updated
+        return normalised
 
     @tool_results.setter
     def tool_results(self, value: Sequence[Any] | None) -> None:
-        self.raw_result = update_tool_results(self.raw_result, value)
+        if value is None:
+            if isinstance(self.raw_result, Mapping):
+                updated = dict(self.raw_result)
+                updated.pop("tool_results", None)
+                self.raw_result = updated
+            return
+        normalised = _normalise_tool_results_payload(value)
+        if not normalised:
+            if isinstance(self.raw_result, Mapping):
+                updated = dict(self.raw_result)
+                updated.pop("tool_results", None)
+                self.raw_result = updated
+            else:
+                self.raw_result = None
+            return
+        base = dict(self.raw_result) if isinstance(self.raw_result, Mapping) else {}
+        base["tool_results"] = normalised
+        self.raw_result = base
 
     def _sanitize_token_cache(self) -> None:
         raw_cache = self.token_cache
@@ -420,10 +452,21 @@ class ChatEntry:
         display_response = payload.get("display_response")
         if display_response is not None:
             display_response = str(display_response)
-        raw_result = payload.get("raw_result")
+        raw_result_payload = payload.get("raw_result")
+        raw_result = (
+            dict(raw_result_payload)
+            if isinstance(raw_result_payload, Mapping)
+            else raw_result_payload
+        )
         tool_results_raw = payload.get("tool_results")
         if tool_results_raw is not None:
-            raw_result = update_tool_results(raw_result, tool_results_raw)
+            normalised_results = _normalise_tool_results_payload(tool_results_raw)
+            base = dict(raw_result) if isinstance(raw_result, Mapping) else {}
+            if normalised_results:
+                base["tool_results"] = normalised_results
+            else:
+                base.pop("tool_results", None)
+            raw_result = base
         token_info_raw = payload.get("token_info")
         if not isinstance(token_info_raw, Mapping):
             raise ValueError("token_info field missing from chat entry payload")

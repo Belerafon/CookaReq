@@ -273,6 +273,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         self._wait_callbacks = _PanelWaitCallbacks(self)
         self._layout = None
+        self._pending_session_running: bool | None = None
         self._system_token_cache: dict[
             tuple[str | None, tuple[str, ...]], TokenCountResult
         ] = {}
@@ -576,6 +577,17 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         wx.CallAfter(self._update_project_settings_ui)
         wx.CallAfter(self._update_attachment_summary)
         wx.CallAfter(self._update_queued_prompt_banner)
+        self._apply_pending_session_running_state()
+
+    def _apply_pending_session_running_state(self) -> None:
+        """Replay pending session running state once the layout is ready."""
+        pending = self._pending_session_running
+        self._pending_session_running = None
+        if pending is not None:
+            self._on_session_running_changed(pending)
+            return
+        if self._session.is_running:
+            self._on_session_running_changed(True)
 
     def _observe_history_columns(self, history_list: wx.Window) -> None:
         """Start monitoring the history list so column drags repaint rows."""
@@ -1446,7 +1458,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _on_session_running_changed(self, running: bool) -> None:
         """Synchronize UI with the session running state."""
         if self._layout is None:
+            self._pending_session_running = running
             return
+        self._pending_session_running = None
         tokens = self._session.tokens
         self._view.set_wait_state(
             running,

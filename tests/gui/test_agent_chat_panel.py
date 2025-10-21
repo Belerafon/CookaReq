@@ -449,6 +449,57 @@ def test_batch_conversation_creation_respects_manual_selection(tmp_path, wx_app)
         destroy_panel(frame, panel)
 
 
+def test_agent_chat_panel_initial_run_updates_primary_button(
+    tmp_path, wx_app, monkeypatch
+):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx = pytest.importorskip("wx")
+    from app.ui.agent_chat_panel.components.view import AgentChatView
+
+    triggered = {"armed": False}
+    original_build = AgentChatView.build
+
+    def build_with_pending(self, *args, **kwargs):
+        if not triggered["armed"]:
+            triggered["armed"] = True
+            wx.CallAfter(
+                self._panel._session.begin_run, tokens=TokenCountResult.exact(0)
+            )
+            flush_wx_events(wx)
+        return original_build(self, *args, **kwargs)
+
+    monkeypatch.setattr(AgentChatView, "build", build_with_pending)
+
+    wx_module, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        assert wx_module is wx
+        flush_wx_events(wx)
+        assert panel._session.is_running
+        assert panel._primary_action_btn is not None
+        layout = getattr(panel, "_layout", None)
+        assert layout is not None
+        stop_label = panel._primary_action_btn.GetLabel()
+        if layout.primary_action_stop_uses_bitmap:
+            assert stop_label == ""
+            getter = getattr(panel._primary_action_btn, "GetBitmap", None)
+            if callable(getter):
+                bitmap = getter()
+                assert bitmap is not None
+                assert bitmap.IsOk()
+        else:
+            assert stop_label == layout.primary_action_stop_label
+        tooltip = panel._primary_action_btn.GetToolTip()
+        if tooltip is not None:
+            assert tooltip.GetTip() == _("Stop")
+    finally:
+        panel._session.finalize_run()
+        destroy_panel(frame, panel)
+
+
 def test_agent_chat_panel_header_shows_conversation_tokens(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, *_args, **_kwargs):

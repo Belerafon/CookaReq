@@ -263,6 +263,8 @@ class AgentChatLayoutBuilder:
             label=_("No file attached"),
             style=wx.ST_ELLIPSIZE_MIDDLE,
         )
+        attachment_summary.SetMinSize(wx.Size(0, -1))
+        attachment_summary.SetMaxSize(wx.Size(dip(panel, 260), -1))
         settings_btn, settings_uses_icon = self._create_instructions_button(
             bottom_inner
         )
@@ -290,8 +292,8 @@ class AgentChatLayoutBuilder:
         icon_cluster.Add(attachment_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)
         icon_cluster.Add(
             attachment_summary,
-            0,
-            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            1,
+            wx.EXPAND | wx.RIGHT,
             spacing,
         )
         icon_cluster.Add(clear_btn, 0, wx.ALIGN_TOP | wx.RIGHT, spacing)

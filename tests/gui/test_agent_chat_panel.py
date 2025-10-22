@@ -396,16 +396,84 @@ def test_history_list_remains_interactive_during_agent_run(
         panel._history_view._on_select_history(_FakeSelectionEvent(item))
         assert panel.active_conversation_id == target_id
 
-        popup_calls: list[wx.Menu] = []
+        popup_labels: list[list[str]] = []
+        delete_enabled: list[bool] = []
 
         def fake_popup(menu):
-            popup_calls.append(menu)
+            items = list(menu.GetMenuItems())
+            popup_labels.append([item.GetItemLabelText() for item in items])
+            delete_items = [
+                item
+                for item in items
+                if "Delete" in item.GetItemLabelText()
+            ]
+            assert delete_items, "expected delete option in context menu"
+            delete_enabled.append(all(item.IsEnabled() for item in delete_items))
 
         monkeypatch.setattr(panel.history_list, "PopupMenu", fake_popup)
         panel._history_view._show_context_menu(target_row)
-        assert popup_calls == []
+        assert popup_labels != []
+        assert delete_enabled == [False]
     finally:
         panel._session.finalize_run()
+        destroy_panel(frame, panel)
+
+
+def test_agent_run_updates_original_conversation_after_switch(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        conversation_a = panel._ensure_active_conversation()
+        prompt_at = "2025-01-01T00:00:00+00:00"
+        pending_entry = panel._add_pending_entry(
+            conversation_a,
+            "hello",
+            prompt_at=prompt_at,
+            context_messages=None,
+        )
+
+        handle = _AgentRunHandle(
+            run_id=1,
+            prompt="hello",
+            prompt_tokens=TokenCountResult.exact(1),
+            cancel_event=CancellationEvent(),
+            prompt_at=prompt_at,
+        )
+        handle.conversation_id = conversation_a.conversation_id
+        handle.pending_entry = pending_entry
+
+        class _CoordinatorStub:
+            def __init__(self):
+                self.reset_calls: list[_AgentRunHandle] = []
+
+            def reset_active_handle(self, handle):
+                self.reset_calls.append(handle)
+
+        panel._coordinator = _CoordinatorStub()
+
+        panel._session.begin_run(tokens=TokenCountResult.exact(0))
+        panel._on_new_chat(None)
+
+        conversation_b = panel._get_active_conversation()
+        assert conversation_b is not None
+        assert conversation_b.conversation_id != conversation_a.conversation_id
+
+        panel._finalize_prompt("hello", {"ok": True, "result": {}}, handle)
+
+        assert not panel._session.is_running
+        assert panel.active_conversation_id == conversation_b.conversation_id
+
+        updated = panel._get_conversation_by_id(conversation_a.conversation_id)
+        assert updated is not None
+        assert updated.entries
+        entry = updated.entries[-1]
+        assert entry.response
+        assert entry.response_at is not None
+    finally:
         destroy_panel(frame, panel)
 
 

@@ -3515,11 +3515,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         has_conversations = bool(self.conversations)
         self.history_list.Enable(has_conversations)
         if self._new_chat_btn is not None:
-            self._new_chat_btn.Enable(not self._session.is_running)
+            self._new_chat_btn.Enable(True)
 
     def _on_new_chat(self, _event: wx.Event) -> None:
-        if self._session.is_running:
-            return
         self._create_conversation(persist=True)
         self.input.SetValue("")
         self.input.SetFocus()

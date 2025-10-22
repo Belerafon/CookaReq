@@ -524,6 +524,53 @@ def test_agent_chat_panel_header_shows_conversation_tokens(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+def test_bottom_controls_wrap_when_width_shrinks(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        flush_wx_events(wx)
+        assert panel._bottom_controls_panel is not None
+        target_width = panel.FromDIP(340)
+        target_height = panel.FromDIP(520)
+        frame.SetClientSize((target_width, target_height))
+        frame.SendSizeEvent()
+        flush_wx_events(wx, count=5)
+        panel.activity.Show()
+        panel._refresh_bottom_panel_layout()
+        flush_wx_events(wx, count=5)
+        bottom_panel = panel._bottom_controls_panel
+        client_width = bottom_panel.GetClientSize().GetWidth()
+        assert client_width <= target_width
+        controls = [
+            panel.activity,
+            panel.status_label,
+            panel._confirm_label,
+            panel._confirm_choice,
+            panel._run_batch_button,
+            panel._stop_batch_button,
+            panel._attachment_button,
+            panel._attachment_summary,
+            panel._clear_input_button,
+            panel._project_settings_button,
+            panel._primary_action_btn,
+        ]
+        y_positions: set[int] = set()
+        for control in controls:
+            assert control is not None
+            assert control.IsShown()
+            rect = control.GetRect()
+            y_positions.add(rect.y)
+            assert rect.GetRight() <= client_width
+        # At least one control should wrap to a new row when the width is constrained.
+        assert len(y_positions) > 1
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_attachment_rejects_files_over_limit(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, *_args, **_kwargs):

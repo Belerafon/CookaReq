@@ -222,11 +222,17 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._conversation_label: wx.StaticText | None = None
         self._primary_action_btn: wx.Button | None = None
         self._bottom_panel: wx.Panel | None = None
+        self._bottom_controls_panel: wx.Panel | None = None
         self._copy_conversation_btn: wx.Window | None = None
         self._history_view: HistoryView | None = None
         self._transcript_view: SegmentListView | None = None
         self._attachment_button: wx.Button | None = None
         self._attachment_summary: wx.StaticText | None = None
+        self._clear_input_button: wx.Button | None = None
+        self._run_batch_button: wx.Button | None = None
+        self._stop_batch_button: wx.Button | None = None
+        self._bottom_controls_wrap: wx.WrapSizer | None = None
+        self._confirm_label: wx.StaticText | None = None
         self._timeline_cache = ConversationTimelineCache()
         self._pending_transcript_refresh: dict[str | None, set[str] | None] = {}
         self._transcript_refresh_scheduled = False
@@ -278,6 +284,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             tuple[str | None, tuple[str, ...]], TokenCountResult
         ] = {}
         self._session.events.elapsed.connect(self._on_session_elapsed)
+        self._bottom_layout_refresh_scheduled = False
+        self._bottom_controls_last_size: wx.Size | None = None
         self._session.events.running_changed.connect(self._on_session_running_changed)
         self._session.events.tokens_changed.connect(self._on_session_tokens_changed)
         self._session.events.history_changed.connect(self._on_session_history_changed)
@@ -552,8 +560,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         self._transcript_selection_probe.Hide()
         self._bottom_panel = layout.bottom_panel
+        self._bottom_controls_panel = layout.bottom_inner_panel
         self._attachment_button = layout.attachment_button
         self._attachment_summary = layout.attachment_summary
+        self._clear_input_button = layout.clear_button
+        self._run_batch_button = layout.run_batch_button
+        self._stop_batch_button = layout.stop_batch_button
+        self._bottom_controls_wrap = layout.controls_wrap
         self.input = layout.input_control
         self._queued_prompt_panel = layout.queued_panel
         self._queued_prompt_label = layout.queued_message
@@ -564,6 +577,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self.activity = layout.activity_indicator
         self.status_label = layout.status_label
         self._project_settings_button = layout.project_settings_button
+        self._confirm_label = layout.confirm_label
         self._confirm_choice = layout.confirm_choice
         self._confirm_choice_entries = layout.confirm_entries
         self._confirm_choice_index = layout.confirm_choice_index
@@ -1066,6 +1080,26 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         panel.Layout()
         panel.SendSizeEvent()
         self.Layout()
+
+    def _on_bottom_controls_size(self, event: wx.SizeEvent) -> None:
+        """Schedule a relayout when the controls container changes size."""
+        event.Skip()
+        size = event.GetSize()
+        previous = self._bottom_controls_last_size
+        if previous is not None and previous == size:
+            return
+        self._bottom_controls_last_size = size
+        if self._bottom_layout_refresh_scheduled:
+            return
+        self._bottom_layout_refresh_scheduled = True
+        wx.CallAfter(self._flush_bottom_controls_layout)
+
+    def _flush_bottom_controls_layout(self) -> None:
+        """Finalize pending relayout triggered by a size change."""
+        self._bottom_layout_refresh_scheduled = False
+        if self._bottom_panel is None or not self._bottom_panel:
+            return
+        self._refresh_bottom_panel_layout()
 
     # ------------------------------------------------------------------
     def _clear_pending_attachment(self) -> None:

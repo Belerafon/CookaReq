@@ -673,6 +673,11 @@ def summarize_specific_tool(
                 elif source == "empty":
                     lines.append(_("File is empty; default encoding applied."))
             consumed_result.update({"encoding_source", "encoding_confidence"})
+            continuation_hint = result.get("continuation_hint")
+            hint_text = _summarize_read_user_document_continuation(continuation_hint)
+            if hint_text:
+                lines.append(hint_text)
+                consumed_result.add("continuation_hint")
         if isinstance(result, Mapping) and "content" in result:
             preview = _summarize_document_content_preview(result.get("content"))
             lines.append(
@@ -695,6 +700,67 @@ def summarize_specific_tool(
         return lines, consumed_args, consumed_result
 
     return lines, consumed_args, consumed_result
+
+
+def _summarize_read_user_document_continuation(hint: Any) -> str | None:
+    if not isinstance(hint, Mapping):
+        return None
+
+    start_line = hint.get("next_start_line")
+    max_bytes = hint.get("max_chunk_bytes")
+    remaining = hint.get("bytes_remaining")
+    truncated_mid_line = bool(hint.get("truncated_mid_line"))
+    exceeded_limit = bool(hint.get("line_exceeded_chunk_limit"))
+
+    parts: list[str] = []
+    if isinstance(start_line, int) and isinstance(max_bytes, int):
+        parts.append(
+            _(
+                "To continue reading, call `read_user_document` with `start_line={start}` "
+                "and `max_bytes≤{limit}`."
+            ).format(
+                start=format_value_snippet(start_line),
+                limit=format_value_snippet(max_bytes),
+            )
+        )
+    elif isinstance(start_line, int):
+        parts.append(
+            _(
+                "To continue reading, call `read_user_document` with `start_line={start}`."
+            ).format(start=format_value_snippet(start_line))
+        )
+    elif isinstance(max_bytes, int):
+        parts.append(
+            _(
+                "Request the next chunk with `max_bytes≤{limit}` using `read_user_document`."
+            ).format(limit=format_value_snippet(max_bytes))
+        )
+
+    if exceeded_limit:
+        parts.append(
+            _(
+                "Increase `max_bytes` to capture the remainder of the truncated line."
+            )
+        )
+    elif truncated_mid_line:
+        parts.append(
+            _(
+                "The previous chunk ended mid-line; a higher `max_bytes` may be required."
+            )
+        )
+
+    if isinstance(remaining, int) and remaining > 0:
+        parts.append(
+            _("Approximately {remaining} bytes remain.").format(
+                remaining=format_value_snippet(remaining)
+            )
+        )
+
+    if not parts:
+        return None
+
+    details = " ".join(parts)
+    return _("Hint: {details}").format(details=normalize_for_display(details))
 
 
 def summarize_generic_arguments(

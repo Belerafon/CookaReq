@@ -175,7 +175,7 @@ def test_prepare_for_interaction_invokes_callback() -> None:
 
 
 @pytest.mark.unit
-def test_prepare_for_interaction_blocks_when_running() -> None:
+def test_prepare_for_interaction_allows_when_running() -> None:
     list_ctrl = _DummyListCtrl()
     view = _HistoryViewFactory().create(
         list_ctrl=list_ctrl,
@@ -184,7 +184,7 @@ def test_prepare_for_interaction_blocks_when_running() -> None:
 
     preparation = view._prepare_for_interaction()
 
-    assert preparation == HistoryInteractionPreparation(False, False)
+    assert preparation == HistoryInteractionPreparation(True, False)
 
 
 @pytest.mark.unit
@@ -218,7 +218,7 @@ def test_mouse_down_clears_selection_on_background_click() -> None:
 
 
 @pytest.mark.unit
-def test_mouse_down_respects_blocking_state() -> None:
+def test_mouse_down_focuses_when_running() -> None:
     list_ctrl = _DummyListCtrl(hit_row=0)
     view = _HistoryViewFactory().create(
         list_ctrl=list_ctrl,
@@ -229,7 +229,7 @@ def test_mouse_down_respects_blocking_state() -> None:
     view._on_mouse_down(event)
 
     assert list_ctrl.unselect_calls == 0
-    assert list_ctrl.focus_calls == 0
+    assert list_ctrl.focus_calls == 1
     assert event.skipped
 
 
@@ -252,7 +252,7 @@ def test_selection_activation_when_allowed() -> None:
 
 
 @pytest.mark.unit
-def test_selection_ignored_when_interaction_blocked() -> None:
+def test_selection_allowed_when_running() -> None:
     selected_indices: list[int] = []
 
     def activate(index: int) -> None:
@@ -269,5 +269,5 @@ def test_selection_ignored_when_interaction_blocked() -> None:
     event = _DummyDataViewEvent(0)
     view._on_select_history(event)
 
-    assert selected_indices == []
+    assert selected_indices == [0]
     assert event.skipped

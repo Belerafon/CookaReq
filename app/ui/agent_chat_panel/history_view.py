@@ -286,6 +286,8 @@ class HistoryView:
             menu.AppendSeparator()
         label = _("Delete chat") if len(rows) == 1 else _("Delete selected chats")
         delete_item = menu.Append(wx.ID_ANY, label)
+        if self._is_running():
+            menu.Enable(delete_item.GetId(), False)
 
         def on_delete(event: wx.CommandEvent) -> None:
             event.Skip()
@@ -304,8 +306,6 @@ class HistoryView:
 
     # ------------------------------------------------------------------
     def _select_all_rows(self) -> None:
-        if self._is_running():
-            return
         try:
             count = self._list.GetItemCount()
         except Exception:
@@ -407,8 +407,6 @@ class HistoryView:
     def _prepare_for_interaction(
         self, *, safe: bool = False
     ) -> HistoryInteractionPreparation:
-        if self._is_running():
-            return HistoryInteractionPreparation(False, False)
         if safe:
             return HistoryInteractionPreparation(True, False)
         callback = self._prepare_interaction

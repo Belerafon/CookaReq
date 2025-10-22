@@ -1589,8 +1589,8 @@ msgstr "Unnamed tool"
 msgid "Updated at: {timestamp}"
 msgstr "Updated at: {timestamp}"
 
-msgid "Waiting for agent response…"
-msgstr "Waiting for agent response…"
+msgid "Working"
+msgstr "Working"
 
 msgid "Yesterday {time}"
 msgstr "Yesterday {time}"
@@ -2103,8 +2103,8 @@ msgstr "Type: {type}"
 msgid "Unable to start batch queue"
 msgstr "Unable to start batch queue"
 
-msgid "Waiting for agent… {time}"
-msgstr "Waiting for agent… {time}"
+msgid "Working {time}"
+msgstr "Working {time}"
 
 msgid "Worksheet"
 msgstr "Worksheet"

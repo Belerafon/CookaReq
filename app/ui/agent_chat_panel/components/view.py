@@ -9,11 +9,7 @@ import wx
 
 from ....i18n import _
 from ..layout import AgentChatLayout, AgentChatLayoutBuilder
-from ..token_usage import (
-    TOKEN_UNAVAILABLE_LABEL,
-    TokenCountResult,
-    summarize_token_usage,
-)
+from ..token_usage import TokenCountResult
 
 
 class WaitStateCallbacks(Protocol):
@@ -136,38 +132,22 @@ class AgentChatView:
     def update_wait_status(
         self,
         elapsed: float,
-        tokens: TokenCountResult | None,
-        context_limit: int | None,
+        _tokens: TokenCountResult | None,
+        _context_limit: int | None,
     ) -> None:
-        """Show running timer alongside prompt token summary."""
+        """Show running timer while the agent produces a response."""
         minutes, seconds = divmod(int(elapsed), 60)
-        base = _("Waiting for agent… {time}").format(
-            time=f"{minutes:02d}:{seconds:02d}",
-        )
-        if tokens is None:
-            self.update_status_label(base)
-            return
-        details = summarize_token_usage(tokens, context_limit)
-        if details == TOKEN_UNAVAILABLE_LABEL and context_limit is None:
-            self.update_status_label(base)
-            return
-        combined = _("{base} — {details}").format(base=base, details=details)
-        self.update_status_label(combined)
+        base = _("Working {time}").format(time=f"{minutes:02d}:{seconds:02d}")
+        self.update_status_label(base)
 
     # ------------------------------------------------------------------
     def _build_ready_status(
         self,
-        tokens: TokenCountResult | None,
-        context_limit: int | None,
+        _tokens: TokenCountResult | None,
+        _context_limit: int | None,
     ) -> str:
         """Return label for the ready state."""
-        base = _("Ready")
-        if tokens is None:
-            return base
-        details = summarize_token_usage(tokens, context_limit)
-        if details == TOKEN_UNAVAILABLE_LABEL and context_limit is None:
-            return base
-        return _("{base} — {details}").format(base=base, details=details)
+        return _("Ready")
 
     # ------------------------------------------------------------------
     def _set_primary_action_bitmaps(
@@ -240,14 +220,8 @@ class AgentChatView:
     # ------------------------------------------------------------------
     def _build_running_status(
         self,
-        tokens: TokenCountResult | None,
-        context_limit: int | None,
+        _tokens: TokenCountResult | None,
+        _context_limit: int | None,
     ) -> str:
         """Return label for the initial running state."""
-        if tokens is None:
-            return _("Waiting for agent… {time}").format(time="00:00")
-        details = summarize_token_usage(tokens, context_limit)
-        if details == TOKEN_UNAVAILABLE_LABEL and context_limit is None:
-            return _("Waiting for agent… {time}").format(time="00:00")
-        base = _("Waiting for agent… {time}").format(time="00:00")
-        return _("{base} — {details}").format(base=base, details=details)
+        return _("Working {time}").format(time="00:00")

@@ -1491,7 +1491,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._render_transcript()
 
     def _update_status(self, elapsed: float) -> None:
-        """Show formatted timer and prompt size."""
+        """Show compact progress timer while awaiting a response."""
         if self._layout is None:
             return
         self._view.update_wait_status(
@@ -2262,7 +2262,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             prompt=prompt_text,
             response="",
             tokens=0,
-            display_response=_("Waiting for agent response…"),
+            display_response=_("Working"),
             raw_result=None,
             token_info=TokenCountResult.exact(0),
             prompt_at=prompt_at,

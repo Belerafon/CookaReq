@@ -355,66 +355,70 @@ class AgentChatLayoutBuilder:
         confirm_choice_index = {
             pref: idx for idx, (pref, _label) in enumerate(confirm_entries)
         }
-        confirm_label = wx.StaticText(
-            bottom_inner, label=_("Requirement confirmations")
-        )
+        confirm_label = wx.StaticText(bottom_inner, label=_("Confirmations"))
         confirm_row = wx.BoxSizer(wx.HORIZONTAL)
         confirm_row.Add(
             confirm_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, dip(panel, 4)
         )
         confirm_row.Add(confirm_choice, 0, wx.ALIGN_CENTER_VERTICAL)
 
-        controls_row = wx.WrapSizer(wx.HORIZONTAL)
-        controls_row.Add(
+        optional_wrap = wx.WrapSizer(wx.HORIZONTAL)
+        optional_wrap.Add(
             status_row,
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
             spacing,
         )
-        controls_row.AddStretchSpacer()
-        controls_row.Add(
+        optional_wrap.Add(
             confirm_row,
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
             spacing,
         )
-        controls_row.Add(
+        optional_wrap.Add(
             run_batch_btn,
             0,
             wx.ALIGN_TOP | wx.RIGHT,
             spacing,
         )
-        controls_row.Add(
+        optional_wrap.Add(
             stop_batch_btn,
             0,
             wx.ALIGN_TOP | wx.RIGHT,
             spacing,
         )
-        controls_row.Add(
+        optional_wrap.Add(
             attachment_btn,
             0,
             wx.ALIGN_TOP | wx.RIGHT,
             spacing,
         )
-        controls_row.Add(
+        optional_wrap.Add(
             attachment_summary,
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
             spacing,
         )
-        controls_row.Add(
+
+        primary_controls = wx.BoxSizer(wx.HORIZONTAL)
+        primary_controls.Add(
             clear_btn,
             0,
             wx.ALIGN_TOP | wx.RIGHT,
             spacing,
         )
-        controls_row.Add(
+        primary_controls.Add(
             settings_btn,
             0,
             wx.ALIGN_TOP | wx.RIGHT,
             spacing,
         )
-        controls_row.Add(primary_btn, 0, wx.ALIGN_TOP)
+        primary_controls.Add(primary_btn, 0, wx.ALIGN_TOP)
+
+        controls_row = wx.BoxSizer(wx.HORIZONTAL)
+        controls_row.Add(optional_wrap, 1, wx.ALIGN_TOP | wx.EXPAND)
+        controls_row.AddSpacer(spacing)
+        controls_row.Add(primary_controls, 0, wx.ALIGN_TOP)
         if icon_buttons_to_match:
             self._harmonize_icon_button_sizes(primary_btn, icon_buttons_to_match)
 
@@ -477,7 +481,7 @@ class AgentChatLayoutBuilder:
             clear_button=clear_btn,
             run_batch_button=run_batch_btn,
             stop_batch_button=stop_batch_btn,
-            controls_wrap=controls_row,
+            controls_wrap=optional_wrap,
             input_control=input_ctrl,
             primary_action_button=primary_btn,
             primary_action_idle_label=primary_idle_visual.label,

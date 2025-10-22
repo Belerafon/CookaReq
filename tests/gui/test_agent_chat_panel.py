@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from app.confirm import ConfirmDecision, reset_requirement_update_preference, set_confirm, set_requirement_update_confirm
 from app.llm.spec import SYSTEM_PROMPT
 from app.llm.tokenizer import TokenCountResult
-from app.ui.agent_chat_panel.token_usage import summarize_token_usage, format_token_quantity
+from app.ui.agent_chat_panel.token_usage import format_token_quantity
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.agent_chat_panel.panel import AttachmentValidationError, MAX_ATTACHMENT_BYTES
 from app.ui.agent_chat_panel.components.segments import (
@@ -3444,14 +3444,7 @@ def test_agent_chat_panel_ready_status_reflects_tokens(tmp_path, wx_app):
         panel._set_wait_state(False, final_tokens)
         flush_wx_events(wx)
 
-        limit = panel._context_token_limit()
-        expected_details = summarize_token_usage(final_tokens, limit)
-        expected_label = _("{base} — {details}").format(
-            base=_("Ready"),
-            details=expected_details,
-        )
-
-        assert panel.status_label.GetLabel() == expected_label
+        assert panel.status_label.GetLabel() == _("Ready")
     finally:
         panel._set_wait_state(False)
         destroy_panel(frame, panel)
@@ -4219,12 +4212,9 @@ def test_wait_status_reports_full_prompt_tokens(tmp_path, wx_app, monkeypatch):
         assert total_tokens.model == model_name
 
 
-        details = summarize_token_usage(total_tokens, panel._context_token_limit())
-        expected_label = _("{base} — {details}").format(
-            base=_("Waiting for agent… {time}").format(time="00:00"),
-            details=details,
+        assert panel.status_label.GetLabel() == _("Working {time}").format(
+            time="00:00"
         )
-        assert panel.status_label.GetLabel() == expected_label
     finally:
         if panel._session.is_running:
             panel._set_wait_state(False, TokenCountResult.exact(0, model=model_name))

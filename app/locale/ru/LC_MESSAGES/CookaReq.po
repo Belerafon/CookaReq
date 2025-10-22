@@ -1606,8 +1606,8 @@ msgstr "Инструмент без названия"
 msgid "Updated at: {timestamp}"
 msgstr "Обновлено: {timestamp}"
 
-msgid "Waiting for agent response…"
-msgstr "Ожидание ответа агента…"
+msgid "Working"
+msgstr "Работа"
 
 msgid "Yesterday {time}"
 msgstr "Вчера {time}"
@@ -2119,8 +2119,8 @@ msgstr "Тип: {type}"
 msgid "Unable to start batch queue"
 msgstr "Не удалось запустить очередь пакета"
 
-msgid "Waiting for agent… {time}"
-msgstr "Ожидание агента… {time}"
+msgid "Working {time}"
+msgstr "Работа {time}"
 
 msgid "Worksheet"
 msgstr "Лист"

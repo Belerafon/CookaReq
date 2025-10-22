@@ -1613,8 +1613,8 @@ msgstr "Skip for this chat"
 msgid "Never ask"
 msgstr "Never ask"
 
-msgid "Requirement confirmations"
-msgstr "Requirement confirmations"
+msgid "Confirmations"
+msgstr "Confirmations"
 
 msgid "Set status for selected"
 msgstr "Set status for selected"

@@ -1630,8 +1630,8 @@ msgstr "Не запрашивать для этого чата"
 msgid "Never ask"
 msgstr "Не запрашивать никогда"
 
-msgid "Requirement confirmations"
-msgstr "Подтверждения требований"
+msgid "Confirmations"
+msgstr "Подтверждения"
 
 msgid "Set status for selected"
 msgstr "Изменить статус выделенных"

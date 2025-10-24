@@ -14,7 +14,7 @@ from wx.lib.scrolledpanel import ScrolledPanel
 from ...i18n import _
 from ..helpers import create_copy_button, dip, inherit_background
 from ..splitter_utils import refresh_splitter_highlight, style_splitter
-from ..widgets import SectionContainer
+from ..widgets import HeightLimitedDataViewListCtrl, SectionContainer
 from ..widgets.marquee_dataview import MarqueeDataViewListCtrl
 from .batch_ui import BatchControls
 from .confirm_preferences import RequirementConfirmPreference
@@ -314,7 +314,12 @@ class AgentChatLayoutBuilder:
         batch_progress = wx.Gauge(batch_panel, range=1, style=wx.GA_HORIZONTAL)
         batch_progress.SetValue(0)
         batch_progress.SetMinSize(wx.Size(-1, dip(panel, 12)))
-        batch_list = dv.DataViewListCtrl(batch_panel, style=dv.DV_ROW_LINES | dv.DV_VERT_RULES)
+        batch_list_height_limit = dip(panel, 220)
+        batch_list = HeightLimitedDataViewListCtrl(
+            batch_panel,
+            style=dv.DV_ROW_LINES | dv.DV_VERT_RULES,
+            height_limit=batch_list_height_limit,
+        )
         batch_list.SetMinSize(wx.Size(-1, dip(panel, 140)))
         batch_list.AppendTextColumn(_("RID"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 120))
         batch_list.AppendTextColumn(_("Title"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 200))

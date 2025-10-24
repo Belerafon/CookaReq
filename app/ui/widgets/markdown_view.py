@@ -11,6 +11,12 @@ import wx.html as html
 from ..text import normalize_for_display
 
 
+try:  # pragma: no cover - platform specific
+    WX_ASSERTION_ERROR = wx.PyAssertionError
+except AttributeError:  # pragma: no cover - fallback for older builds
+    WX_ASSERTION_ERROR = getattr(wx, "wxAssertionError", RuntimeError)
+
+
 def _colour_to_hex(colour: wx.Colour) -> str:
     return f"#{colour.Red():02x}{colour.Green():02x}{colour.Blue():02x}"
 
@@ -99,18 +105,23 @@ class MarkdownView(html.HtmlWindow):
         )
         self._theme = MarkdownTheme(foreground_colour, background_colour)
         self._markdown: str = ""
+        self._pending_markup: str | None = None
+        self._pending_render: bool = False
+        self._destroyed = False
         self.SetBackgroundColour(background_colour)
         self.SetForegroundColour(foreground_colour)
         self.SetBorders(0)
         self.Bind(wx.EVT_SIZE, self._on_size)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
 
     def SetMarkdown(self, markdown_text: str) -> None:
         """Update control contents with *markdown_text*."""
         self._markdown = markdown_text
-        html_markup = self._wrap_html(_render_markdown(markdown_text))
-        html_markup = normalize_for_display(html_markup)
-        self.SetPage(html_markup)
-        self._refresh_best_size()
+        markup = self._wrap_html(_render_markdown(markdown_text))
+        self._pending_markup = normalize_for_display(markup)
+        if self._try_render_pending_markup():
+            return
+        self._request_pending_render()
 
     def DoSetFont(self, font: wx.Font | None) -> bool:  # noqa: N802 - wx naming convention
         changed = super().DoSetFont(font)
@@ -143,6 +154,73 @@ class MarkdownView(html.HtmlWindow):
         current = self.GetMinSize()
         if current.GetHeight() != height:
             self.SetMinSize(wx.Size(min_width, height))
+
+    def _request_pending_render(self) -> None:
+        if self._destroyed or self._pending_markup is None:
+            return
+        if self._pending_render:
+            return
+
+        self._pending_render = True
+
+        def run() -> None:
+            self._pending_render = False
+            if self._destroyed:
+                self._pending_markup = None
+                return
+            if not self._try_render_pending_markup():
+                if self._pending_markup is not None:
+                    self._request_pending_render()
+
+        wx.CallAfter(run)
+
+    def _try_render_pending_markup(self) -> bool:
+        markup = self._pending_markup
+        if markup is None or self._destroyed:
+            return False
+        if not self._is_window_ready():
+            return False
+        try:
+            self.SetPage(markup)
+        except (RuntimeError, WX_ASSERTION_ERROR, AttributeError):
+            return False
+        self._pending_markup = None
+        self._refresh_best_size()
+        return True
+
+    def _is_window_ready(self) -> bool:
+        try:
+            if not self:
+                return False
+        except RuntimeError:
+            return False
+
+        handle_getter = getattr(self, "GetHandle", None)
+        if callable(handle_getter):
+            try:
+                handle = handle_getter()
+            except RuntimeError:
+                return False
+            if not handle:
+                return False
+
+        hwnd_getter = getattr(self, "GetHWND", None)
+        if callable(hwnd_getter):
+            try:
+                hwnd = hwnd_getter()
+            except RuntimeError:
+                return False
+            if not hwnd:
+                return False
+
+        return True
+
+    def _on_destroy(self, event: wx.WindowDestroyEvent) -> None:
+        if event.GetEventObject() is self:
+            self._destroyed = True
+            self._pending_markup = None
+            self._pending_render = False
+        event.Skip()
 
     def _wrap_html(self, body_html: str) -> str:
         foreground_hex = _colour_to_hex(self._theme.foreground)

@@ -1,6 +1,7 @@
 """Tests for list panel gui."""
 
 import importlib
+from collections.abc import Sequence
 
 import pytest
 
@@ -151,13 +152,16 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
 
     importlib.reload(list_panel)
     frame = wx.Frame(None)
-    called: dict[str, int] = {}
+    called: dict[str, object] = {}
 
     def on_clone(req_id: int) -> None:
         called["clone"] = req_id
 
     def on_delete(req_id: int) -> None:
         called["delete"] = req_id
+
+    def on_transfer(req_ids: Sequence[int]) -> None:
+        called["transfer"] = tuple(req_ids)
 
     from app.ui.requirement_model import RequirementModel
 
@@ -166,6 +170,7 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
         model=RequirementModel(),
         on_clone=on_clone,
         on_delete=on_delete,
+        on_transfer=on_transfer,
     )
     panel.set_columns(["revision"])
     reqs = [_req(1, "T", revision=1)]
@@ -173,22 +178,27 @@ def test_list_panel_context_menu_calls_handlers(monkeypatch, wx_app):
     monkeypatch.setattr(panel, "_prompt_value", lambda field: "2")
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
 
-    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 0)
+    menu, clone_item, delete_item, edit_item, transfer_item = panel._create_context_menu(0, 0)
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, clone_item.GetId())
     menu.ProcessEvent(evt)
     menu.Destroy()
 
-    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 0)
+    menu, clone_item, delete_item, edit_item, transfer_item = panel._create_context_menu(0, 0)
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, delete_item.GetId())
     menu.ProcessEvent(evt)
     menu.Destroy()
 
-    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 1)
+    menu, clone_item, delete_item, edit_item, transfer_item = panel._create_context_menu(0, 1)
+    evt = wx.CommandEvent(wx.EVT_MENU.typeId, transfer_item.GetId())
+    menu.ProcessEvent(evt)
+    menu.Destroy()
+
+    menu, clone_item, delete_item, edit_item, transfer_item = panel._create_context_menu(0, 1)
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, edit_item.GetId())
     menu.ProcessEvent(evt)
     menu.Destroy()
 
-    assert called == {"clone": 1, "delete": 1}
+    assert called == {"clone": 1, "delete": 1, "transfer": (1,)}
     assert reqs[0].revision == 2
 
     frame.Destroy()
@@ -367,7 +377,7 @@ def test_list_panel_delete_many_uses_batch_handler(wx_app):
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
     panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
 
-    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 0)
+    menu, clone_item, delete_item, edit_item, _transfer_item = panel._create_context_menu(0, 0)
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, delete_item.GetId())
     menu.ProcessEvent(evt)
     menu.Destroy()
@@ -399,7 +409,7 @@ def test_list_panel_delete_many_falls_back_to_single_handler(wx_app):
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
     panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
 
-    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 0)
+    menu, clone_item, delete_item, edit_item, _transfer_item = panel._create_context_menu(0, 0)
     evt = wx.CommandEvent(wx.EVT_MENU.typeId, delete_item.GetId())
     menu.ProcessEvent(evt)
     menu.Destroy()
@@ -426,7 +436,7 @@ def test_list_panel_bulk_status_change(wx_app):
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
     panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
 
-    menu, _, delete_item, edit_item = panel._create_context_menu(0, 0)
+    menu, _, delete_item, edit_item, _transfer_item = panel._create_context_menu(0, 0)
     assert delete_item is not None
     assert edit_item is None
     status_menu_item = next(
@@ -502,7 +512,7 @@ def test_list_panel_bulk_labels_change(monkeypatch, wx_app):
 
     monkeypatch.setattr(list_panel, "LabelSelectionDialog", DummyDialog)
 
-    menu, _, delete_item, edit_item = panel._create_context_menu(0, 0)
+    menu, _, delete_item, edit_item, _transfer_item = panel._create_context_menu(0, 0)
     assert delete_item is not None
     assert edit_item is None
     labels_item = next(
@@ -547,7 +557,7 @@ def test_list_panel_single_selection_status_menu(wx_app):
     ])
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
 
-    menu, _, delete_item, edit_item = panel._create_context_menu(0, 0)
+    menu, _, delete_item, edit_item, _transfer_item = panel._create_context_menu(0, 0)
     assert delete_item is not None
     assert edit_item is None
 
@@ -604,7 +614,7 @@ def test_context_menu_hides_single_item_actions(wx_app):
     panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
     panel.list.SetItemState(1, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
 
-    menu, clone_item, delete_item, edit_item = panel._create_context_menu(0, 0)
+    menu, clone_item, delete_item, edit_item, _transfer_item = panel._create_context_menu(0, 0)
     labels = [item.GetItemLabelText() for item in menu.GetMenuItems()]
     assert "Clone" not in labels
     assert "Derive" not in labels

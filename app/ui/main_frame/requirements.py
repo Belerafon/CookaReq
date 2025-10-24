@@ -9,6 +9,8 @@ from collections.abc import Sequence
 import wx
 
 from ...services.requirements import (
+    DocumentNotFoundError,
+    RequirementIDCollisionError,
     RequirementNotFoundError,
     ValidationError,
     rid_for,
@@ -16,6 +18,10 @@ from ...services.requirements import (
 from ...core.model import Link, Requirement, requirement_fingerprint
 from ...i18n import _
 from ...log import logger
+from ..transfer_dialog import (
+    RequirementTransferDialog,
+    TransferMode,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .frame import MainFrame
@@ -262,6 +268,161 @@ class MainFrameRequirementsMixin:
     def on_delete_requirement(self: MainFrame, req_id: int) -> None:
         """Delete requirement ``req_id`` and refresh views."""
         self.on_delete_requirements([req_id])
+
+    def on_transfer_requirements(self: MainFrame, req_ids: Sequence[int]) -> None:
+        """Move or copy selected requirements to another document."""
+
+        if not req_ids:
+            return
+        if not (self.docs_controller and self.current_doc_prefix):
+            return
+
+        unique_ids: list[int] = []
+        seen: set[int] = set()
+        for req_id in req_ids:
+            try:
+                numeric = int(req_id)
+            except (TypeError, ValueError):
+                continue
+            if numeric in seen:
+                continue
+            seen.add(numeric)
+            unique_ids.append(numeric)
+        if not unique_ids:
+            return
+
+        requirements: list[Requirement] = []
+        for req_id in unique_ids:
+            requirement = self.model.get_by_id(req_id)
+            if requirement is not None:
+                requirements.append(requirement)
+        if not requirements:
+            return
+
+        documents = self.docs_controller.documents
+        if not documents:
+            documents = self.docs_controller.load_documents()
+        dialog = RequirementTransferDialog(
+            self,
+            documents=documents,
+            current_prefix=self.current_doc_prefix,
+            selection_count=len(requirements),
+        )
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            plan = dialog.get_plan()
+        finally:
+            dialog.Destroy()
+
+        if plan is None:
+            return
+
+        target_prefix = plan.target_prefix.strip()
+        if not target_prefix:
+            wx.MessageBox(_("Select a target document."), _("Error"), wx.ICON_ERROR)
+            return
+        current_prefix = self.current_doc_prefix
+        if plan.mode is TransferMode.MOVE and target_prefix == current_prefix:
+            wx.MessageBox(
+                _("Select a different document when moving requirements."),
+                _("Error"),
+                wx.ICON_ERROR,
+            )
+            return
+
+        successes: list[Requirement] = []
+        errors: list[str] = []
+        doc = self.docs_controller.documents.get(current_prefix)
+        if doc is None:
+            doc = self.docs_controller.load_documents().get(current_prefix)
+        for requirement in requirements:
+            rid = getattr(requirement, "rid", "")
+            if not rid:
+                if doc is not None:
+                    rid = rid_for(doc, requirement.id)
+                else:
+                    rid = f"{current_prefix}{requirement.id}"
+            try:
+                if plan.mode is TransferMode.COPY:
+                    copied = self.docs_controller.copy_requirement_to(
+                        current_prefix,
+                        requirement,
+                        target_prefix=target_prefix,
+                        reset_revision=plan.reset_revision,
+                    )
+                    successes.append(copied)
+                    logger.info(
+                        "Copied requirement %s to %s as %s",
+                        rid,
+                        target_prefix,
+                        copied.rid,
+                    )
+                else:
+                    moved = self.docs_controller.move_requirement_to(
+                        current_prefix,
+                        requirement,
+                        target_prefix=target_prefix,
+                    )
+                    successes.append(moved)
+                    logger.info(
+                        "Moved requirement %s to %s as %s",
+                        rid,
+                        target_prefix,
+                        moved.rid,
+                    )
+            except (
+                DocumentNotFoundError,
+                RequirementIDCollisionError,
+                RequirementNotFoundError,
+                ValidationError,
+            ) as exc:
+                message = _("{rid}: {error}").format(rid=rid, error=str(exc))
+                errors.append(message)
+                logger.warning("Failed to transfer requirement %s: %s", rid, exc)
+
+        if errors:
+            unique_errors = list(dict.fromkeys(errors))
+            wx.MessageBox(
+                "\n".join(unique_errors),
+                _("Transfer failed"),
+                wx.ICON_WARNING,
+            )
+
+        if not successes:
+            return
+
+        selection_prefix = current_prefix
+        if plan.switch_to_target:
+            selection_prefix = target_prefix
+
+        focus_prefix: str | None = None
+        focus_id: int | None = None
+        if plan.mode is TransferMode.COPY and target_prefix == current_prefix:
+            focus_prefix = current_prefix
+            focus_id = successes[-1].id
+        elif plan.switch_to_target:
+            focus_prefix = target_prefix
+            focus_id = successes[-1].id
+
+        self._refresh_documents(select=selection_prefix, force_reload=True)
+
+        if focus_prefix and focus_id is not None:
+            self._selected_requirement_id = focus_id
+            wx.CallAfter(self.panel.focus_requirement, focus_id)
+        else:
+            self._selected_requirement_id = None
+
+        rid_list = ", ".join(req.rid for req in successes if getattr(req, "rid", ""))
+        action_label = _("Copied") if plan.mode is TransferMode.COPY else _("Moved")
+        message = _("{action} {count} requirement(s) to {prefix}.").format(
+            action=action_label,
+            count=len(successes),
+            prefix=target_prefix,
+        )
+        if rid_list:
+            message += "\n" + rid_list
+        wx.MessageBox(message, _("Transfer completed"))
 
     def _on_sort_changed(self: MainFrame, column: int, ascending: bool) -> None:
         if not self.remember_sort:

@@ -222,6 +222,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         model: RequirementModel | None = None,
         docs_controller: DocumentsController | None = None,
         on_clone: Callable[[int], None] | None = None,
+        on_transfer: Callable[[Sequence[int]], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
         on_delete_many: Callable[[Sequence[int]], None] | None = None,
         on_sort_changed: Callable[[int, bool], None] | None = None,
@@ -272,6 +273,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         ColumnSorterMixin.__init__(self, 1)
         self.columns: list[str] = []
         self._on_clone = on_clone
+        self._on_transfer = on_transfer
         self._on_delete = on_delete
         self._on_delete_many = on_delete_many
         self._on_sort_changed = on_sort_changed
@@ -304,6 +306,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self,
         *,
         on_clone: Callable[[int], None] | None = None,
+        on_transfer: Callable[[Sequence[int]], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
         on_delete_many: Callable[[Sequence[int]], None] | None = None,
         on_derive: Callable[[int], None] | None = None,
@@ -311,6 +314,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Set callbacks for context menu actions."""
         if on_clone is not None:
             self._on_clone = on_clone
+        if on_transfer is not None:
+            self._on_transfer = on_transfer
         if on_delete is not None:
             self._on_delete = on_delete
         if on_delete_many is not None:
@@ -885,7 +890,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _popup_context_menu(self, index: int, column: int | None) -> None:
         if self._context_menu_open:
             return
-        menu, _, _, _ = self._create_context_menu(index, column)
+        menu, _, _, _, _ = self._create_context_menu(index, column)
         if not menu.GetMenuItemCount():
             menu.Destroy()
             return
@@ -946,7 +951,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         single_selection = len(selected_indices) == 1
         selected_ids = self._indices_to_ids(selected_indices)
         req_id = selected_ids[0] if selected_ids else None
-        derive_item = clone_item = None
+        derive_item = clone_item = transfer_item = None
         if single_selection:
             derive_item = menu.Append(wx.ID_ANY, _("Derive"))
             clone_item = menu.Append(wx.ID_ANY, _("Clone"))
@@ -975,6 +980,13 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             )
         if clone_item and self._on_clone and req_id is not None:
             menu.Bind(wx.EVT_MENU, lambda _evt, i=req_id: self._on_clone(i), clone_item)
+        if self._on_transfer and selected_ids:
+            transfer_item = menu.Append(wx.ID_ANY, _("Move or copy…"))
+            menu.Bind(
+                wx.EVT_MENU,
+                lambda _evt, ids=tuple(selected_ids): self._on_transfer(ids),
+                transfer_item,
+            )
         if len(selected_ids) > 1:
             if self._on_delete_many:
                 menu.Bind(
@@ -1015,7 +1027,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 lambda _evt: self._select_all_requirements(),
                 id=select_all_item.GetId(),
             )
-        return menu, clone_item, delete_item, edit_item
+        return menu, clone_item, delete_item, edit_item, transfer_item
 
     def _build_status_menu(self, selected_ids: Sequence[int]) -> wx.Menu | None:
         if not selected_ids:

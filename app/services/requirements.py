@@ -170,6 +170,41 @@ class RequirementsService:
             docs=docs,
         )
 
+    def copy_requirement(
+        self,
+        rid: str,
+        *,
+        new_prefix: str,
+        overrides: Mapping[str, Any] | None = None,
+        reset_revision: bool = True,
+    ) -> Requirement:
+        """Duplicate requirement ``rid`` under ``new_prefix``."""
+
+        docs = self._ensure_documents()
+        original = doc_store.get_requirement(self.root, rid, docs=docs)
+        payload = original.to_mapping()
+
+        if reset_revision:
+            payload["revision"] = 1
+            payload["modified_at"] = ""
+            payload["approved_at"] = None
+
+        if overrides:
+            payload.update(overrides)
+
+        labels = payload.get("labels", [])
+        if isinstance(labels, Sequence):
+            promoted = self._promote_label_definitions(new_prefix, labels, docs)
+            if promoted:
+                docs = self._ensure_documents(refresh=True)
+
+        return doc_store.create_requirement(
+            self.root,
+            prefix=new_prefix,
+            data=payload,
+            docs=docs,
+        )
+
     def get_requirement(self, rid: str) -> Requirement:
         """Return requirement ``rid`` using cached documents when possible."""
         docs = self._ensure_documents()

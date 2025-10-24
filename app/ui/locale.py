@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..i18n import _
-from .enums import LABELS as EN_LABELS
+from .enums import LABEL_MSGIDS
 
 # Human-readable labels for requirement fields (msgids only)
 FIELD_LABEL_MSGIDS = {
@@ -40,6 +40,9 @@ def _build_field_labels() -> dict[str, str]:
 
 FIELD_LABELS = _build_field_labels()
 
+# Re-export enum label message identifiers for tests and legacy callers.
+EN_LABELS = LABEL_MSGIDS
+
 
 def field_label(name: str) -> str:
     """Return localized label for requirement field name."""
@@ -56,10 +59,20 @@ def field_label(name: str) -> str:
 
 def code_to_label(category: str, code: str) -> str:
     """Return localized label for given enum code."""
-    return EN_LABELS.get(category, {}).get(code, code)
+    msgid = EN_LABELS.get(category, {}).get(code)
+    if msgid is None:
+        return code
+    return _(msgid)
 
 
 def label_to_code(category: str, label: str) -> str:
     """Return internal code for given localized label."""
-    mapping = {lbl: code for code, lbl in EN_LABELS.get(category, {}).items()}
-    return mapping.get(label, label)
+    mapping = EN_LABELS.get(category, {})
+    if label in mapping:
+        # Already a valid code.
+        return label
+    for code, msgid in mapping.items():
+        localized = _(msgid)
+        if label == localized or label == msgid:
+            return code
+    return label

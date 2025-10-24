@@ -5,7 +5,6 @@ from __future__ import annotations
 from enum import Enum
 
 from ..core.model import Priority, RequirementType, Status, Verification
-from ..i18n import _
 
 
 def _enum_label(e: Enum) -> str:
@@ -13,9 +12,9 @@ def _enum_label(e: Enum) -> str:
     return e.name.replace("_", " ").lower().capitalize()
 
 
-def enum_labels(enum_cls: type[Enum]) -> dict[str, str]:
-    """Return mapping of enum values to localized labels."""
-    return {e.value: _(_enum_label(e)) for e in enum_cls}
+def enum_label_msgids(enum_cls: type[Enum]) -> dict[str, str]:
+    """Return mapping of enum values to their message identifiers."""
+    return {e.value: _enum_label(e) for e in enum_cls}
 
 
 # Mapping of requirement field names to their Enum classes
@@ -27,7 +26,7 @@ ENUMS: dict[str, type[Enum]] = {
 }
 
 
-# Pre-generated localized labels for each enumerated field
-LABELS: dict[str, dict[str, str]] = {
-    name: enum_labels(cls) for name, cls in ENUMS.items()
+# Pre-generated message identifiers for each enumerated field
+LABEL_MSGIDS: dict[str, dict[str, str]] = {
+    name: enum_label_msgids(cls) for name, cls in ENUMS.items()
 }

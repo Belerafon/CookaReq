@@ -60,7 +60,10 @@ so you know which modules are involved and which regressions to guard against.
   requirement clean-up. Thin wrappers (`add_label_definition()`,
   `update_label_definition()`, `remove_label_definition()`) power the MCP tools
   and GUI, ensuring that document metadata and requirement payloads stay in sync
-  when keys change or disappear.
+  when keys change or disappear. `copy_requirement()` duplicates a requirement
+  into another document, resetting the revision counter (unless explicitly
+  overridden) and promoting any missing label definitions in the destination so
+  the copy can be persisted without manual metadata curation.
 * **`UserDocumentsService`** — indexes external documentation for the agent.
   It enforces size limits, token budgets and serialises directory snapshots so
   that LLM prompts only include manageable chunks. Token counters read small
@@ -118,7 +121,10 @@ so you know which modules are involved and which regressions to guard against.
   `ApplicationContext.for_gui()` instance, then instantiates `MainFrame`.
 * **Panels and views**
   * `document_tree.py` and `list_panel.py` show documents and filtered lists of
-    requirements.
+    requirements. The list panel exposes context-menu actions for cloning,
+    deriving, deleting and now transferring requirements between documents via
+    a modal dialog that lets users choose between copy/move semantics and the
+    destination document.
   * `editor_panel.py` manages requirement editing and metadata updates.
 * `agent_chat_panel/` displays the running agent transcript, batching controls
   and confirmation toggles. Users can queue follow-up prompts while a run is

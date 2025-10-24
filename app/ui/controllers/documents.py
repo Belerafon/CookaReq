@@ -203,6 +203,49 @@ class DocumentsController:
         self.model.delete(req_id)
         return canonical
 
+    def copy_requirement_to(
+        self,
+        source_prefix: str,
+        requirement: Requirement,
+        *,
+        target_prefix: str,
+        overrides: Mapping[str, Any] | None = None,
+        reset_revision: bool = True,
+    ) -> Requirement:
+        """Copy ``requirement`` from ``source_prefix`` into ``target_prefix``."""
+
+        source_doc = self._get_document(source_prefix)
+        self._get_document(target_prefix)
+        rid = requirement.rid or rid_for(source_doc, requirement.id)
+        return self.service.copy_requirement(
+            rid,
+            new_prefix=target_prefix,
+            overrides=overrides,
+            reset_revision=reset_revision,
+        )
+
+    def move_requirement_to(
+        self,
+        source_prefix: str,
+        requirement: Requirement,
+        *,
+        target_prefix: str,
+        overrides: Mapping[str, Any] | None = None,
+    ) -> Requirement:
+        """Move ``requirement`` from ``source_prefix`` into ``target_prefix``."""
+
+        source_doc = self._get_document(source_prefix)
+        self._get_document(target_prefix)
+        rid = requirement.rid or rid_for(source_doc, requirement.id)
+        payload = requirement.to_mapping()
+        if overrides:
+            payload.update(overrides)
+        return self.service.move_requirement(
+            rid,
+            new_prefix=target_prefix,
+            payload=payload,
+        )
+
     def delete_document(self, prefix: str) -> bool:
         """Remove document ``prefix`` and its descendants."""
         removed = self.service.delete_document(prefix)

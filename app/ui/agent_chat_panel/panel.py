@@ -108,6 +108,19 @@ STATUS_HELP_TEXT = _(
 MAX_ATTACHMENT_BYTES = 1024 * 1024
 
 
+_REQUIREMENT_EDITING_TOOLS: frozenset[str] = frozenset(
+    {
+        "create_requirement",
+        "update_requirement_field",
+        "set_requirement_labels",
+        "set_requirement_attachments",
+        "set_requirement_links",
+        "delete_requirement",
+        "link_requirements",
+    }
+)
+
+
 class AttachmentValidationError(Exception):
     """Raised when a selected attachment fails validation."""
 
@@ -1723,6 +1736,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         should_render = False
         success = True
         error_text: str | None = None
+        total_tool_calls = 0
+        requirement_edit_count = 0
+        token_count_value: int | None = None
+        token_count_approximate = False
         try:
             (
                 conversation_text,
@@ -1758,6 +1775,27 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             else:
                 final_snapshots = ()
 
+            combined_snapshots: dict[str, ToolResultSnapshot] = {}
+
+            def _merge_snapshots(
+                source: Sequence[ToolResultSnapshot], prefix: str
+            ) -> None:
+                for index, snapshot in enumerate(source):
+                    key = snapshot.call_id.strip() if snapshot.call_id else ""
+                    if not key:
+                        key = f"{prefix}:{index}"
+                    combined_snapshots[key] = snapshot
+
+            _merge_snapshots(streamed_snapshots, "stream")
+            _merge_snapshots(final_snapshots, "final")
+            merged_snapshots = tuple(combined_snapshots.values())
+            total_tool_calls = len(merged_snapshots)
+            requirement_edit_count = sum(
+                1
+                for snapshot in merged_snapshots
+                if snapshot.tool_name in _REQUIREMENT_EDITING_TOOLS
+            )
+
             tool_payloads = tool_snapshot_dicts(final_snapshots)
             tool_messages = self._build_tool_messages(final_snapshots)
 
@@ -1782,6 +1820,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             final_tokens = combine_token_counts(
                 [handle.prompt_tokens, response_tokens]
             )
+            token_count_value = final_tokens.tokens
+            token_count_approximate = final_tokens.approximate
             response_at = utc_now_iso()
             prompt_at = getattr(handle, "prompt_at", None) or response_at
             conversation = self._get_conversation_by_id(handle.conversation_id)
@@ -1847,6 +1887,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 conversation_id=handle.conversation_id,
                 success=success,
                 error=error_text,
+                tool_call_count=total_tool_calls,
+                requirement_edit_count=requirement_edit_count,
+                token_count=token_count_value,
+                tokens_approximate=token_count_approximate,
             )
 
         if should_render:

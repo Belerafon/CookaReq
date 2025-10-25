@@ -324,6 +324,17 @@ class AgentChatLayoutBuilder:
         batch_list.AppendTextColumn(_("RID"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 120))
         batch_list.AppendTextColumn(_("Title"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 200))
         batch_list.AppendTextColumn(_("Status"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 220))
+        batch_list.AppendTextColumn(
+            _("Tool calls"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 110)
+        )
+        batch_list.AppendTextColumn(
+            _("Requirement edits"),
+            mode=dv.DATAVIEW_CELL_INERT,
+            width=dip(panel, 160),
+        )
+        batch_list.AppendTextColumn(
+            _("Tokens"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 110)
+        )
         batch_header = wx.BoxSizer(wx.HORIZONTAL)
         batch_header.Add(batch_status_label, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, spacing)
         batch_header.Add(close_button, 0, wx.ALIGN_CENTER_VERTICAL)

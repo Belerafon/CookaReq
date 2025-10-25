@@ -42,6 +42,10 @@ class BatchItem:
     error: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
+    tool_call_count: int = 0
+    requirement_edit_count: int = 0
+    token_count: int | None = None
+    tokens_approximate: bool = False
 
 
 class CancelMode(Enum):
@@ -50,6 +54,9 @@ class CancelMode(Enum):
     NONE = auto()
     SKIP_CURRENT = auto()
     STOP_ALL = auto()
+
+
+_METRIC_UNSET = object()
 
 
 class AgentBatchRunner:
@@ -163,6 +170,10 @@ class AgentBatchRunner:
         conversation_id: str | None,
         success: bool,
         error: str | None,
+        tool_call_count: int | None = None,
+        requirement_edit_count: int | None = None,
+        token_count: object = _METRIC_UNSET,
+        tokens_approximate: bool | None = None,
     ) -> None:
         """Update queue state after controller finalises the prompt."""
         if not conversation_id:
@@ -177,6 +188,15 @@ class AgentBatchRunner:
         else:
             item.status = BatchItemStatus.FAILED
             item.error = error
+        if tool_call_count is not None:
+            item.tool_call_count = tool_call_count
+        if requirement_edit_count is not None:
+            item.requirement_edit_count = requirement_edit_count
+        if token_count is not _METRIC_UNSET:
+            if token_count is None or isinstance(token_count, int):
+                item.token_count = token_count
+        if tokens_approximate is not None:
+            item.tokens_approximate = tokens_approximate
         self._active_index = None
         self._on_state_changed()
         self._advance()

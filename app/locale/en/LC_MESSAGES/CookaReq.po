@@ -1666,6 +1666,15 @@ msgstr ""
 msgid "Batch queue"
 msgstr "Batch queue"
 
+msgid "Tool calls"
+msgstr "Tool calls"
+
+msgid "Requirement edits"
+msgstr "Requirement edits"
+
+msgid "Tokens"
+msgstr "Tokens"
+
 msgid "Batch ready: {total} requirements queued ({pending} pending)"
 msgstr "Batch ready: {total} requirements queued ({pending} pending)"
 

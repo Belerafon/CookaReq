@@ -1683,6 +1683,15 @@ msgstr ""
 msgid "Batch queue"
 msgstr "Очередь пакета"
 
+msgid "Tool calls"
+msgstr "Вызовы инструментов"
+
+msgid "Requirement edits"
+msgstr "Изменения требований"
+
+msgid "Tokens"
+msgstr "Токены"
+
 msgid "Batch ready: {total} requirements queued ({pending} pending)"
 msgstr "Пакет готов: в очереди {total} требований ({pending} в ожидании)"
 

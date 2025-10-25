@@ -140,12 +140,20 @@ class AgentBatchSection:
         conversation_id: str,
         success: bool,
         error: str | None,
+        tool_call_count: int | None = None,
+        requirement_edit_count: int | None = None,
+        token_count: int | None = None,
+        tokens_approximate: bool = False,
     ) -> None:
         """Record completion state for ``conversation_id`` and refresh controls."""
         self._runner.handle_completion(
             conversation_id=conversation_id,
             success=success,
             error=error,
+            tool_call_count=tool_call_count,
+            requirement_edit_count=requirement_edit_count,
+            token_count=token_count,
+            tokens_approximate=tokens_approximate,
         )
         self.update_ui()
 
@@ -260,7 +268,23 @@ class AgentBatchSection:
             if not title:
                 title = rid
             status_text = self._format_status(item)
-            control.AppendItem([rid, title, status_text])
+            if item.status in {
+                BatchItemStatus.COMPLETED,
+                BatchItemStatus.FAILED,
+                BatchItemStatus.CANCELLED,
+            }:
+                tool_calls_text = str(item.tool_call_count)
+                edits_text = str(item.requirement_edit_count)
+                tokens_text = self._format_token_usage(
+                    item.token_count, item.tokens_approximate
+                )
+            else:
+                tool_calls_text = ""
+                edits_text = ""
+                tokens_text = ""
+            control.AppendItem(
+                [rid, title, status_text, tool_calls_text, edits_text, tokens_text]
+            )
 
     # ------------------------------------------------------------------
     def _format_status(self, item: BatchItem) -> str:
@@ -276,6 +300,14 @@ class AgentBatchSection:
             snippet = textwrap.shorten(str(item.error), width=80, placeholder="…")
             label = f"{label} — {snippet}"
         return label
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _format_token_usage(token_count: int | None, approximate: bool) -> str:
+        if token_count is None:
+            return ""
+        value = f"{token_count}"
+        return f"~{value}" if approximate else value
 
     # ------------------------------------------------------------------
     def _handle_run_request(self, _event: wx.Event) -> None:

@@ -152,6 +152,7 @@ def _build_list_pagination_hint(page: RequirementPage, returned: int) -> str:
 def list_requirements(
     directory: str | Path,
     *,
+    prefix: str,
     page: int = 1,
     per_page: int = 50,
     status: str | None = None,
@@ -162,6 +163,7 @@ def list_requirements(
     normalized_fields, logged_fields = _prepare_field_selection(fields)
     params = {
         "directory": str(directory),
+        "prefix": prefix,
         "page": page,
         "per_page": per_page,
         "status": status,
@@ -170,7 +172,20 @@ def list_requirements(
     }
     service = get_requirements_service(directory)
     try:
+        document = service.get_document(prefix)
+    except DocumentNotFoundError:
+        return log_tool(
+            "list_requirements",
+            params,
+            mcp_error(
+                ErrorCode.NOT_FOUND,
+                "requirements document not found",
+                {"prefix": prefix},
+            ),
+        )
+    try:
         page_data = service.list_requirements(
+            prefix=prefix,
             page=page,
             per_page=per_page,
             status=status,
@@ -186,11 +201,9 @@ def list_requirements(
                 {"directory": str(directory)},
             ),
         )
-    return log_tool(
-        "list_requirements",
-        params,
-        _page_to_payload(page_data, normalized_fields),
-    )
+    payload = _page_to_payload(page_data, normalized_fields)
+    payload["document"] = {"prefix": document.prefix, "title": document.title}
+    return log_tool("list_requirements", params, payload)
 
 
 def get_requirement(

@@ -22,7 +22,8 @@ def test_list_requirements_returns_rid(tmp_path):
             "links": [],
         },
     )
-    result = list_requirements(tmp_path)
+    result = list_requirements(tmp_path, prefix="SYS")
+    assert result["document"] == {"prefix": "SYS", "title": "System"}
     assert result["items"][0]["rid"] == "SYS1"
 
 
@@ -49,7 +50,7 @@ def _create_demo_requirement(tmp_path):
 def test_list_requirements_field_filter(tmp_path):
     _create_demo_requirement(tmp_path)
 
-    result = list_requirements(tmp_path, fields=["title", "status"])
+    result = list_requirements(tmp_path, prefix="SYS", fields=["title", "status"])
 
     assert result["items"] == [
         {"rid": "SYS1", "title": "Telemetry", "status": "approved"}
@@ -96,7 +97,7 @@ def test_list_requirements_usage_hint_reports_remaining(tmp_path):
         },
     )
 
-    result = list_requirements(tmp_path, per_page=1)
+    result = list_requirements(tmp_path, prefix="SYS", per_page=1)
 
     assert result["usage_hint"].startswith(
         "Requested 1 requirements on page 1; received 1 of 2."
@@ -107,7 +108,7 @@ def test_list_requirements_usage_hint_reports_remaining(tmp_path):
 def test_list_requirements_invalid_fields_returns_full_payload(tmp_path):
     _create_demo_requirement(tmp_path)
 
-    result = list_requirements(tmp_path, fields="title")
+    result = list_requirements(tmp_path, prefix="SYS", fields="title")
 
     payload = result["items"][0]
     assert "id" in payload and "title" in payload and "status" in payload

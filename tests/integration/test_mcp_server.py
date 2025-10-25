@@ -157,7 +157,7 @@ def test_requirements_service_cache_reuse_and_reset(tmp_path: Path) -> None:
 
         doc = Document(prefix="SYS", title="System")
         save_document(tmp_path / "SYS", doc)
-        list_requirements(tmp_path)
+        list_requirements(tmp_path, prefix="SYS")
         assert get_requirements_service(tmp_path) is first
     finally:
         stop_server()

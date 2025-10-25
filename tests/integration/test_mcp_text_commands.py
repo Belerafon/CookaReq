@@ -43,12 +43,14 @@ def test_run_command_list_logs(tmp_path: Path, monkeypatch, mcp_server) -> None:
         make_openai_mock(
             {
                 "list requirements per page 1": [
-                    ("list_requirements", {"per_page": 1}),
+                    ("list_requirements", {"prefix": "SYS", "per_page": 1}),
                     {"message": "Done"},
                 ]
             },
         ),
     )
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
     client = LocalAgent(settings=settings, confirm=lambda _m: True)
     log_file = tmp_path / "cmd.jsonl"
     handler = JsonlHandler(str(log_file))
@@ -161,7 +163,9 @@ def test_run_command_fetches_requirement_with_prefixed_rid(
             )
             queue = prepared.get(user_prompt)
             if queue is None:
-                queue = prepared.setdefault(user_prompt, [("list_requirements", {})])
+                queue = prepared.setdefault(
+                    user_prompt, [("list_requirements", {"prefix": "SYS"})]
+                )
             result = queue.pop(0) if len(queue) > 1 else queue[0]
             if isinstance(result, tuple):
                 name, args = result
@@ -212,7 +216,7 @@ def test_run_command_fetches_requirement_with_prefixed_rid(
             "role": "system",
             "content": (
                 "[Workspace context]\n"
-                "Active requirements list: SYS: System req.\n"
+                "Active requirements document: SYS: System req.\n"
                 "Selected requirement RIDs: SYS11"
             ),
         }
@@ -243,12 +247,19 @@ def test_run_command_fetches_requirement_with_prefixed_rid(
 def test_mcp_endpoint_direct_call(tmp_path: Path, mcp_server) -> None:
     port = mcp_server
     mcp_app.state.base_path = str(tmp_path)
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
     conn = HTTPConnection("127.0.0.1", port, timeout=5)
     try:
         conn.request(
             "POST",
             "/mcp",
-            body=json.dumps({"name": "list_requirements", "arguments": {"per_page": 1}}),
+            body=json.dumps(
+                {
+                    "name": "list_requirements",
+                    "arguments": {"prefix": "SYS", "per_page": 1},
+                }
+            ),
             headers={"Content-Type": "application/json"},
         )
         resp = conn.getresponse()

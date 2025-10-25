@@ -358,18 +358,26 @@ def _resolve_requirement(
 def list_requirements(
     root: str | Path,
     *,
+    prefix: str,
     page: int = 1,
     per_page: int = 50,
     status: str | None = None,
     labels: Sequence[str] | None = None,
     docs: Mapping[str, Document] | None = None,
 ) -> RequirementPage:
-    """Return a page of requirements filtered by status and labels."""
+    """Return a page of requirements for a single requirements document."""
     root_path = Path(root)
     if docs is None and not root_path.is_dir():
         raise FileNotFoundError(root_path)
     docs_map = _ensure_documents(root_path, docs)
-    requirements = _iter_requirements(root_path, docs_map)
+    if not prefix:
+        raise DocumentNotFoundError(prefix)
+    try:
+        document = docs_map[prefix]
+    except KeyError as exc:
+        raise DocumentNotFoundError(prefix) from exc
+    selected = {prefix: document}
+    requirements = _iter_requirements(root_path, selected, all_docs=docs_map)
     requirements = filter_by_status(requirements, status)
     requirements = filter_by_labels(requirements, list(labels or []))
     return _paginate_requirements(requirements, page, per_page)

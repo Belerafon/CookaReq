@@ -22,10 +22,20 @@ from ..core.document_store import (
 from ..core.model import Requirement
 
 # Re-export selected helpers so callers do not need to depend on ``document_store``.
+@dataclass(frozen=True, slots=True)
+class DocumentInventoryEntry:
+    """Summary describing a requirements document and its contents."""
+
+    prefix: str
+    title: str
+    requirement_count: int
+
+
 __all__ = [
     "Document",
     "DocumentLabels",
     "DocumentNotFoundError",
+    "DocumentInventoryEntry",
     "LabelDef",
     "RequirementIDCollisionError",
     "RequirementNotFoundError",
@@ -713,21 +723,40 @@ class RequirementsService:
     def list_requirements(
         self,
         *,
+        prefix: str,
         page: int = 1,
         per_page: int = 50,
         status: str | None = None,
         labels: Sequence[str] | None = None,
     ) -> RequirementPage:
-        """Return a paginated view across requirements filtered by metadata."""
+        """Return a paginated view of one requirements document."""
         docs = self._ensure_documents()
         return doc_store.list_requirements(
             self.root,
+            prefix=prefix,
             page=page,
             per_page=per_page,
             status=status,
             labels=labels,
             docs=docs,
         )
+
+    def document_inventory(self) -> list[DocumentInventoryEntry]:
+        """Return summaries describing every requirements document."""
+
+        docs = self._ensure_documents()
+        inventory: list[DocumentInventoryEntry] = []
+        for prefix, document in sorted(docs.items()):
+            directory = self.root / document.prefix
+            count = len(doc_store.list_item_ids(directory, document))
+            inventory.append(
+                DocumentInventoryEntry(
+                    prefix=document.prefix,
+                    title=document.title,
+                    requirement_count=count,
+                )
+            )
+        return inventory
 
     def load_requirements(
         self, *, prefixes: Sequence[str] | None = None

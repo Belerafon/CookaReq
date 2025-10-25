@@ -88,7 +88,7 @@ def test_openrouter_handles_context_prompt(tmp_path: Path, real_llm_log_dir: Pat
             "role": "system",
             "content": (
                 "[Workspace context]\n"
-                "Active requirements list: SYS — System Requirements\n"
+                "Active requirements document: SYS — System Requirements\n"
                 "Selected requirement RIDs: SYS-1"
             ),
         },

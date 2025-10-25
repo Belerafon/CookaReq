@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from app.core.document_store import Document, save_document
 from app.log import logger
 from app.mcp.server import JsonlHandler
 from app.mcp.tools_read import list_requirements
@@ -20,8 +21,10 @@ def test_tool_logging(tmp_path: Path) -> None:
     logger.addHandler(handler)
     prev_level = logger.level
     logger.setLevel(logging.INFO)
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
     try:
-        result = list_requirements(tmp_path)
+        result = list_requirements(tmp_path, prefix="SYS")
     finally:
         logger.setLevel(prev_level)
         logger.removeHandler(handler)

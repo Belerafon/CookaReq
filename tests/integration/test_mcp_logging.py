@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
+from app.core.document_store import Document, save_document
 from app.mcp.server import app as mcp_app
 from app.mcp.server import start_server, stop_server
 from tests.mcp_utils import _request, _wait_until_ready
@@ -70,12 +71,19 @@ def test_tool_request_logs_share_request_id(tmp_path: Path):
     )
     try:
         _wait_until_ready(port)
+        doc = Document(prefix="SYS", title="System")
+        save_document(tmp_path / "SYS", doc)
         conn = HTTPConnection("127.0.0.1", port, timeout=5)
         try:
             conn.request(
                 "POST",
                 "/mcp",
-                body=json.dumps({"name": "list_requirements", "arguments": {"per_page": 1}}),
+                body=json.dumps(
+                    {
+                        "name": "list_requirements",
+                        "arguments": {"prefix": "SYS", "per_page": 1},
+                    }
+                ),
                 headers={"Content-Type": "application/json"},
             )
             resp = conn.getresponse()
@@ -98,4 +106,4 @@ def test_tool_request_logs_share_request_id(tmp_path: Path):
     assert all(item.get("request_id") == req_id for item in tool_entries)
     for item in tool_entries:
         assert item.get("outcome") == "ok"
-        assert item.get("arguments") == {"per_page": 1}
+        assert item.get("arguments") == {"prefix": "SYS", "per_page": 1}

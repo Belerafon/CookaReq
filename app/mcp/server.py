@@ -249,6 +249,7 @@ _TOOL_ARGUMENT_SCHEMAS: dict[str, dict[str, Any]] = {
     "list_requirements": {
         "type": "object",
         "properties": {
+            "prefix": {"type": "string"},
             "page": {"type": "integer", "minimum": 1, "default": 1},
             "per_page": {"type": "integer", "minimum": 1, "default": 50},
             "status": {"type": ["string", "null"]},
@@ -263,6 +264,7 @@ _TOOL_ARGUMENT_SCHEMAS: dict[str, dict[str, Any]] = {
                 "uniqueItems": True,
             },
         },
+        "required": ["prefix"],
         "additionalProperties": False,
     },
     "get_requirement": {
@@ -504,6 +506,7 @@ def register_tool(
 @register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["list_requirements"])
 def list_requirements(
     *,
+    prefix: str,
     page: int = 1,
     per_page: int = 50,
     status: str | None = None,
@@ -514,6 +517,7 @@ def list_requirements(
     directory = app.state.base_path
     return tools_read.list_requirements(
         directory,
+        prefix=prefix,
         page=page,
         per_page=per_page,
         status=status,

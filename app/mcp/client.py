@@ -16,6 +16,7 @@ from ..confirm import (
     confirm_requirement_update as global_confirm_requirement_update,
 )
 from ..i18n import _
+from ..services.requirements import RequirementsService
 from ..settings import MCPSettings
 from ..telemetry import log_debug_payload, log_event
 from .events import notify_tool_success
@@ -142,6 +143,27 @@ class MCPClient:
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to broadcast MCP tool result")
 
+    def _select_probe_prefix(self) -> str | None:
+        """Return a requirements document prefix suitable for readiness probes."""
+
+        base_path = self.settings.base_path
+        if not base_path:
+            return None
+        try:
+            service = RequirementsService(base_path)
+        except Exception:  # pragma: no cover - defensive
+            return None
+        try:
+            inventory = service.document_inventory()
+        except FileNotFoundError:
+            return None
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Failed to enumerate requirements documents")
+            return None
+        if not inventory:
+            return None
+        return inventory[0].prefix
+
     def _prepare_tool_arguments(
         self, name: str, arguments: Mapping[str, Any]
     ) -> Any:
@@ -267,15 +289,23 @@ class MCPClient:
             ``error`` contains the structured MCP error payload when
             ``ok`` is ``False`` and is ``None`` otherwise.
         """
+        start = time.monotonic()
         params = {
             "host": self.settings.host,
             "port": self.settings.port,
             "base_path": self.settings.base_path,
             "token": self.settings.token if self.settings.require_token else "",
         }
-        request_body = {"name": "list_requirements", "arguments": {"per_page": 1}}
+        prefix = self._select_probe_prefix()
+        if prefix is None:
+            log_event("TOOL_RESULT", {"ok": True, "skipped": "no documents"}, start_time=start)
+            self._update_ready_state(True, None)
+            return {"ok": True, "error": None}
+        request_body = {
+            "name": "list_requirements",
+            "arguments": {"prefix": prefix, "per_page": 1},
+        }
         headers = self._headers(json_body=True)
-        start = time.monotonic()
         # ``log_event`` performs its own sanitisation of sensitive fields.
         log_debug_payload(
             "MCP_REQUEST",
@@ -293,7 +323,7 @@ class MCPClient:
         )
         log_event(
             "TOOL_CALL",
-            {"tool": "list_requirements", "params": params},
+            {"tool": "list_requirements", "params": {**params, "prefix": prefix}},
         )
         try:
             resp = self._request_sync("POST", "/mcp", headers=headers, json_body=request_body)
@@ -338,7 +368,16 @@ class MCPClient:
     # ------------------------------------------------------------------
     async def check_tools_async(self) -> dict[str, Any]:
         """Asynchronous counterpart to :meth:`check_tools`."""
-        request_body = {"name": "list_requirements", "arguments": {"per_page": 1}}
+        start = time.monotonic()
+        prefix = self._select_probe_prefix()
+        if prefix is None:
+            log_event("TOOL_RESULT", {"ok": True, "skipped": "no documents"}, start_time=start)
+            self._update_ready_state(True, None)
+            return {"ok": True, "error": None}
+        request_body = {
+            "name": "list_requirements",
+            "arguments": {"prefix": prefix, "per_page": 1},
+        }
         headers = self._headers(json_body=True)
         params = {
             "host": self.settings.host,
@@ -346,7 +385,6 @@ class MCPClient:
             "base_path": self.settings.base_path,
             "token": self.settings.token if self.settings.require_token else "",
         }
-        start = time.monotonic()
         log_debug_payload(
             "MCP_REQUEST",
             {
@@ -363,7 +401,7 @@ class MCPClient:
         )
         log_event(
             "TOOL_CALL",
-            {"tool": "list_requirements", "params": params},
+            {"tool": "list_requirements", "params": {**params, "prefix": prefix}},
         )
         try:
             resp = await self._request_async(

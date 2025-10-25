@@ -1312,7 +1312,7 @@ def test_agent_chat_panel_passes_context(tmp_path, wx_app):
             captured.append({"text": text, "context": context})
             return {"ok": True, "error": None, "result": "ok"}
 
-    context_payload = {"role": "system", "content": "Active requirements list: SYS"}
+    context_payload = {"role": "system", "content": "Active requirements document: SYS"}
 
     wx, frame, panel = create_panel(
         tmp_path,
@@ -1330,12 +1330,12 @@ def test_agent_chat_panel_passes_context(tmp_path, wx_app):
         first_call = captured[0]
         assert first_call["text"] == "context run"
         assert first_call["context"] == (
-            {"role": "system", "content": "Active requirements list: SYS"},
+            {"role": "system", "content": "Active requirements document: SYS"},
         )
         assert panel.history
         stored_entry = panel.history[0]
         assert stored_entry.context_messages == (
-            {"role": "system", "content": "Active requirements list: SYS"},
+            {"role": "system", "content": "Active requirements document: SYS"},
         )
     finally:
         destroy_panel(frame, panel)
@@ -1685,7 +1685,7 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
             "role": "system",
             "content": (
                 "[Workspace context]\n"
-                "Active requirements list: sys: System req.\n"
+                "Active requirements document: sys: System req.\n"
                 "Selected requirement RIDs: sys48, sys49, sys50"
             ),
         }
@@ -1739,7 +1739,7 @@ def test_agent_chat_panel_renders_context_collapsible(tmp_path, wx_app):
 
         value = text_controls[0].GetValue()
         assert "[Workspace context]" in value
-        assert "Active requirements list: sys: System req." in value
+        assert "Active requirements document: sys: System req." in value
         assert "Selected requirement RIDs: sys48, sys49, sys50" in value
     finally:
         destroy_panel(frame, panel)

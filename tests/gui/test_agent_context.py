@@ -62,7 +62,7 @@ def test_agent_context_includes_selected_requirements(tmp_path, wx_app):
         snapshot = messages[0]
         assert snapshot["role"] == "system"
         content = snapshot["content"]
-        assert "Active requirements list" in content
+        assert "Active requirements document" in content
         assert "Selected requirement RIDs:" in content
         assert "GUI selection #" not in content
         assert "(id=" not in content

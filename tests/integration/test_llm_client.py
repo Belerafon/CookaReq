@@ -405,7 +405,7 @@ def test_qwen_reasoning_tool_call_extraction(tmp_path: Path, monkeypatch) -> Non
                         "id": "call-1",
                         "function": {
                             "name": "list_requirements",
-                            "arguments": {"per_page": 5},
+                            "arguments": {"prefix": "SYS", "per_page": 5},
                         },
                     },
                 ]
@@ -433,7 +433,7 @@ def test_qwen_reasoning_tool_call_extraction(tmp_path: Path, monkeypatch) -> Non
     assert len(response.tool_calls) == 1
     call = response.tool_calls[0]
     assert call.name == "list_requirements"
-    assert call.arguments == {"per_page": 5}
+    assert call.arguments == {"prefix": "SYS", "per_page": 5}
     assert response.reasoning
     assert response.reasoning[0].text == "thinking"
 
@@ -1118,7 +1118,7 @@ def test_respond_preserves_context_for_update(tmp_path: Path, monkeypatch) -> No
             "role": "system",
             "content": (
                 "[Workspace context]\n"
-                "Active requirements list: SYS — System Requirements\n"
+                "Active requirements document: SYS — System Requirements\n"
                 "Selected requirement RIDs: SYS-1"
             ),
         },
@@ -1195,7 +1195,7 @@ def test_respond_preserves_context_for_delete(tmp_path: Path, monkeypatch) -> No
             "role": "system",
             "content": (
                 "[Workspace context]\n"
-                "Active requirements list: SYS — System Requirements\n"
+                "Active requirements document: SYS — System Requirements\n"
                 "Selected requirement RIDs: SYS-2, SYS-3"
             ),
         },
@@ -1244,7 +1244,7 @@ def test_check_llm_async_uses_thread(tmp_path: Path, monkeypatch) -> None:
 
 def test_parse_command_async(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
-    responses = {"anything": ("list_requirements", {"per_page": 2})}
+    responses = {"anything": ("list_requirements", {"prefix": "SYS", "per_page": 2})}
     monkeypatch.setattr("openai.OpenAI", make_openai_mock(responses))
     client = LLMClient(settings.llm)
     history = [{"role": "user", "content": "earlier"}]
@@ -1255,7 +1255,7 @@ def test_parse_command_async(tmp_path: Path, monkeypatch) -> None:
     assert len(response.tool_calls) == 1
     call = response.tool_calls[0]
     assert call.name == "list_requirements"
-    assert call.arguments == {"per_page": 2}
+    assert call.arguments == {"prefix": "SYS", "per_page": 2}
 
 
 def test_respond_accepts_tool_history(tmp_path: Path, monkeypatch) -> None:
@@ -1294,7 +1294,7 @@ def test_respond_accepts_tool_history(tmp_path: Path, monkeypatch) -> None:
                     "type": "function",
                     "function": {
                         "name": "list_requirements",
-                        "arguments": json.dumps({"per_page": 1}),
+                        "arguments": json.dumps({"prefix": "SYS", "per_page": 1}),
                     },
                 }
             ],
@@ -1323,7 +1323,7 @@ def test_respond_accepts_tool_history(tmp_path: Path, monkeypatch) -> None:
                     "type": "function",
                     "function": {
                         "name": "list_requirements",
-                        "arguments": json.dumps({"per_page": 1}),
+                        "arguments": json.dumps({"prefix": "SYS", "per_page": 1}),
                     },
                 }
             ],

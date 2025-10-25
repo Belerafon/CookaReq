@@ -344,11 +344,13 @@ class MainFrameAgentMixin:
         summary = self._current_document_summary()
         prefix = getattr(self, "current_doc_prefix", None)
         if summary:
-            lines.append(f"Active requirements list: {summary}")
+            lines.append(f"Active requirements document: {summary}")
         elif prefix:
-            lines.append(f"Active requirements list: {prefix}")
+            lines.append(f"Active requirements document: {prefix}")
         else:
-            lines.append("Active requirements list: (none)")
+            lines.append("Active requirements document: (none)")
+
+        lines.extend(self._document_inventory_lines())
 
         selected_ids = self._selected_requirement_ids_for_agent()
         model = getattr(self, "model", None)
@@ -440,6 +442,26 @@ class MainFrameAgentMixin:
             lines.extend(documents_context)
 
         return [{"role": "system", "content": "\n".join(lines)}]
+
+    def _document_inventory_lines(self: MainFrame) -> list[str]:
+        controller = getattr(self, "docs_controller", None)
+        service = getattr(controller, "service", None) if controller else None
+        if service is None:
+            return ["Requirements documents: (unavailable)"]
+        try:
+            inventory = service.document_inventory()
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning("Failed to enumerate requirements documents: %s", exc)
+            return ["Requirements documents: (unavailable)"]
+        if not inventory:
+            return ["Requirements documents: (none)"]
+        lines = ["Requirements documents:"]
+        for entry in inventory:
+            count = entry.requirement_count
+            noun = "requirement" if count == 1 else "requirements"
+            title = entry.title or entry.prefix
+            lines.append(f"  - {entry.prefix} — {title} ({count} {noun})")
+        return lines
 
     def _compose_user_documents_context(self: MainFrame) -> list[str]:
         panel = getattr(self, "agent_panel", None)

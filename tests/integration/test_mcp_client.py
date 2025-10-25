@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from app.core.document_store import Document, save_document
 from app.log import logger
 from app.mcp.client import MCPClient, MCPNotReadyError
 from app.mcp.server import JsonlHandler, start_server, stop_server
@@ -40,6 +41,8 @@ def test_check_tools_success(tmp_path: Path) -> None:
             fmt="toml",
         )
         client = MCPClient(settings.mcp, confirm=lambda _m: True)
+        doc = Document(prefix="SYS", title="System")
+        save_document(tmp_path / "SYS", doc)
         log_file = tmp_path / "log.jsonl"
         handler = JsonlHandler(str(log_file))
         logger.addHandler(handler)
@@ -55,7 +58,9 @@ def test_check_tools_success(tmp_path: Path) -> None:
         entries = [json.loads(line) for line in lines]
         call = next(e for e in entries if e.get("event") == "TOOL_CALL")
         res = next(e for e in entries if e.get("event") == "TOOL_RESULT")
-        assert call["payload"]["params"]["token"] == "[REDACTED]"
+        params = call["payload"]["params"]
+        assert params["token"] == "[REDACTED]"
+        assert params["prefix"] == "SYS"
         assert res["payload"]["ok"] is True
         assert "duration_ms" in res
     finally:
@@ -82,6 +87,8 @@ def test_ensure_ready_success(tmp_path: Path) -> None:
             fmt="toml",
         )
         client = MCPClient(settings.mcp, confirm=lambda _m: True)
+        doc = Document(prefix="SYS", title="System")
+        save_document(tmp_path / "SYS", doc)
         client.ensure_ready()
         assert client._last_ready_check is not None
         first_check = client._last_ready_check
@@ -132,6 +139,8 @@ def test_ensure_ready_respects_authorization(tmp_path: Path) -> None:
             require_token=True,
         )
         client = MCPClient(settings.mcp, confirm=lambda _m: True)
+        doc = Document(prefix="SYS", title="System")
+        save_document(tmp_path / "SYS", doc)
         with pytest.raises(MCPNotReadyError) as excinfo:
             client.ensure_ready(force=True)
         assert excinfo.value.error_payload["code"] == "UNAUTHORIZED"
@@ -159,6 +168,8 @@ def test_check_tools_unauthorized(tmp_path: Path) -> None:
             tmp_path=tmp_path,
         )
         client = MCPClient(settings.mcp, confirm=lambda _m: True)
+        doc = Document(prefix="SYS", title="System")
+        save_document(tmp_path / "SYS", doc)
         result = client.check_tools()
         assert result["ok"] is False
         assert result["error"]["code"] == "UNAUTHORIZED"

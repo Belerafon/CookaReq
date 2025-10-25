@@ -39,7 +39,7 @@ def make_openai_mock(responses: dict[str, object]):
     mirrors the minimal subset of OpenAI fields consumed by ``LLMClient``. The
     mock can be reused across tests:
 
-    >>> mapping = {"list": [("list_requirements", {"per_page": 1}), {"message": "done"}]}
+    >>> mapping = {"list": [("list_requirements", {"prefix": "SYS", "per_page": 1}), {"message": "done"}]}
     >>> monkeypatch.setattr("openai.OpenAI", make_openai_mock(mapping))
 
     This makes it possible to emulate deterministic LLM replies without
@@ -80,7 +80,9 @@ def make_openai_mock(responses: dict[str, object]):
             )
             queue = prepared.get(user_msg)
             if queue is None:
-                queue = prepared.setdefault(user_msg, [("list_requirements", {})])
+                queue = prepared.setdefault(
+                    user_msg, [("list_requirements", {"prefix": "SYS"})]
+                )
             result = queue.pop(0) if len(queue) > 1 else queue[0]
             if isinstance(result, Exception):
                 raise result

@@ -310,7 +310,7 @@ def test_run_command_does_not_inject_validation_fallback_message():
         def respond(self, conversation):
             self.calls += 1
             raise _make_validation_error(
-                "Invalid arguments for list_requirements: per_page is required"
+                "Invalid arguments for list_requirements: prefix is required"
             )
 
     llm = EmptyValidationLLM()
@@ -328,7 +328,7 @@ def test_run_command_does_not_inject_validation_fallback_message():
     assert error["code"] == ErrorCode.VALIDATION_ERROR
     assert (
         error["message"]
-        == "Invalid arguments for list_requirements: per_page is required"
+        == "Invalid arguments for list_requirements: prefix is required"
     )
     details = error.get("details") or {}
     assert details.get("type") == "ToolValidationError"
@@ -515,7 +515,7 @@ def test_run_command_executes_tool_and_returns_final_message():
                         LLMToolCall(
                             id="call-0",
                             name="list_requirements",
-                            arguments={"per_page": 1},
+                            arguments={"prefix": "SYS", "per_page": 1},
                         ),
                     ),
                 )
@@ -545,7 +545,7 @@ def test_run_command_executes_tool_and_returns_final_message():
     assert first_tool["result"]["items"] == []
     assert first_tool["ok"] is True
     assert first_tool["tool_name"] == "list_requirements"
-    assert first_tool["tool_arguments"] == {"per_page": 1}
+    assert first_tool["tool_arguments"] == {"prefix": "SYS", "per_page": 1}
     assert first_tool["tool_call_id"] == "call-0"
     assert first_tool["call_id"] == "call-0"
     for tool_payload in result["tool_results"]:
@@ -553,14 +553,14 @@ def test_run_command_executes_tool_and_returns_final_message():
         assert "tool_arguments" in tool_payload
         assert "tool_call_id" in tool_payload
         assert "call_id" in tool_payload
-    assert mcp.calls == [("list_requirements", {"per_page": 1})]
+    assert mcp.calls == [("list_requirements", {"prefix": "SYS", "per_page": 1})]
     assert llm.last_conversation is not None
     assert llm.last_conversation[-1]["role"] == "tool"
     tool_message = json.loads(llm.last_conversation[-1]["content"])
     assert tool_message["tool_name"] == "list_requirements"
     assert tool_message["tool_call_id"] == "call-0"
     assert tool_message["call_id"] == "call-0"
-    assert tool_message["tool_arguments"] == {"per_page": 1}
+    assert tool_message["tool_arguments"] == {"prefix": "SYS", "per_page": 1}
     assert tool_message["ok"] is True
     assert tool_message["error"] is None
     assert tool_message["result"] == {"items": []}
@@ -1019,7 +1019,7 @@ def test_run_command_streams_tool_results_to_callback():
                         LLMToolCall(
                             id="call-0",
                             name="list_requirements",
-                            arguments={"per_page": 5},
+                            arguments={"prefix": "SYS", "per_page": 5},
                         ),
                         LLMToolCall(
                             id="call-1",

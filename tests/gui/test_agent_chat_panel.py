@@ -2664,6 +2664,94 @@ def test_message_bubble_respects_scrolled_viewport_width(wx_app):
         frame.Destroy()
 
 
+@pytest.mark.gui_smoke
+def test_agent_markdown_table_enables_horizontal_scroll(wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.widgets.chat_message import MessageBubble
+    from app.ui.widgets.markdown_view import MarkdownContent
+
+    frame = wx.Frame(None, size=wx.Size(720, 560))
+    table_header = "| Column A | Column B | Column C |"
+    table_rule = "|----------|----------|----------|"
+    wide_cell = "LONGVALUE" * 64
+    table_row = f"| {wide_cell} | {wide_cell} | {wide_cell} |"
+    markdown = "\n".join((table_header, table_rule, table_row))
+
+    bubble = MessageBubble(
+        frame,
+        role_label="Agent",
+        timestamp="",
+        text=markdown,
+        align="left",
+        allow_selection=True,
+        render_markdown=True,
+    )
+
+    sizer = wx.BoxSizer(wx.VERTICAL)
+    sizer.Add(bubble, 0, wx.EXPAND | wx.ALL, bubble.FromDIP(12))
+    frame.SetSizer(sizer)
+    frame.Layout()
+    frame.Show()
+    flush_wx_events(wx, count=12)
+
+    try:
+        assert isinstance(bubble._text, MarkdownContent)
+        scroller = bubble._text.GetScrollerWindow()
+        assert scroller is not None
+        client_width = scroller.GetClientSize().width
+        virtual_width = scroller.GetVirtualSize().width
+        assert virtual_width > client_width, (
+            "expected markdown scroller to provide horizontal overflow"
+        )
+        assert scroller.HasScrollbar(wx.HORIZONTAL)
+    finally:
+        frame.Destroy()
+
+
+@pytest.mark.gui_smoke
+def test_agent_markdown_compact_content_hides_horizontal_scroll(wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.widgets.chat_message import MessageBubble
+    from app.ui.widgets.markdown_view import MarkdownContent
+
+    frame = wx.Frame(None, size=wx.Size(720, 560))
+    markdown = "\n".join(
+        (
+            "| Key | Value |",
+            "|-----|-------|",
+            "| foo | bar   |",
+        )
+    )
+
+    bubble = MessageBubble(
+        frame,
+        role_label="Agent",
+        timestamp="",
+        text=markdown,
+        align="left",
+        allow_selection=True,
+        render_markdown=True,
+    )
+
+    sizer = wx.BoxSizer(wx.VERTICAL)
+    sizer.Add(bubble, 0, wx.EXPAND | wx.ALL, bubble.FromDIP(12))
+    frame.SetSizer(sizer)
+    frame.Layout()
+    frame.Show()
+    flush_wx_events(wx, count=8)
+
+    try:
+        assert isinstance(bubble._text, MarkdownContent)
+        scroller = bubble._text.GetScrollerWindow()
+        assert scroller is not None
+        client_width = scroller.GetClientSize().width
+        virtual_width = scroller.GetVirtualSize().width
+        assert virtual_width <= client_width + bubble.FromDIP(4)
+        assert not scroller.HasScrollbar(wx.HORIZONTAL)
+    finally:
+        frame.Destroy()
+
+
 def test_message_bubble_user_textctrl_enables_vertical_scroll(wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.widgets.chat_message import MessageBubble

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import markdown
@@ -101,17 +102,19 @@ class MarkdownView(html.HtmlWindow):
     ) -> None:
         super().__init__(
             parent,
-            style=html.HW_SCROLLBAR_NEVER,
+            style=html.HW_SCROLLBAR_AUTO,
         )
         self._theme = MarkdownTheme(foreground_colour, background_colour)
         self._markdown: str = ""
         self._pending_markup: str | None = None
         self._pending_render: bool = False
         self._destroyed = False
+        self._render_listeners: list[Callable[[], None]] = []
         self.SetBackgroundColour(background_colour)
         self.SetForegroundColour(foreground_colour)
         self.SetBorders(0)
-        self.Bind(wx.EVT_SIZE, self._on_size)
+        # Allow the control to manage its own scrollbars; manual size callbacks
+        # are not needed when horizontal overflow is enabled.
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
 
     def SetMarkdown(self, markdown_text: str) -> None:
@@ -186,7 +189,21 @@ class MarkdownView(html.HtmlWindow):
             return False
         self._pending_markup = None
         self._refresh_best_size()
+        self._notify_render_listeners()
         return True
+
+    def add_render_listener(self, listener: Callable[[], None]) -> None:
+        """Register *listener* to be notified after a render completes."""
+
+        if callable(listener) and listener not in self._render_listeners:
+            self._render_listeners.append(listener)
+
+    def _notify_render_listeners(self) -> None:
+        for listener in list(self._render_listeners):
+            try:
+                listener()
+            except Exception:  # pragma: no cover - defensive
+                continue
 
     def _is_window_ready(self) -> bool:
         try:
@@ -220,6 +237,7 @@ class MarkdownView(html.HtmlWindow):
             self._destroyed = True
             self._pending_markup = None
             self._pending_render = False
+            self._render_listeners.clear()
         event.Skip()
 
     def _wrap_html(self, body_html: str) -> str:
@@ -329,17 +347,34 @@ class MarkdownContent(wx.Panel):
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(background_colour)
-        self._view = MarkdownView(
+        scroller = wx.ScrolledWindow(
             self,
+            style=wx.HSCROLL | wx.BORDER_NONE,
+        )
+        scroller.SetBackgroundColour(background_colour)
+        scroller.SetForegroundColour(foreground_colour)
+        scroller.SetScrollRate(max(int(self.FromDIP(24)), 1), 0)
+        scroller.SetMinSize(wx.Size(self.FromDIP(160), -1))
+        self._scroller: wx.ScrolledWindow | None = scroller
+        self._destroyed = False
+
+        self._view = MarkdownView(
+            scroller,
             foreground_colour=foreground_colour,
             background_colour=background_colour,
         )
         self._view.SetMinSize(wx.Size(self.FromDIP(160), -1))
-        self._view.SetMarkdown(markdown)
+        self._view.SetPosition(wx.Point(0, 0))
+        self._view.add_render_listener(self._on_view_rendered)
 
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(self._view, 1, wx.EXPAND)
-        self.SetSizer(sizer)
+        scroller.Bind(wx.EVT_WINDOW_DESTROY, self._on_scroller_destroy)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_container_destroy)
+
+        outer = wx.BoxSizer(wx.VERTICAL)
+        outer.Add(scroller, 1, wx.EXPAND)
+        self.SetSizer(outer)
+
+        self._view.SetMarkdown(markdown)
 
     def DoSetFont(self, font: wx.Font | None) -> bool:  # noqa: N802 - wx naming convention
         changed = super().DoSetFont(font)
@@ -349,6 +384,7 @@ class MarkdownContent(wx.Panel):
                 self._view.SetFont(effective)
             else:
                 self._view.SetFont(wx.NullFont)
+            self._on_view_rendered()
         return changed
 
     def HasSelection(self) -> bool:  # noqa: N802 - wx naming convention
@@ -366,4 +402,47 @@ class MarkdownContent(wx.Panel):
 
     def GetPlainText(self) -> str:
         return self._view.GetPlainText()
+
+    def GetMarkdownView(self) -> MarkdownView:
+        """Expose the underlying :class:`MarkdownView` for tests and tooling."""
+
+        return self._view
+
+    def GetScrollerWindow(self) -> wx.ScrolledWindow | None:
+        """Return the scroller hosting the markdown view."""
+
+        return self._scroller
+
+    def _on_view_rendered(self) -> None:
+        if self._destroyed:
+            return
+        scroller = getattr(self, "_scroller", None)
+        if scroller is None:
+            return
+        try:
+            internal = self._view.GetInternalRepresentation()
+        except RuntimeError:
+            internal = None
+        width = max(int(self.FromDIP(160)), 0)
+        height = max(int(self.FromDIP(40)), 0)
+        if internal is not None:
+            width = max(width, int(internal.GetWidth()))
+            height = max(height, int(internal.GetHeight()))
+        try:
+            self._view.SetMinSize(wx.Size(self.FromDIP(160), height))
+            self._view.SetSize(wx.Size(width, height))
+        except RuntimeError:
+            return
+        try:
+            scroller.SetVirtualSize(wx.Size(width, height))
+            scroller.Scroll(0, 0)
+        except RuntimeError:
+            return
+
+    def _on_scroller_destroy(self, _event: wx.WindowDestroyEvent) -> None:
+        self._scroller = None
+
+    def _on_container_destroy(self, _event: wx.WindowDestroyEvent) -> None:
+        self._destroyed = True
+        self._scroller = None
 

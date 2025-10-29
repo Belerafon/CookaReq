@@ -142,6 +142,9 @@ def tool_bubble_palette(
 FooterFactory = Callable[[wx.Window], wx.Sizer | wx.Window | None]
 
 
+_BUBBLE_WIDTH_SHRINK_RATIO = 0.85
+
+
 class MessageBubble(wx.Panel):
     """Simple chat bubble with copy support and optional text selection."""
 
@@ -175,7 +178,7 @@ class MessageBubble(wx.Panel):
             hint_value = None
         if hint_value is not None and hint_value <= 0:
             hint_value = None
-        self._explicit_width_hint = hint_value
+        self._explicit_width_hint = None
         self._initial_width_hint = hint_value
 
         display_text = normalize_for_display(text)
@@ -755,9 +758,9 @@ class MessageBubble(wx.Panel):
         max_width = min(max_width, available_width)
         if hard_cap > 0:
             max_width = min(max_width, hard_cap)
-            margin_cap = hard_cap - self._bubble_margin
-            if margin_cap > 0:
-                max_width = min(max_width, margin_cap)
+        margin_cap = hard_cap - self._bubble_margin
+        if margin_cap > 0:
+            max_width = min(max_width, margin_cap)
 
         min_width_cap = self._min_bubble_width
         if hard_cap > 0:
@@ -769,16 +772,16 @@ class MessageBubble(wx.Panel):
         if max_width <= 0:
             return
 
+        explicit_hint = self._explicit_width_hint
         hint_floor = self._initial_width_hint
-        if hint_floor is not None and hint_floor > 0:
-            capped_hint = hint_floor
+        effective_floor = explicit_hint if explicit_hint is not None else hint_floor
+        capped_hint = None
+        if effective_floor is not None and effective_floor > 0:
+            capped_hint = effective_floor
             if hard_cap > 0:
                 capped_hint = min(capped_hint, hard_cap)
             if max_width < capped_hint:
                 max_width = capped_hint
-            target_floor = capped_hint
-        else:
-            target_floor = 0
 
         content_width = self._estimate_content_width()
         padded_content = content_width + 2 * self._content_padding
@@ -789,8 +792,25 @@ class MessageBubble(wx.Panel):
         target_from_chars = min_width_cap + int((max_width - min_width_cap) * ratio)
         target_width = max(min_width_cap, padded_content, target_from_chars)
         target_width = min(target_width, max_width)
-        if target_floor:
-            target_width = max(target_width, target_floor)
+
+        if capped_hint is not None:
+            shrink_enabled = explicit_hint is None
+            if shrink_enabled:
+                shrink_margin = max(int(self._bubble_margin), 0)
+                shrink_ratio_threshold = int(capped_hint * _BUBBLE_WIDTH_SHRINK_RATIO)
+                shrink_absolute_threshold = capped_hint - shrink_margin
+                shrink_threshold = max(
+                    min_width_cap,
+                    max(shrink_ratio_threshold, shrink_absolute_threshold),
+                )
+                if target_width >= shrink_threshold:
+                    target_width = max(target_width, capped_hint)
+                    max_width = max(max_width, target_width)
+                else:
+                    max_width = max(target_width, min_width_cap)
+            else:
+                target_width = max(target_width, capped_hint)
+                max_width = max(max_width, target_width)
 
         cached = self._cached_width_constraints
         if cached is not None and cached == (target_width, max_width):

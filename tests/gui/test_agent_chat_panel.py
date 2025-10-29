@@ -2961,6 +2961,67 @@ def test_message_bubble_user_textctrl_hides_vertical_scroll_for_short_text(wx_ap
         frame.Destroy()
 
 
+@pytest.mark.xfail(
+    reason=(
+        "Agent markdown bubble stretches vertically after very long responses, "
+        "leaving a large blank gap before the next user message"
+    ),
+    strict=True,
+)
+def test_agent_markdown_bubble_keeps_height_reasonable(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+
+    class QuietAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            return {"ok": True, "error": None, "result": text}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, QuietAgent())
+
+    try:
+        long_response = "\n".join(
+            f"agent response line {index}: " + ("long text " * 6).strip()
+            for index in range(80)
+        )
+        panel._append_history(
+            "long prompt",
+            long_response,
+            long_response,
+            raw_result=None,
+            token_info=None,
+        )
+        panel._render_transcript()
+        flush_wx_events(wx, count=20)
+
+        transcript_panel = panel.transcript_panel
+        bubbles = collect_message_bubbles(transcript_panel)
+        agent_bubbles = [
+            bubble
+            for bubble in bubbles
+            if "Agent" in bubble_header_text(bubble)
+            and "agent response" in bubble_body_text(bubble)
+        ]
+        assert agent_bubbles, "expected agent response bubble to be rendered"
+
+        agent_bubble = agent_bubbles[0]
+        height = agent_bubble.GetSize().height
+        if height <= 0:
+            height = agent_bubble.GetBestSize().height
+
+        max_reasonable = agent_bubble.FromDIP(800)
+        assert height <= max_reasonable
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_message_bubble_destroy_ignores_pending_width_update(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.widgets.chat_message import MessageBubble

@@ -2752,6 +2752,104 @@ def test_agent_markdown_compact_content_hides_horizontal_scroll(wx_app):
         frame.Destroy()
 
 
+@pytest.mark.gui_smoke
+def test_agent_bubble_shrinks_after_wide_markdown(wx_app):
+    wx = pytest.importorskip("wx")
+    from wx.lib.scrolledpanel import ScrolledPanel
+
+    frame = wx.Frame(None, size=wx.Size(720, 560))
+    scrolled = ScrolledPanel(frame, style=wx.TAB_TRAVERSAL)
+    scrolled_sizer = wx.BoxSizer(wx.VERTICAL)
+    scrolled.SetSizer(scrolled_sizer)
+
+    wide_cell = "LONGVALUE" * 48
+    markdown = "\n".join(
+        (
+            "| Column A | Column B | Column C |",
+            "|----------|----------|----------|",
+            f"| {wide_cell} | {wide_cell} | {wide_cell} |",
+        )
+    )
+
+    conversation, timeline_entry = build_entry_timeline(response=markdown)
+    entry_index = timeline_entry.entry_index
+
+    def record_hint(key: str, width: int) -> None:
+        try:
+            numeric = int(width)
+        except (TypeError, ValueError):
+            return
+        if numeric <= 0:
+            return
+        entry = conversation.entries[entry_index]
+        entry.layout_hints[key] = numeric
+
+    card = render_turn_card(
+        scrolled,
+        conversation=conversation,
+        entry=timeline_entry,
+        on_layout_hint=record_hint,
+    )
+    scrolled_sizer.Add(card, 0, wx.EXPAND | wx.ALL, card.FromDIP(8))
+
+    frame_sizer = wx.BoxSizer(wx.VERTICAL)
+    frame_sizer.Add(scrolled, 1, wx.EXPAND)
+    frame.SetSizer(frame_sizer)
+    frame.Layout()
+    scrolled.SetupScrolling(scroll_x=False, scroll_y=True)
+    frame.Show()
+    flush_wx_events(wx, count=15)
+
+    def collect_bubbles(window) -> list[MessageBubble]:
+        bubbles: list[MessageBubble] = []
+        for child in window.GetChildren():
+            if isinstance(child, MessageBubble):
+                bubbles.append(child)
+            else:
+                bubbles.extend(collect_bubbles(child))
+        return bubbles
+
+    try:
+        bubbles = collect_bubbles(card)
+        agent_bubbles = [
+            bubble
+            for bubble in bubbles
+            if getattr(bubble, "_role_label", "") == "Agent"
+        ]
+        assert agent_bubbles, "expected agent bubble to be rendered"
+        agent_bubble = agent_bubbles[0]
+        initial_width = agent_bubble._bubble.GetSize().width
+        assert initial_width >= agent_bubble.FromDIP(320)
+
+        short_response = "Short answer"
+        entry = conversation.entries[entry_index]
+        entry.response = short_response
+        entry.display_response = short_response
+        updated_entry = build_conversation_timeline(conversation).entries[entry_index]
+        updated_segments = get_entry_segments(conversation, updated_entry)
+        card.update(
+            segments=updated_segments,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+
+        flush_wx_events(wx, count=15)
+
+        refreshed_bubbles = collect_bubbles(card)
+        agent_bubbles = [
+            bubble
+            for bubble in refreshed_bubbles
+            if getattr(bubble, "_role_label", "") == "Agent"
+        ]
+        assert agent_bubbles, "agent bubble should persist after update"
+        agent_bubble = agent_bubbles[0]
+        updated_width = agent_bubble._bubble.GetSize().width
+        assert updated_width < initial_width
+        assert updated_width <= max(initial_width * 0.8, agent_bubble.FromDIP(200))
+    finally:
+        frame.Destroy()
+
+
 def test_message_bubble_user_textctrl_enables_vertical_scroll(wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.widgets.chat_message import MessageBubble

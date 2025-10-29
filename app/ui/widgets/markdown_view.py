@@ -357,6 +357,7 @@ class MarkdownContent(wx.Panel):
         scroller.SetMinSize(wx.Size(self.FromDIP(160), -1))
         self._scroller: wx.ScrolledWindow | None = scroller
         self._destroyed = False
+        self._pending_layout_sync = False
 
         self._view = MarkdownView(
             scroller,
@@ -364,10 +365,14 @@ class MarkdownContent(wx.Panel):
             background_colour=background_colour,
         )
         self._view.SetMinSize(wx.Size(self.FromDIP(160), -1))
-        self._view.SetPosition(wx.Point(0, 0))
         self._view.add_render_listener(self._on_view_rendered)
 
+        scroller_sizer = wx.BoxSizer(wx.VERTICAL)
+        scroller_sizer.Add(self._view, 1, wx.EXPAND)
+        scroller.SetSizer(scroller_sizer)
+
         scroller.Bind(wx.EVT_WINDOW_DESTROY, self._on_scroller_destroy)
+        scroller.Bind(wx.EVT_SIZE, self._on_scroller_size)
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_container_destroy)
 
         outer = wx.BoxSizer(wx.VERTICAL)
@@ -413,7 +418,30 @@ class MarkdownContent(wx.Panel):
 
         return self._scroller
 
+    def _on_scroller_size(self, event: wx.SizeEvent) -> None:
+        event.Skip()
+        self._request_layout_sync()
+
     def _on_view_rendered(self) -> None:
+        self._request_layout_sync()
+
+    def _request_layout_sync(self) -> None:
+        if self._destroyed:
+            return
+        if self._pending_layout_sync:
+            return
+
+        self._pending_layout_sync = True
+
+        def run() -> None:
+            self._pending_layout_sync = False
+            if self._destroyed:
+                return
+            self._sync_view_layout()
+
+        wx.CallAfter(run)
+
+    def _sync_view_layout(self) -> None:
         if self._destroyed:
             return
         scroller = getattr(self, "_scroller", None)
@@ -423,18 +451,46 @@ class MarkdownContent(wx.Panel):
             internal = self._view.GetInternalRepresentation()
         except RuntimeError:
             internal = None
-        width = max(int(self.FromDIP(160)), 0)
-        height = max(int(self.FromDIP(40)), 0)
+        min_width = max(int(self.FromDIP(160)), 0)
+        min_height = max(int(self.FromDIP(40)), 0)
+        content_width = min_width
+        content_height = min_height
         if internal is not None:
-            width = max(width, int(internal.GetWidth()))
-            height = max(height, int(internal.GetHeight()))
+            content_width = max(content_width, int(internal.GetWidth()))
+            content_height = max(content_height, int(internal.GetHeight()))
+
+        available_width = 0
         try:
-            self._view.SetMinSize(wx.Size(self.FromDIP(160), height))
-            self._view.SetSize(wx.Size(width, height))
+            available_width = scroller.GetClientSize().width
+        except RuntimeError:
+            available_width = 0
+        if available_width <= 0:
+            parent: wx.Window | None
+            try:
+                parent = self.GetParent()
+            except RuntimeError:
+                parent = None
+            if parent is not None:
+                try:
+                    available_width = parent.GetClientSize().width
+                except RuntimeError:
+                    available_width = 0
+
+        view_width = min_width
+        if available_width > 0:
+            view_width = max(min_width, min(available_width, content_width))
+        else:
+            view_width = min_width
+
+        try:
+            self._view.SetMinSize(wx.Size(min_width, content_height))
+            self._view.SetInitialSize(wx.Size(view_width, content_height))
         except RuntimeError:
             return
+
         try:
-            scroller.SetVirtualSize(wx.Size(width, height))
+            scroller.SetMinSize(wx.Size(min_width, content_height))
+            scroller.SetVirtualSize(wx.Size(content_width, content_height))
             scroller.Scroll(0, 0)
         except RuntimeError:
             return

@@ -80,6 +80,33 @@ def test_step_llm_handles_validation_error(monkeypatch):
     assert runner._conversation[0]["content"] == "bad"
 
 
+def test_validation_error_without_tool_calls_adds_placeholder():
+    agent = LocalAgent(llm=DummyLLM(), mcp=DummyMCP())
+    exc = ToolValidationError("broken")
+    exc.llm_message = "assistant reply"
+
+    runner = _create_runner(agent)
+
+    iteration = _run(runner._handle_validation_error(exc))
+
+    assert isinstance(iteration.tool_error, Mapping)
+    assert iteration.tool_messages and len(iteration.tool_messages) == 1
+
+    assert len(runner._conversation) == 2
+    assistant_message, tool_message = runner._conversation
+    assert assistant_message["role"] == "assistant"
+    tool_calls = assistant_message.get("tool_calls")
+    assert isinstance(tool_calls, list) and len(tool_calls) == 1
+    placeholder_call = tool_calls[0]
+    assert placeholder_call["function"]["name"] == "__tool_validation_error__"
+    assert tool_message["role"] == "tool"
+    assert tool_message["tool_call_id"] == placeholder_call["id"]
+
+    payload = json.loads(tool_message["content"])
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
+    assert payload["tool_call_id"] == placeholder_call["id"]
+
+
 def test_runner_aborts_after_consecutive_tool_errors(monkeypatch):
     class ToolLoopLLM(DummyLLM):
         call_index = 0

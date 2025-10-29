@@ -1408,6 +1408,8 @@ class AgentLoopRunner:
         raw_request_messages = getattr(exc, "llm_request_messages", None)
         raw_reasoning = getattr(exc, "llm_reasoning", None)
         prepared_calls = self._prepare_invalid_tool_calls(raw_calls)
+        if not prepared_calls:
+            prepared_calls.append(self._build_validation_error_placeholder_call())
         request_snapshot: list[dict[str, Any]] = []
         if isinstance(raw_request_messages, Sequence) and not isinstance(
             raw_request_messages, (str, bytes, bytearray)
@@ -1480,6 +1482,20 @@ class AgentLoopRunner:
             tool_error=first_error_payload,
             tool_messages=tuple(tool_messages),
             final_payload=None,
+        )
+
+    def _build_validation_error_placeholder_call(self) -> _ValidationToolCallPayload:
+        call_id = f"validation_error_step_{self._step + 1}" if self._step >= 0 else "validation_error"
+        call = LLMToolCall(id=call_id, name="__tool_validation_error__", arguments={})
+        assistant_fragment = {
+            "id": call.id,
+            "type": "function",
+            "function": {"name": call.name, "arguments": "{}"},
+        }
+        return _ValidationToolCallPayload(
+            call=call,
+            assistant_fragment=assistant_fragment,
+            arguments_for_payload=None,
         )
 
     def _prepare_invalid_tool_calls(

@@ -1972,6 +1972,46 @@ def test_turn_card_renders_tool_only_entries(wx_app):
         frame.Destroy()
 
 
+@pytest.mark.gui_smoke
+def test_agent_message_bubble_converts_html_breaks(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    bubble: MessageBubble | None = None
+    try:
+        conversation, entry_timeline = build_entry_timeline(
+            response="First line<br>Second line",
+        )
+        agent_turn = entry_timeline.agent_turn
+        assert agent_turn is not None, "agent turn missing"
+        final_response = agent_turn.final_response
+        assert final_response is not None, "final response missing"
+
+        display_text = final_response.display_text or final_response.text or ""
+        bubble = MessageBubble(
+            frame,
+            role_label=_("Agent"),
+            timestamp="",
+            text=display_text,
+            align="left",
+            allow_selection=True,
+            render_markdown=True,
+        )
+        bubble_text = bubble_body_text(bubble)
+        assert "\n" in bubble_text, "expected newline after HTML break conversion"
+
+        lines = bubble_text.splitlines()
+        assert len(lines) >= 2, "expected at least two lines in bubble body"
+        assert lines[0].rstrip() == "First line"
+        assert lines[1].rstrip() == "Second line"
+        assert "<br" not in bubble_text.lower()
+
+    finally:
+        if bubble is not None:
+            bubble.Destroy()
+        frame.Destroy()
+
+
 def test_turn_card_attaches_tools_to_stream_only_response(wx_app):
     wx = pytest.importorskip("wx")
 

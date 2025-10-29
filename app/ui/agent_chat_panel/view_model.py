@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as _dt
 from dataclasses import dataclass
 from collections.abc import Iterable, Mapping, Sequence
+import re
 from typing import Any, Literal, TYPE_CHECKING
 
 from ...agent.run_contract import AgentRunPayload, LlmTrace, LlmStep, ToolResultSnapshot
@@ -25,6 +26,9 @@ else:  # pragma: no cover - runtime avoids circular import
 
 
 _UTC_MIN = _dt.datetime.min.replace(tzinfo=_dt.timezone.utc)
+
+_BR_TAG_PATTERN = re.compile(r"[ \t\f\v]*<br\s*/?>[ \t\f\v]*", flags=re.IGNORECASE)
+_SPACE_RUN_PATTERN = re.compile(r"[ \t\f\v]{2,}(?!\n)")
 
 
 @dataclass(slots=True)
@@ -347,13 +351,23 @@ def _build_agent_turn(
     )
 
 
+def _prepare_agent_display_text(value: str | None) -> str:
+    if not value:
+        return ""
+    text = value.replace("\r\n", "\n").replace("\r", "\n")
+    text = _BR_TAG_PATTERN.sub("  \n", text)
+    text = _SPACE_RUN_PATTERN.sub(" ", text)
+    return text.strip(" \t\f\v")
+
+
 def _build_final_response(
     text: str,
     timestamp: TimestampInfo,
     *,
     regenerated: bool,
 ) -> AgentResponse | None:
-    normalized = normalize_for_display(text or "")
+    prepared = _prepare_agent_display_text(text)
+    normalized = normalize_for_display(prepared)
     if not normalized and timestamp.missing:
         return None
     return AgentResponse(
@@ -381,7 +395,8 @@ def _build_streamed_responses(
         text = _extract_step_text(step)
         if not text:
             continue
-        display_text = normalize_for_display(text)
+        prepared = _prepare_agent_display_text(text)
+        display_text = normalize_for_display(prepared)
         if display_text and display_text in excluded_displays:
             continue
         timestamp = _build_timestamp(step.occurred_at, source="llm_step")

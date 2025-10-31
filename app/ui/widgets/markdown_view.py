@@ -349,15 +349,17 @@ class MarkdownContent(wx.Panel):
         self.SetBackgroundColour(background_colour)
         scroller = wx.ScrolledWindow(
             self,
-            style=wx.HSCROLL | wx.BORDER_NONE,
+            style=wx.HSCROLL | wx.VSCROLL | wx.BORDER_NONE,
         )
         scroller.SetBackgroundColour(background_colour)
         scroller.SetForegroundColour(foreground_colour)
-        scroller.SetScrollRate(max(int(self.FromDIP(24)), 1), 0)
+        dip_24 = max(int(self.FromDIP(24)), 1)
+        scroller.SetScrollRate(dip_24, dip_24)
         scroller.SetMinSize(wx.Size(self.FromDIP(160), -1))
         self._scroller: wx.ScrolledWindow | None = scroller
         self._destroyed = False
         self._pending_layout_sync = False
+        self._max_visible_height = max(int(self.FromDIP(640)), 0)
 
         self._view = MarkdownView(
             scroller,
@@ -482,14 +484,20 @@ class MarkdownContent(wx.Panel):
         else:
             view_width = min_width
 
+        max_visible = self._max_visible_height
+        if max_visible <= 0:
+            max_visible = content_height
+        visible_height = max(min_height, min(content_height, max_visible))
+
         try:
-            self._view.SetMinSize(wx.Size(min_width, content_height))
-            self._view.SetInitialSize(wx.Size(view_width, content_height))
+            self._view.SetMinSize(wx.Size(min_width, min_height))
+            self._view.SetInitialSize(wx.Size(view_width, visible_height))
         except RuntimeError:
             return
 
         try:
-            scroller.SetMinSize(wx.Size(min_width, content_height))
+            scroller.SetMinSize(wx.Size(min_width, visible_height))
+            scroller.SetInitialSize(wx.Size(view_width, visible_height))
             scroller.SetVirtualSize(wx.Size(content_width, content_height))
             scroller.Scroll(0, 0)
         except RuntimeError:

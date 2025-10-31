@@ -109,8 +109,14 @@ class SynchronousAgentCommandExecutor:
 
 
 def flush_wx_events(wx, count: int = 3) -> None:
+    app = wx.GetApp()
     for _ in range(count):
-        wx.Yield()
+        if not app:
+            break
+        for _ in range(50):
+            if not app.HasPendingEvents():
+                break
+            app.ProcessPendingEvents()
 
 
 class FakeKeyEvent:
@@ -2957,6 +2963,66 @@ def test_message_bubble_user_textctrl_hides_vertical_scroll_for_short_text(wx_ap
         assert not bubble._text.HasFlag(wx.VSCROLL)
         assert bubble._text.HasFlag(wx.TE_NO_VSCROLL)
         assert not bubble._text.HasScrollbar(wx.VERTICAL)
+    finally:
+        frame.Destroy()
+
+
+@pytest.mark.gui_smoke
+def test_agent_markdown_bubble_keeps_height_reasonable(wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.widgets.markdown_view import MarkdownContent
+
+    frame = wx.Frame(None)
+
+    try:
+        long_response = "\n".join(
+            f"agent response line {index}: " + ("long text " * 6).strip()
+            for index in range(80)
+        )
+
+        content = MarkdownContent(
+            frame,
+            markdown=long_response,
+            foreground_colour=wx.Colour(10, 10, 10),
+            background_colour=wx.Colour(240, 240, 240),
+        )
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(content, 1, wx.EXPAND)
+        frame.SetSizer(sizer)
+        frame.SetClientSize((content.FromDIP(420), content.FromDIP(520)))
+        frame.Show()
+        frame.Layout()
+        frame.SendSizeEvent()
+
+        flush_wx_events(wx, count=10)
+
+        size = content.GetSize()
+        if size.height <= 0:
+            size = content.GetBestSize()
+
+        max_reasonable = content.FromDIP(800)
+        assert size.height <= max_reasonable
+
+        scroller = content.GetScrollerWindow()
+        assert scroller is not None
+
+        markdown_view = content.GetMarkdownView()
+        flush_wx_events(wx, count=5)
+
+        assert scroller.HasScrollbar(wx.VERTICAL)
+
+        visible_height = scroller.GetClientSize().height
+        if visible_height <= 0:
+            visible_height = scroller.GetBestSize().height
+        assert 0 < visible_height <= max_reasonable
+
+        virtual_height = scroller.GetVirtualSize().height
+        assert virtual_height >= visible_height
+
+        internal = markdown_view.GetInternalRepresentation()
+        assert internal is not None
+        assert internal.GetHeight() >= visible_height
     finally:
         frame.Destroy()
 

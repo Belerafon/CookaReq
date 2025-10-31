@@ -2419,6 +2419,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         conversation.append_entry(entry)
         self._mark_conversation_dirty(conversation)
+        timeline_cache = getattr(self, "_timeline_cache", None)
+        if timeline_cache is not None:
+            timeline_cache.invalidate_conversation(conversation.conversation_id)
+        self._last_rendered_conversation_id = None
+        self._latest_timeline = None
         self._save_history_to_store()
         self._notify_history_changed()
 

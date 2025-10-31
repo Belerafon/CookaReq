@@ -2648,6 +2648,142 @@ def test_agent_message_copy_selection(monkeypatch, wx_app):
     frame.Destroy()
 
 
+def test_message_bubble_keyboard_copy_selection(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.widgets.chat_message import MessageBubble
+
+    clipboard: dict[str, str] = {}
+
+    class DummyClipboard:
+        def Open(self) -> bool:  # noqa: N802 - wx naming convention
+            return True
+
+        def Close(self) -> None:  # noqa: N802 - wx naming convention
+            pass
+
+        def SetData(self, data) -> None:  # noqa: N802 - wx naming convention
+            clipboard["text"] = data.GetText()
+
+    class FakeKeyEvent:
+        def __init__(self, key_code: int, *, cmd: bool = False, control: bool = False) -> None:
+            self._key_code = key_code
+            self._cmd = cmd
+            self._control = control
+            self._skipped: bool | None = None
+
+        def GetKeyCode(self) -> int:
+            return self._key_code
+
+        def CmdDown(self) -> bool:
+            return self._cmd
+
+        def ControlDown(self) -> bool:
+            return self._control
+
+        def Skip(self, value: bool = True) -> None:
+            self._skipped = value
+
+    monkeypatch.setattr(wx, "TheClipboard", DummyClipboard())
+
+    frame = wx.Frame(None)
+    bubble = MessageBubble(
+        frame,
+        role_label="Agent",
+        timestamp="",
+        text="selectable text",
+        align="left",
+        allow_selection=True,
+        render_markdown=True,
+    )
+
+    from app.ui.widgets.markdown_view import MarkdownContent
+
+    assert isinstance(bubble._text, MarkdownContent)
+    bubble._text.SelectAll()
+
+    event = FakeKeyEvent(ord("C"), cmd=True, control=True)
+    handled = bubble._process_copy_shortcut(event)
+
+    assert handled
+    assert event._skipped is False
+    assert clipboard.get("text", "").strip().startswith("selectable text")
+
+    event_insert = FakeKeyEvent(wx.WXK_INSERT, control=True)
+    handled_insert = bubble._process_copy_shortcut(event_insert)
+
+    assert handled_insert
+    assert event_insert._skipped is False
+
+    bubble.Destroy()
+    frame.Destroy()
+
+
+def test_message_bubble_keyboard_copy_message(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    from app.ui.widgets.chat_message import MessageBubble
+
+    clipboard: dict[str, str] = {}
+
+    class DummyClipboard:
+        def Open(self) -> bool:  # noqa: N802 - wx naming convention
+            return True
+
+        def Close(self) -> None:  # noqa: N802 - wx naming convention
+            pass
+
+        def SetData(self, data) -> None:  # noqa: N802 - wx naming convention
+            clipboard["text"] = data.GetText()
+
+    class FakeKeyEvent:
+        def __init__(self, key_code: int, *, cmd: bool = False, control: bool = False) -> None:
+            self._key_code = key_code
+            self._cmd = cmd
+            self._control = control
+            self._skipped: bool | None = None
+
+        def GetKeyCode(self) -> int:
+            return self._key_code
+
+        def CmdDown(self) -> bool:
+            return self._cmd
+
+        def ControlDown(self) -> bool:
+            return self._control
+
+        def Skip(self, value: bool = True) -> None:
+            self._skipped = value
+
+    monkeypatch.setattr(wx, "TheClipboard", DummyClipboard())
+
+    frame = wx.Frame(None)
+    bubble = MessageBubble(
+        frame,
+        role_label="Agent",
+        timestamp="",
+        text="plain text message",
+        align="left",
+        allow_selection=False,
+        render_markdown=False,
+    )
+
+    event = FakeKeyEvent(ord("C"), cmd=True, control=True)
+    handled = bubble._process_copy_shortcut(event)
+
+    assert handled
+    assert event._skipped is False
+    assert clipboard.get("text", "") == "plain text message"
+
+    event_insert = FakeKeyEvent(wx.WXK_INSERT, control=True)
+    handled_insert = bubble._process_copy_shortcut(event_insert)
+
+    assert handled_insert
+    assert event_insert._skipped is False
+    assert clipboard.get("text", "") == "plain text message"
+
+    bubble.Destroy()
+    frame.Destroy()
+
+
 def test_message_bubble_respects_scrolled_viewport_width(wx_app):
     wx = pytest.importorskip("wx")
     from wx.lib.scrolledpanel import ScrolledPanel

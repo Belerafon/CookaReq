@@ -389,11 +389,7 @@ class MessageBubble(wx.Panel):
         self._footer = footer_object
 
         bubble.Bind(wx.EVT_SIZE, self._on_bubble_resize)
-        self.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
-        bubble.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
-        self._attach_context_menu_handlers(self._text)
-        for target in footer_targets:
-            self._attach_context_menu_handlers(target)
+        self._attach_interaction_handlers(self)
 
         alignment_row = wx.BoxSizer(wx.HORIZONTAL)
         if align == "right":
@@ -494,7 +490,7 @@ class MessageBubble(wx.Panel):
             footer_targets.append(footer)
         self._footer = footer
         for target in footer_targets:
-            self._attach_context_menu_handlers(target)
+            self._attach_interaction_handlers(target)
 
     # ------------------------------------------------------------------
     def set_explicit_width_hint(self, width_hint: int | None) -> None:
@@ -596,12 +592,16 @@ class MessageBubble(wx.Panel):
             dc.SetPen(pen)
             dc.DrawRoundedRectangle(0, 0, rect_width, rect_height, radius)
 
-    def _attach_context_menu_handlers(self, widget: wx.Window | None) -> None:
-        if widget is None:
+    def _attach_interaction_handlers(self, widget: wx.Window | None) -> None:
+        if widget is None or not isinstance(widget, wx.Window):
             return
+        if getattr(widget, "_message_bubble_handlers", False):
+            return
+        setattr(widget, "_message_bubble_handlers", True)
         widget.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
+        widget.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         for child in widget.GetChildren():
-            self._attach_context_menu_handlers(child)
+            self._attach_interaction_handlers(child)
 
     def _on_bubble_resize(self, event: wx.SizeEvent) -> None:
         event.Skip()
@@ -645,6 +645,11 @@ class MessageBubble(wx.Panel):
         menu.Destroy()
         event.Skip(False)
 
+    def _on_char_hook(self, event: wx.KeyEvent) -> None:
+        if self._process_copy_shortcut(event):
+            return
+        event.Skip()
+
     def _on_copy(self, _event: wx.CommandEvent) -> None:
         if not self._text_value:
             return
@@ -665,6 +670,27 @@ class MessageBubble(wx.Panel):
                 wx.TheClipboard.SetData(wx.TextDataObject(selection))
             finally:
                 wx.TheClipboard.Close()
+
+    def _process_copy_shortcut(self, event: wx.KeyEvent) -> bool:
+        key_code = event.GetKeyCode()
+        if key_code in (ord("c"), ord("C")):
+            if not event.CmdDown():
+                return False
+        elif key_code == wx.WXK_INSERT:
+            if not event.ControlDown():
+                return False
+        else:
+            return False
+
+        self._copy_selection_or_message()
+        event.Skip(False)
+        return True
+
+    def _copy_selection_or_message(self) -> None:
+        if self._allow_selection and self._has_selection():
+            self._on_copy_selection(None)
+        else:
+            self._on_copy(None)
 
     def _has_selection(self) -> bool:
         if self._selection_checker is None:

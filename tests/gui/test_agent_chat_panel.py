@@ -2966,47 +2966,18 @@ def test_message_bubble_user_textctrl_hides_vertical_scroll_for_short_text(wx_ap
     finally:
         frame.Destroy()
 
-
-<<<<< codex/investigate-large-vertical-spacing-in-chat
 @pytest.mark.gui_smoke
-def test_agent_markdown_bubble_keeps_height_reasonable(wx_app):
+def test_markdown_content_keeps_height_reasonable(wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.widgets.markdown_view import MarkdownContent
 
     frame = wx.Frame(None)
-=====
-@pytest.mark.xfail(
-    reason=(
-        "Agent markdown bubble stretches vertically after very long responses, "
-        "leaving a large blank gap before the next user message"
-    ),
-    strict=True,
-)
-def test_agent_markdown_bubble_keeps_height_reasonable(tmp_path, wx_app):
-    wx = pytest.importorskip("wx")
-
-    class QuietAgent:
-        def run_command(
-            self,
-            text,
-            *,
-            history=None,
-            context=None,
-            cancellation=None,
-            on_tool_result=None,
-            on_llm_step=None,
-        ):
-            return {"ok": True, "error": None, "result": text}
-
-    wx, frame, panel = create_panel(tmp_path, wx_app, QuietAgent())
->>>>> main
 
     try:
         long_response = "\n".join(
             f"agent response line {index}: " + ("long text " * 6).strip()
             for index in range(80)
         )
-<<<<< codex/investigate-large-vertical-spacing-in-chat
 
         content = MarkdownContent(
             frame,
@@ -3053,7 +3024,39 @@ def test_agent_markdown_bubble_keeps_height_reasonable(tmp_path, wx_app):
         assert internal.GetHeight() >= visible_height
     finally:
         frame.Destroy()
-=====
+
+
+@pytest.mark.xfail(
+    reason=(
+        "Agent markdown bubble stretches vertically after very long responses, "
+        "leaving a large blank gap before the next user message"
+    ),
+    strict=True,
+)
+def test_agent_markdown_bubble_keeps_height_reasonable(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+
+    class QuietAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            return {"ok": True, "error": None, "result": text}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, QuietAgent())
+
+    try:
+        long_response = "\n".join(
+            f"agent response line {index}: " + ("long text " * 6).strip()
+            for index in range(80)
+        )
+
         panel._append_history(
             "long prompt",
             long_response,
@@ -3083,7 +3086,6 @@ def test_agent_markdown_bubble_keeps_height_reasonable(tmp_path, wx_app):
         assert height <= max_reasonable
     finally:
         destroy_panel(frame, panel)
->>>> main
 
 
 def test_message_bubble_destroy_ignores_pending_width_update(monkeypatch, wx_app):

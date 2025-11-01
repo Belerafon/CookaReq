@@ -4,8 +4,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, TypeVar, cast
+from collections.abc import Iterable, Mapping, Sequence
 from uuid import uuid4
 
 from ..agent.run_contract import ToolResultSnapshot
@@ -14,6 +14,7 @@ from ..llm.tokenizer import (
     combine_token_counts,
     count_text_tokens,
 )
+from ..util.json import make_json_safe
 from ..util.time import utc_now_iso
 
 _DEFAULT_TOKEN_MODEL = "cl100k_base"
@@ -178,6 +179,45 @@ def _recalculate_pair_token_info(prompt: str, response: str) -> TokenCountResult
     return TokenCountResult.exact(tokens, model=model, reason=combined.reason)
 
 
+_CACHE_INVALIDATING_FIELDS = {
+    "prompt",
+    "response",
+    "display_response",
+    "raw_result",
+    "context_messages",
+    "tool_messages",
+    "reasoning",
+    "diagnostic",
+}
+
+
+_CACHE_SENTINEL: object = object()
+T = TypeVar("T")
+
+
+def _history_json_safe(value: Any) -> Any:
+    return make_json_safe(
+        value,
+        stringify_keys=True,
+        sort_sets=False,
+        coerce_sequences=True,
+        default=str,
+    )
+
+
+def _sanitize_for_history(
+    sequence: Sequence[Mapping[str, Any]] | None,
+) -> tuple[dict[str, Any], ...]:
+    if not sequence:
+        return ()
+    sanitized: list[dict[str, Any]] = []
+    for item in sequence:
+        safe_item = _history_json_safe(item)
+        if isinstance(safe_item, Mapping):
+            sanitized.append(dict(safe_item))
+    return tuple(sanitized)
+
+
 @dataclass
 class ChatEntry:
     """Stored request/response pair with supplementary metadata."""
@@ -201,6 +241,11 @@ class ChatEntry:
         repr=False,
         compare=False,
     )
+
+    def __setattr__(self, key: str, value: Any) -> None:  # pragma: no cover - hot path
+        object.__setattr__(self, key, value)
+        if key in _CACHE_INVALIDATING_FIELDS:
+            self._reset_view_cache()
 
     def __post_init__(self) -> None:  # pragma: no cover - trivial
         """Normalise derived fields and cached token metadata."""
@@ -307,6 +352,50 @@ class ChatEntry:
         else:
             self.reasoning = None
         self._sanitize_token_cache()
+        self._reset_view_cache()
+
+    def _reset_view_cache(self) -> None:
+        cache = getattr(self, "_view_cache", None)
+        if isinstance(cache, dict):
+            cache.clear()
+        else:
+            object.__setattr__(self, "_view_cache", {})
+
+    def _ensure_view_cache(self) -> dict[str, Any]:
+        cache = getattr(self, "_view_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            object.__setattr__(self, "_view_cache", cache)
+        return cache
+
+    def cache_view_value(self, key: str, factory: Callable[[], T]) -> T:
+        cache = self._ensure_view_cache()
+        value = cache.get(key, _CACHE_SENTINEL)
+        if value is _CACHE_SENTINEL:
+            value = factory()
+            cache[key] = value
+        return cast(T, value)
+
+    def history_safe_raw_result(self) -> Any:
+        if self.raw_result is None:
+            return None
+
+        return self.cache_view_value(
+            "history_raw_result",
+            lambda: _history_json_safe(self.raw_result),
+        )
+
+    def sanitized_context_messages(self) -> tuple[dict[str, Any], ...]:
+        return self.cache_view_value(
+            "context_messages",
+            lambda: _sanitize_for_history(self.context_messages),
+        )
+
+    def sanitized_reasoning_segments(self) -> tuple[dict[str, Any], ...]:
+        return self.cache_view_value(
+            "reasoning_segments",
+            lambda: _sanitize_for_history(self.reasoning),
+        )
 
     @property
     def tool_results(self) -> list[dict[str, Any]] | None:

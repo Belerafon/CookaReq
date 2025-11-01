@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import inspect
 from collections.abc import Collection, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
@@ -342,11 +343,11 @@ class MainFrameAgentMixin:
     def _agent_context_messages(self: MainFrame) -> list[dict[str, str]]:
         lines: list[str] = ["[Workspace context]"]
         summary = self._current_document_summary()
-        prefix = getattr(self, "current_doc_prefix", None)
+        current_prefix = getattr(self, "current_doc_prefix", None)
         if summary:
             lines.append(f"Active requirements document: {summary}")
-        elif prefix:
-            lines.append(f"Active requirements document: {prefix}")
+        elif current_prefix:
+            lines.append(f"Active requirements document: {current_prefix}")
         else:
             lines.append("Active requirements document: (none)")
 
@@ -354,17 +355,40 @@ class MainFrameAgentMixin:
 
         selected_ids = self._selected_requirement_ids_for_agent()
         model = getattr(self, "model", None)
+        getter = getattr(model, "get_by_id", None) if model is not None else None
+        supports_doc_prefix = False
+        if callable(getter):
+            try:
+                signature = inspect.signature(getter)
+            except (TypeError, ValueError):
+                supports_doc_prefix = False
+            else:
+                for parameter in signature.parameters.values():
+                    if parameter.kind == parameter.VAR_KEYWORD:
+                        supports_doc_prefix = True
+                        break
+                    if (
+                        parameter.kind
+                        in (parameter.POSITIONAL_OR_KEYWORD, parameter.KEYWORD_ONLY)
+                        and parameter.name == "doc_prefix"
+                    ):
+                        supports_doc_prefix = True
+                        break
         rid_summary: list[str] = []
         unresolved_ids: list[str] = []
         invalid_rids: dict[str, str] = {}
 
         resolved_any = False
-        if selected_ids and model is not None:
+        if selected_ids and callable(getter):
             seen_rids: set[str] = set()
             for req_id in selected_ids:
-                requirement = model.get_by_id(
-                    req_id, doc_prefix=self.current_doc_prefix
-                )
+                try:
+                    if supports_doc_prefix:
+                        requirement = getter(req_id, doc_prefix=current_prefix)
+                    else:
+                        requirement = getter(req_id)
+                except TypeError:
+                    requirement = getter(req_id)
                 if requirement is None:
                     unresolved_ids.append(str(req_id))
                     continue

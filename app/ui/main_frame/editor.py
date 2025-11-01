@@ -35,7 +35,7 @@ class MainFrameEditorMixin:
                 if can_veto is None or can_veto():
                     event.Veto()
             return
-        req = self.model.get_by_id(req_id)
+        req = self.model.get_by_id(req_id, doc_prefix=self.current_doc_prefix)
         if req:
             self._selected_requirement_id = req_id
             self.editor.load(req)
@@ -57,7 +57,7 @@ class MainFrameEditorMixin:
             return
         if req_id <= 0:
             return
-        req = self.model.get_by_id(req_id)
+        req = self.model.get_by_id(req_id, doc_prefix=self.current_doc_prefix)
         if not req:
             return
         self._open_detached_editor(req)
@@ -111,7 +111,9 @@ class MainFrameEditorMixin:
         """Reload currently selected requirement into the editor."""
         if self._selected_requirement_id is None:
             return False
-        requirement = self.model.get_by_id(self._selected_requirement_id)
+        requirement = self.model.get_by_id(
+            self._selected_requirement_id, doc_prefix=self.current_doc_prefix
+        )
         if not requirement:
             return False
         self.editor.load(requirement)

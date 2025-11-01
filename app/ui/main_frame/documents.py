@@ -753,7 +753,9 @@ class MainFrameDocumentsMixin:
                 doc_prefix, req_id = key
                 if doc_prefix != prefix:
                     continue
-                requirement = model.get_by_id(req_id)
+                requirement = model.get_by_id(
+                    req_id, doc_prefix=self.current_doc_prefix
+                )
                 if requirement is None:
                     continue
                 if hasattr(frame, "editor") and frame.editor.is_dirty():
@@ -763,7 +765,9 @@ class MainFrameDocumentsMixin:
 
         if selected_id is None:
             return
-        current = model.get_by_id(selected_id)
+        current = model.get_by_id(
+            selected_id, doc_prefix=self.current_doc_prefix
+        )
         if current is None:
             return
         if hasattr(self.editor, "is_dirty") and self.editor.is_dirty():

@@ -215,6 +215,29 @@ def test_build_conversation_timeline_compiles_turn() -> None:
     assert entry_timeline.can_regenerate is True
 
 
+def test_can_regenerate_last_entry_without_response_timestamp() -> None:
+    entry = ChatEntry(
+        prompt="Что произошло?",
+        response="",
+        display_response="INTERNAL: Connection error",
+        tokens=0,
+        prompt_at="2025-10-01T10:00:00+00:00",
+        response_at=None,
+        raw_result={
+            "ok": False,
+            "status": "failed",
+            "error": {"code": "INTERNAL", "message": "Connection error"},
+        },
+        diagnostic={"error": {"code": "INTERNAL"}},
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+
+    assert len(timeline.entries) == 1
+    assert timeline.entries[0].can_regenerate is True
+
+
 def test_build_conversation_timeline_deduplicates_reasoning_only_reply() -> None:
     reasoning_segments = (
         {

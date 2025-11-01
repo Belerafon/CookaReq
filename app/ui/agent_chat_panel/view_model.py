@@ -901,8 +901,23 @@ def _can_regenerate_entry(
     entry: ChatEntry,
 ) -> bool:
     is_last_entry = entry_index == total_entries - 1
-    has_response = bool(entry.response_at)
-    return is_last_entry and has_response
+    if not is_last_entry:
+        return False
+
+    # ``response_at`` is the primary indicator that the agent finished.
+    if getattr(entry, "response_at", None):
+        return True
+
+    # In failure paths some history items were saved without timestamps,
+    # but still carry diagnostic or raw payload data. Treat those as
+    # completed runs so that the "Regenerate" control is available.
+    if getattr(entry, "raw_result", None) is not None:
+        return True
+
+    if getattr(entry, "diagnostic", None) is not None:
+        return True
+
+    return False
 
 
 __all__ = [

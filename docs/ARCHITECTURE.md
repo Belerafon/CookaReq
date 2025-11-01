@@ -134,6 +134,10 @@ so you know which modules are involved and which regressions to guard against.
   `ThreadPoolExecutor`). The panel relies on the structured payloads from
   `app/agent/run_contract.py` instead of heuristically merging raw tool
   dictionaries.
+  * `ChatEntry` maintains a small per-entry view cache with JSON-safe payloads
+    and normalised display text so transcript rebuilds reuse expensive
+    transformations (`normalize_for_display`, deep `make_json_safe` walks)
+    instead of repeating them on every rerender.
 * `app/agent/run_contract.py` defines the shared schema for tool snapshots and
   LLM traces. Every streamed update carries a stable identifier, canonical
   status, start/finish timestamps and an ordered timeline of events. The LLM

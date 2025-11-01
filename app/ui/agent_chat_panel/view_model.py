@@ -249,8 +249,7 @@ def _build_prompt(entry: ChatEntry) -> PromptMessage | None:
 
 
 def _build_context_messages(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
-    messages = entry.context_messages or ()
-    return _sanitize_mapping_sequence(messages)
+    return entry.sanitized_context_messages()
 
 
 def _build_agent_turn(
@@ -261,24 +260,32 @@ def _build_agent_turn(
     response_timestamp = _build_timestamp(entry.response_at, source="response_at")
     prompt_timestamp = _build_timestamp(entry.prompt_at, source="prompt_at")
 
-    payload = agent_payload_from_mapping(
-        entry.raw_result if isinstance(entry.raw_result, Mapping) else None
-    )
+    raw_result = entry.raw_result if isinstance(entry.raw_result, Mapping) else None
+    payload = agent_payload_from_mapping(raw_result)
     if payload is None:
         tool_snapshots = tool_snapshots_from(entry.tool_results)
-        reasoning_segments = _sanitize_mapping_sequence(entry.reasoning)
+        reasoning_source = entry.reasoning
         llm_trace = LlmTrace()
         final_text = entry.display_response or entry.response or ""
-        raw_payload = history_json_safe(entry.raw_result)
     else:
         tool_snapshots = payload.tool_results
-        reasoning_segments = _sanitize_mapping_sequence(payload.reasoning)
+        reasoning_source = payload.reasoning
         llm_trace = payload.llm_trace
-        final_text = entry.display_response or payload.result_text or entry.response or ""
-        raw_payload = history_json_safe(payload.to_dict())
+        final_text = (
+            entry.display_response or payload.result_text or entry.response or ""
+        )
+
+    raw_payload = entry.history_safe_raw_result()
+    reasoning_segments = entry.cache_view_value(
+        "reasoning_segments",
+        lambda: _sanitize_mapping_sequence(reasoning_source),
+    )
 
     reasoning_fallback = _render_reasoning_fallback(reasoning_segments)
-    reasoning_display = normalize_for_display(reasoning_fallback)
+    reasoning_display = entry.cache_view_value(
+        "reasoning_display",
+        lambda: normalize_for_display(reasoning_fallback),
+    )
 
     final_response = _build_final_response(
         final_text,
@@ -289,19 +296,14 @@ def _build_agent_turn(
     excluded_displays: set[str] = set()
     if reasoning_display:
         excluded_displays.add(reasoning_display)
-    if final_response is not None and reasoning_display:
-        final_display = normalize_for_display(
-            final_response.display_text or final_response.text or ""
-        )
-        if final_display == reasoning_display:
-            final_response = None
+    if final_response is not None:
+        final_display = final_response.display_text or ""
+        if reasoning_display:
+            if final_display == reasoning_display:
+                final_response = None
+            elif final_display:
+                excluded_displays.add(final_display)
         elif final_display:
-            excluded_displays.add(final_display)
-    elif final_response is not None:
-        final_display = normalize_for_display(
-            final_response.display_text or final_response.text or ""
-        )
-        if final_display:
             excluded_displays.add(final_display)
 
     streamed_responses, latest_stream_timestamp = _build_streamed_responses(

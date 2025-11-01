@@ -221,14 +221,17 @@ class SegmentListView:
         panel = self._panel
         last_card: wx.Window | None = None
         has_entries = False
+        needs_layout = False
 
         if conversation is None or timeline is None:
             self._pending_timeline = None
             self._detach_active_conversation()
             self._show_start_placeholder()
+            needs_layout = True
         elif not timeline.entries:
             self._pending_timeline = timeline
             self._show_empty_conversation(conversation)
+            needs_layout = True
         else:
             self._pending_timeline = timeline
             has_entries = True
@@ -236,14 +239,19 @@ class SegmentListView:
                 force = True
             if force:
                 self._detach_active_conversation()
+                needs_layout = True
+            if self._current_placeholder is not None:
+                needs_layout = True
             self._clear_current_placeholder()
-            last_card = self._update_conversation_cards(
+            last_card, changed = self._update_conversation_cards(
                 conversation, timeline, entry_ids, force
             )
+            needs_layout = needs_layout or changed
 
-        panel.Layout()
-        panel.FitInside()
-        panel.SetupScrolling(scroll_x=False, scroll_y=True)
+        if needs_layout:
+            panel.Layout()
+            panel.FitInside()
+            panel.SetupScrolling(scroll_x=False, scroll_y=True)
         if last_card is not None:
             self._scroll_to_bottom(last_card)
         self._callbacks.update_copy_buttons(has_entries)
@@ -256,7 +264,7 @@ class SegmentListView:
         timeline: ConversationTimeline,
         entry_ids: Sequence[str],
         force: bool,
-    ) -> wx.Window | None:
+    ) -> tuple[wx.Window | None, bool]:
         conversation_id = timeline.conversation_id
         cache = self._conversation_cache.setdefault(
             conversation_id, _ConversationRenderCache()
@@ -287,16 +295,26 @@ class SegmentListView:
                     for card in cards:
                         card.enable_regenerate(regenerate_enabled)
                     self._attach_cards_in_order(cards)
-                    return cards[-1] if cards else None
+                    return (cards[-1] if cards else None, True)
             return self._render_full_conversation(conversation, timeline, cache)
 
         if cache.order != desired_order:
+            appended = self._try_append_entries(
+                cache,
+                timeline.conversation_id,
+                desired_order,
+                entry_lookup,
+                entry_ids,
+            )
+            if appended is not None:
+                return appended
             return self._render_full_conversation(conversation, timeline, cache)
 
         if not entry_ids:
-            return None
+            return None, False
 
         last_card: wx.Window | None = None
+        changed = False
 
         for entry_id in entry_ids:
             timeline_entry = entry_lookup.get(entry_id)
@@ -319,8 +337,9 @@ class SegmentListView:
             )
             cache.entry_snapshots[entry_id] = timeline_entry
             last_card = card
+            changed = True
 
-        return last_card
+        return last_card, changed
 
     # ------------------------------------------------------------------
     def _render_full_conversation(
@@ -328,7 +347,7 @@ class SegmentListView:
         conversation: ChatConversation,
         timeline: ConversationTimeline,
         cache: _ConversationRenderCache,
-    ) -> wx.Window | None:
+    ) -> tuple[wx.Window | None, bool]:
         panel = self._panel
         panel.Freeze()
         try:
@@ -374,7 +393,105 @@ class SegmentListView:
             }
             cards = [card for _, card in ordered_cards]
             self._attach_cards_in_order(cards)
-            return cards[-1] if cards else None
+            return (cards[-1] if cards else None, True)
+        finally:
+            panel.Thaw()
+
+    # ------------------------------------------------------------------
+    def _try_append_entries(
+        self,
+        cache: _ConversationRenderCache,
+        conversation_id: str,
+        desired_order: Sequence[str],
+        entry_lookup: Mapping[str, TranscriptEntry],
+        entry_ids: Sequence[str] | None,
+    ) -> tuple[wx.Window | None, bool] | None:
+        current_order = cache.order
+        if not desired_order:
+            return (None, False) if not current_order else None
+        if current_order and desired_order[: len(current_order)] != list(current_order):
+            return None
+        start_index = len(current_order)
+        if start_index > len(desired_order):
+            return None
+        new_ids = desired_order[start_index:]
+        if not current_order and start_index == 0 and not new_ids:
+            return (None, False)
+        if not new_ids:
+            # order mismatch that we cannot reconcile incrementally
+            return None
+
+        panel = self._panel
+        panel.Freeze()
+        try:
+            last_card: wx.Window | None = None
+            changed = False
+            refresh_ids = [
+                entry_id
+                for entry_id in (entry_ids or ())
+                if entry_id in cache.cards_by_entry
+            ]
+            for entry_id in refresh_ids:
+                timeline_entry = entry_lookup.get(entry_id)
+                card = cache.cards_by_entry.get(entry_id)
+                if (
+                    timeline_entry is None
+                    or card is None
+                    or not self._is_window_alive(card)
+                ):
+                    return None
+                segments = build_entry_segments(timeline_entry)
+                regenerate_callback = self._build_regenerate_callback(
+                    conversation_id, timeline_entry
+                )
+                card.update(
+                    segments=segments,
+                    on_regenerate=regenerate_callback,
+                    regenerate_enabled=not self._callbacks.is_running(),
+                )
+                cache.entry_snapshots[entry_id] = timeline_entry
+                last_card = card
+                changed = True
+
+            new_cards: list[TurnCard] = []
+            for entry_id in new_ids:
+                timeline_entry = entry_lookup.get(entry_id)
+                if timeline_entry is None:
+                    return None
+                card = cache.cards_by_entry.get(entry_id)
+                if card is None or not self._is_window_alive(card):
+                    card = TurnCard(
+                        self._panel,
+                        entry_id=entry_id,
+                        entry_index=timeline_entry.entry_index,
+                        on_layout_hint=self._make_hint_recorder(
+                            timeline_entry.entry
+                        ),
+                    )
+                    card.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self._on_pane_toggled)
+                    cache.cards_by_entry[entry_id] = card
+                segments = build_entry_segments(timeline_entry)
+                regenerate_callback = self._build_regenerate_callback(
+                    conversation_id, timeline_entry
+                )
+                card.update(
+                    segments=segments,
+                    on_regenerate=regenerate_callback,
+                    regenerate_enabled=not self._callbacks.is_running(),
+                )
+                cache.entry_snapshots[entry_id] = timeline_entry
+                new_cards.append(card)
+
+            if not new_cards:
+                return (last_card, changed)
+
+            cache.order = list(desired_order)
+            for card in new_cards:
+                if card.GetContainingSizer() is not self._sizer:
+                    self._sizer.Add(card, 0, wx.EXPAND)
+                card.Show()
+
+            return (new_cards[-1], True)
         finally:
             panel.Thaw()
 

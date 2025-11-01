@@ -2419,13 +2419,32 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         conversation.append_entry(entry)
         self._mark_conversation_dirty(conversation)
-        timeline_cache = getattr(self, "_timeline_cache", None)
-        if timeline_cache is not None:
-            timeline_cache.invalidate_conversation(conversation.conversation_id)
-        self._last_rendered_conversation_id = None
+        entry_id = self._entry_identifier(conversation, entry)
+        entry_ids: list[str] | None
+        force_refresh = entry_id is None
+        if entry_id is None:
+            entry_ids = None
+        else:
+            entry_ids = [entry_id]
+            prior_index = len(conversation.entries) - 2
+            if prior_index >= 0:
+                prior_entry = conversation.entries[prior_index]
+                prior_id = self._entry_identifier(conversation, prior_entry)
+                if prior_id and prior_id not in entry_ids:
+                    entry_ids.append(prior_id)
+        if force_refresh:
+            timeline_cache = getattr(self, "_timeline_cache", None)
+            if timeline_cache is not None:
+                timeline_cache.invalidate_conversation(conversation.conversation_id)
         self._latest_timeline = None
         self._save_history_to_store()
         self._notify_history_changed()
+        self._request_transcript_refresh(
+            conversation=conversation,
+            entry_ids=entry_ids,
+            force=force_refresh,
+            immediate=True,
+        )
 
     def _complete_pending_entry(
         self,

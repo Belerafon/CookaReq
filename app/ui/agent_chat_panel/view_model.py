@@ -818,7 +818,7 @@ class ConversationTimelineCache:
         requires_full_refresh = (
             cached is None
             or conversation_id in self._full_invalidations
-            or len(cached.timeline.entries) != len(conversation.entries)
+            or len(conversation.entries) < len(cached.timeline.entries)
         )
 
         if requires_full_refresh:
@@ -838,13 +838,24 @@ class ConversationTimelineCache:
             self._full_invalidations.discard(conversation_id)
             return timeline
 
-        if not dirty_entries:
-            self._full_invalidations.discard(conversation_id)
-            return cached.timeline
-
         entries = list(cached.timeline.entries)
         entry_map = dict(cached.entry_map)
         updated = False
+
+        cached_entry_count = len(entries)
+        current_entry_count = len(conversation.entries)
+        if current_entry_count > cached_entry_count:
+            for entry_index in range(cached_entry_count, current_entry_count):
+                rebuilt = _build_transcript_entry(
+                    conversation, entry_index, conversation.entries[entry_index]
+                )
+                entries.append(rebuilt)
+                entry_map[rebuilt.entry_id] = rebuilt
+            updated = True
+
+        if not dirty_entries and not updated:
+            self._full_invalidations.discard(conversation_id)
+            return cached.timeline
 
         for entry_id in dirty_entries:
             index = _resolve_entry_index(conversation_id, entry_id)

@@ -1105,14 +1105,26 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         except Exception:
             return
         event.SetEventObject(self.list)
-        try:
-            event.m_itemIndex = index
-        except Exception:
-            pass
+        set_index = getattr(event, "SetIndex", None)
+        if callable(set_index):
+            try:
+                set_index(index)
+            except Exception:
+                pass
+        else:  # pragma: no cover - compatibility with exotic backends
+            try:
+                event.m_itemIndex = index
+            except Exception:
+                pass
         get_item = getattr(self.list, "GetItem", None)
         if callable(get_item):
             with suppress(Exception):
-                event.m_item = get_item(index)
+                item = get_item(index)
+                set_item = getattr(event, "SetItem", None)
+                if callable(set_item):
+                    set_item(item)
+                else:  # pragma: no cover - compatibility with exotic backends
+                    event.m_item = item
         post_event(self.list, event)
 
     def _select_all_requirements(self) -> None:
@@ -1280,7 +1292,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
         updates: list[Requirement] = []
         for req_id in unique_order:
-            requirement = self.model.get_by_id(req_id)
+            requirement = self.model.get_by_id(
+                req_id, doc_prefix=self._current_doc_prefix
+            )
             if requirement is None:
                 continue
             if getattr(requirement, "status", None) == status:
@@ -1305,7 +1319,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         requirements: list[Requirement] = []
         existing_labels: list[list[str]] = []
         for req_id in unique_order:
-            requirement = self.model.get_by_id(req_id)
+            requirement = self.model.get_by_id(
+                req_id, doc_prefix=self._current_doc_prefix
+            )
             if requirement is None:
                 continue
             requirements.append(requirement)
@@ -1365,7 +1381,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
         updates: list[Requirement] = []
         for req_id in unique_order:
-            requirement = self.model.get_by_id(req_id)
+            requirement = self.model.get_by_id(
+                req_id, doc_prefix=self._current_doc_prefix
+            )
             if requirement is None:
                 continue
             current = list(getattr(requirement, "labels", []) or [])

@@ -27,12 +27,22 @@ class RequirementModel:
         self._status: str | None = None
         self._sort_field: str | None = None
         self._sort_ascending: bool = True
+        self._active_doc_prefix: str | None = None
 
     # data management -------------------------------------------------
     def set_requirements(self, requirements: list[Requirement]) -> None:
         """Replace all requirements."""
         self._all = list(requirements)
+        if self._active_doc_prefix is None:
+            prefix = self._infer_common_prefix(requirements)
+            if prefix is not None:
+                self._active_doc_prefix = prefix
         self._refresh()
+
+    def set_active_document(self, prefix: str | None) -> None:
+        """Set default document prefix used for ``get_by_id`` lookups."""
+
+        self._active_doc_prefix = prefix
 
     def add(self, requirement: Requirement) -> None:
         """Append ``requirement`` to the model."""
@@ -74,11 +84,18 @@ class RequirementModel:
         self._all = [r for r in self._all if r.id != req_id]
         self._refresh()
 
-    def get_by_id(self, req_id: int) -> Requirement | None:
-        """Return requirement with ``req_id`` or ``None``."""
+    def get_by_id(
+        self, req_id: int, *, doc_prefix: str | None = None
+    ) -> Requirement | None:
+        """Return requirement with ``req_id`` scoped to ``doc_prefix`` if provided."""
+
+        prefix = doc_prefix if doc_prefix is not None else self._active_doc_prefix
         for req in self._all:
-            if req.id == req_id:
-                return req
+            if req.id != req_id:
+                continue
+            if prefix is not None and getattr(req, "doc_prefix", None) != prefix:
+                continue
+            return req
         return None
 
     # filtering -------------------------------------------------------
@@ -172,3 +189,12 @@ class RequirementModel:
     def get_all(self) -> list[Requirement]:
         """Return all requirements managed by the model."""
         return list(self._all)
+
+    @staticmethod
+    def _infer_common_prefix(requirements: Sequence[Requirement]) -> str | None:
+        prefixes = {
+            getattr(req, "doc_prefix", None) for req in requirements if hasattr(req, "doc_prefix")
+        }
+        if len(prefixes) == 1:
+            return next(iter(prefixes))
+        return None

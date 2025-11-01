@@ -319,7 +319,7 @@ class MainFrameAgentMixin:
         targets: list[BatchTarget] = []
         seen: set[str] = set()
         for req_id in self._selected_requirement_ids_for_agent():
-            requirement = model.get_by_id(req_id)
+            requirement = model.get_by_id(req_id, doc_prefix=self.current_doc_prefix)
             if requirement is None:
                 continue
             rid = (requirement.rid or "").strip()
@@ -362,7 +362,9 @@ class MainFrameAgentMixin:
         if selected_ids and model is not None:
             seen_rids: set[str] = set()
             for req_id in selected_ids:
-                requirement = model.get_by_id(req_id)
+                requirement = model.get_by_id(
+                    req_id, doc_prefix=self.current_doc_prefix
+                )
                 if requirement is None:
                     unresolved_ids.append(str(req_id))
                     continue
@@ -549,7 +551,7 @@ class MainFrameAgentMixin:
         model = getattr(self, "model", None)
         if model is None:
             return ()
-        requirement = model.get_by_id(requirement_id)
+        requirement = model.get_by_id(requirement_id, doc_prefix=self.current_doc_prefix)
         if requirement is None:
             return ()
 

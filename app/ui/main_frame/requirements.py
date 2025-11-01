@@ -66,7 +66,7 @@ class MainFrameRequirementsMixin:
         """Clone requirement ``req_id`` and open in editor."""
         if not (self.docs_controller and self.current_doc_prefix):
             return
-        source = self.model.get_by_id(req_id)
+        source = self.model.get_by_id(req_id, doc_prefix=self.current_doc_prefix)
         if not source:
             return
         new_id = self.docs_controller.next_item_id(self.current_doc_prefix)
@@ -136,7 +136,7 @@ class MainFrameRequirementsMixin:
         """Create a requirement derived from ``req_id`` and open it."""
         if not (self.docs_controller and self.current_doc_prefix):
             return
-        source = self.model.get_by_id(req_id)
+        source = self.model.get_by_id(req_id, doc_prefix=self.current_doc_prefix)
         if not source:
             return
         clone, parent_rid = self._create_linked_copy(source)
@@ -191,7 +191,9 @@ class MainFrameRequirementsMixin:
         if self.model:
             for req_id in unique_ids:
                 summary = self._format_requirement_summary(
-                    self.model.get_by_id(req_id)
+                    self.model.get_by_id(
+                        req_id, doc_prefix=self.current_doc_prefix
+                    )
                 )
                 if summary:
                     summaries.append(summary)
@@ -293,7 +295,9 @@ class MainFrameRequirementsMixin:
 
         requirements: list[Requirement] = []
         for req_id in unique_ids:
-            requirement = self.model.get_by_id(req_id)
+            requirement = self.model.get_by_id(
+                req_id, doc_prefix=self.current_doc_prefix
+            )
             if requirement is not None:
                 requirements.append(requirement)
         if not requirements:

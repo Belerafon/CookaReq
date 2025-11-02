@@ -1062,6 +1062,11 @@ class TurnCard(wx.Panel):
         regenerate_enabled: bool,
     ) -> None:
         """Render transcript ``segments`` and capture regenerated state."""
+        # Store current window state to minimize flicker
+        was_shown = self.IsShown()
+        if was_shown:
+            self.Hide()
+            
         sizer = self.GetSizer()
         prompt_segment = next(
             (segment for segment in segments if segment.kind == "user"),
@@ -1235,7 +1240,21 @@ class TurnCard(wx.Panel):
         self._last_agent_segment = agent_payload
         self._last_system_segments = system_map
         self._layout_initialized = True
+        
+        # Force a complete layout update
         self.Layout()
+        self.GetParent().Layout()
+        
+        # Restore window state
+        if was_shown:
+            self.Show()
+            self.Refresh()
+            self.Update()
+            
+        # Ensure the parent scrolled window updates its scrollbars
+        parent = self.GetParent()
+        if hasattr(parent, 'SetupScrolling'):
+            parent.SetupScrolling()
 
     # ------------------------------------------------------------------
     def enable_regenerate(self, enabled: bool) -> None:

@@ -360,6 +360,9 @@ class MarkdownContent(wx.Panel):
         self._destroyed = False
         self._pending_layout_sync = False
         self._max_visible_height = max(int(self.FromDIP(640)), 0)
+        self._last_scroller_width: int | None = None
+        self._layout_debounce: wx.CallLater | None = None
+        self._layout_events_history: list[float] = []
 
         self._view = MarkdownView(
             scroller,
@@ -422,7 +425,32 @@ class MarkdownContent(wx.Panel):
 
     def _on_scroller_size(self, event: wx.SizeEvent) -> None:
         event.Skip()
-        self._request_layout_sync()
+        # Only react to width changes and debounce to avoid oscillation
+        try:
+            size = event.GetSize()
+            new_width = int(size.width)
+        except Exception:
+            new_width = -1
+        if self._last_scroller_width is not None and new_width == self._last_scroller_width:
+            return
+        self._last_scroller_width = new_width
+
+        # Freeze detector: suppress bursts >10 within 2s
+        import time
+        now = time.time()
+        self._layout_events_history = [t for t in self._layout_events_history if now - t < 2.0]
+        self._layout_events_history.append(now)
+        if len(self._layout_events_history) > 10:
+            # Skip scheduling this one; next non-burst event will resync
+            return
+
+        # Debounce pending sync
+        try:
+            if self._layout_debounce is not None:
+                self._layout_debounce.Stop()
+        except Exception:
+            self._layout_debounce = None
+        self._layout_debounce = wx.CallLater(120, self._request_layout_sync)
 
     def _on_view_rendered(self) -> None:
         self._request_layout_sync()
@@ -489,17 +517,41 @@ class MarkdownContent(wx.Panel):
             max_visible = content_height
         visible_height = max(min_height, min(content_height, max_visible))
 
+        # Apply only if values actually changed to avoid EVT_SIZE storms
         try:
-            self._view.SetMinSize(wx.Size(min_width, min_height))
-            self._view.SetInitialSize(wx.Size(view_width, visible_height))
+            current_view_min = self._view.GetMinSize()
+        except RuntimeError:
+            current_view_min = wx.Size(0, 0)
+        desired_view_min = wx.Size(min_width, min_height)
+        try:
+            if current_view_min != desired_view_min:
+                self._view.SetMinSize(desired_view_min)
         except RuntimeError:
             return
 
+        # Scroller: set min/virtual size only if changed; avoid InitialSize
         try:
-            scroller.SetMinSize(wx.Size(min_width, visible_height))
-            scroller.SetInitialSize(wx.Size(view_width, visible_height))
-            scroller.SetVirtualSize(wx.Size(content_width, content_height))
-            scroller.Scroll(0, 0)
+            current_scroller_min = scroller.GetMinSize()
+        except RuntimeError:
+            current_scroller_min = wx.Size(0, 0)
+        desired_scroller_min = wx.Size(min_width, visible_height)
+        try:
+            current_virtual = scroller.GetVirtualSize()
+        except RuntimeError:
+            current_virtual = wx.Size(0, 0)
+        desired_virtual = wx.Size(content_width, content_height)
+        try:
+            if current_scroller_min != desired_scroller_min:
+                scroller.SetMinSize(desired_scroller_min)
+            if current_virtual != desired_virtual:
+                scroller.SetVirtualSize(desired_virtual)
+            # Only scroll to top if not already there to avoid triggering work
+            try:
+                vx, vy = scroller.GetViewStart()
+            except RuntimeError:
+                vx, vy = (0, 0)
+            if (vx, vy) != (0, 0):
+                scroller.Scroll(0, 0)
         except RuntimeError:
             return
 

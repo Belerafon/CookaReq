@@ -45,5 +45,13 @@ app/locale/missing.po
 # Helper logs emitted during wx GUI tests
 requirements/server.log
 
+# Application logs
+logs/
+*.log
+*.jsonl
+
+# Local debug logging config
+debug_logging.ini
+
 # Scratch files produced during investigations
 tmp/

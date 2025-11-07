@@ -304,7 +304,8 @@ class UserDocumentsService:
                     truncated = True
                     truncated_mid_line = True
                     break
-                collected.append(f"{current_line:>6}: {raw_line.rstrip('\n')}\n")
+                line = raw_line.rstrip('\n')
+                collected.append(f"{current_line:>6}: {line}\n")
                 consumed += len(encoded)
                 end_line = current_line
             else:

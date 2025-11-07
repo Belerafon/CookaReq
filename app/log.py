@@ -183,10 +183,12 @@ def configure_logging(level: int = logging.INFO, *, log_dir: str | Path | None =
     resolved_dir = _resolve_log_dir(log_dir).resolve()
     _log_dir = resolved_dir
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(level)
-    stream_handler.setFormatter(ConsoleFormatter())
-    logger.addHandler(stream_handler)
+    # Only add console handler if we're not in a frozen environment or if we have a console
+    if not getattr(sys, 'frozen', False) or sys.stdout is not None:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(level)
+        stream_handler.setFormatter(ConsoleFormatter())
+        logger.addHandler(stream_handler)
 
     text_path = resolved_dir / _TEXT_LOG_NAME
     text_size = text_path.stat().st_size if text_path.exists() else 0

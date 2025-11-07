@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -125,11 +126,29 @@ def _load_extra_help(data: Any) -> dict[str, tuple[str, ...]]:
 @cache
 def load_editor_config() -> EditorResource:
     """Load requirement editor configuration from the JSON resource."""
+    # First try to load from the regular location
     path = Path(__file__).with_name("editor_fields.json")
-    with path.open(encoding="utf-8") as fh:
-        payload = json.load(fh)
+    
+    # If not found and we're in a PyInstaller bundle, try the _MEIPASS directory
+    if not path.exists() and getattr(sys, 'frozen', False):
+        # When running in a PyInstaller bundle
+        bundle_dir = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+        path = bundle_dir / "app" / "ui" / "resources" / "editor_fields.json"
+        
+        # If still not found, try the parent directory of the executable
+        if not path.exists():
+            exe_dir = Path(sys.executable).parent
+            path = exe_dir / "app" / "ui" / "resources" / "editor_fields.json"
+    
+    try:
+        with path.open(encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"Could not find editor_fields.json in any of the expected locations. Tried: {path}") from e
+        
     if not isinstance(payload, dict):
         raise TypeError("Editor resource must be a mapping")
+        
     text_fields = tuple(_load_field_spec(entry) for entry in payload.get("text_fields", []))
     grid_fields = tuple(_load_field_spec(entry) for entry in payload.get("grid_fields", []))
     extra_help = _load_extra_help(payload.get("extra_help", {}))

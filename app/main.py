@@ -4,10 +4,10 @@ from pathlib import Path
 
 import wx
 
-from . import i18n
-from .application import ApplicationContext
-from .log import configure_logging
-from .ui.main_frame import MainFrame
+from app import i18n
+from app.application import ApplicationContext
+from app.log import configure_logging
+from app.ui.main_frame import MainFrame
 
 APP_NAME = "CookaReq"
 LOCALE_DIR = Path(__file__).resolve().parent / "locale"

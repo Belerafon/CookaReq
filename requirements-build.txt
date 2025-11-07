@@ -1,0 +1,38 @@
+# Build dependencies
+pyinstaller>=6.0.0
+
+# Runtime dependencies
+wxPython>=4.2.0
+jsonschema>=4.17.3
+charset-normalizer>=3.0.1
+fastapi>=0.68.0
+uvicorn>=0.15.0
+openai>=0.27.0
+markdown>=3.3.0
+reportlab>=3.6.0
+mcp>=0.1.0  # Local package
+typer>=0.12.0
+python-multipart>=0.0.9
+
+# Dependencies of dependencies
+pydantic>=1.8.0
+typing-extensions>=4.0.0
+anyio>=3.0.0
+click>=8.0.0
+h11>=0.12.0
+pyyaml>=6.0.0
+httpx>=0.23.0
+python-dotenv>=0.21.0
+pydantic-settings>=2.5.2
+sse-starlette>=1.6.1
+pywin32>=310
+
+# For building
+setuptools>=65.5.0
+wheel
+
+# Handle wxPython deprecation warning
+pypubsub>=4.0.0
+
+# i18n support
+polib>=1.2.0

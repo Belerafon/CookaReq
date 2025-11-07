@@ -119,7 +119,9 @@ _REQUEST_BACKUP_COUNT = 5
 
 def _configure_request_logging(log_dir: str | Path | None) -> Path:
     """Attach file handlers for request logging without mutating the global logger."""
+    # Configure basic logging first
     configure_logging()
+    
     # Remove previous request handlers if any from the dedicated logger
     for h in list(request_logger.handlers):
         if getattr(h, "cookareq_request", False):
@@ -921,7 +923,35 @@ def start_server(
     app.state.expected_token = token
     resolved_log_dir = _configure_request_logging(log_dir)
     app.state.log_dir = str(resolved_log_dir)
-    config = uvicorn.Config(app, host=host, port=port, log_level="info")
+    # Configure logging for frozen environment
+    log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {
+            "default": {
+                "class": "logging.StreamHandler",
+                "formatter": "default",
+                "stream": "ext://sys.stderr"
+            }
+        },
+        "formatters": {
+            "default": {
+                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            }
+        },
+        "root": {
+            "level": "INFO",
+            "handlers": ["default"]
+        }
+    }
+    
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        log_level="info",
+        log_config=log_config
+    )
     _uvicorn_server = uvicorn.Server(config)
     # Disable signal handlers so uvicorn can run outside the main thread
     _uvicorn_server.install_signal_handlers = False

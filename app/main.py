@@ -6,7 +6,9 @@ import wx
 
 from app import i18n
 from app.application import ApplicationContext
-from app.log import configure_logging
+import sys
+
+from app.log import configure_logging, install_exception_hooks, logger
 from app.ui.main_frame import MainFrame
 
 APP_NAME = "CookaReq"
@@ -33,13 +35,26 @@ def init_locale(language: str | None = None) -> wx.Locale:
     return locale
 
 
+class CookaReqApp(wx.App):
+    """Custom wx.App that logs unhandled GUI exceptions."""
+
+    def OnExceptionInMainLoop(self) -> None:  # pragma: no cover - GUI path
+        exc_info = sys.exc_info()
+        try:
+            logger.exception("Unhandled exception in GUI main loop", exc_info=exc_info)
+        finally:
+            # Delegate to default handler (will show native crash in debug builds)
+            super().OnExceptionInMainLoop()
+
+
 def main() -> None:
     """Run wx application with the main frame."""
     configure_logging()
+    install_exception_hooks()
     context = ApplicationContext.for_gui(app_name=APP_NAME)
     config = context.config
     language = config.get_language()
-    app = wx.App()
+    app = CookaReqApp()
     app.locale = init_locale(language)
     frame = MainFrame(
         parent=None,

@@ -8,6 +8,7 @@ from logging.handlers import RotatingFileHandler
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -216,6 +217,53 @@ def configure_logging(level: int = logging.INFO, *, log_dir: str | Path | None =
     logger.addHandler(json_handler)
 
     logger.setLevel(logging.DEBUG)
+
+
+def install_exception_hooks() -> None:
+    """Install global exception hooks that log uncaught errors.
+
+    This ensures that when running as a frozen executable without a console,
+    any unhandled exceptions are recorded by the application logger and thus
+    appear both in the log files and the in-app log console handler.
+    """
+
+    def _excepthook(exc_type, exc_value, exc_traceback):
+        try:
+            logger.critical(
+                "Uncaught exception",
+                exc_info=(exc_type, exc_value, exc_traceback),
+            )
+        except Exception:
+            # Last-resort fallback: avoid breaking the default handler chain
+            pass
+
+    sys.excepthook = _excepthook
+
+    if hasattr(threading, "excepthook"):
+        def _thread_excepthook(args: threading.ExceptHookArgs) -> None:  # type: ignore[attr-defined]
+            try:
+                logger.critical(
+                    "Uncaught thread exception (thread=%s)",
+                    getattr(args, "thread", None),
+                    exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+                )
+            except Exception:
+                pass
+
+        threading.excepthook = _thread_excepthook  # type: ignore[assignment]
+
+    if hasattr(sys, "unraisablehook"):
+        def _unraisablehook(hook_args):  # type: ignore[no-redef]
+            try:
+                msg = getattr(hook_args, "message", "Unraisable exception")
+                logger.error(
+                    "%s", msg,
+                    exc_info=(hook_args.exc_type, hook_args.exc_value, hook_args.exc_traceback),
+                )
+            except Exception:
+                pass
+
+        sys.unraisablehook = _unraisablehook  # type: ignore[assignment]
 
 
 def get_log_directory() -> Path:

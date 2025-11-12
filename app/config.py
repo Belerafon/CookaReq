@@ -13,7 +13,7 @@ import re
 
 import wx
 
-from .columns import sanitize_columns
+from .columns import default_column_width, sanitize_columns
 from .settings import AppSettings, LLMSettings, MCPSettings, UISettings
 
 
@@ -128,46 +128,16 @@ class ConfigManager:
         """Initialise configuration manager and load persisted state."""
         if path is not None:
             self._path = Path(path)
-            apply_first_run_defaults = False
         else:
             self._path = _default_config_path(app_name)
-            apply_first_run_defaults = not self._path.exists()
+        apply_first_run_defaults = not self._path.exists()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._settings = AppSettings()
         self._overrides: dict[str, dict[str, Any]] = {"llm": {}, "mcp": {}, "ui": {}}
         self._raw: dict[str, Any] = {}
         self._load()
         if apply_first_run_defaults:
-            # Apply opinionated defaults for a clean first launch
-            self._raw["col_order"] = [
-                "id",
-                "title",
-                "source",
-                "status",
-                "labels"
-            ]
-            self._raw["col_width_0"] = 200
-            self._raw["col_width_1"] = 400
-            self._raw["col_width_2"] = 50
-            self._raw["col_width_3"] = 101
-            self._raw["col_width_4"] = 146
-            self._raw["col_width_5"] = 86
-            self._raw["col_width_6"] = 150
-            self._raw["col_width_7"] = 180
-            # UI settings mapped via FIELD_BINDINGS
-            self.set_value("agent_chat_shown", False)
-            self.set_value("doc_tree_collapsed", False)
-            # Document tree sash is stored under raw key "sash_pos"
-            self.set_value("sash_pos", 117)
-            self.set_value("editor_sash_pos", 932)
-            self.set_value("editor_shown", True)
-            # Window geometry
-            self.set_value("win_w", 1500)
-            self.set_value("win_h", 1000)
-            self.set_value("win_x", 100)
-            self.set_value("win_y", 50)
-            # Persist defaults immediately
-            self.flush()
+            self._apply_first_run_defaults()
 
     # ------------------------------------------------------------------
     # internal helpers
@@ -192,6 +162,44 @@ class ConfigManager:
                 if isinstance(raw, dict):
                     self._raw = {key: deepcopy(value) for key, value in raw.items()}
         self._rebuild_settings()
+
+    def _apply_first_run_defaults(self) -> None:
+        """Populate sensible defaults for a brand new configuration file."""
+
+        columns = self.get_columns()
+        order = self._initial_column_order(columns)
+        if order:
+            self._raw["col_order"] = order
+            for index, field in enumerate(order):
+                width = default_column_width(field)
+                self._raw[f"col_width_{index}"] = int(width)
+
+        ui_defaults: dict[str, Any] = {
+            "agent_chat_shown": False,
+            "doc_tree_collapsed": False,
+            "sash_pos": 117,
+            "editor_sash_pos": 932,
+            "editor_shown": True,
+            "win_w": 1500,
+            "win_h": 1000,
+            "win_x": 100,
+            "win_y": 50,
+        }
+        for key, value in ui_defaults.items():
+            self.set_value(key, value)
+
+        self.flush()
+
+    @staticmethod
+    def _initial_column_order(columns: Sequence[str]) -> list[str]:
+        """Return logical column order for freshly initialised configs."""
+
+        order: list[str] = []
+        if "labels" in columns:
+            order.append("labels")
+        order.append("title")
+        order.extend(field for field in columns if field != "labels")
+        return order
 
     def _rebuild_settings(self) -> None:
         base = AppSettings()

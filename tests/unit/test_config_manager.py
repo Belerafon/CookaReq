@@ -4,6 +4,7 @@ import logging
 
 import pytest
 
+from app.columns import default_column_width
 from app.config import ConfigManager
 from app.llm.constants import (
     DEFAULT_LLM_BASE_URL,
@@ -22,6 +23,22 @@ from app.settings import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_first_run_populates_column_defaults(tmp_path, wx_app):
+    cfg_path = tmp_path / "first-run.json"
+    cfg = ConfigManager(app_name="TestApp", path=cfg_path)
+
+    columns = cfg.get_columns()
+    expected_order: list[str] = []
+    if "labels" in columns:
+        expected_order.append("labels")
+    expected_order.append("title")
+    expected_order.extend(field for field in columns if field != "labels")
+
+    assert cfg.get_column_order() == expected_order
+    for index, field in enumerate(expected_order):
+        assert cfg.get_column_width(index, default=-1) == default_column_width(field)
 
 
 class DummyListPanel:
@@ -86,10 +103,10 @@ def _recent_dirs_factory(tmp_path):
         ("agent_chat_shown", False),
         ("agent_history_sash", 200),
         ("agent_confirm_mode", "prompt"),
-        ("win_w", 800),
-        ("win_x", -1),
-        ("win_y", -1),
-        ("editor_sash_pos", 600),
+        ("win_w", 1500),
+        ("win_x", 100),
+        ("win_y", 50),
+        ("editor_sash_pos", 932),
         ("editor_shown", True),
         ("doc_tree_collapsed", False),
     ],

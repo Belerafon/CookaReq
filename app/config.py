@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Sequence
 from typing import Any, ClassVar, Literal, Protocol
+import re
 
 import wx
 
@@ -20,9 +21,27 @@ logger = logging.getLogger(__name__)
 _MISSING = object()
 
 
+_CONFIG_DIRECTORY = Path.home() / ".cookareq"
+
+
+def _slugify_app_name(app_name: str) -> str:
+    """Return filesystem-friendly slug derived from *app_name*."""
+
+    text = app_name.strip().lower()
+    if not text:
+        return "default"
+    slug = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    return slug or "default"
+
+
 def _default_config_path(app_name: str) -> Path:
-    """Return preferred config path: ~/.cookareq/config.json (per-user)."""
-    return Path.home() / ".cookareq" / "config.json"
+    """Return preferred config path under ~/.cookareq per application name."""
+
+    if app_name == "CookaReq":
+        filename = "config.json"
+    else:
+        filename = f"config-{_slugify_app_name(app_name)}.json"
+    return _CONFIG_DIRECTORY / filename
 
 
 
@@ -109,15 +128,16 @@ class ConfigManager:
         """Initialise configuration manager and load persisted state."""
         if path is not None:
             self._path = Path(path)
+            apply_first_run_defaults = False
         else:
             self._path = _default_config_path(app_name)
-        first_run = not self._path.exists()
+            apply_first_run_defaults = not self._path.exists()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._settings = AppSettings()
         self._overrides: dict[str, dict[str, Any]] = {"llm": {}, "mcp": {}, "ui": {}}
         self._raw: dict[str, Any] = {}
         self._load()
-        if first_run:
+        if apply_first_run_defaults:
             # Apply opinionated defaults for a clean first launch
             self._raw["col_order"] = [
                 "id",
@@ -135,9 +155,7 @@ class ConfigManager:
             self._raw["col_width_6"] = 150
             self._raw["col_width_7"] = 180
             # UI settings mapped via FIELD_BINDINGS
-            self.set_value("agent_chat_sash", 280)
             self.set_value("agent_chat_shown", False)
-            self.set_value("agent_history_sash", 260)
             self.set_value("doc_tree_collapsed", False)
             # Document tree sash is stored under raw key "sash_pos"
             self.set_value("sash_pos", 117)

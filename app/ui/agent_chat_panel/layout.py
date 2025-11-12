@@ -113,7 +113,7 @@ class AgentChatLayoutBuilder:
 
         horizontal_splitter = wx.SplitterWindow(top_panel, style=splitter_style)
         style_splitter(horizontal_splitter)
-        history_min_width = dip(panel, 260)
+        history_min_width = dip(panel, 200)
         horizontal_splitter.SetMinimumPaneSize(history_min_width)
 
         history_panel = wx.Panel(horizontal_splitter)
@@ -127,7 +127,7 @@ class AgentChatLayoutBuilder:
         history_header.Add(new_chat_btn, 0, wx.ALIGN_CENTER_VERTICAL)
         history_style = dv.DV_MULTIPLE | dv.DV_ROW_LINES | dv.DV_VERT_RULES
         history_list = MarqueeDataViewListCtrl(history_panel, style=history_style)
-        history_list.SetMinSize(wx.Size(dip(panel, 260), -1))
+        history_list.SetMinSize(wx.Size(history_min_width, -1))
         title_col = history_list.AppendTextColumn(
             _("Title"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 180)
         )
@@ -156,6 +156,7 @@ class AgentChatLayoutBuilder:
         history_panel.SetSizer(history_sizer)
 
         transcript_container = wx.Panel(horizontal_splitter)
+        transcript_container.SetMinSize(wx.Size(dip(panel, 500), -1))
         transcript_sizer = wx.BoxSizer(wx.VERTICAL)
         transcript_header = wx.BoxSizer(wx.HORIZONTAL)
         conversation_label = wx.StaticText(

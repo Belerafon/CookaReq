@@ -257,8 +257,8 @@ class UISettings(BaseModel):
     log_shown: bool = False
     log_sash: int = 300
     agent_chat_shown: bool = False
-    agent_chat_sash: int = 400
-    agent_history_sash: int = 320
+    agent_chat_sash: int = 500
+    agent_history_sash: int = 200
     agent_confirm_mode: Literal["prompt", "never"] = "prompt"
     editor_shown: bool = True
     editor_sash_pos: int = 600

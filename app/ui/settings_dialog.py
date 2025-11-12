@@ -254,9 +254,25 @@ class SettingsDialog(wx.Dialog):
         # General settings -------------------------------------------------
         self._languages = available_translations()
         choices = [name for _, name in self._languages]
-        try:
-            idx = [code for code, _ in self._languages].index(language)
-        except ValueError:
+        codes = [code for code, _ in self._languages]
+        idx = -1
+        if language and language in codes:
+            idx = codes.index(language)
+        if idx == -1:
+            app = wx.GetApp()
+            get_name = getattr(getattr(app, "locale", None), "GetName", None)
+            locale_name = get_name() if callable(get_name) else ""
+            candidates: list[str] = []
+            if locale_name:
+                candidates.append(locale_name)
+                base = locale_name.split("_")[0]
+                if base and base not in candidates:
+                    candidates.append(base)
+            for cand in candidates:
+                if cand in codes:
+                    idx = codes.index(cand)
+                    break
+        if idx == -1:
             idx = 0
 
         nb = wx.Notebook(self)

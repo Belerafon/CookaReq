@@ -122,18 +122,15 @@ class ConfigManager:
             self._raw["col_order"] = [
                 "id",
                 "title",
-                "derived_from",
+                "source",
                 "status",
-                "priority",
-                "labels",
-                "type",
-                "owner",
+                "labels"
             ]
             self._raw["col_width_0"] = 200
             self._raw["col_width_1"] = 400
-            self._raw["col_width_2"] = 90
+            self._raw["col_width_2"] = 50
             self._raw["col_width_3"] = 101
-            self._raw["col_width_4"] = 96
+            self._raw["col_width_4"] = 146
             self._raw["col_width_5"] = 86
             self._raw["col_width_6"] = 150
             self._raw["col_width_7"] = 180

@@ -201,12 +201,19 @@ def available_translations() -> list[tuple[str, str]]:
     """Return list of (language_code, display_name) for available translations."""
     langs: list[tuple[str, str]] = []
     locale_root = resources.files("app") / "locale"
-    for entry in locale_root.iterdir():
-        if entry.is_dir():
-            code = entry.name
-            info = wx.Locale.FindLanguageInfo(code)
-            name = info.Description if info else code
-            langs.append((code, name))
+    try:
+        for entry in locale_root.iterdir():
+            if entry.is_dir():
+                code = entry.name
+                info = wx.Locale.FindLanguageInfo(code)
+                name = info.Description if info else code
+                langs.append((code, name))
+    except FileNotFoundError:
+        pass
+    if not langs:
+        info = wx.Locale.FindLanguageInfo("en")
+        name = info.Description if info else "en"
+        langs = [("en", name)]
     return langs
 
 

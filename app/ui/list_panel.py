@@ -196,8 +196,26 @@ class RequirementsListCtrl(wx.ListCtrl):
         self._update_marquee_selection(event.GetPosition())
         event.Skip(False)
 
-    def _on_mouse_leave(self, event: wx.MouseEvent) -> None:
-        if self._marquee_origin and not event.LeftIsDown():
+    def _on_mouse_leave(self, event: wx.Event) -> None:
+        if not self._marquee_origin:
+            event.Skip()
+            return
+        left_down = False
+        if hasattr(event, "LeftIsDown"):
+            try:
+                left_down = bool(event.LeftIsDown())
+            except Exception:
+                left_down = False
+        else:
+            try:
+                ms = wx.GetMouseState()
+                if hasattr(ms, "LeftIsDown"):
+                    left_down = bool(ms.LeftIsDown())
+                else:
+                    left_down = bool(getattr(ms, "leftDown", False))
+            except Exception:
+                left_down = False
+        if not left_down:
             self._finish_marquee()
         event.Skip()
 

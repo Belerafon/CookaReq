@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,10 +21,9 @@ _MISSING = object()
 
 
 def _default_config_path(app_name: str) -> Path:
-    """Return platform-appropriate config path for *app_name*."""
-    base = os.environ.get("XDG_CONFIG_HOME")
-    root = Path(base) if base else Path.home() / ".config"
-    return root / app_name / "config.json"
+    """Return preferred config path: ~/.cookareq/config.json (per-user)."""
+    return Path.home() / ".cookareq" / "config.json"
+
 
 
 @dataclass(frozen=True)
@@ -109,12 +107,52 @@ class ConfigManager:
         path: Path | str | None = None,
     ) -> None:
         """Initialise configuration manager and load persisted state."""
-        self._path = Path(path) if path is not None else _default_config_path(app_name)
+        if path is not None:
+            self._path = Path(path)
+        else:
+            self._path = _default_config_path(app_name)
+        first_run = not self._path.exists()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._settings = AppSettings()
         self._overrides: dict[str, dict[str, Any]] = {"llm": {}, "mcp": {}, "ui": {}}
         self._raw: dict[str, Any] = {}
         self._load()
+        if first_run:
+            # Apply opinionated defaults for a clean first launch
+            self._raw["col_order"] = [
+                "id",
+                "title",
+                "derived_from",
+                "status",
+                "priority",
+                "labels",
+                "type",
+                "owner",
+            ]
+            self._raw["col_width_0"] = 200
+            self._raw["col_width_1"] = 400
+            self._raw["col_width_2"] = 90
+            self._raw["col_width_3"] = 101
+            self._raw["col_width_4"] = 96
+            self._raw["col_width_5"] = 86
+            self._raw["col_width_6"] = 150
+            self._raw["col_width_7"] = 180
+            # UI settings mapped via FIELD_BINDINGS
+            self.set_value("agent_chat_sash", 280)
+            self.set_value("agent_chat_shown", False)
+            self.set_value("agent_history_sash", 260)
+            self.set_value("doc_tree_collapsed", False)
+            # Document tree sash is stored under raw key "sash_pos"
+            self.set_value("sash_pos", 117)
+            self.set_value("editor_sash_pos", 932)
+            self.set_value("editor_shown", True)
+            # Window geometry
+            self.set_value("win_w", 1500)
+            self.set_value("win_h", 1000)
+            self.set_value("win_x", 100)
+            self.set_value("win_y", 50)
+            # Persist defaults immediately
+            self.flush()
 
     # ------------------------------------------------------------------
     # internal helpers

@@ -260,7 +260,7 @@ class MainFrameSectionsMixin:
             width = 1000
         min_size = max(self.agent_splitter.GetMinimumPaneSize(), 200)
         max_left = max(width - min_size, min_size)
-        desired = width - 320
+        desired = width - 500
         desired = max(min_size, desired)
         desired = min(desired, max_left)
         return desired

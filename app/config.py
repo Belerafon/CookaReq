@@ -331,7 +331,52 @@ class ConfigManager:
             candidates = list(raw)
         else:
             return []
-        return [str(entry) for entry in candidates if str(entry)]
+
+        normalised: list[str] = []
+        seen: set[str] = set()
+        for entry in candidates:
+            name = str(entry)
+            if not name:
+                continue
+            if name in seen:
+                continue
+            normalised.append(name)
+            seen.add(name)
+
+        columns = self.get_columns()
+        if "title" not in seen:
+            insert_at = 1 if normalised else 0
+            normalised.insert(insert_at, "title")
+            seen.add("title")
+        if "source" in columns and "source" not in seen:
+            if "title" in normalised:
+                insert_at = normalised.index("title") + 1
+            elif "id" in normalised:
+                insert_at = normalised.index("id") + 1
+            else:
+                insert_at = 0
+            normalised.insert(insert_at, "source")
+            seen.add("source")
+
+        pending_labels = False
+        for field in columns:
+            if field in seen:
+                continue
+            if field == "labels":
+                pending_labels = True
+                continue
+            normalised.append(field)
+            seen.add(field)
+
+        if pending_labels and "labels" not in seen:
+            if "status" in normalised:
+                insert_at = normalised.index("status") + 1
+            else:
+                insert_at = len(normalised)
+            normalised.insert(insert_at, "labels")
+            seen.add("labels")
+
+        return normalised
 
     def set_column_order(self, fields: Sequence[str]) -> None:
         """Persist ordering for visible *fields*."""

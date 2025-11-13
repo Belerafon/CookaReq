@@ -24,16 +24,23 @@ from ..settings import (
 )
 from .helpers import format_error_message, make_help_button
 
+def _help_msg(message: str) -> str:
+    """Register *message* for translation while keeping the English msgid."""
+
+    _(message)
+    return message
+
+
 GENERAL_HELP: dict[str, str] = {
-    "open_last": _(
+    "open_last": _help_msg(
         "Automatically reopen the most recently used requirements folder on startup.\n"
         "Disable to always choose a folder manually.",
     ),
-    "remember_sort": _(
+    "remember_sort": _help_msg(
         "Remember the last column and direction used to sort requirements.\n"
         "Keeps the list ordering consistent between sessions.",
     ),
-    "language": _(
+    "language": _help_msg(
         "Language for menus and dialogs.\n"
         "Changes apply after restarting CookaReq.",
     ),
@@ -41,7 +48,7 @@ GENERAL_HELP: dict[str, str] = {
 
 
 LLM_HELP: dict[str, str] = {
-    "message_format": _(
+    "message_format": _help_msg(
         "Choose the conversation envelope used when talking to the model.\n\n"
         "• OpenAI chat — the classic JSON schema {role, content}. Works with most"
         " compatible APIs, supports standard tool_calls, and matches the OpenAI"
@@ -75,52 +82,48 @@ LLM_HELP: dict[str, str] = {
         "— After CookaReq updates, review the architecture notes: they track the"
         " limitations and support status for each format.",
     ),
-    "base_url": _(
+    "base_url": _help_msg(
         "Base URL of the LLM API. Example: https://api.openai.com/v1\n"
         "Required; defines where requests are sent.",
     ),
-    "model": _(
+    "model": _help_msg(
         "LLM model name. Example: gpt-4-turbo\n"
         "Required; selects which model to use.",
     ),
-    "api_key": _(
+    "api_key": _help_msg(
         "LLM access key. Example: sk-XXXX\n"
         "Required when the service needs authentication.",
     ),
-    "max_retries": _(
+    "max_retries": _help_msg(
         "Number of times to retry a failed HTTP request. Example: 3\n"
         "Optional; defaults to 3 retries.",
     ),
-    "max_context_tokens": _(
+    "max_context_tokens": _help_msg(
         "Maximum number of tokens reserved for the conversation history when"
         " sending prompts.\n"
         "Default: {default} tokens.\n"
-        "Minimum allowed: {minimum} tokens."
-    ).format(
-        default=DEFAULT_MAX_CONTEXT_TOKENS,
-        minimum=MIN_MAX_CONTEXT_TOKENS,
+        "Minimum allowed: {minimum} tokens.",
     ),
-    "timeout_minutes": _(
+    "timeout_minutes": _help_msg(
         "HTTP request timeout in minutes. Example: 1\n"
         "Optional; defaults to 60 minutes.",
     ),
-    "temperature": _(
+    "temperature": _help_msg(
         "Enable the checkbox to send a fixed sampling temperature to the LLM.\n"
         "When disabled, the temperature parameter is omitted and the provider"
         " falls back to its default.\n\n"
         "Allowed values range from 0 to 2. Lower temperatures produce more"
-        " deterministic replies, higher values increase variety."
-        " Default value: {default}."
-    ).format(default=DEFAULT_LLM_TEMPERATURE),
-    "stream": _(
+        " deterministic replies, higher values increase variety. Default value: {default}.",
+    ),
+    "stream": _help_msg(
         "Stream partial responses from the LLM as they arrive.\n"
         "Disable to wait for the full reply before showing it.",
     ),
-    "check_llm": _(
+    "check_llm": _help_msg(
         "Send a test request to the configured LLM using the current settings.\n"
         "Use this to verify credentials and network connectivity.",
     ),
-    "check_tools": _(
+    "check_tools": _help_msg(
         "Contact the MCP server with the current connection settings and"
         " list the available tools.\n"
         "Ensures the agent integration is configured correctly.",
@@ -128,55 +131,54 @@ LLM_HELP: dict[str, str] = {
 }
 
 MCP_HELP: dict[str, str] = {
-    "auto_start": _(
+    "auto_start": _help_msg(
         "Automatically start the MCP server whenever a requirements folder is opened.",
     ),
-    "host": _(
+    "host": _help_msg(
         "Hostname for the MCP server. Example: 127.0.0.1\n"
         "Required; defines where to run the server.",
     ),
-    "port": _(
+    "port": _help_msg(
         "MCP server port. Example: 8123\nRequired field.",
     ),
-    "base_path": _(
+    "base_path": _help_msg(
         "Active requirements folder.\n"
         "CookaReq updates it automatically from the currently opened directory."
         " The value is read-only and shown for reference.",
     ),
-    "documents_path": _(
+    "documents_path": _help_msg(
         "Documentation directory visible to MCP tools. Example: share\n"
         "Relative paths are resolved from the active requirements folder.\n"
         "Leave empty to disable documentation access.",
     ),
-    "documents_max_read_kb": _(
+    "documents_max_read_kb": _help_msg(
         "Maximum amount of documentation text (in KiB) streamed by"
-        " `read_user_document` when the model omits `max_bytes`."
-        " Increase only when necessary; higher limits mean longer MCP"
-        " responses and more context usage.",
+        " `read_user_document` when the model omits `max_bytes`. Increase only when necessary;"
+        " higher limits mean longer MCP responses and more context usage.",
     ),
-    "log_dir": _(
+    "log_dir": _help_msg(
         "Directory for MCP request logs. Example: /var/log/cookareq\n"
         "Leave empty to store logs in the standard application log folder.",
     ),
-    "require_token": _(
+    "require_token": _help_msg(
         "When enabled, the server requires an authentication token.",
     ),
-    "token": _(
+    "token": _help_msg(
         "Access token for MCP. Example: secret123\n"
         "Required when \"Require token\" is enabled.",
     ),
-    "start": _(
+    "start": _help_msg(
         "Launch the MCP server in the background using the current"
         " connection settings.",
     ),
-    "stop": _(
+    "stop": _help_msg(
         "Stop the MCP server instance that was started from CookaReq.",
     ),
-    "check": _(
+    "check": _help_msg(
         "Connect to the MCP server and report whether it is reachable.\n"
         "Displays diagnostic information about the running instance.",
     ),
-    "status": _(
+    "status": _help_msg(
         "Shows whether the MCP server is currently running according to"
         " CookaReq and the result of the last check.",
     ),
@@ -188,9 +190,9 @@ MAX_CONTEXT_TOKEN_SPIN_MAX = 2_147_483_647
 
 
 LLM_FORMAT_CHOICES: tuple[tuple[str, str], ...] = (
-    ("openai-chat", _("OpenAI chat (default)")),
-    ("harmony", _("Harmony (GPT-OSS)")),
-    ("qwen", _("Qwen (ChatML + reasoning)")),
+    ("openai-chat", _help_msg("OpenAI chat (default)")),
+    ("harmony", _help_msg("Harmony (GPT-OSS)")),
+    ("qwen", _help_msg("Qwen (ChatML + reasoning)")),
 )
 """Available message format options for LLM conversations."""
 
@@ -289,7 +291,11 @@ class SettingsDialog(wx.Dialog):
         open_last_sz = wx.BoxSizer(wx.HORIZONTAL)
         open_last_sz.Add(self._open_last, 0, wx.ALIGN_CENTER_VERTICAL)
         open_last_sz.Add(
-            make_help_button(general, GENERAL_HELP["open_last"], dialog_parent=self),
+            make_help_button(
+                general,
+                _(GENERAL_HELP["open_last"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -301,7 +307,7 @@ class SettingsDialog(wx.Dialog):
         remember_sort_sz.Add(
             make_help_button(
                 general,
-                GENERAL_HELP["remember_sort"],
+                _(GENERAL_HELP["remember_sort"]),
                 dialog_parent=self,
             ),
             0,
@@ -318,7 +324,11 @@ class SettingsDialog(wx.Dialog):
         )
         lang_sizer.Add(self._language_choice, 1, wx.ALIGN_CENTER_VERTICAL)
         lang_sizer.Add(
-            make_help_button(general, GENERAL_HELP["language"], dialog_parent=self),
+            make_help_button(
+                general,
+                _(GENERAL_HELP["language"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -330,7 +340,7 @@ class SettingsDialog(wx.Dialog):
         llm = wx.Panel(nb)
         self._base_url = wx.TextCtrl(llm, value=base_url)
         self._model = wx.TextCtrl(llm, value=model)
-        format_labels = [label for _, label in LLM_FORMAT_CHOICES]
+        format_labels = [_(label) for _, label in LLM_FORMAT_CHOICES]
         self._format_choice = wx.Choice(llm, choices=format_labels)
         try:
             format_index = [value for value, _ in LLM_FORMAT_CHOICES].index(
@@ -414,7 +424,11 @@ class SettingsDialog(wx.Dialog):
         )
         base_sz.Add(self._base_url, 1, wx.ALIGN_CENTER_VERTICAL)
         base_sz.Add(
-            make_help_button(llm, LLM_HELP["base_url"], dialog_parent=self),
+            make_help_button(
+                llm,
+                _(LLM_HELP["base_url"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -429,7 +443,11 @@ class SettingsDialog(wx.Dialog):
         )
         model_sz.Add(self._model, 1, wx.ALIGN_CENTER_VERTICAL)
         model_sz.Add(
-            make_help_button(llm, LLM_HELP["model"], dialog_parent=self),
+            make_help_button(
+                llm,
+                _(LLM_HELP["model"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -444,7 +462,11 @@ class SettingsDialog(wx.Dialog):
         )
         format_sz.Add(self._format_choice, 1, wx.ALIGN_CENTER_VERTICAL)
         format_sz.Add(
-            make_help_button(llm, LLM_HELP["message_format"], dialog_parent=self),
+            make_help_button(
+                llm,
+                _(LLM_HELP["message_format"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -459,7 +481,11 @@ class SettingsDialog(wx.Dialog):
         )
         key_sz.Add(self._api_key, 1, wx.ALIGN_CENTER_VERTICAL)
         key_sz.Add(
-            make_help_button(llm, LLM_HELP["api_key"], dialog_parent=self),
+            make_help_button(
+                llm,
+                _(LLM_HELP["api_key"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -474,7 +500,11 @@ class SettingsDialog(wx.Dialog):
         )
         retries_sz.Add(self._max_retries, 1, wx.ALIGN_CENTER_VERTICAL)
         retries_sz.Add(
-            make_help_button(llm, LLM_HELP["max_retries"], dialog_parent=self),
+            make_help_button(
+                llm,
+                _(LLM_HELP["max_retries"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -489,7 +519,14 @@ class SettingsDialog(wx.Dialog):
         )
         context_sz.Add(self._max_context_tokens, 1, wx.ALIGN_CENTER_VERTICAL)
         context_sz.Add(
-            make_help_button(llm, LLM_HELP["max_context_tokens"], dialog_parent=self),
+            make_help_button(
+                llm,
+                _(LLM_HELP["max_context_tokens"]).format(
+                    default=DEFAULT_MAX_CONTEXT_TOKENS,
+                    minimum=MIN_MAX_CONTEXT_TOKENS,
+                ),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -504,7 +541,11 @@ class SettingsDialog(wx.Dialog):
         )
         timeout_sz.Add(self._timeout, 1, wx.ALIGN_CENTER_VERTICAL)
         timeout_sz.Add(
-            make_help_button(llm, LLM_HELP["timeout_minutes"], dialog_parent=self),
+            make_help_button(
+                llm,
+                _(LLM_HELP["timeout_minutes"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -519,7 +560,13 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         temperature_sz.Add(
-            make_help_button(llm, LLM_HELP["temperature"], dialog_parent=self),
+            make_help_button(
+                llm,
+                _(LLM_HELP["temperature"]).format(
+                    default=DEFAULT_LLM_TEMPERATURE,
+                ),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -528,7 +575,11 @@ class SettingsDialog(wx.Dialog):
         stream_sz = wx.BoxSizer(wx.HORIZONTAL)
         stream_sz.Add(self._stream, 0, wx.ALIGN_CENTER_VERTICAL)
         stream_sz.Add(
-            make_help_button(llm, LLM_HELP["stream"], dialog_parent=self),
+            make_help_button(
+                llm,
+                _(LLM_HELP["stream"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -634,7 +685,11 @@ class SettingsDialog(wx.Dialog):
         auto_start_sz = wx.BoxSizer(wx.HORIZONTAL)
         auto_start_sz.Add(self._auto_start, 0, wx.ALIGN_CENTER_VERTICAL)
         auto_start_sz.Add(
-            make_help_button(mcp, MCP_HELP["auto_start"], dialog_parent=self),
+            make_help_button(
+                mcp,
+                _(MCP_HELP["auto_start"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -649,7 +704,11 @@ class SettingsDialog(wx.Dialog):
         )
         host_sz.Add(self._host, 1, wx.ALIGN_CENTER_VERTICAL)
         host_sz.Add(
-            make_help_button(mcp, MCP_HELP["host"], dialog_parent=self),
+            make_help_button(
+                mcp,
+                _(MCP_HELP["host"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -664,7 +723,11 @@ class SettingsDialog(wx.Dialog):
         )
         port_sz.Add(self._port, 1, wx.ALIGN_CENTER_VERTICAL)
         port_sz.Add(
-            make_help_button(mcp, MCP_HELP["port"], dialog_parent=self),
+            make_help_button(
+                mcp,
+                _(MCP_HELP["port"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -679,7 +742,11 @@ class SettingsDialog(wx.Dialog):
         )
         base_sz.Add(self._base_path, 1, wx.ALIGN_CENTER_VERTICAL)
         base_sz.Add(
-            make_help_button(mcp, MCP_HELP["base_path"], dialog_parent=self),
+            make_help_button(
+                mcp,
+                _(MCP_HELP["base_path"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -701,7 +768,9 @@ class SettingsDialog(wx.Dialog):
         )
         documents_sz.Add(
             make_help_button(
-                mcp, MCP_HELP["documents_path"], dialog_parent=self
+                mcp,
+                _(MCP_HELP["documents_path"]),
+                dialog_parent=self,
             ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
@@ -723,7 +792,7 @@ class SettingsDialog(wx.Dialog):
         documents_limit_sz.Add(
             make_help_button(
                 mcp,
-                MCP_HELP["documents_max_read_kb"],
+                _(MCP_HELP["documents_max_read_kb"]),
                 dialog_parent=self,
             ),
             0,
@@ -746,7 +815,11 @@ class SettingsDialog(wx.Dialog):
         )
         log_sz.Add(self._log_dir, 1, wx.ALIGN_CENTER_VERTICAL)
         log_sz.Add(
-            make_help_button(mcp, MCP_HELP["log_dir"], dialog_parent=self),
+            make_help_button(
+                mcp,
+                _(MCP_HELP["log_dir"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -755,7 +828,11 @@ class SettingsDialog(wx.Dialog):
         token_toggle_sz = wx.BoxSizer(wx.HORIZONTAL)
         token_toggle_sz.Add(self._require_token, 0, wx.ALIGN_CENTER_VERTICAL)
         token_toggle_sz.Add(
-            make_help_button(mcp, MCP_HELP["require_token"], dialog_parent=self),
+            make_help_button(
+                mcp,
+                _(MCP_HELP["require_token"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -770,7 +847,11 @@ class SettingsDialog(wx.Dialog):
         )
         token_sz.Add(self._token, 1, wx.ALIGN_CENTER_VERTICAL)
         token_sz.Add(
-            make_help_button(mcp, MCP_HELP["token"], dialog_parent=self),
+            make_help_button(
+                mcp,
+                _(MCP_HELP["token"]),
+                dialog_parent=self,
+            ),
             0,
             wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
             5,
@@ -934,7 +1015,7 @@ class SettingsDialog(wx.Dialog):
         row = wx.BoxSizer(wx.HORIZONTAL)
         row.Add(control, 0, wx.ALIGN_CENTER_VERTICAL)
         row.Add(
-            make_help_button(parent, help_text, dialog_parent=self),
+            make_help_button(parent, _(help_text), dialog_parent=self),
             0,
             wx.LEFT | wx.ALIGN_CENTER_VERTICAL,
             border,

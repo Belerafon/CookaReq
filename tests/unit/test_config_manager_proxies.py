@@ -14,8 +14,17 @@ def test_config_manager_column_helpers(tmp_path, wx_app):
     initial_order = cfg.get_column_order()
     assert initial_order, "expected first run defaults to provide a column order"
     assert len(initial_order) >= 3
+    assert initial_order[0] == "id"
 
-    expected_width = default_column_width(initial_order[2])
+    columns = cfg.get_columns()
+    physical_fields: list[str] = []
+    if "labels" in columns:
+        physical_fields.append("labels")
+    physical_fields.append("title")
+    physical_fields.extend(field for field in columns if field != "labels")
+    assert len(physical_fields) >= 3
+
+    expected_width = default_column_width(physical_fields[2])
     assert cfg.get_column_width(2, default=120) == expected_width
 
     cfg.set_column_width(2, 240)

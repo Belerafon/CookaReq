@@ -17,6 +17,15 @@ from .columns import default_column_width, sanitize_columns
 from .settings import AppSettings, LLMSettings, MCPSettings, UISettings
 
 
+_FIRST_RUN_COLUMN_PRIORITY: tuple[str, ...] = (
+    "id",
+    "title",
+    "source",
+    "status",
+    "labels",
+)
+
+
 logger = logging.getLogger(__name__)
 _MISSING = object()
 
@@ -170,9 +179,9 @@ class ConfigManager:
         order = self._initial_column_order(columns)
         if order:
             self._raw["col_order"] = order
-            for index, field in enumerate(order):
-                width = default_column_width(field)
-                self._raw[f"col_width_{index}"] = int(width)
+        for index, field in enumerate(self._initial_physical_fields(columns)):
+            width = default_column_width(field)
+            self._raw[f"col_width_{index}"] = int(width)
 
         ui_defaults: dict[str, Any] = {
             "agent_chat_shown": False,
@@ -195,11 +204,32 @@ class ConfigManager:
         """Return logical column order for freshly initialised configs."""
 
         order: list[str] = []
-        if "labels" in columns:
-            order.append("labels")
-        order.append("title")
-        order.extend(field for field in columns if field != "labels")
+        seen: set[str] = set()
+        for field in _FIRST_RUN_COLUMN_PRIORITY:
+            if field == "title":
+                if field not in seen:
+                    order.append(field)
+                    seen.add(field)
+                continue
+            if field in columns and field not in seen:
+                order.append(field)
+                seen.add(field)
+        for field in columns:
+            if field not in seen:
+                order.append(field)
+                seen.add(field)
         return order
+
+    @staticmethod
+    def _initial_physical_fields(columns: Sequence[str]) -> list[str]:
+        """Return column sequence as instantiated by :class:`RequirementsListCtrl`."""
+
+        fields: list[str] = []
+        if "labels" in columns:
+            fields.append("labels")
+        fields.append("title")
+        fields.extend(field for field in columns if field != "labels")
+        return fields
 
     def _rebuild_settings(self) -> None:
         base = AppSettings()

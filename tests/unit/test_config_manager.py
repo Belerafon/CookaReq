@@ -5,7 +5,7 @@ import logging
 import pytest
 
 from app.columns import default_column_width
-from app.config import ConfigManager
+from app.config import ConfigManager, _FIRST_RUN_COLUMN_PRIORITY
 from app.llm.constants import (
     DEFAULT_LLM_BASE_URL,
     DEFAULT_LLM_MODEL,
@@ -25,19 +25,47 @@ from app.settings import (
 pytestmark = pytest.mark.unit
 
 
+def _expected_first_run_order(columns: list[str]) -> list[str]:
+    order: list[str] = []
+    seen: set[str] = set()
+
+    def _add(field: str) -> None:
+        if field not in seen:
+            order.append(field)
+            seen.add(field)
+
+    for field in _FIRST_RUN_COLUMN_PRIORITY:
+        if field == "title":
+            _add("title")
+            continue
+        if field in columns:
+            _add(field)
+    for field in columns:
+        _add(field)
+    return order
+
+
+def _expected_physical_fields(columns: list[str]) -> list[str]:
+    fields: list[str] = []
+    if "labels" in columns:
+        fields.append("labels")
+    fields.append("title")
+    fields.extend(field for field in columns if field != "labels")
+    return fields
+
+
 def test_first_run_populates_column_defaults(tmp_path, wx_app):
     cfg_path = tmp_path / "first-run.json"
     cfg = ConfigManager(app_name="TestApp", path=cfg_path)
 
     columns = cfg.get_columns()
-    expected_order: list[str] = []
-    if "labels" in columns:
-        expected_order.append("labels")
-    expected_order.append("title")
-    expected_order.extend(field for field in columns if field != "labels")
+    expected_order = _expected_first_run_order(columns)
 
     assert cfg.get_column_order() == expected_order
-    for index, field in enumerate(expected_order):
+    if "id" in columns:
+        assert cfg.get_column_order()[0] == "id"
+
+    for index, field in enumerate(_expected_physical_fields(columns)):
         assert cfg.get_column_width(index, default=-1) == default_column_width(field)
 
 

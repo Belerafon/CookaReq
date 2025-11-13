@@ -332,18 +332,23 @@ class ConfigManager:
         else:
             return []
 
+        columns = self.get_columns()
+        allowed_fields = set(columns)
+        allowed_fields.add("title")
+
         normalised: list[str] = []
         seen: set[str] = set()
         for entry in candidates:
             name = str(entry)
             if not name:
                 continue
+            if name not in allowed_fields:
+                continue
             if name in seen:
                 continue
             normalised.append(name)
             seen.add(name)
 
-        columns = self.get_columns()
         if "title" not in seen:
             insert_at = 1 if normalised else 0
             normalised.insert(insert_at, "title")

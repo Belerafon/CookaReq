@@ -32,14 +32,17 @@ def test_config_manager_column_helpers(tmp_path, wx_app):
     assert cfg.get_column_width(2, default=0) == 240
 
     assert cfg.get_column_order() == initial_order
+    cfg.set_columns(["labels", "id", "source", "status", "owner", "priority", "type"])
+    extended_order = cfg.get_column_order()
+    assert extended_order[:5] == initial_order
+    assert extended_order[5:] == ["owner", "priority", "type"]
     cfg.set_column_order(["id", "owner"])
     cfg.flush()
     reordered = cfg.get_column_order()
-    assert reordered[:4] == ["id", "title", "source", "owner"]
-    assert reordered[4:7] == ["status", "labels", "priority"]
-    assert reordered[-1] == "type"
+    assert reordered[:6] == ["id", "title", "source", "owner", "status", "labels"]
+    assert reordered[6:] == ["priority", "type"]
 
     cfg._raw["col_order"] = "priority,status,,"
     legacy = cfg.get_column_order()
     assert legacy[:5] == ["priority", "title", "source", "status", "labels"]
-    assert legacy[5:] == ["id", "type", "owner"]
+    assert legacy[5:] == ["id", "owner", "type"]

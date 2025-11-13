@@ -75,14 +75,14 @@ def test_first_run_populates_column_defaults(tmp_path, wx_app):
         assert cfg.get_column_width(index, default=-1) == default_column_width(field)
 
 
-def test_get_column_order_normalises_missing_priority_fields(tmp_path, wx_app):
+def test_get_column_order_drops_unknown_fields(tmp_path, wx_app):
     cfg = ConfigManager(app_name="TestApp", path=tmp_path / "normalize.json")
     cfg._raw["col_order"] = ["id", "status", "labels", "priority", "priority"]
 
     order = cfg.get_column_order()
 
     assert order[:5] == ["id", "title", "source", "status", "labels"]
-    assert order[-3:] == ["priority", "type", "owner"]
+    assert {"priority", "type", "owner"}.isdisjoint(order)
 
 class DummyListPanel:
     def __init__(self):

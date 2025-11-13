@@ -34,9 +34,6 @@ DEFAULT_LIST_COLUMNS: tuple[str, ...] = tuple(
         "id",
         "source",
         "status",
-        "priority",
-        "type",
-        "owner",
     )
     if name in _AVAILABLE_COLUMN_SET
 )

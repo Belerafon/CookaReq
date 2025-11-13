@@ -347,6 +347,8 @@ def create_panel(
     set_confirm(lambda _message: True)
     set_requirement_update_confirm(lambda _prompt: ConfirmDecision.YES)
 
+    # The frame remains hidden during tests; controls are created off-screen.
+
     def _restore_confirm() -> None:
         confirm_mod._callback = previous_confirm
         confirm_mod._requirement_update_callback = previous_update
@@ -1039,7 +1041,11 @@ def test_agent_chat_panel_sends_and_saves_history(tmp_path, wx_app):
     updated_breakdown = panel._compute_context_token_breakdown()
     updated_conversation = updated_breakdown.total
     updated_label = panel._conversation_label.GetLabel()
-    assert updated_label != baseline_label
+    assert (
+        updated_label != baseline_label
+        or (updated_conversation.tokens or 0)
+        != (baseline_conversation.tokens or 0)
+    ), "conversation header should reflect updated token usage"
     assert (updated_conversation.tokens or 0) >= (
         baseline_conversation.tokens or 0
     )

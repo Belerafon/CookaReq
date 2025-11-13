@@ -12,14 +12,15 @@ pytestmark = pytest.mark.gui
 
 @pytest.mark.gui_smoke
 def test_main_runs(monkeypatch):
-    class DummyApp:
+    class DummyWxApp:
+        instances: ClassVar[list] = []
+
         def __init__(self):
             self.loop_ran = False
+            DummyWxApp.instances.append(self)
 
         def MainLoop(self):
             self.loop_ran = True
-
-    dummy_app = DummyApp()
 
     class DummyLocale:
         def __init__(self, lang):
@@ -39,7 +40,7 @@ def test_main_runs(monkeypatch):
         return None
 
     wx_stub = types.SimpleNamespace(
-        App=lambda: dummy_app,
+        App=DummyWxApp,
         Locale=DummyLocale,
         Config=DummyConfig,
         LANGUAGE_DEFAULT=0,
@@ -71,7 +72,7 @@ def test_main_runs(monkeypatch):
 
     main_module.main()
 
-    assert dummy_app.loop_ran
+    assert DummyWxApp.instances and DummyWxApp.instances[0].loop_ran
     assert DummyFrame.shown
     assert DummyFrame.instances and DummyFrame.instances[0].parent is None
     assert "context" in DummyFrame.instances[0].kwargs

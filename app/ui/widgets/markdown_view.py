@@ -90,6 +90,10 @@ class MarkdownTheme:
         return _mix_colour(self.background, self.foreground, 0.08)
 
 
+_RENDER_BUSY_RETRY_LIMIT = 5
+_RENDER_RETRY_DELAY_MS = 0
+
+
 class MarkdownView(html.HtmlWindow):
     """Simple view displaying markdown converted to HTML."""
 
@@ -108,6 +112,8 @@ class MarkdownView(html.HtmlWindow):
         self._markdown: str = ""
         self._pending_markup: str | None = None
         self._pending_render: bool = False
+        self._pending_render_attempts: int = 0
+        self._render_retry: wx.CallLater | None = None
         self._destroyed = False
         self._render_listeners: list[Callable[[], None]] = []
         self.SetBackgroundColour(background_colour)
@@ -167,15 +173,56 @@ class MarkdownView(html.HtmlWindow):
         self._pending_render = True
 
         def run() -> None:
-            self._pending_render = False
+            try:
+                if self._destroyed:
+                    self._pending_markup = None
+                    return
+                if self._try_render_pending_markup():
+                    self._pending_render_attempts = 0
+                    return
+                if self._pending_markup is None:
+                    self._pending_render_attempts = 0
+                    return
+            finally:
+                self._pending_render = False
+
+            self._pending_render_attempts += 1
+            if self._pending_render_attempts >= _RENDER_BUSY_RETRY_LIMIT:
+                self._pending_render_attempts = _RENDER_BUSY_RETRY_LIMIT
+                self._schedule_render_retry()
+            else:
+                self._schedule_immediate_retry()
+
+        if self._render_retry is not None:
+            self._render_retry.Stop()
+            self._render_retry = None
+
+        wx.CallAfter(run)
+
+    def _schedule_immediate_retry(self) -> None:
+        if self._destroyed or self._pending_markup is None:
+            return
+        wx.CallAfter(self._request_pending_render)
+
+    def _schedule_render_retry(self) -> None:
+        if self._destroyed or self._pending_markup is None:
+            return
+        if self._render_retry is not None:
+            return
+
+        def _trigger() -> None:
+            self._render_retry = None
             if self._destroyed:
                 self._pending_markup = None
                 return
-            if not self._try_render_pending_markup():
-                if self._pending_markup is not None:
-                    self._request_pending_render()
+            self._request_pending_render()
 
-        wx.CallAfter(run)
+        # Allow the event loop to process other handlers before retrying the
+        # markdown render again. ``CallLater`` avoids a tight ``CallAfter``
+        # loop when the underlying window is not yet ready (for example when
+        # tests create controls on hidden parents), which previously led to an
+        # endless stream of pending events and a stalled test run.
+        self._render_retry = wx.CallLater(_RENDER_RETRY_DELAY_MS, _trigger)
 
     def _try_render_pending_markup(self) -> bool:
         markup = self._pending_markup
@@ -237,6 +284,13 @@ class MarkdownView(html.HtmlWindow):
             self._destroyed = True
             self._pending_markup = None
             self._pending_render = False
+            self._pending_render_attempts = 0
+            if self._render_retry is not None:
+                try:
+                    self._render_retry.Stop()
+                except Exception:  # pragma: no cover - defensive
+                    pass
+                self._render_retry = None
             self._render_listeners.clear()
         event.Skip()
 

@@ -44,7 +44,12 @@ def _path_matches_prefixes(path: str, prefixes: Sequence[str]) -> bool:
     return any(path == prefix or path.startswith(f"{prefix}/") for prefix in prefixes)
 
 
+def _normalise_nodeid(value: str) -> str:
+    return value.replace("\\", "/").strip()
+
+
 _SUITE_STASH_KEY = object()
+_EXPLICIT_SELECTION_KEY = object()
 
 
 @dataclass(frozen=True)
@@ -175,6 +180,46 @@ def _format_suite_table() -> str:
     return "\n".join(lines)
 
 
+def _collect_explicit_selection(
+    config: pytest.Config,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    raw_args = tuple(
+        _normalise_nodeid(value)
+        for value in getattr(config.option, "file_or_dir", [])
+        if value
+    )
+    paths: list[str] = []
+    nodeids: list[str] = []
+    for value in raw_args:
+        if not value:
+            continue
+        if "::" in value:
+            nodeids.append(value)
+            path = value.split("::", 1)[0]
+            if path:
+                paths.append(_normalise_prefix(path))
+        else:
+            paths.append(_normalise_prefix(value))
+    # Preserve command-line ordering while removing duplicates.
+    unique_paths = tuple(dict.fromkeys(paths))
+    unique_nodeids = tuple(dict.fromkeys(nodeids))
+    return unique_paths, unique_nodeids
+
+
+def _is_explicitly_selected(
+    item: pytest.Item,
+    explicit_paths: Sequence[str],
+    explicit_nodeids: Sequence[str],
+) -> bool:
+    if not explicit_paths and not explicit_nodeids:
+        return False
+    nodeid = _normalise_nodeid(item.nodeid)
+    if nodeid in explicit_nodeids:
+        return True
+    path = nodeid.split("::", 1)[0]
+    return _path_matches_prefixes(path, explicit_paths)
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--suite",
@@ -190,6 +235,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    config.stash[_EXPLICIT_SELECTION_KEY] = _collect_explicit_selection(config)
     if config.getoption("--list-suites"):
         print(_format_suite_table())
         pytest.exit("suite listing requested", returncode=0)
@@ -217,12 +263,19 @@ class _SuiteReporter:
 @pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     suite = config.stash.get(_SUITE_STASH_KEY, None)
+    explicit_paths, explicit_nodeids = config.stash.get(
+        _EXPLICIT_SELECTION_KEY, ((), ())
+    )
     if suite is None:
         return
 
     selected: list[pytest.Item] = []
     deselected: list[pytest.Item] = []
     for item in items:
+        if _is_explicitly_selected(item, explicit_paths, explicit_nodeids):
+            item.add_marker(pytest.mark.suite_selected(suite.name))
+            selected.append(item)
+            continue
         if suite.should_run(item):
             item.add_marker(pytest.mark.suite_selected(suite.name))
             selected.append(item)

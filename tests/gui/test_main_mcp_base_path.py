@@ -87,14 +87,14 @@ def test_auto_start_restarts_mcp_with_new_base_path(tmp_path, wx_app):
     frame, config = _make_frame(tmp_path, auto_start=True)
     stub = frame.mcp
     try:
-        assert stub.start_calls == [""]
+        assert stub.start_calls == []
 
         repo = _sample_requirements_dir()
         frame._load_directory(repo)
 
         expected = str(repo)
-        assert stub.stop_calls == 1
-        assert stub.start_calls == ["", expected]
+        assert stub.stop_calls == 0
+        assert stub.start_calls == [expected]
         assert frame.mcp_settings.base_path == expected
         assert config.get_mcp_settings().base_path == expected
     finally:

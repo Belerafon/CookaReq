@@ -84,12 +84,6 @@ class MainFrame(
         self.llm_settings = self.config.get_llm_settings()
         self.mcp_settings = self.config.get_mcp_settings()
         self.mcp = self._mcp_factory()
-        if self.mcp_settings.auto_start:
-            self.mcp.start(
-                self.mcp_settings,
-                max_context_tokens=self.llm_settings.max_context_tokens,
-                token_model=self.llm_settings.model,
-            )
         self.docs_controller: DocumentsController | None = None
         self._detached_editors: dict[tuple[str, int], wx.Frame] = {}
         self._shutdown_in_progress = False

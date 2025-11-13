@@ -276,9 +276,11 @@ so you know which modules are involved and which regressions to guard against.
   перестанет быть лёгким.
 * `ThreadedAgentCommandExecutor` uses a single worker. Long LLM calls block
   subsequent commands; scaling will require coordination changes with the UI.
-* The MCP server reads its requirement base path from configuration. Invalid
-  paths surface as runtime errors — update documentation and configuration when
-  relocating the storage directory.
+* The MCP server keeps its requirement base path in sync with the directory
+  opened in the main window. The settings dialog shows the value read-only so
+  that only valid, user-selected folders are applied. Auto-start launches MCP
+  when a requirements folder becomes active; disabling auto-start leaves MCP
+  stopped until started manually from the dialog.
 * Any change to the requirement JSON schema must update the document store,
   domain models, tests and provide migration guidance for existing data.
 

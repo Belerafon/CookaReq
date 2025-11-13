@@ -129,7 +129,7 @@ LLM_HELP: dict[str, str] = {
 
 MCP_HELP: dict[str, str] = {
     "auto_start": _(
-        "Start the MCP server automatically when CookaReq launches.",
+        "Automatically start the MCP server whenever a requirements folder is opened.",
     ),
     "host": _(
         "Hostname for the MCP server. Example: 127.0.0.1\n"
@@ -139,8 +139,9 @@ MCP_HELP: dict[str, str] = {
         "MCP server port. Example: 8123\nRequired field.",
     ),
     "base_path": _(
-        "Base folder with requirements. Example: /tmp/reqs\n"
-        "Required; the server serves files from this directory.",
+        "Active requirements folder.\n"
+        "CookaReq updates it automatically from the currently opened directory."
+        " The value is read-only and shown for reference.",
     ),
     "documents_path": _(
         "Documentation directory visible to MCP tools. Example: share\n"
@@ -565,11 +566,18 @@ class SettingsDialog(wx.Dialog):
 
         # MCP settings ----------------------------------------------------
         mcp = wx.Panel(nb)
-        self._auto_start = wx.CheckBox(mcp, label=_("Run MCP server on startup"))
+        self._auto_start = wx.CheckBox(
+            mcp, label=_("Run MCP server when a requirements folder opens")
+        )
         self._auto_start.SetValue(auto_start)
         self._host = wx.TextCtrl(mcp, value=host)
         self._port = wx.SpinCtrl(mcp, min=1, max=65535, initial=port)
-        self._base_path = wx.TextCtrl(mcp, value=base_path)
+        self._base_path = wx.TextCtrl(
+            mcp,
+            value=base_path,
+            style=wx.TE_READONLY | wx.BORDER_NONE,
+        )
+        self._base_path.SetBackgroundColour(mcp.GetBackgroundColour())
         self._documents_path = wx.TextCtrl(mcp, value=documents_path)
         self._documents_read_limit = wx.SpinCtrl(
             mcp,
@@ -596,7 +604,6 @@ class SettingsDialog(wx.Dialog):
         self._documents_hint_default_colour = self._documents_hint.GetForegroundColour()
         self._documents_hint_success_colour = wx.Colour(0, 128, 0)
         self._documents_hint_error_colour = wx.Colour(178, 34, 34)
-        self._base_path.Bind(wx.EVT_TEXT, self._on_documents_path_edited)
         self._documents_path.Bind(wx.EVT_TEXT, self._on_documents_path_edited)
         log_dir_value = str(log_dir) if log_dir else ""
         self._log_dir = wx.TextCtrl(mcp, value=log_dir_value)

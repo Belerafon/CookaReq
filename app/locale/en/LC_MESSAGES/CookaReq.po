@@ -760,8 +760,10 @@ msgstr ""
 "HTTP request timeout in minutes. Example: 1\n"
 "Optional; defaults to 60 minutes."
 
-msgid "Automatically start the MCP server whenever a requirements folder is opened."
-msgstr "Automatically start the MCP server whenever a requirements folder is opened."
+msgid ""
+"Automatically start the MCP server whenever a requirements folder is opened."
+msgstr ""
+"Automatically start the MCP server whenever a requirements folder is opened."
 
 msgid ""
 "Hostname for the MCP server. Example: 127.0.0.1\n"
@@ -779,12 +781,10 @@ msgstr ""
 
 msgid ""
 "Active requirements folder.\n"
-"CookaReq updates it automatically from the currently opened directory."
-" The value is read-only and shown for reference."
+"CookaReq updates it automatically from the currently opened directory. The value is read-only and shown for reference."
 msgstr ""
 "Active requirements folder.\n"
-"CookaReq updates it automatically from the currently opened directory."
-" The value is read-only and shown for reference."
+"CookaReq updates it automatically from the currently opened directory. The value is read-only and shown for reference."
 
 msgid "When enabled, the server requires an authentication token."
 msgstr "When enabled, the server requires an authentication token."
@@ -1686,12 +1686,8 @@ msgstr "Batch started: {count} requirements"
 msgid "Batch • {rid}"
 msgstr "Batch • {rid}"
 
-msgid ""
-"CSV and TSV files "
-"(*.csv;*.tsv)|*.csv;*.tsv|All files|*.*"
-msgstr ""
-"CSV and TSV files "
-"(*.csv;*.tsv)|*.csv;*.tsv|All files|*.*"
+msgid "CSV and TSV files (*.csv;*.tsv)|*.csv;*.tsv|All files|*.*"
+msgstr "CSV and TSV files (*.csv;*.tsv)|*.csv;*.tsv|All files|*.*"
 
 msgid "Call identifier: {identifier}"
 msgstr "Call identifier: {identifier}"
@@ -2294,14 +2290,24 @@ msgstr "{path} (missing)"
 msgid "Select documentation folder"
 msgstr "Select documentation folder"
 
-msgid "Documentation directory visible to MCP tools. Example: share\nRelative paths are resolved from the active requirements folder.\nLeave empty to disable documentation access."
-msgstr "Documentation directory visible to MCP tools. Example: share\nRelative paths are resolved from the active requirements folder.\nLeave empty to disable documentation access."
+msgid ""
+"Documentation directory visible to MCP tools. Example: share\n"
+"Relative paths are resolved from the active requirements folder.\n"
+"Leave empty to disable documentation access."
+msgstr ""
+"Documentation directory visible to MCP tools. Example: share\n"
+"Relative paths are resolved from the active requirements folder.\n"
+"Leave empty to disable documentation access."
 
 msgid "Documentation folder"
 msgstr "Documentation folder"
 
-msgid "Documentation folder (optional). Relative paths resolve against the current requirements directory when one is open."
-msgstr "Documentation folder (optional). Relative paths resolve against the current requirements directory when one is open."
+msgid ""
+"Documentation folder (optional). Relative paths resolve against the current "
+"requirements directory when one is open."
+msgstr ""
+"Documentation folder (optional). Relative paths resolve against the current "
+"requirements directory when one is open."
 
 msgid "Documentation folder access disabled."
 msgstr "Documentation folder access disabled."
@@ -2318,8 +2324,14 @@ msgstr "Documentation root: {path}"
 msgid "Documentation root: {path} (missing)"
 msgstr "Documentation root: {path} (missing)"
 
-msgid "Maximum amount of documentation text (in KiB) streamed by `read_user_document` when the model omits `max_bytes`. Increase only when necessary; higher limits mean longer MCP responses and more context usage."
-msgstr "Maximum amount of documentation text (in KiB) streamed by `read_user_document` when the model omits `max_bytes`. Increase only when necessary; higher limits mean longer MCP responses and more context usage."
+msgid ""
+"Maximum amount of documentation text (in KiB) streamed by "
+"`read_user_document` when the model omits `max_bytes`. Increase only when "
+"necessary; higher limits mean longer MCP responses and more context usage."
+msgstr ""
+"Maximum amount of documentation text (in KiB) streamed by "
+"`read_user_document` when the model omits `max_bytes`. Increase only when "
+"necessary; higher limits mean longer MCP responses and more context usage."
 
 msgid "Project override: {path}"
 msgstr "Project override: {path}"
@@ -2344,3 +2356,149 @@ msgstr "template file not found: {path}\n"
 
 msgid "template must be a JSON object: {path}\n"
 msgstr "template must be a JSON object: {path}\n"
+
+msgid "(empty message)"
+msgstr "(empty message)"
+
+msgid "Agent run failed"
+msgstr "Agent run failed"
+
+msgid "Also remove the '{key}' label from existing requirements?"
+msgstr "Also remove the '{key}' label from existing requirements?"
+
+msgid "Also remove these {count} labels from existing requirements?"
+msgstr "Also remove these {count} labels from existing requirements?"
+
+msgid "Approximately {remaining} bytes remain."
+msgstr "Approximately {remaining} bytes remain."
+
+msgid "Archived chat"
+msgstr "Archived chat"
+
+msgid "Copied"
+msgstr "Copied"
+
+msgid "Encoding detection fell back to {encoding}."
+msgstr "Encoding detection fell back to {encoding}."
+
+msgid "Encoding: {encoding}"
+msgstr "Encoding: {encoding}"
+
+msgid "Error code: {code}"
+msgstr "Error code: {code}"
+
+msgid "File is empty; default encoding applied."
+msgstr "File is empty; default encoding applied."
+
+msgid "Hint: {details}"
+msgstr "Hint: {details}"
+
+msgid "Increase `max_bytes` to capture the remainder of the truncated line."
+msgstr "Increase `max_bytes` to capture the remainder of the truncated line."
+
+msgid "Label key cannot be empty"
+msgstr "Label key cannot be empty"
+
+msgid "Message queued — it will run after the current response."
+msgstr "Message queued — it will run after the current response."
+
+msgid "Move"
+msgstr "Move"
+
+msgid "Move or copy requirements"
+msgstr "Move or copy requirements"
+
+msgid "Move or copy…"
+msgstr "Move or copy…"
+
+msgid "Moved"
+msgstr "Moved"
+
+msgid "Next for {chat}: {prompt}"
+msgstr "Next for {chat}: {prompt}"
+
+msgid "Next for {chat}: {prompt} (+{count} more)"
+msgstr "Next for {chat}: {prompt} (+{count} more)"
+
+msgid "Next message queued"
+msgstr "Next message queued"
+
+msgid "Operation"
+msgstr "Operation"
+
+msgid ""
+"Queued at {time} for chat {chat}:\n"
+"{prompt}"
+msgstr ""
+"Queued at {time} for chat {chat}:\n"
+"{prompt}"
+
+msgid "Queued message removed."
+msgstr "Queued message removed."
+
+msgid "Remove the queued message"
+msgstr "Remove the queued message"
+
+msgid ""
+"Request the next chunk with `max_bytes≤{limit}` using `read_user_document`."
+msgstr ""
+"Request the next chunk with `max_bytes≤{limit}` using `read_user_document`."
+
+msgid "Reset revision to 1 in copies"
+msgstr "Reset revision to 1 in copies"
+
+msgid "Select a different document when moving requirements."
+msgstr "Select a different document when moving requirements."
+
+msgid "Select a target document."
+msgstr "Select a target document."
+
+msgid "Selected requirements: {count}"
+msgstr "Selected requirements: {count}"
+
+msgid "Sending queued message for {chat}…"
+msgstr "Sending queued message for {chat}…"
+
+msgid "Switch to target document after completion"
+msgstr "Switch to target document after completion"
+
+msgid "Target document"
+msgstr "Target document"
+
+msgid ""
+"The previous chunk ended mid-line; a higher `max_bytes` may be required."
+msgstr ""
+"The previous chunk ended mid-line; a higher `max_bytes` may be required."
+
+msgid ""
+"To continue reading, call `read_user_document` with `start_line={start}` and"
+" `max_bytes≤{limit}`."
+msgstr ""
+"To continue reading, call `read_user_document` with `start_line={start}` and"
+" `max_bytes≤{limit}`."
+
+msgid ""
+"To continue reading, call `read_user_document` with `start_line={start}`."
+msgstr ""
+"To continue reading, call `read_user_document` with `start_line={start}`."
+
+msgid "Transfer completed"
+msgstr "Transfer completed"
+
+msgid "Transfer failed"
+msgstr "Transfer failed"
+
+msgid "Update requirements"
+msgstr "Update requirements"
+
+msgid "Update requirements using '{old}' to '{new}'?"
+msgstr "Update requirements using '{old}' to '{new}'?"
+
+msgid "pending"
+msgstr "pending"
+
+msgid "{action} {count} requirement(s) to {prefix}."
+msgstr "{action} {count} requirement(s) to {prefix}."
+
+msgid "{rid}: {error}"
+msgstr "{rid}: {error}"

@@ -769,7 +769,8 @@ msgstr ""
 "Тайм-аут HTTP-запроса в минутах. Пример: 1\n"
 "Необязательное поле; по умолчанию 60 минут."
 
-msgid "Automatically start the MCP server whenever a requirements folder is opened."
+msgid ""
+"Automatically start the MCP server whenever a requirements folder is opened."
 msgstr "Автоматически запускать MCP при открытии директории требований."
 
 msgid ""
@@ -788,12 +789,10 @@ msgstr ""
 
 msgid ""
 "Active requirements folder.\n"
-"CookaReq updates it automatically from the currently opened directory."
-" The value is read-only and shown for reference."
+"CookaReq updates it automatically from the currently opened directory. The value is read-only and shown for reference."
 msgstr ""
 "Текущая директория с требованиями.\n"
-"CookaReq подставляет её автоматически из открытой папки."
-" Значение отображается только для справки."
+"CookaReq подставляет её автоматически из открытой папки. Значение отображается только для справки."
 
 msgid "When enabled, the server requires an authentication token."
 msgstr "Если включено, сервер требует токен аутентификации."
@@ -2374,3 +2373,153 @@ msgstr "файл шаблона не найден: {path}\n"
 
 msgid "template must be a JSON object: {path}\n"
 msgstr "шаблон должен быть JSON-объектом: {path}\n"
+
+msgid "(empty message)"
+msgstr "(пустое сообщение)"
+
+msgid "Agent run failed"
+msgstr "Запуск агента завершился ошибкой"
+
+msgid "Also remove the '{key}' label from existing requirements?"
+msgstr "Удалить метку «{key}» из существующих требований?"
+
+msgid "Also remove these {count} labels from existing requirements?"
+msgstr "Удалить эти {count} метки из существующих требований?"
+
+msgid "Approximately {remaining} bytes remain."
+msgstr "Около {remaining} байт осталось."
+
+msgid "Archived chat"
+msgstr "Архивный чат"
+
+msgid "Copied"
+msgstr "Скопировано"
+
+msgid "Encoding detection fell back to {encoding}."
+msgstr "Определение кодировки переключилось на {encoding}."
+
+msgid "Encoding: {encoding}"
+msgstr "Кодировка: {encoding}"
+
+msgid "Error code: {code}"
+msgstr "Код ошибки: {code}"
+
+msgid "File is empty; default encoding applied."
+msgstr "Файл пуст; применена кодировка по умолчанию."
+
+msgid "Hint: {details}"
+msgstr "Подсказка: {details}"
+
+msgid "Increase `max_bytes` to capture the remainder of the truncated line."
+msgstr "Увеличьте `max_bytes`, чтобы получить остаток обрезанной строки."
+
+msgid "Label key cannot be empty"
+msgstr "Ключ метки не может быть пустым"
+
+msgid "Message queued — it will run after the current response."
+msgstr ""
+"Сообщение поставлено в очередь — оно выполнится после текущего ответа."
+
+msgid "Move"
+msgstr "Переместить"
+
+msgid "Move or copy requirements"
+msgstr "Переместить или копировать требования"
+
+msgid "Move or copy…"
+msgstr "Переместить или копировать…"
+
+msgid "Moved"
+msgstr "Перемещено"
+
+msgid "Next for {chat}: {prompt}"
+msgstr "Следующее для {chat}: {prompt}"
+
+msgid "Next for {chat}: {prompt} (+{count} more)"
+msgstr "Следующее для {chat}: {prompt} (ещё +{count})"
+
+msgid "Next message queued"
+msgstr "Следующее сообщение поставлено в очередь"
+
+msgid "Operation"
+msgstr "Операция"
+
+msgid ""
+"Queued at {time} for chat {chat}:\n"
+"{prompt}"
+msgstr ""
+"Поставлено в очередь {time} для чата {chat}:\n"
+"{prompt}"
+
+msgid "Queued message removed."
+msgstr "Сообщение из очереди удалено."
+
+msgid "Remove the queued message"
+msgstr "Удалить сообщение из очереди"
+
+msgid ""
+"Request the next chunk with `max_bytes≤{limit}` using `read_user_document`."
+msgstr ""
+"Запросите следующий блок через `read_user_document`, указав "
+"`max_bytes≤{limit}`."
+
+msgid "Reset revision to 1 in copies"
+msgstr "Сбрасывать ревизию до 1 в копиях"
+
+msgid "Select a different document when moving requirements."
+msgstr "Выберите другой документ при перемещении требований."
+
+msgid "Select a target document."
+msgstr "Выберите целевой документ."
+
+msgid "Selected requirements: {count}"
+msgstr "Выбрано требований: {count}"
+
+msgid "Sending queued message for {chat}…"
+msgstr "Отправляем сообщение из очереди для {chat}…"
+
+msgid "Switch to target document after completion"
+msgstr "Переключиться на целевой документ после завершения"
+
+msgid "Target document"
+msgstr "Целевой документ"
+
+msgid ""
+"The previous chunk ended mid-line; a higher `max_bytes` may be required."
+msgstr ""
+"Предыдущий блок закончился посреди строки; может потребоваться больший "
+"`max_bytes`."
+
+msgid ""
+"To continue reading, call `read_user_document` with `start_line={start}` and"
+" `max_bytes≤{limit}`."
+msgstr ""
+"Чтобы продолжить чтение, вызовите `read_user_document` с "
+"`start_line={start}` и `max_bytes≤{limit}`."
+
+msgid ""
+"To continue reading, call `read_user_document` with `start_line={start}`."
+msgstr ""
+"Чтобы продолжить чтение, вызовите `read_user_document` с "
+"`start_line={start}`."
+
+msgid "Transfer completed"
+msgstr "Передача завершена"
+
+msgid "Transfer failed"
+msgstr "Передача не удалась"
+
+msgid "Update requirements"
+msgstr "Обновить требования"
+
+msgid "Update requirements using '{old}' to '{new}'?"
+msgstr "Обновить требования, заменив «{old}» на «{new}»?"
+
+msgid "pending"
+msgstr "ожидает"
+
+msgid "{action} {count} requirement(s) to {prefix}."
+msgstr "{action} {count} требование(я) в {prefix}."
+
+msgid "{rid}: {error}"
+msgstr "{rid}: {error}"

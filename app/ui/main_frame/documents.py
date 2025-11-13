@@ -120,15 +120,17 @@ class MainFrameDocumentsMixin:
         )
         self.config.set_mcp_settings(self.mcp_settings)
 
-        if not (auto_start or was_running):
+        should_start = auto_start or was_running
+        if not should_start:
             return
 
-        try:
-            self.mcp.stop()
-        except Exception:  # pragma: no cover - controller must not crash UI
-            logger.exception(
-                "Failed to stop MCP server before applying new base path"
-            )
+        if was_running:
+            try:
+                self.mcp.stop()
+            except Exception:  # pragma: no cover - controller must not crash UI
+                logger.exception(
+                    "Failed to stop MCP server before applying new base path"
+                )
 
         try:
             self.mcp.start(

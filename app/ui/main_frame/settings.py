@@ -162,21 +162,49 @@ class MainFrameSettingsMixin:
                 )
                 if auto_start_changed:
                     if self.mcp_settings.auto_start:
-                        self.mcp.start(
-                            self.mcp_settings,
-                            max_context_tokens=self.llm_settings.max_context_tokens,
-                            token_model=self.llm_settings.model,
-                        )
+                        if not self._is_mcp_running():
+                            self._start_mcp_if_applicable()
                     else:
-                        self.mcp.stop()
+                        if self._is_mcp_running():
+                            self._stop_mcp_controller()
                 elif self.mcp_settings.auto_start and server_config_changed:
-                    self.mcp.stop()
-                    self.mcp.start(
-                        self.mcp_settings,
-                        max_context_tokens=self.llm_settings.max_context_tokens,
-                        token_model=self.llm_settings.model,
-                    )
+                    if self._is_mcp_running():
+                        self._stop_mcp_controller()
+                        self._start_mcp_if_applicable()
+                    else:
+                        self._start_mcp_if_applicable()
                 if language_changed:
                     self._apply_language()
         finally:
             dlg.Destroy()
+
+    # ------------------------------------------------------------------
+    def _is_mcp_running(self: "MainFrame") -> bool:
+        """Return True when the MCP controller reports an active server."""
+        try:
+            return bool(self.mcp.is_running())
+        except Exception:
+            logger.exception("Failed to query MCP server state")
+            return False
+
+    def _start_mcp_if_applicable(self: "MainFrame") -> None:
+        """Start MCP when auto-start conditions are met."""
+        if getattr(self, "current_dir", None) is None:
+            return
+        if not self.mcp_settings.base_path:
+            return
+        try:
+            self.mcp.start(
+                self.mcp_settings,
+                max_context_tokens=self.llm_settings.max_context_tokens,
+                token_model=self.llm_settings.model,
+            )
+        except Exception:
+            logger.exception("Failed to start MCP server with current settings")
+
+    def _stop_mcp_controller(self: "MainFrame") -> None:
+        """Stop the MCP server, logging unexpected controller failures."""
+        try:
+            self.mcp.stop()
+        except Exception:
+            logger.exception("Failed to stop MCP server")

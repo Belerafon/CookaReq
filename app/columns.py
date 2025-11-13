@@ -32,11 +32,8 @@ DEFAULT_LIST_COLUMNS: tuple[str, ...] = tuple(
     for name in (
         "labels",
         "id",
-        "derived_from",
+        "source",
         "status",
-        "priority",
-        "type",
-        "owner",
     )
     if name in _AVAILABLE_COLUMN_SET
 )
@@ -44,11 +41,12 @@ DEFAULT_LIST_COLUMNS: tuple[str, ...] = tuple(
 
 DEFAULT_COLUMN_WIDTH = 160
 _DEFAULT_COLUMN_WIDTHS: dict[str, int] = {
-    "title": 340,
+    "title": 400,
     "labels": 200,
-    "id": 90,
-    "status": 140,
-    "priority": 130,
+    "id": 50,
+    "source": 101,
+    "status": 146,
+    "priority": 86,
     "type": 150,
     "owner": 180,
     "doc_prefix": 140,

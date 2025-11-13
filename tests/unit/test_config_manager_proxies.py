@@ -14,8 +14,17 @@ def test_config_manager_column_helpers(tmp_path, wx_app):
     initial_order = cfg.get_column_order()
     assert initial_order, "expected first run defaults to provide a column order"
     assert len(initial_order) >= 3
+    assert initial_order[:3] == ["id", "title", "source"]
 
-    expected_width = default_column_width(initial_order[2])
+    columns = cfg.get_columns()
+    physical_fields: list[str] = []
+    if "labels" in columns:
+        physical_fields.append("labels")
+    physical_fields.append("title")
+    physical_fields.extend(field for field in columns if field != "labels")
+    assert len(physical_fields) >= 3
+
+    expected_width = default_column_width(physical_fields[2])
     assert cfg.get_column_width(2, default=120) == expected_width
 
     cfg.set_column_width(2, 240)
@@ -23,9 +32,17 @@ def test_config_manager_column_helpers(tmp_path, wx_app):
     assert cfg.get_column_width(2, default=0) == 240
 
     assert cfg.get_column_order() == initial_order
+    cfg.set_columns(["labels", "id", "source", "status", "owner", "priority", "type"])
+    extended_order = cfg.get_column_order()
+    assert extended_order[:5] == initial_order
+    assert extended_order[5:] == ["owner", "priority", "type"]
     cfg.set_column_order(["id", "owner"])
     cfg.flush()
-    assert cfg.get_column_order() == ["id", "owner"]
+    reordered = cfg.get_column_order()
+    assert reordered[:6] == ["id", "title", "source", "owner", "status", "labels"]
+    assert reordered[6:] == ["priority", "type"]
 
     cfg._raw["col_order"] = "priority,status,,"
-    assert cfg.get_column_order() == ["priority", "status"]
+    legacy = cfg.get_column_order()
+    assert legacy[:5] == ["priority", "title", "source", "status", "labels"]
+    assert legacy[5:] == ["id", "owner", "type"]

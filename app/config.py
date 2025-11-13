@@ -17,6 +17,15 @@ from .columns import default_column_width, sanitize_columns
 from .settings import AppSettings, LLMSettings, MCPSettings, UISettings
 
 
+_FIRST_RUN_COLUMN_PRIORITY: tuple[str, ...] = (
+    "id",
+    "title",
+    "source",
+    "status",
+    "labels",
+)
+
+
 logger = logging.getLogger(__name__)
 _MISSING = object()
 
@@ -170,9 +179,9 @@ class ConfigManager:
         order = self._initial_column_order(columns)
         if order:
             self._raw["col_order"] = order
-            for index, field in enumerate(order):
-                width = default_column_width(field)
-                self._raw[f"col_width_{index}"] = int(width)
+        for index, field in enumerate(self._initial_physical_fields(columns)):
+            width = default_column_width(field)
+            self._raw[f"col_width_{index}"] = int(width)
 
         ui_defaults: dict[str, Any] = {
             "agent_chat_shown": False,
@@ -195,11 +204,32 @@ class ConfigManager:
         """Return logical column order for freshly initialised configs."""
 
         order: list[str] = []
-        if "labels" in columns:
-            order.append("labels")
-        order.append("title")
-        order.extend(field for field in columns if field != "labels")
+        seen: set[str] = set()
+        for field in _FIRST_RUN_COLUMN_PRIORITY:
+            if field == "title":
+                if field not in seen:
+                    order.append(field)
+                    seen.add(field)
+                continue
+            if field in columns and field not in seen:
+                order.append(field)
+                seen.add(field)
+        for field in columns:
+            if field not in seen:
+                order.append(field)
+                seen.add(field)
         return order
+
+    @staticmethod
+    def _initial_physical_fields(columns: Sequence[str]) -> list[str]:
+        """Return column sequence as instantiated by :class:`RequirementsListCtrl`."""
+
+        fields: list[str] = []
+        if "labels" in columns:
+            fields.append("labels")
+        fields.append("title")
+        fields.extend(field for field in columns if field != "labels")
+        return fields
 
     def _rebuild_settings(self) -> None:
         base = AppSettings()
@@ -301,7 +331,57 @@ class ConfigManager:
             candidates = list(raw)
         else:
             return []
-        return [str(entry) for entry in candidates if str(entry)]
+
+        columns = self.get_columns()
+        allowed_fields = set(columns)
+        allowed_fields.add("title")
+
+        normalised: list[str] = []
+        seen: set[str] = set()
+        for entry in candidates:
+            name = str(entry)
+            if not name:
+                continue
+            if name not in allowed_fields:
+                continue
+            if name in seen:
+                continue
+            normalised.append(name)
+            seen.add(name)
+
+        if "title" not in seen:
+            insert_at = 1 if normalised else 0
+            normalised.insert(insert_at, "title")
+            seen.add("title")
+        if "source" in columns and "source" not in seen:
+            if "title" in normalised:
+                insert_at = normalised.index("title") + 1
+            elif "id" in normalised:
+                insert_at = normalised.index("id") + 1
+            else:
+                insert_at = 0
+            normalised.insert(insert_at, "source")
+            seen.add("source")
+
+        pending_labels = False
+        for field in columns:
+            if field in seen:
+                continue
+            if field == "labels":
+                pending_labels = True
+                continue
+            normalised.append(field)
+            seen.add(field)
+
+        if pending_labels and "labels" not in seen:
+            if "status" in normalised:
+                insert_at = normalised.index("status") + 1
+            else:
+                insert_at = len(normalised)
+            normalised.insert(insert_at, "labels")
+            seen.add("labels")
+
+        return normalised
 
     def set_column_order(self, fields: Sequence[str]) -> None:
         """Persist ordering for visible *fields*."""

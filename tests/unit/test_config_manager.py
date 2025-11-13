@@ -61,9 +61,15 @@ def test_first_run_populates_column_defaults(tmp_path, wx_app):
     columns = cfg.get_columns()
     expected_order = _expected_first_run_order(columns)
 
+    assert columns == DEFAULT_LIST_COLUMNS
     assert cfg.get_column_order() == expected_order
-    if "id" in columns:
-        assert cfg.get_column_order()[0] == "id"
+    assert cfg.get_column_order()[:5] == [
+        "id",
+        "title",
+        "source",
+        "status",
+        "labels",
+    ]
 
     for index, field in enumerate(_expected_physical_fields(columns)):
         assert cfg.get_column_width(index, default=-1) == default_column_width(field)

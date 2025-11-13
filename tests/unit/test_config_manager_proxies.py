@@ -14,7 +14,7 @@ def test_config_manager_column_helpers(tmp_path, wx_app):
     initial_order = cfg.get_column_order()
     assert initial_order, "expected first run defaults to provide a column order"
     assert len(initial_order) >= 3
-    assert initial_order[0] == "id"
+    assert initial_order[:3] == ["id", "title", "source"]
 
     columns = cfg.get_columns()
     physical_fields: list[str] = []

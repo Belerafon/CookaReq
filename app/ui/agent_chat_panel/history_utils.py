@@ -9,7 +9,7 @@ import json
 
 from ...agent.run_contract import AgentRunPayload, ToolResultSnapshot
 from ...util.json import make_json_safe
-from ...util.strings import coerce_text
+from ...util.strings import coerce_text, describe_unprintable
 
 
 def history_json_safe(value: Any) -> Any:
@@ -32,11 +32,14 @@ def stringify_payload(payload: Any) -> str:
     try:
         return json.dumps(payload, ensure_ascii=False, indent=2)
     except (TypeError, ValueError):  # pragma: no cover - defensive
-        return coerce_text(
+        text = coerce_text(
             payload,
             allow_empty=True,
-            fallback=f"<unserialisable {type(payload).__name__}>",
-        ) or ""
+            fallback_factory=lambda value: describe_unprintable(
+                value, prefix="unserialisable payload"
+            ),
+        )
+        return text or ""
 
 
 def format_value_snippet(value: Any) -> str:

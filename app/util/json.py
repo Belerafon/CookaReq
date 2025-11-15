@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from functools import partial
 from typing import Any
-from collections.abc import Callable
 
-from .strings import coerce_text
+from .strings import coerce_text, describe_unprintable
 
 
 def make_json_safe(
@@ -51,6 +51,7 @@ def make_json_safe(
     if isinstance(value, Mapping):
         if stringify_keys:
             result: dict[str, Any] = {}
+            describe_key = partial(describe_unprintable, prefix="unserialisable key")
             for key, val in value.items():
                 if isinstance(key, str):
                     key_text = key
@@ -58,8 +59,14 @@ def make_json_safe(
                     key_text = coerce_text(
                         key,
                         allow_empty=True,
-                        fallback=f"<unprintable {type(key).__name__}>",
-                    ) or f"<unprintable {type(key).__name__}>"
+                        fallback_factory=describe_key,
+                    )
+                    if key_text:
+                        lowered = key_text.lower()
+                        if " object at 0x" in lowered:
+                            key_text = None
+                    if not key_text:
+                        key_text = describe_key(key)
                 result[key_text] = convert(val)
             return result
         return {key: convert(val) for key, val in value.items()}
@@ -78,21 +85,46 @@ def make_json_safe(
         return [convert(item) for item in value]
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
+    missing = object()
+
     try:
         converted = default(value)
     except Exception:
-        converted = None
+        converted = missing
 
-    if isinstance(converted, str):
-        return converted
-    if converted is not None:
-        return converted
+    if converted is value:
+        converted = missing
 
-    return coerce_text(
+    if converted is not missing:
+        if isinstance(converted, Mapping):
+            return convert(converted)
+        if isinstance(converted, list):
+            return [convert(item) for item in converted]
+        if isinstance(converted, tuple):
+            return [convert(item) for item in converted]
+        if isinstance(converted, set):
+            converted_list = [convert(item) for item in converted]
+            return sorted(converted_list) if sort_sets else converted_list
+        if coerce_sequences and isinstance(converted, Sequence) and not isinstance(
+            converted, (str, bytes, bytearray)
+        ):
+            return [convert(item) for item in converted]
+        if isinstance(converted, (str, int, float, bool)) or converted is None:
+            return converted
+
+    describe_value = partial(describe_unprintable, prefix="unserialisable")
+    text = coerce_text(
         value,
         allow_empty=True,
-        fallback=f"<unprintable {type(value).__name__}>",
+        fallback_factory=describe_value,
     )
+    if text:
+        lowered = text.lower()
+        if " object at 0x" in lowered:
+            text = None
+    if text is not None:
+        return text
+    return describe_value(value)
 
 
 __all__ = ["make_json_safe"]

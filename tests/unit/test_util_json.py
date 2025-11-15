@@ -68,3 +68,28 @@ def test_make_json_safe_handles_unprintable_objects() -> None:
 
     assert isinstance(result["message"], str)
     assert "Broken" in result["message"]
+
+
+def test_make_json_safe_stringifies_problematic_keys() -> None:
+    class Key:
+        pass
+
+    value = {Key(): "value"}
+
+    result = make_json_safe(value, stringify_keys=True)
+
+    assert len(result) == 1
+    key = next(iter(result.keys()))
+    assert key.startswith("<unserialisable key")
+
+
+def test_make_json_safe_handles_default_returning_original() -> None:
+    class Custom:
+        pass
+
+    value = Custom()
+
+    result = make_json_safe(value, default=lambda obj: obj)
+
+    assert isinstance(result, str)
+    assert result.startswith("<unserialisable")

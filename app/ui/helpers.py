@@ -406,7 +406,7 @@ def format_error_message(error: object, *, fallback: str | None = None) -> str:
     def _normalise(part: object) -> str | None:
         if part in (None, ""):
             return None
-        text = coerce_text(part, converters=(str,))
+        text = coerce_text(part, converters=(str,), truncate=500)
         if text is None:
             return None
         cleaned = text.strip()

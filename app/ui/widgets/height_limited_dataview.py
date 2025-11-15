@@ -58,6 +58,22 @@ class HeightLimitedDataViewListCtrl(dv.DataViewListCtrl):
         return self._limit_height(size)
 
     # ------------------------------------------------------------------
+    def DoSetSize(  # noqa: N802 - matches wx API
+        self,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        sizeFlags: int = wx.SIZE_AUTO,
+    ) -> None:
+        """Clamp the actual control height to the configured limit."""
+
+        limited_height = height
+        if height is not None and height >= 0:
+            limited_height = self._limit_height(wx.Size(width, height)).height
+        super().DoSetSize(x, y, width, limited_height, sizeFlags=sizeFlags)
+
+    # ------------------------------------------------------------------
     def _limit_height(self, size: wx.Size) -> wx.Size:
         limit = self._height_limit
         min_height = self._effective_min_height()

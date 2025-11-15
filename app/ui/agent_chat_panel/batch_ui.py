@@ -184,7 +184,7 @@ class AgentBatchSection:
             return
 
         panel.Show()
-        self._refresh_table(runner.items)
+        self._refresh_table(runner.items, runner.active_item)
 
         total = len(runner.items)
         completed_count = sum(1 for item in runner.items if item.status is BatchItemStatus.COMPLETED)
@@ -257,34 +257,111 @@ class AgentBatchSection:
         return unique
 
     # ------------------------------------------------------------------
-    def _refresh_table(self, items: Sequence[BatchItem]) -> None:
+    def _refresh_table(
+        self, items: Sequence[BatchItem], active_item: BatchItem | None
+    ) -> None:
         control = self._controls.list_ctrl
-        control.DeleteAllItems()
-        for item in items:
-            rid = item.target.rid.strip() if item.target.rid else ""
-            if not rid:
-                rid = str(item.target.requirement_id)
-            title = item.target.title.strip() if item.target.title else ""
-            if not title:
-                title = rid
-            status_text = self._format_status(item)
-            if item.status in {
-                BatchItemStatus.COMPLETED,
-                BatchItemStatus.FAILED,
-                BatchItemStatus.CANCELLED,
-            }:
-                tool_calls_text = str(item.tool_call_count)
-                edits_text = str(item.requirement_edit_count)
-                tokens_text = self._format_token_usage(
-                    item.token_count, item.tokens_approximate
+        freezer = getattr(control, "Freeze", None)
+        if callable(freezer):
+            freezer()
+        target_row: int | None = None
+        running_fallback: int | None = None
+        try:
+            control.DeleteAllItems()
+            for row, item in enumerate(items):
+                rid = item.target.rid.strip() if item.target.rid else ""
+                if not rid:
+                    rid = str(item.target.requirement_id)
+                title = item.target.title.strip() if item.target.title else ""
+                if not title:
+                    title = rid
+                status_text = self._format_status(item)
+                if item.status in {
+                    BatchItemStatus.COMPLETED,
+                    BatchItemStatus.FAILED,
+                    BatchItemStatus.CANCELLED,
+                }:
+                    tool_calls_text = str(item.tool_call_count)
+                    edits_text = str(item.requirement_edit_count)
+                    tokens_text = self._format_token_usage(
+                        item.token_count, item.tokens_approximate
+                    )
+                else:
+                    tool_calls_text = ""
+                    edits_text = ""
+                    tokens_text = ""
+                control.AppendItem(
+                    [
+                        rid,
+                        title,
+                        status_text,
+                        tool_calls_text,
+                        edits_text,
+                        tokens_text,
+                    ]
                 )
-            else:
-                tool_calls_text = ""
-                edits_text = ""
-                tokens_text = ""
-            control.AppendItem(
-                [rid, title, status_text, tool_calls_text, edits_text, tokens_text]
-            )
+                if target_row is None and item is active_item:
+                    target_row = row
+                if (
+                    running_fallback is None
+                    and item.status is BatchItemStatus.RUNNING
+                ):
+                    running_fallback = row
+        finally:
+            thawer = getattr(control, "Thaw", None)
+            if callable(thawer):
+                thawer()
+        if target_row is None:
+            target_row = running_fallback
+        if target_row is not None:
+            self._ensure_row_visible(target_row)
+
+    # ------------------------------------------------------------------
+    def _ensure_row_visible(self, row: int) -> None:
+        control = self._controls.list_ctrl
+        count_getter = getattr(control, "GetItemCount", None)
+        if not callable(count_getter):
+            return
+        total = count_getter()
+        if row < 0 or row >= total:
+            return
+        ensure_visible = getattr(control, "EnsureVisible", None)
+        if not callable(ensure_visible):
+            return
+        column_getter = getattr(control, "GetColumn", None)
+        column_count_getter = getattr(control, "GetColumnCount", None)
+        column: object = 0
+        if callable(column_getter) and callable(column_count_getter):
+            try:
+                if column_count_getter() > 0:
+                    column = column_getter(0)
+            except Exception:  # pragma: no cover - defensive
+                column = 0
+        row_to_item = getattr(control, "RowToItem", None)
+        item: object | None = None
+        if callable(row_to_item):
+            try:
+                item = row_to_item(row)
+            except Exception:  # pragma: no cover - defensive
+                item = None
+        attempts: list[tuple[object, object]] = []
+        if item is not None:
+            attempts.append((item, column))
+            attempts.append((item, 0))
+        attempts.append((row, column))
+        attempts.append((row, 0))
+        for target, col in attempts:
+            try:
+                ensure_visible(target, col)
+                return
+            except TypeError:
+                continue
+            except Exception:  # pragma: no cover - wx-specific quirks
+                logger.debug(
+                    "Unable to scroll batch list to row %s", row, exc_info=True
+                )
+                return
+        logger.debug("Unable to scroll batch list to row %s", row)
 
     # ------------------------------------------------------------------
     def _format_status(self, item: BatchItem) -> str:

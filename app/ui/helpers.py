@@ -6,6 +6,7 @@ from collections.abc import Callable
 import wx
 
 from ..i18n import _
+from ..util.strings import coerce_text
 
 
 def inherit_background(target: wx.Window, source: wx.Window | None) -> None:
@@ -401,17 +402,27 @@ def format_error_message(error: object, *, fallback: str | None = None) -> str:
     ``"code: message"`` pairs when possible.  If all attempts fail, returns the
     provided ``fallback`` or a localized "Unknown error" string.
     """
+
+    def _normalise(part: object) -> str | None:
+        if part in (None, ""):
+            return None
+        text = coerce_text(part, converters=(str,))
+        if text is None:
+            return None
+        cleaned = text.strip()
+        return cleaned or None
+
     if isinstance(error, dict):
-        code = error.get("code") or error.get("type")
-        message = error.get("message")
-        parts = [str(part) for part in (code, message) if part]
+        code_text = _normalise(error.get("code") or error.get("type"))
+        message_text = _normalise(error.get("message"))
+        parts = [part for part in (code_text, message_text) if part]
         if parts:
             return ": ".join(parts)
-    text: str | None = None
-    if isinstance(error, BaseException) or error:
-        text = str(error)
-        if text:
+    else:
+        text = _normalise(error)
+        if text is not None:
             return text
+
     if fallback is not None:
         return fallback
     return _("Unknown error")

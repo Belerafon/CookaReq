@@ -55,3 +55,16 @@ def test_make_json_safe_sequence_control() -> None:
 
     coerced_result = make_json_safe(range(3), coerce_sequences=True)
     assert coerced_result == [0, 1, 2]
+
+
+def test_make_json_safe_handles_unprintable_objects() -> None:
+    class Broken:
+        def __str__(self) -> str:  # pragma: no cover - exercised indirectly
+            raise RuntimeError("boom")
+
+    payload = {"message": Broken()}
+
+    result = make_json_safe(payload)
+
+    assert isinstance(result["message"], str)
+    assert "Broken" in result["message"]

@@ -18,6 +18,7 @@ from app.ui.agent_chat_panel.components.segments import (
     TurnCard,
 )
 from app.ui.agent_chat_panel.execution import _AgentRunHandle
+from app.ui.agent_chat_panel.batch_runner import BatchItemStatus, BatchTarget
 from app.ui.agent_chat_panel.view_model import (
     TranscriptEntry,
     build_conversation_timeline,
@@ -481,6 +482,74 @@ def test_agent_run_updates_original_conversation_after_switch(tmp_path, wx_app):
         entry = updated.entries[-1]
         assert entry.response
         assert entry.response_at is not None
+    finally:
+        destroy_panel(frame, panel)
+
+
+def test_batch_runner_stops_after_consecutive_tool_errors(tmp_path, wx_app):
+    class ExplodingMessage:
+        def __str__(self) -> str:  # pragma: no cover - exercised indirectly
+            raise RuntimeError("boom")
+
+        __repr__ = __str__
+
+    class FaultyAgent:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run_command(self, *_args, **_kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return {"ok": True, "result": "done"}
+            return {
+                "ok": False,
+                "status": "failed",
+                "result": "",
+                "diagnostic": {"error": {"message": ExplodingMessage()}},
+                "agent_stop_reason": {
+                    "type": "consecutive_tool_errors",
+                    "count": 3,
+                    "max_consecutive_tool_errors": 3,
+                },
+            }
+
+    agent = FaultyAgent()
+
+    wx, frame, panel = create_panel(
+        tmp_path,
+        wx_app,
+        agent=agent,
+        use_default_executor=True,
+    )
+
+    try:
+        flush_wx_events(wx)
+        panel._batch_section._target_provider = lambda: [
+            BatchTarget(requirement_id=1, rid="REQ-1", title="First"),
+            BatchTarget(requirement_id=2, rid="REQ-2", title="Second"),
+        ]
+        panel.input.SetValue("Fix the issue")
+        flush_wx_events(wx, count=5)
+        panel._batch_section.start_batch()
+        flush_wx_events(wx, count=30)
+        runner = panel._batch_section.runner
+        assert not runner.is_running
+        assert len(runner.items) == 2
+        first, second = runner.items
+        assert first.status is BatchItemStatus.COMPLETED
+        assert second.status is BatchItemStatus.FAILED
+        assert second.error
+        assert not panel._session.is_running
+
+        failure_conversation = None
+        for conversation in panel.conversations:
+            if conversation.title and conversation.title.endswith("REQ-2"):
+                failure_conversation = conversation
+                break
+        assert failure_conversation is not None
+        assert failure_conversation.entries, "expected entries recorded for failed batch item"
+        failure_entry = failure_conversation.entries[-1]
+        assert failure_entry.display_response != _("Working")
     finally:
         destroy_panel(frame, panel)
 

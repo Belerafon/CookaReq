@@ -6,6 +6,8 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 from collections.abc import Callable
 
+from .strings import coerce_text
+
 
 def make_json_safe(
     value: Any,
@@ -48,7 +50,18 @@ def make_json_safe(
 
     if isinstance(value, Mapping):
         if stringify_keys:
-            return {str(key): convert(val) for key, val in value.items()}
+            result: dict[str, Any] = {}
+            for key, val in value.items():
+                if isinstance(key, str):
+                    key_text = key
+                else:
+                    key_text = coerce_text(
+                        key,
+                        allow_empty=True,
+                        fallback=f"<unprintable {type(key).__name__}>",
+                    ) or f"<unprintable {type(key).__name__}>"
+                result[key_text] = convert(val)
+            return result
         return {key: convert(val) for key, val in value.items()}
     if isinstance(value, list):
         return [convert(item) for item in value]
@@ -65,7 +78,21 @@ def make_json_safe(
         return [convert(item) for item in value]
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
-    return default(value)
+    try:
+        converted = default(value)
+    except Exception:
+        converted = None
+
+    if isinstance(converted, str):
+        return converted
+    if converted is not None:
+        return converted
+
+    return coerce_text(
+        value,
+        allow_empty=True,
+        fallback=f"<unprintable {type(value).__name__}>",
+    )
 
 
 __all__ = ["make_json_safe"]

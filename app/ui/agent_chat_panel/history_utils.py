@@ -9,6 +9,7 @@ import json
 
 from ...agent.run_contract import AgentRunPayload, ToolResultSnapshot
 from ...util.json import make_json_safe
+from ..history_config import HISTORY_JSON_LIMITS
 from ...util.strings import coerce_text, describe_unprintable
 
 
@@ -20,6 +21,7 @@ def history_json_safe(value: Any) -> Any:
         sort_sets=False,
         coerce_sequences=True,
         default=str,
+        limits=HISTORY_JSON_LIMITS,
     )
 
 

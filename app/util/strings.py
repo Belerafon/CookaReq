@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
-__all__ = ["coerce_text", "describe_unprintable"]
+__all__ = ["coerce_text", "describe_unprintable", "truncate_text"]
 
 _DEFAULT_CONVERTERS: tuple[Callable[[Any], object], ...] = (str, repr)
 
@@ -24,7 +24,7 @@ def _normalise_candidate(candidate: object) -> str | None:
     return None
 
 
-def _truncate(text: str, limit: int | None) -> str:
+def truncate_text(text: str, limit: int | None) -> str:
     """Clip ``text`` to ``limit`` characters using an ellipsis when required."""
 
     if limit is None or limit <= 0 or len(text) <= limit:
@@ -80,7 +80,7 @@ def coerce_text(
 
     direct = text_normaliser(value)
     if direct is not None and (direct or allow_empty):
-        return _truncate(direct, truncate)
+        return truncate_text(direct, truncate)
 
     for converter in converter_sequence:
         try:
@@ -91,7 +91,7 @@ def coerce_text(
         if text is None:
             continue
         if text or allow_empty:
-            return _truncate(text, truncate)
+            return truncate_text(text, truncate)
 
     def _coerce_fallback(result: object | None) -> str | None:
         if result is None:
@@ -101,7 +101,7 @@ def coerce_text(
             return None
         if not text and not allow_empty:
             return None
-        return _truncate(text, truncate)
+        return truncate_text(text, truncate)
 
     if fallback is not None:
         fallback_text = _coerce_fallback(fallback)

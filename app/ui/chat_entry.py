@@ -16,6 +16,7 @@ from ..llm.tokenizer import (
 )
 from ..util.json import make_json_safe
 from ..util.time import utc_now_iso
+from .history_config import HISTORY_JSON_LIMITS
 
 _DEFAULT_TOKEN_MODEL = "cl100k_base"
 _DEFAULT_MODEL_KEY = "__default__"
@@ -202,6 +203,7 @@ def _history_json_safe(value: Any) -> Any:
         sort_sets=False,
         coerce_sequences=True,
         default=str,
+        limits=HISTORY_JSON_LIMITS,
     )
 
 

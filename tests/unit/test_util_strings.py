@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.util.strings import coerce_text, describe_unprintable
+from app.util.strings import coerce_text, describe_unprintable, truncate_text
 
 
 def test_coerce_text_prefers_str() -> None:
@@ -56,6 +56,12 @@ def test_coerce_text_decodes_bytes() -> None:
 def test_coerce_text_truncates_output_when_requested() -> None:
     assert coerce_text("abcdef", truncate=4) == "abc…"
     assert coerce_text("abcdef", truncate=1) == "…"
+
+
+def test_truncate_text_clips_long_strings() -> None:
+    assert truncate_text("abcdef", 4) == "abc…"
+    assert truncate_text("short", 10) == "short"
+    assert truncate_text("abcdef", None) == "abcdef"
 
 
 def test_describe_unprintable_includes_module_information() -> None:

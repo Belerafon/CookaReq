@@ -8,6 +8,7 @@ from pathlib import Path
 import wx
 
 from ..confirm import confirm
+from ..config import ConfigManager
 from ..services.requirements import LabelDef, RequirementsService
 from ..core.model import Requirement
 from ..i18n import _
@@ -30,6 +31,7 @@ class DetachedEditorFrame(wx.Frame):
         allow_freeform: bool,
         on_save: Callable[[DetachedEditorFrame], bool],
         on_close: Callable[[DetachedEditorFrame], None] | None = None,
+        config: ConfigManager | None = None,
     ) -> None:
         """Create frame initialized with ``requirement`` contents."""
         if service is None:
@@ -60,6 +62,7 @@ class DetachedEditorFrame(wx.Frame):
         self.requirement_id = requirement.id
         self._allow_freeform = allow_freeform
         self._labels: list[LabelDef] = list(labels)
+        self._config = config or self._resolve_config(parent)
 
         container = wx.Panel(self)
         self._apply_background(container, background_source)
@@ -83,10 +86,23 @@ class DetachedEditorFrame(wx.Frame):
         self.editor.load(requirement)
 
         self.Bind(wx.EVT_CLOSE, self._on_close_window)
-        self.SetSize((900, 700))
-        self.CentreOnParent()
+        if self._config is not None:
+            self._config.restore_detached_editor_geometry(self)
+        else:
+            self.SetSize((900, 700))
+            self.CentreOnParent()
 
     # ------------------------------------------------------------------
+    def _resolve_config(self, parent: wx.Window | None) -> ConfigManager | None:
+        """Return :class:`ConfigManager` available via *parent* when possible."""
+
+        if parent is None:
+            return None
+        candidate = getattr(parent, "config", None)
+        if isinstance(candidate, ConfigManager):
+            return candidate
+        return None
+
     def _resolve_background_source(self, parent: wx.Window | None) -> wx.Window | None:
         """Return a widget whose colours should be mirrored by this frame."""
         if parent is None:
@@ -118,6 +134,13 @@ class DetachedEditorFrame(wx.Frame):
             target.SetBackgroundColour(colour)
         except Exception:  # pragma: no cover - backend quirk
             return
+
+    def _persist_geometry(self) -> None:
+        """Store current window geometry via the active config manager."""
+
+        if self._config is None:
+            return
+        self._config.save_detached_editor_geometry(self)
 
     # ------------------------------------------------------------------
     @property
@@ -163,6 +186,7 @@ class DetachedEditorFrame(wx.Frame):
         """Confirm closing when editor has unsaved changes."""
         if self._closing_via_cancel:
             self._closing_via_cancel = False
+            self._persist_geometry()
             if self._on_close:
                 self._on_close(self)
             event.Skip()
@@ -171,6 +195,7 @@ class DetachedEditorFrame(wx.Frame):
         if self.editor.is_dirty() and not confirm(_("Discard unsaved changes?")):
             event.Veto()
             return
+        self._persist_geometry()
         if self._on_close:
             self._on_close(self)
         event.Skip()

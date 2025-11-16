@@ -142,6 +142,7 @@ class MainFrameEditorMixin:
             allow_freeform=freeform,
             on_save=self._on_detached_editor_save,
             on_close=self._on_detached_editor_closed,
+            config=self.config,
         )
         self._detached_editors[frame.key] = frame
         frame.Show()

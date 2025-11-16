@@ -1,6 +1,7 @@
 """Tests for config manager."""
 
 import logging
+from types import MethodType
 
 import pytest
 
@@ -147,11 +148,18 @@ def _recent_dirs_factory(tmp_path):
         ("agent_history_sash", 200),
         ("agent_confirm_mode", "prompt"),
         ("win_w", 1500),
+        ("win_h", 1000),
         ("win_x", 100),
         ("win_y", 50),
+        ("win_max", False),
         ("editor_sash_pos", 932),
         ("editor_shown", True),
         ("doc_tree_collapsed", False),
+        ("det_editor_w", 900),
+        ("det_editor_h", 700),
+        ("det_editor_x", -1),
+        ("det_editor_y", -1),
+        ("det_editor_max", False),
     ],
 )
 def test_schema_default_values(tmp_path, wx_app, name, expected):
@@ -211,11 +219,18 @@ def test_schema_default_values(tmp_path, wx_app, name, expected):
         pytest.param("agent_history_sash", _const(280), _const(280), id="agent_history_sash"),
         pytest.param("agent_confirm_mode", _const("never"), _const("never"), id="agent_confirm_mode"),
         pytest.param("win_w", _const(1024), _const(1024), id="win_w"),
+        pytest.param("win_h", _const(768), _const(768), id="win_h"),
         pytest.param("win_x", _const(12), _const(12), id="win_x"),
         pytest.param("win_y", _const(34), _const(34), id="win_y"),
+        pytest.param("win_max", _const(True), _const(True), id="win_max"),
         pytest.param("editor_sash_pos", _const(456), _const(456), id="editor_sash_pos"),
         pytest.param("editor_shown", _const(False), _const(False), id="editor_shown"),
         pytest.param("doc_tree_collapsed", _const(True), _const(True), id="doc_tree_collapsed"),
+        pytest.param("det_editor_w", _const(1110), _const(1110), id="det_editor_w"),
+        pytest.param("det_editor_h", _const(640), _const(640), id="det_editor_h"),
+        pytest.param("det_editor_x", _const(22), _const(22), id="det_editor_x"),
+        pytest.param("det_editor_y", _const(33), _const(33), id="det_editor_y"),
+        pytest.param("det_editor_max", _const(True), _const(True), id="det_editor_max"),
     ],
 )
 def test_schema_round_trip(tmp_path, wx_app, name, value_factory, expected_factory):
@@ -544,6 +559,33 @@ def test_restore_layout_clamps_minimum(tmp_path, wx_app):
     assert doc_splitter.GetSashPosition() >= 180
     assert editor_splitter.GetSashPosition() >= 200
 
+
+def test_restore_layout_repositions_offscreen_windows(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg_offscreen.ini")
+
+    cfg.set_value("win_w", 640)
+    cfg.set_value("win_h", 480)
+    cfg.set_value("win_x", 50000)
+    cfg.set_value("win_y", 50000)
+    cfg.flush()
+
+    frame = wx.Frame(None)
+    main_splitter = wx.SplitterWindow(frame)
+    doc_splitter = wx.SplitterWindow(main_splitter)
+    doc_splitter.SplitVertically(wx.Panel(doc_splitter), wx.Panel(doc_splitter))
+    panel = DummyListPanel()
+    log_console = wx.TextCtrl(main_splitter)
+
+    cfg.restore_layout(frame, doc_splitter, main_splitter, panel, log_console)
+
+    left, top, width, height = wx.ClientDisplayRect()
+    pos = frame.GetPosition()
+
+    assert left <= pos.x <= left + width
+    assert top <= pos.y <= top + height
+
+
 def test_save_layout_tracks_doc_tree_collapse(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg_doc.ini")
@@ -604,3 +646,114 @@ def test_save_layout_tracks_agent_history(tmp_path, wx_app):
 
     cfg.set_agent_history_sash(300)
     assert cfg.get_agent_history_sash(0) == 300
+
+
+def test_restore_layout_replays_maximize_state(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg_max.ini")
+
+    cfg.set_value("win_w", 900)
+    cfg.set_value("win_h", 700)
+    cfg.set_value("win_x", 20)
+    cfg.set_value("win_y", 30)
+    cfg.set_value("win_max", True)
+    cfg.flush()
+
+    frame = wx.Frame(None)
+    main_splitter = wx.SplitterWindow(frame)
+    doc_splitter = wx.SplitterWindow(main_splitter)
+    editor_splitter = wx.SplitterWindow(doc_splitter)
+    editor_splitter.SplitVertically(wx.Panel(editor_splitter), wx.Panel(editor_splitter))
+    doc_splitter.SplitVertically(wx.Panel(doc_splitter), editor_splitter)
+    panel = DummyListPanel()
+    log_console = wx.TextCtrl(main_splitter)
+    maximize_calls: list[bool] = []
+
+    def _record_maximize(self, flag: bool = True) -> None:
+        maximize_calls.append(bool(flag))
+
+    frame.Maximize = MethodType(_record_maximize, frame)
+
+    frame.Show()
+    cfg.restore_layout(
+        frame,
+        doc_splitter,
+        main_splitter,
+        panel,
+        log_console,
+        editor_splitter=editor_splitter,
+    )
+    wx.GetApp().ProcessPendingEvents()
+
+    assert maximize_calls and maximize_calls[-1] is True
+
+
+def test_save_layout_persists_maximize_flag(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg_max_save.ini")
+
+    frame = wx.Frame(None)
+    main_splitter = wx.SplitterWindow(frame)
+    doc_splitter = wx.SplitterWindow(main_splitter)
+    editor_splitter = wx.SplitterWindow(doc_splitter)
+    editor_splitter.SplitVertically(wx.Panel(editor_splitter), wx.Panel(editor_splitter))
+    doc_splitter.SplitVertically(wx.Panel(doc_splitter), editor_splitter)
+    panel = DummyListPanel()
+    log_console = wx.TextCtrl(main_splitter)
+
+    frame.Show()
+    frame.IsMaximized = MethodType(lambda self: True, frame)
+
+    cfg.save_layout(
+        frame,
+        doc_splitter,
+        main_splitter,
+        panel,
+        editor_splitter=editor_splitter,
+    )
+
+    assert cfg.get_value("win_max") is True
+
+
+def test_detached_editor_geometry_round_trip(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+    cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg_detached.ini")
+
+    width, height = 1040, 720
+    x, y = 80, 120
+    expected_size, expected_position = ConfigManager._normalise_window_geometry(
+        width,
+        height,
+        x,
+        y,
+        min_size=(500, 320),
+        max_size=(3200, 2400),
+    )
+
+    frame = wx.Frame(None)
+    frame.Show()
+    frame.SetSize((width, height))
+    frame.GetPosition = MethodType(lambda self: wx.Point(x, y), frame)
+    cfg.save_detached_editor_geometry(frame)
+
+    restored = wx.Frame(None)
+    restored.Show()
+    recorded_positions: list[tuple[int, int]] = []
+    original_set_position = restored.SetPosition
+
+    def _record_position(self, pos):
+        if isinstance(pos, wx.Point):
+            recorded_positions.append((pos.x, pos.y))
+        else:
+            recorded_positions.append(tuple(pos))
+        return original_set_position(pos)
+
+    restored.SetPosition = MethodType(_record_position, restored)
+    cfg.restore_detached_editor_geometry(restored)
+
+    restored_size = restored.GetSize()
+    assert (restored_size.width, restored_size.height) == (
+        expected_size.width,
+        expected_size.height,
+    )
+    assert recorded_positions and recorded_positions[-1] == expected_position

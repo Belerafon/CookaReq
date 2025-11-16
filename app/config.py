@@ -105,6 +105,12 @@ FIELD_BINDINGS: dict[str, FieldBinding] = {
     "win_h": FieldBinding("ui", "window_height"),
     "win_x": FieldBinding("ui", "window_x"),
     "win_y": FieldBinding("ui", "window_y"),
+    "win_max": FieldBinding("ui", "window_maximized"),
+    "det_editor_w": FieldBinding("ui", "detached_editor_width"),
+    "det_editor_h": FieldBinding("ui", "detached_editor_height"),
+    "det_editor_x": FieldBinding("ui", "detached_editor_x"),
+    "det_editor_y": FieldBinding("ui", "detached_editor_y"),
+    "det_editor_max": FieldBinding("ui", "detached_editor_maximized"),
 }
 
 
@@ -193,6 +199,12 @@ class ConfigManager:
             "win_h": 1000,
             "win_x": 100,
             "win_y": 50,
+            "win_max": False,
+            "det_editor_w": 900,
+            "det_editor_h": 700,
+            "det_editor_x": -1,
+            "det_editor_y": -1,
+            "det_editor_max": False,
         }
         for key, value in ui_defaults.items():
             self.set_value(key, value)
@@ -624,6 +636,97 @@ class ConfigManager:
         self.flush()
 
     # ------------------------------------------------------------------
+    # display helpers
+    @staticmethod
+    def _client_display_areas() -> list[wx.Rect]:
+        """Return client rectangles for all detected monitors."""
+
+        areas: list[wx.Rect] = []
+        try:
+            display_count = wx.Display.GetCount()
+        except Exception:  # pragma: no cover - backend quirk
+            display_count = 0
+        for index in range(display_count):
+            try:
+                rect = wx.Display(index).GetClientArea()
+            except Exception:  # pragma: no cover - backend failure
+                continue
+            if isinstance(rect, wx.Rect):
+                areas.append(rect)
+        if not areas:
+            x, y, width, height = wx.ClientDisplayRect()
+            areas.append(wx.Rect(x, y, width, height))
+        return areas
+
+    @staticmethod
+    def _normalise_window_geometry(
+        width: int,
+        height: int,
+        x: int,
+        y: int,
+        *,
+        min_size: tuple[int, int],
+        max_size: tuple[int, int],
+    ) -> tuple[wx.Size, tuple[int, int] | None]:
+        """Clamp window rectangle to keep it visible on available displays."""
+
+        min_width, min_height = min_size
+        max_width, max_height = max_size
+        try:
+            numeric_width = int(width)
+        except (TypeError, ValueError):
+            numeric_width = min_width
+        try:
+            numeric_height = int(height)
+        except (TypeError, ValueError):
+            numeric_height = min_height
+        clamped_width = max(min_width, min(numeric_width, max_width))
+        clamped_height = max(min_height, min(numeric_height, max_height))
+        if x == -1 or y == -1:
+            return wx.Size(clamped_width, clamped_height), None
+        try:
+            numeric_x = int(x)
+            numeric_y = int(y)
+        except (TypeError, ValueError):
+            return wx.Size(clamped_width, clamped_height), None
+        stored_rect = wx.Rect(numeric_x, numeric_y, clamped_width, clamped_height)
+        areas = ConfigManager._client_display_areas()
+        target: wx.Rect | None = None
+        for area in areas:
+            try:
+                intersects = stored_rect.Intersects(area)
+            except Exception:  # pragma: no cover - wx backend issue
+                intersects = False
+            if intersects:
+                target = area
+                break
+        if target is None:
+            center = wx.Point(
+                stored_rect.x + stored_rect.width // 2,
+                stored_rect.y + stored_rect.height // 2,
+            )
+            try:
+                display_index = wx.Display.GetFromPoint(center)
+            except Exception:  # pragma: no cover - backend quirk
+                display_index = wx.NOT_FOUND
+            if display_index != wx.NOT_FOUND:
+                try:
+                    target = wx.Display(display_index).GetClientArea()
+                except Exception:  # pragma: no cover - backend quirk
+                    target = None
+        if target is None:
+            target = areas[0]
+        usable_width = max(target.width, 1)
+        usable_height = max(target.height, 1)
+        adjusted_width = min(clamped_width, usable_width)
+        adjusted_height = min(clamped_height, usable_height)
+        max_x = target.x + max(usable_width - adjusted_width, 0)
+        max_y = target.y + max(usable_height - adjusted_height, 0)
+        adjusted_x = max(target.x, min(stored_rect.x, max_x))
+        adjusted_y = max(target.y, min(stored_rect.y, max_y))
+        return wx.Size(adjusted_width, adjusted_height), (adjusted_x, adjusted_y)
+
+    # ------------------------------------------------------------------
     # requirement editor panel
     def get_editor_sash(self, default: int) -> int:
         """Return stored editor sash position with *default* fallback."""
@@ -684,13 +787,17 @@ class ConfigManager:
         editor_splitter: wx.SplitterWindow | None = None,
     ) -> None:
         """Restore persisted window geometry and splitter positions."""
-        w = max(400, min(int(self.get_value("win_w")), 3000))
-        h = max(300, min(int(self.get_value("win_h")), 2000))
-        frame.SetSize((w, h))
-        x = int(self.get_value("win_x"))
-        y = int(self.get_value("win_y"))
-        if x != -1 and y != -1:
-            frame.SetPosition((x, y))
+        size, position = self._normalise_window_geometry(
+            self.get_value("win_w"),
+            self.get_value("win_h"),
+            self.get_value("win_x"),
+            self.get_value("win_y"),
+            min_size=(400, 300),
+            max_size=(3000, 2000),
+        )
+        frame.SetSize(size)
+        if position is not None:
+            frame.SetPosition(position)
         else:
             frame.Centre()
         frame.SendSizeEvent()
@@ -699,7 +806,7 @@ class ConfigManager:
             app.ProcessPendingEvents()
         client_size = frame.GetClientSize()
         if client_size.width <= 1 or client_size.height <= 1:
-            client_size = wx.Size(w, h)
+            client_size = wx.Size(size.width, size.height)
         main_splitter.SetSize(client_size)
         doc_splitter.SetSize(client_size)
         doc_min = max(doc_splitter.GetMinimumPaneSize(), 100)
@@ -734,6 +841,8 @@ class ConfigManager:
             log_console.Hide()
             if log_menu_item:
                 log_menu_item.Check(False)
+        if bool(self.get_value("win_max")):
+            frame.Maximize(True)
 
     def save_layout(
         self,
@@ -757,6 +866,7 @@ class ConfigManager:
         self.set_value("win_h", int(h))
         self.set_value("win_x", int(x))
         self.set_value("win_y", int(y))
+        self.set_value("win_max", bool(frame.IsMaximized()))
         sash_to_store = (
             doc_tree_sash
             if doc_tree_sash is not None
@@ -793,3 +903,33 @@ class ConfigManager:
         panel.save_column_widths(self)
         panel.save_column_order(self)
         self.flush()
+
+    def restore_detached_editor_geometry(self, frame: wx.Frame) -> None:
+        """Restore persisted geometry for the detached requirement editor."""
+
+        size, position = self._normalise_window_geometry(
+            self.get_value("det_editor_w"),
+            self.get_value("det_editor_h"),
+            self.get_value("det_editor_x"),
+            self.get_value("det_editor_y"),
+            min_size=(500, 320),
+            max_size=(3200, 2400),
+        )
+        frame.SetSize(size)
+        if position is not None:
+            frame.SetPosition(position)
+        else:
+            frame.CentreOnParent()
+        if bool(self.get_value("det_editor_max")):
+            frame.Maximize(True)
+
+    def save_detached_editor_geometry(self, frame: wx.Frame) -> None:
+        """Persist geometry for the detached requirement editor."""
+
+        w, h = frame.GetSize()
+        x, y = frame.GetPosition()
+        self.set_value("det_editor_w", int(w))
+        self.set_value("det_editor_h", int(h))
+        self.set_value("det_editor_x", int(x))
+        self.set_value("det_editor_y", int(y))
+        self.set_value("det_editor_max", bool(frame.IsMaximized()))

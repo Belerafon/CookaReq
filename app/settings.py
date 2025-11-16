@@ -268,6 +268,12 @@ class UISettings(BaseModel):
     window_height: int = 600
     window_x: int = -1
     window_y: int = -1
+    window_maximized: bool = False
+    detached_editor_width: int = 900
+    detached_editor_height: int = 700
+    detached_editor_x: int = -1
+    detached_editor_y: int = -1
+    detached_editor_maximized: bool = False
 
     @field_validator("language", mode="before")
     @classmethod

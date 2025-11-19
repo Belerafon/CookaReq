@@ -71,7 +71,10 @@ from .project_settings import (
     save_agent_project_settings,
 )
 from .layout import AgentChatLayoutBuilder
+from .layout_builder import AgentChatPanelLayoutBuilder
 from .session import AgentChatSession
+from .session_controller import SessionConfig, SessionController
+from .history_sync import HistorySynchronizer
 from .settings_dialog import AgentProjectSettingsDialog
 from .time_formatting import format_last_activity
 from .token_usage import (
@@ -249,10 +252,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._timeline_cache = ConversationTimelineCache()
         self._pending_transcript_refresh: dict[str | None, set[str] | None] = {}
         self._transcript_refresh_scheduled = False
-        self._history_list_window: wx.Window | None = None
-        self._history_main_window: wx.Window | None = None
-        self._history_column_widths: tuple[int, ...] | None = None
-        self._history_column_refresh_scheduled = False
         self._latest_timeline: ConversationTimeline | None = None
         self._last_rendered_conversation_id: str | None = None
         self._history_last_sash = 0
@@ -265,6 +264,18 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._batch_context_provider = batch_context_provider
         self._batch_section: AgentBatchSection | None = None
         self._persist_confirm_preference_callback = persist_confirm_preference
+        self._layout_manager = AgentChatPanelLayoutBuilder(self)
+        self._session_controller = SessionController(
+            config=SessionConfig(
+                token_model_resolver=self._token_model_resolver,
+                context_window_resolver=self._context_window_resolver,
+            )
+        )
+        self._history_sync = HistorySynchronizer(
+            session=self._session,
+            timeline_cache=self._timeline_cache,
+            scheduler=wx.CallAfter,
+        )
         persistent_preference = self._normalize_confirm_preference(confirm_preference)
         if persistent_preference is RequirementConfirmPreference.CHAT_ONLY:
             persistent_preference = RequirementConfirmPreference.PROMPT
@@ -302,7 +313,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._session.events.running_changed.connect(self._on_session_running_changed)
         self._session.events.tokens_changed.connect(self._on_session_tokens_changed)
         self._session.events.history_changed.connect(self._on_session_history_changed)
-        self._lazy_history_cleanup_pending = False
         self._initialize_history_state()
         self._build_ui()
         self._initialize_controller()
@@ -318,7 +328,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     # ------------------------------------------------------------------
     def _on_destroy(self, event: wx.WindowDestroyEvent) -> None:
         if event.GetEventObject() is self:
-            self._unbind_history_column_observers()
+            self._layout_manager.cleanup()
             self._cleanup_executor()
         event.Skip()
 
@@ -345,7 +355,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     # ------------------------------------------------------------------
     def set_history_path(self, path: Path | str | None) -> None:
         """Switch to *path* reloading conversations from disk."""
-        changed = self._session.set_history_path(
+        changed = self._history_sync.set_history_path(
             path, persist_existing=bool(self.conversations)
         )
         if not changed:
@@ -475,39 +485,15 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     # ------------------------------------------------------------------
     def _initialize_history_state(self) -> None:
         """Load history immediately and ensure a fresh draft conversation."""
-        history = self._session.history
-        history.load()
-        history.prune_empty_conversations()
-        conversations = history.conversations
-        draft = ChatConversation.new()
-        self._register_conversation(draft)
-        history.set_active_id(draft.conversation_id)
-        self._timeline_cache = ConversationTimelineCache()
+        self._history_sync.initialize()
+        self._timeline_cache = self._history_sync.timeline_cache
         self._pending_transcript_refresh.clear()
         self._latest_timeline = None
         self._notify_history_changed()
         self._schedule_lazy_history_cleanup()
 
     def _schedule_lazy_history_cleanup(self) -> None:
-        if self._lazy_history_cleanup_pending:
-            return
-
-        def _run_cleanup() -> None:
-            self._lazy_history_cleanup_pending = False
-            try:
-                removed = self._session.history.prune_empty_conversations(
-                    verify_with_store=True
-                )
-            except Exception:  # pragma: no cover - defensive logging
-                logger.exception("Failed to perform lazy history cleanup")
-                return
-            if not removed:
-                return
-            self._notify_history_changed()
-            self._refresh_history_list()
-
-        self._lazy_history_cleanup_pending = True
-        wx.CallAfter(_run_cleanup)
+        self._history_sync.schedule_lazy_history_cleanup()
 
     def _save_history_to_store(self) -> None:
         self._session.save_history()
@@ -515,17 +501,12 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     # ------------------------------------------------------------------
     def _token_model(self) -> str | None:
         """Return configured model name for token accounting."""
-        resolver = getattr(self, "_token_model_resolver", None)
-        if resolver is None:
-            return None
-        try:
-            model = resolver()
-        except Exception:  # pragma: no cover - defensive
-            return None
-        if not isinstance(model, str):
-            return None
-        text = model.strip()
-        return text or None
+        return self._session_controller.token_model()
+
+    def _normalize_confirm_preference(
+        self, value: RequirementConfirmPreference | str | None
+    ) -> RequirementConfirmPreference:
+        return self._session_controller.normalize_confirm_preference(value)
 
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
@@ -546,65 +527,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     # ------------------------------------------------------------------
     def _build_ui(self) -> None:
         """Construct controls and layout."""
-        state = self._view.build()
-        layout = state.layout
-        self._layout = layout
-        self._vertical_splitter = layout.vertical_splitter
-        self._horizontal_splitter = layout.horizontal_splitter
-        self._history_panel = layout.history_panel
-        self.history_list = layout.history_list
-        self._history_view = layout.history_view
-        self._new_chat_btn = layout.new_chat_button
-        self._conversation_label = layout.conversation_label
-        self._copy_conversation_btn = layout.copy_conversation_button
-        self._copy_transcript_log_btn = layout.copy_log_button
-        self.transcript_panel = layout.transcript_scroller
-        self._transcript_sizer = layout.transcript_sizer
-        self._transcript_view = layout.transcript_view
-        self._transcript_selection_probe = wx.TextCtrl(
-            self,
-            style=(
-                wx.TE_MULTILINE
-                | wx.TE_READONLY
-                | wx.TE_WORDWRAP
-                | wx.TE_NO_VSCROLL
-                | wx.BORDER_NONE
-            ),
-        )
-        self._transcript_selection_probe.Hide()
-        self._bottom_panel = layout.bottom_panel
-        self._bottom_controls_panel = layout.bottom_inner_panel
-        self._attachment_button = layout.attachment_button
-        self._attachment_summary = layout.attachment_summary
-        self._clear_input_button = layout.clear_button
-        self._run_batch_button = layout.run_batch_button
-        self._stop_batch_button = layout.stop_batch_button
-        self._bottom_controls_wrap = layout.controls_wrap
-        self.input = layout.input_control
-        self._queued_prompt_panel = layout.queued_panel
-        self._queued_prompt_label = layout.queued_message
-        self._queued_prompt_cancel = layout.queued_cancel_button
-        layout.queued_cancel_button.Bind(wx.EVT_BUTTON, self._on_cancel_queued_prompt)
-        self._primary_action_btn = layout.primary_action_button
-        self._batch_controls = layout.batch_controls
-        self.activity = layout.activity_indicator
-        self.status_label = layout.status_label
-        self._project_settings_button = layout.project_settings_button
-        self._confirm_label = layout.confirm_label
-        self._confirm_choice = layout.confirm_choice
-        self._confirm_choice_entries = layout.confirm_entries
-        self._confirm_choice_index = layout.confirm_choice_index
-
-        self._update_confirm_choice_ui(self._confirm_preference)
-        self._history_last_sash = self._horizontal_splitter.GetSashPosition()
-        self._vertical_last_sash = self._vertical_splitter.GetSashPosition()
-        self._update_conversation_header()
-        self._refresh_history_list()
-        wx.CallAfter(self._adjust_vertical_splitter)
-        wx.CallAfter(self._update_project_settings_ui)
-        wx.CallAfter(self._update_attachment_summary)
-        wx.CallAfter(self._update_queued_prompt_banner)
-        self._apply_pending_session_running_state()
+        state = self._layout_manager.build()
+        self._layout = state.layout
+        self.SetSizer(state.layout_root)
+        self.Layout()
 
     def _apply_pending_session_running_state(self) -> None:
         """Replay pending session running state once the layout is ready."""
@@ -615,102 +541,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return
         if self._session.is_running:
             self._on_session_running_changed(True)
-
-    def _observe_history_columns(self, history_list: wx.Window) -> None:
-        """Start monitoring the history list so column drags repaint rows."""
-        self._unbind_history_column_observers()
-        self._history_list_window = history_list
-        self._history_column_widths = self._current_history_column_widths(history_list)
-        with suppress(Exception):
-            history_list.Unbind(wx.EVT_IDLE, handler=self._on_history_list_idle)
-        history_list.Bind(wx.EVT_IDLE, self._on_history_list_idle)
-        self._bind_history_main_window(history_list)
-        self._detect_history_column_change()
-
-    def _bind_history_main_window(self, history_list: wx.Window) -> None:
-        getter = getattr(history_list, "GetMainWindow", None)
-        window = getter() if callable(getter) else None
-        if not isinstance(window, wx.Window):
-            self._history_main_window = None
-            return
-        with suppress(Exception):
-            window.Unbind(wx.EVT_IDLE, handler=self._on_history_main_window_idle)
-        window.Bind(wx.EVT_IDLE, self._on_history_main_window_idle)
-        self._history_main_window = window
-
-    def _unbind_history_column_observers(self) -> None:
-        if self._history_list_window is not None:
-            with suppress(Exception):
-                self._history_list_window.Unbind(
-                    wx.EVT_IDLE, handler=self._on_history_list_idle
-                )
-        if self._history_main_window is not None:
-            with suppress(Exception):
-                self._history_main_window.Unbind(
-                    wx.EVT_IDLE, handler=self._on_history_main_window_idle
-                )
-        self._history_list_window = None
-        self._history_main_window = None
-
-    def _on_history_list_idle(self, event: wx.IdleEvent) -> None:
-        event.Skip()
-        self._detect_history_column_change()
-
-    def _on_history_main_window_idle(self, event: wx.IdleEvent) -> None:
-        event.Skip()
-        self._detect_history_column_change()
-
-    def _current_history_column_widths(
-        self, history_list: wx.Window | None = None
-    ) -> tuple[int, ...]:
-        target = history_list
-        if target is None:
-            target = getattr(self, "history_list", None)
-        if target is None:
-            target = self._history_list_window
-        if target is None:
-            return ()
-        count_getter = getattr(target, "GetColumnCount", None)
-        column_getter = getattr(target, "GetColumn", None)
-        if not callable(count_getter) or not callable(column_getter):
-            return ()
-        widths: list[int] = []
-        count = count_getter()
-        for index in range(count):
-            column = column_getter(index)
-            if column is None:
-                continue
-            with suppress(Exception):
-                widths.append(int(column.GetWidth()))
-        return tuple(widths)
-
-    def _detect_history_column_change(self) -> None:
-        widths = self._current_history_column_widths()
-        if widths != self._history_column_widths:
-            self._history_column_widths = widths
-            if widths:
-                self._schedule_history_column_refresh()
-
-    def _schedule_history_column_refresh(self) -> None:
-        if self._history_column_refresh_scheduled:
-            return
-        self._history_column_refresh_scheduled = True
-        wx.CallAfter(self._refresh_history_columns)
-
-    def _refresh_history_columns(self) -> None:
-        """Force history list to repaint after column metrics change."""
-        self._history_column_refresh_scheduled = False
-        history_list = getattr(self, "history_list", None)
-        if history_list is None:
-            return
-        history_list.Refresh()
-        history_list.Update()
-        get_main = getattr(history_list, "GetMainWindow", None)
-        if callable(get_main):
-            main_window = get_main()
-            if isinstance(main_window, wx.Window):
-                main_window.Refresh()
-                main_window.Update()
 
     def _initialize_controller(self) -> None:
         def add_pending(
@@ -1549,20 +1379,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _context_token_limit(self) -> int | None:
         """Return resolved context window size when available."""
-        resolver = getattr(self, "_context_window_resolver", None)
-        if resolver is None:
-            return None
-        try:
-            value = resolver()
-        except Exception:  # pragma: no cover - defensive
-            return None
-        if value is None:
-            return None
-        try:
-            numeric = int(value)
-        except (TypeError, ValueError):  # pragma: no cover - defensive
-            return None
-        return numeric if numeric > 0 else None
+        return self._session_controller.context_token_limit()
 
     def _active_context_messages(self) -> tuple[Mapping[str, Any], ...]:
         """Return contextual messages relevant to the current prompt."""
@@ -1579,118 +1396,32 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _compute_context_token_breakdown(self) -> ContextTokenBreakdown:
         """Calculate token usage for the system prompt and conversation."""
-        model = self._token_model()
-        system_parts = [SYSTEM_PROMPT]
-        custom_prompt = self._custom_system_prompt()
-        if custom_prompt:
-            system_parts.append(custom_prompt)
-        system_key = (model, tuple(part for part in system_parts if part))
-        system_tokens = self._system_token_cache.get(system_key)
-        if system_tokens is None:
-            if system_key[1]:
-                system_tokens = combine_token_counts(
-                    [count_text_tokens(part, model=model) for part in system_key[1]]
-                )
-            else:
-                system_tokens = TokenCountResult.exact(0, model=model)
-            self._system_token_cache[system_key] = system_tokens
-
-        history_counts: list[TokenCountResult] = []
         conversation = self._get_active_conversation_loaded()
-        pending_entry = None
         handle = self._active_handle()
-        if handle is not None:
-            pending_entry = handle.pending_entry
-        if conversation is not None:
-            for entry in conversation.entries:
-                if pending_entry is not None and entry is pending_entry:
-                    continue
-                if entry.prompt:
-                    history_counts.append(entry.ensure_prompt_token_usage(model))
-                if entry.response:
-                    history_counts.append(entry.ensure_response_token_usage(model))
-                tool_messages = getattr(entry, "tool_messages", None)
-                if tool_messages:
-                    for message in tool_messages:
-                        if not isinstance(message, Mapping):
-                            continue
-                        history_counts.append(
-                            count_context_message_tokens(message, model)
-                        )
-        if history_counts:
-            history_tokens = combine_token_counts(history_counts)
-        else:
-            history_tokens = TokenCountResult.exact(0, model=model)
-
-        context_messages = self._active_context_messages()
-        if context_messages:
-            cached_entry: ChatEntry | None = None
-            if conversation is not None:
-                for entry in reversed(conversation.entries):
-                    if entry.context_messages == context_messages:
-                        cached_entry = entry
-                        break
-            if cached_entry is not None:
-                context_tokens = cached_entry.ensure_context_token_usage(
-                    model,
-                    messages=context_messages,
-                )
-            else:
-                context_tokens = combine_token_counts(
-                    count_context_message_tokens(message, model)
-                    for message in context_messages
-                )
-        else:
-            context_tokens = TokenCountResult.exact(0, model=model)
-
-        if handle is not None:
-            prompt_tokens = handle.prompt_tokens
-        else:
-            prompt_tokens = TokenCountResult.exact(0, model=model)
-
-        return ContextTokenBreakdown(
-            system=system_tokens,
-            history=history_tokens,
-            context=context_tokens,
-            prompt=prompt_tokens,
+        pending_entry = handle.pending_entry if handle is not None else None
+        prompt_tokens = handle.prompt_tokens if handle is not None else None
+        return self._session_controller.compute_context_token_breakdown(
+            conversation,
+            handle_context_messages=self._active_context_messages(),
+            pending_entry=pending_entry,
+            active_handle_prompt_tokens=prompt_tokens,
+            custom_system_prompt=self._custom_system_prompt(),
         )
 
     def _format_context_percentage(
         self, tokens: TokenCountResult, limit: int | None
     ) -> str:
         """Return percentage representation of context usage."""
-        if limit is None or limit <= 0:
-            return TOKEN_UNAVAILABLE_LABEL
-        if tokens.tokens is None:
-            return TOKEN_UNAVAILABLE_LABEL
-        percentage = (tokens.tokens / limit) * 100
-        if percentage >= 10:
-            formatted = f"{percentage:.0f}%"
-        elif percentage >= 1:
-            formatted = f"{percentage:.1f}%"
-        else:
-            formatted = f"{percentage:.2f}%"
-        if tokens.approximate:
-            return f"~{formatted}"
-        return formatted
+        if limit is None:
+            return self._session_controller.format_context_percentage(tokens)
+        return self._session_controller.format_context_percentage(tokens)
 
     def _format_tokens_for_status(
         self, tokens: TokenCountResult, *, limit: int | None = None
     ) -> str:
-        tokens_text = format_token_quantity(tokens)
         if limit is None:
-            limit = self._context_token_limit()
-        if limit is not None:
-            limit_tokens = TokenCountResult.exact(
-                limit,
-                model=tokens.model,
-            )
-            limit_text = format_token_quantity(limit_tokens)
-            tokens_text = _("{used} / {limit}").format(
-                used=tokens_text,
-                limit=limit_text,
-        )
-        return tokens_text
+            return self._session_controller.format_tokens_for_status(tokens)
+        return self._session_controller.format_tokens_for_status(tokens)
 
     def _update_conversation_header(self) -> None:
         """Refresh the transcript header with token statistics."""

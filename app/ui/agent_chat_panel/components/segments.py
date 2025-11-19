@@ -13,7 +13,11 @@ import wx
 
 from ....i18n import _
 from ...text import normalize_for_display
-from ...widgets.chat_message import MessageBubble, tool_bubble_palette
+from ...widgets.chat_message import (
+    MessageBubble,
+    _is_window_usable,
+    tool_bubble_palette,
+)
 from ..history_utils import format_value_snippet, history_json_safe
 from ..tool_summaries import ToolCallSummary, prettify_key
 from ..view_model import (
@@ -709,6 +713,9 @@ class MessageSegmentPanel(wx.Panel):
         response: AgentResponse,
         turn_timestamp: TimestampInfo | None,
     ) -> MessageBubble | None:
+        if not _is_window_usable(parent):
+            return None
+
         text = response.display_text or response.text or ""
         if not text and not response.is_final:
             return None

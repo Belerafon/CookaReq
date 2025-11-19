@@ -340,7 +340,7 @@ class SettingsDialog(wx.Dialog):
         llm = wx.Panel(nb)
         self._base_url = wx.TextCtrl(llm, value=base_url)
         self._model = wx.TextCtrl(llm, value=model)
-        format_labels = [_(label) for _, label in LLM_FORMAT_CHOICES]
+        format_labels = [_(label) for _format, label in LLM_FORMAT_CHOICES]
         self._format_choice = wx.Choice(llm, choices=format_labels)
         try:
             format_index = [value for value, _ in LLM_FORMAT_CHOICES].index(

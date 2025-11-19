@@ -206,6 +206,10 @@ so you know which modules are involved and which regressions to guard against.
 ### Agent and MCP interaction
 1. `AgentChatPanel` gathers the current context and invokes
    `LocalAgent.respond_async()` through `ThreadedAgentCommandExecutor`.
+   Разметка/сборка виджетов вынесена в `agent_chat_panel/layout_builder.py`,
+   синхронизация истории — в `history_sync.py`, расчёт токенов и подтверждений —
+   в `session_controller.py`, а `panel.py` остаётся тонким оркестратором, который
+   соединяет подкомпоненты и проксирует публичное API.
 2. The agent assembles prompts with `app/llm/context.py` and sends them via the
    LLM client. Planned tool invocations are validated before execution.
 3. `MCPClient.call_tool_async()` issues HTTP requests to the local MCP server

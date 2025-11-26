@@ -763,6 +763,30 @@ def test_bottom_controls_wrap_when_width_shrinks(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+def test_attachment_summary_visible_even_when_space_is_tight(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):
+            return {"ok": True, "error": None, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        flush_wx_events(wx)
+        assert panel._attachment_summary is not None
+
+        target_width = panel.FromDIP(420)
+        target_height = panel.FromDIP(520)
+        frame.SetClientSize((target_width, target_height))
+        frame.SendSizeEvent()
+        flush_wx_events(wx, count=8)
+
+        summary_width = panel._attachment_summary.GetSize().GetWidth()
+        assert summary_width >= panel.FromDIP(120)
+        assert panel._attachment_summary.GetLabel()
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_attachment_rejects_files_over_limit(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, *_args, **_kwargs):

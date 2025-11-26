@@ -282,6 +282,53 @@ def collect_collapsible_panes(window: "wx.Window") -> list["wx.CollapsiblePane"]
     return panes
 
 
+def test_user_attachment_metadata_display(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    panel = None
+    try:
+        token_info = TokenCountResult.exact(120, model="test-model").to_dict()
+        conversation, entry_timeline = build_entry_timeline(
+            prompt="Hello",  # ensure prompt bubble renders
+            context_messages=[
+                {
+                    "role": "user",
+                    "content": "[Attachment: report.txt]\nfirst line\nsecond line",
+                    "metadata": {
+                        "attachment": {
+                            "filename": "report.txt",
+                            "size_bytes": 2048,
+                            "token_info": token_info,
+                            "preview_lines": ["first line", "second line"],
+                        }
+                    },
+                }
+            ],
+        )
+        panel = render_turn_card(
+            frame,
+            conversation=conversation,
+            entry=entry_timeline,
+            layout_hints=entry_timeline.layout_hints,
+        )
+        bubbles = collect_message_bubbles(panel)
+        attachment_bubble = next(
+            b for b in bubbles if "Attachment:" in bubble_body_text(b)
+        )
+        text = bubble_body_text(attachment_bubble)
+        assert "report.txt" in text
+        assert "2.00 KB" in text
+        assert "Tokens: 0.12 k tokens" in text
+        assert "Preview:" in text
+        assert "first line" in text
+        assert "second line" in text
+    finally:
+        if panel is not None:
+            panel.Destroy()
+        frame.Destroy()
+
+
 def find_collapsible_by_name(
     window: "wx.Window", name: str
 ) -> "wx.CollapsiblePane | None":

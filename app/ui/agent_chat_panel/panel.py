@@ -137,9 +137,21 @@ class _PendingAttachment:
     size_bytes: int
     message_content: str
     token_info: TokenCountResult
+    preview_lines: tuple[str, ...]
 
     def to_context_message(self) -> dict[str, Any]:
-        return {"role": "user", "content": self.message_content}
+        return {
+            "role": "user",
+            "content": self.message_content,
+            "metadata": {
+                "attachment": {
+                    "filename": self.filename,
+                    "size_bytes": self.size_bytes,
+                    "token_info": self.token_info.to_dict(),
+                    "preview_lines": list(self.preview_lines),
+                }
+            },
+        }
 
 
 @dataclass(slots=True)
@@ -959,17 +971,31 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return f"{header}\n{content}"
         return header
 
+    @staticmethod
+    def _build_attachment_preview(
+        content: str, *, max_lines: int = 3, max_length: int = 400
+    ) -> tuple[str, ...]:
+        """Return a trimmed preview for attachment metadata."""
+        if not content:
+            return ()
+        lines = content.splitlines()
+        limited_lines = lines[:max_lines]
+        preview_text = "\n".join(limited_lines)[:max_length]
+        return tuple(preview_text.splitlines())
+
     def _load_attachment(self, path: Path) -> _PendingAttachment:
         resolved = path.expanduser()
         text, size_bytes = self._read_attachment_text(resolved)
         message_content = self._build_attachment_message_content(resolved.name, text)
         token_info = count_text_tokens(message_content, model=self._token_model())
+        preview_lines = self._build_attachment_preview(text)
         return _PendingAttachment(
             filename=resolved.name,
             content=text,
             size_bytes=size_bytes,
             message_content=message_content,
             token_info=token_info,
+            preview_lines=preview_lines,
         )
 
     def _read_attachment_text(self, resolved: Path) -> tuple[str, int]:

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 import wx
 
 from ....i18n import _
+from ....llm.tokenizer import TokenCountResult
 from ...text import normalize_for_display
 from ...widgets.chat_message import (
     MessageBubble,
@@ -31,6 +32,7 @@ from ..view_model import (
     TimestampInfo,
     ToolCallDetails,
 )
+from ..token_usage import TOKEN_UNAVAILABLE_LABEL, format_token_quantity
 
 
 class _LabeledCollapsiblePane(wx.CollapsiblePane):
@@ -229,6 +231,92 @@ def _build_collapsible_section(
     content_sizer.Add(text_ctrl, 1, wx.EXPAND | wx.TOP, parent.FromDIP(4))
     inner.SetSizer(content_sizer)
     return pane
+
+
+def _extract_attachment_metadata(messages: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
+    attachments: list[dict[str, Any]] = []
+    if not messages:
+        return attachments
+    for message in messages:
+        if not isinstance(message, Mapping):
+            continue
+        metadata = message.get("metadata")
+        if not isinstance(metadata, Mapping):
+            continue
+        attachment = metadata.get("attachment")
+        if not isinstance(attachment, Mapping):
+            continue
+        filename = attachment.get("filename")
+        size_bytes = attachment.get("size_bytes")
+        token_info_payload = attachment.get("token_info")
+        preview_lines = attachment.get("preview_lines")
+        if not isinstance(filename, str) or not filename:
+            continue
+        try:
+            size_value = int(size_bytes)
+        except (TypeError, ValueError):
+            size_value = None
+
+        token_info: TokenCountResult | None = None
+        if isinstance(token_info_payload, Mapping):
+            with suppress(Exception):
+                token_info = TokenCountResult.from_dict(token_info_payload)
+
+        if isinstance(preview_lines, Sequence) and not isinstance(
+            preview_lines, (str, bytes, bytearray)
+        ):
+            preview: list[str] = [str(line) for line in preview_lines][:5]
+        else:
+            preview = []
+
+        attachments.append(
+            {
+                "filename": filename,
+                "size_bytes": size_value,
+                "token_info": token_info,
+                "preview_lines": tuple(preview),
+            }
+        )
+    return attachments
+
+
+def _format_attachment_size(size_bytes: int | None) -> str:
+    if size_bytes is None or size_bytes < 0:
+        return TOKEN_UNAVAILABLE_LABEL
+    kb_value = size_bytes / 1024 if size_bytes > 0 else 0.0
+    if kb_value >= 100:
+        formatted = f"{kb_value:.0f}"
+    elif kb_value >= 10:
+        formatted = f"{kb_value:.1f}"
+    else:
+        formatted = f"{kb_value:.2f}"
+    return _("{size} KB").format(size=formatted)
+
+
+def _format_attachment_text(metadata: dict[str, Any]) -> str:
+    filename = normalize_for_display(metadata.get("filename", ""))
+    size_label = _format_attachment_size(metadata.get("size_bytes"))
+    token_info = metadata.get("token_info")
+    if isinstance(token_info, TokenCountResult):
+        tokens_label = format_token_quantity(token_info)
+    else:
+        tokens_label = TOKEN_UNAVAILABLE_LABEL
+    lines: list[str] = [
+        _("Attachment: {name}").format(name=filename),
+        _("Size: {size} • Tokens: {tokens}").format(
+            size=size_label, tokens=tokens_label
+        ),
+    ]
+    preview_lines = metadata.get("preview_lines")
+    if isinstance(preview_lines, Sequence) and not isinstance(
+        preview_lines, (str, bytes, bytearray)
+    ):
+        normalized_preview = [normalize_for_display(str(line)) for line in preview_lines]
+        preview_text = "\n".join(line for line in normalized_preview if line)
+        if preview_text:
+            lines.append(_("Preview:"))
+            lines.append(preview_text)
+    return "\n".join(lines)
 
 
 @dataclass(slots=True)
@@ -485,6 +573,21 @@ class MessageSegmentPanel(wx.Panel):
                 text="",
                 timestamp=TimestampInfo(raw="", occurred_at=None, formatted="", missing=True),
             )
+
+        attachments = _extract_attachment_metadata(payload.context_messages)
+        for attachment in attachments:
+            attachment_bubble = MessageBubble(
+                self,
+                role_label=_("You"),
+                timestamp=self._format_timestamp(prompt.timestamp),
+                text=_format_attachment_text(attachment),
+                align="right",
+                allow_selection=True,
+                width_hint=self._resolve_hint("user"),
+                on_width_change=lambda width: self._emit_layout_hint("user", width),
+            )
+            attachment_bubble.SetName(f"attachment:{self._entry_id}:{attachment['filename']}")
+            self.GetSizer().Add(attachment_bubble, 0, wx.EXPAND)
 
         bubble = MessageBubble(
             self,

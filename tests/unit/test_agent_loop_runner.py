@@ -230,6 +230,9 @@ def test_validation_error_payloads_mirror_tool_execution():
         {"role": "user", "content": "hi"},
         {"role": "assistant", "content": "assistant reply"},
     )
+    exc.llm_reasoning = (
+        {"type": "analysis", "text": "thinking"},
+    )
 
     recorded_snapshots: list[Mapping[str, Any]] = []
 
@@ -254,6 +257,8 @@ def test_validation_error_payloads_mirror_tool_execution():
     details = iteration.tool_error.get("details", {})
     assert isinstance(details, Mapping)
     assert details.get("type") == "ToolValidationError"
+    assert details.get("llm_request_messages") == list(exc.llm_request_messages)
+    assert details.get("llm_reasoning") == list(exc.llm_reasoning)
 
     assert len(recorded_snapshots) == 4  # begin + failure for each call
     failed_snapshots = [

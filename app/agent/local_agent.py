@@ -1426,6 +1426,36 @@ class AgentLoopRunner:
             for segment in reasoning_segments
         )
 
+        def _preview_messages(messages: Sequence[Mapping[str, Any]]) -> list[Any]:
+            previews: list[Any] = []
+            for message in messages:
+                if not isinstance(message, Mapping):
+                    previews.append(message)
+                    continue
+                cloned = dict(message)
+                content = cloned.get("content")
+                if isinstance(content, str):
+                    cloned["content"] = LocalAgent._preview(content)
+                previews.append(cloned)
+            return previews
+
+        log_debug_payload(
+            "AGENT_VALIDATION_ERROR",
+            {
+                "message": str(exc) or type(exc).__name__,
+                "llm_message": message_text,
+                "tool_calls": [dict(prepared.assistant_fragment) for prepared in prepared_calls],
+                "request_messages": _preview_messages(request_snapshot),
+                "reasoning": [
+                    {
+                        "type": segment["type"],
+                        "text": LocalAgent._preview(segment["text"], limit=200),
+                    }
+                    for segment in reasoning_segments
+                ],
+            },
+        )
+
         synthetic_response = LLMResponse(
             content=message_text,
             tool_calls=tuple(prepared.call for prepared in prepared_calls),

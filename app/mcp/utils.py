@@ -175,6 +175,24 @@ def exception_to_mcp_error(exc: BaseException) -> dict[str, Any]:
             else:
                 serialized_calls.append(call)
         details["llm_tool_calls"] = serialized_calls
+    llm_request_messages = getattr(exc, "llm_request_messages", None)
+    if llm_request_messages:
+        serialized_messages: list[Any] = []
+        for raw_message in llm_request_messages:
+            if isinstance(raw_message, Mapping):
+                serialized_messages.append(dict(raw_message))
+            else:
+                serialized_messages.append(raw_message)
+        details["llm_request_messages"] = serialized_messages
+    llm_reasoning = getattr(exc, "llm_reasoning", None)
+    if llm_reasoning:
+        serialized_reasoning: list[Any] = []
+        for segment in llm_reasoning:
+            if isinstance(segment, Mapping):
+                serialized_reasoning.append(dict(segment))
+            else:
+                serialized_reasoning.append(segment)
+        details["llm_reasoning"] = serialized_reasoning
     tool_results = getattr(exc, "tool_results", None)
     if tool_results:
         serialized_results: list[Any] = []

@@ -24,6 +24,29 @@ _SYSTEM_PROMPT_TEXT = str(SYSTEM_PROMPT).strip()
 SYSTEM_PROMPT_PLACEHOLDER = "<system prompt repeated – omitted>"
 
 
+def _looks_like_system_prompt(text: str) -> bool:
+    """Return ``True`` when *text* matches or is a truncation of the system prompt."""
+
+    if not _SYSTEM_PROMPT_TEXT:
+        return False
+
+    stripped = text.strip()
+    if not stripped:
+        return False
+
+    if stripped.startswith(_SYSTEM_PROMPT_TEXT):
+        return True
+
+    trimmed = stripped.rstrip("…")
+    if trimmed and _SYSTEM_PROMPT_TEXT.startswith(trimmed):
+        # Treat long truncated strings (for example after history sanitisation) as a
+        # match so repeated prompts can still be detected and replaced with the
+        # placeholder.
+        return len(trimmed) >= len(_SYSTEM_PROMPT_TEXT) // 2
+
+    return False
+
+
 @dataclass(slots=True)
 class _PlainEvent:
     """Single entry rendered in the plain transcript timeline."""
@@ -266,29 +289,21 @@ def _omit_repeated_system_prompt(
 def _strip_repeated_system_prompt(
     value: Any, *, seen_prompt: bool
 ) -> tuple[Any, bool]:
-    if not _SYSTEM_PROMPT_TEXT:
-        return value, seen_prompt
+    if isinstance(value, str) and _looks_like_system_prompt(value):
+        if seen_prompt:
+            return SYSTEM_PROMPT_PLACEHOLDER, True
 
-    if isinstance(value, str):
         stripped = value.strip()
-        if stripped == _SYSTEM_PROMPT_TEXT:
-            if seen_prompt:
-                return SYSTEM_PROMPT_PLACEHOLDER, True
-            return value, True
+        trimmed = stripped.rstrip("…")
+        if trimmed and _SYSTEM_PROMPT_TEXT.startswith(trimmed):
+            # Rehydrate truncated prompts so the full text appears once in the log.
+            return _SYSTEM_PROMPT_TEXT, True
 
-        if _SYSTEM_PROMPT_TEXT and stripped.startswith(_SYSTEM_PROMPT_TEXT):
-            prompt_index = value.find(_SYSTEM_PROMPT_TEXT)
-            # Treat leading whitespace-only prefixes (for example, newlines) as part of
-            # the prompt section so that appended business context is preserved.
-            if prompt_index != -1 and value[:prompt_index].strip() == "":
-                if seen_prompt:
-                    replaced = (
-                        value[:prompt_index]
-                        + SYSTEM_PROMPT_PLACEHOLDER
-                        + value[prompt_index + len(_SYSTEM_PROMPT_TEXT) :]
-                    )
-                    return replaced, True
-                return value, True
+        prompt_index = value.find(_SYSTEM_PROMPT_TEXT)
+        # Treat leading whitespace-only prefixes (for example, newlines) as part of
+        # the prompt section so that appended business context is preserved.
+        if prompt_index != -1 and value[:prompt_index].strip() == "":
+            return value, True
 
         return value, seen_prompt
 

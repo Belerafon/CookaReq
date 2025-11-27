@@ -143,6 +143,7 @@ class AgentRunController:
         conversation_id: str,
         context_messages: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
         prompt_at: str | None = None,
+        prepared_context: bool = False,
     ) -> None:
         normalized_prompt = prompt.strip()
         if not normalized_prompt:
@@ -158,8 +159,18 @@ class AgentRunController:
                     conversation.conversation_id,
                 )
         history_messages = self._callbacks.conversation_messages_for(conversation)
-        prepared_context = self._callbacks.prepare_context_messages(context_messages)
-        context_payload = prepared_context if prepared_context else None
+        context_payload: tuple[dict[str, Any], ...] | None
+        if prepared_context:
+            context_payload = (
+                tuple(dict(message) for message in context_messages)
+                if context_messages
+                else None
+            )
+        else:
+            prepared_context_messages = self._callbacks.prepare_context_messages(
+                context_messages
+            )
+            context_payload = prepared_context_messages or None
         history_payload = tuple(dict(message) for message in history_messages)
         effective_prompt_at = prompt_at or utc_now_iso()
         self._start_prompt(

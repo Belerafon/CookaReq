@@ -45,6 +45,7 @@ class AgentChatCoordinator:
         conversation_id: str,
         context_messages: Sequence[Mapping[str, object]] | Mapping[str, object] | None,
         prompt_at: str | None,
+        prepared_context: bool = False,
     ) -> None:
         """Send a prompt that carries additional context information."""
         self._run_controller.submit_prompt_with_context(
@@ -52,6 +53,7 @@ class AgentChatCoordinator:
             conversation_id=conversation_id,
             context_messages=context_messages,
             prompt_at=prompt_at,
+            prepared_context=prepared_context,
         )
 
     # ------------------------------------------------------------------

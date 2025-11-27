@@ -697,6 +697,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             conversation_id=conversation_id,
             context_messages=context,
             prompt_at=prompt_at,
+            prepared_context=True,
         )
 
     @property
@@ -1839,6 +1840,19 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 for entry in raw:
                     if isinstance(entry, Mapping):
                         prepared.append(dict(entry))
+
+        attachment_present = any(
+            isinstance(message.get("metadata"), Mapping)
+            and isinstance(message["metadata"].get("attachment"), Mapping)
+            for message in prepared
+        )
+
+        if attachment_present:
+            if consume_pending and attachment_override is None and self._pending_attachment is not None:
+                self._pending_attachment = None
+                self._update_attachment_summary()
+            return tuple(prepared)
+
         attachment = (
             attachment_override
             if attachment_override is not None

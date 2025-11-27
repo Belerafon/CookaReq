@@ -247,7 +247,7 @@ class LLMClient:
             reasoning_segments = self._response_parser.finalize_reasoning_segments(
                 reasoning_accumulator
             )
-            if parsed_tool_calls and not (message_text and message_text.strip()):
+            if not (message_text and message_text.strip()):
                 fallback_message = self._response_parser.render_reasoning_fallback(
                     reasoning_segments
                 )
@@ -424,6 +424,13 @@ class LLMClient:
                 }
                 for call in parsed_tool_calls
             ]
+            if not (message_text and message_text.strip()):
+                fallback_message = self._response_parser.render_reasoning_fallback(
+                    reasoning_segments
+                )
+                if fallback_message:
+                    message_text = fallback_message
+                    llm_message_text = message_text
             response = LLMResponse(
                 content=message_text,
                 tool_calls=parsed_tool_calls,

@@ -90,6 +90,7 @@ class AgentBatchSection:
             )
             return
         self._panel._reset_batch_conversation_tracking()
+        self._panel._prepare_batch_attachment()
         if not runner.start(prompt_text, targets):
             self._panel.status_label.SetLabel(_("Unable to start batch queue"))
             return
@@ -174,6 +175,7 @@ class AgentBatchSection:
         stop_button = self._controls.stop_button
 
         if not runner.items:
+            self._panel._clear_batch_attachment()
             panel.Hide()
             status_label.SetLabel(_("Select requirements and run a batch"))
             progress.SetRange(1)
@@ -227,6 +229,8 @@ class AgentBatchSection:
                 failed=failed_count,
                 cancelled=cancelled_count,
             )
+
+            self._panel._clear_batch_attachment()
 
         status_label.SetLabel(summary)
         run_button.Enable(not runner.is_running and not self._panel.is_running)

@@ -601,6 +601,44 @@ def test_batch_runner_stops_after_consecutive_tool_errors(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+def test_batch_context_reuses_attachment_for_entire_queue(tmp_path, wx_app):
+    class DummyAgent:
+        def run_command(self, *_args, **_kwargs):  # pragma: no cover - simple stub
+            return {"ok": True, "result": {}}
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=DummyAgent())
+
+    try:
+        flush_wx_events(wx)
+        panel._batch_context_provider = lambda _rid: ()
+        attachment_path = tmp_path / "batch_attachment.txt"
+        attachment_path.write_text("Line one\nLine two")
+
+        attachment = panel._load_attachment(attachment_path)
+        panel._pending_attachment = attachment
+        panel._prepare_batch_attachment()
+
+        first_context = panel._build_batch_context(
+            BatchTarget(requirement_id=1, rid="REQ-1", title="First"),
+        )
+        assert first_context is not None
+        first_attachment = first_context[0]["metadata"]["attachment"]
+        assert first_attachment["filename"] == "batch_attachment.txt"
+
+        second_context = panel._build_batch_context(
+            BatchTarget(requirement_id=2, rid="REQ-2", title="Second"),
+        )
+        assert second_context is not None
+        second_attachment = second_context[0]["metadata"]["attachment"]
+        assert second_attachment["filename"] == "batch_attachment.txt"
+
+        assert panel._pending_attachment is attachment
+        panel._clear_batch_attachment()
+        assert panel._pending_attachment is None
+    finally:
+        destroy_panel(frame, panel)
+
+
 def test_batch_conversation_creation_respects_manual_selection(tmp_path, wx_app):
     class DummyAgent:
         def run_command(self, *_args, **_kwargs):

@@ -274,6 +274,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._context_provider = context_provider
         self._batch_target_provider = batch_target_provider
         self._batch_context_provider = batch_context_provider
+        self._batch_attachment: _PendingAttachment | None = None
         self._batch_section: AgentBatchSection | None = None
         self._persist_confirm_preference_callback = persist_confirm_preference
         self._layout_manager = AgentChatPanelLayoutBuilder(self)
@@ -639,6 +640,19 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _reset_batch_conversation_tracking(self) -> None:
         self._last_batch_conversation_id = None
 
+    def _prepare_batch_attachment(self) -> None:
+        """Snapshot the current attachment for reuse across a batch run."""
+
+        self._batch_attachment = self._pending_attachment
+
+    def _clear_batch_attachment(self) -> None:
+        """Release any batch-scoped attachment once processing finishes."""
+
+        batch_attachment = self._batch_attachment
+        self._batch_attachment = None
+        if batch_attachment is not None and self._pending_attachment is batch_attachment:
+            self._clear_pending_attachment()
+
     def _prepare_batch_conversation(
         self, conversation: ChatConversation, target: BatchTarget
     ) -> None:
@@ -661,7 +675,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         except Exception:
             logger.exception("Failed to prepare batch context for %s", target.rid)
             raise
-        prepared = self._prepare_context_messages(raw)
+        prepared = self._prepare_context_messages(
+            raw,
+            consume_pending=False,
+            attachment_override=self._batch_attachment,
+        )
         return prepared if prepared else None
 
     def _submit_batch_prompt(
@@ -1807,7 +1825,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         return tuple(messages)
 
     def _prepare_context_messages(
-        self, raw: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None
+        self,
+        raw: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
+        *,
+        consume_pending: bool = True,
+        attachment_override: _PendingAttachment | None = None,
     ) -> tuple[dict[str, Any], ...]:
         prepared: list[dict[str, Any]] = []
         if raw:
@@ -1817,11 +1839,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 for entry in raw:
                     if isinstance(entry, Mapping):
                         prepared.append(dict(entry))
-        attachment = self._pending_attachment
+        attachment = (
+            attachment_override
+            if attachment_override is not None
+            else self._pending_attachment
+        )
         if attachment is not None:
             prepared.append(attachment.to_context_message())
-            self._pending_attachment = None
-            self._update_attachment_summary()
+            if consume_pending and attachment_override is None:
+                self._pending_attachment = None
+                self._update_attachment_summary()
         return tuple(prepared)
 
     @staticmethod

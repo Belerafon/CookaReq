@@ -105,8 +105,7 @@ class MainFrameDocumentsMixin:
     def _sync_mcp_base_path(self: MainFrame, path: Path) -> None:
         """Persist MCP base path and keep the running server in sync."""
         new_base_path = self._normalise_directory_path(path)
-        if self.mcp_settings.base_path == new_base_path:
-            return
+        path_changed = self.mcp_settings.base_path != new_base_path
 
         was_running = False
         try:
@@ -115,16 +114,18 @@ class MainFrameDocumentsMixin:
             logger.exception("Failed to query MCP server status before restart")
 
         auto_start = self.mcp_settings.auto_start
-        self.mcp_settings = self.mcp_settings.model_copy(
-            update={"base_path": new_base_path}
-        )
-        self.config.set_mcp_settings(self.mcp_settings)
+
+        if path_changed:
+            self.mcp_settings = self.mcp_settings.model_copy(
+                update={"base_path": new_base_path}
+            )
+            self.config.set_mcp_settings(self.mcp_settings)
 
         should_start = auto_start or was_running
         if not should_start:
             return
 
-        if was_running:
+        if path_changed and was_running:
             try:
                 self.mcp.stop()
             except Exception:  # pragma: no cover - controller must not crash UI
@@ -132,16 +133,17 @@ class MainFrameDocumentsMixin:
                     "Failed to stop MCP server before applying new base path"
                 )
 
-        try:
-            self.mcp.start(
-                self.mcp_settings,
-                max_context_tokens=self.llm_settings.max_context_tokens,
-                token_model=self.llm_settings.model,
-            )
-        except Exception:  # pragma: no cover - controller must not crash UI
-            logger.exception(
-                "Failed to start MCP server after applying new base path"
-            )
+        if not was_running or path_changed:
+            try:
+                self.mcp.start(
+                    self.mcp_settings,
+                    max_context_tokens=self.llm_settings.max_context_tokens,
+                    token_model=self.llm_settings.model,
+                )
+            except Exception:  # pragma: no cover - controller must not crash UI
+                logger.exception(
+                    "Failed to start MCP server after applying new base path"
+                )
 
     def _load_directory(self: MainFrame, path: Path) -> None:
         """Load requirements from ``path`` and update recent list."""

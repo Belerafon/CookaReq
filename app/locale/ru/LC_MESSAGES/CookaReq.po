@@ -1684,6 +1684,9 @@ msgstr ""
 msgid "Batch queue"
 msgstr "Очередь пакета"
 
+msgid "Errors"
+msgstr "Ошибки"
+
 msgid "Tool calls"
 msgstr "Вызовы инструментов"
 

@@ -44,6 +44,7 @@ class BatchItem:
     finished_at: str | None = None
     tool_call_count: int = 0
     requirement_edit_count: int = 0
+    error_count: int = 0
     token_count: int | None = None
     tokens_approximate: bool = False
 
@@ -172,6 +173,7 @@ class AgentBatchRunner:
         error: str | None,
         tool_call_count: int | None = None,
         requirement_edit_count: int | None = None,
+        error_count: int | None = None,
         token_count: object = _METRIC_UNSET,
         tokens_approximate: bool | None = None,
     ) -> None:
@@ -192,6 +194,8 @@ class AgentBatchRunner:
             item.tool_call_count = tool_call_count
         if requirement_edit_count is not None:
             item.requirement_edit_count = requirement_edit_count
+        if error_count is not None:
+            item.error_count = error_count
         if token_count is not _METRIC_UNSET:
             if token_count is None or isinstance(token_count, int):
                 item.token_count = token_count

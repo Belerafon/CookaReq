@@ -325,6 +325,9 @@ class AgentChatLayoutBuilder:
         batch_list.AppendTextColumn(_("Title"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 200))
         batch_list.AppendTextColumn(_("Status"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 220))
         batch_list.AppendTextColumn(
+            _("Errors"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 110)
+        )
+        batch_list.AppendTextColumn(
             _("Tool calls"), mode=dv.DATAVIEW_CELL_INERT, width=dip(panel, 110)
         )
         batch_list.AppendTextColumn(

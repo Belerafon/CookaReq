@@ -1627,8 +1627,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 assistant_text,
                 model=self._token_model(),
             )
+            context_breakdown = self._compute_context_token_breakdown()
             final_tokens = combine_token_counts(
-                [handle.prompt_tokens, response_tokens]
+                [context_breakdown.total, response_tokens]
             )
             token_count_value = final_tokens.tokens
             token_count_approximate = final_tokens.approximate

@@ -766,6 +766,47 @@ def test_parse_command_without_tool_call(tmp_path: Path, monkeypatch) -> None:
     assert response.content == "Hello"
 
 
+def test_parse_command_reports_empty_response_snapshot(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = settings_with_llm(tmp_path)
+
+    class FakeCompletion(SimpleNamespace):
+        def model_dump(self) -> dict[str, object]:  # pragma: no cover - trivial
+            return {
+                "choices": [
+                    {
+                        "message": {"content": None, "tool_calls": None},
+                    }
+                ]
+            }
+
+    class FakeOpenAI:
+        def __init__(self, *a, **k):  # pragma: no cover - simple container
+            def create(*, model, messages, tools=None, **kwargs):  # noqa: ANN001
+                return FakeCompletion(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(content=None, tool_calls=None)
+                        )
+                    ]
+                )
+
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=create)
+            )
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    client = LLMClient(settings.llm)
+
+    with pytest.raises(ToolValidationError) as excinfo:
+        client.parse_command("прочитай ТЗ")
+
+    exc = excinfo.value
+    assert getattr(exc, "llm_request_messages", None)
+    assert getattr(exc, "llm_response_summary", "")
+
+
 def test_respond_includes_request_snapshot(tmp_path: Path, monkeypatch) -> None:
     settings = settings_with_llm(tmp_path)
     monkeypatch.setattr("openai.OpenAI", make_openai_mock({"hello": "Done"}))

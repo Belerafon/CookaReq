@@ -152,6 +152,48 @@ def test_build_entry_diagnostic_prefers_logged_request_messages():
     assert diagnostic["llm_requests"] == sequence
 
 
+def test_build_entry_diagnostic_falls_back_to_last_response_text():
+    llm_trace = {
+        "steps": [
+            {
+                "index": 1,
+                "occurred_at": "2025-02-01T10:00:00Z",
+                "request": [{"role": "user", "content": "hi"}],
+                "response": {"content": "", "tool_calls": []},
+            },
+            {
+                "index": 2,
+                "occurred_at": "2025-02-01T10:00:05Z",
+                "request": [{"role": "user", "content": "hi"}],
+                "response": {
+                    "content": "LLM reasoning text",
+                    "tool_calls": [],
+                },
+            },
+        ]
+    }
+
+    diagnostic = AgentChatPanel._build_entry_diagnostic(
+        prompt="hi",
+        prompt_at=None,
+        response_at=None,
+        display_response="",
+        stored_response="",
+        raw_result={
+            "ok": False,
+            "status": "failed",
+            "result": "",
+            "llm_trace": llm_trace,
+            "reasoning": [],
+        },
+        tool_results=None,
+        history_snapshot=None,
+        context_snapshot=None,
+    )
+
+    assert diagnostic["llm_final_message"] == "LLM reasoning text"
+
+
 def test_build_entry_diagnostic_preserves_request_sequence_metadata():
     diagnostic = AgentChatPanel._build_entry_diagnostic(
         prompt="iterate",

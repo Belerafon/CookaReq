@@ -215,6 +215,14 @@ class LLMResponseParser:
             message += "."
         return message
 
+    def summarize_completion(self, completion: Any) -> str:
+        """Return a short diagnostic summary for arbitrary completion payloads."""
+
+        try:
+            return self._summarize_completion_payload(completion)
+        except Exception:
+            return ""
+
     def _summarize_completion_payload(self, completion: Any) -> str:
         """Build a concise diagnostic summary for unexpected completion payloads."""
         def _clip(text: str, limit: int = 120) -> str:

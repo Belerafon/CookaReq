@@ -1407,6 +1407,7 @@ class AgentLoopRunner:
         raw_calls = getattr(exc, "llm_tool_calls", None)
         raw_request_messages = getattr(exc, "llm_request_messages", None)
         raw_reasoning = getattr(exc, "llm_reasoning", None)
+        response_summary = getattr(exc, "llm_response_summary", "") or ""
         prepared_calls = self._prepare_invalid_tool_calls(raw_calls)
         if not prepared_calls:
             prepared_calls.append(self._build_validation_error_placeholder_call())
@@ -1453,6 +1454,7 @@ class AgentLoopRunner:
                     }
                     for segment in reasoning_segments
                 ],
+                **({"response_summary": response_summary} if response_summary else {}),
             },
         )
 

@@ -196,6 +196,12 @@ def exception_to_mcp_error(exc: BaseException) -> dict[str, Any]:
     llm_response_summary = getattr(exc, "llm_response_summary", None)
     if llm_response_summary:
         details["llm_response_summary"] = str(llm_response_summary)
+    argument_diagnostics = getattr(exc, "tool_argument_diagnostics", None)
+    if argument_diagnostics:
+        try:
+            details["tool_argument_diagnostics"] = dict(argument_diagnostics)
+        except Exception:
+            details["tool_argument_diagnostics"] = argument_diagnostics
     tool_results = getattr(exc, "tool_results", None)
     if tool_results:
         serialized_results: list[Any] = []

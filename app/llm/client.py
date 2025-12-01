@@ -200,9 +200,13 @@ class LLMClient:
         parsed_tool_calls: tuple[LLMToolCall, ...] = ()
         reasoning_accumulator: list[dict[str, str]] = []
         reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
+        completion_summary = ""
 
         try:
             completion = self._chat_completion(**prepared.request_args)
+            completion_summary = self._response_parser.summarize_completion(
+                completion
+            )
             if prepared.request_args.get("stream"):
                 (
                     message_text,
@@ -287,6 +291,8 @@ class LLMClient:
                     {"type": segment.type, "preview": segment.preview()}
                     for segment in reasoning_segments
                 ]
+            if completion_summary:
+                log_payload["response_summary"] = completion_summary
             log_response(log_payload, start_time=start)
             if not hasattr(exc, "llm_message"):
                 exc.llm_message = llm_message_text
@@ -302,6 +308,8 @@ class LLMClient:
                     }
                     for segment in reasoning_segments
                 ]
+            if completion_summary and not hasattr(exc, "llm_response_summary"):
+                exc.llm_response_summary = completion_summary
             raise
         except Exception as exc:  # pragma: no cover - network errors
             log_response(
@@ -389,6 +397,7 @@ class LLMClient:
         raw_tool_calls_payload: list[Any] = []
         parsed_tool_calls: tuple[LLMToolCall, ...] = ()
         reasoning_segments: tuple[LLMReasoningSegment, ...] = ()
+        completion_summary = ""
 
         try:
             if stream_requested:
@@ -398,6 +407,9 @@ class LLMClient:
                 )
             else:
                 completion = self._client.responses.create(**request_args)
+            completion_summary = self._response_parser.summarize_completion(
+                completion
+            )
             message_text, raw_tool_calls_payload = self._response_parser.parse_harmony_output(
                 completion
             )
@@ -459,6 +471,8 @@ class LLMClient:
                     {"type": segment.type, "preview": segment.preview()}
                     for segment in reasoning_segments
                 ]
+            if completion_summary:
+                log_payload["response_summary"] = completion_summary
             log_response(log_payload, start_time=start)
             if not hasattr(exc, "llm_message"):
                 exc.llm_message = llm_message_text
@@ -474,6 +488,8 @@ class LLMClient:
                     }
                     for segment in reasoning_segments
                 ]
+            if completion_summary and not hasattr(exc, "llm_response_summary"):
+                exc.llm_response_summary = completion_summary
             raise
         except Exception as exc:  # pragma: no cover - network errors
             log_response(

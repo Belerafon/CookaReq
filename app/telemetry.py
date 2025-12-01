@@ -102,7 +102,8 @@ def log_debug_payload(
         safe_payload = make_json_safe(payload)
     if payload is not None:
         record["payload"] = safe_payload
-    message = event
-    if payload is not None:
-        message = f"{event} {json.dumps(safe_payload, ensure_ascii=False)}"
-    logger.debug(message, extra={"json": record})
+    # Keep the textual message terse and delegate payload rendering to log handlers
+    # (console/json) that read the structured ``record['json']`` field. Embedding a
+    # JSON dump here causes backslashes to accumulate when formatters serialise the
+    # message again, so we avoid that by logging only the event name.
+    logger.debug(event, extra={"json": record})

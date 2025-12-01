@@ -193,6 +193,9 @@ def exception_to_mcp_error(exc: BaseException) -> dict[str, Any]:
             else:
                 serialized_reasoning.append(segment)
         details["llm_reasoning"] = serialized_reasoning
+    llm_response_summary = getattr(exc, "llm_response_summary", None)
+    if llm_response_summary:
+        details["llm_response_summary"] = str(llm_response_summary)
     tool_results = getattr(exc, "tool_results", None)
     if tool_results:
         serialized_results: list[Any] = []

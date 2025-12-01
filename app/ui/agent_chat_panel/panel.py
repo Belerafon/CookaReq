@@ -2882,6 +2882,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 llm_request_messages = llm_request_sequence[-1]["messages"]
             planned_tool_calls = cls._sanitize_planned_tool_calls(payload.llm_trace)
             final_text = normalize_for_display(payload.result_text or "").strip()
+            if not final_text:
+                steps = payload.llm_trace.steps
+                if steps:
+                    last_response = steps[-1].response
+                    if isinstance(last_response, Mapping):
+                        content_value = last_response.get("content")
+                        if isinstance(content_value, str):
+                            final_text = normalize_for_display(content_value).strip()
             llm_final_message = final_text or None
             if payload.diagnostic:
                 error_payload = history_json_safe(payload.diagnostic.get("error"))

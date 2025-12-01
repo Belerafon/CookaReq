@@ -103,16 +103,43 @@ def test_log_debug_payload_emits_full_payload(
     finally:
         logger.setLevel(prev_level)
         logger.removeHandler(handler)
-    records = [r for r in caplog.records if r.message.startswith("TEST_DEBUG")]
+    records = [r for r in caplog.records if r.message == "TEST_DEBUG"]
     assert records, "debug payload log was not emitted"
     message = records[-1].message
-    assert REDACTED in message
-    assert "secret" not in message
-    assert "hidden" not in message
-    assert '"key"' not in message
+    assert message == "TEST_DEBUG"
+    # Payload should live in structured extras to avoid double escaping in the
+    # log message itself.
+    record_json = getattr(records[-1], "json")
+    assert isinstance(record_json, dict)
+    payload = record_json.get("payload")
+    assert payload
+    assert payload["token"] == REDACTED
+    assert payload["nested"]["password"] == REDACTED
+    assert payload["list"][0]["api_key"] == REDACTED
     entry = json.loads(log_file.read_text().splitlines()[-1])
     assert entry["event"] == "TEST_DEBUG"
     assert entry["level"] == "DEBUG"
     assert entry["payload"]["token"] == REDACTED
     assert entry["payload"]["nested"]["password"] == REDACTED
     assert entry["payload"]["list"][0]["api_key"] == REDACTED
+
+
+def test_log_debug_payload_does_not_accumulate_escape_sequences(
+    tmp_path: Path,
+) -> None:
+    log_file = tmp_path / "debug.jsonl"
+    handler = JsonlHandler(str(log_file))
+    logger.addHandler(handler)
+    prev_level = logger.level
+    logger.setLevel(logging.DEBUG)
+    try:
+        log_debug_payload("TEST_ESC", {"text": "line1\nline2", "value": "\\"})
+    finally:
+        logger.setLevel(prev_level)
+        logger.removeHandler(handler)
+    line = log_file.read_text().splitlines()[-1]
+    # Single escaping ("\\n") is expected from JSON encoding; double escaping
+    # ("\\\\n") indicates we serialised an already-escaped string.
+    assert "TEST_ESC" in line
+    assert "\\n" in line
+    assert "\\\\n" not in line

@@ -339,6 +339,39 @@ def test_run_command_does_not_inject_validation_fallback_message():
     assert stop_reason.get("count") == 1
 
 
+def test_validation_error_surfaces_reasoning_and_summary():
+    class DiagnosticLLM(LLMAsyncBridge):
+        def check_llm(self):
+            return {"ok": True}
+
+        def respond(self, conversation):
+            exc = ToolValidationError(
+                "LLM response did not include a tool call or message"
+            )
+            exc.llm_message = ""
+            exc.llm_request_messages = list(conversation)
+            exc.llm_reasoning = [
+                {"type": "analysis", "text": "Parsed the TЗ header"}
+            ]
+            exc.llm_response_summary = "choices: 1, message keys: content, tool_calls"
+            raise exc
+
+    llm = DiagnosticLLM()
+    agent = LocalAgent(
+        llm=llm,
+        mcp=DummyMCP(),
+        max_consecutive_tool_errors=1,
+    )
+
+    result = agent.run_command("прочитай файл")
+
+    details = (result.get("error") or {}).get("details") or {}
+    assert details.get("llm_request_messages")
+    assert details.get("llm_reasoning")
+    assert details.get("llm_response_summary")
+    assert result.get("reasoning")
+
+
 def test_agent_relays_missing_required_tool_arguments_to_mcp():
     class MissingRidLLM(LLMAsyncBridge):
         def check_llm(self):

@@ -297,7 +297,20 @@ class LLMClient:
             if not hasattr(exc, "llm_message"):
                 exc.llm_message = llm_message_text
             if not hasattr(exc, "llm_tool_calls"):
-                exc.llm_tool_calls = tuple(normalized_tool_calls)
+                tool_call_payloads: list[Any] = []
+                if raw_tool_calls_payload:
+                    if isinstance(raw_tool_calls_payload, Mapping):
+                        tool_call_payloads.append(dict(raw_tool_calls_payload))
+                    elif isinstance(raw_tool_calls_payload, Sequence) and not isinstance(
+                        raw_tool_calls_payload, (str, bytes, bytearray)
+                    ):
+                        for entry in raw_tool_calls_payload:
+                            tool_call_payloads.append(
+                                dict(entry) if isinstance(entry, Mapping) else entry
+                            )
+                if not tool_call_payloads:
+                    tool_call_payloads = list(normalized_tool_calls)
+                exc.llm_tool_calls = tuple(tool_call_payloads)
             if prepared.snapshot and not hasattr(exc, "llm_request_messages"):
                 exc.llm_request_messages = prepared.snapshot
             if reasoning_segments and not hasattr(exc, "llm_reasoning"):

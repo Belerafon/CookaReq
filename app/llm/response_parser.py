@@ -1162,15 +1162,24 @@ class LLMResponseParser:
                     recovery=recovery,
                 )
                 return recovery.arguments
-            self._log_invalid_tool_arguments(
+            diagnostics = self._build_invalid_tool_argument_details(
                 text,
                 call_id=call_id,
                 tool_name=tool_name,
                 error=exc,
             )
-            raise ToolValidationError(
+            self._log_invalid_tool_arguments(
+                text,
+                call_id=call_id,
+                tool_name=tool_name,
+                error=exc,
+                details=diagnostics,
+            )
+            error_wrapper = ToolValidationError(
                 "LLM returned invalid JSON for tool arguments",
-            ) from exc
+            )
+            error_wrapper.tool_argument_diagnostics = diagnostics
+            raise error_wrapper from exc
 
     def _recover_tool_arguments(
         self,
@@ -1266,8 +1275,46 @@ class LLMResponseParser:
         call_id: str,
         tool_name: str,
         error: json.JSONDecodeError,
+        details: Mapping[str, Any] | None = None,
     ) -> None:
         """Log telemetry when tool arguments cannot be parsed or repaired."""
+        text = arguments_text or ""
+        payload = dict(
+            details
+            or self._build_invalid_tool_argument_details(
+                text,
+                call_id=call_id,
+                tool_name=tool_name,
+                error=error,
+            )
+        )
+        payload.setdefault(
+            "error",
+            {"type": type(error).__name__, "message": str(error)},
+        )
+        log_event("LLM_TOOL_ARGUMENTS_INVALID", payload)
+        error_position = payload.get("error_position") or {
+            "lineno": error.lineno,
+            "colno": error.colno,
+            "pos": error.pos,
+        }
+        log_debug_payload(
+            "LLM_TOOL_ARGUMENTS_INVALID",
+            {
+                **payload,
+                "arguments_text": text,
+                "error": {**payload.get("error", {}), **error_position},
+            },
+        )
+
+    def _build_invalid_tool_argument_details(
+        self,
+        arguments_text: str,
+        *,
+        call_id: str,
+        tool_name: str,
+        error: json.JSONDecodeError,
+    ) -> dict[str, Any]:
         text = arguments_text or ""
         preview, stripped = self._arguments_preview(text)
         classification: str | None = None
@@ -1276,25 +1323,19 @@ class LLMResponseParser:
                 classification = "concatenated_json"
             elif stripped[0] not in "{[" and stripped[-1:] in "]}":
                 classification = "trailing_garbage"
-        payload = {
+        return {
             "call_id": call_id,
             "tool_name": tool_name,
             "length": len(text),
             "classification": classification,
             "preview": preview,
             "error": {"type": type(error).__name__, "message": str(error)},
-        }
-        log_event("LLM_TOOL_ARGUMENTS_INVALID", payload)
-        log_debug_payload(
-            "LLM_TOOL_ARGUMENTS_INVALID",
-            {
-                **payload,
-                "arguments_text": text,
+            "error_position": {
                 "lineno": error.lineno,
                 "colno": error.colno,
                 "pos": error.pos,
             },
-        )
+        }
 
     def _log_recovered_tool_arguments(
         self,

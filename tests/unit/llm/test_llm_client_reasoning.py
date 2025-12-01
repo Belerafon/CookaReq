@@ -125,6 +125,53 @@ def test_tool_validation_error_exposes_full_reasoning(monkeypatch: pytest.Monkey
     ]
 
 
+def test_tool_validation_error_preserves_raw_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.llm.client.log_request", lambda payload: None)
+    monkeypatch.setattr("app.llm.client.log_response", lambda payload, **kwargs: None)
+    client = _make_client(monkeypatch)
+
+    parser = client._response_parser
+    monkeypatch.setattr(
+        parser,
+        "parse_tool_calls",
+        lambda payload, _parser=parser: _parser.__class__.parse_tool_calls(
+            _parser, payload
+        ),
+    )
+
+    invalid_tool_calls = [
+        {
+            "id": "broken-call",
+            "type": "function",
+            "function": {"name": "demo_tool", "arguments": "{\"foo\":"},
+        }
+    ]
+
+    def fake_parse_chat_completion(_completion):
+        return ("", invalid_tool_calls, [])
+
+    monkeypatch.setattr(
+        client._response_parser,
+        "parse_chat_completion",
+        fake_parse_chat_completion,
+    )
+    monkeypatch.setattr(
+        client._response_parser,
+        "finalize_reasoning_segments",
+        lambda entries: (),
+    )
+
+    with pytest.raises(Exception) as caught:
+        client.respond([{"role": "user", "content": "hi"}])
+
+    exc = caught.value
+    assert getattr(exc, "llm_tool_calls", None) == tuple(invalid_tool_calls)
+    diagnostics = getattr(exc, "tool_argument_diagnostics", None)
+    assert diagnostics
+    assert diagnostics.get("call_id") == "broken-call"
+    assert diagnostics.get("tool_name") == "demo_tool"
+
+
 def test_tool_call_response_uses_reasoning_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.llm.client.log_request", lambda payload: None)
     monkeypatch.setattr("app.llm.client.log_response", lambda payload, **kwargs: None)

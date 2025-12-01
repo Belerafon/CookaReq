@@ -233,6 +233,12 @@ def test_validation_error_payloads_mirror_tool_execution():
     exc.llm_reasoning = (
         {"type": "analysis", "text": "thinking"},
     )
+    exc.tool_argument_diagnostics = {
+        "call_id": "call-2",
+        "tool_name": "broken",
+        "preview": "not json",
+        "error": {"type": "JSONDecodeError", "message": "bad"},
+    }
 
     recorded_snapshots: list[Mapping[str, Any]] = []
 
@@ -259,6 +265,7 @@ def test_validation_error_payloads_mirror_tool_execution():
     assert details.get("type") == "ToolValidationError"
     assert details.get("llm_request_messages") == list(exc.llm_request_messages)
     assert details.get("llm_reasoning") == list(exc.llm_reasoning)
+    assert details.get("tool_argument_diagnostics") == exc.tool_argument_diagnostics
 
     assert len(recorded_snapshots) == 4  # begin + failure for each call
     failed_snapshots = [

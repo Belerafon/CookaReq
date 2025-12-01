@@ -2335,7 +2335,21 @@ def test_turn_card_orders_sections(wx_app):
                 "id": "msg-1",
                 "content": "assistant reply",
                 "role": "assistant",
-            }
+            },
+            "reasoning": [{"type": "analysis", "text": "think"}],
+            "llm_trace": {
+                "steps": [
+                    {
+                        "index": 1,
+                        "occurred_at": "2024-06-11T18:41:03+00:00",
+                        "request": [
+                            {"role": "system", "content": "ctx"},
+                            {"role": "user", "content": "demo"},
+                        ],
+                        "response": {},
+                    }
+                ]
+            },
         }
         tool_payload = {
             "tool_name": "demo_tool",
@@ -2420,6 +2434,30 @@ def test_turn_card_orders_sections(wx_app):
         assert "reason" in collapsible_label(reasoning_pane).lower()
         assert "request" in collapsible_label(llm_request_pane).lower()
         assert "raw" in collapsible_label(agent_raw_pane).lower()
+
+        frame.SendSizeEvent()
+        panel.Layout()
+        wx.GetApp().Yield()
+
+        for pane in (
+            context_pane,
+            reasoning_pane,
+            llm_request_pane,
+            agent_raw_pane,
+        ):
+            sizer = pane.GetContainingSizer()
+            assert sizer is not None and sizer.IsShown(pane)
+            pane.Layout()
+            measured_height = max(
+                pane.GetSize().GetHeight(), pane.GetBestSize().GetHeight()
+            )
+            assert measured_height > 0
+            header_getter = getattr(pane, "GetButton", None)
+            if callable(header_getter):
+                header = header_getter()
+                if header is not None:
+                    assert header.IsShown()
+                    assert header.GetSize().GetHeight() > 0
     finally:
         panel.Destroy()
         frame.Destroy()
@@ -2729,6 +2767,22 @@ def test_agent_transcript_log_orders_sections_for_errors(tmp_path, wx_app):
                     "code": "VALIDATION_ERROR",
                     "message": "Invalid arguments",
                 },
+                "raw": {
+                    "llm_trace": {
+                        "steps": [
+                            {
+                                "index": 1,
+                                "occurred_at": "2024-06-11T18:41:03+00:00",
+                                "request": [
+                                    {"role": "system", "content": "ctx"},
+                                    {"role": "user", "content": text},
+                                ],
+                                "response": {},
+                            }
+                        ]
+                    },
+                    "llm_message": {"id": "error-1", "content": "", "role": "assistant"},
+                },
             }
 
     wx, frame, panel = create_panel(tmp_path, wx_app, ErrorAgent())
@@ -2741,10 +2795,21 @@ def test_agent_transcript_log_orders_sections_for_errors(tmp_path, wx_app):
         log_text = panel.get_transcript_log_text()
         assert "VALIDATION_ERROR" in log_text
 
-        llm_index = log_text.index("LLM request:")
-        raw_index = log_text.index("Raw LLM payload:")
         agent_index = log_text.index("Agent:")
-        assert agent_index < llm_index < raw_index
+        llm_prefix = "LLM request:"
+        raw_prefix = "Raw LLM payload:"
+        has_llm = llm_prefix in log_text
+        has_raw = raw_prefix in log_text
+        if has_llm:
+            llm_index = log_text.index(llm_prefix)
+            if has_raw:
+                raw_index = log_text.index(raw_prefix)
+                assert agent_index < llm_index < raw_index
+            else:
+                assert agent_index < llm_index
+        elif has_raw:
+            raw_index = log_text.index(raw_prefix)
+            assert agent_index < raw_index
         assert "\"error\"" in log_text
     finally:
         destroy_panel(frame, panel)

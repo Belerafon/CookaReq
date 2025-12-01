@@ -1668,6 +1668,9 @@ msgstr ""
 msgid "Batch queue"
 msgstr "Batch queue"
 
+msgid "Errors"
+msgstr "Errors"
+
 msgid "Tool calls"
 msgstr "Tool calls"
 

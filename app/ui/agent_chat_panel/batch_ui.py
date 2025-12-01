@@ -143,6 +143,7 @@ class AgentBatchSection:
         error: str | None,
         tool_call_count: int | None = None,
         requirement_edit_count: int | None = None,
+        error_count: int | None = None,
         token_count: int | None = None,
         tokens_approximate: bool = False,
     ) -> None:
@@ -153,6 +154,7 @@ class AgentBatchSection:
             error=error,
             tool_call_count=tool_call_count,
             requirement_edit_count=requirement_edit_count,
+            error_count=error_count,
             token_count=token_count,
             tokens_approximate=tokens_approximate,
         )
@@ -287,18 +289,21 @@ class AgentBatchSection:
                 }:
                     tool_calls_text = str(item.tool_call_count)
                     edits_text = str(item.requirement_edit_count)
+                    errors_text = str(item.error_count)
                     tokens_text = self._format_token_usage(
                         item.token_count, item.tokens_approximate
                     )
                 else:
                     tool_calls_text = ""
                     edits_text = ""
+                    errors_text = ""
                     tokens_text = ""
                 control.AppendItem(
                     [
                         rid,
                         title,
                         status_text,
+                        errors_text,
                         tool_calls_text,
                         edits_text,
                         tokens_text,

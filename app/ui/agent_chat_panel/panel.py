@@ -682,6 +682,38 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
         return prepared if prepared else None
 
+    def _count_conversation_errors(self, conversation: ChatConversation) -> int:
+        """Return number of error entries recorded in ``conversation``."""
+
+        try:
+            conversation.ensure_entries_loaded()
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to load entries for conversation %s",
+                conversation.conversation_id,
+            )
+            return 0
+
+        return sum(1 for entry in conversation.entries if self._entry_has_error(entry))
+
+    @staticmethod
+    def _entry_has_error(entry: ChatEntry) -> bool:
+        raw_result = entry.raw_result
+        if isinstance(raw_result, Mapping):
+            if raw_result.get("ok") is False:
+                return True
+            status_value = raw_result.get("status")
+            if isinstance(status_value, str) and status_value.strip().lower() == "failed":
+                return True
+            if raw_result.get("error"):
+                return True
+
+        diagnostic = entry.diagnostic
+        if isinstance(diagnostic, Mapping) and diagnostic.get("error"):
+            return True
+
+        return False
+
     def _submit_batch_prompt(
         self,
         prompt: str,
@@ -1514,8 +1546,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         error_text: str | None = None
         total_tool_calls = 0
         requirement_edit_count = 0
+        error_count: int | None = None
         token_count_value: int | None = None
         token_count_approximate = False
+        conversation: ChatConversation | None = None
         try:
             (
                 conversation_text,
@@ -1638,6 +1672,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             handle.latest_llm_response = None
             handle.latest_reasoning_segments = None
             should_render = True
+            if conversation is not None:
+                error_count = self._count_conversation_errors(conversation)
         finally:
             self._set_wait_state(False, final_tokens)
             elapsed = self._session.elapsed
@@ -1665,6 +1701,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 error=error_text,
                 tool_call_count=total_tool_calls,
                 requirement_edit_count=requirement_edit_count,
+                error_count=error_count,
                 token_count=token_count_value,
                 tokens_approximate=token_count_approximate,
             )

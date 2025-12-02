@@ -286,12 +286,19 @@ def summarize_tool_details(
 def _summarize_tool_error(error: ToolError) -> list[str]:
     lines: list[str] = []
     message = normalize_for_display(error.message or "").strip()
+    code_text = normalize_for_display(str(error.code)).strip() if error.code else ""
+
+    # Show a compact tag for coded errors to match timeline/tool summary expectations
+    # and keep the code visible even when the message is empty.
+    if code_text:
+        if message:
+            lines.append(_("[{code}] {message}").format(code=code_text, message=message))
+            message = ""
+        else:
+            lines.append(_("[{code}]").format(code=code_text))
+
     if message:
         lines.append(_("Error: {message}").format(message=message))
-    if error.code:
-        code_text = normalize_for_display(str(error.code)).strip()
-        if code_text:
-            lines.append(_("Error code: {code}").format(code=code_text))
     if error.details:
         lines.append(
             _("Error details: {details}").format(

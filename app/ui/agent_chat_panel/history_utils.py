@@ -100,7 +100,23 @@ def tool_snapshots_from(value: Any) -> list[ToolResultSnapshot]:
             try:
                 snapshots.append(ToolResultSnapshot.from_dict(item))
             except Exception:
-                continue
+                fallback = dict(item)
+                status_value = fallback.get("status")
+                if status_value not in {"pending", "running", "succeeded", "failed"}:
+                    agent_status = str(fallback.get("agent_status") or "").lower()
+                    match agent_status:
+                        case "running":
+                            fallback["status"] = "running"
+                        case "completed" | "succeeded":
+                            fallback["status"] = "succeeded"
+                        case "failed":
+                            fallback["status"] = "failed"
+                fallback.setdefault("tool_name", str(fallback.get("call_id") or "tool"))
+                fallback.setdefault("call_id", str(fallback.get("tool_call_id") or ""))
+                try:
+                    snapshots.append(ToolResultSnapshot.from_dict(fallback))
+                except Exception:
+                    continue
     return snapshots
 
 

@@ -304,6 +304,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._queued_prompt_panel: wx.Panel | None = None
         self._queued_prompt_label: wx.StaticText | None = None
         self._queued_prompt_cancel: wx.Button | None = None
+        self._tool_first_seen: dict[str, str] = {}
         self._confirm_preference = persistent_preference
         self._auto_confirm_overrides: dict[str, Any] | None = None
         self._confirm_choice: wx.Choice | None = None
@@ -1634,7 +1635,31 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     key = snapshot.call_id.strip() if snapshot.call_id else ""
                     if not key:
                         key = f"{prefix}:{index}"
-                    combined_snapshots[key] = snapshot
+                    existing = combined_snapshots.get(key)
+                    if existing is None:
+                        combined_snapshots[key] = snapshot
+                        continue
+                    merged_payload = snapshot.to_dict()
+                    existing_payload = existing.to_dict()
+                    for field in (
+                        "started_at",
+                        "completed_at",
+                        "last_observed_at",
+                        "status",
+                    ):
+                        if not merged_payload.get(field):
+                            if existing_payload.get(field):
+                                merged_payload[field] = existing_payload[field]
+                    for field in ("tool_arguments", "result", "error"):
+                        if merged_payload.get(field) in (None, {}, ""):
+                            if existing_payload.get(field) not in (None, {}, ""):
+                                merged_payload[field] = existing_payload[field]
+                    try:
+                        combined_snapshots[key] = ToolResultSnapshot.from_dict(
+                            merged_payload
+                        )
+                    except Exception:
+                        combined_snapshots[key] = snapshot
 
             _merge_snapshots(streamed_snapshots, "stream")
             _merge_snapshots(final_snapshots, "final")
@@ -1646,8 +1671,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 if snapshot.tool_name in _REQUIREMENT_EDITING_TOOLS
             )
 
-            tool_payloads = tool_snapshot_dicts(final_snapshots)
-            tool_messages = self._build_tool_messages(final_snapshots)
+            tool_payloads = tool_snapshot_dicts(merged_snapshots)
+            tool_messages = self._build_tool_messages(merged_snapshots)
 
             if payload is not None:
                 raw_result = payload.to_dict()
@@ -1699,7 +1724,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     token_info=final_tokens,
                     prompt_at=prompt_at,
                     response_at=response_at,
-                    context_messages=handle.context_messages,
+                    context_messages=handle.context_messages
+                    or getattr(pending_entry, "context_messages", None),
                     history_snapshot=handle.history_snapshot,
                     reasoning_segments=reasoning_segments,
                     tool_messages=tool_messages,
@@ -3117,8 +3143,19 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         timestamp = utc_now_iso()
         for snapshot in snapshots:
+            existing = handle.tool_snapshots.get(snapshot.call_id or "")
+            existing_started = getattr(existing, "started_at", None)
+            call_key = snapshot.call_id or ""
+            first_seen = self._tool_first_seen.get(call_key)
+            if first_seen is None:
+                self._tool_first_seen[call_key] = timestamp
+                first_seen = timestamp
             if snapshot.started_at is None:
-                snapshot.started_at = timestamp
+                snapshot.started_at = existing_started or first_seen
+            elif existing_started:
+                snapshot.started_at = min(snapshot.started_at, existing_started)
+            else:
+                snapshot.started_at = min(snapshot.started_at, first_seen)
             snapshot.last_observed_at = timestamp
             if snapshot.status in {"succeeded", "failed"} and snapshot.completed_at is None:
                 snapshot.completed_at = timestamp
@@ -3149,6 +3186,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         response_payload = payload.get("response")
         updated = False
         updated |= self._update_entry_llm_steps(entry, payload)
+        request_messages = payload.get("request_messages")
+        if entry.context_messages is None and isinstance(request_messages, Sequence):
+            entry.context_messages = self._clone_context_messages(request_messages)
+            updated = True
         if isinstance(response_payload, Mapping):
             content_value = response_payload.get("content")
             if isinstance(content_value, str):

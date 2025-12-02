@@ -280,6 +280,12 @@ def _build_agent_turn(
         "reasoning_segments",
         lambda: _sanitize_mapping_sequence(reasoning_source),
     )
+    if not reasoning_segments and llm_trace.steps:
+        for step in llm_trace.steps:
+            step_reasoning = _sanitize_mapping_sequence(step.response.get("reasoning"))
+            if step_reasoning:
+                reasoning_segments = step_reasoning
+                break
 
     reasoning_fallback = _render_reasoning_fallback(reasoning_segments)
     reasoning_display = entry.cache_view_value(
@@ -306,6 +312,16 @@ def _build_agent_turn(
         elif final_display:
             excluded_displays.add(final_display)
 
+    if llm_trace.steps:
+        fallback_timestamp = prompt_timestamp.occurred_at or response_timestamp.occurred_at
+        for step in llm_trace.steps:
+            if not step.occurred_at:
+                if fallback_timestamp is not None:
+                    step.occurred_at = fallback_timestamp.isoformat()
+                elif prompt_timestamp.raw:
+                    step.occurred_at = prompt_timestamp.raw
+            if not step.request:
+                step.request = ({"role": "user", "content": entry.prompt},)
     streamed_responses, latest_stream_timestamp = _build_streamed_responses(
         llm_trace,
         final_response,
@@ -326,6 +342,12 @@ def _build_agent_turn(
 
     occurred_at = resolved_timestamp.occurred_at
     llm_request = _build_llm_request_snapshot(llm_trace)
+    if llm_request is None:
+        default_messages: list[dict[str, Any]] = []
+        if entry.context_messages:
+            default_messages.extend(dict(message) for message in entry.context_messages)
+        default_messages.append({"role": "user", "content": entry.prompt})
+        llm_request = LlmRequestSnapshot(messages=tuple(default_messages), sequence=None)
 
     has_content = bool(
         final_response
@@ -493,6 +515,64 @@ def _build_tool_calls(
             raw_data = raw_data_safe
 
         request_payload = _tool_request_payload(tool_requests.get(snapshot.call_id))
+        if request_payload is None:
+            fallback_timestamp = snapshot.started_at or snapshot.last_observed_at
+            request_payload = {
+                "step_index": summary.index,
+                "occurred_at": fallback_timestamp,
+                "tool": snapshot.tool_name,
+                "arguments": snapshot.arguments or {},
+                "messages": (),
+                "response": raw_data if isinstance(raw_data, Mapping) else {},
+            }
+        raw_map: dict[str, Any] | None = None
+        if isinstance(raw_data, Mapping):
+            raw_map = dict(raw_data)
+
+        if request_payload and raw_map is not None:
+            raw_map.setdefault("llm_request", request_payload)
+            response_payload = request_payload.get("response")
+            if response_payload:
+                raw_map.setdefault("llm_response", response_payload)
+
+        if raw_map is not None:
+            events_payload = raw_map.get("events")
+            normalised_events: list[dict[str, Any]] = []
+            if isinstance(events_payload, Sequence):
+                for event in events_payload:
+                    if isinstance(event, Mapping):
+                        event_map = dict(event)
+                        if (
+                            event_map.get("kind") == "started"
+                            and not event_map.get("message")
+                        ):
+                            event_map["message"] = "Applying updates"
+                        normalised_events.append(event_map)
+
+            if not normalised_events:
+                started_at = raw_map.get("started_at") or snapshot.started_at
+                completed_at = raw_map.get("completed_at") or snapshot.completed_at
+                if started_at:
+                    normalised_events.append(
+                        {
+                            "kind": "started",
+                            "occurred_at": started_at,
+                            "message": "Applying updates",
+                        }
+                    )
+                if completed_at:
+                    normalised_events.append(
+                        {
+                            "kind": "failed"
+                            if snapshot.status == "failed"
+                            else "completed",
+                            "occurred_at": completed_at,
+                        }
+                    )
+
+            if normalised_events:
+                raw_map["events"] = normalised_events
+            raw_data = raw_map
         timestamp = _tool_timestamp(snapshot)
 
         if not timestamp.missing:
@@ -652,11 +732,11 @@ def _build_agent_events(
     return tuple(events)
 
 
-def _event_sort_key(event: AgentTimelineEvent) -> tuple[int, _dt.datetime, int]:
+def _event_sort_key(event: AgentTimelineEvent) -> tuple[int, int, _dt.datetime, int]:
     timestamp = event.timestamp.occurred_at
-    if timestamp is None:
-        return (1, _UTC_MIN, event.order_index)
-    return (0, timestamp, event.order_index)
+    kind_priority = 0 if event.kind == "response" else 1
+    missing = 1 if timestamp is None else 0
+    return (kind_priority, missing, timestamp or _UTC_MIN, event.order_index)
 
 
 def _resolve_turn_timestamp(

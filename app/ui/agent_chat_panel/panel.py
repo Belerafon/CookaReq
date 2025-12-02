@@ -267,6 +267,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._latest_timeline: ConversationTimeline | None = None
         self._last_rendered_conversation_id: str | None = None
         self._history_last_sash = 0
+        self._history_column_widths: tuple[int, ...] = ()
+        self._history_column_refresh_scheduled = False
         self._vertical_sash_goal: int | None = None
         self._vertical_last_sash = 0
         self._controller: AgentRunController | None = None
@@ -276,6 +278,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._batch_context_provider = batch_context_provider
         self._batch_attachment: _PendingAttachment | None = None
         self._batch_section: AgentBatchSection | None = None
+        self._batch_conversation_ids: set[str] = set()
         self._persist_confirm_preference_callback = persist_confirm_preference
         self._layout_manager = AgentChatPanelLayoutBuilder(self)
         self._session_controller = SessionController(
@@ -283,6 +286,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 token_model_resolver=self._token_model_resolver,
                 context_window_resolver=self._context_window_resolver,
             )
+        )
+        self._session_controller.set_token_counter(
+            lambda text, model=None: count_text_tokens(text, model=model)
         )
         self._history_sync = HistorySynchronizer(
             session=self._session,
@@ -298,6 +304,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._queued_prompt_panel: wx.Panel | None = None
         self._queued_prompt_label: wx.StaticText | None = None
         self._queued_prompt_cancel: wx.Button | None = None
+        self._tool_first_seen: dict[str, str] = {}
         self._confirm_preference = persistent_preference
         self._auto_confirm_overrides: dict[str, Any] | None = None
         self._confirm_choice: wx.Choice | None = None
@@ -328,6 +335,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._session.events.history_changed.connect(self._on_session_history_changed)
         self._initialize_history_state()
         self._build_ui()
+        self._refresh_history_list()
+        self._history_column_widths = tuple(
+            getattr(self._layout_manager, "history_column_widths", lambda: ())()
+        )
         self._initialize_controller()
         self._render_transcript()
 
@@ -349,7 +360,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _cleanup_executor(self) -> None:
         coordinator = getattr(self, "_coordinator", None)
         if coordinator is not None:
-            coordinator.stop()
+            stop = getattr(coordinator, "stop", None)
+            if callable(stop):
+                stop()
         else:
             controller = getattr(self, "_controller", None)
             if controller is not None:
@@ -621,6 +634,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         conversation = ChatConversation.new()
         self._register_conversation(conversation)
+        self._batch_conversation_ids.add(conversation.conversation_id)
 
         should_activate = False
         if active_id is None:
@@ -628,6 +642,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         elif last_batch_id is None:
             should_activate = True
         elif active_id == last_batch_id:
+            should_activate = True
+        elif active_id in self._batch_conversation_ids:
             should_activate = True
 
         if should_activate:
@@ -639,6 +655,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _reset_batch_conversation_tracking(self) -> None:
         self._last_batch_conversation_id = None
+        self._batch_conversation_ids.clear()
 
     def _prepare_batch_attachment(self) -> None:
         """Snapshot the current attachment for reuse across a batch run."""
@@ -1430,6 +1447,30 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self._update_status(0.0)
         if self._batch_section is not None:
             self._batch_section.update_ui()
+        # Regenerate buttons live inside transcript cards; force a refresh so
+        # their enabled state follows the latest running flag.
+        self._request_transcript_refresh(
+            conversation=self._get_active_conversation_loaded(),
+            force=True,
+            immediate=True,
+        )
+        self._update_regenerate_buttons(enabled=not running)
+
+    def _update_regenerate_buttons(self, *, enabled: bool) -> None:
+        """Toggle regenerate buttons regardless of cached card state."""
+
+        transcript = getattr(self, "transcript_panel", None)
+        if transcript is None:
+            return
+        target_labels = {"Regenerate", _("Regenerate")}
+
+        def walker(window: wx.Window) -> None:
+            for child in window.GetChildren():
+                if isinstance(child, wx.Button) and child.GetLabel() in target_labels:
+                    child.Enable(enabled)
+                walker(child)
+
+        walker(transcript)
 
     def _on_session_tokens_changed(self, _tokens: TokenCountResult) -> None:
         """Update UI whenever the session token accounting changes."""
@@ -1594,7 +1635,31 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     key = snapshot.call_id.strip() if snapshot.call_id else ""
                     if not key:
                         key = f"{prefix}:{index}"
-                    combined_snapshots[key] = snapshot
+                    existing = combined_snapshots.get(key)
+                    if existing is None:
+                        combined_snapshots[key] = snapshot
+                        continue
+                    merged_payload = snapshot.to_dict()
+                    existing_payload = existing.to_dict()
+                    for field in (
+                        "started_at",
+                        "completed_at",
+                        "last_observed_at",
+                        "status",
+                    ):
+                        if not merged_payload.get(field):
+                            if existing_payload.get(field):
+                                merged_payload[field] = existing_payload[field]
+                    for field in ("tool_arguments", "result", "error"):
+                        if merged_payload.get(field) in (None, {}, ""):
+                            if existing_payload.get(field) not in (None, {}, ""):
+                                merged_payload[field] = existing_payload[field]
+                    try:
+                        combined_snapshots[key] = ToolResultSnapshot.from_dict(
+                            merged_payload
+                        )
+                    except Exception:
+                        combined_snapshots[key] = snapshot
 
             _merge_snapshots(streamed_snapshots, "stream")
             _merge_snapshots(final_snapshots, "final")
@@ -1606,8 +1671,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 if snapshot.tool_name in _REQUIREMENT_EDITING_TOOLS
             )
 
-            tool_payloads = tool_snapshot_dicts(final_snapshots)
-            tool_messages = self._build_tool_messages(final_snapshots)
+            tool_payloads = tool_snapshot_dicts(merged_snapshots)
+            tool_messages = self._build_tool_messages(merged_snapshots)
 
             if payload is not None:
                 raw_result = payload.to_dict()
@@ -1627,10 +1692,21 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 assistant_text,
                 model=self._token_model(),
             )
-            context_breakdown = self._compute_context_token_breakdown()
-            final_tokens = combine_token_counts(
-                [context_breakdown.total, response_tokens]
-            )
+            # The response token count is an estimate during streaming; treat it
+            # as approximate and avoid double-counting the prompt/context when
+            # reporting status for the latest turn.  If counting fails, surface
+            # an "unavailable" snapshot so the status label uses "n/a".
+            if response_tokens.tokens is None:
+                final_tokens = TokenCountResult.unavailable(
+                    model=response_tokens.model,
+                    reason=response_tokens.reason,
+                )
+            else:
+                final_tokens = TokenCountResult.approximate_result(
+                    response_tokens.tokens,
+                    model=response_tokens.model,
+                    reason=response_tokens.reason,
+                )
             token_count_value = final_tokens.tokens
             token_count_approximate = final_tokens.approximate
             response_at = utc_now_iso()
@@ -1648,7 +1724,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     token_info=final_tokens,
                     prompt_at=prompt_at,
                     response_at=response_at,
-                    context_messages=handle.context_messages,
+                    context_messages=handle.context_messages
+                    or getattr(pending_entry, "context_messages", None),
                     history_snapshot=handle.history_snapshot,
                     reasoning_segments=reasoning_segments,
                     tool_messages=tool_messages,
@@ -2545,6 +2622,42 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 [conversation.conversation_id for conversation in self.conversations]
             )
 
+    def _current_history_column_widths(
+        self, history_list: wx.Window | None = None
+    ) -> tuple[int, ...]:
+        observer = getattr(self, "_layout_manager", None)
+        getter = getattr(observer, "_current_history_column_widths", None)
+        if callable(getter):
+            try:
+                return tuple(getter(history_list))
+            except Exception:
+                return ()
+        return ()
+
+    def _refresh_history_columns(self) -> None:
+        self._history_column_refresh_scheduled = False
+        refresher = getattr(self._layout_manager, "refresh_history_columns", None)
+        if callable(refresher):
+            refresher()
+            return
+        history_list = getattr(self, "history_list", None)
+        if history_list is not None:
+            history_list.Refresh()
+            history_list.Update()
+
+    def _on_history_list_idle(self, event: wx.IdleEvent) -> None:
+        event.Skip()
+        widths = self._current_history_column_widths()
+        if not widths:
+            return
+        if widths == tuple(self._history_column_widths or ()):  # type: ignore[arg-type]
+            return
+        self._history_column_widths = tuple(widths)
+        if self._history_column_refresh_scheduled:
+            return
+        self._history_column_refresh_scheduled = True
+        wx.CallAfter(self._refresh_history_columns)
+
     def _prepare_history_interaction(self) -> bool:
         """Flush pending transcript updates before history interactions."""
         if self._pending_transcript_refresh:
@@ -3023,8 +3136,32 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             )
             return
 
-        cloned_results = tool_snapshot_dicts(tool_results)
-        entry.tool_results = cloned_results
+        snapshots = tool_snapshots_from(tool_results)
+        if not snapshots:
+            entry.tool_results = None
+            return
+
+        timestamp = utc_now_iso()
+        for snapshot in snapshots:
+            existing = handle.tool_snapshots.get(snapshot.call_id or "")
+            existing_started = getattr(existing, "started_at", None)
+            call_key = snapshot.call_id or ""
+            first_seen = self._tool_first_seen.get(call_key)
+            if first_seen is None:
+                self._tool_first_seen[call_key] = timestamp
+                first_seen = timestamp
+            if snapshot.started_at is None:
+                snapshot.started_at = existing_started or first_seen
+            elif existing_started:
+                snapshot.started_at = min(snapshot.started_at, existing_started)
+            else:
+                snapshot.started_at = min(snapshot.started_at, first_seen)
+            snapshot.last_observed_at = timestamp
+            if snapshot.status in {"succeeded", "failed"} and snapshot.completed_at is None:
+                snapshot.completed_at = timestamp
+
+        cloned_results = tool_snapshot_dicts(snapshots)
+        entry.tool_results = cloned_results if cloned_results else None
         self._request_transcript_refresh(
             conversation=conversation,
             entry_ids=[entry_id] if entry_id else None,
@@ -3049,6 +3186,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         response_payload = payload.get("response")
         updated = False
         updated |= self._update_entry_llm_steps(entry, payload)
+        request_messages = payload.get("request_messages")
+        if entry.context_messages is None and isinstance(request_messages, Sequence):
+            entry.context_messages = self._clone_context_messages(request_messages)
+            updated = True
         if isinstance(response_payload, Mapping):
             content_value = response_payload.get("content")
             if isinstance(content_value, str):
@@ -3446,7 +3587,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         coordinator = self._coordinator
         if coordinator is None:
             return None
-        return coordinator.active_handle
+        return getattr(coordinator, "active_handle", None)
 
     @property
     def history(self) -> list[ChatEntry]:

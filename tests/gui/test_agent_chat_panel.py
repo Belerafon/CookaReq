@@ -3411,13 +3411,6 @@ def test_markdown_content_keeps_height_reasonable(wx_app):
         frame.Destroy()
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Agent markdown bubble stretches vertically after very long responses, "
-        "leaving a large blank gap before the next user message"
-    ),
-    strict=True,
-)
 def test_agent_markdown_bubble_keeps_height_reasonable(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
 

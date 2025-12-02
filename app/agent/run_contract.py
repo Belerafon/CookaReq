@@ -505,6 +505,42 @@ class AgentRunPayload:
                             response={},
                         )
                     )
+
+            llm_steps = diagnostic.get("llm_steps")
+            if isinstance(llm_steps, Sequence):
+                for index, entry in enumerate(llm_steps, 1):
+                    if not isinstance(entry, Mapping):
+                        continue
+                    response_payload = entry.get("response")
+                    request_payload = entry.get("request")
+                    if not isinstance(response_payload, Mapping) and not isinstance(
+                        request_payload, Mapping
+                    ):
+                        continue
+                    try:
+                        step_index = int(entry.get("step", index))
+                    except (TypeError, ValueError):
+                        step_index = index
+                    messages: tuple[Mapping[str, Any], ...] = ()
+                    if isinstance(request_payload, Mapping):
+                        messages = tuple(
+                            dict(message)
+                            for message in request_payload.get("messages", ())
+                            if isinstance(message, Mapping)
+                        )
+                    occurred_at = None
+                    if isinstance(response_payload, Mapping):
+                        timestamp_value = response_payload.get("timestamp")
+                        if isinstance(timestamp_value, str) and timestamp_value.strip():
+                            occurred_at = timestamp_value
+                    llm_trace.steps.append(
+                        LlmStep(
+                            index=step_index,
+                            occurred_at=occurred_at,
+                            request=messages,
+                            response=dict(response_payload or {}),
+                        )
+                    )
         planned_call_entries: list[dict[str, Any]] = []
         details_source: Mapping[str, Any] | None = None
         if isinstance(error_payload_raw, Mapping):

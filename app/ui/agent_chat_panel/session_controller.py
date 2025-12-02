@@ -29,9 +29,29 @@ class SessionController:
         self,
         *,
         config: SessionConfig,
+        token_counter: Callable[[str, str | None], TokenCountResult] | None = None,
     ) -> None:
         self._config = config
         self._system_token_cache: dict[tuple[str | None, tuple[str, ...]], TokenCountResult] = {}
+        # Allow callers (and tests) to override the tokenizer.  This keeps token
+        # accounting in sync with the monkeypatched functions used elsewhere in
+        # the panel so totals remain deterministic during GUI checks.
+        self._count_tokens = token_counter or (
+            lambda text, model=None: count_text_tokens(text, model=model)
+        )
+
+    # ------------------------------------------------------------------
+    def set_token_counter(
+        self, counter: Callable[[str, str | None], TokenCountResult] | None
+    ) -> None:
+        """Replace the token counting function used for accounting."""
+
+        if counter is None:
+            self._count_tokens = lambda text, model=None: count_text_tokens(
+                text, model=model
+            )
+        else:
+            self._count_tokens = counter
 
     # ------------------------------------------------------------------
     def token_model(self) -> str | None:
@@ -81,7 +101,7 @@ class SessionController:
         if system_tokens is None:
             if system_key[1]:
                 system_tokens = combine_token_counts(
-                    [count_text_tokens(part, model=model) for part in system_key[1]]
+                    [self._count_tokens(part, model) for part in system_key[1]]
                 )
             else:
                 system_tokens = TokenCountResult.exact(0, model=model)

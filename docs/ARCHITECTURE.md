@@ -138,6 +138,14 @@ so you know which modules are involved and which regressions to guard against.
     and normalised display text so transcript rebuilds reuse expensive
     transformations (`normalize_for_display`, deep `make_json_safe` walks)
     instead of repeating them on every rerender.
+  * Tool timelines normalise each streamed snapshot into canonical
+    `ToolResultSnapshot` objects with stable IDs, status and timestamps. Repeat
+    updates for the same tool merge timestamps/status and synthesise missing
+    events (for example, attaching error-code tags or an "Applying updates"
+    placeholder) so the transcript and log export always include a coherent
+    timeline. When the LLM trace is incomplete the view model generates a
+    fallback request snapshot to keep the agent response bubble and tool log in
+    sync.
 * `app/agent/run_contract.py` defines the shared schema for tool snapshots and
   LLM traces. Every streamed update carries a stable identifier, canonical
   status, start/finish timestamps and an ordered timeline of events. The LLM

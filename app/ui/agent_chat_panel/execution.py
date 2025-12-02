@@ -79,10 +79,51 @@ class _AgentRunHandle:
         except Exception:
             return tuple(self.tool_snapshots[identifier] for identifier in self.tool_order)
 
+        agent_status = str(payload.get("agent_status") or "").lower()
+        if snapshot.status == "pending":
+            match agent_status:
+                case "running":
+                    snapshot.status = "running"
+                case "failed":
+                    snapshot.status = "failed"
+                case "completed" | "succeeded":
+                    snapshot.status = "succeeded"
+
         call_id = snapshot.call_id.strip()
         if not call_id:
             call_id = f"{self.run_id}:tool:{len(self.tool_order) + 1}"
             snapshot.call_id = call_id
+
+        existing = self.tool_snapshots.get(call_id)
+        if existing is not None:
+            merged_payload = snapshot.to_dict()
+            current_payload = existing.to_dict()
+            if merged_payload.get("started_at") and current_payload.get("started_at"):
+                merged_payload["started_at"] = min(
+                    merged_payload["started_at"], current_payload["started_at"]
+                )
+            if not merged_payload.get("started_at") and current_payload.get("started_at"):
+                merged_payload["started_at"] = current_payload["started_at"]
+            if merged_payload.get("completed_at") and current_payload.get("completed_at"):
+                merged_payload["completed_at"] = max(
+                    merged_payload["completed_at"], current_payload["completed_at"]
+                )
+            if not merged_payload.get("completed_at") and current_payload.get(
+                "completed_at"
+            ):
+                merged_payload["completed_at"] = current_payload["completed_at"]
+            if not merged_payload.get("last_observed_at") and current_payload.get(
+                "last_observed_at"
+            ):
+                merged_payload["last_observed_at"] = current_payload["last_observed_at"]
+            if merged_payload.get("status") == "pending" and current_payload.get(
+                "status"
+            ):
+                merged_payload["status"] = current_payload["status"]
+            try:
+                snapshot = ToolResultSnapshot.from_dict(merged_payload)
+            except Exception:
+                snapshot = existing
 
         self.tool_snapshots[call_id] = snapshot
         if call_id not in self.tool_order:

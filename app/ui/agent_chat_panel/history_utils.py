@@ -100,13 +100,47 @@ def tool_snapshots_from(value: Any) -> list[ToolResultSnapshot]:
             try:
                 snapshots.append(ToolResultSnapshot.from_dict(item))
             except Exception:
-                continue
+                fallback = dict(item)
+                status_value = fallback.get("status")
+                if status_value not in {"pending", "running", "succeeded", "failed"}:
+                    agent_status = str(fallback.get("agent_status") or "").lower()
+                    match agent_status:
+                        case "running":
+                            fallback["status"] = "running"
+                        case "completed" | "succeeded":
+                            fallback["status"] = "succeeded"
+                        case "failed":
+                            fallback["status"] = "failed"
+                fallback.setdefault("tool_name", str(fallback.get("call_id") or "tool"))
+                fallback.setdefault("call_id", str(fallback.get("tool_call_id") or ""))
+                try:
+                    snapshots.append(ToolResultSnapshot.from_dict(fallback))
+                except Exception:
+                    continue
     return snapshots
 
 
-def tool_snapshot_dicts(snapshots: Sequence[ToolResultSnapshot]) -> list[dict[str, Any]]:
-    """Serialise ``snapshots`` into dictionaries for persistence."""
-    return [snapshot.to_dict() for snapshot in snapshots]
+def tool_snapshot_dicts(
+    snapshots: Sequence[ToolResultSnapshot | Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    """Serialise ``snapshots`` into dictionaries for persistence.
+
+    Tests stream raw dictionaries into the tool-result handlers, while the
+    coordinator delivers :class:`ToolResultSnapshot` instances.  Accept both
+    forms so transcript updates do not crash when fed with plain mappings.
+    """
+
+    serialised: list[dict[str, Any]] = []
+    for snapshot in snapshots:
+        if isinstance(snapshot, ToolResultSnapshot):
+            serialised.append(snapshot.to_dict())
+            continue
+        if isinstance(snapshot, Mapping):
+            try:
+                serialised.append(ToolResultSnapshot.from_dict(snapshot).to_dict())
+            except Exception:
+                continue
+    return serialised
 
 
 __all__ = [

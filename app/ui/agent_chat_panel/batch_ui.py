@@ -60,6 +60,7 @@ class AgentBatchSection:
         controls.run_button.Bind(wx.EVT_BUTTON, self._handle_run_request)
         controls.stop_button.Bind(wx.EVT_BUTTON, self._handle_stop_request)
         controls.close_button.Bind(wx.EVT_BUTTON, self._handle_close_request)
+        self._bind_column_resize_refresh(controls.list_ctrl)
         self.update_ui()
 
     # ------------------------------------------------------------------
@@ -394,6 +395,33 @@ class AgentBatchSection:
             return ""
         value = f"{token_count}"
         return f"~{value}" if approximate else value
+
+    # ------------------------------------------------------------------
+    def _bind_column_resize_refresh(self, control: dv.DataViewListCtrl) -> None:
+        """Force table repainting when the user resizes batch columns.
+
+        On some platforms ``DataViewListCtrl`` headers repaint independently
+        from the body during live column resizing, leaving cell content aligned
+        to stale widths until a subsequent selection event triggers a refresh.
+        Hooking into the header resize notifications keeps the list body in
+        sync with the updated column sizes without waiting for another user
+        interaction.
+        """
+
+        header_getter = getattr(control, "GetHeaderCtrl", None)
+        if not callable(header_getter):
+            return
+        header = header_getter()
+        if header is None:
+            return
+
+        def _refresh(event: wx.HeaderCtrlEvent) -> None:
+            control.Refresh()
+            control.Layout()
+            event.Skip()
+
+        for binder in (wx.EVT_HEADER_RESIZING, wx.EVT_HEADER_END_RESIZE):
+            header.Bind(binder, _refresh)
 
     # ------------------------------------------------------------------
     def _handle_run_request(self, _event: wx.Event) -> None:

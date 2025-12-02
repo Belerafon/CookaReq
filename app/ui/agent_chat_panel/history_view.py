@@ -275,15 +275,6 @@ class HistoryView:
         if not conversations:
             return
         menu = wx.Menu()
-        try:
-            total = self._list.GetItemCount()
-        except Exception:
-            total = 0
-        select_item: wx.MenuItem | None = None
-        if total:
-            select_item = menu.Append(wx.ID_SELECTALL, _("Select all"))
-            menu.Bind(wx.EVT_MENU, self._on_select_all_rows, select_item)
-            menu.AppendSeparator()
         label = _("Delete chat") if len(rows) == 1 else _("Delete selected chats")
         delete_item = menu.Append(wx.ID_ANY, label)
         if self._is_running():
@@ -294,6 +285,14 @@ class HistoryView:
             self._handle_delete_request(rows)
 
         menu.Bind(wx.EVT_MENU, on_delete, delete_item)
+        try:
+            total = self._list.GetItemCount()
+        except Exception:
+            total = 0
+        if total:
+            menu.AppendSeparator()
+            select_item = menu.Append(wx.ID_SELECTALL, _("Select all"))
+            menu.Bind(wx.EVT_MENU, self._on_select_all_rows, select_item)
         try:
             self._list.PopupMenu(menu)
         finally:

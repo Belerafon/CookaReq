@@ -83,9 +83,17 @@ class HistoryStore:
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)
-                conversations = self._load_conversations(conn)
+                conversations = []
+                for conversation in self._load_conversations(conn):
+                    entries = self.load_entries(conversation.conversation_id)
+                    if not entries:
+                        continue
+                    conversation.replace_entries(entries)
+                    conversations.append(conversation)
+
                 if not conversations:
                     return [], None
+
                 active_id = self._resolve_active_id(conn, conversations)
                 return conversations, active_id
         except sqlite3.Error:  # pragma: no cover - defensive logging
@@ -151,10 +159,13 @@ class HistoryStore:
                 continue
             try:
                 entries.append(ChatEntry.from_dict(payload))
-            except Exception:  # pragma: no cover - defensive logging
-                logger.exception(
-                    "Failed to deserialize chat entry for %s",
+            except Exception as exc:  # pragma: no cover - defensive logging
+                self._handle_corrupted_entry(
                     conversation_id,
+                    position,
+                    payload,
+                    detail="Stored payload could not be deserialized.",
+                    exc=exc,
                 )
         return entries
 

@@ -219,9 +219,14 @@ class AgentChatHistory:
             return False
 
         removable_ids = {conv.conversation_id for conv in candidates}
+        protected_id = self._active_id
+        if protected_id is None and candidates:
+            protected_id = candidates[-1].conversation_id
         if verify_with_store:
             confirmed = self._store.conversations_with_entries(removable_ids)
             removable_ids.difference_update(confirmed)
+        if protected_id:
+            removable_ids.discard(protected_id)
         if not removable_ids:
             return False
 

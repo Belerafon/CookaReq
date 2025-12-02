@@ -267,6 +267,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._latest_timeline: ConversationTimeline | None = None
         self._last_rendered_conversation_id: str | None = None
         self._history_last_sash = 0
+        self._history_column_widths: tuple[int, ...] = ()
+        self._history_column_refresh_scheduled = False
         self._vertical_sash_goal: int | None = None
         self._vertical_last_sash = 0
         self._controller: AgentRunController | None = None
@@ -276,6 +278,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._batch_context_provider = batch_context_provider
         self._batch_attachment: _PendingAttachment | None = None
         self._batch_section: AgentBatchSection | None = None
+        self._batch_conversation_ids: set[str] = set()
         self._persist_confirm_preference_callback = persist_confirm_preference
         self._layout_manager = AgentChatPanelLayoutBuilder(self)
         self._session_controller = SessionController(
@@ -283,6 +286,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 token_model_resolver=self._token_model_resolver,
                 context_window_resolver=self._context_window_resolver,
             )
+        )
+        self._session_controller.set_token_counter(
+            lambda text, model=None: count_text_tokens(text, model=model)
         )
         self._history_sync = HistorySynchronizer(
             session=self._session,
@@ -328,6 +334,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._session.events.history_changed.connect(self._on_session_history_changed)
         self._initialize_history_state()
         self._build_ui()
+        self._refresh_history_list()
+        self._history_column_widths = tuple(
+            getattr(self._layout_manager, "history_column_widths", lambda: ())()
+        )
         self._initialize_controller()
         self._render_transcript()
 
@@ -349,7 +359,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _cleanup_executor(self) -> None:
         coordinator = getattr(self, "_coordinator", None)
         if coordinator is not None:
-            coordinator.stop()
+            stop = getattr(coordinator, "stop", None)
+            if callable(stop):
+                stop()
         else:
             controller = getattr(self, "_controller", None)
             if controller is not None:
@@ -621,6 +633,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         conversation = ChatConversation.new()
         self._register_conversation(conversation)
+        self._batch_conversation_ids.add(conversation.conversation_id)
 
         should_activate = False
         if active_id is None:
@@ -628,6 +641,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         elif last_batch_id is None:
             should_activate = True
         elif active_id == last_batch_id:
+            should_activate = True
+        elif active_id in self._batch_conversation_ids:
             should_activate = True
 
         if should_activate:
@@ -639,6 +654,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
     def _reset_batch_conversation_tracking(self) -> None:
         self._last_batch_conversation_id = None
+        self._batch_conversation_ids.clear()
 
     def _prepare_batch_attachment(self) -> None:
         """Snapshot the current attachment for reuse across a batch run."""
@@ -2545,6 +2561,42 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 [conversation.conversation_id for conversation in self.conversations]
             )
 
+    def _current_history_column_widths(
+        self, history_list: wx.Window | None = None
+    ) -> tuple[int, ...]:
+        observer = getattr(self, "_layout_manager", None)
+        getter = getattr(observer, "_current_history_column_widths", None)
+        if callable(getter):
+            try:
+                return tuple(getter(history_list))
+            except Exception:
+                return ()
+        return ()
+
+    def _refresh_history_columns(self) -> None:
+        self._history_column_refresh_scheduled = False
+        refresher = getattr(self._layout_manager, "refresh_history_columns", None)
+        if callable(refresher):
+            refresher()
+            return
+        history_list = getattr(self, "history_list", None)
+        if history_list is not None:
+            history_list.Refresh()
+            history_list.Update()
+
+    def _on_history_list_idle(self, event: wx.IdleEvent) -> None:
+        event.Skip()
+        widths = self._current_history_column_widths()
+        if not widths:
+            return
+        if widths == tuple(self._history_column_widths or ()):  # type: ignore[arg-type]
+            return
+        self._history_column_widths = tuple(widths)
+        if self._history_column_refresh_scheduled:
+            return
+        self._history_column_refresh_scheduled = True
+        wx.CallAfter(self._refresh_history_columns)
+
     def _prepare_history_interaction(self) -> bool:
         """Flush pending transcript updates before history interactions."""
         if self._pending_transcript_refresh:
@@ -3446,7 +3498,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         coordinator = self._coordinator
         if coordinator is None:
             return None
-        return coordinator.active_handle
+        return getattr(coordinator, "active_handle", None)
 
     @property
     def history(self) -> list[ChatEntry]:

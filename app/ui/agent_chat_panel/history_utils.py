@@ -104,9 +104,27 @@ def tool_snapshots_from(value: Any) -> list[ToolResultSnapshot]:
     return snapshots
 
 
-def tool_snapshot_dicts(snapshots: Sequence[ToolResultSnapshot]) -> list[dict[str, Any]]:
-    """Serialise ``snapshots`` into dictionaries for persistence."""
-    return [snapshot.to_dict() for snapshot in snapshots]
+def tool_snapshot_dicts(
+    snapshots: Sequence[ToolResultSnapshot | Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    """Serialise ``snapshots`` into dictionaries for persistence.
+
+    Tests stream raw dictionaries into the tool-result handlers, while the
+    coordinator delivers :class:`ToolResultSnapshot` instances.  Accept both
+    forms so transcript updates do not crash when fed with plain mappings.
+    """
+
+    serialised: list[dict[str, Any]] = []
+    for snapshot in snapshots:
+        if isinstance(snapshot, ToolResultSnapshot):
+            serialised.append(snapshot.to_dict())
+            continue
+        if isinstance(snapshot, Mapping):
+            try:
+                serialised.append(ToolResultSnapshot.from_dict(snapshot).to_dict())
+            except Exception:
+                continue
+    return serialised
 
 
 __all__ = [

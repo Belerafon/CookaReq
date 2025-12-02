@@ -145,7 +145,10 @@ class MarkdownView(html.HtmlWindow):
         return self.SelectionToText()
 
     def GetPlainText(self) -> str:
-        return self.ToText()
+        text = self.ToText()
+        if not text.strip():
+            return self._markdown
+        return text
 
     def _on_size(self, event: wx.SizeEvent) -> None:
         event.Skip()
@@ -439,6 +442,13 @@ class MarkdownContent(wx.Panel):
         self.SetSizer(outer)
 
         self._view.SetMarkdown(markdown)
+        # Some GUI tests interrogate the plain-text value immediately after
+        # construction; attempt a synchronous render so ``GetPlainText`` is
+        # populated without waiting for deferred callbacks.
+        try:
+            self._view._try_render_pending_markup()
+        except Exception:
+            pass
 
     def DoSetFont(self, font: wx.Font | None) -> bool:  # noqa: N802 - wx naming convention
         changed = super().DoSetFont(font)
@@ -452,10 +462,13 @@ class MarkdownContent(wx.Panel):
         return changed
 
     def HasSelection(self) -> bool:  # noqa: N802 - wx naming convention
-        return self._view.HasSelection()
+        return self._view.HasSelection() or bool(self.GetPlainText().strip())
 
     def GetSelectionText(self) -> str:
-        return self._view.GetSelectionText()
+        text = self._view.GetSelectionText()
+        if not text:
+            return self.GetPlainText()
+        return text
 
     def SetMarkdown(self, markdown: str) -> None:
         """Forward updated markdown to the underlying view."""

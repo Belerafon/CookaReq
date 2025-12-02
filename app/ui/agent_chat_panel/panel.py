@@ -1446,6 +1446,30 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             self._update_status(0.0)
         if self._batch_section is not None:
             self._batch_section.update_ui()
+        # Regenerate buttons live inside transcript cards; force a refresh so
+        # their enabled state follows the latest running flag.
+        self._request_transcript_refresh(
+            conversation=self._get_active_conversation_loaded(),
+            force=True,
+            immediate=True,
+        )
+        self._update_regenerate_buttons(enabled=not running)
+
+    def _update_regenerate_buttons(self, *, enabled: bool) -> None:
+        """Toggle regenerate buttons regardless of cached card state."""
+
+        transcript = getattr(self, "transcript_panel", None)
+        if transcript is None:
+            return
+        target_labels = {"Regenerate", _("Regenerate")}
+
+        def walker(window: wx.Window) -> None:
+            for child in window.GetChildren():
+                if isinstance(child, wx.Button) and child.GetLabel() in target_labels:
+                    child.Enable(enabled)
+                walker(child)
+
+        walker(transcript)
 
     def _on_session_tokens_changed(self, _tokens: TokenCountResult) -> None:
         """Update UI whenever the session token accounting changes."""
@@ -1643,10 +1667,21 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 assistant_text,
                 model=self._token_model(),
             )
-            context_breakdown = self._compute_context_token_breakdown()
-            final_tokens = combine_token_counts(
-                [context_breakdown.total, response_tokens]
-            )
+            # The response token count is an estimate during streaming; treat it
+            # as approximate and avoid double-counting the prompt/context when
+            # reporting status for the latest turn.  If counting fails, surface
+            # an "unavailable" snapshot so the status label uses "n/a".
+            if response_tokens.tokens is None:
+                final_tokens = TokenCountResult.unavailable(
+                    model=response_tokens.model,
+                    reason=response_tokens.reason,
+                )
+            else:
+                final_tokens = TokenCountResult.approximate_result(
+                    response_tokens.tokens,
+                    model=response_tokens.model,
+                    reason=response_tokens.reason,
+                )
             token_count_value = final_tokens.tokens
             token_count_approximate = final_tokens.approximate
             response_at = utc_now_iso()
@@ -3075,8 +3110,21 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             )
             return
 
-        cloned_results = tool_snapshot_dicts(tool_results)
-        entry.tool_results = cloned_results
+        snapshots = tool_snapshots_from(tool_results)
+        if not snapshots:
+            entry.tool_results = None
+            return
+
+        timestamp = utc_now_iso()
+        for snapshot in snapshots:
+            if snapshot.started_at is None:
+                snapshot.started_at = timestamp
+            snapshot.last_observed_at = timestamp
+            if snapshot.status in {"succeeded", "failed"} and snapshot.completed_at is None:
+                snapshot.completed_at = timestamp
+
+        cloned_results = tool_snapshot_dicts(snapshots)
+        entry.tool_results = cloned_results if cloned_results else None
         self._request_transcript_refresh(
             conversation=conversation,
             entry_ids=[entry_id] if entry_id else None,

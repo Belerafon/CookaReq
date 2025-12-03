@@ -2240,6 +2240,39 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return None
         return tuple(messages)
 
+    @staticmethod
+    def _append_event_log(
+        entry: ChatEntry,
+        *,
+        kind: str,
+        payload: Any | None = None,
+        occurred_at: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        """Persist a low-level diagnostic event on ``entry`` preserving order."""
+
+        if not isinstance(entry, ChatEntry):
+            return
+
+        diagnostic = entry.diagnostic if isinstance(entry.diagnostic, dict) else {}
+        if diagnostic is None:
+            diagnostic = {}
+
+        log = diagnostic.get("event_log")
+        if not isinstance(log, list):
+            log = []
+
+        timestamp = (occurred_at or "").strip() or utc_now_iso()
+        record: dict[str, Any] = {"kind": kind, "occurred_at": timestamp}
+        if source:
+            record["source"] = source
+        if payload is not None:
+            record["payload"] = history_json_safe(payload)
+
+        log.append(record)
+        diagnostic["event_log"] = log
+        entry.diagnostic = diagnostic
+
     def _add_pending_entry(
         self,
         conversation: ChatConversation,
@@ -2259,6 +2292,16 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             prompt_at=prompt_at,
             response_at=None,
             context_messages=self._clone_context_messages(context_messages),
+        )
+        self._append_event_log(
+            entry,
+            kind="prompt",
+            payload={
+                "prompt": prompt_text,
+                "context_messages": self._clone_context_messages(context_messages),
+            },
+            occurred_at=prompt_at,
+            source="user",
         )
         conversation.append_entry(entry)
         self._mark_conversation_dirty(conversation)
@@ -2329,6 +2372,21 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 context_snapshot=context_clone,
                 custom_system_prompt=self._custom_system_prompt(),
             ),
+        )
+        self._append_event_log(
+            entry,
+            kind="final_response",
+            payload={
+                "prompt": prompt_text,
+                "response": response_text,
+                "display_response": display_text,
+                "raw_result": raw_result,
+                "tool_messages": tool_message_clone,
+                "context_messages": context_clone,
+                "reasoning": reasoning_clone,
+            },
+            occurred_at=response_at,
+            source="finalise",
         )
         conversation.append_entry(entry)
         self._mark_conversation_dirty(conversation)
@@ -2412,6 +2470,21 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             context_snapshot=context_clone,
             custom_system_prompt=self._custom_system_prompt(),
             previous_diagnostic=existing_diagnostic,
+        )
+        self._append_event_log(
+            entry,
+            kind="final_response",
+            payload={
+                "prompt": prompt_text,
+                "response": response_text,
+                "display_response": display_text,
+                "raw_result": raw_result,
+                "tool_messages": entry.tool_messages,
+                "context_messages": context_clone,
+                "reasoning": entry.reasoning,
+            },
+            occurred_at=response_at,
+            source="finalise",
         )
         conversation.updated_at = response_at
         conversation.ensure_title()
@@ -3161,6 +3234,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 snapshot.completed_at = timestamp
 
         cloned_results = tool_snapshot_dicts(snapshots)
+        for snapshot in snapshots:
+            self._append_event_log(
+                entry,
+                kind="tool_result",
+                payload=snapshot.to_dict(),
+                occurred_at=snapshot.last_observed_at or snapshot.started_at,
+                source="tool_stream",
+            )
         entry.tool_results = cloned_results if cloned_results else None
         self._request_transcript_refresh(
             conversation=conversation,
@@ -3183,6 +3264,17 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             return
         if not isinstance(payload, Mapping):
             return
+        occurred_at = None
+        occurred_value = payload.get("occurred_at") or payload.get("timestamp")
+        if isinstance(occurred_value, str) and occurred_value.strip():
+            occurred_at = occurred_value
+        self._append_event_log(
+            entry,
+            kind="llm_step",
+            payload=payload,
+            occurred_at=occurred_at,
+            source="llm_stream",
+        )
         response_payload = payload.get("response")
         updated = False
         updated |= self._update_entry_llm_steps(entry, payload)

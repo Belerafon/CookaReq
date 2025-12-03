@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import textwrap
+import datetime
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -10,7 +11,7 @@ from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation
 from ..text import normalize_for_display
-from .time_formatting import format_entry_timestamp
+from .time_formatting import format_entry_timestamp, parse_iso_timestamp
 from .view_model import (
     AgentResponse,
     ConversationTimeline,
@@ -56,6 +57,9 @@ class _PlainEvent:
     text: str
 
 
+_UTC_MIN = datetime.datetime.min.replace(tzinfo=datetime.UTC)
+
+
 def _format_timestamp_label(info: TimestampInfo | None) -> str:
     """Return display label for *info* consistent with the transcript UI."""
     if info is None:
@@ -91,6 +95,78 @@ def _format_tool_timestamp(
         if isinstance(candidate, str) and candidate.strip():
             return _format_iso_timestamp(candidate, fallback)
     return _format_timestamp_label(fallback)
+
+
+def _event_log_sort_key(index: int, timestamp: str | None) -> tuple[int, datetime.datetime, int]:
+    moment = parse_iso_timestamp(timestamp)
+    missing = 1 if moment is None else 0
+    return (missing, moment or _UTC_MIN, index)
+
+
+def _plain_events_from_log(entry: TranscriptEntry) -> list[_PlainEvent]:
+    diagnostic = getattr(entry.entry, "diagnostic", None)
+    if not isinstance(diagnostic, Mapping):
+        return []
+    raw_events = diagnostic.get("event_log")
+    if not isinstance(raw_events, Sequence):
+        return []
+
+    turn_timestamp = entry.agent_turn.timestamp if entry.agent_turn is not None else None
+    collected: list[tuple[tuple[int, datetime.datetime, int], _PlainEvent]] = []
+    for index, record in enumerate(raw_events):
+        if not isinstance(record, Mapping):
+            continue
+        kind = str(record.get("kind") or "event").strip() or "event"
+        occurred_at = record.get("occurred_at")
+        label = _("Event ({kind}):").format(kind=normalize_for_display(kind))
+        payload = record.get("payload")
+        payload_text = _format_json_block(payload) if payload is not None else ""
+        timestamp_label = _format_iso_timestamp(occurred_at, turn_timestamp)
+        collected.append(
+            (
+                _event_log_sort_key(index, occurred_at if isinstance(occurred_at, str) else None),
+                _PlainEvent(timestamp=timestamp_label, label=label, text=payload_text),
+            )
+        )
+
+    collected.sort(key=lambda item: item[0])
+    return [item[1] for item in collected]
+
+
+def _normalise_json_value(value: Any) -> Any:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith(("{", "[")):
+            try:
+                decoded = json.loads(stripped)
+            except (TypeError, ValueError):
+                return value
+            return _normalise_json_value(decoded)
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): _normalise_json_value(val) for key, val in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_normalise_json_value(item) for item in value]
+    return value
+
+
+def _format_json_block(value: Any) -> str:
+    if value is None:
+        return _("(none)")
+    normalised = _normalise_json_value(value)
+    if isinstance(normalised, str):
+        text_value = normalised
+    else:
+        try:
+            text_value = json.dumps(
+                normalised,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+        except (TypeError, ValueError):
+            text_value = str(normalised)
+    return normalize_for_display(text_value)
 
 
 def _collect_agent_plain_events(entry: TranscriptEntry) -> list[_PlainEvent]:
@@ -354,47 +430,18 @@ def compose_transcript_log_text(
     def format_timestamp_info(info: TimestampInfo | None) -> str:
         return _format_timestamp_label(info)
 
-    def _normalise_json_value(value: Any) -> Any:
-        if isinstance(value, str):
-            stripped = value.strip()
-            if stripped.startswith(("{", "[")):
-                try:
-                    decoded = json.loads(stripped)
-                except (TypeError, ValueError):
-                    return value
-                return _normalise_json_value(decoded)
-            return value
-        if isinstance(value, Mapping):
-            return {
-                str(key): _normalise_json_value(val)
-                for key, val in value.items()
-            }
-        if isinstance(value, Sequence) and not isinstance(
-            value, (str, bytes, bytearray)
-        ):
-            return [_normalise_json_value(item) for item in value]
-        return value
-
-    def format_json_block(value: Any) -> str:
-        if value is None:
-            return _("(none)")
-        normalised = _normalise_json_value(value)
-        if isinstance(normalised, str):
-            text_value = normalised
-        else:
-            try:
-                text_value = json.dumps(
-                    normalised,
-                    ensure_ascii=False,
-                    indent=2,
-                    sort_keys=True,
-                )
-            except (TypeError, ValueError):
-                text_value = str(normalised)
-        return normalize_for_display(text_value)
-
     def indent_block(value: str, *, prefix: str = "    ") -> str:
         return textwrap.indent(value, prefix)
+
+    def append_plain_events(events: Sequence[_PlainEvent]) -> None:
+        for event in events:
+            header = _("[{timestamp}] {label}").format(
+                timestamp=event.timestamp,
+                label=event.label,
+            )
+            blocks.append(header)
+            if event.text:
+                blocks.append(indent_block(event.text))
 
     def describe_agent_response(
         response: AgentResponse,
@@ -443,73 +490,77 @@ def compose_transcript_log_text(
             sanitized_context, seen_system_prompt = _strip_repeated_system_prompt(
                 entry.context_messages, seen_prompt=seen_system_prompt
             )
-            blocks.append(indent_block(format_json_block(sanitized_context)))
+            blocks.append(indent_block(_format_json_block(sanitized_context)))
 
         turn = entry.agent_turn
         if turn is not None:
-            for event in turn.events:
-                if event.kind == "response" and event.response is not None:
-                    blocks.extend(
-                        describe_agent_response(event.response, turn.timestamp)
-                    )
-                elif event.kind == "tool" and event.tool_call is not None:
-                    details = event.tool_call
-                    summary = details.summary
-                    tool_name = normalize_for_display(
-                        summary.tool_name or _("Unnamed tool")
-                    )
-                    status_label = normalize_for_display(
-                        summary.status or _("returned data")
-                    )
-                    header = _(
-                        "[{timestamp}] Tool call {index}: {tool} — {status}"
-                    ).format(
-                        timestamp=format_timestamp_info(event.timestamp),
-                        index=summary.index,
-                        tool=tool_name,
-                        status=status_label,
-                    )
-                    blocks.append(header)
-                    if summary.started_at:
-                        blocks.append(
-                            indent_block(
-                                _("Started at {timestamp}").format(
-                                    timestamp=summary.started_at
-                                )
-                            )
+            log_events = _plain_events_from_log(entry)
+            if log_events:
+                append_plain_events(log_events)
+            else:
+                for event in turn.events:
+                    if event.kind == "response" and event.response is not None:
+                        blocks.extend(
+                            describe_agent_response(event.response, turn.timestamp)
                         )
-                    if summary.completed_at:
-                        blocks.append(
-                            indent_block(
-                                _("Completed at {timestamp}").format(
-                                    timestamp=summary.completed_at
-                                )
-                            )
+                    elif event.kind == "tool" and event.tool_call is not None:
+                        details = event.tool_call
+                        summary = details.summary
+                        tool_name = normalize_for_display(
+                            summary.tool_name or _("Unnamed tool")
                         )
-                    if summary.bullet_lines:
-                        for bullet in summary.bullet_lines:
-                            if bullet:
-                                blocks.append(
-                                    indent_block(normalize_for_display(bullet))
-                                )
-                    payload, seen_system_prompt = _omit_repeated_system_prompt(
-                        details.raw_data, seen_prompt=seen_system_prompt
-                    )
-                    blocks.append(indent_block(format_json_block(payload)))
-                    if details.call_identifier:
-                        identifier_line = _(
-                            "Call identifier: {identifier}"
+                        status_label = normalize_for_display(
+                            summary.status or _("returned data")
+                        )
+                        header = _(
+                            "[{timestamp}] Tool call {index}: {tool} — {status}"
                         ).format(
-                            identifier=normalize_for_display(details.call_identifier)
+                            timestamp=format_timestamp_info(event.timestamp),
+                            index=summary.index,
+                            tool=tool_name,
+                            status=status_label,
                         )
-                        blocks.append(indent_block(identifier_line))
+                        blocks.append(header)
+                        if summary.started_at:
+                            blocks.append(
+                                indent_block(
+                                    _("Started at {timestamp}").format(
+                                        timestamp=summary.started_at
+                                    )
+                                )
+                            )
+                        if summary.completed_at:
+                            blocks.append(
+                                indent_block(
+                                    _("Completed at {timestamp}").format(
+                                        timestamp=summary.completed_at
+                                    )
+                                )
+                            )
+                        if summary.bullet_lines:
+                            for bullet in summary.bullet_lines:
+                                if bullet:
+                                    blocks.append(
+                                        indent_block(normalize_for_display(bullet))
+                                    )
+                        payload, seen_system_prompt = _omit_repeated_system_prompt(
+                            details.raw_data, seen_prompt=seen_system_prompt
+                        )
+                        blocks.append(indent_block(_format_json_block(payload)))
+                        if details.call_identifier:
+                            identifier_line = _(
+                                "Call identifier: {identifier}"
+                            ).format(
+                                identifier=normalize_for_display(details.call_identifier)
+                            )
+                            blocks.append(indent_block(identifier_line))
 
             if turn.reasoning:
                 header = _("[{timestamp}] Model reasoning:").format(
                     timestamp=format_timestamp_info(turn.timestamp)
                 )
                 blocks.append(header)
-                blocks.append(indent_block(format_json_block(turn.reasoning)))
+                blocks.append(indent_block(_format_json_block(turn.reasoning)))
 
             if turn.llm_request is not None and turn.llm_request.messages:
                 payload: dict[str, Any] = {"messages": turn.llm_request.messages}
@@ -522,7 +573,7 @@ def compose_transcript_log_text(
                     timestamp=format_timestamp_info(turn.timestamp)
                 )
                 blocks.append(header)
-                blocks.append(indent_block(format_json_block(payload)))
+                blocks.append(indent_block(_format_json_block(payload)))
 
             if turn.raw_payload is not None:
                 header = _("[{timestamp}] Raw LLM payload:").format(
@@ -532,7 +583,7 @@ def compose_transcript_log_text(
                 raw_payload, seen_system_prompt = _omit_repeated_system_prompt(
                     turn.raw_payload, seen_prompt=seen_system_prompt
                 )
-                blocks.append(indent_block(format_json_block(raw_payload)))
+                blocks.append(indent_block(_format_json_block(raw_payload)))
 
         for system_message in entry.system_messages:
             header = _("[{timestamp}] System message:").format(
@@ -544,7 +595,7 @@ def compose_transcript_log_text(
                 blocks.append(indent_block(text_value))
             details_payload = getattr(system_message, "details", None)
             if details_payload is not None:
-                blocks.append(indent_block(format_json_block(details_payload)))
+                blocks.append(indent_block(_format_json_block(details_payload)))
 
     return "\n".join(block for block in blocks if block)
 

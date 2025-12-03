@@ -1289,9 +1289,36 @@ class AgentLoopRunner:
         self._step += 1
         if self._on_llm_step is None:
             return
+        request_messages: Sequence[Mapping[str, Any]]
+        if response.request_messages:
+            request_messages = [
+                dict(message)
+                for message in response.request_messages
+                if isinstance(message, Mapping)
+            ]
+        else:
+            request_messages = list(self._conversation)
+
+        tool_call_details = [
+            {
+                "id": call.id,
+                "name": call.name,
+                "arguments": self._agent._normalise_tool_arguments(call),
+            }
+            for call in response.tool_calls
+        ]
+
+        reasoning_segments = normalise_reasoning_segments(response.reasoning)
+
         detail_payload = {
             "step": self._step,
-            "message_preview": LocalAgent._preview(response.content),
+            "message_preview": response.content,
+            "request_messages": request_messages,
+            "response": {
+                "content": response.content,
+                "tool_calls": tool_call_details,
+                "reasoning": reasoning_segments,
+            },
             "tool_calls": [
                 {
                     "id": call.id,
@@ -1301,15 +1328,8 @@ class AgentLoopRunner:
                 for call in response.tool_calls
             ],
         }
-        reasoning_segments = normalise_reasoning_segments(response.reasoning)
         if reasoning_segments:
-            detail_payload["reasoning"] = [
-                {
-                    "type": segment["type"],
-                    "preview": LocalAgent._preview(segment["text"], limit=200),
-                }
-                for segment in reasoning_segments
-            ]
+            detail_payload["reasoning"] = reasoning_segments
         try:
             self._on_llm_step(detail_payload)
         except Exception as exc:  # pragma: no cover - defensive

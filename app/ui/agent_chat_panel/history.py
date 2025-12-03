@@ -226,7 +226,11 @@ class AgentChatHistory:
             confirmed = self._store.conversations_with_entries(removable_ids)
             removable_ids.difference_update(confirmed)
         if protected_id:
-            removable_ids.discard(protected_id)
+            should_protect_active = not (
+                verify_with_store and protected_id in removable_ids
+            )
+            if should_protect_active:
+                removable_ids.discard(protected_id)
         if not removable_ids:
             return False
 

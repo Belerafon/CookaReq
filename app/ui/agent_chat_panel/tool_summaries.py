@@ -293,7 +293,6 @@ def _summarize_tool_error(error: ToolError) -> list[str]:
     if code_text:
         if message:
             lines.append(_("[{code}] {message}").format(code=code_text, message=message))
-            message = ""
         else:
             lines.append(_("[{code}]").format(code=code_text))
 

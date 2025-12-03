@@ -83,17 +83,7 @@ class HistoryStore:
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)
-                conversations = []
-                for conversation in self._load_conversations(conn):
-                    entries = self.load_entries(conversation.conversation_id)
-                    if not entries:
-                        continue
-                    conversation.replace_entries(entries)
-                    conversations.append(conversation)
-
-                if not conversations:
-                    return [], None
-
+                conversations = self._load_conversations(conn)
                 active_id = self._resolve_active_id(conn, conversations)
                 return conversations, active_id
         except sqlite3.Error:  # pragma: no cover - defensive logging

@@ -1512,18 +1512,40 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                     return entry.context_messages
         return ()
 
+    def _compute_token_breakdown(
+        self,
+        conversation: ChatConversation | None,
+        *,
+        context_messages: tuple[Mapping[str, Any], ...] | None = None,
+        pending_entry: ChatEntry | None = None,
+        prompt_tokens: TokenCountResult | None = None,
+    ) -> ContextTokenBreakdown:
+        """Return token accounting snapshot for *conversation*.
+
+        This helper centralises the interaction with ``SessionController`` so
+        that token usage is computed consistently between the transcript header
+        and other UI surfaces (for example the batch queue table).
+        """
+
+        return self._session_controller.compute_context_token_breakdown(
+            conversation,
+            handle_context_messages=context_messages,
+            pending_entry=pending_entry,
+            active_handle_prompt_tokens=prompt_tokens,
+            custom_system_prompt=self._custom_system_prompt(),
+        )
+
     def _compute_context_token_breakdown(self) -> ContextTokenBreakdown:
         """Calculate token usage for the system prompt and conversation."""
         conversation = self._get_active_conversation_loaded()
         handle = self._active_handle()
         pending_entry = handle.pending_entry if handle is not None else None
         prompt_tokens = handle.prompt_tokens if handle is not None else None
-        return self._session_controller.compute_context_token_breakdown(
+        return self._compute_token_breakdown(
             conversation,
-            handle_context_messages=self._active_context_messages(),
+            context_messages=self._active_context_messages(),
             pending_entry=pending_entry,
-            active_handle_prompt_tokens=prompt_tokens,
-            custom_system_prompt=self._custom_system_prompt(),
+            prompt_tokens=prompt_tokens,
         )
 
     def _format_context_percentage(
@@ -1591,6 +1613,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         token_count_value: int | None = None
         token_count_approximate = False
         conversation: ChatConversation | None = None
+        conversation_token_breakdown: ContextTokenBreakdown | None = None
         try:
             (
                 conversation_text,
@@ -1752,8 +1775,22 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             should_render = True
             if conversation is not None:
                 error_count = self._count_conversation_errors(conversation)
+                conversation_token_breakdown = self._compute_token_breakdown(
+                    conversation,
+                    context_messages=handle.context_messages or (),
+                    prompt_tokens=handle.prompt_tokens,
+                )
+                conversation_total = conversation_token_breakdown.total
+                if conversation_total.tokens is not None:
+                    token_count_value = conversation_total.tokens
+                    token_count_approximate = conversation_total.approximate
         finally:
-            self._set_wait_state(False, final_tokens)
+            tokens_for_status = (
+                conversation_token_breakdown.total
+                if conversation_token_breakdown is not None
+                else final_tokens
+            )
+            self._set_wait_state(False, tokens_for_status)
             elapsed = self._session.elapsed
             if elapsed:
                 minutes, seconds = divmod(int(elapsed), 60)

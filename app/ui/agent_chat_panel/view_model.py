@@ -515,16 +515,6 @@ def _build_tool_calls(
             raw_data = raw_data_safe
 
         request_payload = _tool_request_payload(tool_requests.get(snapshot.call_id))
-        if request_payload is None:
-            fallback_timestamp = snapshot.started_at or snapshot.last_observed_at
-            request_payload = {
-                "step_index": summary.index,
-                "occurred_at": fallback_timestamp,
-                "tool": snapshot.tool_name,
-                "arguments": snapshot.arguments or {},
-                "messages": (),
-                "response": raw_data if isinstance(raw_data, Mapping) else {},
-            }
         raw_map: dict[str, Any] | None = None
         if isinstance(raw_data, Mapping):
             raw_map = dict(raw_data)

@@ -732,11 +732,10 @@ def _build_agent_events(
     return tuple(events)
 
 
-def _event_sort_key(event: AgentTimelineEvent) -> tuple[int, int, _dt.datetime, int]:
+def _event_sort_key(event: AgentTimelineEvent) -> tuple[int, _dt.datetime, int]:
     timestamp = event.timestamp.occurred_at
-    kind_priority = 0 if event.kind == "response" else 1
     missing = 1 if timestamp is None else 0
-    return (kind_priority, missing, timestamp or _UTC_MIN, event.order_index)
+    return (missing, timestamp or _UTC_MIN, event.order_index)
 
 
 def _resolve_turn_timestamp(

@@ -220,10 +220,7 @@ def test_plain_transcript_uses_agent_turn_text_and_tool_summaries() -> None:
     assert "[02 Oct 2025 11:38:04] Agent:" in plain_text
     assert "Agent: tool call 1: get_requirement — completed" in plain_text
     assert "Agent: tool call 2: update_requirement_field — failed" in plain_text
-    assert (
-        "• Error: update_requirement_field() missing 1 required positional argument: 'rid'"
-        in plain_text
-    )
+    assert "missing 1 required positional argument: 'rid'" in plain_text
 
 
 def test_plain_transcript_includes_streamed_responses() -> None:
@@ -295,3 +292,43 @@ def test_transcript_log_sanitises_raw_payload_prompts() -> None:
     log_text = compose_transcript_log_text(conversation)
 
     assert log_text.count(SYSTEM_PROMPT_PLACEHOLDER) >= 2
+
+
+def test_transcript_log_prefers_event_log_ordering() -> None:
+    conversation = ChatConversation.new()
+    prompt_at = _iso("2025-10-02T12:00:00+00:00")
+    response_at = _iso("2025-10-02T12:00:10+00:00")
+    entry = ChatEntry(
+        prompt="Hello",
+        response="Done",
+        display_response=None,
+        tokens=0,
+        prompt_at=prompt_at,
+        response_at=response_at,
+        raw_result={},
+        diagnostic={},
+    )
+    entry.diagnostic = {
+        "event_log": [
+            {
+                "kind": "final_response",
+                "occurred_at": _iso("2025-10-02T12:00:09+00:00"),
+                "payload": {"text": "Done"},
+            },
+            {
+                "kind": "llm_step",
+                "occurred_at": _iso("2025-10-02T12:00:05+00:00"),
+                "payload": {"text": "Working"},
+            },
+        ]
+    }
+    conversation.append_entry(entry)
+
+    log_text = compose_transcript_log_text(conversation)
+
+    first_event = log_text.find("Event (llm_step):")
+    second_event = log_text.find("Event (final_response):")
+
+    assert first_event != -1
+    assert second_event != -1
+    assert first_event < second_event

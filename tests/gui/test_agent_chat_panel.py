@@ -1098,6 +1098,101 @@ def test_switching_to_previous_chat_after_starting_new_one(tmp_path, wx_app):
         assert "first message" in transcript
     finally:
         destroy_panel(frame, panel)
+
+
+def test_streaming_steps_persist_across_history_switch(tmp_path, wx_app):
+    class StreamingAgent:
+        def __init__(self) -> None:
+            self.first_chunk = threading.Event()
+            self.allow_finish = threading.Event()
+
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            if on_llm_step is not None:
+                on_llm_step(
+                    {
+                        "step": 1,
+                        "response": {"content": "first stream chunk"},
+                    }
+                )
+            self.first_chunk.set()
+            self.allow_finish.wait(timeout=5)
+            if on_llm_step is not None:
+                on_llm_step(
+                    {
+                        "step": 2,
+                        "response": {"content": "second stream chunk"},
+                    }
+                )
+            return {"ok": True, "result": {"echo": text}}
+
+    agent = StreamingAgent()
+    wx, frame, panel = create_panel(
+        tmp_path, wx_app, agent, use_default_executor=True
+    )
+
+    try:
+        panel.input.SetValue("stream this")
+        panel._on_send(None)
+
+        assert agent.first_chunk.wait(timeout=5), "streaming did not start"
+        flush_wx_events(wx, count=4)
+        transcript = panel.get_transcript_text()
+        assert "first stream chunk" in transcript
+
+        panel._on_new_chat(None)
+        flush_wx_events(wx, count=2)
+        assert panel._active_index() == 1
+
+        panel._on_history_row_activated(0)
+        flush_wx_events(wx, count=2)
+        assert panel._active_index() == 0
+        transcript_after_switch = panel.get_transcript_text()
+        assert "first stream chunk" in transcript_after_switch
+
+        agent.allow_finish.set()
+        start = time.time()
+        while panel._session.is_running and time.time() - start < 6:
+            flush_wx_events(wx)
+            time.sleep(0.05)
+        flush_wx_events(wx, count=3)
+
+        conversation = panel._get_active_conversation()
+        assert conversation is not None
+        assert conversation.entries
+        entry = conversation.entries[0]
+        diagnostic = entry.diagnostic
+        assert isinstance(diagnostic, dict)
+        steps = diagnostic.get("llm_steps")
+        assert isinstance(steps, list)
+        assert len(steps) == 2
+
+        timeline = panel._latest_timeline
+        if timeline is None or timeline.conversation_id != conversation.conversation_id:
+            timeline = build_conversation_timeline(conversation)
+        assert timeline.entries
+        agent_turn = timeline.entries[0].agent_turn
+        assert agent_turn is not None
+        assert len(agent_turn.streamed_responses) == 2
+
+        final_transcript = panel.get_transcript_text()
+        assert "first stream chunk" in final_transcript
+        assert "second stream chunk" in final_transcript
+
+        cache = panel._transcript_view._conversation_cache[conversation.conversation_id]
+        entry_key = f"{conversation.conversation_id}:0"
+        assert entry_key in cache.cards_by_entry
+    finally:
+        agent.allow_finish.set()
+        destroy_panel(frame, panel)
 def test_agent_custom_system_prompt_appended(tmp_path, wx_app):
     class CaptureAgent:
         def __init__(self) -> None:

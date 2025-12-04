@@ -10,6 +10,7 @@ from typing import Any, Literal, TYPE_CHECKING
 
 from ...agent.run_contract import AgentRunPayload, LlmTrace, LlmStep, ToolResultSnapshot
 from ..text import normalize_for_display
+from ...util.time import utc_now_iso
 from .history_utils import (
     agent_payload_from_mapping,
     history_json_safe,
@@ -252,6 +253,76 @@ def _build_context_messages(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
     return entry.sanitized_context_messages()
 
 
+def _build_llm_trace_from_diagnostic(
+    diagnostic: Mapping[str, Any] | None,
+    *,
+    prompt_timestamp: TimestampInfo,
+    response_timestamp: TimestampInfo,
+) -> LlmTrace | None:
+    if not isinstance(diagnostic, Mapping):
+        return None
+    steps_payload = diagnostic.get("llm_steps")
+    if not isinstance(steps_payload, Sequence) or isinstance(
+        steps_payload, (str, bytes, bytearray)
+    ):
+        return None
+
+    fallback_timestamp = (
+        prompt_timestamp.occurred_at
+        or response_timestamp.occurred_at
+        or prompt_timestamp.raw
+        or response_timestamp.raw
+        or utc_now_iso()
+    )
+    if isinstance(fallback_timestamp, _dt.datetime):
+        fallback_timestamp = fallback_timestamp.isoformat()
+    elif not isinstance(fallback_timestamp, str):
+        fallback_timestamp = utc_now_iso()
+
+    steps: list[LlmStep] = []
+    for index, payload in enumerate(steps_payload, start=1):
+        if not isinstance(payload, Mapping):
+            continue
+        occurred_at = payload.get("occurred_at") or payload.get("timestamp")
+        occurred_text = (
+            occurred_at
+            if isinstance(occurred_at, str) and occurred_at.strip()
+            else fallback_timestamp
+        )
+        step_index_value = payload.get("step") or payload.get("index") or index
+        try:
+            step_index = int(step_index_value)
+        except Exception:
+            step_index = index
+        request_payload = payload.get("request")
+        request: list[dict[str, Any]]
+        if isinstance(request_payload, Sequence) and not isinstance(
+            request_payload, (str, bytes, bytearray)
+        ):
+            request = [dict(message) for message in request_payload if isinstance(message, Mapping)]
+        else:
+            request = []
+        response_payload = payload.get("response")
+        response: dict[str, Any] = (
+            dict(response_payload) if isinstance(response_payload, Mapping) else {}
+        )
+        try:
+            steps.append(
+                LlmStep(
+                    index=step_index,
+                    occurred_at=occurred_text,
+                    request=tuple(request),
+                    response=response,
+                )
+            )
+        except Exception:
+            continue
+
+    if not steps:
+        return None
+    return LlmTrace(steps=steps)
+
+
 def _build_agent_turn(
     entry_id: str,
     entry_index: int,
@@ -261,16 +332,35 @@ def _build_agent_turn(
     prompt_timestamp = _build_timestamp(entry.prompt_at, source="prompt_at")
 
     raw_result = entry.raw_result if isinstance(entry.raw_result, Mapping) else None
+    diagnostic = entry.diagnostic if isinstance(entry.diagnostic, Mapping) else None
     payload = agent_payload_from_mapping(raw_result)
     if payload is None:
         tool_snapshots = tool_snapshots_from(entry.tool_results)
-        reasoning_source = entry.reasoning
-        llm_trace = LlmTrace()
+        reasoning_source = entry.reasoning or (
+            diagnostic.get("reasoning") if diagnostic else None
+        )
+        llm_trace = _build_llm_trace_from_diagnostic(
+            diagnostic,
+            prompt_timestamp=prompt_timestamp,
+            response_timestamp=response_timestamp,
+        )
+        if llm_trace is None:
+            llm_trace = LlmTrace()
         final_text = entry.display_response or entry.response or ""
     else:
         tool_snapshots = payload.tool_results
-        reasoning_source = payload.reasoning
+        reasoning_source = payload.reasoning or (
+            diagnostic.get("reasoning") if diagnostic else None
+        )
         llm_trace = payload.llm_trace
+        if not llm_trace.steps:
+            fallback_trace = _build_llm_trace_from_diagnostic(
+                diagnostic,
+                prompt_timestamp=prompt_timestamp,
+                response_timestamp=response_timestamp,
+            )
+            if fallback_trace is not None:
+                llm_trace = fallback_trace
         # Добавляем поддержку message_preview из LLM для отображения основного сообщения
         final_text = (
             entry.display_response

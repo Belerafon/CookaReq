@@ -4149,6 +4149,8 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         )
         assert bubble_body_text(user_bubble)
 
+
+
         context_pane = find_collapsible_by_name(
             panel, f"context:{entry_key}"
         )
@@ -4234,6 +4236,205 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         assert "12:00:02" in started_line
         assert "12:00:04" in completed_line
         assert "Now I will translate the selected requirements into Russian." in log_text
+    finally:
+        destroy_panel(frame, panel)
+
+
+def test_agent_chat_panel_preserves_multistep_timeline(tmp_path, wx_app, monkeypatch):
+    wx = pytest.importorskip("wx")
+
+    from app.agent.local_agent import LocalAgent
+    from app.llm.types import LLMReasoningSegment, LLMResponse, LLMToolCall
+
+    timeline = iter([f"2025-01-01T12:00:{index:02d}Z" for index in range(60)])
+
+    def fake_utc_now_iso() -> str:
+        return next(timeline, "2025-01-01T13:00:00Z")
+
+    monkeypatch.setattr("app.ui.agent_chat_panel.panel.utc_now_iso", fake_utc_now_iso)
+    monkeypatch.setattr("app.ui.agent_chat_panel.controller.utc_now_iso", fake_utc_now_iso)
+    monkeypatch.setattr("app.agent.local_agent.utc_now_iso", fake_utc_now_iso)
+    monkeypatch.setattr("app.agent.run_contract.utc_now_iso", fake_utc_now_iso)
+
+    scripted_steps = [
+        {
+            "content": "First streamed response",
+            "reasoning": "Collect user inputs",
+            "tool": {
+                "id": "call-1",
+                "name": "alpha_tool",
+                "arguments": {"rid": "R-1", "field": "status", "value": "draft"},
+            },
+        },
+        {
+            "content": "Second step with notes",
+            "reasoning": "Validate current data",
+            "tool": {
+                "id": "call-2",
+                "name": "beta_tool",
+                "arguments": {"rid": "R-2", "field": "owner", "value": "QA"},
+            },
+        },
+        {
+            "content": "Third iteration before synthesis",
+            "reasoning": "Refine summary",
+            "tool": {
+                "id": "call-3",
+                "name": "gamma_tool",
+                "arguments": {"rid": "R-3", "field": "priority", "value": "high"},
+            },
+        },
+        {
+            "content": "Fourth response mixing tool output",
+            "reasoning": "Consolidate feedback",
+            "tool": {
+                "id": "call-4",
+                "name": "delta_tool",
+                "arguments": {"rid": "R-4", "field": "title", "value": "Rephrase"},
+            },
+        },
+        {
+            "content": "Final combined answer",
+            "reasoning": "Deliver final summary",
+            "tool": None,
+        },
+    ]
+
+    class ScriptedLLM:
+        def __init__(self, steps):
+            self._steps = list(steps)
+
+        async def check_llm_async(self):
+            return {"ok": True}
+
+        async def respond_async(self, conversation, *, cancellation=None):
+            if not self._steps:
+                raise AssertionError("LLM received more respond_async calls than scripted")
+
+            payload = self._steps.pop(0)
+            tool_calls: tuple[LLMToolCall, ...]
+            tool_call_payload = payload.get("tool")
+            if tool_call_payload:
+                tool_calls = (
+                    LLMToolCall(
+                        id=tool_call_payload["id"],
+                        name=tool_call_payload["name"],
+                        arguments=tool_call_payload["arguments"],
+                    ),
+                )
+            else:
+                tool_calls = ()
+
+            return LLMResponse(
+                content=payload["content"],
+                tool_calls=tool_calls,
+                reasoning=(
+                    LLMReasoningSegment(
+                        type="thinking",
+                        text=payload["reasoning"],
+                    ),
+                ),
+                request_messages=tuple(conversation or ()),
+            )
+
+    class ScriptedMCP:
+        def __init__(self, steps):
+            self.calls: list[tuple[str, Mapping[str, Any]]] = []
+            self._steps = [step for step in steps if step.get("tool")]
+
+        async def check_tools_async(self):
+            return {"ok": True, "tools": [step["tool"]["name"] for step in self._steps]}
+
+        async def ensure_ready_async(self):
+            return None
+
+        async def call_tool_async(self, name: str, arguments: Mapping[str, Any]):
+            self.calls.append((name, arguments))
+            return {
+                "ok": True,
+                "result": {
+                    "rid": arguments.get("rid"),
+                    "field": arguments.get("field"),
+                    "updated": True,
+                },
+            }
+
+        async def get_tool_schemas_async(self):
+            return {
+                step["tool"]["name"]: {
+                    "name": step["tool"]["name"],
+                    "parameters": step["tool"]["arguments"],
+                }
+                for step in self._steps
+            }
+
+    agent = LocalAgent(
+        llm=ScriptedLLM(scripted_steps),
+        mcp=ScriptedMCP(scripted_steps),
+        max_thought_steps=None,
+    )
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent)
+
+    try:
+        panel.input.SetValue("orchestrate multi-step update")
+        panel._on_send(None)
+        flush_wx_events(wx, count=20)
+
+        history = panel.history
+        assert len(history) == 1
+        entry = history[0]
+
+        conversation = panel._get_active_conversation()
+        assert conversation is not None
+        entry_index = conversation.entries.index(entry)
+        timeline = build_conversation_timeline(conversation)
+        turn = timeline.entries[entry_index].agent_turn
+        assert turn is not None
+        event_labels = [
+            (
+                event.kind,
+                event.response.display_text if event.response else event.tool_call.summary.tool_name,
+            )
+            for event in turn.events
+        ]
+        expected_events = [
+            ("response", "First streamed response"),
+            ("tool", "alpha_tool"),
+            ("response", "Second step with notes"),
+            ("tool", "beta_tool"),
+            ("response", "Third iteration before synthesis"),
+            ("tool", "gamma_tool"),
+            ("response", "Fourth response mixing tool output"),
+            ("tool", "delta_tool"),
+            ("response", "Final combined answer"),
+        ]
+        assert event_labels[: len(expected_events)] == expected_events
+
+        bubbles = [
+            (bubble_header_text(bubble), bubble_body_text(bubble))
+            for bubble in collect_message_bubbles(panel)
+            if "Agent" in bubble_header_text(bubble)
+            or "Tool" in bubble_header_text(bubble)
+        ]
+        bubble_texts = [text for _header, text in bubbles]
+        expected_sequence = [
+            "First streamed response",
+            "Tool call alpha_tool",
+            "Second step with notes",
+            "Tool call beta_tool",
+            "Third iteration before synthesis",
+            "Tool call gamma_tool",
+            "Fourth response mixing tool output",
+            "Tool call delta_tool",
+            "Final combined answer",
+        ]
+        assert len(bubble_texts) >= len(expected_sequence)
+        for expected, actual in zip(expected_sequence, bubble_texts):
+            assert expected in actual
+
+        panes = collect_collapsible_panes(panel)
+        labels = {collapsible_label(pane) for pane in panes}
+        assert "Model reasoning" in labels
     finally:
         destroy_panel(frame, panel)
 

@@ -271,8 +271,13 @@ def _build_agent_turn(
         tool_snapshots = payload.tool_results
         reasoning_source = payload.reasoning
         llm_trace = payload.llm_trace
+        # Добавляем поддержку message_preview из LLM для отображения основного сообщения
         final_text = (
-            entry.display_response or payload.result_text or entry.response or ""
+            entry.display_response
+            or payload.result_text
+            or entry.response
+            or getattr(payload, 'message_preview', '')
+            or ""
         )
 
     raw_payload = entry.history_safe_raw_result()
@@ -716,9 +721,39 @@ def _build_agent_events(
         )
         order += 1
 
+    # Сортируем события по времени
     events.sort(key=_event_sort_key)
     for index, event in enumerate(events):
         event.order_index = index
+    
+    # Корректируем временную метку final response, если она раньше чем у tool calls
+    if final_response is not None and tool_calls:
+        final_event = next((e for e in events if e.response is final_response), None)
+        if final_event:
+            # Находим самую позднюю временную метку среди tool calls
+            latest_tool_timestamp = max(
+                (tool_call.timestamp.occurred_at for tool_call in tool_calls if tool_call.timestamp.occurred_at),
+                default=None
+            )
+            # Если final response раньше чем последний tool call, корректируем его время
+            if (final_event.timestamp.occurred_at is not None and
+                latest_tool_timestamp is not None and
+                final_event.timestamp.occurred_at < latest_tool_timestamp):
+                
+                from datetime import timedelta
+                adjusted_timestamp = latest_tool_timestamp + timedelta(microseconds=1)
+                final_event.timestamp = TimestampInfo(
+                    raw=adjusted_timestamp.isoformat(),
+                    occurred_at=adjusted_timestamp,
+                    formatted=adjusted_timestamp.strftime("%H:%M:%S"),
+                    missing=False,
+                    source="final_response_adjusted"
+                )
+                # Пересортировываем события с новой временной меткой
+                events.sort(key=_event_sort_key)
+                for index, event in enumerate(events):
+                    event.order_index = index
+    
     return tuple(events)
 
 

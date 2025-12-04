@@ -132,7 +132,8 @@ def collect_reasoning_fragments(payload: Any) -> list[ReasoningFragment]:
 
     if isinstance(payload, Mapping):
         item_type = payload.get("type")
-        text_value = payload.get("text")
+        # Добавляем поддержку поля 'preview' для совместимости с форматом LLM
+        text_value = payload.get("preview") or payload.get("text")
         if text_value is None:
             text_value = payload.get("summary")
         if text_value is None and isinstance(payload.get("content"), str):

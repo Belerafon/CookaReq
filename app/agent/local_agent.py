@@ -1310,6 +1310,22 @@ class AgentLoopRunner:
 
         reasoning_segments = normalise_reasoning_segments(response.reasoning)
 
+        # Создаем AgentResponse из message_preview, чтобы основное сообщение отображалось в чате
+        # AgentResponse определен в app.ui.agent_chat_panel.view_model, а не в app.llm.types
+        from ..ui.agent_chat_panel.view_model import AgentResponse, TimestampInfo
+        agent_response = AgentResponse(
+            text=response.content,
+            display_text=response.content,
+            timestamp=TimestampInfo(
+                raw="",
+                occurred_at=None,
+                formatted="",
+                missing=True
+            ),
+            step_index=self._step,
+            is_final=True
+        )
+
         detail_payload = {
             "step": self._step,
             "message_preview": response.content,
@@ -1319,6 +1335,7 @@ class AgentLoopRunner:
                 "tool_calls": tool_call_details,
                 "reasoning": reasoning_segments,
             },
+            "agent_response": agent_response,
             "tool_calls": [
                 {
                     "id": call.id,

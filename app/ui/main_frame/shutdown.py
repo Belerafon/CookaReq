@@ -80,23 +80,40 @@ class MainFrameShutdownMixin:
 
         self._detach_log_handler()
 
+        # Stop MCP controller first
         try:
             self.mcp.stop()
         except Exception:  # pragma: no cover - controller stop must not block close
             logger.exception("Failed to stop MCP controller during shutdown")
 
+        # Destroy children before final cleanup
         self.DestroyChildren()
 
         if event is not None:
             event.Skip()
-
-            def _finalize_close() -> None:
-                if not self.IsBeingDeleted():
-                    self.Destroy()
-                self._request_exit_main_loop()
-
-            wx.CallAfter(_finalize_close)
+            # Use CallAfter to ensure the close event is processed
+            wx.CallAfter(self._finalize_shutdown)
         else:
+            self._finalize_shutdown()
+
+    def _finalize_shutdown(self: MainFrame) -> None:  # pragma: no cover - GUI event
+        """Final shutdown steps to ensure clean application exit."""
+        try:
+            # Ensure the frame is destroyed
             if not self.IsBeingDeleted():
                 self.Destroy()
-            self._request_exit_main_loop()
+            
+            # Force exit the main loop to prevent hanging
+            app = wx.GetApp()
+            if app and hasattr(app, 'ExitMainLoop'):
+                app.ExitMainLoop()
+                
+            # As a last resort, try to terminate any remaining threads
+            import threading
+            import sys
+            if threading.current_thread() is not threading.main_thread():
+                sys.exit(0)
+        except Exception:
+            # If all else fails, try to exit the process
+            import os
+            os._exit(0)

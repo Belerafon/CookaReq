@@ -16,6 +16,7 @@ from ..llm.tokenizer import (
 )
 from ..util.json import make_json_safe
 from ..util.time import utc_now_iso
+from .agent_chat_panel.history_utils import tool_messages_from_snapshots
 from .history_config import HISTORY_JSON_LIMITS
 
 _DEFAULT_TOKEN_MODEL = "cl100k_base"
@@ -87,6 +88,23 @@ def _strip_diagnostic_event_log(value: Any) -> dict[str, Any] | None:
         return None
     cleaned = {k: v for k, v in value.items() if k != "event_log"}
     return cleaned or None
+
+
+def _derive_tool_messages(raw_result: Any) -> tuple[dict[str, Any], ...]:
+    payload = _parse_agent_run_payload(raw_result)
+    if payload is not None:
+        messages = tool_messages_from_snapshots(payload.tool_results)
+        if messages:
+            return messages
+
+    if isinstance(raw_result, Mapping):
+        tool_results = raw_result.get("tool_results")
+        normalised_results = _normalise_tool_results_payload(tool_results)
+        messages = tool_messages_from_snapshots(normalised_results)
+        if messages:
+            return messages
+
+    return ()
 
 
 @dataclass(frozen=True)
@@ -315,6 +333,9 @@ class ChatEntry:
             self.tool_messages = tuple(normalised_messages) if normalised_messages else None
         else:
             self.tool_messages = None
+        if self.tool_messages is None:
+            derived_tool_messages = _derive_tool_messages(self.raw_result)
+            self.tool_messages = derived_tool_messages or None
         hints = self.layout_hints
         if not isinstance(hints, dict):
             self.layout_hints = {}
@@ -462,6 +483,15 @@ class ChatEntry:
         base = dict(self.raw_result) if isinstance(self.raw_result, Mapping) else {}
         base["tool_results"] = normalised
         self.raw_result = base
+
+    def ensure_tool_messages(self) -> tuple[dict[str, Any], ...] | None:
+        """Return or derive tool messages associated with this entry."""
+
+        if self.tool_messages is None:
+            derived = _derive_tool_messages(self.raw_result)
+            if derived:
+                self.tool_messages = derived
+        return self.tool_messages
 
     def _sanitize_token_cache(self) -> None:
         raw_cache = self.token_cache
@@ -692,9 +722,6 @@ class ChatEntry:
             "response_at": self.response_at,
             "context_messages": [dict(message) for message in self.context_messages]
             if self.context_messages is not None
-            else None,
-            "tool_messages": [dict(message) for message in self.tool_messages]
-            if self.tool_messages is not None
             else None,
             "reasoning": [dict(segment) for segment in self.reasoning]
             if self.reasoning is not None

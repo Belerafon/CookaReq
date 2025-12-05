@@ -63,6 +63,7 @@ from .history_utils import (
     agent_payload_from_mapping,
     history_json_safe,
     stringify_payload,
+    tool_messages_from_snapshots,
     tool_snapshot_dicts,
     tool_snapshots_from,
 )
@@ -2070,17 +2071,29 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     @staticmethod
     def _entry_conversation_messages(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
         """Return assistant/tool message sequence reconstructed from ``entry``."""
+        payload = agent_payload_from_mapping(
+            entry.raw_result if isinstance(entry.raw_result, Mapping) else None
+        )
 
         tool_messages: tuple[dict[str, Any], ...] | None = None
-        raw_tool_messages = getattr(entry, "tool_messages", None)
-        if raw_tool_messages:
-            tool_messages = AgentChatPanel._clone_tool_messages(raw_tool_messages)
+        if payload is not None:
+            tool_messages = tool_messages_from_snapshots(payload.tool_results)
+        if not tool_messages:
+            raw_tool_messages = getattr(entry, "tool_messages", None)
+            if raw_tool_messages:
+                tool_messages = AgentChatPanel._clone_tool_messages(raw_tool_messages)
 
         diagnostic = getattr(entry, "diagnostic", None)
         diagnostic_mapping = diagnostic if isinstance(diagnostic, Mapping) else None
-        steps = AgentChatPanel._sanitize_llm_step_sequence(
-            diagnostic_mapping.get("llm_steps") if diagnostic_mapping else None
-        )
+        steps: list[dict[str, Any]] = []
+        if payload is not None:
+            steps = AgentChatPanel._sanitize_llm_step_sequence(
+                payload.llm_trace.to_dict().get("steps")
+            )
+        if not steps:
+            steps = AgentChatPanel._sanitize_llm_step_sequence(
+                diagnostic_mapping.get("llm_steps") if diagnostic_mapping else None
+            )
         if not steps:
             raw_result = getattr(entry, "raw_result", None)
             if isinstance(raw_result, Mapping):
@@ -2121,8 +2134,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 queued_messages = tool_messages_by_call.pop(call_identifier, [])
                 ordered_messages.extend(dict(message) for message in queued_messages)
 
-        if entry.response:
-            response_text = entry.response
+        final_response_text = entry.response or (payload.result_text if payload else None)
+        if final_response_text:
+            response_text = final_response_text
             existing_texts = {
                 message.get("content")
                 for message in ordered_messages
@@ -2150,8 +2164,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if orphan_tool_messages:
             ordered_messages.extend(dict(message) for message in orphan_tool_messages)
 
-        if not ordered_messages and entry.response:
-            ordered_messages.append({"role": "assistant", "content": entry.response})
+        if not ordered_messages and final_response_text:
+            ordered_messages.append(
+                {"role": "assistant", "content": final_response_text}
+            )
             if tool_messages:
                 ordered_messages.extend(dict(message) for message in tool_messages)
 
@@ -2264,25 +2280,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _build_tool_messages(
         self, tool_results: Sequence[ToolResultSnapshot] | None
     ) -> tuple[dict[str, Any], ...] | None:
-        if not tool_results:
-            return None
-        messages: list[dict[str, Any]] = []
-        for snapshot in tool_results:
-            if not isinstance(snapshot, ToolResultSnapshot):
-                continue
-            payload = snapshot.to_dict()
-            identifier = snapshot.call_id
-            name = snapshot.tool_name
-            content = json.dumps(payload, ensure_ascii=False, default=str)
-            message: dict[str, Any] = {"role": "tool", "content": content}
-            if identifier:
-                message["tool_call_id"] = identifier
-            if name:
-                message["name"] = name
-            messages.append(message)
-        if not messages:
-            return None
-        return tuple(messages)
+        messages = tool_messages_from_snapshots(tool_results)
+        return messages or None
 
     @staticmethod
     def _append_event_log(

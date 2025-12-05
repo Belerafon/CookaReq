@@ -427,11 +427,18 @@ class _AgentRunRecorder:
             ]
         else:
             filtered_snapshots = snapshots
-        diagnostic = (
-            {"event_log": [event.to_dict() for event in self._events.events]}
-            if self._events.events
+        stop_reason = (
+            dict(self._agent_stop_reason)
+            if isinstance(self._agent_stop_reason, Mapping)
             else None
         )
+        diagnostic: dict[str, Any] | None = None
+        if self._events.events:
+            diagnostic = {"event_log": [event.to_dict() for event in self._events.events]}
+        if stop_reason:
+            if diagnostic is None:
+                diagnostic = {}
+            diagnostic["stop_reason"] = stop_reason
         return AgentRunPayload(
             ok=self._ok,
             status="succeeded" if self._status == "succeeded" else "failed",
@@ -443,11 +450,7 @@ class _AgentRunRecorder:
             diagnostic=diagnostic,
             error=self._error,
             tool_schemas=dict(self._tool_schemas) if self._tool_schemas else None,
-            agent_stop_reason=(
-                dict(self._agent_stop_reason)
-                if isinstance(self._agent_stop_reason, Mapping)
-                else None
-            ),
+            agent_stop_reason=stop_reason,
         )
 
 

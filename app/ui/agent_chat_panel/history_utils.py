@@ -123,6 +123,36 @@ def tool_snapshots_from(value: Any) -> list[ToolResultSnapshot]:
     return snapshots
 
 
+def tool_messages_from_snapshots(
+    snapshots: Sequence[ToolResultSnapshot | Mapping[str, Any]] | None,
+) -> tuple[dict[str, Any], ...]:
+    """Build transcript-ready tool messages from ``snapshots``.
+
+    The messages mirror what the agent UI displays: a ``tool`` role message per
+    call with the serialised snapshot payload as ``content`` and standard
+    ``tool_call_id``/``name`` fields so downstream consumers can stitch the
+    exchange back into the conversation.
+    """
+
+    if not snapshots:
+        return ()
+
+    messages: list[dict[str, Any]] = []
+    for snapshot in tool_snapshots_from(snapshots):
+        payload = snapshot.to_dict()
+        identifier = snapshot.call_id
+        name = snapshot.tool_name
+        content = json.dumps(payload, ensure_ascii=False, default=str)
+        message: dict[str, Any] = {"role": "tool", "content": content}
+        if identifier:
+            message["tool_call_id"] = identifier
+        if name:
+            message["name"] = name
+        messages.append(message)
+
+    return tuple(messages)
+
+
 def tool_snapshot_dicts(
     snapshots: Sequence[ToolResultSnapshot | Mapping[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -153,5 +183,6 @@ __all__ = [
     "format_value_snippet",
     "shorten_text",
     "tool_snapshot_dicts",
+    "tool_messages_from_snapshots",
     "tool_snapshots_from",
 ]

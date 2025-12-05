@@ -17,7 +17,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 import wx
 
-from ...agent.run_contract import AgentRunPayload, LlmTrace, ToolResultSnapshot
+from ...agent.run_contract import (
+    AgentEvent,
+    AgentEventLog,
+    AgentRunPayload,
+    LlmTrace,
+    ToolResultSnapshot,
+    ToolError,
+)
 
 from ...confirm import confirm
 from ...i18n import _
@@ -56,6 +63,7 @@ from .history_utils import (
     agent_payload_from_mapping,
     history_json_safe,
     stringify_payload,
+    tool_messages_from_snapshots,
     tool_snapshot_dicts,
     tool_snapshots_from,
 )
@@ -85,6 +93,8 @@ from .token_usage import (
 from .view_model import (
     ConversationTimeline,
     ConversationTimelineCache,
+    _build_llm_trace_from_diagnostic,
+    _build_timestamp,
 )
 from .segment_view import SegmentListView
 
@@ -345,6 +355,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     # ------------------------------------------------------------------
     def Destroy(self) -> bool:  # pragma: no cover - exercised via GUI tests
         """Stop background activity before delegating to the base destroyer."""
+        self._history_sync.stop()
         self._session.shutdown()
         self._cleanup_executor()
         return super().Destroy()
@@ -634,20 +645,17 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         conversation = ChatConversation.new()
         self._register_conversation(conversation)
-        self._batch_conversation_ids.add(conversation.conversation_id)
 
-        should_activate = False
-        if active_id is None:
-            should_activate = True
-        elif last_batch_id is None:
-            should_activate = True
-        elif active_id == last_batch_id:
-            should_activate = True
-        elif active_id in self._batch_conversation_ids:
-            should_activate = True
+        should_activate = (
+            active_id is None
+            or not self._batch_conversation_ids
+            or active_id in self._batch_conversation_ids
+        )
 
         if should_activate:
             self._set_active_conversation_id(conversation.conversation_id)
+
+        self._batch_conversation_ids.add(conversation.conversation_id)
 
         self._last_batch_conversation_id = conversation.conversation_id
         self._notify_history_changed()
@@ -2063,17 +2071,29 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     @staticmethod
     def _entry_conversation_messages(entry: ChatEntry) -> tuple[dict[str, Any], ...]:
         """Return assistant/tool message sequence reconstructed from ``entry``."""
+        payload = agent_payload_from_mapping(
+            entry.raw_result if isinstance(entry.raw_result, Mapping) else None
+        )
 
         tool_messages: tuple[dict[str, Any], ...] | None = None
-        raw_tool_messages = getattr(entry, "tool_messages", None)
-        if raw_tool_messages:
-            tool_messages = AgentChatPanel._clone_tool_messages(raw_tool_messages)
+        if payload is not None:
+            tool_messages = tool_messages_from_snapshots(payload.tool_results)
+        if not tool_messages:
+            raw_tool_messages = getattr(entry, "tool_messages", None)
+            if raw_tool_messages:
+                tool_messages = AgentChatPanel._clone_tool_messages(raw_tool_messages)
 
         diagnostic = getattr(entry, "diagnostic", None)
         diagnostic_mapping = diagnostic if isinstance(diagnostic, Mapping) else None
-        steps = AgentChatPanel._sanitize_llm_step_sequence(
-            diagnostic_mapping.get("llm_steps") if diagnostic_mapping else None
-        )
+        steps: list[dict[str, Any]] = []
+        if payload is not None:
+            steps = AgentChatPanel._sanitize_llm_step_sequence(
+                payload.llm_trace.to_dict().get("steps")
+            )
+        if not steps:
+            steps = AgentChatPanel._sanitize_llm_step_sequence(
+                diagnostic_mapping.get("llm_steps") if diagnostic_mapping else None
+            )
         if not steps:
             raw_result = getattr(entry, "raw_result", None)
             if isinstance(raw_result, Mapping):
@@ -2114,8 +2134,9 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 queued_messages = tool_messages_by_call.pop(call_identifier, [])
                 ordered_messages.extend(dict(message) for message in queued_messages)
 
-        if entry.response:
-            response_text = entry.response
+        final_response_text = entry.response or (payload.result_text if payload else None)
+        if final_response_text:
+            response_text = final_response_text
             existing_texts = {
                 message.get("content")
                 for message in ordered_messages
@@ -2143,8 +2164,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if orphan_tool_messages:
             ordered_messages.extend(dict(message) for message in orphan_tool_messages)
 
-        if not ordered_messages and entry.response:
-            ordered_messages.append({"role": "assistant", "content": entry.response})
+        if not ordered_messages and final_response_text:
+            ordered_messages.append(
+                {"role": "assistant", "content": final_response_text}
+            )
             if tool_messages:
                 ordered_messages.extend(dict(message) for message in tool_messages)
 
@@ -2257,25 +2280,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     def _build_tool_messages(
         self, tool_results: Sequence[ToolResultSnapshot] | None
     ) -> tuple[dict[str, Any], ...] | None:
-        if not tool_results:
-            return None
-        messages: list[dict[str, Any]] = []
-        for snapshot in tool_results:
-            if not isinstance(snapshot, ToolResultSnapshot):
-                continue
-            payload = snapshot.to_dict()
-            identifier = snapshot.call_id
-            name = snapshot.tool_name
-            content = json.dumps(payload, ensure_ascii=False, default=str)
-            message: dict[str, Any] = {"role": "tool", "content": content}
-            if identifier:
-                message["tool_call_id"] = identifier
-            if name:
-                message["name"] = name
-            messages.append(message)
-        if not messages:
-            return None
-        return tuple(messages)
+        messages = tool_messages_from_snapshots(tool_results)
+        return messages or None
 
     @staticmethod
     def _append_event_log(
@@ -2665,25 +2671,61 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if response_text:
             combined_display = f"{response_text}\n\n{cancellation_message}"
 
-        diagnostic: dict[str, Any] = {
-            "error": {
-                "type": "OperationCancelledError",
-                "message": cancellation_message,
-                "details": {"reason": "user_cancelled"},
-            }
-        }
-        if handle.llm_trace_preview:
-            diagnostic["llm_steps"] = list(handle.llm_trace_preview)
+        events = AgentEventLog(
+            events=[
+                AgentEvent(
+                    kind="agent_finished",
+                    occurred_at=utc_now_iso(),
+                    payload={
+                        "ok": False,
+                        "status": "failed",
+                        "result": response_text or cancellation_message,
+                        "error": {
+                            "type": "OperationCancelledError",
+                            "message": cancellation_message,
+                            "details": {"reason": "user_cancelled"},
+                        },
+                    },
+                )
+            ]
+        )
+
+        prompt_timestamp = _build_timestamp(prompt_at, source="prompt_at")
+        response_timestamp = _build_timestamp(response_at, source="response_at")
+        llm_steps = [
+            dict(step)
+            for step in handle.llm_trace_preview
+            if isinstance(step, Mapping)
+        ]
+        diagnostic_sections: dict[str, Any] = {}
+        if llm_steps:
+            diagnostic_sections["llm_steps"] = llm_steps
+        diagnostic_sections["event_log"] = [
+            event.to_dict() for event in events.events
+        ]
+        llm_trace = _build_llm_trace_from_diagnostic(
+            diagnostic_sections,
+            prompt_timestamp=prompt_timestamp,
+            response_timestamp=response_timestamp,
+        )
+        if llm_trace is None:
+            llm_trace = LlmTrace()
 
         payload = AgentRunPayload(
             ok=False,
             status="failed",
             result_text=response_text,
+            events=events,
             reasoning=list(reasoning_segments or ()),
             tool_results=[snapshot for snapshot in tool_snapshots],
-            llm_trace=LlmTrace(),
-            diagnostic=diagnostic,
+            llm_trace=llm_trace,
+            error=ToolError(
+                message=cancellation_message,
+                code="OperationCancelledError",
+                details={"reason": "user_cancelled"},
+            ),
             tool_schemas=None,
+            diagnostic=diagnostic_sections,
         )
         raw_result = payload.to_dict()
         if tool_payloads:
@@ -3220,6 +3262,17 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             "diagnostic": diagnostic_sections,
         }
 
+        if isinstance(previous_diagnostic, Mapping):
+            existing_log = previous_diagnostic.get("event_log")
+            if isinstance(existing_log, list):
+                sanitized_log = [
+                    history_json_safe(record)
+                    for record in existing_log
+                    if isinstance(record, Mapping)
+                ]
+                if sanitized_log:
+                    diagnostic_payload["event_log"] = sanitized_log
+
         return history_json_safe(diagnostic_payload)
 
     def _handle_streamed_tool_results(
@@ -3251,8 +3304,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             entry.tool_results = None
             return
 
-        timestamp = utc_now_iso()
         for snapshot in snapshots:
+            timestamp = (
+                snapshot.last_observed_at
+                or snapshot.completed_at
+                or snapshot.started_at
+                or utc_now_iso()
+            )
             existing = handle.tool_snapshots.get(snapshot.call_id or "")
             existing_started = getattr(existing, "started_at", None)
             call_key = snapshot.call_id or ""
@@ -3266,9 +3324,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 snapshot.started_at = min(snapshot.started_at, existing_started)
             else:
                 snapshot.started_at = min(snapshot.started_at, first_seen)
-            snapshot.last_observed_at = timestamp
+            if snapshot.last_observed_at is None:
+                snapshot.last_observed_at = timestamp
             if snapshot.status in {"succeeded", "failed"} and snapshot.completed_at is None:
-                snapshot.completed_at = timestamp
+                snapshot.completed_at = snapshot.last_observed_at or timestamp
 
         cloned_results = tool_snapshot_dicts(snapshots)
         for snapshot in snapshots:

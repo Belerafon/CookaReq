@@ -8,7 +8,7 @@ from collections.abc import Iterable, Mapping, Sequence
 import re
 from typing import Any, Literal, TYPE_CHECKING
 
-from ...agent.run_contract import AgentRunPayload, LlmTrace, LlmStep, ToolResultSnapshot
+from ...agent.run_contract import AgentEvent, AgentRunPayload, LlmTrace, LlmStep, ToolResultSnapshot
 from ..text import normalize_for_display
 from ...util.time import utc_now_iso
 from .history_utils import (
@@ -284,6 +284,10 @@ def _build_llm_trace_from_diagnostic(
         if not isinstance(payload, Mapping):
             continue
         occurred_at = payload.get("occurred_at") or payload.get("timestamp")
+        if not occurred_at:
+            response_payload = payload.get("response")
+            if isinstance(response_payload, Mapping):
+                occurred_at = response_payload.get("timestamp")
         occurred_text = (
             occurred_at
             if isinstance(occurred_at, str) and occurred_at.strip()
@@ -333,14 +337,20 @@ def _build_agent_turn(
 
     raw_result = entry.raw_result if isinstance(entry.raw_result, Mapping) else None
     diagnostic = entry.diagnostic if isinstance(entry.diagnostic, Mapping) else None
+    diagnostic_payload = diagnostic
+    if diagnostic_payload is None and isinstance(raw_result, Mapping):
+        candidate = raw_result.get("diagnostic")
+        if isinstance(candidate, Mapping):
+            diagnostic_payload = candidate
     payload = agent_payload_from_mapping(raw_result)
+    event_log: list[AgentEvent] = []
     if payload is None:
-        tool_snapshots = tool_snapshots_from(entry.tool_results)
+        tool_snapshots = tool_snapshots_from(entry.tool_results or raw_result)
         reasoning_source = entry.reasoning or (
-            diagnostic.get("reasoning") if diagnostic else None
+            diagnostic_payload.get("reasoning") if diagnostic_payload else None
         )
         llm_trace = _build_llm_trace_from_diagnostic(
-            diagnostic,
+            diagnostic_payload,
             prompt_timestamp=prompt_timestamp,
             response_timestamp=response_timestamp,
         )
@@ -348,14 +358,15 @@ def _build_agent_turn(
             llm_trace = LlmTrace()
         final_text = entry.display_response or entry.response or ""
     else:
+        event_log = payload.events.events
         tool_snapshots = payload.tool_results
         reasoning_source = payload.reasoning or (
-            diagnostic.get("reasoning") if diagnostic else None
+            diagnostic_payload.get("reasoning") if diagnostic_payload else None
         )
         llm_trace = payload.llm_trace
         if not llm_trace.steps:
             fallback_trace = _build_llm_trace_from_diagnostic(
-                diagnostic,
+                diagnostic_payload,
                 prompt_timestamp=prompt_timestamp,
                 response_timestamp=response_timestamp,
             )
@@ -369,6 +380,14 @@ def _build_agent_turn(
             or getattr(payload, 'message_preview', '')
             or ""
         )
+
+    for event in event_log:
+        if event.kind == "agent_finished":
+            finished_timestamp = _build_timestamp(
+                event.occurred_at, source="agent_finished"
+            )
+            if not finished_timestamp.missing:
+                response_timestamp = finished_timestamp
 
     raw_payload = entry.history_safe_raw_result()
     reasoning_segments = entry.cache_view_value(
@@ -425,15 +444,42 @@ def _build_agent_turn(
     tool_calls, latest_tool_timestamp = _build_tool_calls(
         entry_id, tool_snapshots, llm_trace
     )
-    events = _build_agent_events(streamed_responses, final_response, tool_calls)
+    events = _build_agent_events(
+        streamed_responses, final_response, tool_calls, event_log
+    )
 
     resolved_timestamp = _resolve_turn_timestamp(
         response_timestamp,
         events,
         prompt_timestamp,
     )
-    if final_response is not None and final_response.timestamp.missing:
-        final_response.timestamp = resolved_timestamp
+
+    updated_events = False
+    if final_response is not None:
+        should_update_final_timestamp = (
+            final_response.timestamp.missing
+            or (
+                resolved_timestamp.occurred_at is not None
+                and (
+                    final_response.timestamp.occurred_at is None
+                    or final_response.timestamp.occurred_at
+                    < resolved_timestamp.occurred_at
+                )
+            )
+        )
+        if should_update_final_timestamp:
+            final_response.timestamp = resolved_timestamp
+            updated_events = True
+
+    if updated_events:
+        events = _build_agent_events(
+            streamed_responses, final_response, tool_calls, event_log
+        )
+        resolved_timestamp = _resolve_turn_timestamp(
+            final_response.timestamp,
+            events,
+            prompt_timestamp,
+        )
 
     occurred_at = resolved_timestamp.occurred_at
     llm_request = _build_llm_request_snapshot(llm_trace)
@@ -554,7 +600,21 @@ def _build_tool_calls(
     if not snapshots:
         return (), None
 
-    summaries = summarize_tool_results(snapshots)
+    def _snapshot_order_key(snapshot: ToolResultSnapshot) -> tuple[int, _dt.datetime | None, int]:
+        """Return chronological key preferring completion, last observation, then start."""
+
+        for index, candidate in enumerate(
+            (snapshot.completed_at, snapshot.last_observed_at, snapshot.started_at)
+        ):
+            if not isinstance(candidate, str) or not candidate.strip():
+                continue
+            parsed = parse_iso_timestamp(candidate)
+            return (0 if parsed is not None else 1, parsed, index)
+        return (1, None, len((snapshot.completed_at, snapshot.last_observed_at, snapshot.started_at)))
+
+    ordered_snapshots = sorted(snapshots, key=_snapshot_order_key)
+
+    summaries = summarize_tool_results(ordered_snapshots)
     summaries_by_id: dict[str, ToolCallSummary] = {}
     fallback_summaries: list[ToolCallSummary] = []
     for summary in summaries:
@@ -575,7 +635,7 @@ def _build_tool_calls(
 
     fallback_iter = iter(fallback_summaries)
 
-    for index, snapshot in enumerate(snapshots, start=1):
+    for index, snapshot in enumerate(ordered_snapshots, start=1):
         summary = summaries_by_id.get(snapshot.call_id)
         if summary is None:
             summary_tuple = summarize_tool_results([snapshot])
@@ -670,10 +730,11 @@ def _build_tool_calls(
             ):
                 latest_timestamp = timestamp
 
+        identifier = snapshot.call_id or f"{entry_id}:tool:{index}"
         tool_calls.append(
             ToolCallDetails(
                 summary=summary,
-                call_identifier=snapshot.call_id or None,
+                call_identifier=identifier,
                 raw_data=raw_data,
                 timestamp=timestamp,
                 llm_request=request_payload,
@@ -774,84 +835,166 @@ def _build_agent_events(
     responses: tuple[AgentResponse, ...],
     final_response: AgentResponse | None,
     tool_calls: tuple[ToolCallDetails, ...],
+    event_log: Sequence[AgentEvent],
 ) -> tuple[AgentTimelineEvent, ...]:
     events: list[AgentTimelineEvent] = []
-    order = 0
-
+    responses_by_index: dict[int, AgentResponse] = {}
     for response in responses:
-        events.append(
-            AgentTimelineEvent(
-                kind="response",
-                timestamp=response.timestamp,
-                order_index=order,
-                response=response,
-            )
-        )
-        order += 1
+        if response.step_index is not None:
+            responses_by_index[response.step_index] = response
 
-    if final_response is not None:
+    tools_by_id: dict[str, ToolCallDetails] = {}
+    for detail in tool_calls:
+        if detail.call_identifier:
+            tools_by_id[detail.call_identifier] = detail
+
+    added_tool_ids: set[str] = set()
+
+    has_final_response = False
+    for event in event_log:
+        timestamp = _build_timestamp(event.occurred_at, source="agent_event")
+        if event.kind == "llm_step":
+            payload = event.payload or {}
+            try:
+                index = int(payload.get("index"))
+            except Exception:
+                index = None
+            response = responses_by_index.get(index) if index is not None else None
+            if response is not None:
+                if response.timestamp.missing:
+                    response.timestamp = timestamp
+                events.append(
+                    AgentTimelineEvent(
+                        kind="response",
+                        timestamp=response.timestamp,
+                        order_index=len(events),
+                        response=response,
+                    )
+                )
+        elif event.kind == "tool_completed":
+            payload = event.payload if isinstance(event.payload, Mapping) else {}
+            call_id_value = payload.get("call_id")
+            if call_id_value is None:
+                continue
+            call_id = str(call_id_value)
+            tool_call = tools_by_id.get(call_id)
+            if tool_call is not None:
+                if tool_call.timestamp.missing:
+                    tool_call.timestamp = timestamp
+                events.append(
+                    AgentTimelineEvent(
+                        kind="tool",
+                        timestamp=tool_call.timestamp,
+                        order_index=len(events),
+                        tool_call=tool_call,
+                    )
+                )
+                if tool_call.call_identifier:
+                    added_tool_ids.add(tool_call.call_identifier)
+        elif event.kind == "agent_finished" and final_response is not None:
+            has_final_response = True
+            if final_response.timestamp.missing:
+                final_response.timestamp = timestamp
+            events.append(
+                AgentTimelineEvent(
+                    kind="response",
+                    timestamp=final_response.timestamp,
+                    order_index=len(events),
+                    response=final_response,
+                )
+            )
+        elif event.kind in {"tool_result", "tool_completed", "tool_finished"}:
+            payload = event.payload if isinstance(event.payload, Mapping) else {}
+            call_id_value = (
+                payload.get("call_id")
+                or payload.get("tool_call_id")
+                or payload.get("id")
+            )
+            if call_id_value is None:
+                continue
+            call_id = str(call_id_value)
+            tool_call = tools_by_id.get(call_id)
+            if tool_call is None:
+                continue
+            if tool_call.timestamp.missing:
+                tool_call.timestamp = timestamp
+            events.append(
+                AgentTimelineEvent(
+                    kind="tool",
+                    timestamp=tool_call.timestamp,
+                    order_index=len(events),
+                    tool_call=tool_call,
+                )
+            )
+            if tool_call.call_identifier:
+                added_tool_ids.add(tool_call.call_identifier)
+
+    if not events:
+        for response in responses:
+            events.append(
+                AgentTimelineEvent(
+                    kind="response",
+                    timestamp=response.timestamp,
+                    order_index=len(events),
+                    response=response,
+                )
+            )
+        if final_response is not None:
+            events.append(
+                AgentTimelineEvent(
+                    kind="response",
+                    timestamp=final_response.timestamp,
+                    order_index=len(events),
+                    response=final_response,
+                )
+            )
+            has_final_response = True
+        for detail in tool_calls:
+            events.append(
+                AgentTimelineEvent(
+                    kind="tool",
+                    timestamp=detail.timestamp,
+                    order_index=len(events),
+                    tool_call=detail,
+                )
+            )
+            if detail.call_identifier:
+                added_tool_ids.add(detail.call_identifier)
+            if detail.call_identifier:
+                added_tool_ids.add(detail.call_identifier)
+
+    if final_response is not None and not has_final_response:
         events.append(
             AgentTimelineEvent(
                 kind="response",
                 timestamp=final_response.timestamp,
-                order_index=order,
+                order_index=len(events),
                 response=final_response,
             )
         )
-        order += 1
 
     for detail in tool_calls:
+        identifier = detail.call_identifier
+        if identifier and identifier in added_tool_ids:
+            continue
         events.append(
             AgentTimelineEvent(
                 kind="tool",
                 timestamp=detail.timestamp,
-                order_index=order,
+                order_index=len(events),
                 tool_call=detail,
             )
         )
-        order += 1
+        if identifier:
+            added_tool_ids.add(identifier)
 
-    # Сортируем события по времени
-    events.sort(key=_event_sort_key)
     for index, event in enumerate(events):
         event.order_index = index
-    
-    # Корректируем временную метку final response, если она раньше чем у tool calls
-    if final_response is not None and tool_calls:
-        final_event = next((e for e in events if e.response is final_response), None)
-        if final_event:
-            # Находим самую позднюю временную метку среди tool calls
-            latest_tool_timestamp = max(
-                (tool_call.timestamp.occurred_at for tool_call in tool_calls if tool_call.timestamp.occurred_at),
-                default=None
-            )
-            # Если final response раньше чем последний tool call, корректируем его время
-            if (final_event.timestamp.occurred_at is not None and
-                latest_tool_timestamp is not None and
-                final_event.timestamp.occurred_at < latest_tool_timestamp):
+    events.sort(key=lambda evt: (evt.order_index, evt.timestamp.occurred_at or _UTC_MIN))
+    for index, event in enumerate(events):
+        event.order_index = index
 
-                from datetime import timedelta
-                adjusted_timestamp = latest_tool_timestamp + timedelta(microseconds=1)
-                final_event.timestamp = TimestampInfo(
-                    raw=adjusted_timestamp.isoformat(),
-                    occurred_at=adjusted_timestamp,
-                    formatted=format_entry_timestamp(adjusted_timestamp.isoformat()),
-                    missing=False,
-                    source="final_response_adjusted"
-                )
-                final_response.timestamp = final_event.timestamp
-                # Пересортировываем события с новой временной меткой
-                events.sort(key=_event_sort_key)
-                for index, event in enumerate(events):
-                    event.order_index = index
-    
     return tuple(events)
-
-
-def _event_sort_key(event: AgentTimelineEvent) -> tuple[int, _dt.datetime, int]:
-    timestamp = event.timestamp.occurred_at
-    missing = 1 if timestamp is None else 0
-    return (missing, timestamp or _UTC_MIN, event.order_index)
 
 
 def _resolve_turn_timestamp(

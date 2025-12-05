@@ -38,10 +38,13 @@ from ..util.cancellation import (
 )
 from ..util.time import utc_now_iso
 from .run_contract import (
+    AgentEvent,
+    AgentEventLog,
     AgentRunPayload,
-    LlmTrace,
     ToolError,
     ToolResultSnapshot,
+    _llm_trace_from_events,
+    _reasoning_from_events,
 )
 
 
@@ -183,20 +186,14 @@ class _AgentRunRecorder:
     """Collects deterministic artefacts for an agent run."""
 
     def __init__(self, *, tool_schemas: Mapping[str, Any] | None = None) -> None:
+        self._events = AgentEventLog()
         self._snapshots: dict[str, ToolResultSnapshot] = {}
-        self._order: list[str] = []
-        self._llm_trace = LlmTrace()
-        self._reasoning: list[dict[str, Any]] = []
         self._result_text = ""
         self._ok = False
         self._status: str = "failed"
-        self._diagnostic: dict[str, Any] = {}
         self._tool_schemas = dict(tool_schemas) if tool_schemas else {}
         self._error: ToolError | None = None
-        self._last_tool: ToolResultSnapshot | None = None
         self._agent_stop_reason: Mapping[str, Any] | None = None
-        self._llm_steps: list[dict[str, Any]] = []
-        self._llm_requests: list[dict[str, Any]] = []
         self._exclude_from_results: set[str] = set()
 
     # ------------------------------------------------------------------
@@ -209,17 +206,17 @@ class _AgentRunRecorder:
     ) -> None:
         request_snapshot = [dict(message) for message in request_messages]
         response_snapshot = dict(response)
-        self._llm_trace.append(
-            index=index, request=request_snapshot, response=response_snapshot
+        self._events.append(
+            AgentEvent(
+                kind="llm_step",
+                occurred_at=utc_now_iso(),
+                payload={
+                    "index": index,
+                    "request": request_snapshot,
+                    "response": response_snapshot,
+                },
+            )
         )
-        self._llm_steps.append(
-            {
-                "step": index,
-                "request_messages": request_snapshot,
-                "response": response_snapshot,
-            }
-        )
-        self._llm_requests.append({"step": index, "messages": request_snapshot})
 
     def extend_reasoning(
         self, segments: Sequence[LLMReasoningSegment] | None
@@ -228,6 +225,7 @@ class _AgentRunRecorder:
         if not normalised:
             return
 
+        stored_segments: list[dict[str, Any]] = []
         for segment in normalised:
             stored: dict[str, Any] = {
                 "type": segment.get("type", ""),
@@ -239,7 +237,15 @@ class _AgentRunRecorder:
             trailing = segment.get("trailing_whitespace")
             if isinstance(trailing, str) and trailing:
                 stored["trailing_whitespace"] = trailing
-            self._reasoning.append(stored)
+            stored_segments.append(stored)
+        if stored_segments:
+            self._events.append(
+                AgentEvent(
+                    kind="reasoning",
+                    occurred_at=utc_now_iso(),
+                    payload={"segments": stored_segments},
+                )
+            )
 
     # ------------------------------------------------------------------
     def begin_tool(
@@ -252,9 +258,20 @@ class _AgentRunRecorder:
             arguments=arguments,
             schema=self._tool_schemas.get(call.name),
         )
-        snapshot.mark_event("started")
+        timestamp = snapshot.mark_event("started")
         self._snapshots[call.id] = snapshot
-        self._order.append(call.id)
+        self._events.append(
+            AgentEvent(
+                kind="tool_started",
+                occurred_at=timestamp,
+                payload={
+                    "call_id": call.id,
+                    "tool_name": call.name,
+                    "arguments": snapshot.arguments,
+                    "schema": snapshot.schema,
+                },
+            )
+        )
         self._exclude_from_results.discard(call.id)
         return snapshot
 
@@ -265,7 +282,7 @@ class _AgentRunRecorder:
         snapshot.status = "succeeded"
         snapshot.result = payload.get("result")
         snapshot.error = None
-        snapshot.mark_event("completed")
+        timestamp = snapshot.mark_event("completed")
         metrics = payload.get("metrics")
         if isinstance(metrics, Mapping):
             duration = metrics.get("duration_seconds")
@@ -274,7 +291,19 @@ class _AgentRunRecorder:
             cost_payload = metrics.get("cost")
             if isinstance(cost_payload, Mapping):
                 snapshot.metrics.cost = dict(cost_payload)
-        self._last_tool = snapshot
+        self._events.append(
+            AgentEvent(
+                kind="tool_completed",
+                occurred_at=timestamp,
+                payload={
+                    "call_id": call.id,
+                    "tool_name": call.name,
+                    "status": "succeeded",
+                    "result": snapshot.result,
+                    "metrics": snapshot.metrics.to_dict(),
+                },
+            )
+        )
         self._exclude_from_results.discard(call.id)
         return snapshot
 
@@ -289,8 +318,19 @@ class _AgentRunRecorder:
         snapshot.status = "failed"
         snapshot.result = None
         snapshot.error = self._tool_error(error_payload)
-        snapshot.mark_event("failed")
-        self._last_tool = snapshot
+        timestamp = snapshot.mark_event("failed")
+        self._events.append(
+            AgentEvent(
+                kind="tool_completed",
+                occurred_at=timestamp,
+                payload={
+                    "call_id": call.id,
+                    "tool_name": call.name,
+                    "status": "failed",
+                    "error": snapshot.error.to_dict(),
+                },
+            )
+        )
         if include_in_results:
             self._exclude_from_results.discard(call.id)
         else:
@@ -317,6 +357,13 @@ class _AgentRunRecorder:
         self._result_text = result_text.strip()
         self._error = None
         self._agent_stop_reason = None
+        self._events.append(
+            AgentEvent(
+                kind="agent_finished",
+                occurred_at=utc_now_iso(),
+                payload={"ok": True, "status": "succeeded", "result": self._result_text},
+            )
+        )
 
     def finalise_failure(
         self,
@@ -330,27 +377,42 @@ class _AgentRunRecorder:
         self._result_text = message.strip()
         if error_payload:
             self._error = self._tool_error(error_payload)
-            self._diagnostic["error"] = dict(error_payload)
         else:
             self._error = None
         if stop_reason:
             reason = dict(stop_reason)
-            self._diagnostic["stop_reason"] = reason
             self._agent_stop_reason = reason
-        if "llm_steps" not in self._diagnostic and self._llm_trace.steps:
-            self._diagnostic["llm_steps"] = [
-                step.to_dict() for step in self._llm_trace.steps
-            ]
-
-    def attach_diagnostic(self, key: str, value: Any) -> None:
-        self._diagnostic[key] = value
+        self._events.append(
+            AgentEvent(
+                kind="agent_finished",
+                occurred_at=utc_now_iso(),
+                payload={
+                    "ok": False,
+                    "status": "failed",
+                    "result": self._result_text,
+                    "error": dict(error_payload) if isinstance(error_payload, Mapping) else None,
+                    "stop_reason": dict(stop_reason) if isinstance(stop_reason, Mapping) else None,
+                },
+            )
+        )
 
     # ------------------------------------------------------------------
     def iter_tool_snapshots(
         self, *, include_excluded: bool = False
     ) -> list[ToolResultSnapshot]:
+        order: list[str] = []
+        seen: set[str] = set()
+        for event in self._events.events:
+            if event.kind not in {"tool_started", "tool_completed"}:
+                continue
+            call_id = str(event.payload.get("call_id") or "")
+            if not call_id or call_id in seen:
+                continue
+            if call_id in self._snapshots:
+                order.append(call_id)
+                seen.add(call_id)
         snapshots: list[ToolResultSnapshot] = []
-        for call_id in self._order:
+        for call_id in order:
             if not include_excluded and call_id in self._exclude_from_results:
                 continue
             snapshots.append(self._snapshots[call_id])
@@ -365,52 +427,30 @@ class _AgentRunRecorder:
             ]
         else:
             filtered_snapshots = snapshots
-        diagnostic: dict[str, Any] = {}
-        if self._diagnostic:
-            diagnostic.update(self._diagnostic)
-        if self._llm_steps:
-            diagnostic["llm_steps"] = [
-                {
-                    "step": entry["step"],
-                    "request_messages": [dict(message) for message in entry["request_messages"]],
-                    "response": dict(entry["response"]),
-                }
-                for entry in self._llm_steps
-            ]
-        if self._llm_requests:
-            diagnostic["llm_requests"] = [
-                {
-                    "step": entry["step"],
-                    "messages": [dict(message) for message in entry["messages"]],
-                }
-                for entry in self._llm_requests
-            ]
-        if snapshots:
-            diagnostic.setdefault(
-                "tool_results",
-                [snapshot.to_dict() for snapshot in snapshots],
-            )
-        diagnostic_value: Mapping[str, Any] | None
-        if diagnostic:
-            diagnostic_value = diagnostic
-        else:
-            diagnostic_value = None
+        stop_reason = (
+            dict(self._agent_stop_reason)
+            if isinstance(self._agent_stop_reason, Mapping)
+            else None
+        )
+        diagnostic: dict[str, Any] | None = None
+        if self._events.events:
+            diagnostic = {"event_log": [event.to_dict() for event in self._events.events]}
+        if stop_reason:
+            if diagnostic is None:
+                diagnostic = {}
+            diagnostic["stop_reason"] = stop_reason
         return AgentRunPayload(
             ok=self._ok,
             status="succeeded" if self._status == "succeeded" else "failed",
             result_text=self._result_text,
-            reasoning=list(self._reasoning),
+            events=self._events,
+            reasoning=_reasoning_from_events(self._events),
             tool_results=filtered_snapshots,
-            llm_trace=self._llm_trace,
+            llm_trace=_llm_trace_from_events(self._events),
+            diagnostic=diagnostic,
             error=self._error,
-            diagnostic=diagnostic_value,
             tool_schemas=dict(self._tool_schemas) if self._tool_schemas else None,
-            last_tool=self._last_tool,
-            agent_stop_reason=(
-                dict(self._agent_stop_reason)
-                if isinstance(self._agent_stop_reason, Mapping)
-                else None
-            ),
+            agent_stop_reason=stop_reason,
         )
 
 
@@ -1399,10 +1439,12 @@ class AgentLoopRunner:
             final_call = last_response.tool_calls[-1]
             last_call_name = final_call.name
             last_call_arguments = self._agent._normalise_tool_arguments(final_call)
-        elif self._recorder._last_tool is not None:
-            snapshot = self._recorder._last_tool
-            last_call_name = snapshot.tool_name
-            last_call_arguments = snapshot.arguments
+        else:
+            snapshots = self._recorder.iter_tool_snapshots(include_excluded=True)
+            if snapshots:
+                snapshot = snapshots[-1]
+                last_call_name = snapshot.tool_name
+                last_call_arguments = snapshot.arguments
         if isinstance(last_call_arguments, Mapping):
             arguments_preview = self._agent._format_tool_arguments(last_call_arguments)
         else:

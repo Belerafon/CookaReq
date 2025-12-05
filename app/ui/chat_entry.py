@@ -8,7 +8,11 @@ from typing import Any, Callable, TypeVar, cast
 from collections.abc import Iterable, Mapping, Sequence
 from uuid import uuid4
 
-from ..agent.run_contract import ToolResultSnapshot
+from ..agent.run_contract import (
+    AgentRunPayload,
+    ToolResultSnapshot,
+    sort_tool_result_snapshots,
+)
 from ..llm.tokenizer import (
     TokenCountResult,
     combine_token_counts,
@@ -16,6 +20,7 @@ from ..llm.tokenizer import (
 )
 from ..util.json import make_json_safe
 from ..util.time import utc_now_iso
+from .agent_chat_panel.history_utils import tool_messages_from_snapshots
 from .history_config import HISTORY_JSON_LIMITS
 
 _DEFAULT_TOKEN_MODEL = "cl100k_base"
@@ -61,7 +66,7 @@ def _normalise_tool_results_payload(value: Any) -> list[dict[str, Any]]:
         candidates = value
     else:
         return []
-    snapshots: list[dict[str, Any]] = []
+    snapshots: list[ToolResultSnapshot] = []
     for item in candidates:
         if not isinstance(item, Mapping):
             continue
@@ -69,8 +74,44 @@ def _normalise_tool_results_payload(value: Any) -> list[dict[str, Any]]:
             snapshot = ToolResultSnapshot.from_dict(item)
         except Exception:
             continue
-        snapshots.append(snapshot.to_dict())
-    return snapshots
+        snapshots.append(snapshot)
+    if not snapshots:
+        return []
+    ordered_snapshots = sort_tool_result_snapshots(snapshots)
+    return [snapshot.to_dict() for snapshot in ordered_snapshots]
+
+
+def _parse_agent_run_payload(raw_result: Any) -> AgentRunPayload | None:
+    if not isinstance(raw_result, Mapping):
+        return None
+    try:
+        return AgentRunPayload.from_dict(raw_result)
+    except Exception:
+        return None
+
+
+def _strip_diagnostic_event_log(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    cleaned = {k: v for k, v in value.items() if k != "event_log"}
+    return cleaned or None
+
+
+def _derive_tool_messages(raw_result: Any) -> tuple[dict[str, Any], ...]:
+    payload = _parse_agent_run_payload(raw_result)
+    if payload is not None:
+        messages = tool_messages_from_snapshots(payload.tool_results)
+        if messages:
+            return messages
+
+    if isinstance(raw_result, Mapping):
+        tool_results = raw_result.get("tool_results")
+        normalised_results = _normalise_tool_results_payload(tool_results)
+        messages = tool_messages_from_snapshots(normalised_results)
+        if messages:
+            return messages
+
+    return ()
 
 
 @dataclass(frozen=True)
@@ -254,6 +295,13 @@ class ChatEntry:
         if self.display_response is None:
             self.display_response = self.response
         self.ensure_token_info()
+        payload = _parse_agent_run_payload(self.raw_result)
+        if payload is not None:
+            self.raw_result = payload.to_history_dict()
+            if not self.reasoning and payload.reasoning:
+                self.reasoning = tuple(dict(segment) for segment in payload.reasoning)
+            diagnostic = _strip_diagnostic_event_log(self.diagnostic)
+            self.diagnostic = diagnostic
         if isinstance(self.raw_result, Mapping):
             tool_results_raw = self.raw_result.get("tool_results")
             normalised_results = _normalise_tool_results_payload(tool_results_raw)
@@ -292,6 +340,9 @@ class ChatEntry:
             self.tool_messages = tuple(normalised_messages) if normalised_messages else None
         else:
             self.tool_messages = None
+        if self.tool_messages is None:
+            derived_tool_messages = _derive_tool_messages(self.raw_result)
+            self.tool_messages = derived_tool_messages or None
         hints = self.layout_hints
         if not isinstance(hints, dict):
             self.layout_hints = {}
@@ -440,6 +491,15 @@ class ChatEntry:
         base["tool_results"] = normalised
         self.raw_result = base
 
+    def ensure_tool_messages(self) -> tuple[dict[str, Any], ...] | None:
+        """Return or derive tool messages associated with this entry."""
+
+        if self.tool_messages is None:
+            derived = _derive_tool_messages(self.raw_result)
+            if derived:
+                self.tool_messages = derived
+        return self.tool_messages
+
     def _sanitize_token_cache(self) -> None:
         raw_cache = self.token_cache
         if isinstance(raw_cache, Mapping):
@@ -549,6 +609,9 @@ class ChatEntry:
             if isinstance(raw_result_payload, Mapping)
             else raw_result_payload
         )
+        parsed_payload = _parse_agent_run_payload(raw_result)
+        if parsed_payload is not None:
+            raw_result = parsed_payload.to_history_dict()
         tool_results_raw = payload.get("tool_results")
         if tool_results_raw is not None:
             normalised_results = _normalise_tool_results_payload(tool_results_raw)
@@ -583,31 +646,7 @@ class ChatEntry:
             if prepared:
                 context_messages = tuple(prepared)
 
-        tool_messages_raw = payload.get("tool_messages")
         tool_messages: tuple[dict[str, Any], ...] | None = None
-        if isinstance(tool_messages_raw, Sequence) and not isinstance(
-            tool_messages_raw, (str, bytes, bytearray)
-        ):
-            prepared_messages: list[dict[str, Any]] = []
-            for item in tool_messages_raw:
-                if not isinstance(item, Mapping):
-                    continue
-                role_value = item.get("role")
-                role = str(role_value).strip() if role_value is not None else "tool"
-                if not role:
-                    role = "tool"
-                content_value = item.get("content")
-                content = str(content_value) if content_value is not None else ""
-                message: dict[str, Any] = {"role": role, "content": content}
-                call_value = item.get("tool_call_id")
-                if isinstance(call_value, str) and call_value.strip():
-                    message["tool_call_id"] = call_value.strip()
-                name_value = item.get("name")
-                if isinstance(name_value, str) and name_value.strip():
-                    message["name"] = name_value.strip()
-                prepared_messages.append(message)
-            if prepared_messages:
-                tool_messages = tuple(prepared_messages)
 
         reasoning_raw = payload.get("reasoning")
         reasoning: tuple[dict[str, Any], ...] | None = None
@@ -640,11 +679,15 @@ class ChatEntry:
                 prepared_reasoning.append(segment)
             if prepared_reasoning:
                 reasoning = tuple(prepared_reasoning)
+        elif parsed_payload is not None and parsed_payload.reasoning:
+            reasoning = tuple(dict(segment) for segment in parsed_payload.reasoning)
 
         diagnostic_raw = payload.get("diagnostic")
         diagnostic: dict[str, Any] | None = None
         if isinstance(diagnostic_raw, Mapping):
             diagnostic = dict(diagnostic_raw)
+        if parsed_payload is not None:
+            diagnostic = _strip_diagnostic_event_log(diagnostic)
 
         regenerated_raw = payload.get("regenerated")
         regenerated = bool(regenerated_raw) if isinstance(regenerated_raw, bool) else False
@@ -671,6 +714,8 @@ class ChatEntry:
 
     def to_dict(self) -> dict[str, Any]:
         """Return representation suitable for JSON storage."""
+        diagnostic = _strip_diagnostic_event_log(self.diagnostic)
+
         payload = {
             "prompt": self.prompt,
             "response": self.response,
@@ -685,13 +730,10 @@ class ChatEntry:
             "context_messages": [dict(message) for message in self.context_messages]
             if self.context_messages is not None
             else None,
-            "tool_messages": [dict(message) for message in self.tool_messages]
-            if self.tool_messages is not None
-            else None,
             "reasoning": [dict(segment) for segment in self.reasoning]
             if self.reasoning is not None
             else None,
-            "diagnostic": dict(self.diagnostic) if self.diagnostic is not None else None,
+            "diagnostic": dict(diagnostic) if diagnostic is not None else None,
             "regenerated": self.regenerated,
         }
         cache_payload: dict[str, dict[str, Any]] = {}

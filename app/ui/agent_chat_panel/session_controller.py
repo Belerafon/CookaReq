@@ -116,6 +116,8 @@ class SessionController:
                     history_counts.append(entry.ensure_prompt_token_usage(model))
                 if entry.response:
                     history_counts.append(entry.ensure_response_token_usage(model))
+                if hasattr(entry, "ensure_tool_messages"):
+                    entry.ensure_tool_messages()
                 tool_messages = getattr(entry, "tool_messages", None)
                 if tool_messages:
                     for message in tool_messages:

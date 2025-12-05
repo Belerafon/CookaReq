@@ -128,6 +128,11 @@ class ConfirmPreferencesMixin:
             event.Skip()
             return
         selection = event.GetSelection()
+        if not isinstance(selection, int) or selection < 0:
+            try:
+                selection = event.GetInt()
+            except Exception:  # pragma: no cover - defensive
+                selection = None
         entries = getattr(self, "_confirm_choice_entries", ())
         if not isinstance(selection, int) or not (0 <= selection < len(entries)):
             choice = event.GetEventObject()

@@ -642,20 +642,17 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         conversation = ChatConversation.new()
         self._register_conversation(conversation)
-        self._batch_conversation_ids.add(conversation.conversation_id)
 
-        should_activate = False
-        if active_id is None:
-            should_activate = True
-        elif last_batch_id is None:
-            should_activate = True
-        elif active_id == last_batch_id:
-            should_activate = True
-        elif active_id in self._batch_conversation_ids:
-            should_activate = True
+        should_activate = (
+            active_id is None
+            or not self._batch_conversation_ids
+            or active_id in self._batch_conversation_ids
+        )
 
         if should_activate:
             self._set_active_conversation_id(conversation.conversation_id)
+
+        self._batch_conversation_ids.add(conversation.conversation_id)
 
         self._last_batch_conversation_id = conversation.conversation_id
         self._notify_history_changed()

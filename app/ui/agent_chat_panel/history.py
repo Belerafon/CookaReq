@@ -212,25 +212,31 @@ class AgentChatHistory:
                 return False
             return True
 
-        candidates: list[ChatConversation] = [
+        removable: list[ChatConversation] = [
             conv for conv in self._conversations if _metadata_is_empty(conv)
         ]
-        if not candidates:
+
+        if verify_with_store:
+            missing_entries = {
+                conv.conversation_id
+                for conv in self._conversations
+                if conv.conversation_id
+                not in self._store.conversations_with_entries()
+            }
+            removable.extend(
+                conv
+                for conv in self._conversations
+                if conv.conversation_id in missing_entries
+                and conv not in removable
+            )
+
+        if not removable:
             return False
 
-        removable_ids = {conv.conversation_id for conv in candidates}
-        protected_id = self._active_id
-        if protected_id is None and candidates:
-            protected_id = candidates[-1].conversation_id
-        if verify_with_store:
-            confirmed = self._store.conversations_with_entries(removable_ids)
-            removable_ids.difference_update(confirmed)
+        removable_ids = {conv.conversation_id for conv in removable}
+        protected_id = None if verify_with_store else self._active_id
         if protected_id:
-            should_protect_active = not (
-                verify_with_store and protected_id in removable_ids
-            )
-            if should_protect_active:
-                removable_ids.discard(protected_id)
+            removable_ids.discard(protected_id)
         if not removable_ids:
             return False
 

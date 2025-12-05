@@ -32,7 +32,8 @@ def format_token_quantity(tokens: TokenCountResult) -> str:
     """Return human readable representation for ``tokens``."""
     if tokens.tokens is None:
         return TOKEN_UNAVAILABLE_LABEL
-    quantity = tokens.tokens / 1000 if tokens.tokens else 0.0
+    raw_tokens = tokens.tokens or 0
+    quantity = (raw_tokens // 10) / 100 if raw_tokens else 0.0
     label = f"{quantity:.2f} k tokens"
     return f"~{label}" if tokens.approximate else label
 

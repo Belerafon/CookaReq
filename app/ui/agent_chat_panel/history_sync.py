@@ -45,7 +45,9 @@ class HistorySynchronizer:
     def initialize(self) -> HistorySyncResult:
         history = self.history
         history.load()
-        history.prune_empty_conversations()
+        for conversation in tuple(history.conversations):
+            history.ensure_conversation_entries(conversation)
+        history.prune_empty_conversations(verify_with_store=True)
         draft = ChatConversation.new()
         history.conversations.append(draft)
         history.set_active_id(draft.conversation_id)

@@ -353,6 +353,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     # ------------------------------------------------------------------
     def Destroy(self) -> bool:  # pragma: no cover - exercised via GUI tests
         """Stop background activity before delegating to the base destroyer."""
+        self._history_sync.stop()
         self._session.shutdown()
         self._cleanup_executor()
         return super().Destroy()

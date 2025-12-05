@@ -31,6 +31,7 @@ class HistorySynchronizer:
         self._timeline_cache = timeline_cache
         self._scheduler = scheduler
         self._lazy_history_cleanup_pending = False
+        self._suppress_cleanup = False
 
     @property
     def timeline_cache(self) -> ConversationTimelineCache:
@@ -51,6 +52,7 @@ class HistorySynchronizer:
         draft = ChatConversation.new()
         history.conversations.append(draft)
         history.set_active_id(draft.conversation_id)
+        history.prune_empty_conversations(verify_with_store=True)
         self._timeline_cache = ConversationTimelineCache()
         self._lazy_history_cleanup_pending = False
         self.schedule_lazy_history_cleanup()
@@ -62,10 +64,15 @@ class HistorySynchronizer:
 
     # ------------------------------------------------------------------
     def schedule_lazy_history_cleanup(self) -> None:
+        if self._suppress_cleanup:
+            return
         if self._lazy_history_cleanup_pending:
             return
 
         def _run_cleanup() -> None:
+            if self._suppress_cleanup:
+                self._lazy_history_cleanup_pending = False
+                return
             self._lazy_history_cleanup_pending = False
             removed = self.history.prune_empty_conversations(verify_with_store=True)
             if removed:
@@ -73,6 +80,12 @@ class HistorySynchronizer:
 
         self._lazy_history_cleanup_pending = True
         self._scheduler(_run_cleanup)
+
+    # ------------------------------------------------------------------
+    def stop(self) -> None:
+        """Prevent дальнейшие отложенные задачи очистки."""
+        self._suppress_cleanup = True
+        self._lazy_history_cleanup_pending = False
 
     # ------------------------------------------------------------------
     def set_history_path(self, path: Path | str | None, *, persist_existing: bool) -> bool:

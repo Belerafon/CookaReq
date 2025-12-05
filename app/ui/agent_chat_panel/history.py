@@ -234,9 +234,20 @@ class AgentChatHistory:
             return False
 
         removable_ids = {conv.conversation_id for conv in removable}
-        protected_id = None if verify_with_store else self._active_id
+
+        # Всегда защищаем активный разговор, даже если запущена строгая
+        # верификация со стором: тесты и UI ожидают видеть текущий черновик
+        # в списке, пока пользователь работает.
+        protected_id = self._active_id
         if protected_id:
             removable_ids.discard(protected_id)
+
+        # Никогда не удаляем все разговоры: оставляем последний (обычно черновик),
+        # чтобы список истории и связанные обработчики оставались консистентными.
+        if len(removable_ids) >= len(self._conversations):
+            keep_id = self._conversations[-1].conversation_id
+            removable_ids.discard(keep_id)
+
         if not removable_ids:
             return False
 

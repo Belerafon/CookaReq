@@ -829,16 +829,17 @@ def _build_agent_events(
             if (final_event.timestamp.occurred_at is not None and
                 latest_tool_timestamp is not None and
                 final_event.timestamp.occurred_at < latest_tool_timestamp):
-                
+
                 from datetime import timedelta
                 adjusted_timestamp = latest_tool_timestamp + timedelta(microseconds=1)
                 final_event.timestamp = TimestampInfo(
                     raw=adjusted_timestamp.isoformat(),
                     occurred_at=adjusted_timestamp,
-                    formatted=adjusted_timestamp.strftime("%H:%M:%S"),
+                    formatted=format_entry_timestamp(adjusted_timestamp.isoformat()),
                     missing=False,
                     source="final_response_adjusted"
                 )
+                final_response.timestamp = final_event.timestamp
                 # Пересортировываем события с новой временной меткой
                 events.sort(key=_event_sort_key)
                 for index, event in enumerate(events):
@@ -858,13 +859,33 @@ def _resolve_turn_timestamp(
     events: Sequence[AgentTimelineEvent],
     prompt_timestamp: TimestampInfo,
 ) -> TimestampInfo:
-    if not primary.missing:
-        return primary
+    latest_event: TimestampInfo | None = None
+
+    def _is_after(left: TimestampInfo, right: TimestampInfo | None) -> bool:
+        if right is None:
+            return True
+        left_value = left.occurred_at or _UTC_MIN
+        right_value = right.occurred_at or _UTC_MIN
+        return left_value > right_value
+
     for event in events:
-        if not event.timestamp.missing:
-            return event.timestamp
+        event_ts = event.timestamp
+        if event_ts.missing:
+            continue
+        if latest_event is None or _is_after(event_ts, latest_event):
+            latest_event = event_ts
+
+    if not primary.missing:
+        if latest_event is not None and _is_after(latest_event, primary):
+            return latest_event
+        return primary
+
+    if latest_event is not None:
+        return latest_event
+
     if not prompt_timestamp.missing:
         return prompt_timestamp
+
     return primary
 
 

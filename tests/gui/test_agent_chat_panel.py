@@ -2085,6 +2085,50 @@ def test_agent_chat_panel_sorts_tool_results_chronologically(tmp_path, wx_app):
         destroy_panel(frame, panel)
 
 
+def test_agent_turn_timestamp_tracks_latest_event(tmp_path, wx_app):
+    wx = pytest.importorskip("wx")
+
+    latest_ts = "2025-09-30T10:00:30+00:00"
+    conversation, entry_timeline = build_entry_timeline(
+        prompt_at="2025-09-30T09:59:00+00:00",
+        response="Final content",
+        response_at="2025-09-30T09:59:30+00:00",
+        tool_results=[
+            {
+                "tool_name": "demo_tool",
+                "ok": True,
+                "tool_arguments": {"query": "late"},
+                "result": {"status": "ok"},
+                "started_at": "2025-09-30T10:00:00+00:00",
+                "completed_at": latest_ts,
+            }
+        ],
+    )
+
+    frame = wx.Frame(None)
+    panel = None
+    try:
+        panel = render_turn_card(
+            frame,
+            conversation=conversation,
+            entry=entry_timeline,
+            layout_hints=entry_timeline.layout_hints,
+        )
+        wx.GetApp().Yield()
+
+        agent_bubble = next(
+            bubble
+            for bubble in collect_message_bubbles(panel)
+            if "Agent" in bubble_header_text(bubble)
+        )
+        header = bubble_header_text(agent_bubble)
+        assert format_entry_timestamp(latest_ts) in header
+    finally:
+        if panel is not None:
+            panel.Destroy()
+        frame.Destroy()
+
+
 def test_agent_chat_panel_embeds_tool_sections_inside_agent_bubble(tmp_path, wx_app):
     class ToolAgent:
         def run_command(

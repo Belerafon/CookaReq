@@ -960,8 +960,6 @@ def _build_agent_events(
             )
             if detail.call_identifier:
                 added_tool_ids.add(detail.call_identifier)
-            if detail.call_identifier:
-                added_tool_ids.add(detail.call_identifier)
 
     if final_response is not None and not has_final_response:
         events.append(
@@ -996,9 +994,6 @@ def _build_agent_events(
             timestamp or _UTC_MIN,
             evt.order_index,
         )
-
-    for index, event in enumerate(events):
-        event.order_index = index
 
     events.sort(key=_event_sort_key)
 

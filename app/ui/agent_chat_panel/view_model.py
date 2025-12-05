@@ -566,7 +566,21 @@ def _build_tool_calls(
     if not snapshots:
         return (), None
 
-    summaries = summarize_tool_results(snapshots)
+    def _snapshot_order_key(snapshot: ToolResultSnapshot) -> tuple[int, _dt.datetime | None, int]:
+        """Return chronological key preferring completion, last observation, then start."""
+
+        for index, candidate in enumerate(
+            (snapshot.completed_at, snapshot.last_observed_at, snapshot.started_at)
+        ):
+            if not isinstance(candidate, str) or not candidate.strip():
+                continue
+            parsed = parse_iso_timestamp(candidate)
+            return (0 if parsed is not None else 1, parsed, index)
+        return (1, None, len((snapshot.completed_at, snapshot.last_observed_at, snapshot.started_at)))
+
+    ordered_snapshots = sorted(snapshots, key=_snapshot_order_key)
+
+    summaries = summarize_tool_results(ordered_snapshots)
     summaries_by_id: dict[str, ToolCallSummary] = {}
     fallback_summaries: list[ToolCallSummary] = []
     for summary in summaries:
@@ -587,7 +601,7 @@ def _build_tool_calls(
 
     fallback_iter = iter(fallback_summaries)
 
-    for index, snapshot in enumerate(snapshots, start=1):
+    for index, snapshot in enumerate(ordered_snapshots, start=1):
         summary = summaries_by_id.get(snapshot.call_id)
         if summary is None:
             summary_tuple = summarize_tool_results([snapshot])
@@ -891,6 +905,15 @@ def _build_agent_events(
             )
         )
 
+    for index, event in enumerate(events):
+        event.order_index = index
+    events.sort(
+        key=lambda evt: (
+            1 if evt.timestamp.occurred_at is None else 0,
+            evt.timestamp.occurred_at or _UTC_MIN,
+            evt.order_index,
+        )
+    )
     for index, event in enumerate(events):
         event.order_index = index
 

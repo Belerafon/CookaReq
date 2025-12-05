@@ -297,7 +297,7 @@ class ChatEntry:
         self.ensure_token_info()
         payload = _parse_agent_run_payload(self.raw_result)
         if payload is not None:
-            self.raw_result = payload.to_dict()
+            self.raw_result = payload.to_history_dict()
             if not self.reasoning and payload.reasoning:
                 self.reasoning = tuple(dict(segment) for segment in payload.reasoning)
             diagnostic = _strip_diagnostic_event_log(self.diagnostic)
@@ -611,7 +611,7 @@ class ChatEntry:
         )
         parsed_payload = _parse_agent_run_payload(raw_result)
         if parsed_payload is not None:
-            raw_result = parsed_payload.to_dict()
+            raw_result = parsed_payload.to_history_dict()
         tool_results_raw = payload.get("tool_results")
         if tool_results_raw is not None:
             normalised_results = _normalise_tool_results_payload(tool_results_raw)

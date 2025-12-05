@@ -497,7 +497,7 @@ class AgentRunPayload:
     tool_schemas: Mapping[str, Any] | None = None
     agent_stop_reason: Mapping[str, Any] | None = None
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, include_diagnostic_event_log: bool = True) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "ok": self.ok,
             "status": self.status,
@@ -515,14 +515,23 @@ class AgentRunPayload:
                 snapshot.to_dict() for snapshot in ordered_snapshots
             ]
         if self.diagnostic is not None:
-            payload["diagnostic"] = dict(self.diagnostic)
-        elif self.events.events:
+            diagnostic_payload = dict(self.diagnostic)
+            if not include_diagnostic_event_log:
+                diagnostic_payload.pop("event_log", None)
+            if diagnostic_payload:
+                payload["diagnostic"] = diagnostic_payload
+        elif include_diagnostic_event_log and self.events.events:
             payload["diagnostic"] = {"event_log": [event.to_dict() for event in self.events.events]}
         if self.tool_schemas is not None:
             payload["tool_schemas"] = dict(self.tool_schemas)
         if self.agent_stop_reason is not None:
             payload["agent_stop_reason"] = dict(self.agent_stop_reason)
         return payload
+
+    def to_history_dict(self) -> dict[str, Any]:
+        """Return serialisation without duplicating the event log in diagnostics."""
+
+        return self.to_dict(include_diagnostic_event_log=False)
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "AgentRunPayload":

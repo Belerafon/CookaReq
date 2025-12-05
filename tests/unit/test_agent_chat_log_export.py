@@ -15,6 +15,7 @@ from app.agent.run_contract import (
     ToolTimelineEvent,
 )
 from app.llm.spec import SYSTEM_PROMPT
+from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel.log_export import (
     SYSTEM_PROMPT_PLACEHOLDER,
     compose_transcript_log_text,
@@ -356,3 +357,53 @@ def test_transcript_log_prefers_event_log_ordering() -> None:
     assert first_event != -1
     assert second_event != -1
     assert first_event < second_event
+
+
+def test_chat_entry_strips_diagnostic_event_log_from_raw_result() -> None:
+    events = AgentEventLog(
+        events=[
+            AgentEvent(
+                kind="llm_step",
+                occurred_at=_iso("2025-10-02T12:00:01+00:00"),
+                payload={"request": (), "response": {"text": "..."}},
+            ),
+            AgentEvent(
+                kind="agent_finished",
+                occurred_at=_iso("2025-10-02T12:00:02+00:00"),
+                payload={"result": "Done", "ok": True, "status": "succeeded"},
+            ),
+        ]
+    )
+    payload = AgentRunPayload(
+        ok=True,
+        status="succeeded",
+        result_text="Done",
+        events=events,
+        llm_trace=LlmTrace(),
+        reasoning=(),
+        tool_results=[],
+        diagnostic={"trace_id": "abc"},
+    )
+    raw_payload = payload.to_dict()
+    raw_payload["diagnostic"] = {
+        "trace_id": "abc",
+        "event_log": [event.to_dict() for event in events.events],
+    }
+    entry_payload = {
+        "prompt": "hi",
+        "response": "Done",
+        "display_response": "Done",
+        "raw_result": raw_payload,
+        "token_info": TokenCountResult.exact(1).to_dict(),
+        "prompt_at": _iso("2025-10-02T12:00:00+00:00"),
+        "response_at": _iso("2025-10-02T12:00:02+00:00"),
+    }
+
+    entry = ChatEntry.from_dict(entry_payload)
+
+    assert isinstance(entry.raw_result, dict)
+    diagnostic = entry.raw_result.get("diagnostic")
+    assert diagnostic == {"trace_id": "abc"}
+    parsed_payload = AgentRunPayload.from_dict(entry.raw_result)
+    assert parsed_payload.events.events[0].kind == "llm_step"
+    assert parsed_payload.events.events[-1].kind == "agent_finished"

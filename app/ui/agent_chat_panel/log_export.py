@@ -11,6 +11,7 @@ from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation
 from ..text import normalize_for_display
+from .history_utils import agent_payload_from_mapping
 from .time_formatting import format_entry_timestamp, parse_iso_timestamp
 from .view_model import (
     AgentResponse,
@@ -103,13 +104,22 @@ def _event_log_sort_key(index: int, timestamp: str | None) -> tuple[int, datetim
     return (missing, moment or _UTC_MIN, index)
 
 
-def _plain_events_from_log(entry: TranscriptEntry) -> list[_PlainEvent]:
-    diagnostic = getattr(entry.entry, "diagnostic", None)
-    if not isinstance(diagnostic, Mapping):
-        return []
-    raw_events = diagnostic.get("event_log")
-    if not isinstance(raw_events, Sequence):
-        return []
+def _plain_events_from_log(
+    entry: TranscriptEntry, *, seen_prompt: bool = False
+) -> tuple[list[_PlainEvent], bool]:
+    payload = agent_payload_from_mapping(
+        entry.entry.raw_result if isinstance(entry.entry.raw_result, Mapping) else None
+    )
+    if payload is not None and payload.events.events:
+        raw_events: Sequence[Mapping[str, Any]] = [
+            event.to_dict() for event in payload.events.events
+        ]
+    else:
+        diagnostic = getattr(entry.entry, "diagnostic", None)
+        diagnostic_payload = diagnostic if isinstance(diagnostic, Mapping) else None
+        raw_events = diagnostic_payload.get("event_log") if diagnostic_payload else None
+        if not isinstance(raw_events, Sequence):
+            return [], seen_prompt
 
     turn_timestamp = entry.agent_turn.timestamp if entry.agent_turn is not None else None
     collected: list[tuple[tuple[int, datetime.datetime, int], _PlainEvent]] = []
@@ -120,6 +130,10 @@ def _plain_events_from_log(entry: TranscriptEntry) -> list[_PlainEvent]:
         occurred_at = record.get("occurred_at")
         label = _("Event ({kind}):").format(kind=normalize_for_display(kind))
         payload = record.get("payload")
+        if payload is not None:
+            payload, seen_prompt = _strip_repeated_system_prompt(
+                payload, seen_prompt=seen_prompt
+            )
         payload_text = _format_json_block(payload) if payload is not None else ""
         timestamp_label = _format_iso_timestamp(occurred_at, turn_timestamp)
         collected.append(
@@ -130,7 +144,7 @@ def _plain_events_from_log(entry: TranscriptEntry) -> list[_PlainEvent]:
         )
 
     collected.sort(key=lambda item: item[0])
-    return [item[1] for item in collected]
+    return [item[1] for item in collected], seen_prompt
 
 
 def _normalise_json_value(value: Any) -> Any:
@@ -494,7 +508,9 @@ def compose_transcript_log_text(
 
         turn = entry.agent_turn
         if turn is not None:
-            log_events = _plain_events_from_log(entry)
+            log_events, seen_system_prompt = _plain_events_from_log(
+                entry, seen_prompt=seen_system_prompt
+            )
             if log_events:
                 append_plain_events(log_events)
             else:

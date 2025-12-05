@@ -315,6 +315,28 @@ def test_transcript_log_prefers_event_log_ordering() -> None:
     conversation = ChatConversation.new()
     prompt_at = _iso("2025-10-02T12:00:00+00:00")
     response_at = _iso("2025-10-02T12:00:10+00:00")
+    payload = AgentRunPayload(
+        ok=True,
+        status="succeeded",
+        result_text="Done",
+        events=AgentEventLog(
+            events=[
+                AgentEvent(
+                    kind="llm_step",
+                    occurred_at=_iso("2025-10-02T12:00:05+00:00"),
+                    payload={"text": "Working", "index": 1, "request": (), "response": {}},
+                ),
+                AgentEvent(
+                    kind="agent_finished",
+                    occurred_at=_iso("2025-10-02T12:00:09+00:00"),
+                    payload={"result": "Done", "ok": True, "status": "succeeded"},
+                ),
+            ]
+        ),
+        llm_trace=LlmTrace(),
+        reasoning=(),
+        tool_results=[],
+    )
     entry = ChatEntry(
         prompt="Hello",
         response="Done",
@@ -322,29 +344,14 @@ def test_transcript_log_prefers_event_log_ordering() -> None:
         tokens=0,
         prompt_at=prompt_at,
         response_at=response_at,
-        raw_result={},
-        diagnostic={},
+        raw_result=payload.to_dict(),
     )
-    entry.diagnostic = {
-        "event_log": [
-            {
-                "kind": "final_response",
-                "occurred_at": _iso("2025-10-02T12:00:09+00:00"),
-                "payload": {"text": "Done"},
-            },
-            {
-                "kind": "llm_step",
-                "occurred_at": _iso("2025-10-02T12:00:05+00:00"),
-                "payload": {"text": "Working"},
-            },
-        ]
-    }
     conversation.append_entry(entry)
 
     log_text = compose_transcript_log_text(conversation)
 
     first_event = log_text.find("Event (llm_step):")
-    second_event = log_text.find("Event (final_response):")
+    second_event = log_text.find("Event (agent_finished):")
 
     assert first_event != -1
     assert second_event != -1

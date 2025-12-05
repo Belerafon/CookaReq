@@ -83,6 +83,9 @@ def tool_snapshots_from(value: Any) -> list[ToolResultSnapshot]:
     """Return tool snapshots parsed deterministically from ``value``."""
     if value is None:
         return []
+    payload = agent_payload_from_mapping(value) if isinstance(value, Mapping) else None
+    if payload is not None:
+        return payload.tool_results
     if isinstance(value, Mapping) and "tool_results" in value:
         return tool_snapshots_from(value.get("tool_results"))
     if isinstance(value, ToolResultSnapshot):

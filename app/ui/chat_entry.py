@@ -8,7 +8,7 @@ from typing import Any, Callable, TypeVar, cast
 from collections.abc import Iterable, Mapping, Sequence
 from uuid import uuid4
 
-from ..agent.run_contract import ToolResultSnapshot
+from ..agent.run_contract import AgentRunPayload, ToolResultSnapshot
 from ..llm.tokenizer import (
     TokenCountResult,
     combine_token_counts,
@@ -71,6 +71,22 @@ def _normalise_tool_results_payload(value: Any) -> list[dict[str, Any]]:
             continue
         snapshots.append(snapshot.to_dict())
     return snapshots
+
+
+def _parse_agent_run_payload(raw_result: Any) -> AgentRunPayload | None:
+    if not isinstance(raw_result, Mapping):
+        return None
+    try:
+        return AgentRunPayload.from_dict(raw_result)
+    except Exception:
+        return None
+
+
+def _strip_diagnostic_event_log(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    cleaned = {k: v for k, v in value.items() if k != "event_log"}
+    return cleaned or None
 
 
 @dataclass(frozen=True)
@@ -254,6 +270,13 @@ class ChatEntry:
         if self.display_response is None:
             self.display_response = self.response
         self.ensure_token_info()
+        payload = _parse_agent_run_payload(self.raw_result)
+        if payload is not None:
+            self.raw_result = payload.to_dict()
+            if not self.reasoning and payload.reasoning:
+                self.reasoning = tuple(dict(segment) for segment in payload.reasoning)
+            diagnostic = _strip_diagnostic_event_log(self.diagnostic)
+            self.diagnostic = diagnostic
         if isinstance(self.raw_result, Mapping):
             tool_results_raw = self.raw_result.get("tool_results")
             normalised_results = _normalise_tool_results_payload(tool_results_raw)
@@ -549,6 +572,9 @@ class ChatEntry:
             if isinstance(raw_result_payload, Mapping)
             else raw_result_payload
         )
+        parsed_payload = _parse_agent_run_payload(raw_result)
+        if parsed_payload is not None:
+            raw_result = parsed_payload.to_dict()
         tool_results_raw = payload.get("tool_results")
         if tool_results_raw is not None:
             normalised_results = _normalise_tool_results_payload(tool_results_raw)
@@ -583,31 +609,7 @@ class ChatEntry:
             if prepared:
                 context_messages = tuple(prepared)
 
-        tool_messages_raw = payload.get("tool_messages")
         tool_messages: tuple[dict[str, Any], ...] | None = None
-        if isinstance(tool_messages_raw, Sequence) and not isinstance(
-            tool_messages_raw, (str, bytes, bytearray)
-        ):
-            prepared_messages: list[dict[str, Any]] = []
-            for item in tool_messages_raw:
-                if not isinstance(item, Mapping):
-                    continue
-                role_value = item.get("role")
-                role = str(role_value).strip() if role_value is not None else "tool"
-                if not role:
-                    role = "tool"
-                content_value = item.get("content")
-                content = str(content_value) if content_value is not None else ""
-                message: dict[str, Any] = {"role": role, "content": content}
-                call_value = item.get("tool_call_id")
-                if isinstance(call_value, str) and call_value.strip():
-                    message["tool_call_id"] = call_value.strip()
-                name_value = item.get("name")
-                if isinstance(name_value, str) and name_value.strip():
-                    message["name"] = name_value.strip()
-                prepared_messages.append(message)
-            if prepared_messages:
-                tool_messages = tuple(prepared_messages)
 
         reasoning_raw = payload.get("reasoning")
         reasoning: tuple[dict[str, Any], ...] | None = None
@@ -640,11 +642,15 @@ class ChatEntry:
                 prepared_reasoning.append(segment)
             if prepared_reasoning:
                 reasoning = tuple(prepared_reasoning)
+        elif parsed_payload is not None and parsed_payload.reasoning:
+            reasoning = tuple(dict(segment) for segment in parsed_payload.reasoning)
 
         diagnostic_raw = payload.get("diagnostic")
         diagnostic: dict[str, Any] | None = None
         if isinstance(diagnostic_raw, Mapping):
             diagnostic = dict(diagnostic_raw)
+        if parsed_payload is not None:
+            diagnostic = _strip_diagnostic_event_log(diagnostic)
 
         regenerated_raw = payload.get("regenerated")
         regenerated = bool(regenerated_raw) if isinstance(regenerated_raw, bool) else False
@@ -671,6 +677,8 @@ class ChatEntry:
 
     def to_dict(self) -> dict[str, Any]:
         """Return representation suitable for JSON storage."""
+        diagnostic = _strip_diagnostic_event_log(self.diagnostic)
+
         payload = {
             "prompt": self.prompt,
             "response": self.response,
@@ -691,7 +699,7 @@ class ChatEntry:
             "reasoning": [dict(segment) for segment in self.reasoning]
             if self.reasoning is not None
             else None,
-            "diagnostic": dict(self.diagnostic) if self.diagnostic is not None else None,
+            "diagnostic": dict(diagnostic) if diagnostic is not None else None,
             "regenerated": self.regenerated,
         }
         cache_payload: dict[str, dict[str, Any]] = {}

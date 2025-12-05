@@ -988,9 +988,20 @@ def _build_agent_events(
         if identifier:
             added_tool_ids.add(identifier)
 
+    def _event_sort_key(evt: AgentTimelineEvent) -> tuple[int, _dt.datetime, int]:
+        timestamp = evt.timestamp.occurred_at
+        has_timestamp = timestamp is not None
+        return (
+            0 if has_timestamp else 1,
+            timestamp or _UTC_MIN,
+            evt.order_index,
+        )
+
     for index, event in enumerate(events):
         event.order_index = index
-    events.sort(key=lambda evt: (evt.order_index, evt.timestamp.occurred_at or _UTC_MIN))
+
+    events.sort(key=_event_sort_key)
+
     for index, event in enumerate(events):
         event.order_index = index
 

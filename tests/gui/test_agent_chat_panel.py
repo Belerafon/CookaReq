@@ -24,6 +24,7 @@ from app.ui.agent_chat_panel.view_model import (
     build_conversation_timeline,
     build_transcript_segments,
 )
+from app.ui.agent_chat_panel.log_export import compose_transcript_text
 from app.ui.agent_chat_panel.time_formatting import format_entry_timestamp
 from app.ui.agent_chat_panel.layout import PRIMARY_ACTION_IDLE_LABEL
 from app.ui.chat_entry import ChatConversation, ChatEntry
@@ -2194,6 +2195,40 @@ def test_agent_chat_panel_sorts_tool_results_chronologically(tmp_path, wx_app):
         assert first_timestamp < second_timestamp, log_text
     finally:
         destroy_panel(frame, panel)
+
+
+def test_agent_events_should_follow_timestamp_order():
+    conversation, _ = build_entry_timeline(
+        prompt="Inspect request",
+        response="Final agent message",
+        prompt_at="2025-09-30T09:00:00+00:00",
+        response_at="2025-09-30T10:00:30+00:00",
+        tool_results=[
+            {
+                "tool_name": "later_tool",
+                "ok": True,
+                "tool_arguments": {"query": "later"},
+                "result": {"status": "ok"},
+                "started_at": "2025-09-30T10:00:00+00:00",
+                "completed_at": "2025-09-30T10:00:30+00:00",
+            },
+            {
+                "tool_name": "earlier_tool",
+                "ok": True,
+                "tool_arguments": {"query": "earlier"},
+                "result": {"status": "ok"},
+                "started_at": "2025-09-30T09:00:10+00:00",
+                "completed_at": "2025-09-30T09:00:20+00:00",
+            },
+        ],
+    )
+
+    transcript_text = compose_transcript_text(conversation)
+
+    tool_index = transcript_text.index("earlier_tool")
+    agent_index = transcript_text.index("Final agent message")
+
+    assert tool_index < agent_index, transcript_text
 
 
 def test_agent_turn_timestamp_tracks_latest_event(tmp_path, wx_app):

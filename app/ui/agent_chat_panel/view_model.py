@@ -960,8 +960,6 @@ def _build_agent_events(
             )
             if detail.call_identifier:
                 added_tool_ids.add(detail.call_identifier)
-            if detail.call_identifier:
-                added_tool_ids.add(detail.call_identifier)
 
     if final_response is not None and not has_final_response:
         events.append(
@@ -988,9 +986,17 @@ def _build_agent_events(
         if identifier:
             added_tool_ids.add(identifier)
 
-    for index, event in enumerate(events):
-        event.order_index = index
-    events.sort(key=lambda evt: (evt.order_index, evt.timestamp.occurred_at or _UTC_MIN))
+    def _event_sort_key(evt: AgentTimelineEvent) -> tuple[int, _dt.datetime, int]:
+        timestamp = evt.timestamp.occurred_at
+        has_timestamp = timestamp is not None
+        return (
+            0 if has_timestamp else 1,
+            timestamp or _UTC_MIN,
+            evt.order_index,
+        )
+
+    events.sort(key=_event_sort_key)
+
     for index, event in enumerate(events):
         event.order_index = index
 

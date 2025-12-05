@@ -282,6 +282,22 @@ def collect_collapsible_panes(window: "wx.Window") -> list["wx.CollapsiblePane"]
     return panes
 
 
+def write_transcript_artifacts(panel, artifact_dir: Path, request) -> tuple[Path, Path]:
+    conversation_text = panel.get_transcript_text()
+    log_text = panel.get_transcript_log_text()
+
+    conversation_path = artifact_dir / "copied_conversation.txt"
+    log_path = artifact_dir / "copied_technical_log.txt"
+
+    conversation_path.write_text(conversation_text, encoding="utf-8")
+    log_path.write_text(log_text, encoding="utf-8")
+
+    request.node.add_report_section("call", "copied_conversation", conversation_text)
+    request.node.add_report_section("call", "copied_technical_log", log_text)
+
+    return conversation_path, log_path
+
+
 def test_user_attachment_metadata_display(wx_app):
     wx = pytest.importorskip("wx")
 
@@ -1848,6 +1864,101 @@ def test_agent_chat_panel_hides_tool_results_and_exposes_log(tmp_path, wx_app):
         assert "query" in log_text
         assert "LLM request:" in log_text
         assert "Raw LLM payload:" in log_text
+    finally:
+        destroy_panel(frame, panel)
+
+
+def test_copy_buttons_emit_inspection_artifacts(tmp_path, wx_app, request):
+    class ArtifactAgent:
+        def run_command(
+            self,
+            text,
+            *,
+            history=None,
+            context=None,
+            cancellation=None,
+            on_tool_result=None,
+            on_llm_step=None,
+        ):
+            diagnostic = {
+                "llm_steps": [
+                    {
+                        "response": {
+                            "content": "Reasoning chunk",
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "demo_tool",
+                                        "arguments": json.dumps({"query": text}),
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+                "system_prompt": SYSTEM_PROMPT,
+            }
+
+            if on_tool_result is not None:
+                on_tool_result(
+                    {
+                        "tool_name": "demo_tool",
+                        "tool_arguments": {"query": text},
+                        "result": {"status": "ok"},
+                        "tool_call_id": "call-1",
+                        "started_at": "2025-01-01T10:00:00+00:00",
+                        "completed_at": "2025-01-01T10:00:05+00:00",
+                        "ok": True,
+                    }
+                )
+
+            if on_llm_step is not None:
+                on_llm_step(
+                    {
+                        "step": 2,
+                        "response": {
+                            "content": "Final reasoning",
+                        },
+                    }
+                )
+
+            return {
+                "ok": True,
+                "error": None,
+                "result": "Agent reply",
+                "diagnostic": diagnostic,
+                "tool_results": [
+                    {
+                        "tool_name": "demo_tool",
+                        "tool_call_id": "call-1",
+                        "tool_arguments": {"query": text},
+                        "result": {"status": "ok"},
+                        "started_at": "2025-01-01T10:00:00+00:00",
+                        "completed_at": "2025-01-01T10:00:05+00:00",
+                        "ok": True,
+                    }
+                ],
+            }
+
+    wx, frame, panel = create_panel(tmp_path, wx_app, agent=ArtifactAgent())
+
+    try:
+        panel.input.SetValue("collect artifacts")
+        panel._on_send(None)
+        flush_wx_events(wx, count=6)
+
+        assert panel.history
+        panel._render_transcript()
+        flush_wx_events(wx, count=3)
+
+        conversation_path, log_path = write_transcript_artifacts(
+            panel, tmp_path, request
+        )
+
+        assert conversation_path.read_text(encoding="utf-8").strip()
+        assert log_path.read_text(encoding="utf-8").strip()
     finally:
         destroy_panel(frame, panel)
 

@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 import json
 
 from app.agent.run_contract import (
+    AgentEvent,
+    AgentEventLog,
     AgentRunPayload,
     LlmStep,
     LlmTrace,
@@ -123,9 +125,11 @@ def _conversation_with_failed_updates() -> ChatConversation:
         ok=False,
         status="failed",
         result_text=response_text,
+        events=AgentEventLog(),
         reasoning=(),
         tool_results=[success_snapshot, *failure_snapshots],
         llm_trace=LlmTrace(),
+        error=error_payload,
         diagnostic={
             "llm_request_messages": (
                 {"role": "system", "content": _SYSTEM_PROMPT_TEXT},
@@ -161,7 +165,6 @@ def _conversation_with_failed_updates() -> ChatConversation:
         prompt_at=_iso("2025-10-02T11:19:15+00:00"),
         response_at=_iso("2025-10-02T11:38:04+00:00"),
         raw_result=payload.to_dict(),
-        diagnostic=dict(payload.diagnostic or {}),
     )
     conversation.append_entry(entry)
     return conversation
@@ -190,10 +193,10 @@ def _conversation_with_streamed_responses() -> ChatConversation:
         ok=True,
         status="succeeded",
         result_text="Готово: итоговое сообщение",
+        events=AgentEventLog(),
         reasoning=(),
         tool_results=[],
         llm_trace=llm_trace,
-        diagnostic={},
     )
     entry = ChatEntry(
         prompt=prompt_text,
@@ -203,7 +206,6 @@ def _conversation_with_streamed_responses() -> ChatConversation:
         prompt_at=_iso("2025-10-02T11:00:00+00:00"),
         response_at=_iso("2025-10-02T11:00:05+00:00"),
         raw_result=payload.to_dict(),
-        diagnostic={},
     )
     conversation.append_entry(entry)
     return conversation
@@ -249,19 +251,35 @@ def test_transcript_log_replaces_prefixed_system_prompt_but_keeps_context() -> N
     conversation = ChatConversation.new()
     prompt_text = "Переведи требования"
     combined_prompt = _SYSTEM_PROMPT_TEXT + "\n\nContext:\n- File: README.md"
+    events = AgentEventLog(
+        events=[
+            AgentEvent(
+                kind="llm_step",
+                occurred_at=_iso("2025-10-02T12:00:01+00:00"),
+                payload={
+                    "index": 1,
+                    "request": (
+                        {"role": "system", "content": combined_prompt},
+                        {"role": "user", "content": prompt_text},
+                    ),
+                    "response": {},
+                },
+            ),
+            AgentEvent(
+                kind="agent_finished",
+                occurred_at=_iso("2025-10-02T12:00:05+00:00"),
+                payload={"ok": True, "status": "succeeded", "result": "Готово"},
+            ),
+        ]
+    )
     payload = AgentRunPayload(
         ok=True,
         status="succeeded",
         result_text="Готово",
+        events=events,
         reasoning=(),
         tool_results=[],
         llm_trace=LlmTrace(),
-        diagnostic={
-            "llm_request_messages": (
-                {"role": "system", "content": combined_prompt},
-                {"role": "user", "content": prompt_text},
-            )
-        },
     )
     entry = ChatEntry(
         prompt=prompt_text,
@@ -271,7 +289,6 @@ def test_transcript_log_replaces_prefixed_system_prompt_but_keeps_context() -> N
         prompt_at=_iso("2025-10-02T12:00:00+00:00"),
         response_at=_iso("2025-10-02T12:00:05+00:00"),
         raw_result=payload.to_dict(),
-        diagnostic=dict(payload.diagnostic or {}),
     )
     entry.context_messages = (
         {"role": "system", "content": combined_prompt},

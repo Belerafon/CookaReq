@@ -137,7 +137,6 @@ def test_build_conversation_timeline_compiles_turn() -> None:
         reasoning=reasoning_segments,
         tool_results=list(snapshots),
         llm_trace=_llm_trace_with_tool_request(),
-        diagnostic={},
     )
     entry = ChatEntry(
         prompt="Переведи требования",
@@ -263,7 +262,6 @@ def test_build_conversation_timeline_deduplicates_reasoning_only_reply() -> None
                 )
             ]
         ),
-        diagnostic={},
     )
     entry = ChatEntry(
         prompt="Что дальше?",

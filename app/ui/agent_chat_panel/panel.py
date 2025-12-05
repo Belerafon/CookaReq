@@ -17,7 +17,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 import wx
 
-from ...agent.run_contract import AgentRunPayload, LlmTrace, ToolResultSnapshot
+from ...agent.run_contract import (
+    AgentEvent,
+    AgentEventLog,
+    AgentRunPayload,
+    LlmTrace,
+    ToolResultSnapshot,
+    ToolError,
+)
 
 from ...confirm import confirm
 from ...i18n import _
@@ -2665,24 +2672,38 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if response_text:
             combined_display = f"{response_text}\n\n{cancellation_message}"
 
-        diagnostic: dict[str, Any] = {
-            "error": {
-                "type": "OperationCancelledError",
-                "message": cancellation_message,
-                "details": {"reason": "user_cancelled"},
-            }
-        }
-        if handle.llm_trace_preview:
-            diagnostic["llm_steps"] = list(handle.llm_trace_preview)
+        events = AgentEventLog(
+            events=[
+                AgentEvent(
+                    kind="agent_finished",
+                    occurred_at=utc_now_iso(),
+                    payload={
+                        "ok": False,
+                        "status": "failed",
+                        "result": response_text or cancellation_message,
+                        "error": {
+                            "type": "OperationCancelledError",
+                            "message": cancellation_message,
+                            "details": {"reason": "user_cancelled"},
+                        },
+                    },
+                )
+            ]
+        )
 
         payload = AgentRunPayload(
             ok=False,
             status="failed",
             result_text=response_text,
+            events=events,
             reasoning=list(reasoning_segments or ()),
             tool_results=[snapshot for snapshot in tool_snapshots],
             llm_trace=LlmTrace(),
-            diagnostic=diagnostic,
+            error=ToolError(
+                message=cancellation_message,
+                code="OperationCancelledError",
+                details={"reason": "user_cancelled"},
+            ),
             tool_schemas=None,
         )
         raw_result = payload.to_dict()

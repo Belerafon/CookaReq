@@ -247,7 +247,7 @@ class ToolResultSnapshot:
         kind: Literal["started", "update", "completed", "failed"],
         *,
         message: str | None = None,
-    ) -> None:
+    ) -> str:
         timestamp = utc_now_iso()
         self.events.append(
             ToolTimelineEvent(kind=kind, occurred_at=timestamp, message=message)
@@ -261,6 +261,7 @@ class ToolResultSnapshot:
                 duration = _seconds_between(self.started_at, timestamp)
                 if duration is not None:
                     self.metrics.duration_seconds = duration
+        return timestamp
 
 
 def _seconds_between(start_iso: str, end_iso: str) -> float | None:
@@ -361,19 +362,92 @@ class LlmTrace:
 
 
 @dataclass(slots=True)
+class AgentEvent:
+    """Single chronological event of an agent run."""
+
+    kind: Literal[
+        "llm_step",
+        "reasoning",
+        "tool_started",
+        "tool_completed",
+        "agent_finished",
+    ]
+    occurred_at: str
+    payload: Mapping[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "occurred_at": self.occurred_at,
+            "payload": dict(self.payload),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AgentEvent":
+        kind = payload.get("kind")
+        if kind not in {
+            "llm_step",
+            "reasoning",
+            "tool_started",
+            "tool_completed",
+            "agent_finished",
+        }:
+            raise ValueError(f"invalid agent event kind: {kind!r}")
+        occurred_at = payload.get("occurred_at")
+        if not isinstance(occurred_at, str) or not occurred_at.strip():
+            raise ValueError("agent event missing occurred_at")
+        payload_value = payload.get("payload")
+        mapping: Mapping[str, Any]
+        if isinstance(payload_value, Mapping):
+            mapping = payload_value
+        else:
+            mapping = {}
+        return cls(kind=kind, occurred_at=occurred_at, payload=mapping)
+
+
+@dataclass(slots=True)
+class AgentEventLog:
+    """Ordered list of :class:`AgentEvent` objects."""
+
+    events: list[AgentEvent] = field(default_factory=list)
+
+    def append(self, event: AgentEvent) -> None:
+        self.events.append(event)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"events": [event.to_dict() for event in self.events]}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AgentEventLog":
+        events_payload = payload.get("events")
+        events: list[AgentEvent] = []
+        if isinstance(events_payload, Sequence) and not isinstance(
+            events_payload, (str, bytes, bytearray)
+        ):
+            for entry in events_payload:
+                if not isinstance(entry, Mapping):
+                    continue
+                try:
+                    events.append(AgentEvent.from_dict(entry))
+                except Exception:
+                    continue
+        return cls(events=events)
+
+
+@dataclass(slots=True)
 class AgentRunPayload:
     """Deterministic payload exposed as ``raw_result`` for chat entries."""
 
     ok: bool
     status: Literal["succeeded", "failed"]
     result_text: str
-    reasoning: Sequence[Mapping[str, Any]]
-    tool_results: list[ToolResultSnapshot]
-    llm_trace: LlmTrace
-    error: ToolError | None = None
+    events: AgentEventLog = field(default_factory=AgentEventLog)
+    tool_results: list[ToolResultSnapshot] = field(default_factory=list)
+    llm_trace: LlmTrace = field(default_factory=LlmTrace)
+    reasoning: Sequence[Mapping[str, Any]] = field(default_factory=list)
     diagnostic: Mapping[str, Any] | None = None
+    error: ToolError | None = None
     tool_schemas: Mapping[str, Any] | None = None
-    last_tool: ToolResultSnapshot | None = None
     agent_stop_reason: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -381,6 +455,7 @@ class AgentRunPayload:
             "ok": self.ok,
             "status": self.status,
             "result": self.result_text,
+            "events": self.events.to_dict(),
             "llm_trace": self.llm_trace.to_dict(),
             "reasoning": [dict(segment) for segment in self.reasoning],
         }
@@ -393,23 +468,12 @@ class AgentRunPayload:
             ]
         if self.diagnostic is not None:
             payload["diagnostic"] = dict(self.diagnostic)
+        elif self.events.events:
+            payload["diagnostic"] = {"event_log": [event.to_dict() for event in self.events.events]}
         if self.tool_schemas is not None:
             payload["tool_schemas"] = dict(self.tool_schemas)
         if self.agent_stop_reason is not None:
             payload["agent_stop_reason"] = dict(self.agent_stop_reason)
-        if self.last_tool is not None:
-            last_tool_payload = self.last_tool.to_dict()
-            payload["last_tool"] = last_tool_payload
-            for key in ("tool_name", "tool_call_id", "call_id", "agent_status"):
-                value = last_tool_payload.get(key)
-                if value is not None:
-                    payload[key] = value
-            if "tool_arguments" in last_tool_payload:
-                payload["tool_arguments"] = last_tool_payload["tool_arguments"]
-            if not self.ok and "result" in last_tool_payload:
-                payload["tool_result"] = last_tool_payload["result"]
-            if payload.get("error") is None and "error" in last_tool_payload:
-                payload["error"] = last_tool_payload["error"]
         return payload
 
     @classmethod
@@ -417,7 +481,6 @@ class AgentRunPayload:
         ok = bool(payload.get("ok"))
         status_value = payload.get("status")
         status = "succeeded" if status_value == "succeeded" else "failed"
-        error_payload_raw = payload.get("error")
         result_value = payload.get("result")
         if isinstance(result_value, str):
             result_text = result_value
@@ -448,153 +511,40 @@ class AgentRunPayload:
                     tool_results.append(ToolResultSnapshot.from_dict(entry))
                 except Exception:
                     continue
-        llm_trace_payload = payload.get("llm_trace")
-        llm_trace = (
-            LlmTrace.from_dict(llm_trace_payload)
-            if isinstance(llm_trace_payload, Mapping)
-            else LlmTrace()
+        events_payload = payload.get("events")
+        events = (
+            AgentEventLog.from_dict(events_payload)
+            if isinstance(events_payload, Mapping)
+            else AgentEventLog()
         )
-        error_payload = error_payload_raw
+        if not events.events:
+            diagnostic_payload = payload.get("diagnostic")
+            if isinstance(diagnostic_payload, Mapping):
+                event_log_payload = diagnostic_payload.get("event_log")
+                if isinstance(event_log_payload, Sequence):
+                    events = AgentEventLog.from_dict({"events": event_log_payload})
+        error_payload = payload.get("error")
         error: ToolError | None = None
         if isinstance(error_payload, Mapping):
             try:
                 error = ToolError.from_dict(error_payload)
             except Exception:
                 error = None
-            if not result_text:
-                details_payload = error_payload.get("details")
-                if isinstance(details_payload, Mapping):
-                    message_candidate = details_payload.get("llm_message")
-                    if isinstance(message_candidate, str) and message_candidate.strip():
-                        result_text = message_candidate
-                if not result_text:
-                    message_candidate = error_payload.get("message")
-                    if isinstance(message_candidate, str):
-                        result_text = message_candidate
+        llm_trace_payload = payload.get("llm_trace")
+        if isinstance(llm_trace_payload, Mapping):
+            llm_trace = LlmTrace.from_dict(llm_trace_payload)
+        else:
+            llm_trace = _llm_trace_from_events(events)
+        if not reasoning:
+            reasoning = _reasoning_from_events(events)
+        if not tool_results:
+            tool_results = _tool_results_from_events(events)
         diagnostic_payload = payload.get("diagnostic")
         diagnostic: Mapping[str, Any] | None
         if isinstance(diagnostic_payload, Mapping):
             diagnostic = dict(diagnostic_payload)
         else:
             diagnostic = None
-        if not llm_trace.steps and isinstance(diagnostic, Mapping):
-            request_entries = diagnostic.get("llm_requests")
-            if isinstance(request_entries, Sequence):
-                for index, entry in enumerate(request_entries, 1):
-                    if not isinstance(entry, Mapping):
-                        continue
-                    messages_payload = entry.get("messages")
-                    if not isinstance(messages_payload, Sequence):
-                        continue
-                    request_messages: list[Mapping[str, Any]] = []
-                    for message in messages_payload:
-                        if isinstance(message, Mapping):
-                            request_messages.append(dict(message))
-                    if not request_messages:
-                        continue
-                    step_value = entry.get("step")
-                    try:
-                        step_index = int(step_value)
-                    except (TypeError, ValueError):
-                        step_index = index
-                    llm_trace.steps.append(
-                        LlmStep(
-                            index=step_index,
-                            occurred_at=utc_now_iso(),
-                            request=tuple(request_messages),
-                            response={},
-                        )
-                    )
-
-            llm_steps = diagnostic.get("llm_steps")
-            if isinstance(llm_steps, Sequence):
-                for index, entry in enumerate(llm_steps, 1):
-                    if not isinstance(entry, Mapping):
-                        continue
-                    response_payload = entry.get("response")
-                    request_payload = entry.get("request")
-                    if not isinstance(response_payload, Mapping) and not isinstance(
-                        request_payload, Mapping
-                    ):
-                        continue
-                    try:
-                        step_index = int(entry.get("step", index))
-                    except (TypeError, ValueError):
-                        step_index = index
-                    messages: tuple[Mapping[str, Any], ...] = ()
-                    if isinstance(request_payload, Mapping):
-                        messages = tuple(
-                            dict(message)
-                            for message in request_payload.get("messages", ())
-                            if isinstance(message, Mapping)
-                        )
-                    occurred_at = None
-                    if isinstance(response_payload, Mapping):
-                        timestamp_value = response_payload.get("timestamp")
-                        if isinstance(timestamp_value, str) and timestamp_value.strip():
-                            occurred_at = timestamp_value
-                    llm_trace.steps.append(
-                        LlmStep(
-                            index=step_index,
-                            occurred_at=occurred_at,
-                            request=messages,
-                            response=dict(response_payload or {}),
-                        )
-                    )
-        planned_call_entries: list[dict[str, Any]] = []
-        details_source: Mapping[str, Any] | None = None
-        if isinstance(error_payload_raw, Mapping):
-            details_candidate = error_payload_raw.get("details")
-            if isinstance(details_candidate, Mapping):
-                details_source = details_candidate
-        elif isinstance(diagnostic, Mapping):
-            possible_error = diagnostic.get("error")
-            if isinstance(possible_error, Mapping):
-                details_candidate = possible_error.get("details")
-                if isinstance(details_candidate, Mapping):
-                    details_source = details_candidate
-        if details_source is not None:
-            raw_calls = details_source.get("llm_tool_calls")
-            if isinstance(raw_calls, Sequence):
-                for entry in raw_calls:
-                    if not isinstance(entry, Mapping):
-                        continue
-                    fragment = dict(entry)
-                    function_payload = fragment.get("function")
-                    arguments_value: Any = {}
-                    name_value = ""
-                    if isinstance(function_payload, Mapping):
-                        name_value = str(function_payload.get("name") or "")
-                        arguments_value = function_payload.get("arguments")
-                    if not name_value and isinstance(fragment.get("name"), str):
-                        name_value = fragment.get("name")
-                    if isinstance(arguments_value, Mapping):
-                        arguments_value = dict(arguments_value)
-                    planned_call_entries.append(
-                        {
-                            "id": str(fragment.get("id") or ""),
-                            "type": "function",
-                            "function": {
-                                "name": name_value,
-                                "arguments": arguments_value,
-                            },
-                        }
-                    )
-        if planned_call_entries:
-            if llm_trace.steps:
-                last_step = llm_trace.steps[-1]
-                response_payload = dict(last_step.response)
-                response_payload["tool_calls"] = planned_call_entries
-                last_step.response = response_payload
-            else:
-                llm_trace.steps.append(
-                    LlmStep(
-                        index=1,
-                        occurred_at=utc_now_iso(),
-                        request=(),
-                        response={"tool_calls": planned_call_entries},
-                    )
-                )
         tool_schemas_payload = payload.get("tool_schemas")
         tool_schemas: Mapping[str, Any] | None
         if isinstance(tool_schemas_payload, Mapping):
@@ -607,56 +557,145 @@ class AgentRunPayload:
             agent_stop_reason = dict(agent_stop_payload)
         else:
             agent_stop_reason = None
-        last_tool_payload = payload.get("last_tool")
-        last_tool: ToolResultSnapshot | None = None
-        if isinstance(last_tool_payload, Mapping):
-            try:
-                last_tool = ToolResultSnapshot.from_dict(last_tool_payload)
-            except Exception:
-                last_tool = None
-        if last_tool is None:
-            if tool_results:
-                last_tool = tool_results[-1]
-            else:
-                tool_name_value = payload.get("tool_name")
-                call_id_value = payload.get("call_id") or payload.get("tool_call_id")
-                if tool_name_value:
-                    synthetic_payload: dict[str, Any] = {
-                        "tool_name": tool_name_value,
-                        "call_id": call_id_value,
-                        "tool_call_id": call_id_value,
-                        "status": payload.get("status")
-                        if payload.get("status") in {"pending", "running", "succeeded", "failed"}
-                        else ("succeeded" if ok else "failed"),
-                        "tool_arguments": payload.get("tool_arguments"),
-                        "result": payload.get("tool_result", payload.get("result")),
-                        "error": payload.get("error"),
-                    }
-                    try:
-                        synthetic_snapshot = ToolResultSnapshot.from_dict(
-                            synthetic_payload
-                        )
-                    except Exception:
-                        synthetic_snapshot = None
-                    if synthetic_snapshot is not None:
-                        last_tool = synthetic_snapshot
-                        tool_results.append(synthetic_snapshot)
         return cls(
             ok=ok,
             status=status,
             result_text=result_text,
-            reasoning=reasoning,
+            events=events,
             tool_results=tool_results,
             llm_trace=llm_trace,
-            error=error,
+            reasoning=reasoning,
             diagnostic=diagnostic,
+            error=error,
             tool_schemas=tool_schemas,
-            last_tool=last_tool,
             agent_stop_reason=agent_stop_reason,
         )
 
 
+def _llm_trace_from_events(events: AgentEventLog) -> LlmTrace:
+    steps: list[LlmStep] = []
+    for event in events.events:
+        if event.kind != "llm_step":
+            continue
+        payload = event.payload
+        try:
+            index = int(payload.get("index", len(steps) + 1))
+        except Exception:
+            index = len(steps) + 1
+        request_payload = payload.get("request")
+        request: list[Mapping[str, Any]] = []
+        if isinstance(request_payload, Sequence) and not isinstance(
+            request_payload, (str, bytes, bytearray)
+        ):
+            request = [dict(message) for message in request_payload if isinstance(message, Mapping)]
+        response_payload = payload.get("response")
+        response: Mapping[str, Any]
+        if isinstance(response_payload, Mapping):
+            response = dict(response_payload)
+        else:
+            response = {}
+        try:
+            steps.append(
+                LlmStep(
+                    index=index,
+                    occurred_at=event.occurred_at,
+                    request=request,
+                    response=response,
+                )
+            )
+        except Exception:
+            continue
+    return LlmTrace(steps=steps)
+
+
+def _reasoning_from_events(events: AgentEventLog) -> list[Mapping[str, Any]]:
+    segments: list[Mapping[str, Any]] = []
+    for event in events.events:
+        if event.kind != "reasoning":
+            continue
+        payload = event.payload
+        payload_segments = payload.get("segments")
+        if not isinstance(payload_segments, Sequence) or isinstance(
+            payload_segments, (str, bytes, bytearray)
+        ):
+            continue
+        for segment in payload_segments:
+            if isinstance(segment, Mapping):
+                segments.append(dict(segment))
+    return segments
+
+
+def _tool_results_from_events(events: AgentEventLog) -> list[ToolResultSnapshot]:
+    snapshots: dict[str, ToolResultSnapshot] = {}
+    order: list[str] = []
+    for event in events.events:
+        if event.kind not in {"tool_started", "tool_completed"}:
+            continue
+        payload = event.payload
+        call_id = payload.get("call_id")
+        if not call_id:
+            continue
+        call_id_str = str(call_id)
+        if call_id_str not in snapshots and event.kind == "tool_started":
+            tool_name = str(payload.get("tool_name") or "")
+            snapshot = ToolResultSnapshot(
+                call_id=call_id_str,
+                tool_name=tool_name,
+                status="running",
+                arguments=payload.get("arguments"),
+                schema=payload.get("schema") if isinstance(payload.get("schema"), Mapping) else None,
+                started_at=event.occurred_at,
+                last_observed_at=event.occurred_at,
+                events=[
+                    ToolTimelineEvent(
+                        kind="started", occurred_at=event.occurred_at, message=None
+                    )
+                ],
+            )
+            snapshots[call_id_str] = snapshot
+            order.append(call_id_str)
+        elif call_id_str not in snapshots:
+            tool_name = str(payload.get("tool_name") or "")
+            snapshots[call_id_str] = ToolResultSnapshot(
+                call_id=call_id_str,
+                tool_name=tool_name,
+                status="pending",
+            )
+            order.append(call_id_str)
+        snapshot = snapshots[call_id_str]
+        if event.kind == "tool_completed":
+            status_value = payload.get("status")
+            if status_value in {"succeeded", "failed", "running", "pending"}:
+                snapshot.status = status_value
+            result_value = payload.get("result")
+            if result_value is not None:
+                snapshot.result = result_value
+            error_payload = payload.get("error")
+            if isinstance(error_payload, Mapping):
+                try:
+                    snapshot.error = ToolError.from_dict(error_payload)
+                except Exception:
+                    snapshot.error = None
+            metrics_payload = payload.get("metrics")
+            if isinstance(metrics_payload, Mapping):
+                try:
+                    snapshot.metrics = ToolMetrics.from_dict(metrics_payload)
+                except Exception:
+                    snapshot.metrics = ToolMetrics()
+            timeline_kind = "completed" if snapshot.status != "failed" else "failed"
+            snapshot.events.append(
+                ToolTimelineEvent(
+                    kind=timeline_kind, occurred_at=event.occurred_at, message=None
+                )
+            )
+            snapshot.last_observed_at = event.occurred_at
+            snapshot.completed_at = event.occurred_at
+    return [snapshots[call_id] for call_id in order]
+
+
 __all__ = [
+    "AgentEvent",
+    "AgentEventLog",
     "AgentRunPayload",
     "LlmStep",
     "LlmTrace",

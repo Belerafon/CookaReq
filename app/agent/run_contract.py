@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import datetime
 import json
 from typing import Any, Literal, Mapping, Sequence
 
 from ..util.time import utc_now_iso
+
+
+_UTC_MIN = datetime.datetime.min.replace(tzinfo=datetime.UTC)
 
 
 ToolStatus = Literal["pending", "running", "succeeded", "failed"]
@@ -264,6 +268,49 @@ class ToolResultSnapshot:
         return timestamp
 
 
+def sort_tool_result_snapshots(
+    snapshots: Sequence[ToolResultSnapshot],
+) -> list[ToolResultSnapshot]:
+    """Return snapshots sorted chronologically with a stable fallback.
+
+    Ordering prefers ``completed_at``, then ``last_observed_at``, then
+    ``started_at``. When timestamps are missing or unparsable, the original
+    position is used as a deterministic tie-breaker.
+    """
+
+    def _parse_timestamp(value: str | None) -> datetime:
+        if not value:
+            return _UTC_MIN
+        text = value.strip()
+        if not text:
+            return _UTC_MIN
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            moment = datetime.datetime.fromisoformat(text)
+        except ValueError:
+            return _UTC_MIN
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=datetime.UTC)
+        return moment.astimezone(datetime.UTC)
+
+    def _sort_key(
+        index: int, snapshot: ToolResultSnapshot
+    ) -> tuple[int, datetime.datetime, int]:
+        for position, candidate in enumerate(
+            (snapshot.completed_at, snapshot.last_observed_at, snapshot.started_at)
+        ):
+            parsed = _parse_timestamp(candidate)
+            if parsed is not _UTC_MIN:
+                return (0, parsed, position)
+        return (1, _UTC_MIN, index)
+
+    ordered = sorted(
+        enumerate(snapshots), key=lambda pair: _sort_key(pair[0], pair[1])
+    )
+    return [snapshot for _, snapshot in ordered]
+
+
 def _seconds_between(start_iso: str, end_iso: str) -> float | None:
     from datetime import datetime
 
@@ -463,8 +510,9 @@ class AgentRunPayload:
             self.error.to_dict() if self.error is not None else None
         )
         if self.tool_results:
+            ordered_snapshots = sort_tool_result_snapshots(self.tool_results)
             payload["tool_results"] = [
-                snapshot.to_dict() for snapshot in self.tool_results
+                snapshot.to_dict() for snapshot in ordered_snapshots
             ]
         if self.diagnostic is not None:
             payload["diagnostic"] = dict(self.diagnostic)
@@ -511,6 +559,8 @@ class AgentRunPayload:
                     tool_results.append(ToolResultSnapshot.from_dict(entry))
                 except Exception:
                     continue
+        if tool_results:
+            tool_results = sort_tool_result_snapshots(tool_results)
         events_payload = payload.get("events")
         events = (
             AgentEventLog.from_dict(events_payload)
@@ -704,4 +754,5 @@ __all__ = [
     "ToolResultSnapshot",
     "ToolTimelineEvent",
     "ToolStatus",
+    "sort_tool_result_snapshots",
 ]

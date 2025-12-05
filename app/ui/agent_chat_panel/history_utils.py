@@ -7,7 +7,11 @@ from typing import Any
 
 import json
 
-from ...agent.run_contract import AgentRunPayload, ToolResultSnapshot
+from ...agent.run_contract import (
+    AgentRunPayload,
+    ToolResultSnapshot,
+    sort_tool_result_snapshots,
+)
 from ...util.json import make_json_safe
 from ..history_config import HISTORY_JSON_LIMITS
 from ...util.strings import coerce_text, describe_unprintable
@@ -120,6 +124,8 @@ def tool_snapshots_from(value: Any) -> list[ToolResultSnapshot]:
                     snapshots.append(ToolResultSnapshot.from_dict(fallback))
                 except Exception:
                     continue
+    if snapshots:
+        return sort_tool_result_snapshots(snapshots)
     return snapshots
 
 

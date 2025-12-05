@@ -444,8 +444,33 @@ def _build_agent_turn(
         events,
         prompt_timestamp,
     )
-    if final_response is not None and final_response.timestamp.missing:
-        final_response.timestamp = resolved_timestamp
+
+    updated_events = False
+    if final_response is not None:
+        should_update_final_timestamp = (
+            final_response.timestamp.missing
+            or (
+                resolved_timestamp.occurred_at is not None
+                and (
+                    final_response.timestamp.occurred_at is None
+                    or final_response.timestamp.occurred_at
+                    < resolved_timestamp.occurred_at
+                )
+            )
+        )
+        if should_update_final_timestamp:
+            final_response.timestamp = resolved_timestamp
+            updated_events = True
+
+    if updated_events:
+        events = _build_agent_events(
+            streamed_responses, final_response, tool_calls, event_log
+        )
+        resolved_timestamp = _resolve_turn_timestamp(
+            final_response.timestamp,
+            events,
+            prompt_timestamp,
+        )
 
     occurred_at = resolved_timestamp.occurred_at
     llm_request = _build_llm_request_snapshot(llm_trace)

@@ -8,7 +8,11 @@ from typing import Any, Callable, TypeVar, cast
 from collections.abc import Iterable, Mapping, Sequence
 from uuid import uuid4
 
-from ..agent.run_contract import AgentRunPayload, ToolResultSnapshot
+from ..agent.run_contract import (
+    AgentRunPayload,
+    ToolResultSnapshot,
+    sort_tool_result_snapshots,
+)
 from ..llm.tokenizer import (
     TokenCountResult,
     combine_token_counts,
@@ -62,7 +66,7 @@ def _normalise_tool_results_payload(value: Any) -> list[dict[str, Any]]:
         candidates = value
     else:
         return []
-    snapshots: list[dict[str, Any]] = []
+    snapshots: list[ToolResultSnapshot] = []
     for item in candidates:
         if not isinstance(item, Mapping):
             continue
@@ -70,8 +74,11 @@ def _normalise_tool_results_payload(value: Any) -> list[dict[str, Any]]:
             snapshot = ToolResultSnapshot.from_dict(item)
         except Exception:
             continue
-        snapshots.append(snapshot.to_dict())
-    return snapshots
+        snapshots.append(snapshot)
+    if not snapshots:
+        return []
+    ordered_snapshots = sort_tool_result_snapshots(snapshots)
+    return [snapshot.to_dict() for snapshot in ordered_snapshots]
 
 
 def _parse_agent_run_payload(raw_result: Any) -> AgentRunPayload | None:

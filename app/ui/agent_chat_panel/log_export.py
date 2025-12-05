@@ -513,63 +513,63 @@ def compose_transcript_log_text(
             )
             if log_events:
                 append_plain_events(log_events)
-            else:
-                for event in turn.events:
-                    if event.kind == "response" and event.response is not None:
-                        blocks.extend(
-                            describe_agent_response(event.response, turn.timestamp)
+
+            for event in turn.events:
+                if event.kind == "response" and event.response is not None:
+                    blocks.extend(
+                        describe_agent_response(event.response, turn.timestamp)
+                    )
+                elif event.kind == "tool" and event.tool_call is not None:
+                    details = event.tool_call
+                    summary = details.summary
+                    tool_name = normalize_for_display(
+                        summary.tool_name or _("Unnamed tool")
+                    )
+                    status_label = normalize_for_display(
+                        summary.status or _("returned data")
+                    )
+                    header = _(
+                        "[{timestamp}] Tool call {index}: {tool} — {status}"
+                    ).format(
+                        timestamp=format_timestamp_info(event.timestamp),
+                        index=summary.index,
+                        tool=tool_name,
+                        status=status_label,
+                    )
+                    blocks.append(header)
+                    if summary.started_at:
+                        blocks.append(
+                            indent_block(
+                                _("Started at {timestamp}").format(
+                                    timestamp=summary.started_at
+                                )
+                            )
                         )
-                    elif event.kind == "tool" and event.tool_call is not None:
-                        details = event.tool_call
-                        summary = details.summary
-                        tool_name = normalize_for_display(
-                            summary.tool_name or _("Unnamed tool")
+                    if summary.completed_at:
+                        blocks.append(
+                            indent_block(
+                                _("Completed at {timestamp}").format(
+                                    timestamp=summary.completed_at
+                                )
+                            )
                         )
-                        status_label = normalize_for_display(
-                            summary.status or _("returned data")
-                        )
-                        header = _(
-                            "[{timestamp}] Tool call {index}: {tool} — {status}"
+                    if summary.bullet_lines:
+                        for bullet in summary.bullet_lines:
+                            if bullet:
+                                blocks.append(
+                                    indent_block(normalize_for_display(bullet))
+                                )
+                    payload, seen_system_prompt = _omit_repeated_system_prompt(
+                        details.raw_data, seen_prompt=seen_system_prompt
+                    )
+                    blocks.append(indent_block(_format_json_block(payload)))
+                    if details.call_identifier:
+                        identifier_line = _(
+                            "Call identifier: {identifier}"
                         ).format(
-                            timestamp=format_timestamp_info(event.timestamp),
-                            index=summary.index,
-                            tool=tool_name,
-                            status=status_label,
+                            identifier=normalize_for_display(details.call_identifier)
                         )
-                        blocks.append(header)
-                        if summary.started_at:
-                            blocks.append(
-                                indent_block(
-                                    _("Started at {timestamp}").format(
-                                        timestamp=summary.started_at
-                                    )
-                                )
-                            )
-                        if summary.completed_at:
-                            blocks.append(
-                                indent_block(
-                                    _("Completed at {timestamp}").format(
-                                        timestamp=summary.completed_at
-                                    )
-                                )
-                            )
-                        if summary.bullet_lines:
-                            for bullet in summary.bullet_lines:
-                                if bullet:
-                                    blocks.append(
-                                        indent_block(normalize_for_display(bullet))
-                                    )
-                        payload, seen_system_prompt = _omit_repeated_system_prompt(
-                            details.raw_data, seen_prompt=seen_system_prompt
-                        )
-                        blocks.append(indent_block(_format_json_block(payload)))
-                        if details.call_identifier:
-                            identifier_line = _(
-                                "Call identifier: {identifier}"
-                            ).format(
-                                identifier=normalize_for_display(details.call_identifier)
-                            )
-                            blocks.append(indent_block(identifier_line))
+                        blocks.append(indent_block(identifier_line))
 
             if turn.reasoning:
                 header = _("[{timestamp}] Model reasoning:").format(

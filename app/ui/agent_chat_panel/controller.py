@@ -268,7 +268,59 @@ class AgentRunController:
                         return
                     if not isinstance(payload, Mapping):
                         return
-                    safe_payload = history_json_safe(payload)
+                    timestamp = utc_now_iso()
+                    safe_payload = dict(payload)
+                    event = str(safe_payload.get("event") or "").lower()
+                    call_id = (
+                        safe_payload.get("call_id")
+                        or safe_payload.get("tool_call_id")
+                        or safe_payload.get("id")
+                    )
+                    if call_id:
+                        safe_payload.setdefault("call_id", call_id)
+                        safe_payload.setdefault("tool_call_id", call_id)
+
+                    input_payload = safe_payload.get("input")
+                    output_payload = safe_payload.get("output")
+                    if isinstance(input_payload, Mapping):
+                        safe_payload.setdefault("tool_arguments", dict(input_payload))
+                    if isinstance(output_payload, Mapping):
+                        if not safe_payload.get("tool_arguments"):
+                            arguments_value = output_payload.get("input")
+                            if isinstance(arguments_value, Mapping):
+                                safe_payload["tool_arguments"] = dict(arguments_value)
+                        if not safe_payload.get("tool_name"):
+                            tool_name_value = output_payload.get("tool_name") or output_payload.get("name")
+                            if tool_name_value:
+                                safe_payload["tool_name"] = tool_name_value
+                        if output_payload.get("tool_call_id") and not safe_payload.get(
+                            "call_id"
+                        ):
+                            safe_payload["call_id"] = output_payload.get("tool_call_id")
+                            safe_payload["tool_call_id"] = output_payload.get("tool_call_id")
+                        if "ok" in output_payload:
+                            safe_payload.setdefault("ok", output_payload.get("ok"))
+                        if "result" in output_payload and not safe_payload.get("result"):
+                            safe_payload["result"] = output_payload.get("result")
+                        if "error" in output_payload and not safe_payload.get("error"):
+                            safe_payload["error"] = output_payload.get("error")
+
+                    if not safe_payload.get("tool_name"):
+                        inferred_name = safe_payload.get("name")
+                        if inferred_name is None and isinstance(input_payload, Mapping):
+                            inferred_name = input_payload.get("tool_name") or input_payload.get("name")
+                        safe_payload["tool_name"] = inferred_name or str(call_id or "tool")
+
+                    safe_payload.setdefault("last_observed_at", timestamp)
+                    if event in {"tool_started", "tool_running", "started"}:
+                        safe_payload.setdefault("started_at", timestamp)
+                        safe_payload.setdefault("status", "running")
+                    if event in {"tool_finished", "tool_completed", "completed", "failed"}:
+                        safe_payload.setdefault("completed_at", timestamp)
+                        if "status" not in safe_payload:
+                            safe_payload["status"] = "failed" if safe_payload.get("error") else "succeeded"
+
+                    safe_payload = history_json_safe(safe_payload)
                     if not isinstance(safe_payload, Mapping):
                         return
                     ordered = handle.record_tool_snapshot(safe_payload)

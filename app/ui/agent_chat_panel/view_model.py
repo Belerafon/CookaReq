@@ -284,6 +284,10 @@ def _build_llm_trace_from_diagnostic(
         if not isinstance(payload, Mapping):
             continue
         occurred_at = payload.get("occurred_at") or payload.get("timestamp")
+        if not occurred_at:
+            response_payload = payload.get("response")
+            if isinstance(response_payload, Mapping):
+                occurred_at = response_payload.get("timestamp")
         occurred_text = (
             occurred_at
             if isinstance(occurred_at, str) and occurred_at.strip()
@@ -333,15 +337,20 @@ def _build_agent_turn(
 
     raw_result = entry.raw_result if isinstance(entry.raw_result, Mapping) else None
     diagnostic = entry.diagnostic if isinstance(entry.diagnostic, Mapping) else None
+    diagnostic_payload = diagnostic
+    if diagnostic_payload is None and isinstance(raw_result, Mapping):
+        candidate = raw_result.get("diagnostic")
+        if isinstance(candidate, Mapping):
+            diagnostic_payload = candidate
     payload = agent_payload_from_mapping(raw_result)
     event_log: list[AgentEvent] = []
     if payload is None:
-        tool_snapshots = tool_snapshots_from(entry.tool_results)
+        tool_snapshots = tool_snapshots_from(entry.tool_results or raw_result)
         reasoning_source = entry.reasoning or (
-            diagnostic.get("reasoning") if diagnostic else None
+            diagnostic_payload.get("reasoning") if diagnostic_payload else None
         )
         llm_trace = _build_llm_trace_from_diagnostic(
-            diagnostic,
+            diagnostic_payload,
             prompt_timestamp=prompt_timestamp,
             response_timestamp=response_timestamp,
         )
@@ -352,12 +361,12 @@ def _build_agent_turn(
         event_log = payload.events.events
         tool_snapshots = payload.tool_results
         reasoning_source = payload.reasoning or (
-            diagnostic.get("reasoning") if diagnostic else None
+            diagnostic_payload.get("reasoning") if diagnostic_payload else None
         )
         llm_trace = payload.llm_trace
         if not llm_trace.steps:
             fallback_trace = _build_llm_trace_from_diagnostic(
-                diagnostic,
+                diagnostic_payload,
                 prompt_timestamp=prompt_timestamp,
                 response_timestamp=response_timestamp,
             )
@@ -721,10 +730,11 @@ def _build_tool_calls(
             ):
                 latest_timestamp = timestamp
 
+        identifier = snapshot.call_id or f"{entry_id}:tool:{index}"
         tool_calls.append(
             ToolCallDetails(
                 summary=summary,
-                call_identifier=snapshot.call_id or None,
+                call_identifier=identifier,
                 raw_data=raw_data,
                 timestamp=timestamp,
                 llm_request=request_payload,
@@ -838,6 +848,8 @@ def _build_agent_events(
         if detail.call_identifier:
             tools_by_id[detail.call_identifier] = detail
 
+    added_tool_ids: set[str] = set()
+
     has_final_response = False
     for event in event_log:
         timestamp = _build_timestamp(event.occurred_at, source="agent_event")
@@ -877,6 +889,8 @@ def _build_agent_events(
                         tool_call=tool_call,
                     )
                 )
+                if tool_call.call_identifier:
+                    added_tool_ids.add(tool_call.call_identifier)
         elif event.kind == "agent_finished" and final_response is not None:
             has_final_response = True
             if final_response.timestamp.missing:
@@ -889,6 +903,31 @@ def _build_agent_events(
                     response=final_response,
                 )
             )
+        elif event.kind in {"tool_result", "tool_completed", "tool_finished"}:
+            payload = event.payload if isinstance(event.payload, Mapping) else {}
+            call_id_value = (
+                payload.get("call_id")
+                or payload.get("tool_call_id")
+                or payload.get("id")
+            )
+            if call_id_value is None:
+                continue
+            call_id = str(call_id_value)
+            tool_call = tools_by_id.get(call_id)
+            if tool_call is None:
+                continue
+            if tool_call.timestamp.missing:
+                tool_call.timestamp = timestamp
+            events.append(
+                AgentTimelineEvent(
+                    kind="tool",
+                    timestamp=tool_call.timestamp,
+                    order_index=len(events),
+                    tool_call=tool_call,
+                )
+            )
+            if tool_call.call_identifier:
+                added_tool_ids.add(tool_call.call_identifier)
 
     if not events:
         for response in responses:
@@ -919,6 +958,10 @@ def _build_agent_events(
                     tool_call=detail,
                 )
             )
+            if detail.call_identifier:
+                added_tool_ids.add(detail.call_identifier)
+            if detail.call_identifier:
+                added_tool_ids.add(detail.call_identifier)
 
     if final_response is not None and not has_final_response:
         events.append(
@@ -930,15 +973,24 @@ def _build_agent_events(
             )
         )
 
+    for detail in tool_calls:
+        identifier = detail.call_identifier
+        if identifier and identifier in added_tool_ids:
+            continue
+        events.append(
+            AgentTimelineEvent(
+                kind="tool",
+                timestamp=detail.timestamp,
+                order_index=len(events),
+                tool_call=detail,
+            )
+        )
+        if identifier:
+            added_tool_ids.add(identifier)
+
     for index, event in enumerate(events):
         event.order_index = index
-    events.sort(
-        key=lambda evt: (
-            1 if evt.timestamp.occurred_at is None else 0,
-            evt.timestamp.occurred_at or _UTC_MIN,
-            evt.order_index,
-        )
-    )
+    events.sort(key=lambda evt: (evt.order_index, evt.timestamp.occurred_at or _UTC_MIN))
     for index, event in enumerate(events):
         event.order_index = index
 

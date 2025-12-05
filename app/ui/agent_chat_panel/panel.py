@@ -93,6 +93,8 @@ from .token_usage import (
 from .view_model import (
     ConversationTimeline,
     ConversationTimelineCache,
+    _build_llm_trace_from_diagnostic,
+    _build_timestamp,
 )
 from .segment_view import SegmentListView
 
@@ -2688,6 +2690,27 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             ]
         )
 
+        prompt_timestamp = _build_timestamp(prompt_at, source="prompt_at")
+        response_timestamp = _build_timestamp(response_at, source="response_at")
+        llm_steps = [
+            dict(step)
+            for step in handle.llm_trace_preview
+            if isinstance(step, Mapping)
+        ]
+        diagnostic_sections: dict[str, Any] = {}
+        if llm_steps:
+            diagnostic_sections["llm_steps"] = llm_steps
+        diagnostic_sections["event_log"] = [
+            event.to_dict() for event in events.events
+        ]
+        llm_trace = _build_llm_trace_from_diagnostic(
+            diagnostic_sections,
+            prompt_timestamp=prompt_timestamp,
+            response_timestamp=response_timestamp,
+        )
+        if llm_trace is None:
+            llm_trace = LlmTrace()
+
         payload = AgentRunPayload(
             ok=False,
             status="failed",
@@ -2695,13 +2718,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             events=events,
             reasoning=list(reasoning_segments or ()),
             tool_results=[snapshot for snapshot in tool_snapshots],
-            llm_trace=LlmTrace(),
+            llm_trace=llm_trace,
             error=ToolError(
                 message=cancellation_message,
                 code="OperationCancelledError",
                 details={"reason": "user_cancelled"},
             ),
             tool_schemas=None,
+            diagnostic=diagnostic_sections,
         )
         raw_result = payload.to_dict()
         if tool_payloads:
@@ -3238,6 +3262,17 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             "diagnostic": diagnostic_sections,
         }
 
+        if isinstance(previous_diagnostic, Mapping):
+            existing_log = previous_diagnostic.get("event_log")
+            if isinstance(existing_log, list):
+                sanitized_log = [
+                    history_json_safe(record)
+                    for record in existing_log
+                    if isinstance(record, Mapping)
+                ]
+                if sanitized_log:
+                    diagnostic_payload["event_log"] = sanitized_log
+
         return history_json_safe(diagnostic_payload)
 
     def _handle_streamed_tool_results(
@@ -3269,8 +3304,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             entry.tool_results = None
             return
 
-        timestamp = utc_now_iso()
         for snapshot in snapshots:
+            timestamp = (
+                snapshot.last_observed_at
+                or snapshot.completed_at
+                or snapshot.started_at
+                or utc_now_iso()
+            )
             existing = handle.tool_snapshots.get(snapshot.call_id or "")
             existing_started = getattr(existing, "started_at", None)
             call_key = snapshot.call_id or ""
@@ -3284,9 +3324,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 snapshot.started_at = min(snapshot.started_at, existing_started)
             else:
                 snapshot.started_at = min(snapshot.started_at, first_seen)
-            snapshot.last_observed_at = timestamp
+            if snapshot.last_observed_at is None:
+                snapshot.last_observed_at = timestamp
             if snapshot.status in {"succeeded", "failed"} and snapshot.completed_at is None:
-                snapshot.completed_at = timestamp
+                snapshot.completed_at = snapshot.last_observed_at or timestamp
 
         cloned_results = tool_snapshot_dicts(snapshots)
         for snapshot in snapshots:

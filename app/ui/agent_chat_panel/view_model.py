@@ -390,16 +390,34 @@ def _build_agent_turn(
                 response_timestamp = finished_timestamp
 
     raw_payload = entry.history_safe_raw_result()
-    reasoning_segments = entry.cache_view_value(
-        "reasoning_segments",
-        lambda: _sanitize_mapping_sequence(reasoning_source),
+    reasoning_segments: list[dict[str, Any]] = list(
+        entry.cache_view_value(
+            "reasoning_segments",
+            lambda: _sanitize_mapping_sequence(reasoning_source),
+        )
     )
-    if not reasoning_segments and llm_trace.steps:
+
+    def _reasoning_key(segment: Mapping[str, Any]) -> tuple[Any, ...]:
+        return (
+            segment.get("type"),
+            segment.get("text"),
+            segment.get("leading_whitespace"),
+            segment.get("trailing_whitespace"),
+        )
+
+    seen_keys = {_reasoning_key(segment) for segment in reasoning_segments}
+
+    if llm_trace.steps:
         for step in llm_trace.steps:
             step_reasoning = _sanitize_mapping_sequence(step.response.get("reasoning"))
-            if step_reasoning:
-                reasoning_segments = step_reasoning
-                break
+            for segment in step_reasoning:
+                key = _reasoning_key(segment)
+                if key in seen_keys:
+                    continue
+                reasoning_segments.append(segment)
+                seen_keys.add(key)
+
+    reasoning_segments = tuple(reasoning_segments)
 
     reasoning_fallback = _render_reasoning_fallback(reasoning_segments)
     reasoning_display = entry.cache_view_value(

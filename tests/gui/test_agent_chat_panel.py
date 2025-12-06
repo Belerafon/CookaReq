@@ -4717,9 +4717,25 @@ def test_agent_chat_panel_preserves_multistep_timeline(tmp_path, wx_app, monkeyp
         for expected, actual in zip(expected_sequence, bubble_texts):
             assert expected in actual
 
-        panes = collect_collapsible_panes(panel)
-        labels = {collapsible_label(pane) for pane in panes}
-        assert "Model reasoning" in labels
+        reasoning_texts = [
+            segment.get("text") for segment in (turn.reasoning or ()) if isinstance(segment, Mapping)
+        ]
+        assert reasoning_texts == [step["reasoning"] for step in scripted_steps]
+
+        entry_key = timeline.entries[entry_index].entry_id
+        reasoning_pane = find_collapsible_by_name(panel, f"reasoning:{entry_key}")
+        assert reasoning_pane is not None
+        reasoning_pane.Expand()
+        flush_wx_events(wx)
+        text_controls = [
+            child
+            for child in reasoning_pane.GetPane().GetChildren()
+            if isinstance(child, wx.TextCtrl)
+        ]
+        assert text_controls, "reasoning pane should render text control"
+        combined_text = "\n".join(child.GetValue() for child in text_controls)
+        for expected in reasoning_texts:
+            assert expected in combined_text
     finally:
         destroy_panel(frame, panel)
 

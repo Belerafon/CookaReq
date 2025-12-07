@@ -104,6 +104,7 @@ class AgentTurn:
     streamed_responses: tuple[AgentResponse, ...]
     final_response: AgentResponse | None
     reasoning: tuple[dict[str, Any], ...]
+    reasoning_by_step: dict[int, tuple[dict[str, Any], ...]]
     llm_request: LlmRequestSnapshot | None
     tool_calls: tuple[ToolCallDetails, ...]
     raw_payload: Any | None
@@ -397,6 +398,8 @@ def _build_agent_turn(
         )
     )
 
+    reasoning_by_step: dict[int, tuple[dict[str, Any], ...]] = {}
+
     def _reasoning_key(segment: Mapping[str, Any]) -> tuple[Any, ...]:
         return (
             segment.get("type"),
@@ -408,14 +411,19 @@ def _build_agent_turn(
     seen_keys = {_reasoning_key(segment) for segment in reasoning_segments}
 
     if llm_trace.steps:
-        for step in llm_trace.steps:
+        for position, step in enumerate(llm_trace.steps, start=1):
+            step_index = step.index if step.index is not None else position
             step_reasoning = _sanitize_mapping_sequence(step.response.get("reasoning"))
+            collected_for_step: list[dict[str, Any]] = []
             for segment in step_reasoning:
                 key = _reasoning_key(segment)
                 if key in seen_keys:
                     continue
                 reasoning_segments.append(segment)
+                collected_for_step.append(segment)
                 seen_keys.add(key)
+            if collected_for_step:
+                reasoning_by_step[step_index] = tuple(collected_for_step)
 
     reasoning_segments = tuple(reasoning_segments)
 
@@ -527,6 +535,7 @@ def _build_agent_turn(
         streamed_responses=streamed_responses,
         final_response=final_response,
         reasoning=reasoning_segments,
+        reasoning_by_step=reasoning_by_step,
         llm_request=llm_request,
         tool_calls=tool_calls,
         raw_payload=raw_payload,

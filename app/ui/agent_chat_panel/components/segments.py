@@ -632,13 +632,31 @@ class MessageSegmentPanel(wx.Panel):
         rendered: list[wx.Window] = []
         timestamp_info = turn.timestamp if turn is not None else None
         if turn is not None:
-            reasoning_section = self._create_reasoning_section(
-                container, payload, turn.reasoning
-            )
-            if reasoning_section is not None:
-                rendered.append(reasoning_section)
+            shown_reasoning_steps: set[int] = set()
+            if turn.reasoning and not turn.reasoning_by_step:
+                reasoning_section = self._create_reasoning_section(
+                    container, payload, turn.reasoning
+                )
+                if reasoning_section is not None:
+                    rendered.append(reasoning_section)
             for event in turn.events:
                 if event.kind == "response" and event.response is not None:
+                    step_index = event.response.step_index
+                    if step_index is not None:
+                        step_reasoning = turn.reasoning_by_step.get(step_index)
+                        if step_reasoning:
+                            reasoning_section = self._create_reasoning_section(
+                                container,
+                                payload,
+                                step_reasoning,
+                                label=_("Model reasoning (step {index})").format(
+                                    index=step_index
+                                ),
+                                name_suffix=f"step-{step_index}",
+                            )
+                            if reasoning_section is not None:
+                                rendered.append(reasoning_section)
+                                shown_reasoning_steps.add(step_index)
                     bubble = self._create_agent_message_bubble(
                         container, event.response, timestamp_info
                     )
@@ -652,6 +670,22 @@ class MessageSegmentPanel(wx.Panel):
                         rendered.append(bubble)
                     if raw_section is not None:
                         rendered.append(raw_section)
+
+            if turn.reasoning_by_step:
+                for step_index, segments in sorted(turn.reasoning_by_step.items()):
+                    if step_index in shown_reasoning_steps:
+                        continue
+                    reasoning_section = self._create_reasoning_section(
+                        container,
+                        payload,
+                        segments,
+                        label=_("Model reasoning (step {index})").format(
+                            index=step_index
+                        ),
+                        name_suffix=f"step-{step_index}",
+                    )
+                    if reasoning_section is not None:
+                        rendered.append(reasoning_section)
 
         if turn is not None:
             llm_section = self._create_llm_request_section(
@@ -858,14 +892,20 @@ class MessageSegmentPanel(wx.Panel):
         parent: wx.Window,
         payload: AgentSegment,
         reasoning: Sequence[Mapping[str, Any]] | None,
+        *,
+        label: str | None = None,
+        name_suffix: str | None = None,
     ) -> wx.CollapsiblePane | None:
         text = _format_reasoning_segments(reasoning)
         if not text:
             return None
-        key = f"reasoning:{self._entry_id}"
+        key_parts = [f"reasoning:{self._entry_id}"]
+        if name_suffix:
+            key_parts.append(str(name_suffix))
+        key = ":".join(key_parts)
         pane = _build_collapsible_section(
             parent,
-            label=_("Model reasoning"),
+            label=label or _("Model reasoning"),
             content=text,
             minimum_height=160,
             collapsed=self._collapsed_state.get(key, True),

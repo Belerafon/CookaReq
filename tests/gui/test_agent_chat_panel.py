@@ -2608,6 +2608,148 @@ def test_turn_card_shows_reasoning(wx_app):
         frame.Destroy()
 
 
+def test_turn_card_shows_reasoning_for_each_step(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    try:
+        raw_payload = {
+            "ok": True,
+            "status": "succeeded",
+            "result": "done",
+            "llm_trace": {
+                "steps": [
+                    {
+                        "index": 1,
+                        "occurred_at": "2025-01-01T10:00:00+00:00",
+                        "request": [{"role": "user", "content": "hi"}],
+                        "response": {
+                            "content": "first chunk",
+                            "reasoning": [
+                                {"type": "analysis", "text": "plan tool one"}
+                            ],
+                        },
+                    },
+                    {
+                        "index": 2,
+                        "occurred_at": "2025-01-01T10:00:05+00:00",
+                        "request": [{"role": "assistant", "content": "call tool"}],
+                        "response": {
+                            "content": "second chunk",
+                            "reasoning": [
+                                {"type": "analysis", "text": "plan tool two"}
+                            ],
+                        },
+                    },
+                ]
+            },
+            "tool_results": [
+                {
+                    "call_id": "call-1",
+                    "tool_name": "alpha",
+                    "status": "succeeded",
+                    "started_at": "2025-01-01T10:00:10+00:00",
+                    "completed_at": "2025-01-01T10:00:15+00:00",
+                },
+                {
+                    "call_id": "call-2",
+                    "tool_name": "beta",
+                    "status": "succeeded",
+                    "started_at": "2025-01-01T10:00:20+00:00",
+                    "completed_at": "2025-01-01T10:00:25+00:00",
+                },
+            ],
+        }
+        conversation, entry_timeline = build_entry_timeline(
+            prompt="user",
+            response="assistant",
+            prompt_at="2025-01-01T10:00:00+00:00",
+            response_at="2025-01-01T10:00:30+00:00",
+            raw_payload=raw_payload,
+        )
+
+        panel = render_turn_card(
+            frame,
+            conversation=conversation,
+            entry=entry_timeline,
+            layout_hints=entry_timeline.layout_hints,
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+        wx.GetApp().Yield()
+
+        agent_panels = [
+            child
+            for child in panel.GetChildren()
+            if isinstance(child, MessageSegmentPanel)
+        ]
+        assert agent_panels, "agent panel missing"
+        agent_panel = next(
+            (
+                candidate
+                for candidate in agent_panels
+                if any(
+                    "reasoning" in pane.GetName()
+                    for pane in collect_collapsible_panes(candidate)
+                )
+            ),
+            agent_panels[0],
+        )
+        reasoning_panes = collect_collapsible_panes(agent_panel)
+        reasoning_names = {
+            pane.GetName() for pane in reasoning_panes if "reasoning" in pane.GetName()
+        }
+        base_key = f"reasoning:{entry_timeline.entry_id}"
+        assert f"{base_key}:step-1" in reasoning_names
+        assert f"{base_key}:step-2" in reasoning_names
+
+        container = reasoning_panes[0].GetParent()
+        ordered_widgets: list[wx.Window] = []
+        for item in container.GetSizer().GetChildren():
+            widget = item.GetWindow()
+            if widget is not None:
+                ordered_widgets.append(widget)
+
+        def _index_of(fragment: str) -> int:
+            for idx, widget in enumerate(ordered_widgets):
+                if isinstance(widget, wx.CollapsiblePane) and fragment in widget.GetName():
+                    return idx
+                if isinstance(widget, MessageBubble):
+                    header = bubble_header_text(widget)
+                    if fragment in header:
+                        return idx
+            return -1
+
+        first_reasoning_index = _index_of("step-1")
+        first_tool_index = next(
+            (
+                idx
+                for idx, widget in enumerate(ordered_widgets)
+                if isinstance(widget, MessageBubble)
+                and "Tool" in bubble_header_text(widget)
+            ),
+            -1,
+        )
+        assert 0 <= first_reasoning_index < first_tool_index
+
+        second_reasoning_index = _index_of("step-2")
+        second_tool_index = next(
+            (
+                idx
+                for idx, widget in enumerate(ordered_widgets)
+                if isinstance(widget, MessageBubble)
+                and "Tool" in bubble_header_text(widget)
+                and "beta" in bubble_body_text(widget)
+            ),
+            -1,
+        )
+        assert 0 <= second_reasoning_index < second_tool_index
+    finally:
+        panel.Destroy()
+        frame.Destroy()
+
+
 def test_turn_card_orders_sections(wx_app):
     wx = pytest.importorskip("wx")
 
@@ -2902,20 +3044,18 @@ def test_tool_sections_follow_agent_response(wx_app):
             )
             assert agent_panel is not None, "agent segment missing"
             panel_bubbles = collect_message_bubbles(agent_panel)
-            agent_index = next(
-                (idx for idx, bubble in enumerate(panel_bubbles) if bubble is agent_bubble),
-                None,
-            )
-            tool_indices = [
-                idx
-                for idx, header in enumerate(
-                    bubble_header_text(bubble) for bubble in panel_bubbles
-                )
-                if "Tool" in header
+            timeline_order = [
+                "tool" if evt.kind == "tool" else "response"
+                for evt in entry_timeline.agent_turn.events
+                if evt.kind in {"tool", "response"}
             ]
-            assert tool_indices, "tool bubble should be present"
-            assert agent_index is not None, "agent bubble missing"
-            assert agent_index < tool_indices[0], "tool bubble should follow the agent bubble"
+            bubble_order = [
+                "tool" if "Tool" in bubble_header_text(bubble) else "response"
+                for bubble in panel_bubbles
+                if "Tool" in bubble_header_text(bubble)
+                or "Agent" in bubble_header_text(bubble)
+            ]
+            assert bubble_order[: len(timeline_order)] == timeline_order
     finally:
         if panel is not None:
             panel.Destroy()
@@ -4442,6 +4582,16 @@ def test_agent_chat_panel_preserves_llm_output_and_tool_timeline(
         reasoning_pane = find_collapsible_by_name(
             panel, f"reasoning:{entry_key}"
         )
+        if reasoning_pane is None:
+            prefix = f"reasoning:{entry_key}:"
+            reasoning_pane = next(
+                (
+                    pane
+                    for pane in collect_collapsible_panes(panel)
+                    if pane.GetName().startswith(prefix)
+                ),
+                None,
+            )
         agent_raw_pane = find_collapsible_by_name(panel, f"raw:{entry_key}")
         llm_request_pane = find_collapsible_by_name(panel, f"llm:{entry_key}")
         tool_bubble = next(
@@ -4724,6 +4874,16 @@ def test_agent_chat_panel_preserves_multistep_timeline(tmp_path, wx_app, monkeyp
 
         entry_key = timeline.entries[entry_index].entry_id
         reasoning_pane = find_collapsible_by_name(panel, f"reasoning:{entry_key}")
+        if reasoning_pane is None:
+            prefix = f"reasoning:{entry_key}:"
+            reasoning_pane = next(
+                (
+                    pane
+                    for pane in collect_collapsible_panes(panel)
+                    if pane.GetName().startswith(prefix)
+                ),
+                None,
+            )
         assert reasoning_pane is not None
         reasoning_pane.Expand()
         flush_wx_events(wx)

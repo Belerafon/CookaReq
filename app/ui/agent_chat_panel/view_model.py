@@ -1020,8 +1020,22 @@ def _build_agent_events(
         if identifier:
             added_tool_ids.add(identifier)
 
+    if not event_log:
+        events = tuple(
+            sorted(
+                events,
+                key=lambda event: (
+                    event.timestamp.occurred_at is None,
+                    event.timestamp.occurred_at or _UTC_MIN,
+                    event.sequence if event.sequence is not None else event.order_index,
+                ),
+            )
+        )
+
     for index, event in enumerate(events):
         event.order_index = index
+        if event.sequence is None:
+            event.sequence = index
 
     return tuple(events)
 

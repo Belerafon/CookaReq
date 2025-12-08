@@ -2751,6 +2751,129 @@ def test_turn_card_shows_reasoning_for_each_step(wx_app):
         frame.Destroy()
 
 
+def test_turn_card_orders_tools_by_timestamp_without_event_log(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    try:
+        raw_payload = {
+            "ok": True,
+            "status": "succeeded",
+            "result": "done",
+            "llm_trace": {
+                "steps": [
+                    {
+                        "index": 1,
+                        "occurred_at": "2025-01-01T10:00:00+00:00",
+                        "request": [{"role": "user", "content": "hi"}],
+                        "response": {
+                            "content": "first chunk",
+                            "reasoning": [
+                                {"type": "analysis", "text": "plan tool one"}
+                            ],
+                        },
+                    },
+                    {
+                        "index": 2,
+                        "occurred_at": "2025-01-01T10:00:25+00:00",
+                        "request": [{"role": "assistant", "content": "call tool"}],
+                        "response": {
+                            "content": "second chunk",
+                            "reasoning": [
+                                {"type": "analysis", "text": "plan tool two"}
+                            ],
+                        },
+                    },
+                ]
+            },
+            "tool_results": [
+                {
+                    "call_id": "call-1",
+                    "tool_name": "alpha",
+                    "status": "succeeded",
+                    "started_at": "2025-01-01T10:00:10+00:00",
+                    "completed_at": "2025-01-01T10:00:12+00:00",
+                },
+                {
+                    "call_id": "call-2",
+                    "tool_name": "beta",
+                    "status": "succeeded",
+                    "started_at": "2025-01-01T10:00:30+00:00",
+                    "completed_at": "2025-01-01T10:00:35+00:00",
+                },
+            ],
+        }
+
+        conversation, entry_timeline = build_entry_timeline(
+            prompt="user",
+            response="assistant",
+            prompt_at="2025-01-01T10:00:00+00:00",
+            response_at="2025-01-01T10:00:40+00:00",
+            raw_payload=raw_payload,
+        )
+
+        panel = render_turn_card(
+            frame,
+            conversation=conversation,
+            entry=entry_timeline,
+            layout_hints=entry_timeline.layout_hints,
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+        wx.GetApp().Yield()
+
+        agent_panels = [
+            child
+            for child in panel.GetChildren()
+            if isinstance(child, MessageSegmentPanel)
+        ]
+        assert agent_panels, "agent panel missing"
+        agent_panel = next(
+            (
+                candidate
+                for candidate in agent_panels
+                if any(
+                    "Tool" in bubble_header_text(bubble)
+                    for bubble in collect_message_bubbles(candidate)
+                )
+            ),
+            agent_panels[0],
+        )
+        reasoning_panes = collect_collapsible_panes(agent_panel)
+        assert reasoning_panes, "reasoning pane missing"
+        container = reasoning_panes[0].GetParent()
+        ordered_widgets: list[wx.Window] = []
+        for item in container.GetSizer().GetChildren():
+            widget = item.GetWindow()
+            if widget is not None:
+                ordered_widgets.append(widget)
+
+        def _index_of(fragment: str) -> int:
+            for idx, widget in enumerate(ordered_widgets):
+                if isinstance(widget, wx.CollapsiblePane) and fragment in widget.GetName():
+                    return idx
+                if isinstance(widget, MessageBubble):
+                    header = bubble_header_text(widget)
+                    body = bubble_body_text(widget)
+                    if fragment in header or fragment in body:
+                        return idx
+            return -1
+
+        first_reasoning_index = _index_of("step-1")
+        second_reasoning_index = _index_of("step-2")
+        first_tool_index = _index_of("alpha")
+
+        assert first_reasoning_index != -1, "step-1 reasoning missing"
+        assert second_reasoning_index != -1, "step-2 reasoning missing"
+        assert first_tool_index != -1, "first tool bubble missing"
+
+        assert first_reasoning_index < first_tool_index < second_reasoning_index
+    finally:
+        panel.Destroy()
+        frame.Destroy()
+
+
 def test_turn_card_shows_step_reasoning_when_entry_has_aggregate_reasoning(wx_app):
     wx = pytest.importorskip("wx")
 

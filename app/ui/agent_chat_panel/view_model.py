@@ -418,11 +418,10 @@ def _build_agent_turn(
             collected_for_step: list[dict[str, Any]] = []
             for segment in step_reasoning:
                 key = _reasoning_key(segment)
-                if key in seen_keys:
-                    continue
-                reasoning_segments.append(segment)
+                if key not in seen_keys:
+                    reasoning_segments.append(segment)
+                    seen_keys.add(key)
                 collected_for_step.append(segment)
-                seen_keys.add(key)
             if collected_for_step:
                 reasoning_by_step[step_index] = tuple(collected_for_step)
 

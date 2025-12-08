@@ -14,7 +14,7 @@ from ...llm.tokenizer import TokenCountResult, count_text_tokens
 from ..locale import field_label
 from ..text import normalize_for_display
 from .history_utils import history_json_safe
-from .time_formatting import format_entry_timestamp, parse_iso_timestamp
+from .time_formatting import format_entry_timestamp
 
 
 @dataclass(frozen=True)
@@ -52,10 +52,16 @@ def summarize_tool_results(
     if not snapshots:
         return ()
 
-    ordered = sorted(snapshots, key=_tool_snapshot_sort_key)
+    ordered = sorted(
+        enumerate(snapshots),
+        key=lambda pair: (
+            0 if pair[1].sequence is not None else 1,
+            pair[1].sequence if pair[1].sequence is not None else pair[0],
+        ),
+    )
     summaries = [
         _summarize_snapshot(index, snapshot)
-        for index, snapshot in enumerate(ordered, start=1)
+        for index, (_, snapshot) in enumerate(ordered, start=1)
     ]
     return tuple(summaries)
 
@@ -69,19 +75,6 @@ def _snapshot_from_value(value: Any) -> ToolResultSnapshot | None:
         except Exception:
             return None
     return None
-
-
-def _tool_snapshot_sort_key(snapshot: ToolResultSnapshot) -> tuple[int, Any, str]:
-    for candidate in (
-        snapshot.started_at,
-        snapshot.last_observed_at,
-        snapshot.completed_at,
-    ):
-        if candidate:
-            parsed = parse_iso_timestamp(candidate)
-            if parsed is not None:
-                return (0, parsed, snapshot.call_id)
-    return (1, None, snapshot.call_id)
 
 
 def _summarize_snapshot(

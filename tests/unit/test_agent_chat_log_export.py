@@ -324,12 +324,12 @@ def test_transcript_log_prefers_event_log_ordering() -> None:
             events=[
                 AgentEvent(
                     kind="llm_step",
-                    occurred_at=_iso("2025-10-02T12:00:05+00:00"),
+                    occurred_at=_iso("2025-10-02T12:00:09+00:00"),
                     payload={"text": "Working", "index": 1, "request": (), "response": {}},
                 ),
                 AgentEvent(
                     kind="agent_finished",
-                    occurred_at=_iso("2025-10-02T12:00:09+00:00"),
+                    occurred_at=_iso("2025-10-02T12:00:05+00:00"),
                     payload={"result": "Done", "ok": True, "status": "succeeded"},
                 ),
             ]

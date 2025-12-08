@@ -9,9 +9,6 @@ from typing import Any, Literal, Mapping, Sequence
 from ..util.time import utc_now_iso
 
 
-_UTC_MIN = datetime.datetime.min.replace(tzinfo=datetime.UTC)
-
-
 ToolStatus = Literal["pending", "running", "succeeded", "failed"]
 
 
@@ -115,6 +112,7 @@ class ToolResultSnapshot:
     call_id: str
     tool_name: str
     status: ToolStatus
+    sequence: int | None = None
     arguments: Any | None = None
     result: Any | None = None
     error: ToolError | None = None
@@ -142,6 +140,8 @@ class ToolResultSnapshot:
             "agent_status": self._agent_status_label(),
             "ok": self.status == "succeeded",
         }
+        if self.sequence is not None:
+            payload["sequence"] = self.sequence
         payload["error"] = (
             self.error.to_dict() if self.error is not None else None
         )
@@ -221,10 +221,18 @@ class ToolResultSnapshot:
         arguments_value = payload.get("tool_arguments")
         if arguments_value is None and "arguments" in payload:
             arguments_value = payload.get("arguments")
+        sequence_value: int | None
+        try:
+            raw_sequence = payload.get("sequence")
+            sequence_value = int(raw_sequence) if raw_sequence is not None else None
+        except (TypeError, ValueError):
+            sequence_value = None
+
         return cls(
             call_id=str(call_id_value or ""),
             tool_name=str(tool_name_value or ""),
             status=status,
+            sequence=sequence_value,
             arguments=arguments_value,
             result=payload.get("result"),
             error=error,
@@ -271,42 +279,14 @@ class ToolResultSnapshot:
 def sort_tool_result_snapshots(
     snapshots: Sequence[ToolResultSnapshot],
 ) -> list[ToolResultSnapshot]:
-    """Return snapshots sorted chronologically with a stable fallback.
-
-    Ordering prefers ``completed_at``, then ``last_observed_at``, then
-    ``started_at``. When timestamps are missing or unparsable, the original
-    position is used as a deterministic tie-breaker.
-    """
-
-    def _parse_timestamp(value: str | None) -> datetime:
-        if not value:
-            return _UTC_MIN
-        text = value.strip()
-        if not text:
-            return _UTC_MIN
-        if text.endswith("Z"):
-            text = text[:-1] + "+00:00"
-        try:
-            moment = datetime.datetime.fromisoformat(text)
-        except ValueError:
-            return _UTC_MIN
-        if moment.tzinfo is None:
-            moment = moment.replace(tzinfo=datetime.UTC)
-        return moment.astimezone(datetime.UTC)
-
-    def _sort_key(
-        index: int, snapshot: ToolResultSnapshot
-    ) -> tuple[int, datetime.datetime, int]:
-        for position, candidate in enumerate(
-            (snapshot.completed_at, snapshot.last_observed_at, snapshot.started_at)
-        ):
-            parsed = _parse_timestamp(candidate)
-            if parsed is not _UTC_MIN:
-                return (0, parsed, position)
-        return (1, _UTC_MIN, index)
+    """Return snapshots ordered by explicit sequence or original position."""
 
     ordered = sorted(
-        enumerate(snapshots), key=lambda pair: _sort_key(pair[0], pair[1])
+        enumerate(snapshots),
+        key=lambda pair: (
+            0 if pair[1].sequence is not None else 1,
+            pair[1].sequence if pair[1].sequence is not None else pair[0],
+        ),
     )
     return [snapshot for _, snapshot in ordered]
 
@@ -421,13 +401,17 @@ class AgentEvent:
     ]
     occurred_at: str
     payload: Mapping[str, Any]
+    sequence: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "kind": self.kind,
             "occurred_at": self.occurred_at,
             "payload": dict(self.payload),
         }
+        if self.sequence is not None:
+            payload["sequence"] = self.sequence
+        return payload
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "AgentEvent":
@@ -449,7 +433,17 @@ class AgentEvent:
             mapping = payload_value
         else:
             mapping = {}
-        return cls(kind=kind, occurred_at=occurred_at, payload=mapping)
+        sequence = payload.get("sequence")
+        try:
+            sequence_value = int(sequence) if sequence is not None else None
+        except (TypeError, ValueError):
+            sequence_value = None
+        return cls(
+            kind=kind,
+            occurred_at=occurred_at,
+            payload=mapping,
+            sequence=sequence_value,
+        )
 
 
 @dataclass(slots=True)
@@ -459,7 +453,14 @@ class AgentEventLog:
     events: list[AgentEvent] = field(default_factory=list)
 
     def append(self, event: AgentEvent) -> None:
+        if event.sequence is None:
+            event.sequence = len(self.events)
         self.events.append(event)
+
+    def normalise_sequences(self) -> None:
+        for index, event in enumerate(self.events):
+            if event.sequence is None:
+                event.sequence = index
 
     def to_dict(self) -> dict[str, Any]:
         return {"events": [event.to_dict() for event in self.events]}
@@ -471,11 +472,14 @@ class AgentEventLog:
         if isinstance(events_payload, Sequence) and not isinstance(
             events_payload, (str, bytes, bytearray)
         ):
-            for entry in events_payload:
+            for index, entry in enumerate(events_payload):
                 if not isinstance(entry, Mapping):
                     continue
                 try:
-                    events.append(AgentEvent.from_dict(entry))
+                    event = AgentEvent.from_dict(entry)
+                    if event.sequence is None:
+                        event.sequence = index
+                    events.append(event)
                 except Exception:
                     continue
         return cls(events=events)
@@ -498,6 +502,7 @@ class AgentRunPayload:
     agent_stop_reason: Mapping[str, Any] | None = None
 
     def to_dict(self, *, include_diagnostic_event_log: bool = True) -> dict[str, Any]:
+        self.events.normalise_sequences()
         payload: dict[str, Any] = {
             "ok": self.ok,
             "status": self.status,

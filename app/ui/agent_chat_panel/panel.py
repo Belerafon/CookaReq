@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -67,7 +68,11 @@ from .history_utils import (
     tool_snapshot_dicts,
     tool_snapshots_from,
 )
-from .log_export import compose_transcript_log_text, compose_transcript_text
+from .log_export import (
+    compose_transcript_log_text,
+    compose_transcript_text,
+    write_event_log_debug,
+)
 from .paths import (
     _normalize_history_path,
     history_path_for_documents,
@@ -2306,7 +2311,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             log = []
 
         timestamp = (occurred_at or "").strip() or utc_now_iso()
-        record: dict[str, Any] = {"kind": kind, "occurred_at": timestamp}
+        record: dict[str, Any] = {
+            "kind": kind,
+            "occurred_at": timestamp,
+            "sequence": len(log),
+        }
         if source:
             record["source"] = source
         if payload is not None:
@@ -2315,6 +2324,71 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         log.append(record)
         diagnostic["event_log"] = log
         entry.diagnostic = diagnostic
+
+    @staticmethod
+    def _collect_entry_event_log(entry: ChatEntry) -> list[dict[str, Any]]:
+        """Return the best-effort ordered ``event_log`` for ``entry``."""
+
+        def _candidates() -> Iterable[Sequence[Any] | None]:
+            diagnostic = entry.diagnostic if isinstance(entry.diagnostic, Mapping) else None
+            if diagnostic:
+                yield diagnostic.get("event_log")
+            raw_result = entry.raw_result if isinstance(entry.raw_result, Mapping) else None
+            if raw_result:
+                yield raw_result.get("event_log")
+                diagnostic_payload = raw_result.get("diagnostic")
+                if isinstance(diagnostic_payload, Mapping):
+                    yield diagnostic_payload.get("event_log")
+                payload = agent_payload_from_mapping(raw_result)
+                if payload is not None and payload.events.events:
+                    yield [event.to_dict() for event in payload.events.events]
+
+        for candidate in _candidates():
+            if not isinstance(candidate, Sequence):
+                continue
+            events: list[dict[str, Any]] = []
+            for record in candidate:
+                if not isinstance(record, Mapping):
+                    continue
+                events.append({str(key): value for key, value in record.items()})
+            if events:
+                return events
+        return []
+
+    def _export_entry_event_log_debug(
+        self,
+        conversation: ChatConversation,
+        entry: ChatEntry,
+        *,
+        stage: str,
+    ) -> None:
+        """Export the ordered event log for ``entry`` when configured."""
+
+        directory = os.environ.get("COOKAREQ_AGENT_EVENT_LOG_DIR")
+        if not directory:
+            return
+
+        log_events = self._collect_entry_event_log(entry)
+        if not log_events:
+            return
+
+        try:
+            entry_index = conversation.entries.index(entry)
+        except ValueError:
+            entry_index = None
+
+        timestamp = entry.response_at or entry.prompt_at or utc_now_iso()
+        conversation_id = conversation.conversation_id or conversation.title or "conversation"
+
+        with suppress(Exception):
+            write_event_log_debug(
+                log_events,
+                directory=directory,
+                conversation_id=str(conversation_id),
+                entry_index=entry_index,
+                stage=stage,
+                timestamp=timestamp,
+            )
 
     def _add_pending_entry(
         self,
@@ -2528,6 +2602,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             },
             occurred_at=response_at,
             source="finalise",
+        )
+        self._export_entry_event_log_debug(
+            conversation,
+            entry,
+            stage="finalise",
         )
         conversation.updated_at = response_at
         conversation.ensure_title()

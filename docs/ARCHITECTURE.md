@@ -146,6 +146,10 @@ so you know which modules are involved and which regressions to guard against.
     timeline. When the LLM trace is incomplete the view model generates a
     fallback request snapshot to keep the agent response bubble and tool log in
     sync.
+  * Для отладки порядка событий можно задать переменную окружения
+    `COOKAREQ_AGENT_EVENT_LOG_DIR`: при финализации каждого обращения агентский
+    `event_log` выгружается в текстовый файл через `write_event_log_debug()`,
+    сохраняя последовательность `sequence` и краткие срезы полезной нагрузки.
 * `app/agent/run_contract.py` defines the shared schema for tool snapshots and
   LLM traces. Every streamed update carries a stable identifier, canonical
   status, start/finish timestamps and an ordered timeline of events. The LLM
@@ -252,6 +256,10 @@ so you know which modules are involved and which regressions to guard against.
   плюс снапшоты `request_messages` и `response` (контент, tool_calls,
   reasoning). Эти данные пишутся в `diagnostic.event_log` и сразу отображаются
   в ленте чата вместе с шагами и вызовами инструментов.
+* Все события и снимки инструментов маркируются явным `sequence`, равным
+  порядку поступления из рантайма. UI, экспорт и история используют этот
+  порядок без пересортировки по времени, чтобы таймлайн оставался линейным и
+  воспроизводимым даже при отсутствующих или несовпадающих метках времени.
 * Поле `diagnostic` агрегирует дополнительные сведения: ошибки MCP
   (`diagnostic.error`), причины остановки (`diagnostic.stop_reason`), полные
   снапшоты инструментов (`diagnostic.tool_results`) и вспомогательные данные,

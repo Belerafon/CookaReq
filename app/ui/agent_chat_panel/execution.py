@@ -125,6 +125,11 @@ class _AgentRunHandle:
             except Exception:
                 snapshot = existing
 
+        if snapshot.sequence is None:
+            snapshot.sequence = (
+                existing.sequence if existing is not None else len(self.tool_order)
+            )
+
         self.tool_snapshots[call_id] = snapshot
         if call_id not in self.tool_order:
             self.tool_order.append(call_id)

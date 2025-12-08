@@ -1,18 +1,23 @@
 from __future__ import annotations
 
 import json
+import os
 import textwrap
-import datetime
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from ...i18n import _
 from ...llm.spec import SYSTEM_PROMPT
 from ..chat_entry import ChatConversation
 from ..text import normalize_for_display
-from .history_utils import agent_payload_from_mapping
-from .time_formatting import format_entry_timestamp, parse_iso_timestamp
+from .history_utils import (
+    agent_payload_from_mapping,
+    format_value_snippet,
+    shorten_text,
+)
+from .time_formatting import format_entry_timestamp
 from .view_model import (
     AgentResponse,
     ConversationTimeline,
@@ -58,9 +63,6 @@ class _PlainEvent:
     text: str
 
 
-_UTC_MIN = datetime.datetime.min.replace(tzinfo=datetime.UTC)
-
-
 def _format_timestamp_label(info: TimestampInfo | None) -> str:
     """Return display label for *info* consistent with the transcript UI."""
     if info is None:
@@ -72,6 +74,116 @@ def _format_timestamp_label(info: TimestampInfo | None) -> str:
     if info.missing:
         return _("not recorded")
     return _("not recorded")
+
+
+def _normalise_event_log(
+    raw_events: Sequence[Mapping[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Return a defensive copy of ``raw_events`` preserving order."""
+
+    if not raw_events:
+        return []
+
+    events: list[dict[str, Any]] = []
+    for record in raw_events:
+        if not isinstance(record, Mapping):
+            continue
+        events.append({str(key): value for key, value in record.items()})
+    return events
+
+
+def _debug_filename_slug(value: str | None) -> str:
+    if not value:
+        return "unknown"
+    slug = normalize_for_display(value).strip()
+    safe = [
+        character
+        if character.isalnum() or character in {"-", "_", "."}
+        else "-"
+        for character in slug
+    ]
+    collapsed = "".join(safe)
+    return collapsed.strip("-_") or "unknown"
+
+
+def render_event_log_debug(
+    raw_events: Sequence[Mapping[str, Any]] | None,
+    *,
+    conversation_id: str | None = None,
+    entry_index: int | None = None,
+    stage: str | None = None,
+    timestamp: str | None = None,
+) -> str:
+    """Return a human-readable dump of the agent ``event_log``."""
+
+    events = _normalise_event_log(raw_events)
+    header_bits = []
+    if conversation_id:
+        header_bits.append(_("conversation={cid}").format(cid=conversation_id))
+    if entry_index is not None:
+        header_bits.append(_("entry={idx}").format(idx=entry_index))
+    if stage:
+        header_bits.append(_("stage={stage}").format(stage=stage))
+    if timestamp:
+        header_bits.append(_("timestamp={timestamp}").format(timestamp=timestamp))
+    header = " | ".join(header_bits)
+    lines = [header] if header else []
+
+    for index, record in enumerate(events):
+        sequence = record.get("sequence")
+        sequence_label = str(sequence) if sequence is not None else "-"
+        kind = normalize_for_display(str(record.get("kind") or "event")) or "event"
+        source = normalize_for_display(str(record.get("source") or "")) or "-"
+        occurred_at = normalize_for_display(str(record.get("occurred_at") or ""))
+        payload_snippet = shorten_text(
+            format_value_snippet(record.get("payload")), limit=200
+        )
+        payload_label = payload_snippet or "(none)"
+        parts = [
+            f"#{index:03d}",
+            f"seq={sequence_label}",
+            f"kind={kind}",
+            f"source={source}",
+        ]
+        if occurred_at:
+            parts.append(f"at={occurred_at}")
+        parts.append(f"payload={payload_label}")
+        lines.append(" | ".join(parts))
+
+    if not lines:
+        return _("(empty event log)")
+    return "\n".join(lines)
+
+
+def write_event_log_debug(
+    raw_events: Sequence[Mapping[str, Any]] | None,
+    *,
+    directory: str | os.PathLike[str],
+    conversation_id: str | None = None,
+    entry_index: int | None = None,
+    stage: str | None = None,
+    timestamp: str | None = None,
+) -> Path:
+    """Write a debug dump of ``raw_events`` into *directory*."""
+
+    path = Path(directory).expanduser()
+    path.mkdir(parents=True, exist_ok=True)
+    slug_bits = [
+        _debug_filename_slug(conversation_id),
+        str(entry_index) if entry_index is not None else "unknown",
+        _debug_filename_slug(stage) if stage else "event-log",
+    ]
+    filename = "-".join(bit for bit in slug_bits if bit) + ".log"
+    content = render_event_log_debug(
+        raw_events,
+        conversation_id=conversation_id,
+        entry_index=entry_index,
+        stage=stage,
+        timestamp=timestamp,
+    )
+    target = path / filename
+    target.write_text(content, encoding="utf-8")
+    return target
 
 
 def _format_iso_timestamp(value: str | None, fallback: TimestampInfo | None) -> str:
@@ -98,10 +210,10 @@ def _format_tool_timestamp(
     return _format_timestamp_label(fallback)
 
 
-def _event_log_sort_key(index: int, timestamp: str | None) -> tuple[int, datetime.datetime, int]:
-    moment = parse_iso_timestamp(timestamp)
-    missing = 1 if moment is None else 0
-    return (missing, moment or _UTC_MIN, index)
+def _event_log_sort_key(index: int, sequence: int | None) -> tuple[int, int]:
+    if sequence is None:
+        return (1, index)
+    return (0, sequence)
 
 
 def _plain_events_from_log(
@@ -122,12 +234,17 @@ def _plain_events_from_log(
             return [], seen_prompt
 
     turn_timestamp = entry.agent_turn.timestamp if entry.agent_turn is not None else None
-    collected: list[tuple[tuple[int, datetime.datetime, int], _PlainEvent]] = []
+    collected: list[tuple[tuple[int, int], _PlainEvent]] = []
     for index, record in enumerate(raw_events):
         if not isinstance(record, Mapping):
             continue
         kind = str(record.get("kind") or "event").strip() or "event"
         occurred_at = record.get("occurred_at")
+        raw_sequence = record.get("sequence")
+        try:
+            sequence_value = int(raw_sequence) if raw_sequence is not None else None
+        except (TypeError, ValueError):
+            sequence_value = None
         label = _("Event ({kind}):").format(kind=normalize_for_display(kind))
         payload = record.get("payload")
         if payload is not None:
@@ -138,7 +255,7 @@ def _plain_events_from_log(
         timestamp_label = _format_iso_timestamp(occurred_at, turn_timestamp)
         collected.append(
             (
-                _event_log_sort_key(index, occurred_at if isinstance(occurred_at, str) else None),
+                _event_log_sort_key(index, sequence_value),
                 _PlainEvent(timestamp=timestamp_label, label=label, text=payload_text),
             )
         )
@@ -619,5 +736,7 @@ def compose_transcript_log_text(
 __all__ = [
     "compose_transcript_log_text",
     "compose_transcript_text",
+    "render_event_log_debug",
+    "write_event_log_debug",
     "SYSTEM_PROMPT_PLACEHOLDER",
 ]

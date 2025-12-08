@@ -70,6 +70,7 @@ class AgentTimelineEvent:
     kind: Literal["response", "tool"]
     timestamp: TimestampInfo
     order_index: int
+    sequence: int | None = None
     response: AgentResponse | None = None
     tool_call: "ToolCallDetails" | None = None
 
@@ -627,19 +628,16 @@ def _build_tool_calls(
     if not snapshots:
         return (), None
 
-    def _snapshot_order_key(snapshot: ToolResultSnapshot) -> tuple[int, _dt.datetime | None, int]:
-        """Return chronological key preferring completion, last observation, then start."""
-
-        for index, candidate in enumerate(
-            (snapshot.completed_at, snapshot.last_observed_at, snapshot.started_at)
-        ):
-            if not isinstance(candidate, str) or not candidate.strip():
-                continue
-            parsed = parse_iso_timestamp(candidate)
-            return (0 if parsed is not None else 1, parsed, index)
-        return (1, None, len((snapshot.completed_at, snapshot.last_observed_at, snapshot.started_at)))
-
-    ordered_snapshots = sorted(snapshots, key=_snapshot_order_key)
+    ordered_snapshots = [
+        snapshot
+        for _, snapshot in sorted(
+            enumerate(snapshots),
+            key=lambda pair: (
+                0 if pair[1].sequence is not None else 1,
+                pair[1].sequence if pair[1].sequence is not None else pair[0],
+            ),
+        )
+    ]
 
     summaries = summarize_tool_results(ordered_snapshots)
     summaries_by_id: dict[str, ToolCallSummary] = {}
@@ -878,7 +876,8 @@ def _build_agent_events(
     added_tool_ids: set[str] = set()
 
     has_final_response = False
-    for event in event_log:
+    for log_index, event in enumerate(event_log):
+        sequence = event.sequence if event.sequence is not None else log_index
         timestamp = _build_timestamp(event.occurred_at, source="agent_event")
         if event.kind == "llm_step":
             payload = event.payload or {}
@@ -895,6 +894,7 @@ def _build_agent_events(
                         kind="response",
                         timestamp=response.timestamp,
                         order_index=len(events),
+                        sequence=sequence,
                         response=response,
                     )
                 )
@@ -913,6 +913,7 @@ def _build_agent_events(
                         kind="tool",
                         timestamp=tool_call.timestamp,
                         order_index=len(events),
+                        sequence=sequence,
                         tool_call=tool_call,
                     )
                 )
@@ -927,6 +928,7 @@ def _build_agent_events(
                     kind="response",
                     timestamp=final_response.timestamp,
                     order_index=len(events),
+                    sequence=sequence,
                     response=final_response,
                 )
             )
@@ -950,6 +952,7 @@ def _build_agent_events(
                     kind="tool",
                     timestamp=tool_call.timestamp,
                     order_index=len(events),
+                    sequence=sequence,
                     tool_call=tool_call,
                 )
             )
@@ -963,6 +966,7 @@ def _build_agent_events(
                     kind="response",
                     timestamp=response.timestamp,
                     order_index=len(events),
+                    sequence=len(events),
                     response=response,
                 )
             )
@@ -972,6 +976,7 @@ def _build_agent_events(
                     kind="response",
                     timestamp=final_response.timestamp,
                     order_index=len(events),
+                    sequence=len(events),
                     response=final_response,
                 )
             )
@@ -982,6 +987,7 @@ def _build_agent_events(
                     kind="tool",
                     timestamp=detail.timestamp,
                     order_index=len(events),
+                    sequence=len(events),
                     tool_call=detail,
                 )
             )
@@ -994,6 +1000,7 @@ def _build_agent_events(
                 kind="response",
                 timestamp=final_response.timestamp,
                 order_index=len(events),
+                sequence=len(events),
                 response=final_response,
             )
         )
@@ -1007,22 +1014,12 @@ def _build_agent_events(
                 kind="tool",
                 timestamp=detail.timestamp,
                 order_index=len(events),
+                sequence=len(events),
                 tool_call=detail,
             )
         )
         if identifier:
             added_tool_ids.add(identifier)
-
-    def _event_sort_key(evt: AgentTimelineEvent) -> tuple[int, _dt.datetime, int]:
-        timestamp = evt.timestamp.occurred_at
-        has_timestamp = timestamp is not None
-        return (
-            0 if has_timestamp else 1,
-            timestamp or _UTC_MIN,
-            evt.order_index,
-        )
-
-    events.sort(key=_event_sort_key)
 
     for index, event in enumerate(events):
         event.order_index = index

@@ -11,6 +11,7 @@ from app.confirm import ConfirmDecision, reset_requirement_update_preference, se
 from app.llm.spec import SYSTEM_PROMPT
 from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel.token_usage import format_token_quantity
+from app.agent.run_contract import AgentEvent, AgentEventLog, AgentRunPayload, LlmStep, LlmTrace, ToolResultSnapshot
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.agent_chat_panel.panel import AttachmentValidationError, MAX_ATTACHMENT_BYTES
 from app.ui.agent_chat_panel.components.segments import (
@@ -3056,6 +3057,125 @@ def test_tool_sections_follow_agent_response(wx_app):
                 or "Agent" in bubble_header_text(bubble)
             ]
             assert bubble_order[: len(timeline_order)] == timeline_order
+    finally:
+        if panel is not None:
+            panel.Destroy()
+        frame.Destroy()
+
+
+def test_agent_bubbles_follow_event_log_sequence(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    panel = None
+    try:
+        payload = AgentRunPayload(
+            ok=True,
+            status="succeeded",
+            result_text="final",
+            events=AgentEventLog(
+                events=[
+                    AgentEvent(
+                        kind="llm_step",
+                        occurred_at="2025-01-01T12:00:05+00:00",
+                        payload={
+                            "index": 0,
+                            "request": (),
+                            "response": {"content": "Working"},
+                        },
+                    ),
+                    AgentEvent(
+                        kind="tool_completed",
+                        occurred_at="2025-01-01T12:00:02+00:00",
+                        payload={"call_id": "call-1", "status": "succeeded"},
+                    ),
+                    AgentEvent(
+                        kind="agent_finished",
+                        occurred_at="2025-01-01T12:00:06+00:00",
+                        payload={"ok": True, "status": "succeeded", "result": "final"},
+                    ),
+                ]
+            ),
+            tool_results=[
+                ToolResultSnapshot(
+                    call_id="call-1",
+                    tool_name="update_requirement_field",
+                    status="succeeded",
+                    sequence=1,
+                    started_at="2025-01-01T12:00:01+00:00",
+                    completed_at="2025-01-01T12:00:02+00:00",
+                )
+            ],
+            llm_trace=LlmTrace(
+                steps=[
+                    LlmStep(
+                        index=0,
+                        occurred_at="2025-01-01T12:00:05+00:00",
+                        request=(),
+                        response={"content": "Working"},
+                    )
+                ]
+            ),
+            reasoning=(),
+        ).to_dict()
+
+        conversation, entry_timeline = build_entry_timeline(
+            prompt="Do the thing",
+            response="final",
+            response_at="2025-01-01T12:00:06+00:00",
+            prompt_at="2025-01-01T12:00:00+00:00",
+            raw_payload=payload,
+        )
+        panel = render_turn_card(
+            frame,
+            conversation=conversation,
+            entry=entry_timeline,
+            layout_hints={},
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+        if frame.GetSizer() is None:
+            frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
+        frame.GetSizer().Add(panel, 1, wx.EXPAND)
+        wx.GetApp().Yield()
+
+        agent_bubble = next(
+            (
+                bubble
+                for bubble in collect_message_bubbles(panel)
+                if "Agent" in bubble_header_text(bubble)
+            ),
+            None,
+        )
+        assert agent_bubble is not None, "agent bubble should be present"
+
+        agent_panel = next(
+            (
+                child
+                for child in panel.GetChildren()
+                if isinstance(child, MessageSegmentPanel)
+                and agent_bubble in collect_message_bubbles(child)
+            ),
+            None,
+        )
+        assert agent_panel is not None, "agent segment missing"
+
+        panel_bubbles = collect_message_bubbles(agent_panel)
+        timeline_order = [
+            "tool" if evt.kind == "tool" else "response"
+            for evt in entry_timeline.agent_turn.events
+            if evt.kind in {"tool", "response"}
+        ]
+        assert timeline_order == ["response", "tool", "response"]
+        bubble_order = [
+            "tool" if "Tool" in bubble_header_text(bubble) else "response"
+            for bubble in panel_bubbles
+            if "Tool" in bubble_header_text(bubble)
+            or "Agent" in bubble_header_text(bubble)
+        ]
+
+        assert bubble_order[: len(timeline_order)] == timeline_order
     finally:
         if panel is not None:
             panel.Destroy()

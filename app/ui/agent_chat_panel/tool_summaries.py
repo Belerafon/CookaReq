@@ -88,14 +88,29 @@ def _summarize_snapshot(
     else:
         raw_payload = raw_payload_safe
     bullet_lines = summarize_tool_details(snapshot, arguments)
+
+    event_started_at: str | None = None
+    event_completed_at: str | None = None
+    if snapshot.events:
+        ordered_events = sorted(
+            (event for event in snapshot.events if event.occurred_at),
+            key=lambda item: item.occurred_at,
+        )
+        if ordered_events:
+            event_started_at = ordered_events[0].occurred_at
+            event_completed_at = ordered_events[-1].occurred_at
+
+    started_at = snapshot.started_at or event_started_at
+    completed_at = snapshot.completed_at or event_completed_at
+    last_observed_at = snapshot.last_observed_at or event_completed_at or event_started_at
     return ToolCallSummary(
         index=index,
         tool_name=_normalise_tool_name(snapshot.tool_name),
         status=_format_tool_status(snapshot.status),
         bullet_lines=tuple(bullet_lines),
-        started_at=_normalise_timestamp(snapshot.started_at),
-        completed_at=_normalise_timestamp(snapshot.completed_at),
-        last_observed_at=_normalise_timestamp(snapshot.last_observed_at),
+        started_at=_normalise_timestamp(started_at),
+        completed_at=_normalise_timestamp(completed_at),
+        last_observed_at=_normalise_timestamp(last_observed_at),
         raw_payload=raw_payload,
         duration=snapshot.metrics.duration_seconds,
         cost=_format_cost_text(snapshot.metrics.cost),

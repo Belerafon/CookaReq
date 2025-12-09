@@ -171,7 +171,8 @@ def test_build_conversation_timeline_compiles_turn() -> None:
     assert turn.final_response is not None
     assert turn.final_response.text == "Готово"
     assert turn.final_response.timestamp.raw == "2025-09-30T20:50:12+00:00"
-    assert turn.reasoning == reasoning_segments
+    reasoning_texts = [segment.get("text") for segment in turn.reasoning]
+    assert text in reasoning_texts
 
     assert turn.llm_request is not None
     assert turn.llm_request.sequence is not None
@@ -237,7 +238,7 @@ def test_can_regenerate_last_entry_without_response_timestamp() -> None:
     assert timeline.entries[0].can_regenerate is True
 
 
-def test_build_conversation_timeline_deduplicates_reasoning_only_reply() -> None:
+def test_build_conversation_timeline_preserves_reasoning_only_reply() -> None:
     reasoning_segments = (
         {
             "type": "analysis",
@@ -278,11 +279,77 @@ def test_build_conversation_timeline_deduplicates_reasoning_only_reply() -> None
     assert len(timeline.entries) == 1
     turn = timeline.entries[0].agent_turn
     assert turn is not None
-    assert turn.final_response is None
+    assert turn.final_response is not None
+    assert turn.final_response.display_text == "Подбираю инструменты"
     assert turn.streamed_responses == ()
-    assert turn.reasoning == reasoning_segments
+    reasoning_texts = [segment.get("text") for segment in turn.reasoning]
+    assert text in reasoning_texts
     assert not turn.tool_calls
-    assert all(event.kind != "response" for event in turn.events)
+    assert any(event.kind == "response" for event in turn.events)
+
+
+def test_build_conversation_timeline_keeps_reasoning_and_response_separate() -> None:
+    """Reasoning и финальный ответ должны жить параллельно даже при совпадении текста."""
+
+    text = "Итоговое объяснение"
+    reasoning_segments = (
+        {
+            "type": "analysis",
+            "text": text,
+            "leading_whitespace": "",
+            "trailing_whitespace": "",
+        },
+    )
+
+    payload = AgentRunPayload(
+        ok=True,
+        status="succeeded",
+        result_text=text,
+        reasoning=reasoning_segments,
+        tool_results=[],
+        llm_trace=LlmTrace(
+            steps=[
+                LlmStep(
+                    index=1,
+                    occurred_at="2025-09-30T21:00:00+00:00",
+                    request=(),
+                    response={
+                        "content": text,
+                        "reasoning": [{"type": "analysis", "text": text}],
+                    },
+                )
+            ]
+        ),
+    )
+
+    entry = ChatEntry(
+        prompt="Что дальше?",
+        response=text,
+        tokens=10,
+        prompt_at="2025-09-30T20:59:58+00:00",
+        response_at="2025-09-30T21:00:00+00:00",
+        raw_result=payload.to_dict(),
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+
+    assert len(timeline.entries) == 1
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+    assert turn.final_response is not None
+    assert turn.final_response.text == text
+    assert turn.final_response.display_text == text
+
+    reasoning_texts = [segment.get("text") for segment in turn.reasoning]
+    assert text in reasoning_texts
+    assert 1 in turn.reasoning_by_step
+    assert turn.reasoning_by_step[1][0]["text"] == text
+
+    response_events = [event for event in turn.events if event.kind == "response"]
+    assert response_events, "ожидаем хотя бы один response-ивент"
+    assert response_events[-1].response is not None
+    assert response_events[-1].response.text == text
 
 
 def test_tool_calls_sorted_by_timestamp() -> None:

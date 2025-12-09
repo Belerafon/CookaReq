@@ -2751,6 +2751,78 @@ def test_turn_card_shows_reasoning_for_each_step(wx_app):
         frame.Destroy()
 
 
+def test_reasoning_duplicate_of_agent_message_is_rendered_as_separate_block(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    panel = None
+    try:
+        duplicated_text = "Repeated agent text"
+        raw_payload = {
+            "llm_trace": {
+                "steps": [
+                    {
+                        "index": 1,
+                        "occurred_at": "2025-01-01T10:00:00+00:00",
+                        "request": [{"role": "user", "content": "hi"}],
+                        "response": {
+                            "content": duplicated_text,
+                            "reasoning": [
+                                {"type": "analysis", "text": duplicated_text}
+                            ],
+                        },
+                    },
+                    {
+                        "index": 2,
+                        "occurred_at": "2025-01-01T10:00:05+00:00",
+                        "request": [{"role": "assistant", "content": "ack"}],
+                        "response": {
+                            "content": duplicated_text,
+                            "reasoning": [
+                                {"type": "analysis", "text": duplicated_text}
+                            ],
+                        },
+                    },
+                ]
+            }
+        }
+
+        conversation, entry_timeline = build_entry_timeline(
+            prompt="user",
+            response=duplicated_text,
+            prompt_at="2025-01-01T10:00:00+00:00",
+            response_at="2025-01-01T10:00:10+00:00",
+            raw_payload=raw_payload,
+        )
+
+        panel = render_turn_card(
+            frame,
+            conversation=conversation,
+            entry=entry_timeline,
+            layout_hints=entry_timeline.layout_hints,
+        )
+        wx.GetApp().Yield()
+
+        agent_bubbles = [
+            bubble
+            for bubble in collect_message_bubbles(panel)
+            if "Agent" in bubble_header_text(bubble)
+        ]
+        assert agent_bubbles, "agent response bubble should be shown"
+        assert duplicated_text in bubble_body_text(agent_bubbles[0])
+
+        reasoning_panes = [
+            pane
+            for pane in collect_collapsible_panes(panel)
+            if "reasoning" in pane.GetName()
+        ]
+        assert reasoning_panes, "reasoning payload should render even when it matches response"
+    finally:
+        if panel is not None:
+            panel.Destroy()
+        frame.Destroy()
+
+
 def test_turn_card_orders_tools_by_timestamp_without_event_log(wx_app):
     wx = pytest.importorskip("wx")
 

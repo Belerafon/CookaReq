@@ -3455,6 +3455,136 @@ def test_agent_bubbles_follow_event_log_sequence(wx_app):
         frame.Destroy()
 
 
+def test_tool_calls_not_stacked_when_event_log_lacks_tool_events(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    panel = None
+    try:
+        payload = AgentRunPayload(
+            ok=True,
+            status="succeeded",
+            result_text="final answer",
+            events=AgentEventLog(
+                events=[
+                    AgentEvent(
+                        kind="llm_step",
+                        occurred_at="2025-01-01T12:00:02+00:00",
+                        payload={"index": 0, "response": {"content": "Working"}},
+                    ),
+                    AgentEvent(
+                        kind="llm_step",
+                        occurred_at="2025-01-01T12:00:04+00:00",
+                        payload={"index": 1, "response": {"content": "Continuing"}},
+                    ),
+                    AgentEvent(
+                        kind="agent_finished",
+                        occurred_at="2025-01-01T12:00:09+00:00",
+                        payload={"ok": True, "status": "succeeded", "result": "final"},
+                    ),
+                ]
+            ),
+            tool_results=[
+                ToolResultSnapshot(
+                    call_id="call-1",
+                    tool_name="list_user_documents",
+                    status="succeeded",
+                    sequence=1,
+                    started_at="2025-01-01T12:00:03+00:00",
+                    completed_at="2025-01-01T12:00:05+00:00",
+                ),
+                ToolResultSnapshot(
+                    call_id="call-2",
+                    tool_name="read_user_document",
+                    status="succeeded",
+                    sequence=2,
+                    started_at="2025-01-01T12:00:06+00:00",
+                    completed_at="2025-01-01T12:00:07+00:00",
+                ),
+            ],
+            llm_trace=LlmTrace(
+                steps=[
+                    LlmStep(
+                        index=0,
+                        occurred_at="2025-01-01T12:00:02+00:00",
+                        request=(),
+                        response={"content": "Working"},
+                    ),
+                    LlmStep(
+                        index=1,
+                        occurred_at="2025-01-01T12:00:04+00:00",
+                        request=(),
+                        response={"content": "Continuing"},
+                    ),
+                ]
+            ),
+            reasoning=(),
+        ).to_dict()
+
+        conversation, entry_timeline = build_entry_timeline(
+            prompt="Do the thing",
+            response="final answer",
+            response_at="2025-01-01T12:00:10+00:00",
+            prompt_at="2025-01-01T12:00:00+00:00",
+            raw_payload=payload,
+        )
+        panel = render_turn_card(
+            frame,
+            conversation=conversation,
+            entry=entry_timeline,
+            layout_hints={},
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+        if frame.GetSizer() is None:
+            frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
+        frame.GetSizer().Add(panel, 1, wx.EXPAND)
+        wx.GetApp().Yield()
+
+        agent_bubble = next(
+            (
+                bubble
+                for bubble in collect_message_bubbles(panel)
+                if "Agent" in bubble_header_text(bubble)
+            ),
+            None,
+        )
+        assert agent_bubble is not None, "agent bubble should be present"
+
+        agent_panel = next(
+            (
+                child
+                for child in panel.GetChildren()
+                if isinstance(child, MessageSegmentPanel)
+                and agent_bubble in collect_message_bubbles(child)
+            ),
+            None,
+        )
+        assert agent_panel is not None, "agent segment missing"
+
+        panel_bubbles = collect_message_bubbles(agent_panel)
+        bubble_order = [
+            "tool" if "Tool" in bubble_header_text(bubble) else "response"
+            for bubble in panel_bubbles
+            if "Tool" in bubble_header_text(bubble)
+            or "Agent" in bubble_header_text(bubble)
+        ]
+
+        expected_order = [
+            "response",
+            "tool",
+            "response",
+            "tool",
+            "response",
+        ]
+        assert bubble_order[: len(expected_order)] == expected_order
+    finally:
+        if panel is not None:
+            panel.Destroy()
+        frame.Destroy()
+
+
 def test_tool_summary_includes_llm_exchange(wx_app):
     wx = pytest.importorskip("wx")
 
